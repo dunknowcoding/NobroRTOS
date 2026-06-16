@@ -191,6 +191,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30713f36f1be02e5bc9abefa30eae4a1f943d810f199d4923d3ad062d1be1b3d"
 dependencies = [
  "cortex-m",
+ "cortex-m-rt",
  "vcell",
 ]
 
@@ -242,6 +243,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "resource-sched-demo"
+version = "0.1.0"
+dependencies = [
+ "airon-hal",
+ "airon-kernel",
+ "cortex-m",
+ "cortex-m-rt",
+ "critical-section",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nrf52840-pac",
+ "panic-probe",
 ]
 
 [[package]]

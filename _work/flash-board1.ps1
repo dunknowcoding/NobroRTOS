@@ -1,10 +1,13 @@
-# Flash AIRON MVK to board1 (ProMicro no-SD @ 0x1000). Does NOT reflash bootloader.
+# Flash AIRON firmware to board1 (ProMicro no-SD @ 0x1000). Does NOT reflash bootloader.
 param(
-    [string]$Hex = "F:\Arduino\driver\AIRON\_work\artifacts\mvk_ppi_timestamp.hex",
+    [ValidateSet("mvk_ppi_timestamp", "resource_sched_demo")]
+    [string]$App = "resource_sched_demo",
     [uint32]$Base = 0x1000
 )
 
 $ErrorActionPreference = "Stop"
+$workRoot = "F:\Arduino\driver\AIRON\_work"
+$Hex = Join-Path $workRoot "artifacts\$App.hex"
 $jlink = "C:\Program Files\SEGGER\JLink_V944\JLink.exe"
 if (-not (Test-Path $jlink)) { throw "JLink not found at $jlink" }
 if (-not (Test-Path $Hex)) { throw "HEX not found: $Hex — run cargo objcopy first" }

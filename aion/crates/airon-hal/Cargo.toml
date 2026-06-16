@@ -4,12 +4,20 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
 critical-section = "1.2"
-nrf52840-pac = "0.12"
 embedded-hal = "1.0"
+nrf52840-pac = { version = "0.12", optional = true }
 
 [features]
-default = ["board-promicro-nosd"]
-board-promicro-nosd = []
-board-nicenano-s140 = []
+default = ["platform-nrf52840", "board-promicro-nosd"]
+
+# SoC / HAL backends (enable exactly one per build).
+platform-nrf52840 = ["dep:cortex-m", "dep:nrf52840-pac"]
+platform-esp32 = []
+platform-rp2040 = []
+platform-stm32 = []
+
+# Board packages — depend on a platform feature.
+board-promicro-nosd = ["platform-nrf52840"]
+board-nicenano-s140 = ["platform-nrf52840"]

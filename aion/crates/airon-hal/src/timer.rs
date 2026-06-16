@@ -40,4 +40,12 @@ impl MicroTimer {
     pub fn captured_cc1_us() -> u32 {
         unsafe { (*TIMER0::ptr()).cc[1].read().bits() }
     }
+
+    pub fn captured_cc2_us() -> u32 {
+        unsafe { (*TIMER0::ptr()).cc[2].read().bits() }
+    }
+
+    pub unsafe fn trigger_capture_1() {
+        (*TIMER0::ptr()).tasks_capture[1].write(|w| w.bits(1));
+    }
 }

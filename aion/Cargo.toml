@@ -6,6 +6,7 @@ members = [
     "crates/airon-kernel",
     "crates/airon-host",
     "apps/mvk_ppi_timestamp",
+    "apps/resource_sched_demo",
 ]
 
 [workspace.package]

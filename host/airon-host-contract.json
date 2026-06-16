@@ -9,5 +9,31 @@
     "bootloader_policy": "do-not-reflash",
     "app_start_no_softdevice": "0x1000",
     "app_start_s140": "0x26000"
+  },
+  "phase1_eval": {
+    "symbol": "AIRON_EVAL_REPORT",
+    "magic": "0x41524E31",
+    "runner": "_work/run-phase1-eval.ps1",
+    "warmup_sec": 8,
+    "hal": {
+      "active_platform_trait": "airon_hal::PlatformHal",
+      "board_trait": "airon_hal::BoardDesc",
+      "platform_feature": "platform-nrf52840",
+      "future_platforms": ["platform-esp32", "platform-rp2040", "platform-stm32"]
+    },
+    "thresholds": {
+      "max_jitter_us": 10,
+      "min_deadline_ticks": 150,
+      "min_i2c_reads": 10,
+      "max_radio_latency_us": 10,
+      "min_radio_samples": 16
+    },
+    "scene_d_golden": {
+      "flash_start": "0x1000",
+      "pwm_hz": 50,
+      "servo_pin": 24,
+      "servo_center_us": 1500,
+      "twim0_base": "0x40003000"
+    }
   }
 }
