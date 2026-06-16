@@ -1,0 +1,6 @@
+[package]
+name = "airon-kernel"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

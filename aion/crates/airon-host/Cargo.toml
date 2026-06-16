@@ -1,0 +1,6 @@
+[package]
+name = "airon-host"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

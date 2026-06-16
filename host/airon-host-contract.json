@@ -1,0 +1,13 @@
+{
+  "cdc": { "maintenance_mi": "MI_00", "user_mi": "MI_02" },
+  "upload": { "touch_baud": 1200, "lock_per_port": true },
+  "debug": { "gdb_incompatible_with": ["deadline_benchmark", "radio_soak"] },
+  "ironengine": { "default_baud": 115200, "frame_headers": [170, 85] },
+  "ina_monitor": { "jsonl_line_rate_hz_max": 50 },
+  "lab": {
+    "default_board": "board1",
+    "bootloader_policy": "do-not-reflash",
+    "app_start_no_softdevice": "0x1000",
+    "app_start_s140": "0x26000"
+  }
+}

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/airon-sal",
+    "crates/airon-hal",
+    "crates/airon-kernel",
+    "crates/airon-host",
+    "apps/mvk_ppi_timestamp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["NiusRobotLab"]
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1

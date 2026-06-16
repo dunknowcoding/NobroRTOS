@@ -1,0 +1,15 @@
+[package]
+name = "airon-hal"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+critical-section = "1.2"
+nrf52840-pac = "0.12"
+embedded-hal = "1.0"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = []
+board-nicenano-s140 = []
