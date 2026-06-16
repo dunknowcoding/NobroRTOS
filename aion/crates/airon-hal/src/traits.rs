@@ -25,6 +25,8 @@ pub trait HalDeadline {
     unsafe fn init();
     fn enable_interrupt();
     fn on_interrupt();
+    /// Polled compare path (used when NVIC path is disabled).
+    fn poll_compare(on_tick: impl FnOnce(u64));
 }
 
 /// Servo-style PWM backend.
@@ -55,8 +57,13 @@ pub trait HalLease {
 }
 
 /// Root marker for a platform backend (one impl per SoC family).
-pub trait PlatformHal: HalClock + HalLease {
+pub trait PlatformHal:
+    HalClock + HalLease + HalDeadline + HalEventCapture + HalServoPwm
+{
     const PLATFORM_ID: &'static str;
     type Board: BoardDesc;
     fn servo_profile() -> ServoProfile;
+    unsafe fn init_timebase();
+    /// One-shot bring-up: deadline timer, event capture, servo PWM for eval demos.
+    unsafe fn init_scheduling_demo(profile: ServoProfile);
 }

@@ -22,8 +22,15 @@ New-Item -ItemType Directory -Force -Path (Split-Path $hex), $evalDir | Out-Null
 
 Write-Host "== Phase 1 eval: build =="
 Set-Location $aion
-cargo build -p resource-sched-demo --release
-cargo objcopy -p resource-sched-demo --release -- -O ihex $hex
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+cargo build -p resource-sched-demo --release 2>&1 | Out-Null
+$buildOk = $LASTEXITCODE
+cargo objcopy -p resource-sched-demo --release -- -O ihex $hex 2>&1 | Out-Null
+$objOk = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+if ($buildOk -ne 0) { throw "cargo build failed ($buildOk)" }
+if ($objOk -ne 0) { throw "cargo objcopy failed ($objOk)" }
 
 Write-Host "== Phase 1 eval: locate AIRON_EVAL_REPORT =="
 $rustNm = Join-Path $env:CARGO_HOME "bin\rust-nm.exe"

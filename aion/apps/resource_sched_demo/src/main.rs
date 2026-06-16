@@ -1,5 +1,5 @@
 //! Phase 1 resource scheduling demo — scenes A~D with autonomous self-evaluation.
-//! Target: board1 ProMicro no-SD @ 0x1000, J-Link + RAM report (no scope required).
+//! Uses `airon_hal::traits` + `ActivePlatform` so apps stay SoC-agnostic.
 
 #![no_std]
 #![no_main]
@@ -11,15 +11,16 @@ use defmt_rtt as _;
 use panic_probe as _;
 
 use airon_hal::{
-    board,
+    board::Board,
+    board_desc::BoardDesc,
     bus::TwimBus,
-    deadline_timer::DeadlineTimer,
     inspect,
-    lease::{LeaseError, Resource, ResourceLease},
+    lease::{LeaseError, Resource},
     ppi,
-    pwm::{PwmServo, SERVO_PIN},
-    radio_sim::RadioRxSim,
-    timer::MicroTimer,
+    traits::{
+        HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, PlatformHal,
+    },
+    ActivePlatform as Hal,
 };
 use airon_kernel::{
     eval::{EvalGate, EvalReport, EVAL_MAGIC, MIN_DEADLINE_TICKS},
@@ -35,7 +36,6 @@ static I2C_READS: AtomicU32 = AtomicU32::new(0);
 static SCENE_B_PASS: AtomicU32 = AtomicU32::new(0);
 static EVAL_DONE: AtomicU32 = AtomicU32::new(0);
 
-/// Host reads this struct via J-Link (`run-phase1-eval.ps1`).
 #[no_mangle]
 #[used]
 static mut AIRON_EVAL_REPORT: EvalReport = EvalReport::zeroed();
@@ -44,34 +44,32 @@ fn on_deadline_slot() {}
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    defmt::info!("AIRON resource_sched_demo — autonomous eval mode");
+    defmt::info!(
+        "AIRON resource_sched_demo platform={} board={}",
+        Hal::PLATFORM_ID,
+        Board::BOARD_ID
+    );
 
-    ResourceLease::acquire(Resource::Timer0, OWNER_TIMER)
-        .unwrap_or_else(|_| defmt::panic!("Timer0 lease failed"));
-    ResourceLease::acquire(Resource::Radio, OWNER_RADIO)
-        .unwrap_or_else(|_| defmt::panic!("Radio lease failed"));
+    Hal::acquire(Resource::Timer0, OWNER_TIMER).unwrap_or_else(|_| defmt::panic!("Timer0"));
+    Hal::acquire(Resource::Radio, OWNER_RADIO).unwrap_or_else(|_| defmt::panic!("Radio"));
 
+    let profile = Hal::servo_profile();
     unsafe {
-        MicroTimer::init();
-        DeadlineTimer::init();
+        Hal::init_scheduling_demo(profile);
         Scheduler::set_deadline_handler(on_deadline_slot);
-        RadioRxSim::init();
         ppi::led_init_output();
-
-        let pwm = PwmServo::init_50hz(board::SERVO_PWM_PIN, board::SERVO_CENTER_US);
         defmt::info!(
             "init PWM {}Hz pin {} pulse {}us",
-            pwm.frequency_hz(),
-            SERVO_PIN,
-            pwm.pulse_us()
+            profile.frequency_hz,
+            profile.pin,
+            profile.center_pulse_us
         );
-        core::mem::forget(pwm);
     }
 
-    let twim0 = TwimBus::new_twim0(OWNER_I2C).unwrap_or_else(|_| defmt::panic!("TWIM0 lease"));
+    let twim0 = TwimBus::acquire_twim0(OWNER_I2C).unwrap_or_else(|_| defmt::panic!("TWIM0"));
     scene_b_check_once();
 
-    let now = MicroTimer::now_us();
+    let now = Hal::now_us();
     let mut i2c_task = I2cPollTask::new(OWNER_I2C, now);
     let mut stats = StatsTask::new(now);
     let mut i2c_buf = [0u8; 16];
@@ -84,8 +82,8 @@ fn main() -> ! {
     }
 
     loop {
-        let now = MicroTimer::now_us();
-        poll_deadline_timer();
+        let now = Hal::now_us();
+        Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
 
         if i2c_task.poll(now) == Poll::Ready {
             if twim0.read_stub(0x68, &mut i2c_buf).is_ok() {
@@ -94,13 +92,13 @@ fn main() -> ! {
         }
 
         if stats.poll(now) == Poll::Ready {
-            poll_deadline_timer();
+            Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
             for _ in 0..4 {
                 unsafe {
-                    let _ = RadioRxSim::trigger_and_latency_us();
+                    let _ = Hal::trigger_and_latency_us();
                 }
             }
-            poll_deadline_timer();
+            Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
             try_finalize_eval();
         }
 
@@ -115,18 +113,8 @@ fn main() -> ! {
     }
 }
 
-fn poll_deadline_timer() {
-    unsafe {
-        let t = nrf52840_pac::TIMER1::ptr();
-        if (*t).events_compare[0].read().bits() != 0 {
-            (*t).events_compare[0].reset();
-            Scheduler::on_deadline_tick(MicroTimer::now_us());
-        }
-    }
-}
-
 fn scene_b_check_once() {
-    match TwimBus::new_twim0(99) {
+    match TwimBus::acquire_twim0(99) {
         Err(LeaseError::AlreadyHeld) => {
             SCENE_B_PASS.store(1, Ordering::Release);
             defmt::info!("scene B: TWIM0 AlreadyHeld — pass");
@@ -149,9 +137,9 @@ fn try_finalize_eval() {
     let jitter = Scheduler::max_jitter_us();
     let misses = Scheduler::deadline_misses();
     let i2c_reads = I2C_READS.load(Ordering::Acquire);
-    let (radio_max, radio_samples) = RadioRxSim::latency_stats();
+    let (radio_max, radio_samples) = Hal::latency_stats();
     let (scene_d, pwm_snap, parity) =
-        unsafe { inspect::scene_d_pass(board::SERVO_CENTER_US) };
+        unsafe { inspect::scene_d_pass(Board::SERVO_CENTER_US) };
 
     let scene_a = EvalGate::scene_a_pass(jitter, misses, ticks, i2c_reads);
     let scene_b = SCENE_B_PASS.load(Ordering::Acquire) != 0;

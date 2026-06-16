@@ -30,6 +30,17 @@ impl PlatformHal for Nrf52840 {
     fn servo_profile() -> ServoProfile {
         ServoProfile::new(50, board::SERVO_CENTER_US, board::SERVO_PWM_PIN)
     }
+
+    unsafe fn init_timebase() {
+        MicroTimer::init();
+    }
+
+    unsafe fn init_scheduling_demo(profile: ServoProfile) {
+        MicroTimer::init();
+        DeadlineTimer::init();
+        RadioRxSim::init();
+        let _ = crate::pwm::PwmServo::init_50hz(profile.pin, profile.center_pulse_us);
+    }
 }
 
 impl HalClock for Nrf52840 {
@@ -63,6 +74,16 @@ impl HalDeadline for Nrf52840 {
 
     fn on_interrupt() {
         DeadlineTimer::on_isr();
+    }
+
+    fn poll_compare(on_tick: impl FnOnce(u64)) {
+        unsafe {
+            let t = nrf52840_pac::TIMER1::ptr();
+            if (*t).events_compare[0].read().bits() != 0 {
+                (*t).events_compare[0].reset();
+                on_tick(MicroTimer::now_us());
+            }
+        }
     }
 }
 
