@@ -5,6 +5,7 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod degrade;
 pub mod error;
 pub mod eval;
 pub mod event_log;
@@ -18,6 +19,7 @@ pub mod scheduler;
 pub mod supervisor;
 pub mod watchdog;
 
+pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};
 pub use eval::{
     EvalGate, EvalReport, ImuHwEvalReport, SalEvalReport, EVAL_MAGIC, IMU_HW_EVAL_MAGIC,

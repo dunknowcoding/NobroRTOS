@@ -84,6 +84,8 @@ Fault handling is intentionally small:
   tested without binding AIRON to one hardware watchdog block.
 - `Lifecycle` defines legal boot, running, degraded, recovering, and halted
   transitions so recovery paths are explicit and testable.
+- `DegradePlanner` keeps System and HardRealtime modules enabled while shedding
+  lower-criticality modules to fit board-class budgets.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
