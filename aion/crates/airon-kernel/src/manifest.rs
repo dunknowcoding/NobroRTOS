@@ -150,6 +150,20 @@ impl SystemProfile {
         max_modules: 16,
     };
 
+    pub const fn new(
+        flash_limit_bytes: u32,
+        ram_limit_bytes: u32,
+        pool_slot_limit: u16,
+        max_modules: usize,
+    ) -> Self {
+        Self {
+            flash_limit_bytes,
+            ram_limit_bytes,
+            pool_slot_limit,
+            max_modules,
+        }
+    }
+
     pub const fn budget(self) -> SystemBudget {
         SystemBudget::new(
             self.flash_limit_bytes,
@@ -278,6 +292,14 @@ pub struct SystemManifest<const N: usize> {
 impl<const N: usize> SystemManifest<N> {
     pub const fn new() -> Self {
         Self { modules: [None; N] }
+    }
+
+    pub fn from_specs(specs: &[ModuleSpec]) -> Result<Self, ManifestError> {
+        let mut manifest = Self::new();
+        for spec in specs {
+            manifest.add(*spec)?;
+        }
+        Ok(manifest)
     }
 
     pub fn add(&mut self, spec: ModuleSpec) -> Result<(), ManifestError> {
@@ -565,5 +587,21 @@ mod tests {
                 limit: 1
             })
         );
+    }
+
+    #[test]
+    fn manifest_can_be_built_from_specs() {
+        let manifest = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+
+        assert_eq!(manifest.len(), 2);
+        assert!(manifest.validate().is_ok());
+    }
+
+    #[test]
+    fn manifest_from_specs_preserves_duplicate_errors() {
+        assert!(matches!(
+            SystemManifest::<2>::from_specs(&[kernel_spec(), kernel_spec()]),
+            Err(ManifestError::DuplicateModule(ModuleId::Kernel))
+        ));
     }
 }

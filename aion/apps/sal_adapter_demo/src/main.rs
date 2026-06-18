@@ -120,16 +120,9 @@ fn main() -> ! {
 }
 
 fn admit_sal_demo() {
-    let mut manifest = SystemManifest::<4>::new();
-    manifest
-        .add(kernel_spec())
-        .unwrap_or_else(|_| defmt::panic!("kernel manifest"));
-    manifest
-        .add(robo_servo_spec())
-        .unwrap_or_else(|_| defmt::panic!("servo manifest"));
-    manifest
-        .add(sensor_stub_spec())
-        .unwrap_or_else(|_| defmt::panic!("sensor manifest"));
+    let specs = [kernel_spec(), robo_servo_spec(), sensor_stub_spec()];
+    let manifest =
+        SystemManifest::<4>::from_specs(&specs).unwrap_or_else(|_| defmt::panic!("manifest"));
 
     let startup = [
         StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
@@ -144,12 +137,12 @@ fn admit_sal_demo() {
 
 fn active_profile() -> SystemProfile {
     let capacity = <Hal as PlatformHal>::Board::CAPACITY;
-    SystemProfile {
-        flash_limit_bytes: capacity.flash_budget_bytes,
-        ram_limit_bytes: capacity.ram_budget_bytes,
-        pool_slot_limit: capacity.sample_pool_slots,
-        max_modules: capacity.max_modules,
-    }
+    SystemProfile::new(
+        capacity.flash_budget_bytes,
+        capacity.ram_budget_bytes,
+        capacity.sample_pool_slots,
+        capacity.max_modules,
+    )
 }
 
 fn kernel_spec() -> ModuleSpec {
