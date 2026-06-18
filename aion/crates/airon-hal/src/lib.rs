@@ -12,6 +12,12 @@ pub mod platform;
 pub mod snapshots;
 pub mod traits;
 
+#[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
+compile_error!("airon-hal: enable exactly one board-* feature");
+
+#[cfg(not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140")))]
+compile_error!("airon-hal: enable one board-* feature");
+
 #[cfg(feature = "platform-nrf52840")]
 pub mod board;
 #[cfg(feature = "platform-nrf52840")]
@@ -31,7 +37,7 @@ pub mod timer;
 #[cfg(feature = "platform-nrf52840")]
 pub mod twim_hw;
 
-pub use board_desc::{BoardDesc, BusLayout, ServoProfile};
+pub use board_desc::{BoardCapacity, BoardDesc, BusLayout, ServoProfile};
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;
 pub use snapshots::{BoardParity, EventCaptureSnapshot, PwmSnapshot};

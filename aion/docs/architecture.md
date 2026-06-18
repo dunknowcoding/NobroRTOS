@@ -35,7 +35,11 @@ AIRON borrows selectively from established and modern embedded systems:
 Board compatibility must be data-first:
 
 - Each board exposes a `BoardDesc`.
+- Each board exposes a `BoardCapacity` so flash, RAM, sample-pool, and module
+  limits can be checked before hardware bring-up.
 - Each bootloader layout has an explicit Cargo feature and linker script.
+- HAL feature selection must enable exactly one `platform-*` feature and one
+  `board-*` feature.
 - Hardware parity checks read registers back into snapshot structs.
 - Host scripts consume `airon-host` constants or `host/airon-host-contract.json`
   rather than duplicating magic values.

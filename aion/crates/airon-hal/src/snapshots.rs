@@ -1,6 +1,6 @@
 //! Platform-agnostic self-test snapshot types.
 
-use crate::board_desc::{BoardDesc, BusLayout, ServoProfile};
+use crate::board_desc::{BoardCapacity, BoardDesc, BusLayout, ServoProfile};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PwmSnapshot {
@@ -37,6 +37,7 @@ impl EventCaptureSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoardParity {
     pub flash_start: u32,
+    pub capacity: BoardCapacity,
     pub bus: BusLayout,
     pub servo_pin: u8,
     pub servo_center_us: u32,
@@ -46,6 +47,7 @@ impl BoardParity {
     pub fn from_board<B: BoardDesc>(bus: BusLayout) -> Self {
         Self {
             flash_start: B::APP_FLASH_START,
+            capacity: B::CAPACITY,
             bus,
             servo_pin: B::SERVO_PWM_PIN,
             servo_center_us: B::SERVO_CENTER_US,
@@ -54,6 +56,7 @@ impl BoardParity {
 
     pub fn matches_board<B: BoardDesc>(&self, expected_bus: BusLayout) -> bool {
         self.flash_start == B::APP_FLASH_START
+            && self.capacity == B::CAPACITY
             && self.bus.twim0_base == expected_bus.twim0_base
             && self.bus.twim1_base == expected_bus.twim1_base
             && self.servo_pin == B::SERVO_PWM_PIN
