@@ -102,6 +102,8 @@ Fault handling is intentionally small:
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
+- `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
+  deadline faults, and event logging into one testable recovery path.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
