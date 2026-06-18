@@ -37,6 +37,7 @@ pub enum QuotaError {
     },
 }
 
+#[derive(Debug)]
 pub struct QuotaLedger<const N: usize> {
     entries: [Option<QuotaEntry>; N],
 }

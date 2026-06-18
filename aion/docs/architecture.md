@@ -95,6 +95,9 @@ Fault handling is intentionally small:
 - `QuotaLedger` converts manifest budgets into fixed-capacity runtime
   accounting, so modules can reserve and release RAM, flash, and pool slots
   without heap allocation.
+- `AdmissionController` composes manifest validation, startup ordering, and
+  quota seeding into one boot-time software gate before board-specific startup
+  code runs.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

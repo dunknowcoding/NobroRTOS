@@ -5,6 +5,7 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod admission;
 pub mod degrade;
 pub mod error;
 pub mod eval;
@@ -23,6 +24,7 @@ pub mod startup;
 pub mod supervisor;
 pub mod watchdog;
 
+pub use admission::{AdmissionController, AdmissionError, AdmissionPlan};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};
 pub use eval::{
