@@ -11,9 +11,10 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use airon_adapter_robo_servo::RoboServoAdapter;
-use airon_adapter_sensor_stub::{stub_imu_plausible, SensorStub};
+use airon_adapter_robo_servo::{module_spec as robo_servo_spec, RoboServoAdapter};
+use airon_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausible, SensorStub};
 use airon_hal::{
+    board_desc::BoardDesc,
     lease::Resource,
     ppi,
     traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
@@ -24,8 +25,11 @@ use airon_kernel::{
         SalEvalReport, MIN_IMU_SAMPLES, MIN_SERVO_STEPS, SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
     },
     executor::{Poll, StatsTask, Task},
+    kernel_owned_capabilities,
     pool::SamplePool,
     scheduler::Scheduler,
+    AdmissionController, Criticality, DeadlineContract, DependencySet, MemoryBudget, ModuleId,
+    ModuleSpec, StartupNode, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, SensorSal};
 
@@ -46,6 +50,8 @@ fn on_deadline_slot() {}
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    admit_sal_demo();
+
     defmt::info!(
         "AIRON sal_adapter_demo platform={} (sensor-stub, no NiusIMU)",
         Hal::PLATFORM_ID
@@ -111,6 +117,46 @@ fn main() -> ! {
             asm::nop();
         }
     }
+}
+
+fn admit_sal_demo() {
+    let mut manifest = SystemManifest::<4>::new();
+    manifest
+        .add(kernel_spec())
+        .unwrap_or_else(|_| defmt::panic!("kernel manifest"));
+    manifest
+        .add(robo_servo_spec())
+        .unwrap_or_else(|_| defmt::panic!("servo manifest"));
+    manifest
+        .add(sensor_stub_spec())
+        .unwrap_or_else(|_| defmt::panic!("sensor manifest"));
+
+    let startup = [
+        StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+        StartupNode::new(ModuleId::Actuator, DependencySet::empty().with_index(0)),
+        StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+    ];
+
+    if AdmissionController::admit::<4, 4, 4>(&manifest, &startup, active_profile()).is_err() {
+        defmt::panic!("sal demo admission failed");
+    }
+}
+
+fn active_profile() -> SystemProfile {
+    let capacity = <Hal as PlatformHal>::Board::CAPACITY;
+    SystemProfile {
+        flash_limit_bytes: capacity.flash_budget_bytes,
+        ram_limit_bytes: capacity.ram_budget_bytes,
+        pool_slot_limit: capacity.sample_pool_slots,
+        max_modules: capacity.max_modules,
+    }
+}
+
+fn kernel_spec() -> ModuleSpec {
+    ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
+        .owns(kernel_owned_capabilities())
+        .memory(MemoryBudget::new(24 * 1024, 8 * 1024, 4))
+        .deadline(DeadlineContract::new(20_000, 10))
 }
 
 fn try_servo_step(servo: &mut RoboServoAdapter, deadline_us: u64) {
