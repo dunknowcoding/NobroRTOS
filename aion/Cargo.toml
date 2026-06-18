@@ -5,8 +5,13 @@ members = [
     "crates/airon-hal",
     "crates/airon-kernel",
     "crates/airon-host",
+    "adapters/robo-servo",
+    "adapters/sensor-stub",
+    "adapters/mpu9250-imu",
     "apps/mvk_ppi_timestamp",
     "apps/resource_sched_demo",
+    "apps/sal_adapter_demo",
+    "apps/imu_i2c_demo",
 ]
 
 [workspace.package]

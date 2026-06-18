@@ -24,7 +24,7 @@ pub enum SampleKind {
     Raw = 5,
 }
 
-/// All modules pass `Sample` tickets — not raw pointers across crate boundaries.
+/// All modules pass `Sample` tickets, not raw pointers across crate boundaries.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Sample {
     pub handle: PoolHandle,

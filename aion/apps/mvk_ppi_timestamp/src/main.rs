@@ -10,7 +10,8 @@ use panic_probe as _;
 
 use airon_hal::{
     lease::{Resource, ResourceLease},
-    ppi, timer::MicroTimer,
+    ppi,
+    timer::MicroTimer,
 };
 
 const OWNER: u8 = 1;

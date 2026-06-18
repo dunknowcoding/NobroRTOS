@@ -73,10 +73,13 @@ impl EventCaptureSnapshot {
 impl HalSelfTest<board::Board> for Nrf52840 {
     unsafe fn scene_d_pass(profile: ServoProfile) -> (bool, PwmSnapshot, BoardParity) {
         let pwm = PwmSnapshot::capture();
-        let parity = BoardParity::from_board::<board::Board>(crate::platform::nrf52840::bus_layout());
+        let parity =
+            BoardParity::from_board::<board::Board>(crate::platform::nrf52840::bus_layout());
         let capture = EventCaptureSnapshot::capture_radio_channel(1);
-        let pwm_ok = pwm.matches_profile(&profile) && pwm.matches_arduino_nrf(profile.center_pulse_us);
-        let parity_ok = parity.matches_board::<board::Board>(crate::platform::nrf52840::bus_layout());
+        let pwm_ok =
+            pwm.matches_profile(&profile) && pwm.matches_arduino_nrf(profile.center_pulse_us);
+        let parity_ok =
+            parity.matches_board::<board::Board>(crate::platform::nrf52840::bus_layout());
         let pass = pwm_ok && parity_ok && capture.is_wired();
         (pass, pwm, parity)
     }
@@ -84,5 +87,9 @@ impl HalSelfTest<board::Board> for Nrf52840 {
 
 /// Scene D entry (legacy path for apps).
 pub unsafe fn scene_d_pass(expected_pulse_us: u32) -> (bool, PwmSnapshot, BoardParity) {
-    Nrf52840::scene_d_pass(ServoProfile::new(50, expected_pulse_us, board::SERVO_PWM_PIN))
+    Nrf52840::scene_d_pass(ServoProfile::new(
+        50,
+        expected_pulse_us,
+        board::SERVO_PWM_PIN,
+    ))
 }

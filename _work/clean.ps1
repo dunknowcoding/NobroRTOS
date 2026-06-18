@@ -1,4 +1,4 @@
-# AIRON workspace cleanup — run after module validation or before commit.
+# AIRON workspace cleanup. Run after module validation or before commit.
 param(
     [switch]$Deep
 )

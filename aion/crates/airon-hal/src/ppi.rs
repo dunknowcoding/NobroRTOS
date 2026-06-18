@@ -25,8 +25,12 @@ pub unsafe fn mvk_setup_gpiote_ppi_capture() {
     let timer_capture1 = core::ptr::addr_of!((*timer).tasks_capture[1]) as u32;
 
     let ppi = PPI::ptr();
-    (*ppi).ch[PPI_CH].eep.write(|w| unsafe { w.bits(gpiote_event) });
-    (*ppi).ch[PPI_CH].tep.write(|w| unsafe { w.bits(timer_capture1) });
+    (*ppi).ch[PPI_CH]
+        .eep
+        .write(|w| unsafe { w.bits(gpiote_event) });
+    (*ppi).ch[PPI_CH]
+        .tep
+        .write(|w| unsafe { w.bits(timer_capture1) });
     (*ppi).chenset.write(|w| unsafe { w.bits(1 << PPI_CH) });
 }
 
@@ -78,24 +82,10 @@ unsafe fn gpio_input_pullup(pin: u8) {
     let pin = pin as u32;
     if pin < 32 {
         let p = nrf52840_pac::P0::ptr();
-        (*p).pin_cnf[pin as usize].write(|w| {
-            w.dir()
-                .input()
-                .input()
-                .connect()
-                .pull()
-                .pullup()
-        });
+        (*p).pin_cnf[pin as usize].write(|w| w.dir().input().input().connect().pull().pullup());
     } else {
         let bit = pin - 32;
         let p = nrf52840_pac::P1::ptr();
-        (*p).pin_cnf[bit as usize].write(|w| {
-            w.dir()
-                .input()
-                .input()
-                .connect()
-                .pull()
-                .pullup()
-        });
+        (*p).pin_cnf[bit as usize].write(|w| w.dir().input().input().connect().pull().pullup());
     }
 }

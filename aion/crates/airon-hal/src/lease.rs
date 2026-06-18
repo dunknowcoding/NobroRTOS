@@ -13,6 +13,20 @@ pub enum Resource {
     Timer3,
 }
 
+impl Resource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Timer0 => "TIMER0",
+            Self::Twim0 => "TWIM0",
+            Self::Twim1 => "TWIM1",
+            Self::Spim0 => "SPIM0",
+            Self::Radio => "RADIO",
+            Self::Rtc2 => "RTC2",
+            Self::Timer3 => "TIMER3",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeaseError {
     AlreadyHeld,
@@ -88,5 +102,45 @@ impl ResourceLease {
 
     pub fn is_held(resource: Resource) -> bool {
         SLOTS[idx(resource)].taken.load(Ordering::Acquire)
+    }
+
+    pub fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
+        Self::acquire(resource, owner)?;
+        Ok(LeaseGuard {
+            resource,
+            owner,
+            active: true,
+        })
+    }
+}
+
+pub struct LeaseGuard {
+    resource: Resource,
+    owner: u8,
+    active: bool,
+}
+
+impl LeaseGuard {
+    pub const fn resource(&self) -> Resource {
+        self.resource
+    }
+
+    pub const fn owner(&self) -> u8 {
+        self.owner
+    }
+
+    pub fn release(mut self) -> Result<(), LeaseError> {
+        ResourceLease::release(self.resource, self.owner)?;
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for LeaseGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = ResourceLease::release(self.resource, self.owner);
+            self.active = false;
+        }
     }
 }

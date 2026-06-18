@@ -17,7 +17,8 @@ impl MicroTimer {
         (*t).tasks_clear.write(|w| w.bits(1));
         (*t).mode.write(|w| w.mode().timer());
         (*t).bitmode.write(|w| w.bitmode()._32bit());
-        (*t).prescaler.write(|w| w.prescaler().bits(PRESCALER as u8));
+        (*t).prescaler
+            .write(|w| w.prescaler().bits(PRESCALER as u8));
         OVERFLOW.store(0, Ordering::Release);
         (*t).tasks_start.write(|w| w.bits(1));
     }
@@ -26,7 +27,7 @@ impl MicroTimer {
         OVERFLOW.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Latch running counter into CC[0] and read (1 µs resolution).
+    /// Latch running counter into CC[0] and read at 1 us resolution.
     pub fn now_us() -> u64 {
         unsafe {
             let t = TIMER0::ptr();

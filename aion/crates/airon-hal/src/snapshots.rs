@@ -1,4 +1,4 @@
-//! Self-test snapshot types — platform-agnostic; capture logic lives under `platform/*`.
+//! Platform-agnostic self-test snapshot types.
 
 use crate::board_desc::{BoardDesc, BusLayout, ServoProfile};
 

@@ -1,10 +1,10 @@
-//! nRF52840 platform backend — first AIRON HAL port (ArduinoNRF P0).
+//! nRF52840 platform backend and first AIRON HAL port.
 
 use crate::board;
 use crate::board_desc::{BusLayout, ServoProfile};
 use crate::bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 use crate::deadline_timer::DeadlineTimer;
-use crate::lease::{LeaseError, Resource, ResourceLease};
+use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 use crate::radio_sim::RadioRxSim;
 use crate::snapshots::EventCaptureSnapshot;
 use crate::timer::MicroTimer;
@@ -61,6 +61,10 @@ impl HalLease for Nrf52840 {
     fn is_held(resource: Resource) -> bool {
         ResourceLease::is_held(resource)
     }
+
+    fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
+        ResourceLease::acquire_guard(resource, owner)
+    }
 }
 
 impl HalDeadline for Nrf52840 {
@@ -90,6 +94,10 @@ impl HalDeadline for Nrf52840 {
 impl HalServoPwm for Nrf52840 {
     unsafe fn init_50hz(pin: u8, pulse_us: u32) {
         let _ = crate::pwm::PwmServo::init_50hz(pin, pulse_us);
+    }
+
+    unsafe fn set_active_pulse_us(pulse_us: u32) {
+        crate::pwm::PwmServo::set_active_pulse_us(pulse_us);
     }
 
     fn read_pulse_us() -> u32 {

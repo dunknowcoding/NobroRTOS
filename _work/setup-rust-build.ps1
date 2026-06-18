@@ -1,6 +1,7 @@
 # Install Rust into AIRON/_work/toolchain (portable, gitignored).
 $ErrorActionPreference = "Stop"
-$workRoot = "F:\Arduino\driver\AIRON\_work"
+$workRoot = $PSScriptRoot
+$projectRoot = Split-Path -Parent $workRoot
 $toolchain = Join-Path $workRoot "toolchain"
 $env:RUSTUP_HOME = Join-Path $toolchain "rustup"
 $env:CARGO_HOME = Join-Path $toolchain "cargo"
@@ -21,5 +22,5 @@ if (-not (Test-Path (Join-Path $env:CARGO_HOME "bin\rustc.exe"))) {
 }
 
 rustup target add thumbv7em-none-eabihf
-Set-Location "F:\Arduino\driver\AIRON\aion"
+Set-Location (Join-Path $projectRoot "aion")
 cargo build -p mvk-ppi-timestamp --release 2>&1

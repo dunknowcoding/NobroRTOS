@@ -2,16 +2,21 @@
 param(
     [int]$WarmupSec = 10,
     [int]$PollTimeoutSec = 30,
-    [string]$WorkRoot = "F:\Arduino\driver\AIRON\_work"
+    [string]$WorkRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($WorkRoot)) {
+    $WorkRoot = $PSScriptRoot
+}
+$WorkRoot = (Resolve-Path $WorkRoot).Path
+$projectRoot = Split-Path -Parent $WorkRoot
 $env:CARGO_TARGET_DIR = Join-Path $WorkRoot "cargo-target"
 $env:RUSTUP_HOME = Join-Path $WorkRoot "toolchain\rustup"
 $env:CARGO_HOME = Join-Path $WorkRoot "toolchain\cargo"
 $env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
 
-$aion = "F:\Arduino\driver\AIRON\aion"
+$aion = Join-Path $projectRoot "aion"
 $elf = Join-Path $env:CARGO_TARGET_DIR "thumbv7em-none-eabihf\release\resource_sched_demo"
 $hex = Join-Path $WorkRoot "artifacts\resource_sched_demo.hex"
 $evalDir = Join-Path $WorkRoot "eval"

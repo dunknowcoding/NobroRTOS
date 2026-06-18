@@ -1,4 +1,4 @@
-//! Phase 1 resource scheduling demo — scenes A~D with autonomous self-evaluation.
+//! Phase 1 resource scheduling demo with scenes A through D and autonomous self-evaluation.
 //! Uses `airon_hal::traits` + `ActivePlatform` so apps stay SoC-agnostic.
 
 #![no_std]
@@ -17,9 +17,7 @@ use airon_hal::{
     inspect,
     lease::{LeaseError, Resource},
     ppi,
-    traits::{
-        HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, PlatformHal,
-    },
+    traits::{HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, PlatformHal},
     ActivePlatform as Hal,
 };
 use airon_kernel::{
@@ -117,7 +115,7 @@ fn scene_b_check_once() {
     match TwimBus::acquire_twim0(99) {
         Err(LeaseError::AlreadyHeld) => {
             SCENE_B_PASS.store(1, Ordering::Release);
-            defmt::info!("scene B: TWIM0 AlreadyHeld — pass");
+            defmt::info!("scene B: TWIM0 AlreadyHeld; pass");
         }
         Ok(bus) => {
             defmt::warn!("scene B: unexpected second acquire");
@@ -138,8 +136,7 @@ fn try_finalize_eval() {
     let misses = Scheduler::deadline_misses();
     let i2c_reads = I2C_READS.load(Ordering::Acquire);
     let (radio_max, radio_samples) = Hal::latency_stats();
-    let (scene_d, pwm_snap, parity) =
-        unsafe { inspect::scene_d_pass(Board::SERVO_CENTER_US) };
+    let (scene_d, pwm_snap, parity) = unsafe { inspect::scene_d_pass(Board::SERVO_CENTER_US) };
 
     let scene_a = EvalGate::scene_a_pass(jitter, misses, ticks, i2c_reads);
     let scene_b = SCENE_B_PASS.load(Ordering::Acquire) != 0;

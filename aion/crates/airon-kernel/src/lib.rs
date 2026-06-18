@@ -1,15 +1,26 @@
-//! AIRON kernel — Sample envelope, error policy, scheduling hooks (Phase 0 subset).
+//! AIRON kernel: Sample envelope, error policy, and scheduling hooks.
 
 #![no_std]
 
-pub mod eval;
+#[cfg(test)]
+extern crate std;
+
 pub mod error;
+pub mod eval;
 pub mod executor;
+pub mod health;
+pub mod pool;
 pub mod sample;
 pub mod scheduler;
 
 pub use error::{Action, KernelError};
+pub use eval::{
+    EvalGate, EvalReport, ImuHwEvalReport, SalEvalReport, EVAL_MAGIC, IMU_HW_EVAL_MAGIC,
+    MAX_JITTER_US, MIN_DEADLINE_TICKS, MIN_IMU_HW_READS, MIN_IMU_SAMPLES, MIN_SERVO_STEPS,
+    SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
+};
 pub use executor::{I2cPollTask, Poll, StatsTask, Task};
+pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
+pub use pool::{ImuPayload, SamplePool};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
-pub use eval::{EvalGate, EvalReport, EVAL_MAGIC, MAX_JITTER_US, MIN_DEADLINE_TICKS};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};

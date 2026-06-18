@@ -35,5 +35,18 @@
       "servo_center_us": 1500,
       "twim0_base": "0x40003000"
     }
+  },
+  "phase2_eval": {
+    "symbol": "AIRON_SAL_EVAL_REPORT",
+    "magic": "0x41524E32",
+    "runner": "_work/run-phase2-eval.ps1",
+    "warmup_sec": 8,
+    "sensor_backend": "adapters/sensor-stub",
+    "note": "No external NiusIMU; synthetic IMU via SensorSal stub",
+    "thresholds": {
+      "min_servo_steps": 20,
+      "min_imu_samples": 3,
+      "servo_readback_tol_us": 50
+    }
   }
 }

@@ -1,10 +1,10 @@
-//! Platform HAL capability traits — apps/adapters depend on these, not on register blocks.
+//! Platform HAL capability traits used by apps and adapters.
 //!
 //! New MCU ports implement these for a `platform::<soc>::Platform` type and register it
 //! as `[features] default = ["platform-nrf52840"]` in `airon-hal/Cargo.toml`.
 
 use crate::board_desc::{BoardDesc, ServoProfile};
-use crate::lease::{LeaseError, Resource};
+use crate::lease::{LeaseError, LeaseGuard, Resource};
 use crate::snapshots::{BoardParity, EventCaptureSnapshot, PwmSnapshot};
 
 /// Microsecond monotonic clock (system timebase).
@@ -12,7 +12,7 @@ pub trait HalClock {
     fn now_us() -> u64;
 }
 
-/// Hardware-timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, …).
+/// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).
 pub trait HalEventCapture {
     unsafe fn init();
     unsafe fn trigger_and_latency_us() -> Option<u32>;
@@ -32,6 +32,7 @@ pub trait HalDeadline {
 /// Servo-style PWM backend.
 pub trait HalServoPwm {
     unsafe fn init_50hz(pin: u8, pulse_us: u32);
+    unsafe fn set_active_pulse_us(pulse_us: u32);
     fn read_pulse_us() -> u32;
 }
 
@@ -49,17 +50,16 @@ pub trait HalSelfTest<B: BoardDesc> {
     unsafe fn scene_d_pass(profile: ServoProfile) -> (bool, PwmSnapshot, BoardParity);
 }
 
-/// Exclusive peripheral lease — semantics shared across platforms.
+/// Exclusive peripheral lease with semantics shared across platforms.
 pub trait HalLease {
     fn acquire(resource: Resource, owner: u8) -> Result<(), LeaseError>;
     fn release(resource: Resource, owner: u8) -> Result<(), LeaseError>;
     fn is_held(resource: Resource) -> bool;
+    fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError>;
 }
 
 /// Root marker for a platform backend (one impl per SoC family).
-pub trait PlatformHal:
-    HalClock + HalLease + HalDeadline + HalEventCapture + HalServoPwm
-{
+pub trait PlatformHal: HalClock + HalLease + HalDeadline + HalEventCapture + HalServoPwm {
     const PLATFORM_ID: &'static str;
     type Board: BoardDesc;
     fn servo_profile() -> ServoProfile;

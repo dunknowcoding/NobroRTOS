@@ -1,8 +1,8 @@
-//! AIRON service abstraction layer — six generic capability traits.
+//! AIRON service abstraction layer with six generic capability traits.
 
 #![no_std]
 
-use airon_kernel::{Sample, KernelError};
+use airon_kernel::{KernelError, Sample};
 
 /// I2C / SPI / UART bus transactions with lease guard.
 pub trait BusSal {
@@ -21,7 +21,7 @@ pub trait StreamSal {
     fn write_frame(&mut self, buf: &[u8]) -> Result<(), Self::Error>;
 }
 
-/// BLE / 802.15.4 radio pump — compile-time exclusive backends.
+/// BLE / 802.15.4 radio pump with compile-time exclusive backends.
 pub trait RadioSal {
     type Error;
 
@@ -33,7 +33,12 @@ pub trait RadioSal {
 pub trait ActuatorSal {
     type Error;
 
-    fn set_duty_us(&mut self, channel: u8, pulse_us: u32, deadline_us: u64) -> Result<(), Self::Error>;
+    fn set_duty_us(
+        &mut self,
+        channel: u8,
+        pulse_us: u32,
+        deadline_us: u64,
+    ) -> Result<(), Self::Error>;
 }
 
 /// Sensors return optional Sample tickets.

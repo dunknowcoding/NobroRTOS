@@ -1,4 +1,4 @@
-//! Platform backend selector — enable exactly one `platform-*` feature per build.
+//! Platform backend selector. Enable exactly one `platform-*` feature per build.
 //!
 //! Adding a new MCU:
 //! 1. Create `platform/<soc>/mod.rs` implementing `traits::PlatformHal`.
@@ -21,6 +21,4 @@ compile_error!("platform-esp32 is reserved for a future port; implement platform
     not(feature = "platform-rp2040"),
     not(feature = "platform-stm32"),
 ))]
-compile_error!(
-    "airon-hal: enable one platform feature (e.g. platform-nrf52840)"
-);
+compile_error!("airon-hal: enable one platform feature (e.g. platform-nrf52840)");

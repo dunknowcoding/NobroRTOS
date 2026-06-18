@@ -24,6 +24,7 @@ impl Scheduler {
     }
 
     pub fn reset_stats() {
+        EXPECTED_NEXT_US.store(0, Ordering::Release);
         MAX_JITTER_US.store(0, Ordering::Release);
         TICK_COUNT.store(0, Ordering::Release);
         DEADLINE_MISSES.store(0, Ordering::Release);
@@ -46,11 +47,9 @@ impl Scheduler {
         let now_lo = now_us as u32;
         let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
         if expected != 0 {
-            let jitter = if now_lo >= expected {
-                now_lo - expected
-            } else {
-                expected - now_lo
-            };
+            let late = now_lo.wrapping_sub(expected);
+            let early = expected.wrapping_sub(now_lo);
+            let jitter = late.min(early);
             if jitter > MAX_JITTER_US.load(Ordering::Relaxed) {
                 MAX_JITTER_US.store(jitter, Ordering::Release);
             }
@@ -105,5 +104,34 @@ pub fn default_action(err: &KernelError) -> crate::Action {
         KernelError::RadioTxFail => RetryDelay(1000),
         KernelError::SensorReadFail => Ignore,
         KernelError::DeadlineMissed => NotifyUserTask,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reset_clears_expected_deadline() {
+        Scheduler::reset_stats();
+        Scheduler::on_deadline_tick(1_000);
+        Scheduler::on_deadline_tick(1_000 + DEADLINE_PERIOD_US + 7);
+        assert_eq!(Scheduler::tick_count(), 2);
+        assert_eq!(Scheduler::max_jitter_us(), 7);
+
+        Scheduler::reset_stats();
+        Scheduler::on_deadline_tick(500_000);
+        assert_eq!(Scheduler::tick_count(), 1);
+        assert_eq!(Scheduler::max_jitter_us(), 0);
+        assert_eq!(Scheduler::deadline_misses(), 0);
+    }
+
+    #[test]
+    fn jitter_handles_u32_wraparound() {
+        Scheduler::reset_stats();
+        let first = u32::MAX as u64 - 5;
+        Scheduler::on_deadline_tick(first);
+        Scheduler::on_deadline_tick(first + DEADLINE_PERIOD_US + 3);
+        assert_eq!(Scheduler::max_jitter_us(), 3);
     }
 }

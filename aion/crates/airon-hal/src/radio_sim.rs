@@ -1,4 +1,4 @@
-//! Simulated radio RX — EGU event + PPI capture; latency measured without scope.
+//! Simulated radio RX using EGU event and PPI capture.
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -29,7 +29,7 @@ impl RadioRxSim {
         (*ppi).chenset.write(|w| w.bits(1 << PPI_CH));
     }
 
-    /// Fire EGU + PPI capture; return EGU→CAPTURE latency (µs) if event observed.
+    /// Fire EGU + PPI capture; return EGU to CAPTURE latency in microseconds.
     pub unsafe fn trigger_and_latency_us() -> Option<u32> {
         (*EGU0::ptr()).tasks_trigger[0].write(|w| w.bits(1));
         for _ in 0..500 {

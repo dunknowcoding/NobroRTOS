@@ -1,4 +1,4 @@
-# AIRON `_work/` — transient root
+# AIRON `_work/` transient root
 
 All downloads, toolchains, build outputs, and logs for AIRON live here. **Not committed.**
 
@@ -14,7 +14,7 @@ All downloads, toolchains, build outputs, and logs for AIRON live here. **Not co
 ## Environment (PowerShell)
 
 ```powershell
-$env:AIRON_WORK_ROOT = "F:\Arduino\driver\AIRON\_work"
+$env:AIRON_WORK_ROOT = "G:\Arduino\driver\AIRON\_work"
 $env:CARGO_TARGET_DIR = "$env:AIRON_WORK_ROOT\cargo-target"
 $env:RUSTUP_HOME = "$env:AIRON_WORK_ROOT\toolchain\rustup"
 $env:CARGO_HOME = "$env:AIRON_WORK_ROOT\toolchain\cargo"

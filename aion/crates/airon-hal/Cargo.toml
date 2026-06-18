@@ -18,6 +18,6 @@ platform-esp32 = []
 platform-rp2040 = []
 platform-stm32 = []
 
-# Board packages — depend on a platform feature.
+# Board packages are mutually exclusive and depend on platform-nrf52840.
 board-promicro-nosd = ["platform-nrf52840"]
 board-nicenano-s140 = ["platform-nrf52840"]

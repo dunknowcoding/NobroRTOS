@@ -1,4 +1,4 @@
-# AIRON workspace — all transient artifacts live under _work/
+# AIRON workspace: all transient artifacts live under _work/
 _work/*
 !_work/.gitkeep
 !_work/README.md
@@ -6,11 +6,13 @@ _work/*
 !_work/setup-rust-build.ps1
 !_work/flash-board1.ps1
 !_work/run-phase1-eval.ps1
+!_work/run-phase2-eval.ps1
 
 # Rust build outputs (when target dir is inside aion/)
 aion/**/target/
 
 # IDE / OS
+.vscode/
 .DS_Store
 Thumbs.db
 *.swp

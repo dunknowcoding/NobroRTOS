@@ -1,4 +1,4 @@
-//! nRF52840 PWM — 50 Hz servo-style output aligned with ArduinoNRF wiring constants.
+//! nRF52840 PWM for 50 Hz servo-style output aligned with ArduinoNRF wiring constants.
 
 use core::ptr;
 
@@ -39,7 +39,7 @@ pub struct PwmServo {
 }
 
 impl PwmServo {
-    /// 50 Hz @ prescaler 4 (1 MHz tick), ~1500 µs center pulse.
+    /// 50 Hz at prescaler 4 (1 MHz tick), around 1500 us center pulse.
     pub unsafe fn init_50hz(pin: u8, pulse_us: u32) -> Self {
         let prescaler: u8 = 4;
         let counter_top: u16 = 19_999; // 20 ms period at 1 MHz
@@ -85,13 +85,20 @@ impl PwmServo {
         self.pulse_us
     }
 
-    /// Decode live SEQ[0] duty (µs) for self-test readback.
+    /// Decode live SEQ[0] duty in microseconds for self-test readback.
     pub fn read_pulse_us() -> u32 {
         unsafe {
             let top = *reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
             let raw = PWM_SEQ[0] & 0x7FFF;
             top.saturating_sub(raw) as u32
         }
+    }
+    /// Update pulse on an already-initialised PWM0 servo output.
+    pub unsafe fn set_active_pulse_us(pulse_us: u32) {
+        let top = *reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
+        let duty = (pulse_us as u16).min(top);
+        PWM_SEQ[0] = pwm_seq_value(duty, top);
+        *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
     }
 }
 

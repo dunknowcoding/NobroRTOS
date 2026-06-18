@@ -1,4 +1,4 @@
-//! Board-level constants — portable across MCUs; each board crate impls this trait.
+//! Board-level constants portable across MCUs.
 
 /// Static board description selected at compile time via Cargo features.
 pub trait BoardDesc {
