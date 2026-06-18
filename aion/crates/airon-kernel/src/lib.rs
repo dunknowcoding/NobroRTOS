@@ -10,6 +10,7 @@ pub mod eval;
 pub mod event_log;
 pub mod executor;
 pub mod health;
+pub mod lifecycle;
 pub mod manifest;
 pub mod pool;
 pub mod sample;
@@ -26,6 +27,7 @@ pub use eval::{
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
+pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use manifest::{
     kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
     ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,

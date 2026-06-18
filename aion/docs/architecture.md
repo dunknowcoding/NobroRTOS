@@ -82,6 +82,8 @@ Fault handling is intentionally small:
   recovery decision leaves a bounded audit trail.
 - `Watchdog` tracks module heartbeats in software so liveness rules can be
   tested without binding AIRON to one hardware watchdog block.
+- `Lifecycle` defines legal boot, running, degraded, recovering, and halted
+  transitions so recovery paths are explicit and testable.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
