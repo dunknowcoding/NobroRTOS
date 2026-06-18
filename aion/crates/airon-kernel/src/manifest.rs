@@ -81,6 +81,54 @@ pub struct MemoryBudget {
     pub pool_slots: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemBudget {
+    pub flash_bytes: u32,
+    pub ram_bytes: u32,
+    pub pool_slots: u16,
+}
+
+impl SystemBudget {
+    pub const fn new(flash_bytes: u32, ram_bytes: u32, pool_slots: u16) -> Self {
+        Self {
+            flash_bytes,
+            ram_bytes,
+            pool_slots,
+        }
+    }
+
+    pub const fn fits_within(self, limit: Self) -> bool {
+        self.flash_bytes <= limit.flash_bytes
+            && self.ram_bytes <= limit.ram_bytes
+            && self.pool_slots <= limit.pool_slots
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemProfile {
+    pub flash_limit_bytes: u32,
+    pub ram_limit_bytes: u32,
+    pub pool_slot_limit: u16,
+    pub max_modules: usize,
+}
+
+impl SystemProfile {
+    pub const NRF52840_CORE: Self = Self {
+        flash_limit_bytes: 80 * 1024,
+        ram_limit_bytes: 32 * 1024,
+        pool_slot_limit: 8,
+        max_modules: 16,
+    };
+
+    pub const fn budget(self) -> SystemBudget {
+        SystemBudget::new(
+            self.flash_limit_bytes,
+            self.ram_limit_bytes,
+            self.pool_slot_limit,
+        )
+    }
+}
+
 impl MemoryBudget {
     pub const ZERO: Self = Self {
         flash_bytes: 0,
@@ -182,6 +230,14 @@ pub enum ManifestError {
     InvalidDeadline(ModuleId),
     InvalidFaultThreshold(ModuleId),
     EmptyMemoryBudget(ModuleId),
+    ModuleLimitExceeded {
+        modules: usize,
+        limit: usize,
+    },
+    BudgetExceeded {
+        used: SystemBudget,
+        limit: SystemBudget,
+    },
     UserOwnsKernelCapability(ModuleId),
 }
 
@@ -227,6 +283,34 @@ impl<const N: usize> SystemManifest<N> {
             self.validate_spec(*spec, owned)?;
         }
         Ok(())
+    }
+
+    pub fn validate_profile(&self, profile: SystemProfile) -> Result<(), ManifestError> {
+        self.validate()?;
+        if self.len() > profile.max_modules {
+            return Err(ManifestError::ModuleLimitExceeded {
+                modules: self.len(),
+                limit: profile.max_modules,
+            });
+        }
+
+        let used = self.total_budget();
+        let limit = profile.budget();
+        if !used.fits_within(limit) {
+            return Err(ManifestError::BudgetExceeded { used, limit });
+        }
+
+        Ok(())
+    }
+
+    pub fn total_budget(&self) -> SystemBudget {
+        let mut total = SystemBudget::new(0, 0, 0);
+        for spec in self.modules.iter().flatten() {
+            total.flash_bytes = total.flash_bytes.saturating_add(spec.memory.flash_bytes);
+            total.ram_bytes = total.ram_bytes.saturating_add(spec.memory.ram_bytes);
+            total.pool_slots = total.pool_slots.saturating_add(spec.memory.pool_slots);
+        }
+        total
     }
 
     pub fn provided_capabilities(&self) -> CapabilitySet {
@@ -387,6 +471,61 @@ mod tests {
         assert_eq!(
             manifest.validate(),
             Err(ManifestError::UserOwnsKernelCapability(ModuleId::App(1)))
+        );
+    }
+
+    #[test]
+    fn profile_budget_accepts_core_manifest() {
+        let mut manifest = SystemManifest::<4>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest.add(sensor_spec()).unwrap();
+
+        assert_eq!(
+            manifest.total_budget(),
+            SystemBudget::new(36 * 1024, 10 * 1024, 10)
+        );
+        assert!(manifest
+            .validate_profile(SystemProfile {
+                pool_slot_limit: 10,
+                ..SystemProfile::NRF52840_CORE
+            })
+            .is_ok());
+    }
+
+    #[test]
+    fn profile_budget_rejects_flash_overflow() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::App(2), Criticality::User)
+                    .requires(CapabilitySet::empty().with(Capability::HostReport))
+                    .memory(MemoryBudget::new(90 * 1024, 2 * 1024, 0)),
+            )
+            .unwrap();
+
+        assert!(matches!(
+            manifest.validate_profile(SystemProfile::NRF52840_CORE),
+            Err(ManifestError::BudgetExceeded { .. })
+        ));
+    }
+
+    #[test]
+    fn profile_budget_rejects_module_overflow() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest.add(sensor_spec()).unwrap();
+
+        assert_eq!(
+            manifest.validate_profile(SystemProfile {
+                max_modules: 1,
+                pool_slot_limit: 10,
+                ..SystemProfile::NRF52840_CORE
+            }),
+            Err(ManifestError::ModuleLimitExceeded {
+                modules: 2,
+                limit: 1
+            })
         );
     }
 }

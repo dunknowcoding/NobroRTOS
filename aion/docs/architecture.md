@@ -63,6 +63,10 @@ budget, deadline contract, and fault thresholds. It is intentionally a no-heap
 data structure so host tests can validate partitioning before any firmware is
 flashed.
 
+`SystemProfile` adds board-class limits for flash, RAM, sample-pool slots, and
+module count. This lets AIRON reject a feature set that does not fit the target
+board before a linker script or flashing step gets involved.
+
 ## Fault Handling And Self-Recovery
 
 Fault handling is intentionally small:
@@ -74,6 +78,8 @@ Fault handling is intentionally small:
   reboot.
 - `EventLog` keeps a fixed-size ring of health, recovery, overrun, manifest,
   and host events for post-fault inspection.
+- `Supervisor` ties health counters and event records together so every
+  recovery decision leaves a bounded audit trail.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

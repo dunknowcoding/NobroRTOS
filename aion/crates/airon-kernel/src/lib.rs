@@ -14,6 +14,7 @@ pub mod manifest;
 pub mod pool;
 pub mod sample;
 pub mod scheduler;
+pub mod supervisor;
 
 pub use error::{Action, KernelError};
 pub use eval::{
@@ -26,8 +27,9 @@ pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskS
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use manifest::{
     kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
-    ManifestError, MemoryBudget, ModuleSpec, SystemManifest,
+    ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,
 };
 pub use pool::{ImuPayload, SamplePool};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
+pub use supervisor::{Supervisor, SupervisorSnapshot};
