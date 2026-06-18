@@ -15,6 +15,7 @@ pub mod pool;
 pub mod sample;
 pub mod scheduler;
 pub mod supervisor;
+pub mod watchdog;
 
 pub use error::{Action, KernelError};
 pub use eval::{
@@ -33,3 +34,4 @@ pub use pool::{ImuPayload, SamplePool};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use supervisor::{Supervisor, SupervisorSnapshot};
+pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};

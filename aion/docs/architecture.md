@@ -80,6 +80,8 @@ Fault handling is intentionally small:
   and host events for post-fault inspection.
 - `Supervisor` ties health counters and event records together so every
   recovery decision leaves a bounded audit trail.
+- `Watchdog` tracks module heartbeats in software so liveness rules can be
+  tested without binding AIRON to one hardware watchdog block.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
