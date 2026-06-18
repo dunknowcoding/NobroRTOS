@@ -118,6 +118,8 @@ The next step is not a larger kernel; it is stronger contracts:
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
 - optional async executors with static task allocation
 - health reports exported through the same host contract as eval reports
+- fixed-layout health reports with checksums for J-Link, CDC, or future stream
+  readers
 
 The current executor support is deliberately small: `TaskTable` is a fixed-size
 task registry that records period, budget, criticality, due time, and overrun

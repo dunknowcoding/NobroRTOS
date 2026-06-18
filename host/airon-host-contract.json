@@ -48,5 +48,11 @@
       "min_imu_samples": 3,
       "servo_readback_tol_us": 50
     }
+  },
+  "health_report": {
+    "symbol": "AIRON_HEALTH_REPORT",
+    "magic": "0x4152484C",
+    "version": 1,
+    "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
   }
 }
