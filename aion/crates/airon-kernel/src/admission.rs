@@ -14,6 +14,18 @@ pub enum AdmissionError {
     UnknownStartupNode(ModuleId),
 }
 
+impl AdmissionError {
+    pub fn code(self) -> u32 {
+        match self {
+            Self::Manifest(_) => 1,
+            Self::Startup(_) => 2,
+            Self::Quota(_) => 3,
+            Self::MissingStartupNode(_) => 4,
+            Self::UnknownStartupNode(_) => 5,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AdmissionPlan<const STARTUP: usize, const QUOTAS: usize> {
     pub startup: StartupPlan<STARTUP>,
@@ -73,6 +85,108 @@ impl AdmissionController {
         }
 
         Ok(())
+    }
+}
+
+pub const ADMISSION_REPORT_MAGIC: u32 = 0x4152_4144; // "ARAD"
+pub const ADMISSION_REPORT_VERSION: u32 = 1;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdmissionReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub admitted: u32,
+    pub module_count: u32,
+    pub startup_len: u32,
+    pub flash_used_bytes: u32,
+    pub flash_limit_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub ram_limit_bytes: u32,
+    pub pool_used_slots: u32,
+    pub pool_limit_slots: u32,
+    pub error_code: u32,
+    pub checksum: u32,
+}
+
+impl AdmissionReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            admitted: 0,
+            module_count: 0,
+            startup_len: 0,
+            flash_used_bytes: 0,
+            flash_limit_bytes: 0,
+            ram_used_bytes: 0,
+            ram_limit_bytes: 0,
+            pool_used_slots: 0,
+            pool_limit_slots: 0,
+            error_code: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_plan<const STARTUP: usize, const QUOTAS: usize>(
+        plan: &AdmissionPlan<STARTUP, QUOTAS>,
+    ) -> Self {
+        let mut report = Self {
+            admitted: 1,
+            module_count: plan.module_count() as u32,
+            startup_len: plan.startup.len as u32,
+            flash_used_bytes: plan.used.flash_bytes,
+            flash_limit_bytes: plan.profile.flash_limit_bytes,
+            ram_used_bytes: plan.used.ram_bytes,
+            ram_limit_bytes: plan.profile.ram_limit_bytes,
+            pool_used_slots: u32::from(plan.used.pool_slots),
+            pool_limit_slots: u32::from(plan.profile.pool_slot_limit),
+            ..Self::zeroed()
+        };
+        report.seal();
+        report
+    }
+
+    pub fn from_error(error: AdmissionError) -> Self {
+        let mut report = Self {
+            admitted: 0,
+            error_code: error.code(),
+            ..Self::zeroed()
+        };
+        report.seal();
+        report
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ADMISSION_REPORT_MAGIC;
+        self.version = ADMISSION_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ADMISSION_REPORT_MAGIC
+            && self.version == ADMISSION_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.admitted
+            ^ self.module_count
+            ^ self.startup_len
+            ^ self.flash_used_bytes
+            ^ self.flash_limit_bytes
+            ^ self.ram_used_bytes
+            ^ self.ram_limit_bytes
+            ^ self.pool_used_slots
+            ^ self.pool_limit_slots
+            ^ self.error_code
     }
 }
 
@@ -140,6 +254,38 @@ mod tests {
             Some(SystemBudget::new(8 * 1024, 2 * 1024, 2))
         );
         assert_eq!(plan.used, SystemBudget::new(24 * 1024, 6 * 1024, 6));
+    }
+
+    #[test]
+    fn admission_report_seals_successful_plan() {
+        let manifest = valid_manifest();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+        ];
+        let plan = AdmissionController::admit::<4, 4, 4>(&manifest, &startup, profile()).unwrap();
+
+        let report = AdmissionReport::from_plan(&plan);
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.admitted, 1);
+        assert_eq!(report.module_count, 2);
+        assert_eq!(report.startup_len, 2);
+        assert_eq!(report.flash_used_bytes, 24 * 1024);
+        assert_eq!(report.error_code, 0);
+    }
+
+    #[test]
+    fn admission_report_seals_failure_code() {
+        let mut report =
+            AdmissionReport::from_error(AdmissionError::UnknownStartupNode(ModuleId::App(1)));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.admitted, 0);
+        assert_eq!(report.error_code, 5);
+
+        report.error_code = 9;
+        assert!(!report.verify_checksum());
     }
 
     #[test]

@@ -102,6 +102,8 @@ Fault handling is intentionally small:
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
+- `AdmissionReport` provides a fixed host-readable admission result so startup
+  failures can be diagnosed without dynamic logging.
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
 

@@ -28,8 +28,8 @@ use airon_kernel::{
     kernel_owned_capabilities,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, Criticality, DeadlineContract, DependencySet, MemoryBudget, ModuleId,
-    ModuleSpec, StartupNode, SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, Criticality, DeadlineContract, DependencySet,
+    MemoryBudget, ModuleId, ModuleSpec, StartupNode, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, SensorSal};
 
@@ -45,6 +45,10 @@ static mut SERVO_DIR: i8 = 1;
 #[no_mangle]
 #[used]
 static mut AIRON_SAL_EVAL_REPORT: SalEvalReport = SalEvalReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut AIRON_ADMISSION_REPORT: AdmissionReport = AdmissionReport::zeroed();
 
 fn on_deadline_slot() {}
 
@@ -130,8 +134,16 @@ fn admit_sal_demo() {
         StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
     ];
 
-    if AdmissionController::admit::<4, 4, 4>(&manifest, &startup, active_profile()).is_err() {
-        defmt::panic!("sal demo admission failed");
+    match AdmissionController::admit::<4, 4, 4>(&manifest, &startup, active_profile()) {
+        Ok(plan) => unsafe {
+            AIRON_ADMISSION_REPORT = AdmissionReport::from_plan(&plan);
+        },
+        Err(error) => {
+            unsafe {
+                AIRON_ADMISSION_REPORT = AdmissionReport::from_error(error);
+            }
+            defmt::panic!("sal demo admission failed");
+        }
     }
 }
 

@@ -25,7 +25,10 @@ pub mod startup;
 pub mod supervisor;
 pub mod watchdog;
 
-pub use admission::{AdmissionController, AdmissionError, AdmissionPlan};
+pub use admission::{
+    AdmissionController, AdmissionError, AdmissionPlan, AdmissionReport, ADMISSION_REPORT_MAGIC,
+    ADMISSION_REPORT_VERSION,
+};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};
 pub use eval::{
