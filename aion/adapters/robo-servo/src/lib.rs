@@ -5,6 +5,10 @@
 #![no_std]
 
 use airon_hal::{traits::HalServoPwm, ActivePlatform as Hal};
+use airon_kernel::{
+    Capability, CapabilitySet, Criticality, DeadlineContract, MemoryBudget, ModuleId, ModuleSpec,
+};
+use airon_sal::AdapterManifest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoboServoError {
@@ -36,6 +40,16 @@ impl RoboServoAdapter {
     }
 }
 
+impl AdapterManifest for RoboServoAdapter {
+    fn module_spec() -> ModuleSpec {
+        ModuleSpec::new(ModuleId::Actuator, Criticality::HardRealtime)
+            .requires(CapabilitySet::empty().with(Capability::DeadlineTimer))
+            .owns(CapabilitySet::empty().with(Capability::ServoPwm))
+            .memory(MemoryBudget::new(5 * 1024, 512, 0))
+            .deadline(DeadlineContract::new(20_000, 10))
+    }
+}
+
 impl airon_sal::ActuatorSal for RoboServoAdapter {
     type Error = RoboServoError;
 
@@ -56,4 +70,8 @@ impl airon_sal::ActuatorSal for RoboServoAdapter {
         }
         Ok(())
     }
+}
+
+pub fn module_spec() -> ModuleSpec {
+    RoboServoAdapter::module_spec()
 }

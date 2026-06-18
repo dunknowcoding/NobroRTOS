@@ -18,6 +18,7 @@ name = "airon-adapter-robo-servo"
 version = "0.1.0"
 dependencies = [
  "airon-hal",
+ "airon-kernel",
  "airon-sal",
 ]
 

@@ -7,9 +7,9 @@
 use airon_hal::{traits::HalClock, ActivePlatform as Hal};
 use airon_kernel::{
     pool::{ImuPayload, SamplePool},
-    Sample, SampleKind,
+    Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
-use airon_sal::SensorSal;
+use airon_sal::{AdapterManifest, SensorSal};
 
 const STUB_I2C_ADDR: u8 = 0x68;
 
@@ -38,6 +38,18 @@ impl SensorStub {
     }
 }
 
+impl AdapterManifest for SensorStub {
+    fn module_spec() -> ModuleSpec {
+        ModuleSpec::new(ModuleId::Sensor, Criticality::BestEffort)
+            .requires(
+                CapabilitySet::empty()
+                    .with(Capability::SamplePool)
+                    .with(Capability::Timebase),
+            )
+            .memory(MemoryBudget::new(4 * 1024, 512, 1))
+    }
+}
+
 impl SensorSal for SensorStub {
     type Error = SensorStubError;
 
@@ -59,6 +71,10 @@ impl SensorSal for SensorStub {
         let _ = ImuPayload::write_to_handle(sample.handle, &payload);
         Ok(Some(sample))
     }
+}
+
+pub fn module_spec() -> ModuleSpec {
+    SensorStub::module_spec()
 }
 
 /// Validate that the stub sample magnitude is close to 1 g.

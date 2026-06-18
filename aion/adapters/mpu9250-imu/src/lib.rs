@@ -7,9 +7,9 @@ use airon_hal::{
 };
 use airon_kernel::{
     pool::{ImuPayload, SamplePool},
-    Sample, SampleKind,
+    Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
-use airon_sal::SensorSal;
+use airon_sal::{AdapterManifest, SensorSal};
 
 const REG_WHO_AM_I: u8 = 0x75;
 const REG_PWR_MGMT_1: u8 = 0x6B;
@@ -120,6 +120,20 @@ impl Mpu9250Imu {
     }
 }
 
+impl AdapterManifest for Mpu9250Imu {
+    fn module_spec() -> ModuleSpec {
+        ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+            .requires(
+                CapabilitySet::empty()
+                    .with(Capability::Bus0)
+                    .with(Capability::SamplePool)
+                    .with(Capability::Timebase),
+            )
+            .owns(CapabilitySet::empty().with(Capability::Bus0))
+            .memory(MemoryBudget::new(30 * 1024, 2 * 1024, 2))
+    }
+}
+
 impl SensorSal for Mpu9250Imu {
     type Error = Mpu9250Error;
 
@@ -131,6 +145,10 @@ impl SensorSal for Mpu9250Imu {
         let _ = ImuPayload::write_to_handle(sample.handle, &ImuPayload { accel_g, gyro_dps });
         Ok(Some(sample))
     }
+}
+
+pub fn module_spec() -> ModuleSpec {
+    Mpu9250Imu::module_spec()
 }
 
 pub fn accel_mag_mg(accel_g: [f32; 3]) -> u32 {

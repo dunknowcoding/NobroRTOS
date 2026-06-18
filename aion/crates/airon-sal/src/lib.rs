@@ -2,7 +2,12 @@
 
 #![no_std]
 
-use airon_kernel::{KernelError, Sample};
+use airon_kernel::{KernelError, ModuleSpec, Sample};
+
+/// Static adapter admission data used by app assembly and boot checks.
+pub trait AdapterManifest {
+    fn module_spec() -> ModuleSpec;
+}
 
 /// I2C / SPI / UART bus transactions with lease guard.
 pub trait BusSal {

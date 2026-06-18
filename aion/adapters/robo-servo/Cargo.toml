@@ -6,6 +6,7 @@ description = "RoboServo ActuatorSal adapter for AIRON (nRF52840 PWM backend)"
 
 [dependencies]
 airon-hal = { path = "../../crates/airon-hal" }
+airon-kernel = { path = "../../crates/airon-kernel" }
 airon-sal = { path = "../../crates/airon-sal" }
 
 [features]
