@@ -9,6 +9,7 @@ pub mod error;
 pub mod eval;
 pub mod executor;
 pub mod health;
+pub mod manifest;
 pub mod pool;
 pub mod sample;
 pub mod scheduler;
@@ -19,8 +20,12 @@ pub use eval::{
     MAX_JITTER_US, MIN_DEADLINE_TICKS, MIN_IMU_HW_READS, MIN_IMU_SAMPLES, MIN_SERVO_STEPS,
     SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
 };
-pub use executor::{I2cPollTask, Poll, StatsTask, Task};
+pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
+pub use manifest::{
+    kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
+    ManifestError, MemoryBudget, ModuleSpec, SystemManifest,
+};
 pub use pool::{ImuPayload, SamplePool};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
