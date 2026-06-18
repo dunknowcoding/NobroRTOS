@@ -15,9 +15,11 @@ pub mod health;
 pub mod lifecycle;
 pub mod manifest;
 pub mod pool;
+pub mod quota;
 pub mod retry;
 pub mod sample;
 pub mod scheduler;
+pub mod startup;
 pub mod supervisor;
 pub mod watchdog;
 
@@ -38,8 +40,10 @@ pub use manifest::{
     ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,
 };
 pub use pool::{ImuPayload, SamplePool};
+pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
+pub use startup::{DependencySet, StartupError, StartupNode, StartupPlan, StartupPlanner};
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};

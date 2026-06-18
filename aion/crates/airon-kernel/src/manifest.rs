@@ -89,6 +89,12 @@ pub struct SystemBudget {
 }
 
 impl SystemBudget {
+    pub const ZERO: Self = Self {
+        flash_bytes: 0,
+        ram_bytes: 0,
+        pool_slots: 0,
+    };
+
     pub const fn new(flash_bytes: u32, ram_bytes: u32, pool_slots: u16) -> Self {
         Self {
             flash_bytes,
@@ -97,10 +103,34 @@ impl SystemBudget {
         }
     }
 
+    pub const fn from_memory(memory: MemoryBudget) -> Self {
+        Self {
+            flash_bytes: memory.flash_bytes,
+            ram_bytes: memory.ram_bytes,
+            pool_slots: memory.pool_slots,
+        }
+    }
+
     pub const fn fits_within(self, limit: Self) -> bool {
         self.flash_bytes <= limit.flash_bytes
             && self.ram_bytes <= limit.ram_bytes
             && self.pool_slots <= limit.pool_slots
+    }
+
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        Some(Self {
+            flash_bytes: self.flash_bytes.checked_add(other.flash_bytes)?,
+            ram_bytes: self.ram_bytes.checked_add(other.ram_bytes)?,
+            pool_slots: self.pool_slots.checked_add(other.pool_slots)?,
+        })
+    }
+
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(Self {
+            flash_bytes: self.flash_bytes.checked_sub(other.flash_bytes)?,
+            ram_bytes: self.ram_bytes.checked_sub(other.ram_bytes)?,
+            pool_slots: self.pool_slots.checked_sub(other.pool_slots)?,
+        })
     }
 }
 
@@ -304,13 +334,21 @@ impl<const N: usize> SystemManifest<N> {
     }
 
     pub fn total_budget(&self) -> SystemBudget {
-        let mut total = SystemBudget::new(0, 0, 0);
+        let mut total = SystemBudget::ZERO;
         for spec in self.modules.iter().flatten() {
-            total.flash_bytes = total.flash_bytes.saturating_add(spec.memory.flash_bytes);
-            total.ram_bytes = total.ram_bytes.saturating_add(spec.memory.ram_bytes);
-            total.pool_slots = total.pool_slots.saturating_add(spec.memory.pool_slots);
+            total = total
+                .checked_add(SystemBudget::from_memory(spec.memory))
+                .unwrap_or(SystemBudget {
+                    flash_bytes: u32::MAX,
+                    ram_bytes: u32::MAX,
+                    pool_slots: u16::MAX,
+                });
         }
         total
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = ModuleSpec> + '_ {
+        self.modules.iter().flatten().copied()
     }
 
     pub fn provided_capabilities(&self) -> CapabilitySet {
