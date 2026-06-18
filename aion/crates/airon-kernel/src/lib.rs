@@ -7,6 +7,7 @@ extern crate std;
 
 pub mod error;
 pub mod eval;
+pub mod event_log;
 pub mod executor;
 pub mod health;
 pub mod manifest;
@@ -20,6 +21,7 @@ pub use eval::{
     MAX_JITTER_US, MIN_DEADLINE_TICKS, MIN_IMU_HW_READS, MIN_IMU_SAMPLES, MIN_SERVO_STEPS,
     SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
 };
+pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use manifest::{

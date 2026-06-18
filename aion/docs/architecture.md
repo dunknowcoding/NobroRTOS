@@ -72,6 +72,8 @@ Fault handling is intentionally small:
 - `HealthMonitor` tracks per-module consecutive failures.
 - `FaultThresholds` escalates from local retry, to user notification, to module
   reboot.
+- `EventLog` keeps a fixed-size ring of health, recovery, overrun, manifest,
+  and host events for post-fault inspection.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
@@ -115,3 +117,8 @@ The current executor support is deliberately small: `TaskTable` is a fixed-size
 task registry that records period, budget, criticality, due time, and overrun
 statistics. It lets AIRON validate scheduling contracts before choosing a full
 async executor surface.
+
+The current observability support is equally small: `EventLog` is a no-heap ring
+buffer that preserves the latest records, tracks drops, and can be copied into a
+host-readable report without exposing dynamic logging dependencies to ISR or
+hard-real-time code.
