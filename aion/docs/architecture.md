@@ -86,6 +86,10 @@ Fault handling is intentionally small:
   transitions so recovery paths are explicit and testable.
 - `DegradePlanner` keeps System and HardRealtime modules enabled while shedding
   lower-criticality modules to fit board-class budgets.
+- `RetryPolicy` and `RetryState` make bounded retry behavior explicit instead
+  of embedding ad hoc loops in adapters.
+- `FaultInjector` provides deterministic host-side failure scenarios for
+  recovery tests without requiring hardware faults.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

@@ -10,10 +10,12 @@ pub mod error;
 pub mod eval;
 pub mod event_log;
 pub mod executor;
+pub mod fault_inject;
 pub mod health;
 pub mod lifecycle;
 pub mod manifest;
 pub mod pool;
+pub mod retry;
 pub mod sample;
 pub mod scheduler;
 pub mod supervisor;
@@ -28,6 +30,7 @@ pub use eval::{
 };
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
+pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use manifest::{
@@ -35,6 +38,7 @@ pub use manifest::{
     ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,
 };
 pub use pool::{ImuPayload, SamplePool};
+pub use retry::{BackoffKind, RetryPolicy, RetryState};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use supervisor::{Supervisor, SupervisorSnapshot};
