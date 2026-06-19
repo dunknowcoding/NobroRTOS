@@ -124,7 +124,8 @@ Fault handling is intentionally small:
 - `QuotaLedger` converts manifest budgets into fixed-capacity runtime
   accounting, so modules can reserve and release RAM, flash, and pool slots
   without heap allocation. Disabling a module resets its runtime quota usage so
-  degraded mode returns resources to the system profile immediately.
+  degraded mode returns resources to the system profile immediately. Runtime
+  quota mutations are rejected for disabled modules.
 - `CapabilityGrantTable` derives runtime authorization from manifest
   requirements and ownership, keeping module access checks fixed-capacity and
   testable.
@@ -183,11 +184,12 @@ Fault handling is intentionally small:
   reserve/release accounting on the admitted `QuotaLedger` so memory discipline
   continues after boot. Module recovery completion is also explicit: the
   runtime returns through driver initialization, records a healthy heartbeat,
-  and only then resumes `Running`. Degraded-mode decisions are validated before
-  module state changes and the last successful application is retained as a
-  fixed-layout host report. Runtime assembly from startup plans is fallible, so
-  fixed-capacity module registration errors are reported instead of being
-  silently ignored.
+  and only then resumes `Running`; disabled modules are rejected before any
+  lifecycle transition is attempted. Degraded-mode decisions are validated
+  before module state changes and the last successful application is retained
+  as a fixed-layout host report. Runtime assembly from startup plans is
+  fallible, so fixed-capacity module registration errors are reported instead
+  of being silently ignored.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

@@ -339,6 +339,7 @@ impl<
         module: ModuleId,
         amount: SystemBudget,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_enabled(module)?;
         self.plan.quotas.reserve(module, amount)?;
         Ok(())
     }
@@ -348,6 +349,7 @@ impl<
         module: ModuleId,
         amount: SystemBudget,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_enabled(module)?;
         self.plan.quotas.release(module, amount)?;
         Ok(())
     }
@@ -438,7 +440,7 @@ impl<
         module: ModuleId,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.recovery.transition(SystemState::InitDrivers, now_us)?;
         self.recovery.transition(SystemState::Running, now_us)?;
         self.record_ok(module, now_us)?;
@@ -1244,6 +1246,29 @@ mod tests {
     }
 
     #[test]
+    fn runtime_rejects_disabled_quota_operations() {
+        let mut runtime = runtime();
+        runtime.disable_module(ModuleId::Sensor, 10).unwrap();
+
+        assert_eq!(
+            runtime.reserve_quota(ModuleId::Sensor, SystemBudget::new(1, 0, 0)),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.release_quota(ModuleId::Sensor, SystemBudget::new(1, 0, 0)),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
+    }
+
+    #[test]
     fn runtime_rejects_unknown_module_before_mutating_recovery() {
         let mut runtime = runtime();
         runtime.boot_to_running(10).unwrap();
@@ -1538,6 +1563,21 @@ mod tests {
             runtime.complete_module_recovery(ModuleId::Sensor, 20),
             Err(RuntimeError::Recovery(RecoveryError::Lifecycle(_)))
         ));
+    }
+
+    #[test]
+    fn runtime_rejects_disabled_recovery_completion_before_lifecycle_change() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime.disable_module(ModuleId::Sensor, 20).unwrap();
+
+        assert_eq!(
+            runtime.complete_module_recovery(ModuleId::Sensor, 30),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(runtime.state(), SystemState::Running);
     }
 
     #[test]
