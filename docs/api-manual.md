@@ -108,6 +108,14 @@ assert_eq!(package.validate(), Ok(()));
 `BoardPackageError` identifies invalid board data such as empty capacity,
 unaligned flash origin, empty memory regions, or duplicate critical pins.
 
+`BoardPackageReport` exports the same package contract as a fixed-layout host
+record:
+
+```rust
+let report = airon_hal::BoardPackageReport::from_package(&airon_hal::ACTIVE_BOARD_PACKAGE);
+assert!(report.verify_checksum());
+```
+
 ### Leases
 
 `ResourceLease` and `LeaseGuard` provide exclusive ownership for shared

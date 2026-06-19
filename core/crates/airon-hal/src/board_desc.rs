@@ -84,6 +84,16 @@ impl BootProfile {
     }
 }
 
+impl BootLayout {
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::NoSoftDevice => 1,
+            Self::SoftDeviceS140V6 => 2,
+            Self::Custom => 255,
+        }
+    }
+}
+
 /// Board pins that are critical to bring-up and diagnostics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoardPins {
@@ -192,6 +202,20 @@ pub enum BoardPackageError {
     EmptyRamRegion,
     EmptyCapacity,
     DuplicateCriticalPin,
+}
+
+impl BoardPackageError {
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::EmptyPlatformId => 1,
+            Self::EmptyBoardId => 2,
+            Self::UnalignedFlashOrigin => 3,
+            Self::EmptyFlashRegion => 4,
+            Self::EmptyRamRegion => 5,
+            Self::EmptyCapacity => 6,
+            Self::DuplicateCriticalPin => 7,
+        }
+    }
 }
 
 /// Expected servo PWM profile for self-test / Arduino parity (scene D).

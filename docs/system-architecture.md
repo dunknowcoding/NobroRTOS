@@ -43,6 +43,8 @@ Future board ports should add:
 `BoardPackage` is the software gate for those facts. It validates non-empty
 identifiers, aligned flash origin, non-empty flash/RAM regions, usable capacity
 budgets, and distinct critical pins before a port becomes a recommended target.
+Firmware can export `NOBRO_BOARD_PACKAGE_REPORT` so host tooling can inspect the
+same contract before manifest and adapter diagnostics.
 
 ## Static Async Direction
 

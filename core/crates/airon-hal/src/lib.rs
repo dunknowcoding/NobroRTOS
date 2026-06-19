@@ -44,7 +44,8 @@ pub use board_desc::{
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;
 pub use snapshots::{
-    BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot, BOARD_PROFILE_REPORT_MAGIC,
+    BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,
+    BOARD_PACKAGE_REPORT_MAGIC, BOARD_PACKAGE_REPORT_VERSION, BOARD_PROFILE_REPORT_MAGIC,
     BOARD_PROFILE_REPORT_VERSION,
 };
 pub use traits::{

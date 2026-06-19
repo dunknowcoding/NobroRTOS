@@ -30,6 +30,9 @@ pub const RUNTIME_REPORT_VERSION: u32 = 1;
 pub const BOARD_PROFILE_REPORT_SYMBOL: &str = "NOBRO_BOARD_PROFILE_REPORT";
 pub const BOARD_PROFILE_REPORT_MAGIC: u32 = 0x4E42_4250;
 pub const BOARD_PROFILE_REPORT_VERSION: u32 = 1;
+pub const BOARD_PACKAGE_REPORT_SYMBOL: &str = "NOBRO_BOARD_PACKAGE_REPORT";
+pub const BOARD_PACKAGE_REPORT_MAGIC: u32 = 0x4E42_424B;
+pub const BOARD_PACKAGE_REPORT_VERSION: u32 = 1;
 pub const MANIFEST_REPORT_SYMBOL: &str = "NOBRO_MANIFEST_REPORT";
 pub const MANIFEST_REPORT_MAGIC: u32 = 0x4E42_4D46;
 pub const MANIFEST_REPORT_VERSION: u32 = 1;
@@ -54,6 +57,7 @@ pub const PHASE2_SERVO_READBACK_TOL_US: u32 = 50;
 pub enum BootLayout {
     NoSoftDevice,
     SoftDeviceS140V6,
+    Custom,
 }
 
 impl BootLayout {
@@ -61,6 +65,7 @@ impl BootLayout {
         match self {
             Self::NoSoftDevice => APP_START_NO_SOFTDEVICE,
             Self::SoftDeviceS140V6 => APP_START_S140_V6,
+            Self::Custom => 0,
         }
     }
 
@@ -68,6 +73,15 @@ impl BootLayout {
         match self {
             Self::NoSoftDevice => "board-promicro-nosd",
             Self::SoftDeviceS140V6 => "board-nicenano-s140",
+            Self::Custom => "custom-board",
+        }
+    }
+
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::NoSoftDevice => 1,
+            Self::SoftDeviceS140V6 => 2,
+            Self::Custom => 255,
         }
     }
 }
@@ -143,6 +157,7 @@ impl ReportStatus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootStage {
     BoardProfile,
+    BoardPackage,
     Manifest,
     AdapterCompatibility,
     Admission,
@@ -153,6 +168,7 @@ impl BootStage {
     pub const fn label(self) -> &'static str {
         match self {
             Self::BoardProfile => "board_profile",
+            Self::BoardPackage => "board_package",
             Self::Manifest => "manifest",
             Self::AdapterCompatibility => "adapter_compatibility",
             Self::Admission => "admission",
@@ -163,16 +179,18 @@ impl BootStage {
     pub const fn code(self) -> u32 {
         match self {
             Self::BoardProfile => 1,
-            Self::Manifest => 2,
-            Self::AdapterCompatibility => 3,
-            Self::Admission => 4,
-            Self::Runtime => 5,
+            Self::BoardPackage => 2,
+            Self::Manifest => 3,
+            Self::AdapterCompatibility => 4,
+            Self::Admission => 5,
+            Self::Runtime => 6,
         }
     }
 
     pub const fn symbol(self) -> &'static str {
         match self {
             Self::BoardProfile => BOARD_PROFILE_REPORT_SYMBOL,
+            Self::BoardPackage => BOARD_PACKAGE_REPORT_SYMBOL,
             Self::Manifest => MANIFEST_REPORT_SYMBOL,
             Self::AdapterCompatibility => ADAPTER_COMPAT_REPORT_SYMBOL,
             Self::Admission => ADMISSION_REPORT_SYMBOL,
@@ -214,6 +232,7 @@ impl BootDiagnostic {
         };
         match self.stage {
             BootStage::BoardProfile | BootStage::Runtime => None,
+            BootStage::BoardPackage => board_package_error_label(code),
             BootStage::Manifest => manifest_error_label(code),
             BootStage::AdapterCompatibility => adapter_compat_error_label(code),
             BootStage::Admission => admission_error_label(code),
@@ -226,6 +245,19 @@ impl BootDiagnostic {
             None => 0,
         };
         (self.stage.code() << 24) | (self.status.class_code() << 16) | error
+    }
+}
+
+pub const fn board_package_error_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("empty_platform_id"),
+        2 => Some("empty_board_id"),
+        3 => Some("unaligned_flash_origin"),
+        4 => Some("empty_flash_region"),
+        5 => Some("empty_ram_region"),
+        6 => Some("empty_capacity"),
+        7 => Some("duplicate_critical_pin"),
+        _ => None,
     }
 }
 
@@ -462,6 +494,7 @@ macro_rules! impl_host_report {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootReports {
     pub board_profile: BoardProfileReport,
+    pub board_package: BoardPackageReport,
     pub manifest: ManifestReport,
     pub adapter_compatibility: AdapterCompatibilityReport,
     pub admission: AdmissionReport,
@@ -471,6 +504,7 @@ pub struct BootReports {
 impl BootReports {
     pub const fn new(
         board_profile: BoardProfileReport,
+        board_package: BoardPackageReport,
         manifest: ManifestReport,
         adapter_compatibility: AdapterCompatibilityReport,
         admission: AdmissionReport,
@@ -478,6 +512,7 @@ impl BootReports {
     ) -> Self {
         Self {
             board_profile,
+            board_package,
             manifest,
             adapter_compatibility,
             admission,
@@ -491,6 +526,14 @@ impl BootReports {
             return BootDiagnostic {
                 stage: BootStage::BoardProfile,
                 status: board,
+            };
+        }
+
+        let package = self.board_package.status();
+        if package != ReportStatus::Pass {
+            return BootDiagnostic {
+                stage: BootStage::BoardPackage,
+                status: package,
             };
         }
 
@@ -524,12 +567,17 @@ impl BootReports {
         }
     }
 
-    pub fn slots(&self) -> [ReportSlot; 5] {
+    pub fn slots(&self) -> [ReportSlot; 6] {
         [
             ReportSlot {
                 stage: BootStage::BoardProfile,
                 symbol: <BoardProfileReport as HostReport>::SYMBOL,
                 status: self.board_profile.status(),
+            },
+            ReportSlot {
+                stage: BootStage::BoardPackage,
+                symbol: <BoardPackageReport as HostReport>::SYMBOL,
+                status: self.board_package.status(),
             },
             ReportSlot {
                 stage: BootStage::Manifest,
@@ -643,6 +691,115 @@ impl BoardProfileReport {
             ^ self.servo_center_us
             ^ self.led_pin
             ^ self.mvk_trigger_pin
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BoardPackageReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub valid: u32,
+    pub platform_hash: u32,
+    pub board_hash: u32,
+    pub boot_layout: u32,
+    pub app_flash_start: u32,
+    pub app_flash_len_bytes: u32,
+    pub ram_start: u32,
+    pub ram_len_bytes: u32,
+    pub flash_budget_bytes: u32,
+    pub ram_budget_bytes: u32,
+    pub sample_pool_slots: u32,
+    pub max_modules: u32,
+    pub led_pin: u32,
+    pub servo_pin: u32,
+    pub mvk_trigger_pin: u32,
+    pub error_code: u32,
+    pub checksum: u32,
+}
+
+impl BoardPackageReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            valid: 0,
+            platform_hash: 0,
+            board_hash: 0,
+            boot_layout: 0,
+            app_flash_start: 0,
+            app_flash_len_bytes: 0,
+            ram_start: 0,
+            ram_len_bytes: 0,
+            flash_budget_bytes: 0,
+            ram_budget_bytes: 0,
+            sample_pool_slots: 0,
+            max_modules: 0,
+            led_pin: 0,
+            servo_pin: 0,
+            mvk_trigger_pin: 0,
+            error_code: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = BOARD_PACKAGE_REPORT_MAGIC;
+        self.version = BOARD_PACKAGE_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == BOARD_PACKAGE_REPORT_MAGIC
+            && self.version == BOARD_PACKAGE_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != BOARD_PACKAGE_REPORT_MAGIC || self.version != BOARD_PACKAGE_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        if self.valid != 0 {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Fail(self.error_code)
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.valid
+            ^ self.platform_hash
+            ^ self.board_hash
+            ^ self.boot_layout
+            ^ self.app_flash_start
+            ^ self.app_flash_len_bytes
+            ^ self.ram_start
+            ^ self.ram_len_bytes
+            ^ self.flash_budget_bytes
+            ^ self.ram_budget_bytes
+            ^ self.sample_pool_slots
+            ^ self.max_modules
+            ^ self.led_pin
+            ^ self.servo_pin
+            ^ self.mvk_trigger_pin
+            ^ self.error_code
     }
 }
 
@@ -1477,6 +1634,12 @@ impl_host_report!(
     BOARD_PROFILE_REPORT_VERSION
 );
 impl_host_report!(
+    BoardPackageReport,
+    BOARD_PACKAGE_REPORT_SYMBOL,
+    BOARD_PACKAGE_REPORT_MAGIC,
+    BOARD_PACKAGE_REPORT_VERSION
+);
+impl_host_report!(
     ManifestReport,
     MANIFEST_REPORT_SYMBOL,
     MANIFEST_REPORT_MAGIC,
@@ -1538,6 +1701,7 @@ mod tests {
     fn boot_layouts_match_arduinonrf_policy() {
         assert_eq!(BootLayout::NoSoftDevice.app_start(), 0x1000);
         assert_eq!(BootLayout::SoftDeviceS140V6.app_start(), 0x26000);
+        assert_eq!(BootLayout::Custom.app_start(), 0);
         assert_eq!(
             BootLayout::NoSoftDevice.cargo_feature(),
             "board-promicro-nosd"
@@ -1546,6 +1710,10 @@ mod tests {
             BootLayout::SoftDeviceS140V6.cargo_feature(),
             "board-nicenano-s140"
         );
+        assert_eq!(BootLayout::Custom.cargo_feature(), "custom-board");
+        assert_eq!(BootLayout::NoSoftDevice.code(), 1);
+        assert_eq!(BootLayout::SoftDeviceS140V6.code(), 2);
+        assert_eq!(BootLayout::Custom.code(), 255);
     }
 
     #[test]
@@ -1568,6 +1736,9 @@ mod tests {
         assert_eq!(BOARD_PROFILE_REPORT_SYMBOL, "NOBRO_BOARD_PROFILE_REPORT");
         assert_eq!(BOARD_PROFILE_REPORT_MAGIC, 0x4E42_4250);
         assert_eq!(BOARD_PROFILE_REPORT_VERSION, 1);
+        assert_eq!(BOARD_PACKAGE_REPORT_SYMBOL, "NOBRO_BOARD_PACKAGE_REPORT");
+        assert_eq!(BOARD_PACKAGE_REPORT_MAGIC, 0x4E42_424B);
+        assert_eq!(BOARD_PACKAGE_REPORT_VERSION, 1);
         assert_eq!(MANIFEST_REPORT_SYMBOL, "NOBRO_MANIFEST_REPORT");
         assert_eq!(MANIFEST_REPORT_MAGIC, 0x4E42_4D46);
         assert_eq!(MANIFEST_REPORT_VERSION, 1);
@@ -1589,10 +1760,12 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(DEGRADE_APPLICATION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(BOARD_PROFILE_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(BOARD_PACKAGE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MANIFEST_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADAPTER_COMPAT_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424250"));
+        assert!(HOST_CONTRACT_JSON.contains("0x4E42424B"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E42454C"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424D52"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424447"));
@@ -1602,6 +1775,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("0x4E425254"));
         assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_profile\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"board_package\""));
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
         assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
@@ -1644,6 +1818,7 @@ mod tests {
         assert_eq!(ReportStatus::Pass.error_code(), None);
 
         assert_eq!(BootStage::BoardProfile.label(), "board_profile");
+        assert_eq!(BootStage::BoardPackage.label(), "board_package");
         assert_eq!(BootStage::Manifest.label(), "manifest");
         assert_eq!(
             BootStage::AdapterCompatibility.label(),
@@ -1652,10 +1827,15 @@ mod tests {
         assert_eq!(BootStage::Admission.label(), "admission");
         assert_eq!(BootStage::Runtime.label(), "runtime");
         assert_eq!(BootStage::BoardProfile.code(), 1);
-        assert_eq!(BootStage::Manifest.code(), 2);
-        assert_eq!(BootStage::AdapterCompatibility.code(), 3);
-        assert_eq!(BootStage::Admission.code(), 4);
-        assert_eq!(BootStage::Runtime.code(), 5);
+        assert_eq!(BootStage::BoardPackage.code(), 2);
+        assert_eq!(BootStage::Manifest.code(), 3);
+        assert_eq!(BootStage::AdapterCompatibility.code(), 4);
+        assert_eq!(BootStage::Admission.code(), 5);
+        assert_eq!(BootStage::Runtime.code(), 6);
+        assert_eq!(
+            BootStage::BoardPackage.symbol(),
+            BOARD_PACKAGE_REPORT_SYMBOL
+        );
         assert_eq!(
             BootStage::AdapterCompatibility.symbol(),
             ADAPTER_COMPAT_REPORT_SYMBOL
@@ -1671,9 +1851,19 @@ mod tests {
         assert_eq!(diagnostic.stage_symbol(), MANIFEST_REPORT_SYMBOL);
         assert_eq!(diagnostic.error_code(), Some(4));
         assert_eq!(diagnostic.error_label(), Some("missing_owned_capability"));
-        assert_eq!(diagnostic.code(), 0x0204_0004);
+        assert_eq!(diagnostic.code(), 0x0304_0004);
+        assert_eq!(
+            BootDiagnostic {
+                stage: BootStage::BoardPackage,
+                status: ReportStatus::Fail(7),
+            }
+            .error_label(),
+            Some("duplicate_critical_pin")
+        );
         assert_eq!(manifest_error_label(10), Some("budget_exceeded"));
         assert_eq!(manifest_error_label(99), None);
+        assert_eq!(board_package_error_label(3), Some("unaligned_flash_origin"));
+        assert_eq!(board_package_error_label(99), None);
         assert_eq!(
             adapter_compat_error_label(3),
             Some("capability_ownership_conflict")
@@ -1810,6 +2000,44 @@ mod tests {
     }
 
     #[test]
+    fn board_package_report_status_decodes_success_and_failure() {
+        let mut pass = BoardPackageReport {
+            valid: 1,
+            platform_hash: 0x1111_2222,
+            board_hash: 0x3333_4444,
+            boot_layout: BootLayout::NoSoftDevice.code(),
+            app_flash_start: 0x1000,
+            app_flash_len_bytes: 1020 * 1024,
+            ram_start: 0x2000_0000,
+            ram_len_bytes: 256 * 1024,
+            flash_budget_bytes: 80 * 1024,
+            ram_budget_bytes: 32 * 1024,
+            sample_pool_slots: 8,
+            max_modules: 16,
+            led_pin: 15,
+            servo_pin: 24,
+            mvk_trigger_pin: 17,
+            ..BoardPackageReport::zeroed()
+        };
+        pass.seal();
+
+        assert!(pass.verify_checksum());
+        assert_eq!(pass.status(), ReportStatus::Pass);
+
+        let mut fail = BoardPackageReport {
+            valid: 0,
+            error_code: 7,
+            ..pass
+        };
+        fail.seal();
+
+        assert_eq!(fail.status(), ReportStatus::Fail(7));
+        assert_eq!(board_package_error_label(7), Some("duplicate_critical_pin"));
+        fail.ram_len_bytes += 1;
+        assert_eq!(fail.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn manifest_report_status_decodes_success_and_failure() {
         let mut pass = ManifestReport {
             valid: 1,
@@ -1920,6 +2148,26 @@ mod tests {
         };
         board.seal();
 
+        let mut package = BoardPackageReport {
+            valid: 1,
+            platform_hash: 1,
+            board_hash: 2,
+            boot_layout: BootLayout::NoSoftDevice.code(),
+            app_flash_start: 0x1000,
+            app_flash_len_bytes: 1020 * 1024,
+            ram_start: 0x2000_0000,
+            ram_len_bytes: 256 * 1024,
+            flash_budget_bytes: 80 * 1024,
+            ram_budget_bytes: 32 * 1024,
+            sample_pool_slots: 8,
+            max_modules: 16,
+            led_pin: 15,
+            servo_pin: 24,
+            mvk_trigger_pin: 17,
+            ..BoardPackageReport::zeroed()
+        };
+        package.seal();
+
         let mut adapter = AdapterCompatibilityReport {
             compatible: 1,
             adapter_count: 2,
@@ -1950,7 +2198,7 @@ mod tests {
         };
         runtime.seal();
 
-        let reports = BootReports::new(board, manifest, adapter, admission, runtime);
+        let reports = BootReports::new(board, package, manifest, adapter, admission, runtime);
         let slots = reports.slots();
         assert_eq!(
             slots,
@@ -1958,6 +2206,11 @@ mod tests {
                 ReportSlot {
                     stage: BootStage::BoardProfile,
                     symbol: BOARD_PROFILE_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+                ReportSlot {
+                    stage: BootStage::BoardPackage,
+                    symbol: BOARD_PACKAGE_REPORT_SYMBOL,
                     status: ReportStatus::Pass,
                 },
                 ReportSlot {
@@ -1994,7 +2247,8 @@ mod tests {
         failed_adapter.compatible = 0;
         failed_adapter.error_code = 3;
         failed_adapter.seal();
-        let reports = BootReports::new(board, manifest, failed_adapter, admission, runtime);
+        let reports =
+            BootReports::new(board, package, manifest, failed_adapter, admission, runtime);
         assert_eq!(
             reports.diagnostic(),
             BootDiagnostic {
@@ -2005,6 +2259,7 @@ mod tests {
 
         let reports = BootReports::new(
             BoardProfileReport::zeroed(),
+            package,
             manifest,
             failed_adapter,
             admission,
@@ -2018,8 +2273,30 @@ mod tests {
             }
         );
 
-        let reports =
-            BootReports::new(board, ManifestReport::zeroed(), adapter, admission, runtime);
+        let reports = BootReports::new(
+            board,
+            BoardPackageReport::zeroed(),
+            manifest,
+            adapter,
+            admission,
+            runtime,
+        );
+        assert_eq!(
+            reports.diagnostic(),
+            BootDiagnostic {
+                stage: BootStage::BoardPackage,
+                status: ReportStatus::Missing,
+            }
+        );
+
+        let reports = BootReports::new(
+            board,
+            package,
+            ManifestReport::zeroed(),
+            adapter,
+            admission,
+            runtime,
+        );
         assert_eq!(
             reports.diagnostic(),
             BootDiagnostic {
@@ -2157,6 +2434,7 @@ mod tests {
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(BoardProfileReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(BoardPackageReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(ManifestReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(
             AdapterCompatibilityReport::zeroed().status(),

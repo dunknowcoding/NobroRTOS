@@ -22,6 +22,7 @@ Completed or substantially present:
 - nRF52840 board profile and boot layout features
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
   capacity budgets, and critical pins
+- host-readable board package reports in the boot diagnostic path
 
 ## Near-Term Architecture Work
 

@@ -7,6 +7,7 @@
   "boot_diagnostics": {
     "stage_order": [
       "board_profile",
+      "board_package",
       "manifest",
       "adapter_compatibility",
       "admission",
@@ -173,6 +174,33 @@
       "in_progress": "magic/version valid but completed is zero",
       "pass": "checksum valid",
       "corrupt": "bad magic, version, or checksum"
+    }
+  },
+  "board_package_report": {
+    "symbol": "NOBRO_BOARD_PACKAGE_REPORT",
+    "magic": "0x4E42424B",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "boot_layout_codes": {
+      "1": "no_softdevice",
+      "2": "softdevice_s140_v6",
+      "255": "custom"
+    },
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and valid is non-zero",
+      "fail": "checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "empty_platform_id",
+      "2": "empty_board_id",
+      "3": "unaligned_flash_origin",
+      "4": "empty_flash_region",
+      "5": "empty_ram_region",
+      "6": "empty_capacity",
+      "7": "duplicate_critical_pin"
     }
   },
   "manifest_report": {

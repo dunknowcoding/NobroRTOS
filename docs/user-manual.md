@@ -122,6 +122,7 @@ contract is `host/nobro-host-contract.json`.
 Important reports:
 
 - `NOBRO_BOARD_PROFILE_REPORT`
+- `NOBRO_BOARD_PACKAGE_REPORT`
 - `NOBRO_MANIFEST_REPORT`
 - `NOBRO_ADAPTER_COMPAT_REPORT`
 - `NOBRO_ADMISSION_REPORT`

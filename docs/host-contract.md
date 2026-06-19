@@ -18,6 +18,7 @@ core/crates/airon-host
 | Symbol | Meaning |
 | ------ | ------- |
 | `NOBRO_BOARD_PROFILE_REPORT` | Selected board, memory origin, budgets, and critical pins |
+| `NOBRO_BOARD_PACKAGE_REPORT` | Boot layout, flash/RAM regions, board capacity, critical pins, and package validation result |
 | `NOBRO_MANIFEST_REPORT` | Static module graph validity, capability bits, budget use, and error context |
 | `NOBRO_ADAPTER_COMPAT_REPORT` | Adapter inventory compatibility before app admission |
 | `NOBRO_ADMISSION_REPORT` | Admission result after manifest, startup, quota, and capability checks |
@@ -42,10 +43,11 @@ Reports use the same status categories:
 Host tools should decode the first non-passing boot stage in this order:
 
 1. board profile
-2. manifest
-3. adapter compatibility
-4. admission
-5. runtime
+2. board package
+3. manifest
+4. adapter compatibility
+5. admission
+6. runtime
 
 ## Checksum Rule
 

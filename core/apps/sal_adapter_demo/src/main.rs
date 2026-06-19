@@ -18,7 +18,7 @@ use airon_hal::{
     lease::Resource,
     ppi,
     traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
-    ActivePlatform as Hal, BoardProfileReport,
+    ActivePlatform as Hal, BoardPackageReport, BoardProfileReport, ACTIVE_BOARD_PACKAGE,
 };
 use airon_kernel::{
     eval::{
@@ -76,6 +76,10 @@ static mut NOBRO_ADAPTER_COMPAT_REPORT: AdapterCompatibilityReport =
 #[no_mangle]
 #[used]
 static mut NOBRO_BOARD_PROFILE_REPORT: BoardProfileReport = BoardProfileReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut NOBRO_BOARD_PACKAGE_REPORT: BoardPackageReport = BoardPackageReport::zeroed();
 
 #[no_mangle]
 #[used]
@@ -161,6 +165,7 @@ fn write_board_profile_report() {
     unsafe {
         NOBRO_BOARD_PROFILE_REPORT =
             BoardProfileReport::from_board::<<Hal as PlatformHal>::Board>();
+        NOBRO_BOARD_PACKAGE_REPORT = BoardPackageReport::from_package(&ACTIVE_BOARD_PACKAGE);
     }
 }
 
