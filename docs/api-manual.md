@@ -97,6 +97,17 @@ policy should stay outside hot-path adapters.
 
 Host-facing board data can be exported through `BoardProfileReport`.
 
+`BoardPackage` combines `BoardDesc` with boot layout, flash region, RAM region,
+capacity, and critical pins:
+
+```rust
+let package = airon_hal::Board::package();
+assert_eq!(package.validate(), Ok(()));
+```
+
+`BoardPackageError` identifies invalid board data such as empty capacity,
+unaligned flash origin, empty memory regions, or duplicate critical pins.
+
 ### Leases
 
 `ResourceLease` and `LeaseGuard` provide exclusive ownership for shared

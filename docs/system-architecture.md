@@ -33,11 +33,16 @@ scripts, and host-readable board profile reports.
 Future board ports should add:
 
 - a board descriptor
+- a valid board package
 - capacity budgets
 - critical pin declarations
 - exactly one board feature
 - a linker layout
 - host report coverage
+
+`BoardPackage` is the software gate for those facts. It validates non-empty
+identifiers, aligned flash origin, non-empty flash/RAM regions, usable capacity
+budgets, and distinct critical pins before a port becomes a recommended target.
 
 ## Static Async Direction
 

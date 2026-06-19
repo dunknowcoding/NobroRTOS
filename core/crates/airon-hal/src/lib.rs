@@ -37,7 +37,10 @@ pub mod timer;
 #[cfg(feature = "platform-nrf52840")]
 pub mod twim_hw;
 
-pub use board_desc::{BoardCapacity, BoardDesc, BusLayout, ServoProfile};
+pub use board_desc::{
+    BoardCapacity, BoardDesc, BoardPackage, BoardPackageError, BoardPins, BootLayout, BootProfile,
+    BusLayout, ServoProfile,
+};
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;
 pub use snapshots::{
@@ -49,7 +52,7 @@ pub use traits::{
 };
 
 #[cfg(feature = "platform-nrf52840")]
-pub use board::{Board, I2C_SCL_PIN, I2C_SDA_PIN};
+pub use board::{Board, ACTIVE_BOARD_PACKAGE, I2C_SCL_PIN, I2C_SDA_PIN};
 #[cfg(feature = "platform-nrf52840")]
 pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 #[cfg(feature = "platform-nrf52840")]

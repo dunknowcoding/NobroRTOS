@@ -20,11 +20,13 @@ Completed or substantially present:
 - event log and host-readable reports
 - adapter descriptors and compatibility reports
 - nRF52840 board profile and boot layout features
+- HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
+  capacity budgets, and critical pins
 
 ## Near-Term Architecture Work
 
-- formalize board package data under `core/boards`
 - add generated board profile fixtures for host review
+- add generated board package fixtures for host review
 - strengthen adapter manifest examples
 - expose richer host decoding examples for `NOBRO_*` reports
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog

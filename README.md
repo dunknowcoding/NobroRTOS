@@ -36,6 +36,8 @@ The design target is a friendly RTOS with strong engineering bones:
   admission, runtime, event log, health, and degraded-mode decisions
 - board data and feature gates that make compatibility visible instead of
   implicit
+- board package validation for boot layout, flash/RAM regions, capacity
+  budgets, and critical pins
 
 ## Current Progress
 

@@ -41,24 +41,29 @@ A board descriptor should include:
 - servo defaults
 - bootloader compatibility notes
 
+The HAL also exposes a `BoardPackage` contract. A package combines the board
+descriptor with boot layout, app flash range, RAM range, capacity budgets, and
+critical pins. New board ports should make this package valid before app
+assembly depends on the board.
+
 Example shape:
 
 ```rust
-pub const BOARD: BoardDesc = BoardDesc {
-    name: "promicro-nrf52840",
-    app_flash_start: 0x1000,
-    capacity: BoardCapacity {
-        flash_budget_bytes: 80 * 1024,
-        ram_budget_bytes: 32 * 1024,
-        sample_pool_slots: 8,
-        max_modules: 16,
-    },
-    pins: BoardPins {
-        servo_pin: 24,
-        led_pin: 15,
-        mvk_trigger_pin: 17,
-    },
-};
+pub const BOOT_PROFILE: BootProfile = BootProfile::new(
+    BootLayout::NoSoftDevice,
+    0x1000,
+    1020 * 1024,
+    0x2000_0000,
+    256 * 1024,
+);
+
+pub const ACTIVE_BOARD_PACKAGE: BoardPackage = BoardPackage::new(
+    Board::PLATFORM_ID,
+    Board::BOARD_ID,
+    BOOT_PROFILE,
+    Board::CAPACITY,
+    BoardPins::new(LED_PIN, SERVO_PWM_PIN, MVK_TRIGGER_PIN),
+);
 ```
 
 ## Feature Rules
@@ -82,6 +87,7 @@ Before a board port becomes a recommended target, it should provide:
 
 - host build coverage for its feature set
 - board profile report generation
+- valid `BoardPackage` contract
 - manifest and admission report compatibility
 - linker layout review
 - resource lease coverage for shared peripherals
