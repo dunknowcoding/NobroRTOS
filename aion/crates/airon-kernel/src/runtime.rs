@@ -229,6 +229,7 @@ impl<
         delay_us: u64,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.alarms.schedule_once(id, module, delay_us, now_us)?;
         Ok(())
     }
@@ -240,6 +241,7 @@ impl<
         period_us: u32,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.alarms
             .schedule_periodic(id, module, period_us, now_us)?;
         Ok(())
@@ -327,8 +329,10 @@ impl<
         self.plan.quotas.total_used()
     }
 
-    pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
+    pub fn record_ok(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.recovery.record_ok(module, now_us);
+        Ok(())
     }
 
     pub fn record_error(
@@ -337,6 +341,7 @@ impl<
         error: KernelError,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
+        self.ensure_module_admitted(module)?;
         let outcome = self
             .recovery
             .record_error(module, error, now_us)
@@ -350,6 +355,7 @@ impl<
         module: ModuleId,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
+        self.ensure_module_admitted(module)?;
         let outcome = self
             .recovery
             .record_watchdog_expired(module, now_us)
@@ -364,13 +370,15 @@ impl<
         timeout_us: u64,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.watchdog.register(module, timeout_us, now_us)?;
         Ok(())
     }
 
     pub fn heartbeat(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.watchdog.beat(module, now_us)?;
-        self.record_ok(module, now_us);
+        self.record_ok(module, now_us)?;
         Ok(())
     }
 
@@ -391,24 +399,28 @@ impl<
         module: ModuleId,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.recovery.transition(SystemState::InitDrivers, now_us)?;
         self.recovery.transition(SystemState::Running, now_us)?;
-        self.record_ok(module, now_us);
+        self.record_ok(module, now_us)?;
         self.modules.complete_recovery(module, now_us)?;
         Ok(())
     }
 
     pub fn suspend_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.modules.suspend(module, now_us)?;
         Ok(())
     }
 
     pub fn resume_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.modules.resume(module, now_us)?;
         Ok(())
     }
 
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(module)?;
         self.modules.disable(module, now_us)?;
         Ok(())
     }
@@ -489,6 +501,14 @@ impl<
 
     pub fn watchdog_entry(&self, module: ModuleId) -> Option<WatchdogEntry> {
         self.watchdog.get(module)
+    }
+
+    fn ensure_module_admitted(&self, module: ModuleId) -> Result<(), RuntimeError> {
+        if self.modules.entry(module).is_some() {
+            Ok(())
+        } else {
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(module)))
+        }
     }
 }
 
@@ -945,6 +965,44 @@ mod tests {
     }
 
     #[test]
+    fn runtime_rejects_unknown_module_before_mutating_recovery() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let before_events = runtime.recovery().events().len();
+
+        assert_eq!(
+            runtime.record_error(ModuleId::Radio, KernelError::RadioTxFail, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(runtime.recovery().events().len(), before_events);
+        assert_eq!(runtime.health_report(ModuleId::Radio), None);
+        assert_eq!(runtime.module_state(ModuleId::Radio), None);
+    }
+
+    #[test]
+    fn runtime_rejects_unknown_module_scheduling_and_watchdog() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        assert_eq!(
+            runtime.schedule_once(AlarmId(9), ModuleId::Radio, 100, 10),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(runtime.alarms().len(), 0);
+        assert_eq!(
+            runtime.register_watchdog(ModuleId::Radio, 100, 10),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(runtime.watchdog_entry(ModuleId::Radio), None);
+    }
+
+    #[test]
     fn runtime_tracks_quota_reserve_and_release() {
         let mut runtime = runtime();
 
@@ -1060,9 +1118,9 @@ mod tests {
         let mut runtime = runtime();
 
         assert_eq!(
-            runtime.heartbeat(ModuleId::Radio, 10),
+            runtime.heartbeat(ModuleId::Sensor, 10),
             Err(RuntimeError::Watchdog(WatchdogError::Missing(
-                ModuleId::Radio
+                ModuleId::Sensor
             )))
         );
     }
