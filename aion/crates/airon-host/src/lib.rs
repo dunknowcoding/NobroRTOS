@@ -266,6 +266,55 @@ pub const fn admission_error_label(code: u32) -> Option<&'static str> {
     }
 }
 
+pub const fn runtime_state_label(code: u32) -> Option<&'static str> {
+    match code {
+        0 => Some("cold_boot"),
+        1 => Some("validate_manifest"),
+        2 => Some("init_drivers"),
+        3 => Some("running"),
+        4 => Some("degraded"),
+        5 => Some("recovering"),
+        6 => Some("halted"),
+        _ => None,
+    }
+}
+
+pub const fn event_severity_label(code: u32) -> Option<&'static str> {
+    match code {
+        0 => Some("trace"),
+        1 => Some("info"),
+        2 => Some("warn"),
+        3 => Some("error"),
+        4 => Some("fatal"),
+        _ => None,
+    }
+}
+
+pub const fn event_kind_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("boot"),
+        2 => Some("health"),
+        3 => Some("recovery"),
+        4 => Some("task_overrun"),
+        5 => Some("lease"),
+        6 => Some("sample_pool"),
+        7 => Some("manifest"),
+        8 => Some("host"),
+        _ => None,
+    }
+}
+
+pub const fn event_payload_kind_label(code: u32) -> Option<&'static str> {
+    match code {
+        0 => Some("none"),
+        1 => Some("error"),
+        2 => Some("action"),
+        3 => Some("counter"),
+        4 => Some("pair"),
+        _ => None,
+    }
+}
+
 pub const fn module_runtime_state_label(code: u32) -> Option<&'static str> {
     match code {
         1 => Some("registered"),
@@ -860,6 +909,10 @@ impl RuntimeReport {
         (u64::from(self.next_alarm_due_us_hi) << 32) | u64::from(self.next_alarm_due_us_lo)
     }
 
+    pub const fn state_label(&self) -> Option<&'static str> {
+        runtime_state_label(self.state)
+    }
+
     pub fn seal(&mut self) {
         self.magic = RUNTIME_REPORT_MAGIC;
         self.version = RUNTIME_REPORT_VERSION;
@@ -958,6 +1011,18 @@ impl EventLogReport {
 
     pub fn latest_at_us(&self) -> u64 {
         (u64::from(self.latest_at_us_hi) << 32) | u64::from(self.latest_at_us_lo)
+    }
+
+    pub const fn latest_severity_label(&self) -> Option<&'static str> {
+        event_severity_label(self.latest_severity)
+    }
+
+    pub const fn latest_kind_label(&self) -> Option<&'static str> {
+        event_kind_label(self.latest_kind)
+    }
+
+    pub const fn latest_payload_kind_label(&self) -> Option<&'static str> {
+        event_payload_kind_label(self.latest_payload_kind)
     }
 
     pub fn seal(&mut self) {
@@ -1418,6 +1483,15 @@ mod tests {
         assert_eq!(adapter_compat_error_label(99), None);
         assert_eq!(admission_error_label(6), Some("unknown_startup_node"));
         assert_eq!(admission_error_label(99), None);
+        assert_eq!(runtime_state_label(3), Some("running"));
+        assert_eq!(runtime_state_label(6), Some("halted"));
+        assert_eq!(runtime_state_label(99), None);
+        assert_eq!(event_severity_label(4), Some("fatal"));
+        assert_eq!(event_severity_label(99), None);
+        assert_eq!(event_kind_label(8), Some("host"));
+        assert_eq!(event_kind_label(99), None);
+        assert_eq!(event_payload_kind_label(4), Some("pair"));
+        assert_eq!(event_payload_kind_label(99), None);
         assert_eq!(module_runtime_state_label(1), Some("registered"));
         assert_eq!(module_runtime_state_label(2), Some("active"));
         assert_eq!(module_runtime_state_label(3), Some("suspended"));
@@ -1757,6 +1831,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.next_alarm_due_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.state_label(), Some("running"));
         assert_eq!(report.status(), ReportStatus::Pass);
 
         report.kv_writes += 1;
@@ -1784,6 +1859,9 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.latest_at_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.latest_severity_label(), Some("error"));
+        assert_eq!(report.latest_kind_label(), Some("health"));
+        assert_eq!(report.latest_payload_kind_label(), Some("error"));
         assert_eq!(report.status(), ReportStatus::Pass);
         assert_eq!(
             <EventLogReport as HostReport>::SYMBOL,
