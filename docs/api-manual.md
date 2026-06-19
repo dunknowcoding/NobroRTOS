@@ -20,7 +20,7 @@ applications, adapters, and host tooling.
 module declares:
 
 - `id`: stable module tag
-- `criticality`: system, hard realtime, soft realtime, utility, or optional
+- `criticality`: best effort, user, driver, system, or hard realtime
 - `requires`: capability bits needed at runtime
 - `owns`: capability bits provided or exclusively owned by the module
 - `memory`: flash, RAM, and sample-pool budget
@@ -30,12 +30,37 @@ module declares:
 Use manifest validation before constructing runtime state:
 
 ```rust
-let report = airon_kernel::manifest::ManifestReport::from_manifest(
+let report = airon_kernel::ManifestReport::from_result(
     &manifest,
-    &profile,
+    manifest.validate_profile(profile),
 );
-assert_eq!(report.status(), airon_kernel::report::ReportStatus::Pass);
+assert!(report.verify_checksum());
+assert_eq!(report.valid, 1);
 ```
+
+### Boot Assembly
+
+`BootAssembly` is a no-heap helper for firmware that wants less startup
+boilerplate without hiding the contracts. It builds a manifest from static
+module specs, applies startup dependencies, runs admission, constructs the
+runtime, boots it to `Running`, and keeps the manifest and admission reports:
+
+```rust
+let assembly = airon_kernel::BootAssembly::<4, 4, 4, 4, 4, 4, 4, 4, 16>::build(
+    &specs,
+    &[airon_kernel::StartupDependency::new(
+        airon_kernel::ModuleId::Sensor,
+        airon_kernel::ModuleId::Kernel,
+    )],
+    profile,
+    airon_kernel::FaultThresholds::DEFAULT,
+    now_us,
+)?;
+assert_eq!(assembly.runtime.state(), airon_kernel::SystemState::Running);
+```
+
+Use `BootAssemblyError` to preserve the failing phase: manifest validation,
+startup graph construction, admission, or runtime boot.
 
 ### Admission
 
@@ -43,10 +68,10 @@ assert_eq!(report.status(), airon_kernel::report::ReportStatus::Pass);
 seeding, and capability grant construction:
 
 ```rust
-let plan = AdmissionController::admit::<8, 8, 8>(
+let plan = airon_kernel::AdmissionController::admit::<8, 8, 8>(
     &manifest,
-    &profile,
     &startup_nodes,
+    profile,
 )?;
 ```
 

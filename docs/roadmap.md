@@ -23,6 +23,8 @@ Completed or substantially present:
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
   capacity budgets, and critical pins
 - host-readable board package reports in the boot diagnostic path
+- no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
+  construction, and startup reports
 
 ## Near-Term Architecture Work
 
@@ -32,7 +34,7 @@ Completed or substantially present:
 - expose richer host decoding examples for `NOBRO_*` reports
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog
   cleanup behavior covered by tests
-- make app assembly easier without hiding manifest and capability contracts
+- connect adapter preflight reports with `BootAssembly` in the demo apps
 
 ## Adapter Work
 

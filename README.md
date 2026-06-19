@@ -30,6 +30,8 @@ The design target is a friendly RTOS with strong engineering bones:
 - deadline-first scheduling primitives for control loops and timestamp capture
 - static allocation and fixed-capacity reports on critical paths
 - capability-based module admission before runtime work begins
+- no-heap boot assembly that keeps manifest, startup, admission, and runtime
+  contracts visible while reducing app wiring
 - SAL traits that let apps speak to buses, streams, radios, actuators, sensors,
   and crypto without vendor headers
 - host-readable reports for board profile, manifest, adapter compatibility,

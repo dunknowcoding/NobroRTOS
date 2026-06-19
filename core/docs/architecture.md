@@ -50,7 +50,7 @@ Board compatibility must be data-first:
   `airon-host` helpers or the JSON contract, so reports stay readable as more
   boards and adapters are added.
 - Host tools should summarize boot diagnostics in this order: board profile,
-  manifest, adapter compatibility, admission, then runtime. This keeps
+  board package, manifest, adapter compatibility, admission, then runtime. This keeps
   first-fault guidance stable as more reports are added.
 
 The current nRF52840 backend uses PPI. The portable HAL term is
@@ -152,6 +152,10 @@ Fault handling is intentionally small:
 - `AdmissionReport` provides a fixed host-readable admission result so startup
   failures can be diagnosed without dynamic logging. It can be built from the
   same admission result used by boot code, reducing report-path drift.
+- `BootAssembly` is a no-heap startup facade for small applications. It builds
+  a manifest from static module specs, applies explicit startup dependencies,
+  runs admission, constructs the runtime, boots it to `Running`, and preserves
+  manifest/admission reports without hiding the failing phase.
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
@@ -249,8 +253,8 @@ The next step is not a larger kernel; it is stronger contracts:
 - health reports exported through the same host contract as eval reports
 - fixed-layout health reports with checksums for J-Link, CDC, or future stream
   readers
-- a small runtime facade that reduces app boot wiring while preserving explicit
-  manifest, quota, capability, and recovery contracts
+- app assembly patterns that connect adapter preflight, board package reports,
+  and `BootAssembly` without adding runtime plugin registries
 
 The current executor support is deliberately small: `TaskTable` is a fixed-size
 task registry that records period, budget, criticality, due time, and overrun

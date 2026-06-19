@@ -71,33 +71,38 @@ hardware behavior in private globals.
 6. Construct `Runtime` from the admitted plan.
 7. Export host reports for diagnostics.
 
-Minimal manifest sketch:
+For small apps, `BootAssembly` can do steps 3 through 6 while keeping the
+manifest, startup graph, admission result, and runtime visible:
 
 ```rust
 use airon_kernel::{
-    capability::CapabilityBits,
-    manifest::{kernel_module_spec, Criticality, DeadlineContract, FaultThresholds,
-               MemoryBudget, ModuleSpec, SystemManifest},
+    kernel_module_spec, BootAssembly, Capability, CapabilitySet, Criticality,
+    DeadlineContract, FaultThresholds, MemoryBudget, ModuleId, ModuleSpec,
+    StartupDependency, SystemProfile,
 };
 
-let mut manifest = SystemManifest::<4>::new();
-manifest.push(kernel_module_spec()).unwrap();
-manifest.push(ModuleSpec {
-    id: 0x105,
-    criticality: Criticality::SoftRealtime,
-    requires: CapabilityBits::BUS0 | CapabilityBits::SAMPLE_POOL,
-    owns: CapabilityBits::empty(),
-    memory: MemoryBudget {
-        flash_bytes: 8 * 1024,
-        ram_bytes: 2 * 1024,
-        pool_slots: 2,
-    },
-    deadline: Some(DeadlineContract {
-        period_us: 5_000,
-        budget_us: 300,
-    }),
-    faults: FaultThresholds::default(),
-}).unwrap();
+type AppBoot = BootAssembly<4, 4, 4, 4, 4, 4, 4, 4, 16>;
+
+let specs = [
+    kernel_module_spec(
+        MemoryBudget::new(16 * 1024, 4 * 1024, 4),
+        DeadlineContract::new(20_000, 10),
+    ),
+    ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+        .requires(CapabilitySet::empty().with(Capability::SamplePool))
+        .memory(MemoryBudget::new(8 * 1024, 2 * 1024, 2)),
+];
+
+let boot = AppBoot::build(
+    &specs,
+    &[StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel)],
+    SystemProfile::new(64 * 1024, 16 * 1024, 8, 4),
+    FaultThresholds::DEFAULT,
+    0,
+)?;
+
+assert!(boot.manifest_report.verify_checksum());
+assert!(boot.admission_report.verify_checksum());
 ```
 
 ## Working With SAL
