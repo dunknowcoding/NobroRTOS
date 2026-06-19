@@ -4,6 +4,17 @@
   "debug": { "gdb_incompatible_with": ["deadline_benchmark", "radio_soak"] },
   "ironengine": { "default_baud": 115200, "frame_headers": [170, 85] },
   "ina_monitor": { "jsonl_line_rate_hz_max": 50 },
+  "boot_diagnostics": {
+    "stage_order": [
+      "board_profile",
+      "manifest",
+      "adapter_compatibility",
+      "admission",
+      "runtime"
+    ],
+    "status_labels": ["missing", "in_progress", "pass", "fail", "corrupt"],
+    "first_non_pass": true
+  },
   "lab": {
     "default_board": "board1",
     "bootloader_policy": "do-not-reflash",

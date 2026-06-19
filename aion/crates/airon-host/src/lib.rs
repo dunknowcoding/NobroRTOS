@@ -88,6 +88,29 @@ pub enum ReportStatus {
     Corrupt,
 }
 
+impl ReportStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::InProgress => "in_progress",
+            Self::Pass => "pass",
+            Self::Fail(_) => "fail",
+            Self::Corrupt => "corrupt",
+        }
+    }
+
+    pub const fn is_pass(self) -> bool {
+        matches!(self, Self::Pass)
+    }
+
+    pub const fn error_code(self) -> Option<u32> {
+        match self {
+            Self::Fail(code) => Some(code),
+            Self::Missing | Self::InProgress | Self::Pass | Self::Corrupt => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootStage {
     BoardProfile,
@@ -97,10 +120,54 @@ pub enum BootStage {
     Runtime,
 }
 
+impl BootStage {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::BoardProfile => "board_profile",
+            Self::Manifest => "manifest",
+            Self::AdapterCompatibility => "adapter_compatibility",
+            Self::Admission => "admission",
+            Self::Runtime => "runtime",
+        }
+    }
+
+    pub const fn symbol(self) -> &'static str {
+        match self {
+            Self::BoardProfile => BOARD_PROFILE_REPORT_SYMBOL,
+            Self::Manifest => MANIFEST_REPORT_SYMBOL,
+            Self::AdapterCompatibility => ADAPTER_COMPAT_REPORT_SYMBOL,
+            Self::Admission => ADMISSION_REPORT_SYMBOL,
+            Self::Runtime => RUNTIME_REPORT_SYMBOL,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootDiagnostic {
     pub stage: BootStage,
     pub status: ReportStatus,
+}
+
+impl BootDiagnostic {
+    pub const fn is_passing(self) -> bool {
+        self.status.is_pass()
+    }
+
+    pub const fn stage_label(self) -> &'static str {
+        self.stage.label()
+    }
+
+    pub const fn status_label(self) -> &'static str {
+        self.status.label()
+    }
+
+    pub const fn stage_symbol(self) -> &'static str {
+        self.stage.symbol()
+    }
+
+    pub const fn error_code(self) -> Option<u32> {
+        self.status.error_code()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -810,6 +877,10 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
         assert!(HOST_CONTRACT_JSON.contains("0x41525254"));
+        assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"board_profile\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
         assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
@@ -823,6 +894,40 @@ mod tests {
             HostContract::user_cdc_mi()
         );
         assert_eq!(HostContract::upload_touch_baud(), 1200);
+    }
+
+    #[test]
+    fn diagnostic_labels_and_symbols_are_stable() {
+        assert_eq!(ReportStatus::Missing.label(), "missing");
+        assert_eq!(ReportStatus::InProgress.label(), "in_progress");
+        assert_eq!(ReportStatus::Pass.label(), "pass");
+        assert_eq!(ReportStatus::Fail(9).label(), "fail");
+        assert_eq!(ReportStatus::Corrupt.label(), "corrupt");
+        assert_eq!(ReportStatus::Fail(9).error_code(), Some(9));
+        assert_eq!(ReportStatus::Pass.error_code(), None);
+
+        assert_eq!(BootStage::BoardProfile.label(), "board_profile");
+        assert_eq!(BootStage::Manifest.label(), "manifest");
+        assert_eq!(
+            BootStage::AdapterCompatibility.label(),
+            "adapter_compatibility"
+        );
+        assert_eq!(BootStage::Admission.label(), "admission");
+        assert_eq!(BootStage::Runtime.label(), "runtime");
+        assert_eq!(
+            BootStage::AdapterCompatibility.symbol(),
+            ADAPTER_COMPAT_REPORT_SYMBOL
+        );
+
+        let diagnostic = BootDiagnostic {
+            stage: BootStage::Manifest,
+            status: ReportStatus::Fail(4),
+        };
+        assert!(!diagnostic.is_passing());
+        assert_eq!(diagnostic.stage_label(), "manifest");
+        assert_eq!(diagnostic.status_label(), "fail");
+        assert_eq!(diagnostic.stage_symbol(), MANIFEST_REPORT_SYMBOL);
+        assert_eq!(diagnostic.error_code(), Some(4));
     }
 
     #[test]
