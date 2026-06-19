@@ -168,6 +168,58 @@ impl BootDiagnostic {
     pub const fn error_code(self) -> Option<u32> {
         self.status.error_code()
     }
+
+    pub const fn error_label(self) -> Option<&'static str> {
+        let Some(code) = self.error_code() else {
+            return None;
+        };
+        match self.stage {
+            BootStage::BoardProfile | BootStage::Runtime => None,
+            BootStage::Manifest => manifest_error_label(code),
+            BootStage::AdapterCompatibility => adapter_compat_error_label(code),
+            BootStage::Admission => admission_error_label(code),
+        }
+    }
+}
+
+pub const fn manifest_error_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("full"),
+        2 => Some("duplicate_module"),
+        3 => Some("capability_ownership_conflict"),
+        4 => Some("missing_owned_capability"),
+        5 => Some("missing_deadline"),
+        6 => Some("invalid_deadline"),
+        7 => Some("invalid_fault_threshold"),
+        8 => Some("empty_memory_budget"),
+        9 => Some("module_limit_exceeded"),
+        10 => Some("budget_exceeded"),
+        11 => Some("user_owns_kernel_capability"),
+        _ => None,
+    }
+}
+
+pub const fn adapter_compat_error_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("full"),
+        2 => Some("duplicate_module"),
+        3 => Some("capability_ownership_conflict"),
+        4 => Some("module_limit_exceeded"),
+        5 => Some("budget_exceeded"),
+        _ => None,
+    }
+}
+
+pub const fn admission_error_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("manifest"),
+        2 => Some("startup"),
+        3 => Some("quota"),
+        4 => Some("capability"),
+        5 => Some("missing_startup_node"),
+        6 => Some("unknown_startup_node"),
+        _ => None,
+    }
 }
 
 pub trait HostReport {
@@ -1012,6 +1064,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
         assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"budget_exceeded\""));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability\""));
     }
@@ -1057,6 +1110,28 @@ mod tests {
         assert_eq!(diagnostic.status_label(), "fail");
         assert_eq!(diagnostic.stage_symbol(), MANIFEST_REPORT_SYMBOL);
         assert_eq!(diagnostic.error_code(), Some(4));
+        assert_eq!(diagnostic.error_label(), Some("missing_owned_capability"));
+        assert_eq!(manifest_error_label(10), Some("budget_exceeded"));
+        assert_eq!(manifest_error_label(99), None);
+        assert_eq!(
+            adapter_compat_error_label(3),
+            Some("capability_ownership_conflict")
+        );
+        assert_eq!(adapter_compat_error_label(99), None);
+        assert_eq!(admission_error_label(6), Some("unknown_startup_node"));
+        assert_eq!(admission_error_label(99), None);
+
+        let adapter = BootDiagnostic {
+            stage: BootStage::AdapterCompatibility,
+            status: ReportStatus::Fail(5),
+        };
+        assert_eq!(adapter.error_label(), Some("budget_exceeded"));
+
+        let runtime = BootDiagnostic {
+            stage: BootStage::Runtime,
+            status: ReportStatus::Corrupt,
+        };
+        assert_eq!(runtime.error_label(), None);
     }
 
     #[test]
