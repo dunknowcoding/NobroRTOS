@@ -125,7 +125,9 @@ Fault handling is intentionally small:
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
   records with the same checksum discipline as eval and admission reports.
 - `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
-  recovery into one fixed-capacity control plane for apps and adapters.
+  recovery into one fixed-capacity control plane for apps and adapters. It can
+  be constructed from an admitted plan or directly from a manifest plus startup
+  graph.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

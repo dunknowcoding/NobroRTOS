@@ -1,10 +1,11 @@
 //! Fixed-capacity runtime control plane assembled after admission.
 
 use crate::{
-    AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue, Capability, CapabilityGrantError,
-    EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey, KvStore, KvValue,
-    Mailbox, MailboxError, Message, MessageKind, ModuleId, RecoveryCoordinator, RecoveryError,
-    RecoveryOutcome, SystemState,
+    AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
+    Capability, CapabilityGrantError, EventSeverity, FaultThresholds, HealthReport, KernelError,
+    KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, StartupGraph, StartupNode, SystemManifest,
+    SystemProfile, SystemState,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +84,29 @@ impl<
             kv: KvStore::new(),
             recovery: RecoveryCoordinator::new(thresholds),
         }
+    }
+
+    pub fn admit<const MODULES: usize>(
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+    ) -> Result<Self, AdmissionError> {
+        let plan = AdmissionController::admit::<MODULES, STARTUP, QUOTAS>(
+            manifest,
+            startup_nodes,
+            profile,
+        )?;
+        Ok(Self::from_plan(plan, thresholds))
+    }
+
+    pub fn admit_graph<const MODULES: usize, const GRAPH: usize>(
+        manifest: &SystemManifest<MODULES>,
+        startup: &StartupGraph<GRAPH>,
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+    ) -> Result<Self, AdmissionError> {
+        Self::admit(manifest, startup.as_slice(), profile, thresholds)
     }
 
     pub fn boot_to_running(&mut self, now_us: u64) -> Result<(), RuntimeError> {
@@ -238,9 +262,8 @@ fn alarm_message(alarm: Alarm) -> Message {
 mod tests {
     use super::*;
     use crate::{
-        kernel_module_spec, AdmissionController, CapabilitySet, Criticality, DeadlineContract,
-        DependencySet, FaultThresholds, MemoryBudget, ModuleSpec, StartupNode, SystemManifest,
-        SystemProfile,
+        kernel_module_spec, CapabilitySet, Criticality, DeadlineContract, DependencySet,
+        FaultThresholds, MemoryBudget, ModuleSpec,
     };
 
     type TestRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
@@ -281,14 +304,41 @@ mod tests {
 
     fn runtime() -> TestRuntime {
         let manifest = manifest();
-        let plan = AdmissionController::admit::<4, 4, 4>(&manifest, &startup(), profile()).unwrap();
-        Runtime::from_plan(
-            plan,
+        Runtime::admit(
+            &manifest,
+            &startup(),
+            profile(),
             FaultThresholds {
                 notify_after: 1,
                 reboot_after: 3,
             },
         )
+        .unwrap()
+    }
+
+    #[test]
+    fn runtime_can_be_admitted_from_startup_graph() {
+        let manifest = manifest();
+        let mut graph = manifest.startup_graph::<4>().unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+
+        let runtime = TestRuntime::admit_graph(
+            &manifest,
+            &graph,
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(runtime.plan().module_count(), 2);
+        assert!(runtime
+            .authorize(ModuleId::Sensor, Capability::SamplePool)
+            .is_ok());
     }
 
     #[test]
