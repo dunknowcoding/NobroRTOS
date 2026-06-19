@@ -119,7 +119,8 @@ Fault handling is intentionally small:
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
 - `AdmissionReport` provides a fixed host-readable admission result so startup
-  failures can be diagnosed without dynamic logging.
+  failures can be diagnosed without dynamic logging. It can be built from the
+  same admission result used by boot code, reducing report-path drift.
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable

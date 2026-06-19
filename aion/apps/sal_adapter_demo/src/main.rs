@@ -138,16 +138,14 @@ fn admit_sal_demo() {
         .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
         .unwrap_or_else(|_| defmt::panic!("sensor startup dependency"));
 
-    match AdmissionController::admit::<4, 4, 4>(&manifest, startup.as_slice(), active_profile()) {
-        Ok(plan) => unsafe {
-            AIRON_ADMISSION_REPORT = AdmissionReport::from_plan(&plan);
-        },
-        Err(error) => {
-            unsafe {
-                AIRON_ADMISSION_REPORT = AdmissionReport::from_error(error);
-            }
-            defmt::panic!("sal demo admission failed");
-        }
+    let admission =
+        AdmissionController::admit_graph::<4, 4, 4, 4>(&manifest, &startup, active_profile());
+    unsafe {
+        AIRON_ADMISSION_REPORT =
+            AdmissionReport::from_result(admission.as_ref().map_err(|error| *error));
+    }
+    if admission.is_err() {
+        defmt::panic!("sal demo admission failed");
     }
 }
 

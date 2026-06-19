@@ -2,8 +2,8 @@
 
 use crate::{
     CapabilityGrantError, CapabilityGrantTable, ManifestError, ModuleId, QuotaError, QuotaLedger,
-    StartupError, StartupNode, StartupPlan, StartupPlanner, SystemBudget, SystemManifest,
-    SystemProfile,
+    StartupError, StartupGraph, StartupNode, StartupPlan, StartupPlanner, SystemBudget,
+    SystemManifest, SystemProfile,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +73,19 @@ impl AdmissionController {
             used: manifest.total_budget(),
             profile,
         })
+    }
+
+    pub fn admit_graph<
+        const MODULES: usize,
+        const GRAPH: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+    >(
+        manifest: &SystemManifest<MODULES>,
+        startup: &StartupGraph<GRAPH>,
+        profile: SystemProfile,
+    ) -> Result<AdmissionPlan<STARTUP, QUOTAS>, AdmissionError> {
+        Self::admit(manifest, startup.as_slice(), profile)
     }
 
     fn validate_startup_coverage<const MODULES: usize>(
@@ -164,6 +177,15 @@ impl AdmissionReport {
         };
         report.seal();
         report
+    }
+
+    pub fn from_result<const STARTUP: usize, const QUOTAS: usize>(
+        result: Result<&AdmissionPlan<STARTUP, QUOTAS>, AdmissionError>,
+    ) -> Self {
+        match result {
+            Ok(plan) => Self::from_plan(plan),
+            Err(error) => Self::from_error(error),
+        }
     }
 
     pub fn seal(&mut self) {
@@ -283,6 +305,23 @@ mod tests {
     }
 
     #[test]
+    fn admission_report_can_be_built_from_result() {
+        let manifest = valid_manifest();
+        let mut startup = manifest.startup_graph::<4>().unwrap();
+        startup
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        let admission =
+            AdmissionController::admit_graph::<4, 4, 4, 4>(&manifest, &startup, profile());
+
+        let report = AdmissionReport::from_result(admission.as_ref().map_err(|error| *error));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.admitted, 1);
+        assert_eq!(report.module_count, 2);
+    }
+
+    #[test]
     fn admission_report_seals_failure_code() {
         let mut report =
             AdmissionReport::from_error(AdmissionError::UnknownStartupNode(ModuleId::App(1)));
@@ -293,6 +332,17 @@ mod tests {
 
         report.error_code = 9;
         assert!(!report.verify_checksum());
+    }
+
+    #[test]
+    fn admission_report_from_result_preserves_error_code() {
+        let report = AdmissionReport::from_result::<4, 4>(Err(AdmissionError::UnknownStartupNode(
+            ModuleId::App(3),
+        )));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.admitted, 0);
+        assert_eq!(report.error_code, 6);
     }
 
     #[test]
