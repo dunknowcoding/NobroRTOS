@@ -128,7 +128,8 @@ Fault handling is intentionally small:
 - `Mailbox` provides fixed-capacity control-message IPC; data payloads still
   move through `Sample` tickets and static pools. Runtime IPC validates both
   message endpoints against the admitted module set before messages enter the
-  queue.
+  queue. Disabling a module purges queued messages to or from that module so
+  stale control traffic cannot outlive the module state transition.
 - `AlarmQueue` provides no-heap one-shot and periodic software timers without
   binding app logic to a specific hardware timer block.
 - `AlarmDispatch` summarizes due-alarm delivery, including partial progress and

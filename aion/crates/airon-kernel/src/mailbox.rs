@@ -95,6 +95,25 @@ impl<const N: usize> Mailbox<N> {
         None
     }
 
+    pub fn remove_for(&mut self, module: ModuleId) -> usize {
+        let mut removed = 0;
+        let mut age = 0;
+        while age < self.len {
+            let idx = (self.head + age) % N;
+            if self.slots[idx]
+                .map(|msg| msg.from == module || msg.to == module)
+                .unwrap_or(false)
+            {
+                let _ = self.slots[idx].take();
+                self.compact_from(age);
+                removed += 1;
+            } else {
+                age += 1;
+            }
+        }
+        removed
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -201,5 +220,26 @@ mod tests {
             mailbox.pop(),
             Some(msg(ModuleId::Kernel, ModuleId::Sensor, 1))
         );
+    }
+
+    #[test]
+    fn mailbox_removes_messages_for_disabled_module() {
+        let mut mailbox = Mailbox::<4>::new();
+        mailbox
+            .push(msg(ModuleId::Kernel, ModuleId::Sensor, 1))
+            .unwrap();
+        mailbox
+            .push(msg(ModuleId::Sensor, ModuleId::Kernel, 2))
+            .unwrap();
+        mailbox
+            .push(msg(ModuleId::Kernel, ModuleId::Radio, 3))
+            .unwrap();
+
+        assert_eq!(mailbox.remove_for(ModuleId::Sensor), 2);
+        assert_eq!(
+            mailbox.pop(),
+            Some(msg(ModuleId::Kernel, ModuleId::Radio, 3))
+        );
+        assert!(mailbox.is_empty());
     }
 }
