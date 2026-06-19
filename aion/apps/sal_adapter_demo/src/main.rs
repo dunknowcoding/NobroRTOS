@@ -28,8 +28,8 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, DeadlineContract, MemoryBudget, ModuleId, ModuleSpec,
-    SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, MemoryBudget,
+    ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, SensorSal};
 
@@ -49,6 +49,12 @@ static mut AIRON_SAL_EVAL_REPORT: SalEvalReport = SalEvalReport::zeroed();
 #[no_mangle]
 #[used]
 static mut AIRON_ADMISSION_REPORT: AdmissionReport = AdmissionReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut AIRON_RUNTIME_REPORT: RuntimeReport = RuntimeReport::zeroed();
+
+type SalDemoRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
 
 fn on_deadline_slot() {}
 
@@ -144,8 +150,20 @@ fn admit_sal_demo() {
         AIRON_ADMISSION_REPORT =
             AdmissionReport::from_result(admission.as_ref().map_err(|error| *error));
     }
-    if admission.is_err() {
-        defmt::panic!("sal demo admission failed");
+
+    match admission {
+        Ok(plan) => {
+            let mut runtime = SalDemoRuntime::from_plan(plan, FaultThresholds::DEFAULT);
+            runtime
+                .boot_to_running(0)
+                .unwrap_or_else(|_| defmt::panic!("runtime boot"));
+            unsafe {
+                AIRON_RUNTIME_REPORT = runtime.runtime_report();
+            }
+        }
+        Err(_) => {
+            defmt::panic!("sal demo admission failed");
+        }
     }
 }
 
