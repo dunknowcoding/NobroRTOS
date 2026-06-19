@@ -438,6 +438,16 @@ impl<
         decision: &DegradeDecision<N>,
         now_us: u64,
     ) -> Result<DegradeApplication, RuntimeError> {
+        for module in decision
+            .disabled
+            .iter()
+            .copied()
+            .take(decision.disabled_count)
+            .flatten()
+        {
+            self.ensure_module_admitted(module)?;
+        }
+
         let mut application = DegradeApplication {
             disabled: 0,
             already_disabled: 0,
@@ -453,7 +463,6 @@ impl<
             let Some(module) = module else {
                 continue;
             };
-            self.ensure_module_admitted(module)?;
             if self.module_state(module) == Some(ModuleRunState::Disabled) {
                 application.already_disabled += 1;
                 continue;
@@ -1106,6 +1115,31 @@ mod tests {
         );
         assert_eq!(runtime.state(), SystemState::Running);
         assert_eq!(runtime.recovery().events().len(), before_events);
+    }
+
+    #[test]
+    fn runtime_rejects_partial_degrade_application() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let decision = DegradeDecision {
+            enabled: [true, false, false],
+            disabled: [Some(ModuleId::Sensor), Some(ModuleId::Radio), None],
+            disabled_count: 2,
+            budget: SystemBudget::new(16 * 1024, 4 * 1024, 4),
+            reason: Some(DegradeReason::FlashBudget),
+        };
+
+        assert_eq!(
+            runtime.apply_degrade_decision(&decision, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Active)
+        );
+        assert_eq!(runtime.state(), SystemState::Running);
     }
 
     #[test]
