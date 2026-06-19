@@ -2,7 +2,10 @@
 
 #![no_std]
 
-use airon_kernel::{Criticality, KernelError, ModuleId, ModuleSpec, Sample, SystemBudget};
+use airon_kernel::{
+    CapabilitySet, Criticality, KernelError, ModuleId, ModuleSpec, Sample, SystemBudget,
+    SystemProfile,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AdapterDescriptor {
@@ -22,6 +25,128 @@ impl AdapterDescriptor {
             owns_bits: spec.owns.bits(),
             budget: SystemBudget::from_memory(spec.memory),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdapterSetError {
+    Full,
+    DuplicateModule(ModuleId),
+    CapabilityOwnershipConflict {
+        module: ModuleId,
+        capability_bits: u32,
+    },
+    ModuleLimitExceeded {
+        modules: usize,
+        limit: usize,
+    },
+    BudgetExceeded {
+        used: SystemBudget,
+        limit: SystemBudget,
+    },
+}
+
+pub struct AdapterSet<const N: usize> {
+    descriptors: [Option<AdapterDescriptor>; N],
+}
+
+impl<const N: usize> AdapterSet<N> {
+    pub const fn new() -> Self {
+        Self {
+            descriptors: [None; N],
+        }
+    }
+
+    pub fn add(&mut self, descriptor: AdapterDescriptor) -> Result<(), AdapterSetError> {
+        if self
+            .descriptors
+            .iter()
+            .flatten()
+            .any(|existing| existing.module == descriptor.module)
+        {
+            return Err(AdapterSetError::DuplicateModule(descriptor.module));
+        }
+
+        let Some(slot) = self.descriptors.iter_mut().find(|slot| slot.is_none()) else {
+            return Err(AdapterSetError::Full);
+        };
+        *slot = Some(descriptor);
+        Ok(())
+    }
+
+    pub fn add_manifest<A: AdapterManifest>(&mut self) -> Result<(), AdapterSetError> {
+        self.add(A::descriptor())
+    }
+
+    pub fn validate_profile(&self, profile: SystemProfile) -> Result<(), AdapterSetError> {
+        if self.len() > profile.max_modules {
+            return Err(AdapterSetError::ModuleLimitExceeded {
+                modules: self.len(),
+                limit: profile.max_modules,
+            });
+        }
+
+        self.validate_ownership()?;
+
+        let used = self.total_budget();
+        let limit = profile.budget();
+        if !used.fits_within(limit) {
+            return Err(AdapterSetError::BudgetExceeded { used, limit });
+        }
+
+        Ok(())
+    }
+
+    pub fn total_budget(&self) -> SystemBudget {
+        let mut total = SystemBudget::ZERO;
+        for descriptor in self.descriptors.iter().flatten() {
+            total = total
+                .checked_add(descriptor.budget)
+                .unwrap_or(SystemBudget {
+                    flash_bytes: u32::MAX,
+                    ram_bytes: u32::MAX,
+                    pool_slots: u16::MAX,
+                });
+        }
+        total
+    }
+
+    pub fn owned_capabilities(&self) -> CapabilitySet {
+        self.descriptors
+            .iter()
+            .flatten()
+            .fold(CapabilitySet::empty(), |acc, descriptor| {
+                acc.union(CapabilitySet::from_bits(descriptor.owns_bits))
+            })
+    }
+
+    pub fn len(&self) -> usize {
+        self.descriptors.iter().flatten().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn validate_ownership(&self) -> Result<(), AdapterSetError> {
+        let mut owned = CapabilitySet::empty();
+        for descriptor in self.descriptors.iter().flatten() {
+            let owns = CapabilitySet::from_bits(descriptor.owns_bits);
+            if owns.intersects(owned) {
+                return Err(AdapterSetError::CapabilityOwnershipConflict {
+                    module: descriptor.module,
+                    capability_bits: owns.intersection(owned).bits(),
+                });
+            }
+            owned = owned.union(owns);
+        }
+        Ok(())
+    }
+}
+
+impl<const N: usize> Default for AdapterSet<N> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -122,5 +247,75 @@ mod tests {
         assert_eq!(descriptor.requires_bits, Capability::SamplePool.bit());
         assert_eq!(descriptor.owns_bits, Capability::Bus0.bit());
         assert_eq!(descriptor.budget, SystemBudget::new(2048, 512, 2));
+    }
+
+    #[test]
+    fn adapter_set_validates_budget_and_ownership() {
+        let mut adapters = AdapterSet::<2>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+        adapters
+            .add(AdapterDescriptor {
+                module: ModuleId::Actuator,
+                criticality: Criticality::HardRealtime,
+                requires_bits: Capability::DeadlineTimer.bit(),
+                owns_bits: Capability::ServoPwm.bit(),
+                budget: SystemBudget::new(1024, 256, 0),
+            })
+            .unwrap();
+
+        assert_eq!(adapters.len(), 2);
+        assert_eq!(adapters.total_budget(), SystemBudget::new(3072, 768, 2));
+        assert!(adapters.owned_capabilities().contains(Capability::ServoPwm));
+        assert!(adapters
+            .validate_profile(SystemProfile::new(4096, 1024, 4, 2))
+            .is_ok());
+    }
+
+    #[test]
+    fn adapter_set_rejects_duplicate_modules() {
+        let mut adapters = AdapterSet::<2>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+
+        assert_eq!(
+            adapters.add_manifest::<FakeAdapter>(),
+            Err(AdapterSetError::DuplicateModule(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn adapter_set_rejects_capability_ownership_conflicts() {
+        let mut adapters = AdapterSet::<2>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+        adapters
+            .add(AdapterDescriptor {
+                module: ModuleId::Bus,
+                criticality: Criticality::Driver,
+                requires_bits: 0,
+                owns_bits: Capability::Bus0.bit(),
+                budget: SystemBudget::new(512, 128, 0),
+            })
+            .unwrap();
+
+        assert_eq!(
+            adapters.validate_profile(SystemProfile::new(4096, 1024, 4, 2)),
+            Err(AdapterSetError::CapabilityOwnershipConflict {
+                module: ModuleId::Bus,
+                capability_bits: Capability::Bus0.bit(),
+            })
+        );
+    }
+
+    #[test]
+    fn adapter_set_rejects_profile_over_budget() {
+        let mut adapters = AdapterSet::<1>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+
+        assert_eq!(
+            adapters.validate_profile(SystemProfile::new(1024, 1024, 4, 1)),
+            Err(AdapterSetError::BudgetExceeded {
+                used: SystemBudget::new(2048, 512, 2),
+                limit: SystemBudget::new(1024, 1024, 4),
+            })
+        );
     }
 }

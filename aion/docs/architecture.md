@@ -177,6 +177,9 @@ The next step is not a larger kernel; it is stronger contracts:
 - adapters expose `AdapterDescriptor` summaries derived from their manifest so
   host or app compatibility checks can inspect module ID, capability bits, and
   budget without parsing adapter internals
+- adapter descriptor sets can be checked before admission for duplicate module
+  IDs, exclusive capability ownership conflicts, board-class budget fit, and
+  module-count limits
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
 - optional async executors with static task allocation
 - health reports exported through the same host contract as eval reports
