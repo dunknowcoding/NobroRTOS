@@ -99,6 +99,26 @@ impl ReportStatus {
         }
     }
 
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::Pass => 0,
+            Self::Missing => 1,
+            Self::InProgress => 2,
+            Self::Corrupt => 3,
+            Self::Fail(code) => 0x8000_0000 | code,
+        }
+    }
+
+    pub const fn class_code(self) -> u32 {
+        match self {
+            Self::Pass => 0,
+            Self::Missing => 1,
+            Self::InProgress => 2,
+            Self::Corrupt => 3,
+            Self::Fail(_) => 4,
+        }
+    }
+
     pub const fn is_pass(self) -> bool {
         matches!(self, Self::Pass)
     }
@@ -128,6 +148,16 @@ impl BootStage {
             Self::AdapterCompatibility => "adapter_compatibility",
             Self::Admission => "admission",
             Self::Runtime => "runtime",
+        }
+    }
+
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::BoardProfile => 1,
+            Self::Manifest => 2,
+            Self::AdapterCompatibility => 3,
+            Self::Admission => 4,
+            Self::Runtime => 5,
         }
     }
 
@@ -179,6 +209,14 @@ impl BootDiagnostic {
             BootStage::AdapterCompatibility => adapter_compat_error_label(code),
             BootStage::Admission => admission_error_label(code),
         }
+    }
+
+    pub const fn code(self) -> u32 {
+        let error = match self.status.error_code() {
+            Some(code) => code & 0xFFFF,
+            None => 0,
+        };
+        (self.stage.code() << 24) | (self.status.class_code() << 16) | error
     }
 }
 
@@ -1061,6 +1099,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_profile\""));
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
         assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
@@ -1085,6 +1124,16 @@ mod tests {
         assert_eq!(ReportStatus::Pass.label(), "pass");
         assert_eq!(ReportStatus::Fail(9).label(), "fail");
         assert_eq!(ReportStatus::Corrupt.label(), "corrupt");
+        assert_eq!(ReportStatus::Pass.code(), 0);
+        assert_eq!(ReportStatus::Missing.code(), 1);
+        assert_eq!(ReportStatus::InProgress.code(), 2);
+        assert_eq!(ReportStatus::Corrupt.code(), 3);
+        assert_eq!(ReportStatus::Fail(9).code(), 0x8000_0009);
+        assert_eq!(ReportStatus::Pass.class_code(), 0);
+        assert_eq!(ReportStatus::Missing.class_code(), 1);
+        assert_eq!(ReportStatus::InProgress.class_code(), 2);
+        assert_eq!(ReportStatus::Corrupt.class_code(), 3);
+        assert_eq!(ReportStatus::Fail(9).class_code(), 4);
         assert_eq!(ReportStatus::Fail(9).error_code(), Some(9));
         assert_eq!(ReportStatus::Pass.error_code(), None);
 
@@ -1096,6 +1145,11 @@ mod tests {
         );
         assert_eq!(BootStage::Admission.label(), "admission");
         assert_eq!(BootStage::Runtime.label(), "runtime");
+        assert_eq!(BootStage::BoardProfile.code(), 1);
+        assert_eq!(BootStage::Manifest.code(), 2);
+        assert_eq!(BootStage::AdapterCompatibility.code(), 3);
+        assert_eq!(BootStage::Admission.code(), 4);
+        assert_eq!(BootStage::Runtime.code(), 5);
         assert_eq!(
             BootStage::AdapterCompatibility.symbol(),
             ADAPTER_COMPAT_REPORT_SYMBOL
@@ -1111,6 +1165,7 @@ mod tests {
         assert_eq!(diagnostic.stage_symbol(), MANIFEST_REPORT_SYMBOL);
         assert_eq!(diagnostic.error_code(), Some(4));
         assert_eq!(diagnostic.error_label(), Some("missing_owned_capability"));
+        assert_eq!(diagnostic.code(), 0x0204_0004);
         assert_eq!(manifest_error_label(10), Some("budget_exceeded"));
         assert_eq!(manifest_error_label(99), None);
         assert_eq!(
