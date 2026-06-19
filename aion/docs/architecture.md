@@ -40,6 +40,9 @@ Board compatibility must be data-first:
 - Each bootloader layout has an explicit Cargo feature and linker script.
 - HAL feature selection must enable exactly one `platform-*` feature and one
   `board-*` feature.
+- App and adapter crates must disable default features on HAL dependencies and
+  re-enable board features explicitly. This keeps `board-promicro-nosd` from
+  leaking into `board-nicenano-s140` builds through dependency defaults.
 - Hardware parity checks read registers back into snapshot structs.
 - Host scripts consume `airon-host` constants or `host/airon-host-contract.json`
   rather than duplicating magic values.

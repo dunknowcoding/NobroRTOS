@@ -8,7 +8,7 @@ name = "resource_sched_demo"
 path = "src/main.rs"
 
 [dependencies]
-airon-hal = { path = "../../crates/airon-hal" }
+airon-hal = { path = "../../crates/airon-hal", default-features = false }
 airon-kernel = { path = "../../crates/airon-kernel" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
@@ -20,3 +20,4 @@ nrf52840-pac = { version = "0.12", features = ["rt"] }
 [features]
 default = ["board-promicro-nosd"]
 board-promicro-nosd = ["airon-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["airon-hal/board-nicenano-s140"]

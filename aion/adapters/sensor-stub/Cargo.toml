@@ -5,10 +5,11 @@ edition.workspace = true
 description = "SensorSal IMU stub for AIRON (no external sensor required)"
 
 [dependencies]
-airon-hal = { path = "../../crates/airon-hal" }
+airon-hal = { path = "../../crates/airon-hal", default-features = false }
 airon-kernel = { path = "../../crates/airon-kernel" }
 airon-sal = { path = "../../crates/airon-sal" }
 
 [features]
 default = ["board-promicro-nosd"]
 board-promicro-nosd = ["airon-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["airon-hal/board-nicenano-s140"]

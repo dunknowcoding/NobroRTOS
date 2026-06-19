@@ -8,9 +8,9 @@ name = "sal_adapter_demo"
 path = "src/main.rs"
 
 [dependencies]
-airon-adapter-robo-servo = { path = "../../adapters/robo-servo" }
-airon-adapter-sensor-stub = { path = "../../adapters/sensor-stub" }
-airon-hal = { path = "../../crates/airon-hal" }
+airon-adapter-robo-servo = { path = "../../adapters/robo-servo", default-features = false }
+airon-adapter-sensor-stub = { path = "../../adapters/sensor-stub", default-features = false }
+airon-hal = { path = "../../crates/airon-hal", default-features = false }
 airon-kernel = { path = "../../crates/airon-kernel" }
 airon-sal = { path = "../../crates/airon-sal" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
@@ -25,4 +25,9 @@ board-promicro-nosd = [
     "airon-hal/board-promicro-nosd",
     "airon-adapter-robo-servo/board-promicro-nosd",
     "airon-adapter-sensor-stub/board-promicro-nosd",
+]
+board-nicenano-s140 = [
+    "airon-hal/board-nicenano-s140",
+    "airon-adapter-robo-servo/board-nicenano-s140",
+    "airon-adapter-sensor-stub/board-nicenano-s140",
 ]
