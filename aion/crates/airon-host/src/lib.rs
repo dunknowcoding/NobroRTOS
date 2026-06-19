@@ -18,6 +18,9 @@ pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C;
 pub const RUNTIME_REPORT_SYMBOL: &str = "AIRON_RUNTIME_REPORT";
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254;
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
+pub const ADAPTER_COMPAT_REPORT_SYMBOL: &str = "AIRON_ADAPTER_COMPAT_REPORT";
+pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4152_4143;
+pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
 pub const ADMISSION_REPORT_SYMBOL: &str = "AIRON_ADMISSION_REPORT";
 pub const ADMISSION_REPORT_MAGIC: u32 = 0x4152_4144;
 pub const ADMISSION_REPORT_VERSION: u32 = 1;
@@ -77,6 +80,98 @@ pub enum ReportStatus {
     Pass,
     Fail(u32),
     Corrupt,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdapterCompatibilityReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub compatible: u32,
+    pub adapter_count: u32,
+    pub required_bits: u32,
+    pub owned_bits: u32,
+    pub flash_used_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub pool_used_slots: u32,
+    pub error_code: u32,
+    pub error_module_tag: u32,
+    pub error_capability_bits: u32,
+    pub checksum: u32,
+}
+
+impl AdapterCompatibilityReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            compatible: 0,
+            adapter_count: 0,
+            required_bits: 0,
+            owned_bits: 0,
+            flash_used_bytes: 0,
+            ram_used_bytes: 0,
+            pool_used_slots: 0,
+            error_code: 0,
+            error_module_tag: 0,
+            error_capability_bits: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ADAPTER_COMPAT_REPORT_MAGIC;
+        self.version = ADAPTER_COMPAT_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ADAPTER_COMPAT_REPORT_MAGIC
+            && self.version == ADAPTER_COMPAT_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != ADAPTER_COMPAT_REPORT_MAGIC
+            || self.version != ADAPTER_COMPAT_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        if self.compatible != 0 {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Fail(self.error_code)
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.compatible
+            ^ self.adapter_count
+            ^ self.required_bits
+            ^ self.owned_bits
+            ^ self.flash_used_bytes
+            ^ self.ram_used_bytes
+            ^ self.pool_used_slots
+            ^ self.error_code
+            ^ self.error_module_tag
+            ^ self.error_capability_bits
+    }
 }
 
 #[repr(C)]
@@ -415,6 +510,9 @@ mod tests {
         assert_eq!(RUNTIME_REPORT_SYMBOL, "AIRON_RUNTIME_REPORT");
         assert_eq!(RUNTIME_REPORT_MAGIC, 0x4152_5254);
         assert_eq!(RUNTIME_REPORT_VERSION, 1);
+        assert_eq!(ADAPTER_COMPAT_REPORT_SYMBOL, "AIRON_ADAPTER_COMPAT_REPORT");
+        assert_eq!(ADAPTER_COMPAT_REPORT_MAGIC, 0x4152_4143);
+        assert_eq!(ADAPTER_COMPAT_REPORT_VERSION, 1);
         assert_eq!(ADMISSION_REPORT_SYMBOL, "AIRON_ADMISSION_REPORT");
         assert_eq!(ADMISSION_REPORT_MAGIC, 0x4152_4144);
         assert_eq!(ADMISSION_REPORT_VERSION, 1);
@@ -426,9 +524,12 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(ADAPTER_COMPAT_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
         assert!(HOST_CONTRACT_JSON.contains("0x41525254"));
+        assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability\""));
     }
@@ -497,6 +598,38 @@ mod tests {
     }
 
     #[test]
+    fn adapter_compatibility_report_status_decodes_success_and_failure() {
+        let mut pass = AdapterCompatibilityReport {
+            compatible: 1,
+            adapter_count: 2,
+            required_bits: 0x03,
+            owned_bits: 0x0C,
+            flash_used_bytes: 8192,
+            ram_used_bytes: 2048,
+            pool_used_slots: 3,
+            ..AdapterCompatibilityReport::zeroed()
+        };
+        pass.seal();
+
+        assert!(pass.verify_checksum());
+        assert_eq!(pass.status(), ReportStatus::Pass);
+
+        let mut fail = AdapterCompatibilityReport {
+            compatible: 0,
+            adapter_count: 2,
+            error_code: 3,
+            error_module_tag: 3,
+            error_capability_bits: 0x02,
+            ..AdapterCompatibilityReport::zeroed()
+        };
+        fail.seal();
+
+        assert_eq!(fail.status(), ReportStatus::Fail(3));
+        fail.error_capability_bits = 0x04;
+        assert_eq!(fail.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn runtime_report_seals_and_verifies() {
         let mut report = RuntimeReport {
             state: 3,
@@ -528,6 +661,10 @@ mod tests {
     #[test]
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(
+            AdapterCompatibilityReport::zeroed().status(),
+            ReportStatus::Missing
+        );
         assert_eq!(HealthReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(RuntimeReport::zeroed().status(), ReportStatus::Missing);
 

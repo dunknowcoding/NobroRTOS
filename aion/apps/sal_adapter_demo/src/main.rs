@@ -31,7 +31,7 @@ use airon_kernel::{
     AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, MemoryBudget,
     ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
-use airon_sal::{ActuatorSal, AdapterSet, SensorSal};
+use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterSet, SensorSal};
 
 static SERVO_STEPS: AtomicU32 = AtomicU32::new(0);
 static SERVO_READBACK_OK: AtomicU32 = AtomicU32::new(0);
@@ -53,6 +53,11 @@ static mut AIRON_ADMISSION_REPORT: AdmissionReport = AdmissionReport::zeroed();
 #[no_mangle]
 #[used]
 static mut AIRON_RUNTIME_REPORT: RuntimeReport = RuntimeReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut AIRON_ADAPTER_COMPAT_REPORT: AdapterCompatibilityReport =
+    AdapterCompatibilityReport::zeroed();
 
 type SalDemoRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
 
@@ -176,9 +181,13 @@ fn validate_adapter_set(profile: SystemProfile) {
     adapters
         .add_manifest::<SensorStub>()
         .unwrap_or_else(|_| defmt::panic!("sensor-stub descriptor"));
-    adapters
-        .validate_profile(profile)
-        .unwrap_or_else(|_| defmt::panic!("adapter compatibility"));
+    let report = adapters.compatibility_report(profile);
+    unsafe {
+        AIRON_ADAPTER_COMPAT_REPORT = report;
+    }
+    if report.compatible == 0 {
+        defmt::panic!("adapter compatibility");
+    }
 }
 
 fn active_profile() -> SystemProfile {

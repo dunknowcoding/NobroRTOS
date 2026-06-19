@@ -70,6 +70,26 @@
       "6": "halted"
     }
   },
+  "adapter_compat_report": {
+    "symbol": "AIRON_ADAPTER_COMPAT_REPORT",
+    "magic": "0x41524143",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and compatible is non-zero",
+      "fail": "checksum valid and compatible is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "full",
+      "2": "duplicate_module",
+      "3": "capability_ownership_conflict",
+      "4": "module_limit_exceeded",
+      "5": "budget_exceeded"
+    }
+  },
   "admission_report": {
     "symbol": "AIRON_ADMISSION_REPORT",
     "magic": "0x41524144",

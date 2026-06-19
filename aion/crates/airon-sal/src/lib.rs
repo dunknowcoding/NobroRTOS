@@ -3,9 +3,12 @@
 #![no_std]
 
 use airon_kernel::{
-    CapabilitySet, Criticality, KernelError, ModuleId, ModuleSpec, Sample, SystemBudget,
-    SystemProfile,
+    module_tag, CapabilitySet, Criticality, KernelError, ModuleId, ModuleSpec, Sample,
+    SystemBudget, SystemProfile,
 };
+
+pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4152_4143; // "ARAC"
+pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AdapterDescriptor {
@@ -44,6 +47,135 @@ pub enum AdapterSetError {
         used: SystemBudget,
         limit: SystemBudget,
     },
+}
+
+impl AdapterSetError {
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::Full => 1,
+            Self::DuplicateModule(_) => 2,
+            Self::CapabilityOwnershipConflict { .. } => 3,
+            Self::ModuleLimitExceeded { .. } => 4,
+            Self::BudgetExceeded { .. } => 5,
+        }
+    }
+
+    pub const fn module(self) -> Option<ModuleId> {
+        match self {
+            Self::DuplicateModule(module) => Some(module),
+            Self::CapabilityOwnershipConflict { module, .. } => Some(module),
+            Self::Full | Self::ModuleLimitExceeded { .. } | Self::BudgetExceeded { .. } => None,
+        }
+    }
+
+    pub const fn capability_bits(self) -> u32 {
+        match self {
+            Self::CapabilityOwnershipConflict {
+                capability_bits, ..
+            } => capability_bits,
+            Self::Full
+            | Self::DuplicateModule(_)
+            | Self::ModuleLimitExceeded { .. }
+            | Self::BudgetExceeded { .. } => 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdapterCompatibilityReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub compatible: u32,
+    pub adapter_count: u32,
+    pub required_bits: u32,
+    pub owned_bits: u32,
+    pub flash_used_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub pool_used_slots: u32,
+    pub error_code: u32,
+    pub error_module_tag: u32,
+    pub error_capability_bits: u32,
+    pub checksum: u32,
+}
+
+impl AdapterCompatibilityReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            compatible: 0,
+            adapter_count: 0,
+            required_bits: 0,
+            owned_bits: 0,
+            flash_used_bytes: 0,
+            ram_used_bytes: 0,
+            pool_used_slots: 0,
+            error_code: 0,
+            error_module_tag: 0,
+            error_capability_bits: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_result<const N: usize>(
+        adapters: &AdapterSet<N>,
+        result: Result<(), AdapterSetError>,
+    ) -> Self {
+        let budget = adapters.total_budget();
+        let error = result.err();
+        let mut report = Self {
+            compatible: error.is_none() as u32,
+            adapter_count: adapters.len() as u32,
+            required_bits: adapters.required_capabilities().bits(),
+            owned_bits: adapters.owned_capabilities().bits(),
+            flash_used_bytes: budget.flash_bytes,
+            ram_used_bytes: budget.ram_bytes,
+            pool_used_slots: u32::from(budget.pool_slots),
+            error_code: error.map(AdapterSetError::code).unwrap_or(0),
+            ..Self::zeroed()
+        };
+
+        if let Some(error) = error {
+            report.error_module_tag = error.module().map(module_tag).unwrap_or(0);
+            report.error_capability_bits = error.capability_bits();
+        }
+
+        report.seal();
+        report
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ADAPTER_COMPAT_REPORT_MAGIC;
+        self.version = ADAPTER_COMPAT_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ADAPTER_COMPAT_REPORT_MAGIC
+            && self.version == ADAPTER_COMPAT_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.compatible
+            ^ self.adapter_count
+            ^ self.required_bits
+            ^ self.owned_bits
+            ^ self.flash_used_bytes
+            ^ self.ram_used_bytes
+            ^ self.pool_used_slots
+            ^ self.error_code
+            ^ self.error_module_tag
+            ^ self.error_capability_bits
+    }
 }
 
 pub struct AdapterSet<const N: usize> {
@@ -97,6 +229,10 @@ impl<const N: usize> AdapterSet<N> {
         Ok(())
     }
 
+    pub fn compatibility_report(&self, profile: SystemProfile) -> AdapterCompatibilityReport {
+        AdapterCompatibilityReport::from_result(self, self.validate_profile(profile))
+    }
+
     pub fn total_budget(&self) -> SystemBudget {
         let mut total = SystemBudget::ZERO;
         for descriptor in self.descriptors.iter().flatten() {
@@ -117,6 +253,15 @@ impl<const N: usize> AdapterSet<N> {
             .flatten()
             .fold(CapabilitySet::empty(), |acc, descriptor| {
                 acc.union(CapabilitySet::from_bits(descriptor.owns_bits))
+            })
+    }
+
+    pub fn required_capabilities(&self) -> CapabilitySet {
+        self.descriptors
+            .iter()
+            .flatten()
+            .fold(CapabilitySet::empty(), |acc, descriptor| {
+                acc.union(CapabilitySet::from_bits(descriptor.requires_bits))
             })
     }
 
@@ -265,6 +410,9 @@ mod tests {
 
         assert_eq!(adapters.len(), 2);
         assert_eq!(adapters.total_budget(), SystemBudget::new(3072, 768, 2));
+        assert!(adapters
+            .required_capabilities()
+            .contains(Capability::SamplePool));
         assert!(adapters.owned_capabilities().contains(Capability::ServoPwm));
         assert!(adapters
             .validate_profile(SystemProfile::new(4096, 1024, 4, 2))
@@ -317,5 +465,55 @@ mod tests {
                 limit: SystemBudget::new(1024, 1024, 4),
             })
         );
+    }
+
+    #[test]
+    fn adapter_compatibility_report_seals_success() {
+        let mut adapters = AdapterSet::<2>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+
+        let report = adapters.compatibility_report(SystemProfile::new(4096, 1024, 4, 2));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, ADAPTER_COMPAT_REPORT_MAGIC);
+        assert_eq!(report.version, ADAPTER_COMPAT_REPORT_VERSION);
+        assert_eq!(report.compatible, 1);
+        assert_eq!(report.adapter_count, 1);
+        assert_eq!(report.required_bits, Capability::SamplePool.bit());
+        assert_eq!(report.owned_bits, Capability::Bus0.bit());
+        assert_eq!(report.flash_used_bytes, 2048);
+        assert_eq!(report.ram_used_bytes, 512);
+        assert_eq!(report.pool_used_slots, 2);
+        assert_eq!(report.error_code, 0);
+    }
+
+    #[test]
+    fn adapter_compatibility_report_preserves_failure_context() {
+        let mut adapters = AdapterSet::<2>::new();
+        adapters.add_manifest::<FakeAdapter>().unwrap();
+        adapters
+            .add(AdapterDescriptor {
+                module: ModuleId::Bus,
+                criticality: Criticality::Driver,
+                requires_bits: 0,
+                owns_bits: Capability::Bus0.bit(),
+                budget: SystemBudget::new(512, 128, 0),
+            })
+            .unwrap();
+
+        let report = adapters.compatibility_report(SystemProfile::new(4096, 1024, 4, 2));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.compatible, 0);
+        assert_eq!(
+            report.error_code,
+            AdapterSetError::CapabilityOwnershipConflict {
+                module: ModuleId::Bus,
+                capability_bits: Capability::Bus0.bit()
+            }
+            .code()
+        );
+        assert_eq!(report.error_module_tag, module_tag(ModuleId::Bus));
+        assert_eq!(report.error_capability_bits, Capability::Bus0.bit());
     }
 }

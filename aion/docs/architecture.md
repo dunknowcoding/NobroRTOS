@@ -128,6 +128,9 @@ Fault handling is intentionally small:
 - `RuntimeReport` summarizes runtime control-plane state, including lifecycle
   state, mailbox pressure, alarm schedule, KV writes, quota usage, and event-log
   pressure.
+- `AdapterCompatibilityReport` provides an admission-before-admission gate for
+  SAL adapters. It records adapter count, required and owned capability bits,
+  static budget use, and compatibility error context in a host-readable layout.
 - `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
   recovery into one fixed-capacity control plane for apps and adapters. It can
   be constructed from an admitted plan or directly from a manifest plus startup
@@ -180,6 +183,9 @@ The next step is not a larger kernel; it is stronger contracts:
 - adapter descriptor sets can be checked before admission for duplicate module
   IDs, exclusive capability ownership conflicts, board-class budget fit, and
   module-count limits
+- adapter descriptor sets should export a fixed-layout compatibility report
+  before app admission so board bring-up can diagnose adapter/profile mismatch
+  without hardware-specific probes
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
 - optional async executors with static task allocation
 - health reports exported through the same host contract as eval reports
