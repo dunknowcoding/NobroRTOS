@@ -274,6 +274,8 @@ extern crate std;
 mod tests {
     use super::*;
 
+    const HOST_CONTRACT_JSON: &str = include_str!("../../../../host/airon-host-contract.json");
+
     #[test]
     fn boot_layouts_match_arduinonrf_policy() {
         assert_eq!(BootLayout::NoSoftDevice.app_start(), 0x1000);
@@ -299,6 +301,16 @@ mod tests {
         assert_eq!(ADMISSION_REPORT_SYMBOL, "AIRON_ADMISSION_REPORT");
         assert_eq!(ADMISSION_REPORT_MAGIC, 0x4152_4144);
         assert_eq!(ADMISSION_REPORT_VERSION, 1);
+    }
+
+    #[test]
+    fn json_contract_mentions_host_report_symbols() {
+        assert!(HOST_CONTRACT_JSON.contains(PHASE1_EVAL_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
+        assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
     }
 
     #[test]
