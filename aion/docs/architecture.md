@@ -131,7 +131,9 @@ Fault handling is intentionally small:
   queue. Disabling a module purges queued messages to or from that module so
   stale control traffic cannot outlive the module state transition.
 - `AlarmQueue` provides no-heap one-shot and periodic software timers without
-  binding app logic to a specific hardware timer block.
+  binding app logic to a specific hardware timer block. Disabling a module also
+  removes its queued alarms so disabled modules cannot be reawakened by stale
+  timer events.
 - `AlarmDispatch` summarizes due-alarm delivery, including partial progress and
   the first alarm blocked by mailbox backpressure, without dropping the alarm.
   Runtime code can route that blocked alarm through recovery as a deadline

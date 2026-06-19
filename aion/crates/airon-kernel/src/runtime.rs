@@ -461,6 +461,7 @@ impl<
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
         self.ensure_module_admitted(module)?;
         self.modules.disable(module, now_us)?;
+        self.alarms.remove_for(module);
         self.mailbox.remove_for(module);
         Ok(())
     }
@@ -503,6 +504,7 @@ impl<
                 continue;
             }
             self.modules.disable(module, now_us)?;
+            self.alarms.remove_for(module);
             self.mailbox.remove_for(module);
             application.disabled += 1;
         }
@@ -1126,6 +1128,36 @@ mod tests {
     }
 
     #[test]
+    fn runtime_purges_alarms_when_module_is_disabled() {
+        let mut runtime = runtime();
+        runtime
+            .schedule_once(AlarmId(1), ModuleId::Sensor, 10, 0)
+            .unwrap();
+        runtime
+            .schedule_periodic(AlarmId(2), ModuleId::Sensor, 20, 0)
+            .unwrap();
+        runtime
+            .schedule_once(AlarmId(3), ModuleId::Kernel, 30, 0)
+            .unwrap();
+
+        runtime.disable_module(ModuleId::Sensor, 5).unwrap();
+
+        assert_eq!(runtime.alarms().len(), 1);
+        assert_eq!(runtime.dispatch_due_alarms(30).unwrap(), 1);
+        assert_eq!(
+            runtime.recv_for(ModuleId::Kernel),
+            Some(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Kernel,
+                MessageKind::Notification,
+                3,
+                30
+            ))
+        );
+        assert_eq!(runtime.recv_for(ModuleId::Sensor), None);
+    }
+
+    #[test]
     fn runtime_rejects_unknown_module_before_mutating_recovery() {
         let mut runtime = runtime();
         runtime.boot_to_running(10).unwrap();
@@ -1176,6 +1208,9 @@ mod tests {
                 0,
             ))
             .unwrap();
+        runtime
+            .schedule_once(AlarmId(4), ModuleId::Sensor, 30, 0)
+            .unwrap();
         let decision = DegradeDecision {
             enabled: [true, false],
             disabled: [Some(ModuleId::Sensor), None],
@@ -1201,6 +1236,7 @@ mod tests {
             Some(ModuleRunState::Disabled)
         );
         assert_eq!(runtime.mailbox().len(), 0);
+        assert_eq!(runtime.alarms().len(), 0);
         assert_eq!(runtime.state(), SystemState::Degraded);
 
         let application = runtime.apply_degrade_decision(&decision, 30).unwrap();

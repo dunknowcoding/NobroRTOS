@@ -85,6 +85,17 @@ impl<const N: usize> AlarmQueue<N> {
         self.alarms[idx].take().ok_or(AlarmError::Missing(id))
     }
 
+    pub fn remove_for(&mut self, module: ModuleId) -> usize {
+        let mut removed = 0;
+        for slot in self.alarms.iter_mut() {
+            if slot.map(|alarm| alarm.module == module).unwrap_or(false) {
+                *slot = None;
+                removed += 1;
+            }
+        }
+        removed
+    }
+
     pub fn pop_due(&mut self, now_us: u64) -> Option<Alarm> {
         let idx = self.next_due_index(now_us)?;
         let mut alarm = self.alarms[idx].take()?;
@@ -248,5 +259,27 @@ mod tests {
             queue.schedule_periodic(AlarmId(2), ModuleId::Radio, 0, 0),
             Err(AlarmError::InvalidPeriod(AlarmId(2)))
         );
+    }
+
+    #[test]
+    fn remove_for_clears_module_alarms() {
+        let mut queue = AlarmQueue::<3>::new();
+        queue
+            .schedule_once(AlarmId(1), ModuleId::Sensor, 10, 0)
+            .unwrap();
+        queue
+            .schedule_periodic(AlarmId(2), ModuleId::Sensor, 20, 0)
+            .unwrap();
+        queue
+            .schedule_once(AlarmId(3), ModuleId::Kernel, 30, 0)
+            .unwrap();
+
+        assert_eq!(queue.remove_for(ModuleId::Sensor), 2);
+        assert_eq!(queue.len(), 1);
+        assert_eq!(
+            queue.pop_due(30),
+            Some(Alarm::once(AlarmId(3), ModuleId::Kernel, 30))
+        );
+        assert!(queue.is_empty());
     }
 }
