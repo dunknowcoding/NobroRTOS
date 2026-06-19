@@ -111,6 +111,8 @@ Fault handling is intentionally small:
   failures can be diagnosed without dynamic logging.
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
+- `HealthReport` turns supervisor snapshots into fixed-layout host-readable
+  records with the same checksum discipline as eval and admission reports.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
