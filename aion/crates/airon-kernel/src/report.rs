@@ -2,7 +2,8 @@
 
 use crate::{
     manifest::module_code, Action, EventKind, EventLog, EventPayload, EventRecord, EventSeverity,
-    KernelError, ModuleId, Supervisor, SupervisorSnapshot, SystemBudget, SystemState,
+    KernelError, ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeGuard, Supervisor,
+    SupervisorSnapshot, SystemBudget, SystemState,
 };
 
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C; // "ARHL"
@@ -11,6 +12,8 @@ pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254; // "ARRT"
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
 pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4152_454C; // "AREL"
 pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
+pub const MODULE_RUNTIME_REPORT_MAGIC: u32 = 0x4152_4D52; // "ARMR"
+pub const MODULE_RUNTIME_REPORT_VERSION: u32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -273,6 +276,116 @@ impl RuntimeReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ModuleRuntimeReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub module_count: u32,
+    pub capacity: u32,
+    pub active_count: u32,
+    pub suspended_count: u32,
+    pub faulted_count: u32,
+    pub recovering_count: u32,
+    pub disabled_count: u32,
+    pub latest_module_tag: u32,
+    pub latest_state: u32,
+    pub latest_fault_count: u32,
+    pub latest_recovery_count: u32,
+    pub latest_change_us_lo: u32,
+    pub latest_change_us_hi: u32,
+    pub checksum: u32,
+}
+
+impl ModuleRuntimeReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            module_count: 0,
+            capacity: 0,
+            active_count: 0,
+            suspended_count: 0,
+            faulted_count: 0,
+            recovering_count: 0,
+            disabled_count: 0,
+            latest_module_tag: 0,
+            latest_state: 0,
+            latest_fault_count: 0,
+            latest_recovery_count: 0,
+            latest_change_us_lo: 0,
+            latest_change_us_hi: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_guard<const N: usize>(guard: &ModuleRuntimeGuard<N>) -> Self {
+        let mut report = Self {
+            module_count: guard.len() as u32,
+            capacity: guard.capacity() as u32,
+            active_count: guard.count_state(ModuleRunState::Active) as u32,
+            suspended_count: guard.count_state(ModuleRunState::Suspended) as u32,
+            faulted_count: guard.count_state(ModuleRunState::Faulted) as u32,
+            recovering_count: guard.count_state(ModuleRunState::Recovering) as u32,
+            disabled_count: guard.count_state(ModuleRunState::Disabled) as u32,
+            ..Self::zeroed()
+        };
+        if let Some(entry) = guard.latest_changed() {
+            report.write_latest(entry);
+        }
+        report.seal();
+        report
+    }
+
+    fn write_latest(&mut self, entry: ModuleRuntimeEntry) {
+        self.latest_module_tag = module_tag(entry.module);
+        self.latest_state = module_run_state_code(entry.state);
+        self.latest_fault_count = entry.fault_count;
+        self.latest_recovery_count = entry.recovery_count;
+        self.latest_change_us_lo = entry.last_change_us as u32;
+        self.latest_change_us_hi = (entry.last_change_us >> 32) as u32;
+    }
+
+    pub fn latest_change_us(&self) -> u64 {
+        (u64::from(self.latest_change_us_hi) << 32) | u64::from(self.latest_change_us_lo)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = MODULE_RUNTIME_REPORT_MAGIC;
+        self.version = MODULE_RUNTIME_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == MODULE_RUNTIME_REPORT_MAGIC
+            && self.version == MODULE_RUNTIME_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.module_count
+            ^ self.capacity
+            ^ self.active_count
+            ^ self.suspended_count
+            ^ self.faulted_count
+            ^ self.recovering_count
+            ^ self.disabled_count
+            ^ self.latest_module_tag
+            ^ self.latest_state
+            ^ self.latest_fault_count
+            ^ self.latest_recovery_count
+            ^ self.latest_change_us_lo
+            ^ self.latest_change_us_hi
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EventLogReport {
     pub magic: u32,
     pub version: u32,
@@ -394,6 +507,17 @@ pub const fn state_code(state: SystemState) -> u32 {
     }
 }
 
+pub const fn module_run_state_code(state: ModuleRunState) -> u32 {
+    match state {
+        ModuleRunState::Registered => 1,
+        ModuleRunState::Active => 2,
+        ModuleRunState::Suspended => 3,
+        ModuleRunState::Faulted => 4,
+        ModuleRunState::Recovering => 5,
+        ModuleRunState::Disabled => 6,
+    }
+}
+
 pub const fn error_code(error: KernelError) -> u32 {
     match error {
         KernelError::LeaseConflict => 1,
@@ -450,7 +574,7 @@ pub const fn payload_fields(payload: EventPayload) -> (u32, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EventLog, EventPayload, FaultThresholds, Supervisor};
+    use crate::{EventLog, EventPayload, FaultThresholds, ModuleRuntimeGuard, Supervisor};
 
     #[test]
     fn health_report_is_built_from_supervisor_snapshot() {
@@ -530,6 +654,46 @@ mod tests {
         assert!(report.verify_checksum());
         report.module_count += 1;
         assert!(!report.verify_checksum());
+    }
+
+    #[test]
+    fn module_runtime_report_summarizes_guard() {
+        let mut guard = ModuleRuntimeGuard::<3>::new();
+        guard.register(ModuleId::Kernel, 0x1_0000_0000).unwrap();
+        guard.register(ModuleId::Sensor, 0x1_0000_0010).unwrap();
+        guard.register(ModuleId::Radio, 0x1_0000_0020).unwrap();
+        guard.activate_all(0x1_0000_0040).unwrap();
+        guard.suspend(ModuleId::Radio, 0x1_0000_0080).unwrap();
+        guard
+            .note_recovery_outcome(
+                crate::RecoveryOutcome {
+                    module: ModuleId::Sensor,
+                    error: KernelError::SensorReadFail,
+                    action: Action::NotifyUserTask,
+                    state: SystemState::Degraded,
+                },
+                0x1_0000_00C0,
+            )
+            .unwrap();
+
+        let report = ModuleRuntimeReport::from_guard(&guard);
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, MODULE_RUNTIME_REPORT_MAGIC);
+        assert_eq!(report.module_count, 3);
+        assert_eq!(report.capacity, 3);
+        assert_eq!(report.active_count, 1);
+        assert_eq!(report.suspended_count, 1);
+        assert_eq!(report.faulted_count, 1);
+        assert_eq!(report.recovering_count, 0);
+        assert_eq!(report.disabled_count, 0);
+        assert_eq!(report.latest_module_tag, module_tag(ModuleId::Sensor));
+        assert_eq!(
+            report.latest_state,
+            module_run_state_code(ModuleRunState::Faulted)
+        );
+        assert_eq!(report.latest_fault_count, 1);
+        assert_eq!(report.latest_change_us(), 0x1_0000_00C0);
     }
 
     #[test]

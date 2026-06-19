@@ -130,6 +130,27 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         self.entry(module).map(|entry| entry.state)
     }
 
+    pub fn count_state(&self, state: ModuleRunState) -> usize {
+        self.entries
+            .iter()
+            .flatten()
+            .filter(|entry| entry.state == state)
+            .count()
+    }
+
+    pub fn latest_changed(&self) -> Option<ModuleRuntimeEntry> {
+        let mut latest = None;
+        for entry in self.entries.iter().flatten() {
+            if latest
+                .map(|current: ModuleRuntimeEntry| entry.last_change_us >= current.last_change_us)
+                .unwrap_or(true)
+            {
+                latest = Some(*entry);
+            }
+        }
+        latest
+    }
+
     pub fn entry(&self, module: ModuleId) -> Option<ModuleRuntimeEntry> {
         self.entries
             .iter()
@@ -140,6 +161,10 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
 
     pub fn len(&self) -> usize {
         self.entries.iter().flatten().count()
+    }
+
+    pub const fn capacity(&self) -> usize {
+        N
     }
 
     pub fn is_empty(&self) -> bool {
@@ -280,6 +305,8 @@ mod tests {
         assert_eq!(entry.state, ModuleRunState::Recovering);
         assert_eq!(entry.fault_count, 1);
         assert_eq!(entry.recovery_count, 1);
+        assert_eq!(guard.count_state(ModuleRunState::Recovering), 1);
+        assert_eq!(guard.latest_changed(), Some(entry));
 
         guard.complete_recovery(ModuleId::Radio, 20).unwrap();
         assert_eq!(guard.state(ModuleId::Radio), Some(ModuleRunState::Active));

@@ -18,6 +18,9 @@ pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C;
 pub const EVENT_LOG_REPORT_SYMBOL: &str = "AIRON_EVENT_LOG_REPORT";
 pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4152_454C;
 pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
+pub const MODULE_RUNTIME_REPORT_SYMBOL: &str = "AIRON_MODULE_RUNTIME_REPORT";
+pub const MODULE_RUNTIME_REPORT_MAGIC: u32 = 0x4152_4D52;
+pub const MODULE_RUNTIME_REPORT_VERSION: u32 = 1;
 pub const RUNTIME_REPORT_SYMBOL: &str = "AIRON_RUNTIME_REPORT";
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254;
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
@@ -997,6 +1000,108 @@ impl EventLogReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ModuleRuntimeReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub module_count: u32,
+    pub capacity: u32,
+    pub active_count: u32,
+    pub suspended_count: u32,
+    pub faulted_count: u32,
+    pub recovering_count: u32,
+    pub disabled_count: u32,
+    pub latest_module_tag: u32,
+    pub latest_state: u32,
+    pub latest_fault_count: u32,
+    pub latest_recovery_count: u32,
+    pub latest_change_us_lo: u32,
+    pub latest_change_us_hi: u32,
+    pub checksum: u32,
+}
+
+impl ModuleRuntimeReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            module_count: 0,
+            capacity: 0,
+            active_count: 0,
+            suspended_count: 0,
+            faulted_count: 0,
+            recovering_count: 0,
+            disabled_count: 0,
+            latest_module_tag: 0,
+            latest_state: 0,
+            latest_fault_count: 0,
+            latest_recovery_count: 0,
+            latest_change_us_lo: 0,
+            latest_change_us_hi: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn latest_change_us(&self) -> u64 {
+        (u64::from(self.latest_change_us_hi) << 32) | u64::from(self.latest_change_us_lo)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = MODULE_RUNTIME_REPORT_MAGIC;
+        self.version = MODULE_RUNTIME_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == MODULE_RUNTIME_REPORT_MAGIC
+            && self.version == MODULE_RUNTIME_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != MODULE_RUNTIME_REPORT_MAGIC
+            || self.version != MODULE_RUNTIME_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.verify_checksum() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.module_count
+            ^ self.capacity
+            ^ self.active_count
+            ^ self.suspended_count
+            ^ self.faulted_count
+            ^ self.recovering_count
+            ^ self.disabled_count
+            ^ self.latest_module_tag
+            ^ self.latest_state
+            ^ self.latest_fault_count
+            ^ self.latest_recovery_count
+            ^ self.latest_change_us_lo
+            ^ self.latest_change_us_hi
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HealthReport {
     pub magic: u32,
     pub version: u32,
@@ -1133,6 +1238,12 @@ impl_host_report!(
     EVENT_LOG_REPORT_VERSION
 );
 impl_host_report!(
+    ModuleRuntimeReport,
+    MODULE_RUNTIME_REPORT_SYMBOL,
+    MODULE_RUNTIME_REPORT_MAGIC,
+    MODULE_RUNTIME_REPORT_VERSION
+);
+impl_host_report!(
     HealthReport,
     HEALTH_REPORT_SYMBOL,
     HEALTH_REPORT_MAGIC,
@@ -1173,6 +1284,9 @@ mod tests {
         assert_eq!(EVENT_LOG_REPORT_SYMBOL, "AIRON_EVENT_LOG_REPORT");
         assert_eq!(EVENT_LOG_REPORT_MAGIC, 0x4152_454C);
         assert_eq!(EVENT_LOG_REPORT_VERSION, 1);
+        assert_eq!(MODULE_RUNTIME_REPORT_SYMBOL, "AIRON_MODULE_RUNTIME_REPORT");
+        assert_eq!(MODULE_RUNTIME_REPORT_MAGIC, 0x4152_4D52);
+        assert_eq!(MODULE_RUNTIME_REPORT_VERSION, 1);
         assert_eq!(RUNTIME_REPORT_SYMBOL, "AIRON_RUNTIME_REPORT");
         assert_eq!(RUNTIME_REPORT_MAGIC, 0x4152_5254);
         assert_eq!(RUNTIME_REPORT_VERSION, 1);
@@ -1196,6 +1310,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(EVENT_LOG_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(MODULE_RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(BOARD_PROFILE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MANIFEST_REPORT_SYMBOL));
@@ -1203,6 +1318,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x41524250"));
         assert!(HOST_CONTRACT_JSON.contains("0x4152454C"));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524D52"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524D46"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
@@ -1656,6 +1772,38 @@ mod tests {
     }
 
     #[test]
+    fn module_runtime_report_seals_and_verifies() {
+        let mut report = ModuleRuntimeReport {
+            module_count: 4,
+            capacity: 8,
+            active_count: 2,
+            suspended_count: 1,
+            faulted_count: 1,
+            recovering_count: 0,
+            disabled_count: 0,
+            latest_module_tag: 5,
+            latest_state: 4,
+            latest_fault_count: 3,
+            latest_recovery_count: 1,
+            ..ModuleRuntimeReport::zeroed()
+        };
+        report.latest_change_us_lo = 0x89AB_CDEF;
+        report.latest_change_us_hi = 0x0123_4567;
+        report.seal();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.latest_change_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.status(), ReportStatus::Pass);
+        assert_eq!(
+            <ModuleRuntimeReport as HostReport>::SYMBOL,
+            MODULE_RUNTIME_REPORT_SYMBOL
+        );
+
+        report.faulted_count += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(BoardProfileReport::zeroed().status(), ReportStatus::Missing);
@@ -1666,6 +1814,10 @@ mod tests {
         );
         assert_eq!(HealthReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(EventLogReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(
+            ModuleRuntimeReport::zeroed().status(),
+            ReportStatus::Missing
+        );
         assert_eq!(RuntimeReport::zeroed().status(), ReportStatus::Missing);
 
         let mut report = AdmissionReport {

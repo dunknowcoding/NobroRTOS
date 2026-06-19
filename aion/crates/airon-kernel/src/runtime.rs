@@ -5,9 +5,9 @@ use crate::{
     Capability, CapabilityGrantError, EventLogReport, EventSeverity, FaultThresholds, HealthReport,
     KernelError, KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind,
     ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
-    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
-    RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
-    SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
+    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
+    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -455,6 +455,10 @@ impl<
         EventLogReport::from_event_log(self.recovery.events())
     }
 
+    pub fn module_runtime_report(&self) -> ModuleRuntimeReport {
+        ModuleRuntimeReport::from_guard(&self.modules)
+    }
+
     pub const fn state(&self) -> SystemState {
         self.recovery.state()
     }
@@ -868,6 +872,29 @@ mod tests {
         assert_eq!(entry.state, ModuleRunState::Faulted);
         assert_eq!(entry.fault_count, 1);
         assert_eq!(entry.recovery_count, 0);
+    }
+
+    #[test]
+    fn runtime_exports_module_runtime_report() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+
+        let report = runtime.module_runtime_report();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.module_count, runtime.plan().module_count() as u32);
+        assert_eq!(report.faulted_count, 1);
+        assert_eq!(
+            report.latest_module_tag,
+            crate::module_tag(ModuleId::Sensor)
+        );
+        assert_eq!(
+            report.latest_state,
+            crate::module_run_state_code(ModuleRunState::Faulted)
+        );
     }
 
     #[test]

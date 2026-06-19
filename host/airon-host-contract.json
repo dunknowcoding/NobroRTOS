@@ -97,6 +97,20 @@
       "4": "pair"
     }
   },
+  "module_runtime_report": {
+    "symbol": "AIRON_MODULE_RUNTIME_REPORT",
+    "magic": "0x41524D52",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest module state timestamp split into lo/hi",
+    "state_codes": {
+      "1": "registered",
+      "2": "active",
+      "3": "suspended",
+      "4": "faulted",
+      "5": "recovering",
+      "6": "disabled"
+    }
+  },
   "runtime_report": {
     "symbol": "AIRON_RUNTIME_REPORT",
     "magic": "0x41525254",

@@ -64,9 +64,10 @@ pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{RecoveryCoordinator, RecoveryError, RecoveryOutcome};
 pub use report::{
-    action_code, error_code, event_kind_code, module_tag, payload_fields, severity_code,
-    state_code, EventLogReport, HealthReport, RuntimeReport, RuntimeReportInput,
-    EVENT_LOG_REPORT_MAGIC, EVENT_LOG_REPORT_VERSION, HEALTH_REPORT_MAGIC, HEALTH_REPORT_VERSION,
+    action_code, error_code, event_kind_code, module_run_state_code, module_tag, payload_fields,
+    severity_code, state_code, EventLogReport, HealthReport, ModuleRuntimeReport, RuntimeReport,
+    RuntimeReportInput, EVENT_LOG_REPORT_MAGIC, EVENT_LOG_REPORT_VERSION, HEALTH_REPORT_MAGIC,
+    HEALTH_REPORT_VERSION, MODULE_RUNTIME_REPORT_MAGIC, MODULE_RUNTIME_REPORT_VERSION,
     RUNTIME_REPORT_MAGIC, RUNTIME_REPORT_VERSION,
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
