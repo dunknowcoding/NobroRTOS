@@ -4,7 +4,8 @@ use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, EventLogReport, EventSeverity, FaultThresholds, HealthReport,
     KernelError, KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind,
-    ModuleId, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
+    ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
+    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
     RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
     SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
@@ -15,6 +16,7 @@ pub enum RuntimeError {
     Capability(CapabilityGrantError),
     Kv(KvError),
     Mailbox(MailboxError),
+    Module(ModuleRuntimeError),
     Quota(QuotaError),
     Recovery(RecoveryError),
     Watchdog(WatchdogError),
@@ -41,6 +43,12 @@ impl From<KvError> for RuntimeError {
 impl From<MailboxError> for RuntimeError {
     fn from(error: MailboxError) -> Self {
         Self::Mailbox(error)
+    }
+}
+
+impl From<ModuleRuntimeError> for RuntimeError {
+    fn from(error: ModuleRuntimeError) -> Self {
+        Self::Module(error)
     }
 }
 
@@ -138,6 +146,7 @@ pub struct Runtime<
     kv: KvStore<KV>,
     recovery: RecoveryCoordinator<HEALTH, LOG>,
     watchdog: Watchdog<HEALTH>,
+    modules: ModuleRuntimeGuard<QUOTAS>,
 }
 
 impl<
@@ -150,10 +159,8 @@ impl<
         const LOG: usize,
     > Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
 {
-    pub const fn from_plan(
-        plan: AdmissionPlan<STARTUP, QUOTAS>,
-        thresholds: FaultThresholds,
-    ) -> Self {
+    pub fn from_plan(plan: AdmissionPlan<STARTUP, QUOTAS>, thresholds: FaultThresholds) -> Self {
+        let modules = ModuleRuntimeGuard::from_startup_plan(&plan.startup);
         Self {
             plan,
             mailbox: Mailbox::new(),
@@ -161,6 +168,7 @@ impl<
             kv: KvStore::new(),
             recovery: RecoveryCoordinator::new(thresholds),
             watchdog: Watchdog::new(),
+            modules,
         }
     }
 
@@ -192,6 +200,7 @@ impl<
             .transition(SystemState::ValidateManifest, now_us)?;
         self.recovery.transition(SystemState::InitDrivers, now_us)?;
         self.recovery.transition(SystemState::Running, now_us)?;
+        self.modules.activate_all(now_us)?;
         Ok(())
     }
 
@@ -328,9 +337,12 @@ impl<
         error: KernelError,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
-        self.recovery
+        let outcome = self
+            .recovery
             .record_error(module, error, now_us)
-            .map_err(RuntimeError::from)
+            .map_err(RuntimeError::from)?;
+        self.modules.note_recovery_outcome(outcome, now_us)?;
+        Ok(outcome)
     }
 
     pub fn record_watchdog_expired(
@@ -338,9 +350,12 @@ impl<
         module: ModuleId,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
-        self.recovery
+        let outcome = self
+            .recovery
             .record_watchdog_expired(module, now_us)
-            .map_err(RuntimeError::from)
+            .map_err(RuntimeError::from)?;
+        self.modules.note_recovery_outcome(outcome, now_us)?;
+        Ok(outcome)
     }
 
     pub fn register_watchdog(
@@ -379,7 +394,31 @@ impl<
         self.recovery.transition(SystemState::InitDrivers, now_us)?;
         self.recovery.transition(SystemState::Running, now_us)?;
         self.record_ok(module, now_us);
+        self.modules.complete_recovery(module, now_us)?;
         Ok(())
+    }
+
+    pub fn suspend_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.modules.suspend(module, now_us)?;
+        Ok(())
+    }
+
+    pub fn resume_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.modules.resume(module, now_us)?;
+        Ok(())
+    }
+
+    pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.modules.disable(module, now_us)?;
+        Ok(())
+    }
+
+    pub fn module_state(&self, module: ModuleId) -> Option<ModuleRunState> {
+        self.modules.state(module)
+    }
+
+    pub fn module_runtime_entry(&self, module: ModuleId) -> Option<ModuleRuntimeEntry> {
+        self.modules.entry(module)
     }
 
     pub fn health_report(&self, module: ModuleId) -> Option<HealthReport> {
@@ -805,6 +844,77 @@ mod tests {
         assert_eq!(report.latest_payload_kind, 4);
         assert_eq!(report.latest_payload0, SystemState::Running as u32);
         assert_eq!(report.latest_payload1, SystemState::Degraded as u32);
+    }
+
+    #[test]
+    fn runtime_tracks_module_state_from_boot_to_fault() {
+        let mut runtime = runtime();
+
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Registered)
+        );
+        runtime.boot_to_running(10).unwrap();
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Active)
+        );
+
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+
+        let entry = runtime.module_runtime_entry(ModuleId::Sensor).unwrap();
+        assert_eq!(entry.state, ModuleRunState::Faulted);
+        assert_eq!(entry.fault_count, 1);
+        assert_eq!(entry.recovery_count, 0);
+    }
+
+    #[test]
+    fn runtime_marks_reboot_recovery_and_completion() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 30)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+
+        let entry = runtime.module_runtime_entry(ModuleId::Sensor).unwrap();
+        assert_eq!(entry.state, ModuleRunState::Recovering);
+        assert_eq!(entry.fault_count, 3);
+        assert_eq!(entry.recovery_count, 1);
+
+        runtime
+            .complete_module_recovery(ModuleId::Sensor, 50)
+            .unwrap();
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Active)
+        );
+    }
+
+    #[test]
+    fn runtime_exposes_manual_module_suspend_resume_disable() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        runtime.suspend_module(ModuleId::Sensor, 20).unwrap();
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Suspended)
+        );
+        runtime.resume_module(ModuleId::Sensor, 30).unwrap();
+        runtime.disable_module(ModuleId::Sensor, 40).unwrap();
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Disabled)
+        );
     }
 
     #[test]

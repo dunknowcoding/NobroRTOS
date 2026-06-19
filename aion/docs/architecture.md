@@ -102,6 +102,9 @@ Fault handling is intentionally small:
   recovery decision leaves a bounded audit trail.
 - `Watchdog` tracks module heartbeats in software so liveness rules can be
   tested without binding AIRON to one hardware watchdog block.
+- `ModuleRuntimeGuard` tracks fixed-slot module states across Active,
+  Suspended, Faulted, Recovering, and Disabled paths so recovery and later
+  device-power policy share one control-plane model.
 - `Lifecycle` defines legal boot, running, degraded, recovering, and halted
   transitions so recovery paths are explicit and testable.
 - `DegradePlanner` keeps System and HardRealtime modules enabled while shedding

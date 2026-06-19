@@ -19,6 +19,7 @@ pub mod kv;
 pub mod lifecycle;
 pub mod mailbox;
 pub mod manifest;
+pub mod module_runtime;
 pub mod pool;
 pub mod quota;
 pub mod recovery;
@@ -55,6 +56,9 @@ pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,
     DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec, SystemBudget,
     SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC, MANIFEST_REPORT_VERSION,
+};
+pub use module_runtime::{
+    ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
