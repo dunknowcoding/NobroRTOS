@@ -46,6 +46,9 @@ Board compatibility must be data-first:
 - Hardware parity checks read registers back into snapshot structs.
 - Host scripts consume `airon-host` constants or `host/airon-host-contract.json`
   rather than duplicating magic values.
+- Host tools should decode module tags and capability bits through the shared
+  `airon-host` helpers or the JSON contract, so reports stay readable as more
+  boards and adapters are added.
 - Host tools should summarize boot diagnostics in this order: board profile,
   manifest, adapter compatibility, admission, then runtime. This keeps
   first-fault guidance stable as more reports are added.

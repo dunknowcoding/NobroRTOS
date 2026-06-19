@@ -269,6 +269,62 @@ pub const fn admission_error_label(code: u32) -> Option<&'static str> {
     }
 }
 
+pub const fn module_tag_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("kernel"),
+        2 => Some("hal"),
+        3 => Some("bus"),
+        4 => Some("radio"),
+        5 => Some("sensor"),
+        6 => Some("actuator"),
+        7 => Some("stream"),
+        8 => Some("crypto"),
+        0x100..=0x1FF => Some("app"),
+        _ => None,
+    }
+}
+
+pub const fn app_module_tag_index(code: u32) -> Option<u8> {
+    match code {
+        0x100..=0x1FF => Some((code - 0x100) as u8),
+        _ => None,
+    }
+}
+
+pub const fn capability_bit_label(bit: u32) -> Option<&'static str> {
+    match bit {
+        0 => Some("timebase"),
+        1 => Some("deadline_timer"),
+        2 => Some("event_capture"),
+        3 => Some("bus0"),
+        4 => Some("bus1"),
+        5 => Some("radio"),
+        6 => Some("servo_pwm"),
+        7 => Some("stream"),
+        8 => Some("crypto"),
+        9 => Some("sample_pool"),
+        10 => Some("host_report"),
+        _ => None,
+    }
+}
+
+pub const fn capability_mask_label(mask: u32) -> Option<&'static str> {
+    match mask {
+        0x0000_0001 => Some("timebase"),
+        0x0000_0002 => Some("deadline_timer"),
+        0x0000_0004 => Some("event_capture"),
+        0x0000_0008 => Some("bus0"),
+        0x0000_0010 => Some("bus1"),
+        0x0000_0020 => Some("radio"),
+        0x0000_0040 => Some("servo_pwm"),
+        0x0000_0080 => Some("stream"),
+        0x0000_0100 => Some("crypto"),
+        0x0000_0200 => Some("sample_pool"),
+        0x0000_0400 => Some("host_report"),
+        _ => None,
+    }
+}
+
 pub const fn runtime_state_label(code: u32) -> Option<&'static str> {
     match code {
         0 => Some("cold_boot"),
@@ -665,6 +721,14 @@ impl ManifestReport {
         }
     }
 
+    pub const fn error_module_label(&self) -> Option<&'static str> {
+        module_tag_label(self.error_module_tag)
+    }
+
+    pub const fn error_capability_label(&self) -> Option<&'static str> {
+        capability_mask_label(self.error_capability_bits)
+    }
+
     fn compute_checksum(&self) -> u32 {
         self.magic
             ^ self.version
@@ -756,6 +820,14 @@ impl AdapterCompatibilityReport {
         } else {
             ReportStatus::Fail(self.error_code)
         }
+    }
+
+    pub const fn error_module_label(&self) -> Option<&'static str> {
+        module_tag_label(self.error_module_tag)
+    }
+
+    pub const fn error_capability_label(&self) -> Option<&'static str> {
+        capability_mask_label(self.error_capability_bits)
     }
 
     fn compute_checksum(&self) -> u32 {
@@ -1039,6 +1111,10 @@ impl EventLogReport {
         event_payload_kind_label(self.latest_payload_kind)
     }
 
+    pub const fn latest_module_label(&self) -> Option<&'static str> {
+        module_tag_label(self.latest_module_tag)
+    }
+
     pub fn seal(&mut self) {
         self.magic = EVENT_LOG_REPORT_MAGIC;
         self.version = EVENT_LOG_REPORT_VERSION;
@@ -1140,6 +1216,10 @@ impl ModuleRuntimeReport {
 
     pub const fn latest_state_label(&self) -> Option<&'static str> {
         module_runtime_state_label(self.latest_state)
+    }
+
+    pub const fn latest_module_label(&self) -> Option<&'static str> {
+        module_tag_label(self.latest_module_tag)
     }
 
     pub fn seal(&mut self) {
@@ -1337,6 +1417,10 @@ impl HealthReport {
         (u64::from(self.last_seen_us_hi) << 32) | u64::from(self.last_seen_us_lo)
     }
 
+    pub const fn module_label(&self) -> Option<&'static str> {
+        module_tag_label(self.module_tag)
+    }
+
     pub fn seal(&mut self) {
         self.magic = HEALTH_REPORT_MAGIC;
         self.version = Self::VERSION;
@@ -1521,6 +1605,8 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
         assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"module_tags\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"capability_bits\""));
         assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
         assert!(HOST_CONTRACT_JSON.contains("\"budget_exceeded\""));
@@ -1595,6 +1681,18 @@ mod tests {
         assert_eq!(adapter_compat_error_label(99), None);
         assert_eq!(admission_error_label(6), Some("unknown_startup_node"));
         assert_eq!(admission_error_label(99), None);
+        assert_eq!(module_tag_label(1), Some("kernel"));
+        assert_eq!(module_tag_label(5), Some("sensor"));
+        assert_eq!(module_tag_label(0x107), Some("app"));
+        assert_eq!(module_tag_label(99), None);
+        assert_eq!(app_module_tag_index(0x107), Some(7));
+        assert_eq!(app_module_tag_index(5), None);
+        assert_eq!(capability_bit_label(0), Some("timebase"));
+        assert_eq!(capability_bit_label(10), Some("host_report"));
+        assert_eq!(capability_bit_label(99), None);
+        assert_eq!(capability_mask_label(0x0000_0008), Some("bus0"));
+        assert_eq!(capability_mask_label(0x0000_0400), Some("host_report"));
+        assert_eq!(capability_mask_label(0x0000_0408), None);
         assert_eq!(runtime_state_label(3), Some("running"));
         assert_eq!(runtime_state_label(6), Some("halted"));
         assert_eq!(runtime_state_label(99), None);
@@ -1650,6 +1748,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.last_seen_us(), 0x1234_5678_9ABC_DEF0);
+        assert_eq!(report.module_label(), Some("radio"));
 
         report.total_errors += 1;
         assert!(!report.verify_checksum());
@@ -1739,6 +1838,8 @@ mod tests {
         fail.seal();
 
         assert_eq!(fail.status(), ReportStatus::Fail(4));
+        assert_eq!(fail.error_module_label(), Some("sensor"));
+        assert_eq!(fail.error_capability_label(), Some("deadline_timer"));
         fail.error_code = 5;
         assert_eq!(fail.status(), ReportStatus::Corrupt);
     }
@@ -1795,6 +1896,8 @@ mod tests {
         fail.seal();
 
         assert_eq!(fail.status(), ReportStatus::Fail(3));
+        assert_eq!(fail.error_module_label(), Some("bus"));
+        assert_eq!(fail.error_capability_label(), Some("deadline_timer"));
         fail.error_capability_bits = 0x04;
         assert_eq!(fail.status(), ReportStatus::Corrupt);
     }
@@ -1977,6 +2080,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.latest_at_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.latest_module_label(), Some("sensor"));
         assert_eq!(report.latest_severity_label(), Some("error"));
         assert_eq!(report.latest_kind_label(), Some("health"));
         assert_eq!(report.latest_payload_kind_label(), Some("error"));
@@ -2012,6 +2116,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.latest_change_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.latest_module_label(), Some("sensor"));
         assert_eq!(report.latest_state_label(), Some("faulted"));
         assert_eq!(report.status(), ReportStatus::Pass);
         assert_eq!(
