@@ -81,6 +81,15 @@ impl<const N: usize> Watchdog<N> {
         count
     }
 
+    pub fn remove(&mut self, module: ModuleId) -> Option<WatchdogEntry> {
+        for slot in self.entries.iter_mut() {
+            if slot.map(|entry| entry.module == module).unwrap_or(false) {
+                return slot.take();
+            }
+        }
+        None
+    }
+
     pub fn get(&self, module: ModuleId) -> Option<WatchdogEntry> {
         self.entries
             .iter()
@@ -143,6 +152,33 @@ mod tests {
         assert_eq!(
             watchdog.register(ModuleId::Actuator, 100, 0),
             Err(WatchdogError::Duplicate(ModuleId::Actuator))
+        );
+    }
+
+    #[test]
+    fn remove_clears_module_watchdog() {
+        let mut watchdog = Watchdog::<2>::new();
+        watchdog.register(ModuleId::Sensor, 100, 0).unwrap();
+        watchdog.register(ModuleId::Radio, 200, 0).unwrap();
+
+        assert_eq!(
+            watchdog.remove(ModuleId::Sensor),
+            Some(WatchdogEntry {
+                module: ModuleId::Sensor,
+                timeout_us: 100,
+                last_beat_us: 0,
+                missed: 0,
+            })
+        );
+        assert_eq!(watchdog.get(ModuleId::Sensor), None);
+        assert_eq!(
+            watchdog.get(ModuleId::Radio),
+            Some(WatchdogEntry {
+                module: ModuleId::Radio,
+                timeout_us: 200,
+                last_beat_us: 0,
+                missed: 0,
+            })
         );
     }
 }

@@ -104,7 +104,9 @@ Fault handling is intentionally small:
 - `Supervisor` ties health counters and event records together so every
   recovery decision leaves a bounded audit trail.
 - `Watchdog` tracks module heartbeats in software so liveness rules can be
-  tested without binding AIRON to one hardware watchdog block.
+  tested without binding AIRON to one hardware watchdog block. Disabling a
+  module removes its watchdog registration so later sweeps cannot revive stale
+  liveness faults.
 - `ModuleRuntimeGuard` tracks fixed-slot module states across Active,
   Suspended, Faulted, Recovering, and Disabled paths so recovery and later
   device-power policy share one control-plane model.
@@ -121,7 +123,8 @@ Fault handling is intentionally small:
   boot logic is involved.
 - `QuotaLedger` converts manifest budgets into fixed-capacity runtime
   accounting, so modules can reserve and release RAM, flash, and pool slots
-  without heap allocation.
+  without heap allocation. Disabling a module resets its runtime quota usage so
+  degraded mode returns resources to the system profile immediately.
 - `CapabilityGrantTable` derives runtime authorization from manifest
   requirements and ownership, keeping module access checks fixed-capacity and
   testable.

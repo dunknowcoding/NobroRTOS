@@ -104,6 +104,15 @@ impl<const N: usize> QuotaLedger<N> {
         Ok(())
     }
 
+    pub fn reset_usage(&mut self, module: ModuleId) -> Result<SystemBudget, QuotaError> {
+        let Some(entry) = self.find_mut(module) else {
+            return Err(QuotaError::MissingModule(module));
+        };
+        let released = entry.used;
+        entry.used = SystemBudget::ZERO;
+        Ok(released)
+    }
+
     pub fn usage(&self, module: ModuleId) -> Option<SystemBudget> {
         self.find(module).map(|entry| entry.used)
     }
@@ -226,6 +235,24 @@ mod tests {
                 release: SystemBudget::new(1, 0, 0),
             })
         );
+    }
+
+    #[test]
+    fn ledger_can_reset_module_usage() {
+        let mut ledger = QuotaLedger::<1>::new();
+        ledger
+            .register(ModuleId::Sensor, SystemBudget::new(1024, 256, 2))
+            .unwrap();
+        ledger
+            .reserve(ModuleId::Sensor, SystemBudget::new(512, 128, 1))
+            .unwrap();
+
+        assert_eq!(
+            ledger.reset_usage(ModuleId::Sensor),
+            Ok(SystemBudget::new(512, 128, 1))
+        );
+        assert_eq!(ledger.usage(ModuleId::Sensor), Some(SystemBudget::ZERO));
+        assert_eq!(ledger.total_used(), SystemBudget::ZERO);
     }
 
     #[test]

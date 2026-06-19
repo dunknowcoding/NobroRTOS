@@ -461,8 +461,7 @@ impl<
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
         self.ensure_module_admitted(module)?;
         self.modules.disable(module, now_us)?;
-        self.alarms.remove_for(module);
-        self.mailbox.remove_for(module);
+        self.cleanup_disabled_module(module);
         Ok(())
     }
 
@@ -504,8 +503,7 @@ impl<
                 continue;
             }
             self.modules.disable(module, now_us)?;
-            self.alarms.remove_for(module);
-            self.mailbox.remove_for(module);
+            self.cleanup_disabled_module(module);
             application.disabled += 1;
         }
 
@@ -622,6 +620,13 @@ impl<
         self.ensure_module_enabled(message.from)?;
         self.ensure_module_enabled(message.to)?;
         Ok(())
+    }
+
+    fn cleanup_disabled_module(&mut self, module: ModuleId) {
+        self.alarms.remove_for(module);
+        self.mailbox.remove_for(module);
+        self.watchdog.remove(module);
+        let _ = self.plan.quotas.reset_usage(module);
     }
 }
 
@@ -1169,6 +1174,25 @@ mod tests {
     }
 
     #[test]
+    fn runtime_releases_watchdog_and_quota_when_module_is_disabled() {
+        let mut runtime = runtime();
+        runtime.register_watchdog(ModuleId::Sensor, 100, 0).unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(128, 64, 1))
+            .unwrap();
+
+        runtime.disable_module(ModuleId::Sensor, 10).unwrap();
+
+        assert_eq!(runtime.watchdog_entry(ModuleId::Sensor), None);
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
+        assert_eq!(runtime.total_quota_used(), SystemBudget::ZERO);
+        assert!(runtime.sweep_watchdogs(200).unwrap().is_empty());
+    }
+
+    #[test]
     fn runtime_rejects_disabled_modules_for_active_operations() {
         let mut runtime = runtime();
         runtime.disable_module(ModuleId::Sensor, 10).unwrap();
@@ -1273,6 +1297,10 @@ mod tests {
         runtime
             .schedule_once(AlarmId(4), ModuleId::Sensor, 30, 0)
             .unwrap();
+        runtime.register_watchdog(ModuleId::Sensor, 100, 0).unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(128, 64, 1))
+            .unwrap();
         let decision = DegradeDecision {
             enabled: [true, false],
             disabled: [Some(ModuleId::Sensor), None],
@@ -1299,6 +1327,11 @@ mod tests {
         );
         assert_eq!(runtime.mailbox().len(), 0);
         assert_eq!(runtime.alarms().len(), 0);
+        assert_eq!(runtime.watchdog_entry(ModuleId::Sensor), None);
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
         assert_eq!(runtime.state(), SystemState::Degraded);
 
         let application = runtime.apply_degrade_decision(&decision, 30).unwrap();
