@@ -243,6 +243,7 @@ impl<
     }
 
     pub fn authorize(&self, module: ModuleId, capability: Capability) -> Result<(), RuntimeError> {
+        self.ensure_module_enabled(module)?;
         self.plan.grants.authorize(module, capability)?;
         Ok(())
     }
@@ -1237,6 +1238,12 @@ mod tests {
         );
         assert_eq!(
             runtime.register_watchdog(ModuleId::Sensor, 100, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.authorize(ModuleId::Sensor, Capability::SamplePool),
             Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
                 ModuleId::Sensor
             )))

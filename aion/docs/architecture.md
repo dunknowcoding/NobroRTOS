@@ -128,7 +128,8 @@ Fault handling is intentionally small:
   quota mutations are rejected for disabled modules.
 - `CapabilityGrantTable` derives runtime authorization from manifest
   requirements and ownership, keeping module access checks fixed-capacity and
-  testable.
+  testable. Runtime authorization is still gated by module state, so disabled
+  modules cannot keep using previously admitted capabilities.
 - `Mailbox` provides fixed-capacity control-message IPC; data payloads still
   move through `Sample` tickets and static pools. Runtime IPC validates both
   message endpoints against the admitted and enabled module set before messages
