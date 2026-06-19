@@ -15,6 +15,9 @@ pub const PHASE2_EVAL_SYMBOL: &str = "AIRON_SAL_EVAL_REPORT";
 pub const PHASE2_EVAL_MAGIC: u32 = 0x4152_4E32;
 pub const HEALTH_REPORT_SYMBOL: &str = "AIRON_HEALTH_REPORT";
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C;
+pub const RUNTIME_REPORT_SYMBOL: &str = "AIRON_RUNTIME_REPORT";
+pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254;
+pub const RUNTIME_REPORT_VERSION: u32 = 1;
 pub const ADMISSION_REPORT_SYMBOL: &str = "AIRON_ADMISSION_REPORT";
 pub const ADMISSION_REPORT_MAGIC: u32 = 0x4152_4144;
 pub const ADMISSION_REPORT_VERSION: u32 = 1;
@@ -168,6 +171,117 @@ impl AdmissionReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RuntimeReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub state: u32,
+    pub module_count: u32,
+    pub mailbox_len: u32,
+    pub mailbox_dropped: u32,
+    pub alarm_len: u32,
+    pub next_alarm_due_us_lo: u32,
+    pub next_alarm_due_us_hi: u32,
+    pub kv_len: u32,
+    pub kv_writes: u32,
+    pub kv_deletes: u32,
+    pub quota_flash_used_bytes: u32,
+    pub quota_ram_used_bytes: u32,
+    pub quota_pool_used_slots: u32,
+    pub event_count: u32,
+    pub dropped_events: u32,
+    pub checksum: u32,
+}
+
+impl RuntimeReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            state: 0,
+            module_count: 0,
+            mailbox_len: 0,
+            mailbox_dropped: 0,
+            alarm_len: 0,
+            next_alarm_due_us_lo: 0,
+            next_alarm_due_us_hi: 0,
+            kv_len: 0,
+            kv_writes: 0,
+            kv_deletes: 0,
+            quota_flash_used_bytes: 0,
+            quota_ram_used_bytes: 0,
+            quota_pool_used_slots: 0,
+            event_count: 0,
+            dropped_events: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn set_next_alarm_due_us(&mut self, due_us: u64) {
+        self.next_alarm_due_us_lo = due_us as u32;
+        self.next_alarm_due_us_hi = (due_us >> 32) as u32;
+    }
+
+    pub fn next_alarm_due_us(&self) -> u64 {
+        (u64::from(self.next_alarm_due_us_hi) << 32) | u64::from(self.next_alarm_due_us_lo)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = RUNTIME_REPORT_MAGIC;
+        self.version = RUNTIME_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == RUNTIME_REPORT_MAGIC
+            && self.version == RUNTIME_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != RUNTIME_REPORT_MAGIC || self.version != RUNTIME_REPORT_VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.verify_checksum() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.state
+            ^ self.module_count
+            ^ self.mailbox_len
+            ^ self.mailbox_dropped
+            ^ self.alarm_len
+            ^ self.next_alarm_due_us_lo
+            ^ self.next_alarm_due_us_hi
+            ^ self.kv_len
+            ^ self.kv_writes
+            ^ self.kv_deletes
+            ^ self.quota_flash_used_bytes
+            ^ self.quota_ram_used_bytes
+            ^ self.quota_pool_used_slots
+            ^ self.event_count
+            ^ self.dropped_events
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HealthReport {
     pub magic: u32,
     pub version: u32,
@@ -298,6 +412,9 @@ mod tests {
         assert_eq!(PHASE2_EVAL_MAGIC, 0x4152_4E32);
         assert_eq!(HEALTH_REPORT_SYMBOL, "AIRON_HEALTH_REPORT");
         assert_eq!(HEALTH_REPORT_MAGIC, 0x4152_484C);
+        assert_eq!(RUNTIME_REPORT_SYMBOL, "AIRON_RUNTIME_REPORT");
+        assert_eq!(RUNTIME_REPORT_MAGIC, 0x4152_5254);
+        assert_eq!(RUNTIME_REPORT_VERSION, 1);
         assert_eq!(ADMISSION_REPORT_SYMBOL, "AIRON_ADMISSION_REPORT");
         assert_eq!(ADMISSION_REPORT_MAGIC, 0x4152_4144);
         assert_eq!(ADMISSION_REPORT_VERSION, 1);
@@ -308,8 +425,10 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(PHASE1_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
+        assert!(HOST_CONTRACT_JSON.contains("0x41525254"));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability\""));
     }
@@ -378,9 +497,39 @@ mod tests {
     }
 
     #[test]
+    fn runtime_report_seals_and_verifies() {
+        let mut report = RuntimeReport {
+            state: 3,
+            module_count: 4,
+            mailbox_len: 2,
+            mailbox_dropped: 1,
+            alarm_len: 1,
+            kv_len: 3,
+            kv_writes: 5,
+            kv_deletes: 1,
+            quota_flash_used_bytes: 4096,
+            quota_ram_used_bytes: 1024,
+            quota_pool_used_slots: 2,
+            event_count: 7,
+            dropped_events: 1,
+            ..RuntimeReport::zeroed()
+        };
+        report.set_next_alarm_due_us(0x0123_4567_89AB_CDEF);
+        report.seal();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.next_alarm_due_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.status(), ReportStatus::Pass);
+
+        report.kv_writes += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(HealthReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(RuntimeReport::zeroed().status(), ReportStatus::Missing);
 
         let mut report = AdmissionReport {
             admitted: 1,

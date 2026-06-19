@@ -4,9 +4,9 @@ use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, EventSeverity, FaultThresholds, HealthReport, KernelError,
     KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
-    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, StartupGraph, StartupNode,
-    SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry,
-    WatchdogError,
+    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
+    RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
+    SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -345,6 +345,23 @@ impl<
         ))
     }
 
+    pub fn runtime_report(&self) -> RuntimeReport {
+        RuntimeReport::from_input(RuntimeReportInput {
+            state: self.state(),
+            module_count: self.plan.module_count() as u32,
+            mailbox_len: self.mailbox.len() as u32,
+            mailbox_dropped: self.mailbox.dropped(),
+            alarm_len: self.alarms.len() as u32,
+            next_alarm_due_us: self.alarms.next_due_us().unwrap_or(0),
+            kv_len: self.kv.len() as u32,
+            kv_writes: self.kv.writes(),
+            kv_deletes: self.kv.deletes(),
+            quota_used: self.total_quota_used(),
+            event_count: self.recovery.events().len() as u32,
+            dropped_events: self.recovery.events().dropped(),
+        })
+    }
+
     pub const fn state(&self) -> SystemState {
         self.recovery.state()
     }
@@ -577,6 +594,41 @@ mod tests {
         assert!(report.verify_checksum());
         assert_eq!(report.total_errors, 1);
         assert_eq!(report.error_events, 2);
+    }
+
+    #[test]
+    fn runtime_report_summarizes_control_plane_state() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .send(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Sensor,
+                MessageKind::Command,
+                1,
+                0,
+            ))
+            .unwrap();
+        runtime
+            .schedule_once(AlarmId(9), ModuleId::Sensor, 500, 100)
+            .unwrap();
+        runtime.kv_set(KvKey(2), KvValue::Bool(true)).unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(128, 64, 1))
+            .unwrap();
+
+        let report = runtime.runtime_report();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.state, crate::state_code(SystemState::Running));
+        assert_eq!(report.module_count, 2);
+        assert_eq!(report.mailbox_len, 1);
+        assert_eq!(report.alarm_len, 1);
+        assert_eq!(report.next_alarm_due_us(), 600);
+        assert_eq!(report.kv_len, 1);
+        assert_eq!(report.kv_writes, 1);
+        assert_eq!(report.quota_flash_used_bytes, 128);
+        assert_eq!(report.event_count, 3);
     }
 
     #[test]

@@ -125,6 +125,9 @@ Fault handling is intentionally small:
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
   records with the same checksum discipline as eval and admission reports.
+- `RuntimeReport` summarizes runtime control-plane state, including lifecycle
+  state, mailbox pressure, alarm schedule, KV writes, quota usage, and event-log
+  pressure.
 - `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
   recovery into one fixed-capacity control plane for apps and adapters. It can
   be constructed from an admitted plan or directly from a manifest plus startup

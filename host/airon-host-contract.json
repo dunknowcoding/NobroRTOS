@@ -55,6 +55,21 @@
     "version": 1,
     "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
   },
+  "runtime_report": {
+    "symbol": "AIRON_RUNTIME_REPORT",
+    "magic": "0x41525254",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; 64-bit alarm due timestamp split into lo/hi",
+    "state_codes": {
+      "0": "cold_boot",
+      "1": "validate_manifest",
+      "2": "init_drivers",
+      "3": "running",
+      "4": "degraded",
+      "5": "recovering",
+      "6": "halted"
+    }
+  },
   "admission_report": {
     "symbol": "AIRON_ADMISSION_REPORT",
     "magic": "0x41524144",
