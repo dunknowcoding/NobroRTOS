@@ -129,7 +129,9 @@ Fault handling is intentionally small:
   recovery into one fixed-capacity control plane for apps and adapters. It can
   be constructed from an admitted plan or directly from a manifest plus startup
   graph, and routes software watchdog expiry through the same recovery and
-  health-report path as explicit module faults.
+  health-report path as explicit module faults. Runtime quota helpers keep
+  reserve/release accounting on the admitted `QuotaLedger` so memory discipline
+  continues after boot.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

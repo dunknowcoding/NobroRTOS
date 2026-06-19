@@ -4,8 +4,9 @@ use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, EventSeverity, FaultThresholds, HealthReport, KernelError,
     KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, StartupGraph, StartupNode, SystemManifest,
-    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, StartupGraph, StartupNode,
+    SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry,
+    WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub enum RuntimeError {
     Capability(CapabilityGrantError),
     Kv(KvError),
     Mailbox(MailboxError),
+    Quota(QuotaError),
     Recovery(RecoveryError),
     Watchdog(WatchdogError),
 }
@@ -39,6 +41,12 @@ impl From<KvError> for RuntimeError {
 impl From<MailboxError> for RuntimeError {
     fn from(error: MailboxError) -> Self {
         Self::Mailbox(error)
+    }
+}
+
+impl From<QuotaError> for RuntimeError {
+    fn from(error: QuotaError) -> Self {
+        Self::Quota(error)
     }
 }
 
@@ -224,6 +232,40 @@ impl<
 
     pub fn kv_delete(&mut self, key: KvKey) -> Result<KvValue, RuntimeError> {
         self.kv.delete(key).map_err(RuntimeError::from)
+    }
+
+    pub fn reserve_quota(
+        &mut self,
+        module: ModuleId,
+        amount: SystemBudget,
+    ) -> Result<(), RuntimeError> {
+        self.plan.quotas.reserve(module, amount)?;
+        Ok(())
+    }
+
+    pub fn release_quota(
+        &mut self,
+        module: ModuleId,
+        amount: SystemBudget,
+    ) -> Result<(), RuntimeError> {
+        self.plan.quotas.release(module, amount)?;
+        Ok(())
+    }
+
+    pub fn quota_usage(&self, module: ModuleId) -> Option<SystemBudget> {
+        self.plan.quotas.usage(module)
+    }
+
+    pub fn quota_limit(&self, module: ModuleId) -> Option<SystemBudget> {
+        self.plan.quotas.limit(module)
+    }
+
+    pub fn quota_available(&self, module: ModuleId) -> Option<SystemBudget> {
+        self.plan.quotas.available(module)
+    }
+
+    pub fn total_quota_used(&self) -> SystemBudget {
+        self.plan.quotas.total_used()
     }
 
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
@@ -524,6 +566,46 @@ mod tests {
         assert!(report.verify_checksum());
         assert_eq!(report.total_errors, 1);
         assert_eq!(report.error_events, 2);
+    }
+
+    #[test]
+    fn runtime_tracks_quota_reserve_and_release() {
+        let mut runtime = runtime();
+
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(1024, 256, 1))
+            .unwrap();
+        runtime
+            .release_quota(ModuleId::Sensor, SystemBudget::new(256, 64, 1))
+            .unwrap();
+
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::new(768, 192, 0))
+        );
+        assert_eq!(
+            runtime.quota_available(ModuleId::Sensor),
+            Some(SystemBudget::new(7 * 1024 + 256, 2 * 1024 - 192, 2))
+        );
+        assert_eq!(runtime.total_quota_used(), SystemBudget::new(768, 192, 0));
+    }
+
+    #[test]
+    fn runtime_reports_quota_overrun_without_mutating_usage() {
+        let mut runtime = runtime();
+
+        assert_eq!(
+            runtime.reserve_quota(ModuleId::Sensor, SystemBudget::new(9 * 1024, 0, 0)),
+            Err(RuntimeError::Quota(QuotaError::Exceeded {
+                module: ModuleId::Sensor,
+                used: SystemBudget::new(9 * 1024, 0, 0),
+                limit: SystemBudget::new(8 * 1024, 2 * 1024, 2),
+            }))
+        );
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
     }
 
     #[test]
