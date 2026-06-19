@@ -5,6 +5,9 @@ use crate::{
     FaultThresholds, ModuleId,
 };
 
+const FNV1A32_OFFSET: u32 = 0x811C_9DC5;
+const FNV1A32_PRIME: u32 = 0x0100_0193;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Criticality {
     BestEffort = 0,
@@ -259,6 +262,30 @@ impl ModuleSpec {
         self.fault_thresholds = thresholds;
         self
     }
+
+    pub fn fingerprint(self) -> u32 {
+        let mut hash = FNV1A32_OFFSET;
+        hash = hash_u32(hash, module_code(self.id));
+        hash = hash_u32(hash, self.criticality as u32);
+        hash = hash_u32(hash, self.requires.bits());
+        hash = hash_u32(hash, self.owns.bits());
+        hash = hash_u32(hash, self.memory.flash_bytes);
+        hash = hash_u32(hash, self.memory.ram_bytes);
+        hash = hash_u32(hash, u32::from(self.memory.pool_slots));
+        match self.deadline {
+            Some(deadline) => {
+                hash = hash_u32(hash, deadline.period_us);
+                hash = hash_u32(hash, deadline.max_jitter_us);
+            }
+            None => {
+                hash = hash_u32(hash, 0);
+                hash = hash_u32(hash, 0);
+            }
+        }
+        hash = hash_u32(hash, u32::from(self.fault_thresholds.notify_after));
+        hash = hash_u32(hash, u32::from(self.fault_thresholds.reboot_after));
+        hash
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -372,6 +399,14 @@ impl<const N: usize> SystemManifest<N> {
         total
     }
 
+    pub fn fingerprint(&self) -> u32 {
+        let mut hash = hash_u32(FNV1A32_OFFSET, self.len() as u32);
+        for spec in self.iter() {
+            hash = hash_u32(hash, spec.fingerprint());
+        }
+        hash
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = ModuleSpec> + '_ {
         self.modules.iter().flatten().copied()
     }
@@ -455,6 +490,30 @@ pub const fn kernel_module_spec(memory: MemoryBudget, deadline: DeadlineContract
         .owns(kernel_owned_capabilities())
         .memory(memory)
         .deadline(deadline)
+}
+
+pub fn hash_u32(hash: u32, value: u32) -> u32 {
+    let bytes = value.to_le_bytes();
+    let mut next = hash;
+    for byte in bytes {
+        next ^= u32::from(byte);
+        next = next.wrapping_mul(FNV1A32_PRIME);
+    }
+    next
+}
+
+pub const fn module_code(module: ModuleId) -> u32 {
+    match module {
+        ModuleId::Kernel => 1,
+        ModuleId::Hal => 2,
+        ModuleId::Bus => 3,
+        ModuleId::Radio => 4,
+        ModuleId::Sensor => 5,
+        ModuleId::Actuator => 6,
+        ModuleId::Stream => 7,
+        ModuleId::Crypto => 8,
+        ModuleId::App(id) => 0x100 + id as u32,
+    }
 }
 
 #[cfg(test)]
@@ -636,6 +695,25 @@ mod tests {
             SystemManifest::<2>::from_specs(&[kernel_spec(), kernel_spec()]),
             Err(ManifestError::DuplicateModule(ModuleId::Kernel))
         ));
+    }
+
+    #[test]
+    fn manifest_fingerprint_is_stable_for_same_specs() {
+        let a = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+        let b = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+
+        assert_eq!(a.fingerprint(), b.fingerprint());
+        assert_ne!(a.fingerprint(), 0);
+    }
+
+    #[test]
+    fn manifest_fingerprint_changes_with_contracts() {
+        let baseline = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+        let changed_sensor = sensor_spec().memory(MemoryBudget::new(16 * 1024, 2 * 1024, 2));
+        let changed = SystemManifest::<2>::from_specs(&[kernel_spec(), changed_sensor]).unwrap();
+
+        assert_ne!(baseline.fingerprint(), changed.fingerprint());
+        assert_ne!(sensor_spec().fingerprint(), changed_sensor.fingerprint());
     }
 
     #[test]

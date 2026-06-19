@@ -70,6 +70,11 @@ budget, deadline contract, and fault thresholds. It is intentionally a no-heap
 data structure so host tests can validate partitioning before any firmware is
 flashed.
 
+Each manifest can produce a stable fingerprint over module IDs, criticality,
+capability contracts, memory budgets, deadline contracts, and fault thresholds.
+That gives host tools a compact way to compare static system graphs without
+serializing the full manifest.
+
 `SystemProfile` adds board-class limits for flash, RAM, sample-pool slots, and
 module count. This lets AIRON reject a feature set that does not fit the target
 board before a linker script or flashing step gets involved.
