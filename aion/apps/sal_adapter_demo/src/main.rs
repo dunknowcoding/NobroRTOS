@@ -25,11 +25,11 @@ use airon_kernel::{
         SalEvalReport, MIN_IMU_SAMPLES, MIN_SERVO_STEPS, SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
     },
     executor::{Poll, StatsTask, Task},
-    kernel_owned_capabilities,
+    kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, Criticality, DeadlineContract, DependencySet,
-    MemoryBudget, ModuleId, ModuleSpec, StartupNode, SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, DeadlineContract, DependencySet, MemoryBudget, ModuleId,
+    ModuleSpec, StartupNode, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, SensorSal};
 
@@ -158,10 +158,10 @@ fn active_profile() -> SystemProfile {
 }
 
 fn kernel_spec() -> ModuleSpec {
-    ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
-        .owns(kernel_owned_capabilities())
-        .memory(MemoryBudget::new(24 * 1024, 8 * 1024, 4))
-        .deadline(DeadlineContract::new(20_000, 10))
+    kernel_module_spec(
+        MemoryBudget::new(24 * 1024, 8 * 1024, 4),
+        DeadlineContract::new(20_000, 10),
+    )
 }
 
 fn try_servo_step(servo: &mut RoboServoAdapter, deadline_us: u64) {

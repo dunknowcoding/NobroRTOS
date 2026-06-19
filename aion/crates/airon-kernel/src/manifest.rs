@@ -439,15 +439,22 @@ pub const fn kernel_owned_capabilities() -> CapabilitySet {
         .with(Capability::HostReport)
 }
 
+pub const fn kernel_module_spec(memory: MemoryBudget, deadline: DeadlineContract) -> ModuleSpec {
+    ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
+        .owns(kernel_owned_capabilities())
+        .memory(memory)
+        .deadline(deadline)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn kernel_spec() -> ModuleSpec {
-        ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
-            .owns(kernel_owned_capabilities())
-            .memory(MemoryBudget::new(24 * 1024, 8 * 1024, 8))
-            .deadline(DeadlineContract::new(20_000, 10))
+        kernel_module_spec(
+            MemoryBudget::new(24 * 1024, 8 * 1024, 8),
+            DeadlineContract::new(20_000, 10),
+        )
     }
 
     fn sensor_spec() -> ModuleSpec {
@@ -603,5 +610,18 @@ mod tests {
             SystemManifest::<2>::from_specs(&[kernel_spec(), kernel_spec()]),
             Err(ManifestError::DuplicateModule(ModuleId::Kernel))
         ));
+    }
+
+    #[test]
+    fn kernel_module_helper_sets_standard_kernel_contract() {
+        let spec = kernel_module_spec(MemoryBudget::new(1, 1, 1), DeadlineContract::new(1000, 10));
+
+        assert_eq!(spec.id, ModuleId::Kernel);
+        assert_eq!(spec.criticality, Criticality::HardRealtime);
+        assert!(spec.owns.contains(Capability::Timebase));
+        assert!(spec.owns.contains(Capability::DeadlineTimer));
+        assert!(spec.owns.contains(Capability::SamplePool));
+        assert!(spec.owns.contains(Capability::HostReport));
+        assert_eq!(spec.deadline, Some(DeadlineContract::new(1000, 10)));
     }
 }

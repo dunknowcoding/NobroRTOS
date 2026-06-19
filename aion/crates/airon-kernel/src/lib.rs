@@ -49,8 +49,9 @@ pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, Mod
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
-    kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
-    ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,
+    kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,
+    DeadlineContract, ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest,
+    SystemProfile,
 };
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};

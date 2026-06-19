@@ -71,6 +71,9 @@ flashed.
 module count. This lets AIRON reject a feature set that does not fit the target
 board before a linker script or flashing step gets involved.
 
+Apps should use `kernel_module_spec` when assembling manifests so kernel-owned
+capabilities stay consistent across demos and board ports.
+
 ## Fault Handling And Self-Recovery
 
 Fault handling is intentionally small:
