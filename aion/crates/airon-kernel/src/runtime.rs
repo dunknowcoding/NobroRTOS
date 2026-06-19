@@ -248,6 +248,7 @@ impl<
     }
 
     pub fn send(&mut self, message: Message) -> Result<(), RuntimeError> {
+        self.ensure_message_endpoints_admitted(message)?;
         self.mailbox.push(message)?;
         Ok(())
     }
@@ -601,6 +602,12 @@ impl<
             Err(RuntimeError::Module(ModuleRuntimeError::Missing(module)))
         }
     }
+
+    fn ensure_message_endpoints_admitted(&self, message: Message) -> Result<(), RuntimeError> {
+        self.ensure_module_admitted(message.from)?;
+        self.ensure_module_admitted(message.to)?;
+        Ok(())
+    }
 }
 
 fn alarm_message(alarm: Alarm) -> Message {
@@ -879,6 +886,38 @@ mod tests {
             runtime.alarms().next_due(10),
             Some(Alarm::once(AlarmId(1), ModuleId::Sensor, 10))
         );
+    }
+
+    #[test]
+    fn runtime_rejects_unknown_message_endpoints_before_mailbox_push() {
+        let mut runtime = runtime();
+
+        assert_eq!(
+            runtime.send(Message::new(
+                ModuleId::Radio,
+                ModuleId::Sensor,
+                MessageKind::Command,
+                1,
+                0,
+            )),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(
+            runtime.send(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Radio,
+                MessageKind::Command,
+                2,
+                0,
+            )),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(runtime.mailbox().len(), 0);
+        assert_eq!(runtime.mailbox().dropped(), 0);
     }
 
     #[test]
