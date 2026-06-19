@@ -38,6 +38,7 @@ pub enum ModuleRuntimeError {
     Full,
     Duplicate(ModuleId),
     Missing(ModuleId),
+    Disabled(ModuleId),
     InvalidTransition {
         module: ModuleId,
         from: ModuleRunState,

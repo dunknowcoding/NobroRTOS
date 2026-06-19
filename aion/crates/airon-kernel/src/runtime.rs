@@ -248,7 +248,7 @@ impl<
     }
 
     pub fn send(&mut self, message: Message) -> Result<(), RuntimeError> {
-        self.ensure_message_endpoints_admitted(message)?;
+        self.ensure_message_endpoints_enabled(message)?;
         self.mailbox.push(message)?;
         Ok(())
     }
@@ -268,7 +268,7 @@ impl<
         delay_us: u64,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.alarms.schedule_once(id, module, delay_us, now_us)?;
         Ok(())
     }
@@ -280,7 +280,7 @@ impl<
         period_us: u32,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.alarms
             .schedule_periodic(id, module, period_us, now_us)?;
         Ok(())
@@ -369,7 +369,7 @@ impl<
     }
 
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.recovery.record_ok(module, now_us);
         Ok(())
     }
@@ -380,7 +380,7 @@ impl<
         error: KernelError,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         let outcome = self
             .recovery
             .record_error(module, error, now_us)
@@ -394,7 +394,7 @@ impl<
         module: ModuleId,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         let outcome = self
             .recovery
             .record_watchdog_expired(module, now_us)
@@ -409,13 +409,13 @@ impl<
         timeout_us: u64,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.watchdog.register(module, timeout_us, now_us)?;
         Ok(())
     }
 
     pub fn heartbeat(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(module)?;
+        self.ensure_module_enabled(module)?;
         self.watchdog.beat(module, now_us)?;
         self.record_ok(module, now_us)?;
         Ok(())
@@ -607,9 +607,20 @@ impl<
         }
     }
 
-    fn ensure_message_endpoints_admitted(&self, message: Message) -> Result<(), RuntimeError> {
-        self.ensure_module_admitted(message.from)?;
-        self.ensure_module_admitted(message.to)?;
+    fn ensure_module_enabled(&self, module: ModuleId) -> Result<(), RuntimeError> {
+        let Some(entry) = self.modules.entry(module) else {
+            return Err(RuntimeError::Module(ModuleRuntimeError::Missing(module)));
+        };
+        if entry.state == ModuleRunState::Disabled {
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(module)))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn ensure_message_endpoints_enabled(&self, message: Message) -> Result<(), RuntimeError> {
+        self.ensure_module_enabled(message.from)?;
+        self.ensure_module_enabled(message.to)?;
         Ok(())
     }
 }
@@ -1155,6 +1166,57 @@ mod tests {
             ))
         );
         assert_eq!(runtime.recv_for(ModuleId::Sensor), None);
+    }
+
+    #[test]
+    fn runtime_rejects_disabled_modules_for_active_operations() {
+        let mut runtime = runtime();
+        runtime.disable_module(ModuleId::Sensor, 10).unwrap();
+
+        assert_eq!(
+            runtime.schedule_once(AlarmId(8), ModuleId::Sensor, 10, 10),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.send(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Sensor,
+                MessageKind::Command,
+                1,
+                0,
+            )),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.send(Message::new(
+                ModuleId::Sensor,
+                ModuleId::Kernel,
+                MessageKind::Command,
+                2,
+                0,
+            )),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.record_ok(ModuleId::Sensor, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(
+            runtime.register_watchdog(ModuleId::Sensor, 100, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(runtime.mailbox().len(), 0);
+        assert_eq!(runtime.alarms().len(), 0);
     }
 
     #[test]
