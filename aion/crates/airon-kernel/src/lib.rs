@@ -15,6 +15,7 @@ pub mod event_log;
 pub mod executor;
 pub mod fault_inject;
 pub mod health;
+pub mod kv;
 pub mod lifecycle;
 pub mod mailbox;
 pub mod manifest;
@@ -46,6 +47,7 @@ pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverit
 pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
 pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
+pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{

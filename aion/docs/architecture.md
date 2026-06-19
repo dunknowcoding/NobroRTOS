@@ -109,6 +109,9 @@ Fault handling is intentionally small:
   move through `Sample` tickets and static pools.
 - `AlarmQueue` provides no-heap one-shot and periodic software timers without
   binding app logic to a specific hardware timer block.
+- `KvStore` defines the kernel-owned configuration contract as a fixed-capacity
+  table; future flash persistence can keep the same API without adding a
+  seventh SAL.
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
