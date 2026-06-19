@@ -2,12 +2,13 @@
 
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
-    Capability, CapabilityGrantError, EventLogReport, EventSeverity, FaultThresholds, HealthReport,
-    KernelError, KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind,
-    ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
-    ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
-    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
-    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    Capability, CapabilityGrantError, DegradeDecision, DegradeReason, EventLogReport,
+    EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey, KvStore, KvValue,
+    Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState, ModuleRuntimeEntry,
+    ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError, RecoveryCoordinator,
+    RecoveryError, RecoveryOutcome, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode,
+    SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry,
+    WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,6 +130,13 @@ impl AlarmDispatch {
     pub const fn is_blocked(&self) -> bool {
         self.blocked.is_some()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DegradeApplication {
+    pub disabled: usize,
+    pub already_disabled: usize,
+    pub reason: Option<DegradeReason>,
 }
 
 pub struct Runtime<
@@ -423,6 +431,42 @@ impl<
         self.ensure_module_admitted(module)?;
         self.modules.disable(module, now_us)?;
         Ok(())
+    }
+
+    pub fn apply_degrade_decision<const N: usize>(
+        &mut self,
+        decision: &DegradeDecision<N>,
+        now_us: u64,
+    ) -> Result<DegradeApplication, RuntimeError> {
+        let mut application = DegradeApplication {
+            disabled: 0,
+            already_disabled: 0,
+            reason: decision.reason,
+        };
+
+        for module in decision
+            .disabled
+            .iter()
+            .copied()
+            .take(decision.disabled_count)
+        {
+            let Some(module) = module else {
+                continue;
+            };
+            self.ensure_module_admitted(module)?;
+            if self.module_state(module) == Some(ModuleRunState::Disabled) {
+                application.already_disabled += 1;
+                continue;
+            }
+            self.modules.disable(module, now_us)?;
+            application.disabled += 1;
+        }
+
+        if application.disabled > 0 && self.state() == SystemState::Running {
+            self.recovery.transition(SystemState::Degraded, now_us)?;
+        }
+
+        Ok(application)
     }
 
     pub fn module_state(&self, module: ModuleId) -> Option<ModuleRunState> {
@@ -1000,6 +1044,68 @@ mod tests {
             )))
         );
         assert_eq!(runtime.watchdog_entry(ModuleId::Radio), None);
+    }
+
+    #[test]
+    fn runtime_applies_degrade_decision_to_module_state() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let decision = DegradeDecision {
+            enabled: [true, false],
+            disabled: [Some(ModuleId::Sensor), None],
+            disabled_count: 1,
+            budget: SystemBudget::new(16 * 1024, 4 * 1024, 4),
+            reason: Some(DegradeReason::RamBudget),
+        };
+
+        let application = runtime.apply_degrade_decision(&decision, 20).unwrap();
+
+        assert_eq!(
+            application,
+            DegradeApplication {
+                disabled: 1,
+                already_disabled: 0,
+                reason: Some(DegradeReason::RamBudget),
+            }
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Disabled)
+        );
+        assert_eq!(runtime.state(), SystemState::Degraded);
+
+        let application = runtime.apply_degrade_decision(&decision, 30).unwrap();
+        assert_eq!(
+            application,
+            DegradeApplication {
+                disabled: 0,
+                already_disabled: 1,
+                reason: Some(DegradeReason::RamBudget),
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_rejects_unknown_degrade_module_before_lifecycle_change() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let before_events = runtime.recovery().events().len();
+        let decision = DegradeDecision {
+            enabled: [true, false],
+            disabled: [Some(ModuleId::Radio), None],
+            disabled_count: 1,
+            budget: SystemBudget::new(16 * 1024, 4 * 1024, 4),
+            reason: Some(DegradeReason::ModuleLimit),
+        };
+
+        assert_eq!(
+            runtime.apply_degrade_decision(&decision, 20),
+            Err(RuntimeError::Module(ModuleRuntimeError::Missing(
+                ModuleId::Radio
+            )))
+        );
+        assert_eq!(runtime.state(), SystemState::Running);
+        assert_eq!(runtime.recovery().events().len(), before_events);
     }
 
     #[test]
