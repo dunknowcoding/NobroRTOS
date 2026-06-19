@@ -311,6 +311,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"capability\""));
     }
 
     #[test]

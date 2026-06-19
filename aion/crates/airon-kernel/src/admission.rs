@@ -1,8 +1,9 @@
 //! Boot admission checks that compose manifest, startup, and quota contracts.
 
 use crate::{
-    ManifestError, ModuleId, QuotaError, QuotaLedger, StartupError, StartupNode, StartupPlan,
-    StartupPlanner, SystemBudget, SystemManifest, SystemProfile,
+    CapabilityGrantError, CapabilityGrantTable, ManifestError, ModuleId, QuotaError, QuotaLedger,
+    StartupError, StartupNode, StartupPlan, StartupPlanner, SystemBudget, SystemManifest,
+    SystemProfile,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,6 +11,7 @@ pub enum AdmissionError {
     Manifest(ManifestError),
     Startup(StartupError),
     Quota(QuotaError),
+    Capability(CapabilityGrantError),
     MissingStartupNode(ModuleId),
     UnknownStartupNode(ModuleId),
 }
@@ -20,8 +22,9 @@ impl AdmissionError {
             Self::Manifest(_) => 1,
             Self::Startup(_) => 2,
             Self::Quota(_) => 3,
-            Self::MissingStartupNode(_) => 4,
-            Self::UnknownStartupNode(_) => 5,
+            Self::Capability(_) => 4,
+            Self::MissingStartupNode(_) => 5,
+            Self::UnknownStartupNode(_) => 6,
         }
     }
 }
@@ -30,6 +33,7 @@ impl AdmissionError {
 pub struct AdmissionPlan<const STARTUP: usize, const QUOTAS: usize> {
     pub startup: StartupPlan<STARTUP>,
     pub quotas: QuotaLedger<QUOTAS>,
+    pub grants: CapabilityGrantTable<QUOTAS>,
     pub used: SystemBudget,
     pub profile: SystemProfile,
 }
@@ -59,10 +63,13 @@ impl AdmissionController {
         quotas
             .register_manifest(manifest)
             .map_err(AdmissionError::Quota)?;
+        let grants = CapabilityGrantTable::<QUOTAS>::from_manifest(manifest)
+            .map_err(AdmissionError::Capability)?;
 
         Ok(AdmissionPlan {
             startup,
             quotas,
+            grants,
             used: manifest.total_budget(),
             profile,
         })
@@ -282,7 +289,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.admitted, 0);
-        assert_eq!(report.error_code, 5);
+        assert_eq!(report.error_code, 6);
 
         report.error_code = 9;
         assert!(!report.verify_checksum());
@@ -296,6 +303,23 @@ mod tests {
         assert_eq!(
             AdmissionController::admit::<4, 4, 4>(&manifest, &startup, profile()).unwrap_err(),
             AdmissionError::MissingStartupNode(ModuleId::Sensor)
+        );
+    }
+
+    #[test]
+    fn admission_plan_contains_capability_grants() {
+        let manifest = valid_manifest();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+        ];
+
+        let plan = AdmissionController::admit::<4, 4, 4>(&manifest, &startup, profile()).unwrap();
+
+        assert_eq!(
+            plan.grants
+                .authorize(ModuleId::Sensor, Capability::SamplePool),
+            Ok(())
         );
     }
 

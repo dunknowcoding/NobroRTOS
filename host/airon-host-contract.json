@@ -71,8 +71,9 @@
       "1": "manifest",
       "2": "startup",
       "3": "quota",
-      "4": "missing_startup_node",
-      "5": "unknown_startup_node"
+      "4": "capability",
+      "5": "missing_startup_node",
+      "6": "unknown_startup_node"
     }
   }
 }

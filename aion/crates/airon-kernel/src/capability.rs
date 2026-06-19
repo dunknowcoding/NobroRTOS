@@ -25,6 +25,7 @@ pub enum CapabilityGrantError {
     },
 }
 
+#[derive(Debug)]
 pub struct CapabilityGrantTable<const N: usize> {
     grants: [Option<CapabilityGrant>; N],
 }
