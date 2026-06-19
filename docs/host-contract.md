@@ -1,0 +1,64 @@
+# NobroRTOS Host Contract
+
+The host contract defines the data that external tools can read from firmware
+images or runtime memory. The JSON mirror is:
+
+```text
+host/nobro-host-contract.json
+```
+
+The Rust mirror is:
+
+```text
+core/crates/airon-host
+```
+
+## Report Symbols
+
+| Symbol | Meaning |
+| ------ | ------- |
+| `NOBRO_BOARD_PROFILE_REPORT` | Selected board, memory origin, budgets, and critical pins |
+| `NOBRO_MANIFEST_REPORT` | Static module graph validity, capability bits, budget use, and error context |
+| `NOBRO_ADAPTER_COMPAT_REPORT` | Adapter inventory compatibility before app admission |
+| `NOBRO_ADMISSION_REPORT` | Admission result after manifest, startup, quota, and capability checks |
+| `NOBRO_RUNTIME_REPORT` | Runtime lifecycle, mailbox pressure, alarms, KV writes, quota use, and event pressure |
+| `NOBRO_HEALTH_REPORT` | Module health counters and latest recovery context |
+| `NOBRO_EVENT_LOG_REPORT` | Fixed event-ring summary |
+| `NOBRO_MODULE_RUNTIME_REPORT` | Module state counts and latest state transition |
+| `NOBRO_DEGRADE_APPLICATION_REPORT` | Latest degraded-mode application result |
+| `NOBRO_EVAL_REPORT` | Phase 1 resource scheduling evaluation record |
+| `NOBRO_SAL_EVAL_REPORT` | SAL adapter evaluation record |
+
+## Status Model
+
+Reports use the same status categories:
+
+- `missing`: zeroed report slot
+- `in_progress`: valid header, incomplete report
+- `pass`: complete and checksum-valid success
+- `fail`: complete and checksum-valid domain failure
+- `corrupt`: invalid header, version, or checksum
+
+Host tools should decode the first non-passing boot stage in this order:
+
+1. board profile
+2. manifest
+3. adapter compatibility
+4. admission
+5. runtime
+
+## Checksum Rule
+
+Fixed reports use XOR checksums over every `u32` field except `checksum`.
+Timestamps wider than `u32` are split into low and high words.
+
+## Diagnostic Code
+
+Boot diagnostic code layout:
+
+```text
+stage_code << 24 | status_class << 16 | error_code_low16
+```
+
+Use `airon-host` helper labels rather than duplicating numeric maps in host
+tools.

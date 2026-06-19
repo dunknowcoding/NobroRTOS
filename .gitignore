@@ -1,18 +1,46 @@
-# AIRON workspace: all transient artifacts live under _work/
-_work/*
-!_work/.gitkeep
-!_work/README.md
-!_work/clean.ps1
-!_work/setup-rust-build.ps1
-!_work/flash-board1.ps1
-!_work/run-phase1-eval.ps1
-!_work/run-phase2-eval.ps1
+# NobroRTOS local-only references and transient artifacts
+technique_route.md
+_work/
 
-# Rust build outputs (when target dir is inside aion/)
-aion/**/target/
+# Rust build outputs
+target/
+core/**/target/
+**/target/
+
+# Build, firmware, and debug products
+*.bin
+*.elf
+*.hex
+*.uf2
+*.map
+*.lst
+*.d
+*.pdb
+*.exe
+
+# Test and coverage output
+test-results/
+coverage/
+.coverage
+*.profraw
+*.profdata
+junit*.xml
+
+# Caches
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+
+# Local toolchains and downloads
+.ncs-zigbee-work/
+tools/.nobro-work/
 
 # IDE / OS
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
 *.swp
+.agents/

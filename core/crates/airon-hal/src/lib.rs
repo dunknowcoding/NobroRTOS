@@ -1,0 +1,70 @@
+//! NobroRTOS hardware abstraction with portable traits and platform backends.
+//!
+//! Application code should prefer:
+//! - `traits::*` and `platform::ActivePlatform` for portable logic
+//! - Legacy module paths (`timer`, `pwm`, etc.) remain for the nRF52840 port
+
+#![no_std]
+
+pub mod board_desc;
+pub mod lease;
+pub mod platform;
+pub mod snapshots;
+pub mod traits;
+
+#[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
+compile_error!("airon-hal: enable exactly one board-* feature");
+
+#[cfg(not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140")))]
+compile_error!("airon-hal: enable one board-* feature");
+
+#[cfg(feature = "platform-nrf52840")]
+pub mod board;
+#[cfg(feature = "platform-nrf52840")]
+pub mod bus;
+#[cfg(feature = "platform-nrf52840")]
+pub mod deadline_timer;
+#[cfg(feature = "platform-nrf52840")]
+pub mod inspect;
+#[cfg(feature = "platform-nrf52840")]
+pub mod ppi;
+#[cfg(feature = "platform-nrf52840")]
+pub mod pwm;
+#[cfg(feature = "platform-nrf52840")]
+pub mod radio_sim;
+#[cfg(feature = "platform-nrf52840")]
+pub mod timer;
+#[cfg(feature = "platform-nrf52840")]
+pub mod twim_hw;
+
+pub use board_desc::{BoardCapacity, BoardDesc, BusLayout, ServoProfile};
+pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+pub use platform::ActivePlatform;
+pub use snapshots::{
+    BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot, BOARD_PROFILE_REPORT_MAGIC,
+    BOARD_PROFILE_REPORT_VERSION,
+};
+pub use traits::{
+    HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalSelfTest, HalServoPwm, PlatformHal,
+};
+
+#[cfg(feature = "platform-nrf52840")]
+pub use board::{Board, I2C_SCL_PIN, I2C_SDA_PIN};
+#[cfg(feature = "platform-nrf52840")]
+pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
+#[cfg(feature = "platform-nrf52840")]
+pub use deadline_timer::DeadlineTimer;
+#[cfg(feature = "platform-nrf52840")]
+pub use inspect::scene_d_pass;
+#[cfg(feature = "platform-nrf52840")]
+pub use pwm::{PwmServo, SERVO_PIN};
+#[cfg(feature = "platform-nrf52840")]
+pub use radio_sim::RadioRxSim;
+#[cfg(feature = "platform-nrf52840")]
+pub use timer::MicroTimer;
+#[cfg(feature = "platform-nrf52840")]
+pub use twim_hw::Twim0;
+
+/// Type alias kept for eval / docs that refer to PPI wiring checks.
+#[cfg(feature = "platform-nrf52840")]
+pub type PpiRadioSnapshot = EventCaptureSnapshot;
