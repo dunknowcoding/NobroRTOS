@@ -28,8 +28,8 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, DeadlineContract, DependencySet, MemoryBudget, ModuleId,
-    ModuleSpec, StartupNode, SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, DeadlineContract, MemoryBudget, ModuleId, ModuleSpec,
+    SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, SensorSal};
 
@@ -128,13 +128,17 @@ fn admit_sal_demo() {
     let manifest =
         SystemManifest::<4>::from_specs(&specs).unwrap_or_else(|_| defmt::panic!("manifest"));
 
-    let startup = [
-        StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
-        StartupNode::new(ModuleId::Actuator, DependencySet::empty().with_index(0)),
-        StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
-    ];
+    let mut startup = manifest
+        .startup_graph::<4>()
+        .unwrap_or_else(|_| defmt::panic!("startup graph"));
+    startup
+        .add_dependency(ModuleId::Actuator, ModuleId::Kernel)
+        .unwrap_or_else(|_| defmt::panic!("actuator startup dependency"));
+    startup
+        .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+        .unwrap_or_else(|_| defmt::panic!("sensor startup dependency"));
 
-    match AdmissionController::admit::<4, 4, 4>(&manifest, &startup, active_profile()) {
+    match AdmissionController::admit::<4, 4, 4>(&manifest, startup.as_slice(), active_profile()) {
         Ok(plan) => unsafe {
             AIRON_ADMISSION_REPORT = AdmissionReport::from_plan(&plan);
         },

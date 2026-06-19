@@ -72,7 +72,9 @@ module count. This lets AIRON reject a feature set that does not fit the target
 board before a linker script or flashing step gets involved.
 
 Apps should use `kernel_module_spec` when assembling manifests so kernel-owned
-capabilities stay consistent across demos and board ports.
+capabilities stay consistent across demos and board ports. Apps can seed
+`StartupGraph` directly from a `SystemManifest`, then add only the dependency
+edges that are specific to the application boot path.
 
 ## Fault Handling And Self-Recovery
 

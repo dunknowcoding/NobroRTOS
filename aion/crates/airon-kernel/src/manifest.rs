@@ -1,6 +1,9 @@
 //! Static system manifest for partitioning, budgets, and capability ownership.
 
-use crate::{FaultThresholds, ModuleId};
+use crate::{
+    startup::{StartupGraph, StartupGraphError},
+    FaultThresholds, ModuleId,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Criticality {
@@ -380,6 +383,14 @@ impl<const N: usize> SystemManifest<N> {
             .fold(CapabilitySet::empty(), |acc, spec| acc.union(spec.owns))
     }
 
+    pub fn startup_graph<const OUT: usize>(&self) -> Result<StartupGraph<OUT>, StartupGraphError> {
+        let mut graph = StartupGraph::new();
+        for spec in self.iter() {
+            graph.add(spec.id)?;
+        }
+        Ok(graph)
+    }
+
     pub fn len(&self) -> usize {
         self.modules.iter().flatten().count()
     }
@@ -602,6 +613,21 @@ mod tests {
 
         assert_eq!(manifest.len(), 2);
         assert!(manifest.validate().is_ok());
+    }
+
+    #[test]
+    fn manifest_can_seed_startup_graph() {
+        let manifest = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+
+        let mut graph = manifest.startup_graph::<2>().unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        let plan = graph.plan::<2>().unwrap();
+
+        assert_eq!(graph.len(), 2);
+        assert_eq!(plan.order[0], Some(ModuleId::Kernel));
+        assert_eq!(plan.order[1], Some(ModuleId::Sensor));
     }
 
     #[test]
