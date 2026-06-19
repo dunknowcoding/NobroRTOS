@@ -121,6 +121,8 @@ Fault handling is intentionally small:
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
   records with the same checksum discipline as eval and admission reports.
+- `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
+  recovery into one fixed-capacity control plane for apps and adapters.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
@@ -163,6 +165,8 @@ The next step is not a larger kernel; it is stronger contracts:
 - health reports exported through the same host contract as eval reports
 - fixed-layout health reports with checksums for J-Link, CDC, or future stream
   readers
+- a small runtime facade that reduces app boot wiring while preserving explicit
+  manifest, quota, capability, and recovery contracts
 
 The current executor support is deliberately small: `TaskTable` is a fixed-size
 task registry that records period, budget, criticality, due time, and overrun

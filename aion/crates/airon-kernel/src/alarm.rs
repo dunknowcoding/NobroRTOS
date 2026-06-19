@@ -98,6 +98,10 @@ impl<const N: usize> AlarmQueue<N> {
         }
     }
 
+    pub fn next_due(&self, now_us: u64) -> Option<Alarm> {
+        self.next_due_index(now_us).and_then(|idx| self.alarms[idx])
+    }
+
     pub fn next_due_us(&self) -> Option<u64> {
         self.alarms.iter().flatten().map(|alarm| alarm.due_us).min()
     }
@@ -181,6 +185,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(queue.next_due_us(), Some(50));
+        assert_eq!(
+            queue.next_due(50),
+            Some(Alarm::once(AlarmId(2), ModuleId::Radio, 50))
+        );
         assert_eq!(
             queue.pop_due(50),
             Some(Alarm::once(AlarmId(2), ModuleId::Radio, 50))
