@@ -140,6 +140,8 @@ Fault handling is intentionally small:
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
   records with the same checksum discipline as eval and admission reports.
+- `EventLogReport` summarizes the fixed event ring for host tools, including
+  capacity, drops, and the latest event's module, severity, kind, and payload.
 - `RuntimeReport` summarizes runtime control-plane state, including lifecycle
   state, mailbox pressure, alarm schedule, KV writes, quota usage, and event-log
   pressure.

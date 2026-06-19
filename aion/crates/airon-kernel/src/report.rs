@@ -1,14 +1,16 @@
 //! Fixed-layout reports emitted by firmware and decoded by host tools.
 
 use crate::{
-    manifest::module_code, Action, EventSeverity, KernelError, ModuleId, Supervisor,
-    SupervisorSnapshot, SystemBudget, SystemState,
+    manifest::module_code, Action, EventKind, EventLog, EventPayload, EventRecord, EventSeverity,
+    KernelError, ModuleId, Supervisor, SupervisorSnapshot, SystemBudget, SystemState,
 };
 
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C; // "ARHL"
 pub const HEALTH_REPORT_VERSION: u32 = 1;
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254; // "ARRT"
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
+pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4152_454C; // "AREL"
+pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -269,6 +271,113 @@ impl RuntimeReport {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EventLogReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub event_count: u32,
+    pub capacity: u32,
+    pub dropped_events: u32,
+    pub latest_seq: u32,
+    pub latest_at_us_lo: u32,
+    pub latest_at_us_hi: u32,
+    pub latest_module_tag: u32,
+    pub latest_severity: u32,
+    pub latest_kind: u32,
+    pub latest_payload_kind: u32,
+    pub latest_payload0: u32,
+    pub latest_payload1: u32,
+    pub checksum: u32,
+}
+
+impl EventLogReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            event_count: 0,
+            capacity: 0,
+            dropped_events: 0,
+            latest_seq: 0,
+            latest_at_us_lo: 0,
+            latest_at_us_hi: 0,
+            latest_module_tag: 0,
+            latest_severity: 0,
+            latest_kind: 0,
+            latest_payload_kind: 0,
+            latest_payload0: 0,
+            latest_payload1: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_event_log<const N: usize>(events: &EventLog<N>) -> Self {
+        let mut report = Self {
+            event_count: events.len() as u32,
+            capacity: events.capacity() as u32,
+            dropped_events: events.dropped(),
+            ..Self::zeroed()
+        };
+        if let Some(record) = events.latest() {
+            report.write_latest(record);
+        }
+        report.seal();
+        report
+    }
+
+    fn write_latest(&mut self, record: EventRecord) {
+        let (payload_kind, payload0, payload1) = payload_fields(record.payload);
+        self.latest_seq = record.seq;
+        self.latest_at_us_lo = record.at_us as u32;
+        self.latest_at_us_hi = (record.at_us >> 32) as u32;
+        self.latest_module_tag = module_tag(record.module);
+        self.latest_severity = severity_code(record.severity);
+        self.latest_kind = event_kind_code(record.kind);
+        self.latest_payload_kind = payload_kind;
+        self.latest_payload0 = payload0;
+        self.latest_payload1 = payload1;
+    }
+
+    pub fn latest_at_us(&self) -> u64 {
+        (u64::from(self.latest_at_us_hi) << 32) | u64::from(self.latest_at_us_lo)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = EVENT_LOG_REPORT_MAGIC;
+        self.version = EVENT_LOG_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == EVENT_LOG_REPORT_MAGIC
+            && self.version == EVENT_LOG_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.event_count
+            ^ self.capacity
+            ^ self.dropped_events
+            ^ self.latest_seq
+            ^ self.latest_at_us_lo
+            ^ self.latest_at_us_hi
+            ^ self.latest_module_tag
+            ^ self.latest_severity
+            ^ self.latest_kind
+            ^ self.latest_payload_kind
+            ^ self.latest_payload0
+            ^ self.latest_payload1
+    }
+}
+
 pub const fn module_tag(module: ModuleId) -> u32 {
     module_code(module)
 }
@@ -305,10 +414,43 @@ pub const fn action_code(action: Action) -> u32 {
     }
 }
 
+pub const fn severity_code(severity: EventSeverity) -> u32 {
+    match severity {
+        EventSeverity::Trace => 0,
+        EventSeverity::Info => 1,
+        EventSeverity::Warn => 2,
+        EventSeverity::Error => 3,
+        EventSeverity::Fatal => 4,
+    }
+}
+
+pub const fn event_kind_code(kind: EventKind) -> u32 {
+    match kind {
+        EventKind::Boot => 1,
+        EventKind::Health => 2,
+        EventKind::Recovery => 3,
+        EventKind::TaskOverrun => 4,
+        EventKind::Lease => 5,
+        EventKind::SamplePool => 6,
+        EventKind::Manifest => 7,
+        EventKind::Host => 8,
+    }
+}
+
+pub const fn payload_fields(payload: EventPayload) -> (u32, u32, u32) {
+    match payload {
+        EventPayload::None => (0, 0, 0),
+        EventPayload::Error(error) => (1, error_code(error), 0),
+        EventPayload::Action(action) => (2, action_code(action), 0),
+        EventPayload::Counter(value) => (3, value, 0),
+        EventPayload::Pair(left, right) => (4, left, right),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FaultThresholds, Supervisor};
+    use crate::{EventLog, EventPayload, FaultThresholds, Supervisor};
 
     #[test]
     fn health_report_is_built_from_supervisor_snapshot() {
@@ -387,6 +529,53 @@ mod tests {
 
         assert!(report.verify_checksum());
         report.module_count += 1;
+        assert!(!report.verify_checksum());
+    }
+
+    #[test]
+    fn event_log_report_summarizes_latest_event() {
+        let mut events = EventLog::<2>::new();
+        events.push(EventRecord::new(
+            0x1_0000_0040,
+            ModuleId::Sensor,
+            EventSeverity::Error,
+            EventKind::Health,
+            EventPayload::Error(KernelError::SensorReadFail),
+        ));
+        events.push(EventRecord::new(
+            0x1_0000_0080,
+            ModuleId::Sensor,
+            EventSeverity::Warn,
+            EventKind::Recovery,
+            EventPayload::Action(Action::RetryNow),
+        ));
+
+        let report = EventLogReport::from_event_log(&events);
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, EVENT_LOG_REPORT_MAGIC);
+        assert_eq!(report.event_count, 2);
+        assert_eq!(report.capacity, 2);
+        assert_eq!(report.dropped_events, 0);
+        assert_eq!(report.latest_seq, 2);
+        assert_eq!(report.latest_at_us(), 0x1_0000_0080);
+        assert_eq!(report.latest_module_tag, module_tag(ModuleId::Sensor));
+        assert_eq!(report.latest_severity, severity_code(EventSeverity::Warn));
+        assert_eq!(report.latest_kind, event_kind_code(EventKind::Recovery));
+        assert_eq!(report.latest_payload_kind, 2);
+        assert_eq!(report.latest_payload0, action_code(Action::RetryNow));
+    }
+
+    #[test]
+    fn event_log_report_detects_corruption() {
+        let events = EventLog::<1>::new();
+        let mut report = EventLogReport::from_event_log(&events);
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.event_count, 0);
+        assert_eq!(report.capacity, 1);
+
+        report.event_count = 1;
         assert!(!report.verify_checksum());
     }
 }

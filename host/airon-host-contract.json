@@ -67,6 +67,36 @@
     "version": 1,
     "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
   },
+  "event_log_report": {
+    "symbol": "AIRON_EVENT_LOG_REPORT",
+    "magic": "0x4152454C",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest event timestamp split into lo/hi",
+    "severity_codes": {
+      "0": "trace",
+      "1": "info",
+      "2": "warn",
+      "3": "error",
+      "4": "fatal"
+    },
+    "event_kind_codes": {
+      "1": "boot",
+      "2": "health",
+      "3": "recovery",
+      "4": "task_overrun",
+      "5": "lease",
+      "6": "sample_pool",
+      "7": "manifest",
+      "8": "host"
+    },
+    "payload_kind_codes": {
+      "0": "none",
+      "1": "error",
+      "2": "action",
+      "3": "counter",
+      "4": "pair"
+    }
+  },
   "runtime_report": {
     "symbol": "AIRON_RUNTIME_REPORT",
     "magic": "0x41525254",

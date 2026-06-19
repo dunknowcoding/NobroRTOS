@@ -2,9 +2,9 @@
 
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
-    Capability, CapabilityGrantError, EventSeverity, FaultThresholds, HealthReport, KernelError,
-    KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
-    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
+    Capability, CapabilityGrantError, EventLogReport, EventSeverity, FaultThresholds, HealthReport,
+    KernelError, KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind,
+    ModuleId, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport,
     RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
     SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
@@ -412,6 +412,10 @@ impl<
         })
     }
 
+    pub fn event_log_report(&self) -> EventLogReport {
+        EventLogReport::from_event_log(self.recovery.events())
+    }
+
     pub const fn state(&self) -> SystemState {
         self.recovery.state()
     }
@@ -776,6 +780,31 @@ mod tests {
         assert_eq!(report.kv_writes, 1);
         assert_eq!(report.quota_flash_used_bytes, 128);
         assert_eq!(report.event_count, 3);
+    }
+
+    #[test]
+    fn runtime_event_log_report_exposes_latest_event() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+
+        let report = runtime.event_log_report();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.event_count, runtime.recovery().events().len() as u32);
+        assert_eq!(
+            report.latest_module_tag,
+            crate::module_tag(ModuleId::Kernel)
+        );
+        assert_eq!(
+            report.latest_kind,
+            crate::event_kind_code(crate::EventKind::Host)
+        );
+        assert_eq!(report.latest_payload_kind, 4);
+        assert_eq!(report.latest_payload0, SystemState::Running as u32);
+        assert_eq!(report.latest_payload1, SystemState::Degraded as u32);
     }
 
     #[test]
