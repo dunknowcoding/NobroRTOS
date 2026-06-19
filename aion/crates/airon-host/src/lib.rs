@@ -85,6 +85,75 @@ pub enum ReportStatus {
     Corrupt,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BootStage {
+    BoardProfile,
+    AdapterCompatibility,
+    Admission,
+    Runtime,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootDiagnostic {
+    pub stage: BootStage,
+    pub status: ReportStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootReports {
+    pub board_profile: BoardProfileReport,
+    pub adapter_compatibility: AdapterCompatibilityReport,
+    pub admission: AdmissionReport,
+    pub runtime: RuntimeReport,
+}
+
+impl BootReports {
+    pub const fn new(
+        board_profile: BoardProfileReport,
+        adapter_compatibility: AdapterCompatibilityReport,
+        admission: AdmissionReport,
+        runtime: RuntimeReport,
+    ) -> Self {
+        Self {
+            board_profile,
+            adapter_compatibility,
+            admission,
+            runtime,
+        }
+    }
+
+    pub fn diagnostic(&self) -> BootDiagnostic {
+        let board = self.board_profile.status();
+        if board != ReportStatus::Pass {
+            return BootDiagnostic {
+                stage: BootStage::BoardProfile,
+                status: board,
+            };
+        }
+
+        let adapter = self.adapter_compatibility.status();
+        if adapter != ReportStatus::Pass {
+            return BootDiagnostic {
+                stage: BootStage::AdapterCompatibility,
+                status: adapter,
+            };
+        }
+
+        let admission = self.admission.status();
+        if admission != ReportStatus::Pass {
+            return BootDiagnostic {
+                stage: BootStage::Admission,
+                status: admission,
+            };
+        }
+
+        BootDiagnostic {
+            stage: BootStage::Runtime,
+            status: self.runtime.status(),
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BoardProfileReport {
@@ -751,6 +820,83 @@ mod tests {
         assert_eq!(fail.status(), ReportStatus::Fail(3));
         fail.error_capability_bits = 0x04;
         assert_eq!(fail.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
+    fn boot_reports_return_first_non_passing_stage() {
+        let mut board = BoardProfileReport {
+            platform_hash: 1,
+            board_hash: 2,
+            app_flash_start: 0x1000,
+            flash_budget_bytes: 80 * 1024,
+            ram_budget_bytes: 32 * 1024,
+            sample_pool_slots: 8,
+            max_modules: 16,
+            servo_pin: 24,
+            servo_center_us: 1500,
+            led_pin: 15,
+            mvk_trigger_pin: 17,
+            ..BoardProfileReport::zeroed()
+        };
+        board.seal();
+
+        let mut adapter = AdapterCompatibilityReport {
+            compatible: 1,
+            adapter_count: 2,
+            ..AdapterCompatibilityReport::zeroed()
+        };
+        adapter.seal();
+
+        let mut admission = AdmissionReport {
+            admitted: 1,
+            module_count: 3,
+            startup_len: 3,
+            ..AdmissionReport::zeroed()
+        };
+        admission.seal();
+
+        let mut runtime = RuntimeReport {
+            state: 3,
+            module_count: 3,
+            ..RuntimeReport::zeroed()
+        };
+        runtime.seal();
+
+        let reports = BootReports::new(board, adapter, admission, runtime);
+        assert_eq!(
+            reports.diagnostic(),
+            BootDiagnostic {
+                stage: BootStage::Runtime,
+                status: ReportStatus::Pass,
+            }
+        );
+
+        let mut failed_adapter = adapter;
+        failed_adapter.compatible = 0;
+        failed_adapter.error_code = 3;
+        failed_adapter.seal();
+        let reports = BootReports::new(board, failed_adapter, admission, runtime);
+        assert_eq!(
+            reports.diagnostic(),
+            BootDiagnostic {
+                stage: BootStage::AdapterCompatibility,
+                status: ReportStatus::Fail(3),
+            }
+        );
+
+        let reports = BootReports::new(
+            BoardProfileReport::zeroed(),
+            failed_adapter,
+            admission,
+            runtime,
+        );
+        assert_eq!(
+            reports.diagnostic(),
+            BootDiagnostic {
+                stage: BootStage::BoardProfile,
+                status: ReportStatus::Missing,
+            }
+        );
     }
 
     #[test]

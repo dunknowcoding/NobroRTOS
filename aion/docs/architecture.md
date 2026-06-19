@@ -43,6 +43,9 @@ Board compatibility must be data-first:
 - Hardware parity checks read registers back into snapshot structs.
 - Host scripts consume `airon-host` constants or `host/airon-host-contract.json`
   rather than duplicating magic values.
+- Host tools should summarize boot diagnostics in this order: board profile,
+  adapter compatibility, admission, then runtime. This keeps first-fault
+  guidance stable as more reports are added.
 
 The current nRF52840 backend uses PPI. The portable HAL term is
 `HalEventCapture`; do not leak "PPI" into app or adapter APIs unless the code is
