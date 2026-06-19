@@ -266,6 +266,18 @@ pub const fn admission_error_label(code: u32) -> Option<&'static str> {
     }
 }
 
+pub const fn module_runtime_state_label(code: u32) -> Option<&'static str> {
+    match code {
+        1 => Some("registered"),
+        2 => Some("active"),
+        3 => Some("suspended"),
+        4 => Some("faulted"),
+        5 => Some("recovering"),
+        6 => Some("disabled"),
+        _ => None,
+    }
+}
+
 pub trait HostReport {
     const SYMBOL: &'static str;
     const MAGIC: u32;
@@ -1047,6 +1059,10 @@ impl ModuleRuntimeReport {
         (u64::from(self.latest_change_us_hi) << 32) | u64::from(self.latest_change_us_lo)
     }
 
+    pub const fn latest_state_label(&self) -> Option<&'static str> {
+        module_runtime_state_label(self.latest_state)
+    }
+
     pub fn seal(&mut self) {
         self.magic = MODULE_RUNTIME_REPORT_MAGIC;
         self.version = MODULE_RUNTIME_REPORT_VERSION;
@@ -1402,6 +1418,13 @@ mod tests {
         assert_eq!(adapter_compat_error_label(99), None);
         assert_eq!(admission_error_label(6), Some("unknown_startup_node"));
         assert_eq!(admission_error_label(99), None);
+        assert_eq!(module_runtime_state_label(1), Some("registered"));
+        assert_eq!(module_runtime_state_label(2), Some("active"));
+        assert_eq!(module_runtime_state_label(3), Some("suspended"));
+        assert_eq!(module_runtime_state_label(4), Some("faulted"));
+        assert_eq!(module_runtime_state_label(5), Some("recovering"));
+        assert_eq!(module_runtime_state_label(6), Some("disabled"));
+        assert_eq!(module_runtime_state_label(99), None);
 
         let adapter = BootDiagnostic {
             stage: BootStage::AdapterCompatibility,
@@ -1793,6 +1816,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.latest_change_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.latest_state_label(), Some("faulted"));
         assert_eq!(report.status(), ReportStatus::Pass);
         assert_eq!(
             <ModuleRuntimeReport as HostReport>::SYMBOL,
