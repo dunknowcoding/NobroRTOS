@@ -21,6 +21,9 @@ pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
 pub const MODULE_RUNTIME_REPORT_SYMBOL: &str = "AIRON_MODULE_RUNTIME_REPORT";
 pub const MODULE_RUNTIME_REPORT_MAGIC: u32 = 0x4152_4D52;
 pub const MODULE_RUNTIME_REPORT_VERSION: u32 = 1;
+pub const DEGRADE_APPLICATION_REPORT_SYMBOL: &str = "AIRON_DEGRADE_APPLICATION_REPORT";
+pub const DEGRADE_APPLICATION_REPORT_MAGIC: u32 = 0x4152_4447;
+pub const DEGRADE_APPLICATION_REPORT_VERSION: u32 = 1;
 pub const RUNTIME_REPORT_SYMBOL: &str = "AIRON_RUNTIME_REPORT";
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254;
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
@@ -323,6 +326,17 @@ pub const fn module_runtime_state_label(code: u32) -> Option<&'static str> {
         4 => Some("faulted"),
         5 => Some("recovering"),
         6 => Some("disabled"),
+        _ => None,
+    }
+}
+
+pub const fn degrade_reason_label(code: u32) -> Option<&'static str> {
+    match code {
+        0 => Some("none"),
+        1 => Some("flash_budget"),
+        2 => Some("ram_budget"),
+        3 => Some("pool_budget"),
+        4 => Some("module_limit"),
         _ => None,
     }
 }
@@ -1183,6 +1197,96 @@ impl ModuleRuntimeReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DegradeApplicationReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub requested_count: u32,
+    pub disabled_count: u32,
+    pub already_disabled_count: u32,
+    pub reason: u32,
+    pub applied_at_us_lo: u32,
+    pub applied_at_us_hi: u32,
+    pub checksum: u32,
+}
+
+impl DegradeApplicationReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            requested_count: 0,
+            disabled_count: 0,
+            already_disabled_count: 0,
+            reason: 0,
+            applied_at_us_lo: 0,
+            applied_at_us_hi: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn set_applied_at_us(&mut self, applied_at_us: u64) {
+        self.applied_at_us_lo = applied_at_us as u32;
+        self.applied_at_us_hi = (applied_at_us >> 32) as u32;
+    }
+
+    pub fn applied_at_us(&self) -> u64 {
+        (u64::from(self.applied_at_us_hi) << 32) | u64::from(self.applied_at_us_lo)
+    }
+
+    pub const fn reason_label(&self) -> Option<&'static str> {
+        degrade_reason_label(self.reason)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = DEGRADE_APPLICATION_REPORT_MAGIC;
+        self.version = DEGRADE_APPLICATION_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == DEGRADE_APPLICATION_REPORT_MAGIC
+            && self.version == DEGRADE_APPLICATION_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != DEGRADE_APPLICATION_REPORT_MAGIC
+            || self.version != DEGRADE_APPLICATION_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.verify_checksum() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.requested_count
+            ^ self.disabled_count
+            ^ self.already_disabled_count
+            ^ self.reason
+            ^ self.applied_at_us_lo
+            ^ self.applied_at_us_hi
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HealthReport {
     pub magic: u32,
     pub version: u32,
@@ -1325,6 +1429,12 @@ impl_host_report!(
     MODULE_RUNTIME_REPORT_VERSION
 );
 impl_host_report!(
+    DegradeApplicationReport,
+    DEGRADE_APPLICATION_REPORT_SYMBOL,
+    DEGRADE_APPLICATION_REPORT_MAGIC,
+    DEGRADE_APPLICATION_REPORT_VERSION
+);
+impl_host_report!(
     HealthReport,
     HEALTH_REPORT_SYMBOL,
     HEALTH_REPORT_MAGIC,
@@ -1392,6 +1502,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(EVENT_LOG_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MODULE_RUNTIME_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(DEGRADE_APPLICATION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(BOARD_PROFILE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MANIFEST_REPORT_SYMBOL));
@@ -1400,6 +1511,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("0x41524250"));
         assert!(HOST_CONTRACT_JSON.contains("0x4152454C"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524D52"));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524447"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524D46"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
@@ -1499,6 +1611,12 @@ mod tests {
         assert_eq!(module_runtime_state_label(5), Some("recovering"));
         assert_eq!(module_runtime_state_label(6), Some("disabled"));
         assert_eq!(module_runtime_state_label(99), None);
+        assert_eq!(degrade_reason_label(0), Some("none"));
+        assert_eq!(degrade_reason_label(1), Some("flash_budget"));
+        assert_eq!(degrade_reason_label(2), Some("ram_budget"));
+        assert_eq!(degrade_reason_label(3), Some("pool_budget"));
+        assert_eq!(degrade_reason_label(4), Some("module_limit"));
+        assert_eq!(degrade_reason_label(99), None);
 
         let adapter = BootDiagnostic {
             stage: BootStage::AdapterCompatibility,
@@ -1906,6 +2024,31 @@ mod tests {
     }
 
     #[test]
+    fn degrade_application_report_seals_and_verifies() {
+        let mut report = DegradeApplicationReport {
+            requested_count: 2,
+            disabled_count: 1,
+            already_disabled_count: 1,
+            reason: 4,
+            ..DegradeApplicationReport::zeroed()
+        };
+        report.set_applied_at_us(0x0123_4567_89AB_CDEF);
+        report.seal();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.applied_at_us(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(report.reason_label(), Some("module_limit"));
+        assert_eq!(report.status(), ReportStatus::Pass);
+        assert_eq!(
+            <DegradeApplicationReport as HostReport>::SYMBOL,
+            DEGRADE_APPLICATION_REPORT_SYMBOL
+        );
+
+        report.disabled_count += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(BoardProfileReport::zeroed().status(), ReportStatus::Missing);
@@ -1918,6 +2061,10 @@ mod tests {
         assert_eq!(EventLogReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(
             ModuleRuntimeReport::zeroed().status(),
+            ReportStatus::Missing
+        );
+        assert_eq!(
+            DegradeApplicationReport::zeroed().status(),
             ReportStatus::Missing
         );
         assert_eq!(RuntimeReport::zeroed().status(), ReportStatus::Missing);

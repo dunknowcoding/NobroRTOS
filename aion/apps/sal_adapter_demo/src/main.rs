@@ -28,9 +28,9 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, DeadlineContract, EventLogReport, FaultThresholds,
-    ManifestReport, MemoryBudget, ModuleId, ModuleRuntimeReport, ModuleSpec, Runtime,
-    RuntimeReport, SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, DeadlineContract, DegradeApplicationReport,
+    EventLogReport, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleRuntimeReport,
+    ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
 
@@ -62,6 +62,11 @@ static mut AIRON_EVENT_LOG_REPORT: EventLogReport = EventLogReport::zeroed();
 #[no_mangle]
 #[used]
 static mut AIRON_MODULE_RUNTIME_REPORT: ModuleRuntimeReport = ModuleRuntimeReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut AIRON_DEGRADE_APPLICATION_REPORT: DegradeApplicationReport =
+    DegradeApplicationReport::zeroed();
 
 #[no_mangle]
 #[used]
@@ -196,6 +201,7 @@ fn admit_sal_demo() {
                 AIRON_RUNTIME_REPORT = runtime.runtime_report();
                 AIRON_EVENT_LOG_REPORT = runtime.event_log_report();
                 AIRON_MODULE_RUNTIME_REPORT = runtime.module_runtime_report();
+                AIRON_DEGRADE_APPLICATION_REPORT = runtime.degrade_application_report();
             }
         }
         Err(_) => {

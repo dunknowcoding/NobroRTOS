@@ -5,6 +5,7 @@ use crate::{
     KernelError, ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeGuard, Supervisor,
     SupervisorSnapshot, SystemBudget, SystemState,
 };
+use crate::{DegradeApplication, DegradeReason};
 
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C; // "ARHL"
 pub const HEALTH_REPORT_VERSION: u32 = 1;
@@ -14,6 +15,8 @@ pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4152_454C; // "AREL"
 pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
 pub const MODULE_RUNTIME_REPORT_MAGIC: u32 = 0x4152_4D52; // "ARMR"
 pub const MODULE_RUNTIME_REPORT_VERSION: u32 = 1;
+pub const DEGRADE_APPLICATION_REPORT_MAGIC: u32 = 0x4152_4447; // "ARDG"
+pub const DEGRADE_APPLICATION_REPORT_VERSION: u32 = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -386,6 +389,82 @@ impl ModuleRuntimeReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DegradeApplicationReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub requested_count: u32,
+    pub disabled_count: u32,
+    pub already_disabled_count: u32,
+    pub reason: u32,
+    pub applied_at_us_lo: u32,
+    pub applied_at_us_hi: u32,
+    pub checksum: u32,
+}
+
+impl DegradeApplicationReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            requested_count: 0,
+            disabled_count: 0,
+            already_disabled_count: 0,
+            reason: 0,
+            applied_at_us_lo: 0,
+            applied_at_us_hi: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_application(application: DegradeApplication) -> Self {
+        let mut report = Self {
+            requested_count: application.requested as u32,
+            disabled_count: application.disabled as u32,
+            already_disabled_count: application.already_disabled as u32,
+            reason: degrade_reason_code(application.reason),
+            applied_at_us_lo: application.applied_at_us as u32,
+            applied_at_us_hi: (application.applied_at_us >> 32) as u32,
+            ..Self::zeroed()
+        };
+        report.seal();
+        report
+    }
+
+    pub fn applied_at_us(&self) -> u64 {
+        (u64::from(self.applied_at_us_hi) << 32) | u64::from(self.applied_at_us_lo)
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = DEGRADE_APPLICATION_REPORT_MAGIC;
+        self.version = DEGRADE_APPLICATION_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == DEGRADE_APPLICATION_REPORT_MAGIC
+            && self.version == DEGRADE_APPLICATION_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.requested_count
+            ^ self.disabled_count
+            ^ self.already_disabled_count
+            ^ self.reason
+            ^ self.applied_at_us_lo
+            ^ self.applied_at_us_hi
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct EventLogReport {
     pub magic: u32,
     pub version: u32,
@@ -515,6 +594,16 @@ pub const fn module_run_state_code(state: ModuleRunState) -> u32 {
         ModuleRunState::Faulted => 4,
         ModuleRunState::Recovering => 5,
         ModuleRunState::Disabled => 6,
+    }
+}
+
+pub const fn degrade_reason_code(reason: Option<DegradeReason>) -> u32 {
+    match reason {
+        None => 0,
+        Some(DegradeReason::FlashBudget) => 1,
+        Some(DegradeReason::RamBudget) => 2,
+        Some(DegradeReason::PoolBudget) => 3,
+        Some(DegradeReason::ModuleLimit) => 4,
     }
 }
 
@@ -694,6 +783,28 @@ mod tests {
         );
         assert_eq!(report.latest_fault_count, 1);
         assert_eq!(report.latest_change_us(), 0x1_0000_00C0);
+    }
+
+    #[test]
+    fn degrade_application_report_summarizes_application() {
+        let report = DegradeApplicationReport::from_application(DegradeApplication {
+            requested: 3,
+            disabled: 2,
+            already_disabled: 1,
+            reason: Some(DegradeReason::RamBudget),
+            applied_at_us: 0x1_0000_0040,
+        });
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, DEGRADE_APPLICATION_REPORT_MAGIC);
+        assert_eq!(report.requested_count, 3);
+        assert_eq!(report.disabled_count, 2);
+        assert_eq!(report.already_disabled_count, 1);
+        assert_eq!(
+            report.reason,
+            degrade_reason_code(Some(DegradeReason::RamBudget))
+        );
+        assert_eq!(report.applied_at_us(), 0x1_0000_0040);
     }
 
     #[test]

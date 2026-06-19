@@ -111,6 +111,19 @@
       "6": "disabled"
     }
   },
+  "degrade_application_report": {
+    "symbol": "AIRON_DEGRADE_APPLICATION_REPORT",
+    "magic": "0x41524447",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; applied timestamp split into lo/hi",
+    "reason_codes": {
+      "0": "none",
+      "1": "flash_budget",
+      "2": "ram_budget",
+      "3": "pool_budget",
+      "4": "module_limit"
+    }
+  },
   "runtime_report": {
     "symbol": "AIRON_RUNTIME_REPORT",
     "magic": "0x41525254",

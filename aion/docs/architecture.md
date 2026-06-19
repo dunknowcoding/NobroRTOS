@@ -148,6 +148,9 @@ Fault handling is intentionally small:
 - `ModuleRuntimeReport` summarizes module runtime states for host tools,
   including Active, Suspended, Faulted, Recovering, Disabled, and the latest
   changed module.
+- `DegradeApplicationReport` summarizes the latest runtime degraded-mode
+  application, including requested disables, newly disabled modules, modules
+  that were already disabled, the budget reason, and the application timestamp.
 - `RuntimeReport` summarizes runtime control-plane state, including lifecycle
   state, mailbox pressure, alarm schedule, KV writes, quota usage, and event-log
   pressure.
@@ -169,7 +172,9 @@ Fault handling is intentionally small:
   reserve/release accounting on the admitted `QuotaLedger` so memory discipline
   continues after boot. Module recovery completion is also explicit: the
   runtime returns through driver initialization, records a healthy heartbeat,
-  and only then resumes `Running`.
+  and only then resumes `Running`. Degraded-mode decisions are validated before
+  module state changes and the last successful application is retained as a
+  fixed-layout host report.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

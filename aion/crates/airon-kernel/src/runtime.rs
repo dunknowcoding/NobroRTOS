@@ -2,13 +2,13 @@
 
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
-    Capability, CapabilityGrantError, DegradeDecision, DegradeReason, EventLogReport,
-    EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey, KvStore, KvValue,
-    Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState, ModuleRuntimeEntry,
-    ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError, RecoveryCoordinator,
-    RecoveryError, RecoveryOutcome, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode,
-    SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry,
-    WatchdogError,
+    Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
+    EventLogReport, EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey,
+    KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState,
+    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport, RuntimeReportInput,
+    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
+    WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,9 +134,27 @@ impl AlarmDispatch {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DegradeApplication {
+    pub requested: usize,
     pub disabled: usize,
     pub already_disabled: usize,
     pub reason: Option<DegradeReason>,
+    pub applied_at_us: u64,
+}
+
+impl DegradeApplication {
+    pub const fn none() -> Self {
+        Self {
+            requested: 0,
+            disabled: 0,
+            already_disabled: 0,
+            reason: None,
+            applied_at_us: 0,
+        }
+    }
+
+    pub const fn touched_modules(&self) -> usize {
+        self.disabled + self.already_disabled
+    }
 }
 
 pub struct Runtime<
@@ -155,6 +173,7 @@ pub struct Runtime<
     recovery: RecoveryCoordinator<HEALTH, LOG>,
     watchdog: Watchdog<HEALTH>,
     modules: ModuleRuntimeGuard<QUOTAS>,
+    degrade: DegradeApplication,
 }
 
 impl<
@@ -177,6 +196,7 @@ impl<
             recovery: RecoveryCoordinator::new(thresholds),
             watchdog: Watchdog::new(),
             modules,
+            degrade: DegradeApplication::none(),
         }
     }
 
@@ -449,9 +469,11 @@ impl<
         }
 
         let mut application = DegradeApplication {
+            requested: 0,
             disabled: 0,
             already_disabled: 0,
             reason: decision.reason,
+            applied_at_us: now_us,
         };
 
         for module in decision
@@ -463,6 +485,7 @@ impl<
             let Some(module) = module else {
                 continue;
             };
+            application.requested += 1;
             if self.module_state(module) == Some(ModuleRunState::Disabled) {
                 application.already_disabled += 1;
                 continue;
@@ -475,6 +498,7 @@ impl<
             self.recovery.transition(SystemState::Degraded, now_us)?;
         }
 
+        self.degrade = application;
         Ok(application)
     }
 
@@ -522,6 +546,10 @@ impl<
 
     pub fn module_runtime_report(&self) -> ModuleRuntimeReport {
         ModuleRuntimeReport::from_guard(&self.modules)
+    }
+
+    pub fn degrade_application_report(&self) -> DegradeApplicationReport {
+        DegradeApplicationReport::from_application(self.degrade)
     }
 
     pub const fn state(&self) -> SystemState {
@@ -1072,9 +1100,11 @@ mod tests {
         assert_eq!(
             application,
             DegradeApplication {
+                requested: 1,
                 disabled: 1,
                 already_disabled: 0,
                 reason: Some(DegradeReason::RamBudget),
+                applied_at_us: 20,
             }
         );
         assert_eq!(
@@ -1087,11 +1117,47 @@ mod tests {
         assert_eq!(
             application,
             DegradeApplication {
+                requested: 1,
                 disabled: 0,
                 already_disabled: 1,
                 reason: Some(DegradeReason::RamBudget),
+                applied_at_us: 30,
             }
         );
+        assert_eq!(application.touched_modules(), 1);
+    }
+
+    #[test]
+    fn runtime_exports_degrade_application_report() {
+        let mut runtime = runtime();
+
+        let report = runtime.degrade_application_report();
+        assert!(report.verify_checksum());
+        assert_eq!(report.requested_count, 0);
+        assert_eq!(report.reason, crate::degrade_reason_code(None));
+
+        runtime.boot_to_running(10).unwrap();
+        let decision = DegradeDecision {
+            enabled: [true, false],
+            disabled: [Some(ModuleId::Sensor), None],
+            disabled_count: 1,
+            budget: SystemBudget::new(16 * 1024, 4 * 1024, 4),
+            reason: Some(DegradeReason::PoolBudget),
+        };
+        runtime
+            .apply_degrade_decision(&decision, 0x1_0000_0020)
+            .unwrap();
+
+        let report = runtime.degrade_application_report();
+        assert!(report.verify_checksum());
+        assert_eq!(report.requested_count, 1);
+        assert_eq!(report.disabled_count, 1);
+        assert_eq!(report.already_disabled_count, 0);
+        assert_eq!(
+            report.reason,
+            crate::degrade_reason_code(Some(DegradeReason::PoolBudget))
+        );
+        assert_eq!(report.applied_at_us(), 0x1_0000_0020);
     }
 
     #[test]
