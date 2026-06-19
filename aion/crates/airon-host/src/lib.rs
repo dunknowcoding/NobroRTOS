@@ -170,6 +170,68 @@ impl BootDiagnostic {
     }
 }
 
+pub trait HostReport {
+    const SYMBOL: &'static str;
+    const MAGIC: u32;
+    const VERSION: u32;
+
+    fn raw_magic(&self) -> u32;
+    fn raw_version(&self) -> u32;
+    fn completed(&self) -> u32;
+    fn checksum(&self) -> u32;
+    fn verify_checksum(&self) -> bool;
+    fn status(&self) -> ReportStatus;
+
+    fn is_missing(&self) -> bool {
+        self.raw_magic() == 0 && self.raw_version() == 0 && self.checksum() == 0
+    }
+
+    fn has_expected_header(&self) -> bool {
+        self.raw_magic() == Self::MAGIC && self.raw_version() == Self::VERSION
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReportSlot {
+    pub stage: BootStage,
+    pub symbol: &'static str,
+    pub status: ReportStatus,
+}
+
+macro_rules! impl_host_report {
+    ($report:ty, $symbol:expr, $magic:expr, $version:expr) => {
+        impl HostReport for $report {
+            const SYMBOL: &'static str = $symbol;
+            const MAGIC: u32 = $magic;
+            const VERSION: u32 = $version;
+
+            fn raw_magic(&self) -> u32 {
+                self.magic
+            }
+
+            fn raw_version(&self) -> u32 {
+                self.version
+            }
+
+            fn completed(&self) -> u32 {
+                self.completed
+            }
+
+            fn checksum(&self) -> u32 {
+                self.checksum
+            }
+
+            fn verify_checksum(&self) -> bool {
+                <$report>::verify_checksum(self)
+            }
+
+            fn status(&self) -> ReportStatus {
+                <$report>::status(self)
+            }
+        }
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootReports {
     pub board_profile: BoardProfileReport,
@@ -233,6 +295,36 @@ impl BootReports {
             stage: BootStage::Runtime,
             status: self.runtime.status(),
         }
+    }
+
+    pub fn slots(&self) -> [ReportSlot; 5] {
+        [
+            ReportSlot {
+                stage: BootStage::BoardProfile,
+                symbol: <BoardProfileReport as HostReport>::SYMBOL,
+                status: self.board_profile.status(),
+            },
+            ReportSlot {
+                stage: BootStage::Manifest,
+                symbol: <ManifestReport as HostReport>::SYMBOL,
+                status: self.manifest.status(),
+            },
+            ReportSlot {
+                stage: BootStage::AdapterCompatibility,
+                symbol: <AdapterCompatibilityReport as HostReport>::SYMBOL,
+                status: self.adapter_compatibility.status(),
+            },
+            ReportSlot {
+                stage: BootStage::Admission,
+                symbol: <AdmissionReport as HostReport>::SYMBOL,
+                status: self.admission.status(),
+            },
+            ReportSlot {
+                stage: BootStage::Runtime,
+                symbol: <RuntimeReport as HostReport>::SYMBOL,
+                status: self.runtime.status(),
+            },
+        ]
     }
 }
 
@@ -814,6 +906,43 @@ impl HealthReport {
     }
 }
 
+impl_host_report!(
+    BoardProfileReport,
+    BOARD_PROFILE_REPORT_SYMBOL,
+    BOARD_PROFILE_REPORT_MAGIC,
+    BOARD_PROFILE_REPORT_VERSION
+);
+impl_host_report!(
+    ManifestReport,
+    MANIFEST_REPORT_SYMBOL,
+    MANIFEST_REPORT_MAGIC,
+    MANIFEST_REPORT_VERSION
+);
+impl_host_report!(
+    AdapterCompatibilityReport,
+    ADAPTER_COMPAT_REPORT_SYMBOL,
+    ADAPTER_COMPAT_REPORT_MAGIC,
+    ADAPTER_COMPAT_REPORT_VERSION
+);
+impl_host_report!(
+    AdmissionReport,
+    ADMISSION_REPORT_SYMBOL,
+    ADMISSION_REPORT_MAGIC,
+    ADMISSION_REPORT_VERSION
+);
+impl_host_report!(
+    RuntimeReport,
+    RUNTIME_REPORT_SYMBOL,
+    RUNTIME_REPORT_MAGIC,
+    RUNTIME_REPORT_VERSION
+);
+impl_host_report!(
+    HealthReport,
+    HEALTH_REPORT_SYMBOL,
+    HEALTH_REPORT_MAGIC,
+    HealthReport::VERSION
+);
+
 #[cfg(test)]
 extern crate std;
 
@@ -1043,6 +1172,30 @@ mod tests {
     }
 
     #[test]
+    fn host_report_trait_exposes_common_header_checks() {
+        let mut report = ManifestReport {
+            valid: 1,
+            module_count: 2,
+            fingerprint: 0xCAFE_BABE,
+            ..ManifestReport::zeroed()
+        };
+
+        assert!(HostReport::is_missing(&report));
+        report.seal();
+
+        assert_eq!(
+            <ManifestReport as HostReport>::SYMBOL,
+            MANIFEST_REPORT_SYMBOL
+        );
+        assert_eq!(HostReport::raw_magic(&report), MANIFEST_REPORT_MAGIC);
+        assert_eq!(HostReport::raw_version(&report), MANIFEST_REPORT_VERSION);
+        assert_eq!(HostReport::completed(&report), 1);
+        assert!(HostReport::has_expected_header(&report));
+        assert!(HostReport::verify_checksum(&report));
+        assert_eq!(HostReport::status(&report), ReportStatus::Pass);
+    }
+
+    #[test]
     fn adapter_compatibility_report_status_decodes_success_and_failure() {
         let mut pass = AdapterCompatibilityReport {
             compatible: 1,
@@ -1123,6 +1276,37 @@ mod tests {
         runtime.seal();
 
         let reports = BootReports::new(board, manifest, adapter, admission, runtime);
+        let slots = reports.slots();
+        assert_eq!(
+            slots,
+            [
+                ReportSlot {
+                    stage: BootStage::BoardProfile,
+                    symbol: BOARD_PROFILE_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+                ReportSlot {
+                    stage: BootStage::Manifest,
+                    symbol: MANIFEST_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+                ReportSlot {
+                    stage: BootStage::AdapterCompatibility,
+                    symbol: ADAPTER_COMPAT_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+                ReportSlot {
+                    stage: BootStage::Admission,
+                    symbol: ADMISSION_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+                ReportSlot {
+                    stage: BootStage::Runtime,
+                    symbol: RUNTIME_REPORT_SYMBOL,
+                    status: ReportStatus::Pass,
+                },
+            ]
+        );
         assert_eq!(
             reports.diagnostic(),
             BootDiagnostic {
