@@ -125,6 +125,8 @@ Fault handling is intentionally small:
   binding app logic to a specific hardware timer block.
 - `AlarmDispatch` summarizes due-alarm delivery, including partial progress and
   the first alarm blocked by mailbox backpressure, without dropping the alarm.
+  Runtime code can route that blocked alarm through recovery as a deadline
+  fault, keeping timer backpressure visible to health reports.
 - `KvStore` defines the kernel-owned configuration contract as a fixed-capacity
   table; future flash persistence can keep the same API without adding a
   seventh SAL.

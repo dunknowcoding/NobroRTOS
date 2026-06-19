@@ -260,6 +260,17 @@ impl<
         AlarmDispatch::completed(dispatched)
     }
 
+    pub fn dispatch_due_alarms_with_recovery(
+        &mut self,
+        now_us: u64,
+    ) -> Result<AlarmDispatch, RuntimeError> {
+        let dispatch = self.try_dispatch_due_alarms(now_us);
+        if let Some(alarm) = dispatch.blocked {
+            self.record_error(alarm.module, KernelError::DeadlineMissed, now_us)?;
+        }
+        Ok(dispatch)
+    }
+
     pub fn kv_set(&mut self, key: KvKey, value: KvValue) -> Result<(), RuntimeError> {
         self.kv.set(key, value)?;
         Ok(())
@@ -609,6 +620,54 @@ mod tests {
             Some(Alarm::once(AlarmId(2), ModuleId::Kernel, 20))
         );
         assert_eq!(runtime.mailbox().dropped(), 1);
+    }
+
+    #[test]
+    fn runtime_alarm_dispatch_backpressure_enters_recovery() {
+        type SmallMailboxRuntime = Runtime<4, 4, 1, 4, 4, 4, 16>;
+        let manifest = manifest();
+        let mut runtime = SmallMailboxRuntime::admit(
+            &manifest,
+            &startup(),
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+        runtime.boot_to_running(1).unwrap();
+        runtime
+            .schedule_once(AlarmId(1), ModuleId::Kernel, 10, 0)
+            .unwrap();
+        runtime
+            .schedule_once(AlarmId(2), ModuleId::Sensor, 20, 0)
+            .unwrap();
+
+        let dispatch = runtime.dispatch_due_alarms_with_recovery(20).unwrap();
+        let report = runtime
+            .health_report(ModuleId::Sensor)
+            .expect("health report");
+
+        assert_eq!(
+            dispatch.blocked,
+            Some(Alarm::once(AlarmId(2), ModuleId::Sensor, 20))
+        );
+        assert_eq!(
+            dispatch.error,
+            Some(RuntimeError::Mailbox(MailboxError::Full))
+        );
+        assert_eq!(runtime.state(), SystemState::Degraded);
+        assert_eq!(
+            runtime.alarms().next_due(20),
+            Some(Alarm::once(AlarmId(2), ModuleId::Sensor, 20))
+        );
+        assert!(report.verify_checksum());
+        assert_eq!(
+            report.last_error,
+            crate::error_code(KernelError::DeadlineMissed)
+        );
+        assert_eq!(report.total_errors, 1);
     }
 
     #[test]
