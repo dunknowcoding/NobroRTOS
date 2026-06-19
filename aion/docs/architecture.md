@@ -235,6 +235,9 @@ The next step is not a larger kernel; it is stronger contracts:
 - adapters expose `AdapterDescriptor` summaries derived from their manifest so
   host or app compatibility checks can inspect module ID, capability bits, and
   budget without parsing adapter internals
+- adapter descriptor sets expose fixed-buffer descriptor copy and module lookup
+  APIs so host/app tooling can inspect adapter inventory without heap
+  allocation
 - adapter descriptor sets can be checked before admission for duplicate module
   IDs, exclusive capability ownership conflicts, board-class budget fit, and
   module-count limits

@@ -233,6 +233,26 @@ impl<const N: usize> AdapterSet<N> {
         AdapterCompatibilityReport::from_result(self, self.validate_profile(profile))
     }
 
+    pub fn descriptor(&self, module: ModuleId) -> Option<AdapterDescriptor> {
+        self.descriptors
+            .iter()
+            .flatten()
+            .find(|descriptor| descriptor.module == module)
+            .copied()
+    }
+
+    pub fn copy_descriptors(&self, out: &mut [AdapterDescriptor]) -> usize {
+        let mut written = 0;
+        for descriptor in self.descriptors.iter().flatten() {
+            if written >= out.len() {
+                break;
+            }
+            out[written] = *descriptor;
+            written += 1;
+        }
+        written
+    }
+
     pub fn total_budget(&self) -> SystemBudget {
         let mut total = SystemBudget::ZERO;
         for descriptor in self.descriptors.iter().flatten() {
@@ -271,6 +291,10 @@ impl<const N: usize> AdapterSet<N> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub const fn capacity(&self) -> usize {
+        N
     }
 
     fn validate_ownership(&self) -> Result<(), AdapterSetError> {
@@ -332,6 +356,14 @@ impl<const N: usize> AdapterPreflight<N> {
 
     pub const fn adapters(&self) -> &AdapterSet<N> {
         &self.adapters
+    }
+
+    pub fn descriptor(&self, module: ModuleId) -> Option<AdapterDescriptor> {
+        self.adapters.descriptor(module)
+    }
+
+    pub fn copy_descriptors(&self, out: &mut [AdapterDescriptor]) -> usize {
+        self.adapters.copy_descriptors(out)
     }
 }
 
@@ -450,6 +482,13 @@ mod tests {
     fn adapter_set_validates_budget_and_ownership() {
         let mut adapters = AdapterSet::<2>::new();
         adapters.add_manifest::<FakeAdapter>().unwrap();
+        let actuator = AdapterDescriptor {
+            module: ModuleId::Actuator,
+            criticality: Criticality::HardRealtime,
+            requires_bits: Capability::DeadlineTimer.bit(),
+            owns_bits: Capability::ServoPwm.bit(),
+            budget: SystemBudget::new(1024, 256, 0),
+        };
         adapters
             .add(AdapterDescriptor {
                 module: ModuleId::Actuator,
@@ -461,6 +500,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(adapters.len(), 2);
+        assert_eq!(adapters.capacity(), 2);
+        assert_eq!(adapters.descriptor(ModuleId::Actuator), Some(actuator));
+        assert_eq!(adapters.descriptor(ModuleId::Radio), None);
         assert_eq!(adapters.total_budget(), SystemBudget::new(3072, 768, 2));
         assert!(adapters
             .required_capabilities()
@@ -469,6 +511,10 @@ mod tests {
         assert!(adapters
             .validate_profile(SystemProfile::new(4096, 1024, 4, 2))
             .is_ok());
+
+        let mut copied = [FakeAdapter::descriptor(); 1];
+        assert_eq!(adapters.copy_descriptors(&mut copied), 1);
+        assert_eq!(copied[0], FakeAdapter::descriptor());
     }
 
     #[test]
@@ -593,5 +639,19 @@ mod tests {
         );
         assert_eq!(report.error_module_tag, module_tag(ModuleId::Sensor));
         assert_eq!(report.adapter_count, 1);
+        assert_eq!(
+            preflight.descriptor(ModuleId::Sensor),
+            Some(FakeAdapter::descriptor())
+        );
+
+        let mut copied = [AdapterDescriptor {
+            module: ModuleId::Kernel,
+            criticality: Criticality::System,
+            requires_bits: 0,
+            owns_bits: 0,
+            budget: SystemBudget::ZERO,
+        }];
+        assert_eq!(preflight.copy_descriptors(&mut copied), 1);
+        assert_eq!(copied[0], FakeAdapter::descriptor());
     }
 }
