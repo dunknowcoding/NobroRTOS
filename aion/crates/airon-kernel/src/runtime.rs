@@ -5,7 +5,7 @@ use crate::{
     Capability, CapabilityGrantError, EventSeverity, FaultThresholds, HealthReport, KernelError,
     KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
     RecoveryCoordinator, RecoveryError, RecoveryOutcome, StartupGraph, StartupNode, SystemManifest,
-    SystemProfile, SystemState,
+    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,6 +15,7 @@ pub enum RuntimeError {
     Kv(KvError),
     Mailbox(MailboxError),
     Recovery(RecoveryError),
+    Watchdog(WatchdogError),
 }
 
 impl From<AlarmError> for RuntimeError {
@@ -47,6 +48,44 @@ impl From<RecoveryError> for RuntimeError {
     }
 }
 
+impl From<WatchdogError> for RuntimeError {
+    fn from(error: WatchdogError) -> Self {
+        Self::Watchdog(error)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WatchdogSweep<const N: usize> {
+    pub outcomes: [Option<RecoveryOutcome>; N],
+    pub len: usize,
+}
+
+impl<const N: usize> WatchdogSweep<N> {
+    pub const fn new() -> Self {
+        Self {
+            outcomes: [None; N],
+            len: 0,
+        }
+    }
+
+    pub fn push(&mut self, outcome: RecoveryOutcome) {
+        if self.len < N {
+            self.outcomes[self.len] = Some(outcome);
+            self.len += 1;
+        }
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<const N: usize> Default for WatchdogSweep<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Runtime<
     const STARTUP: usize,
     const QUOTAS: usize,
@@ -61,6 +100,7 @@ pub struct Runtime<
     alarms: AlarmQueue<ALARMS>,
     kv: KvStore<KV>,
     recovery: RecoveryCoordinator<HEALTH, LOG>,
+    watchdog: Watchdog<HEALTH>,
 }
 
 impl<
@@ -83,6 +123,7 @@ impl<
             alarms: AlarmQueue::new(),
             kv: KvStore::new(),
             recovery: RecoveryCoordinator::new(thresholds),
+            watchdog: Watchdog::new(),
         }
     }
 
@@ -210,6 +251,34 @@ impl<
             .map_err(RuntimeError::from)
     }
 
+    pub fn register_watchdog(
+        &mut self,
+        module: ModuleId,
+        timeout_us: u64,
+        now_us: u64,
+    ) -> Result<(), RuntimeError> {
+        self.watchdog.register(module, timeout_us, now_us)?;
+        Ok(())
+    }
+
+    pub fn heartbeat(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
+        self.watchdog.beat(module, now_us)?;
+        self.record_ok(module, now_us);
+        Ok(())
+    }
+
+    pub fn sweep_watchdogs(&mut self, now_us: u64) -> Result<WatchdogSweep<HEALTH>, RuntimeError> {
+        let mut modules = [ModuleId::Kernel; HEALTH];
+        let expired = self.watchdog.expired(now_us, &mut modules);
+        let mut sweep = WatchdogSweep::new();
+
+        for module in modules.iter().copied().take(expired) {
+            sweep.push(self.record_watchdog_expired(module, now_us)?);
+        }
+
+        Ok(sweep)
+    }
+
     pub fn health_report(&self, module: ModuleId) -> Option<HealthReport> {
         let snapshot = self.recovery.snapshot(module)?;
         Some(HealthReport::from_snapshot(
@@ -245,6 +314,14 @@ impl<
 
     pub const fn recovery(&self) -> &RecoveryCoordinator<HEALTH, LOG> {
         &self.recovery
+    }
+
+    pub const fn watchdog(&self) -> &Watchdog<HEALTH> {
+        &self.watchdog
+    }
+
+    pub fn watchdog_entry(&self, module: ModuleId) -> Option<WatchdogEntry> {
+        self.watchdog.get(module)
     }
 }
 
@@ -447,5 +524,49 @@ mod tests {
         assert!(report.verify_checksum());
         assert_eq!(report.total_errors, 1);
         assert_eq!(report.error_events, 2);
+    }
+
+    #[test]
+    fn runtime_sweeps_watchdog_expiry_into_recovery() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .register_watchdog(ModuleId::Sensor, 100, 20)
+            .unwrap();
+        runtime.heartbeat(ModuleId::Sensor, 80).unwrap();
+
+        assert!(runtime.sweep_watchdogs(150).unwrap().is_empty());
+        let sweep = runtime.sweep_watchdogs(181).unwrap();
+        let report = runtime
+            .health_report(ModuleId::Sensor)
+            .expect("health report");
+
+        assert_eq!(sweep.len, 1);
+        assert_eq!(
+            sweep.outcomes[0].map(|outcome| outcome.error),
+            Some(KernelError::DeadlineMissed)
+        );
+        assert_eq!(runtime.state(), SystemState::Degraded);
+        assert_eq!(
+            runtime
+                .watchdog_entry(ModuleId::Sensor)
+                .expect("watchdog")
+                .missed,
+            1
+        );
+        assert!(report.verify_checksum());
+        assert_eq!(report.total_errors, 1);
+    }
+
+    #[test]
+    fn runtime_heartbeat_reports_missing_watchdog() {
+        let mut runtime = runtime();
+
+        assert_eq!(
+            runtime.heartbeat(ModuleId::Radio, 10),
+            Err(RuntimeError::Watchdog(WatchdogError::Missing(
+                ModuleId::Radio
+            )))
+        );
     }
 }

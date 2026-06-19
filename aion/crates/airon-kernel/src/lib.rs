@@ -63,7 +63,7 @@ pub use report::{
     action_code, error_code, module_tag, HealthReport, HEALTH_REPORT_MAGIC, HEALTH_REPORT_VERSION,
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
-pub use runtime::{Runtime, RuntimeError};
+pub use runtime::{Runtime, RuntimeError, WatchdogSweep};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use startup::{

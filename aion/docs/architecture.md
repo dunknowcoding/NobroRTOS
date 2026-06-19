@@ -128,7 +128,8 @@ Fault handling is intentionally small:
 - `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
   recovery into one fixed-capacity control plane for apps and adapters. It can
   be constructed from an admitted plan or directly from a manifest plus startup
-  graph.
+  graph, and routes software watchdog expiry through the same recovery and
+  health-report path as explicit module faults.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
