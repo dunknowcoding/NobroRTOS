@@ -28,3 +28,10 @@ conda activate IronEngineWorld
 .\clean.ps1        # trim deps/incremental
 .\clean.ps1 -Deep  # full cargo-target wipe
 ```
+
+## Software Feature Matrix
+
+```powershell
+.\check-feature-matrix.ps1        # compile default workspace and board5 app features
+.\check-feature-matrix.ps1 -Clean # remove _work/cargo-target after checks
+```

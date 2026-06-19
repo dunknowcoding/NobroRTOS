@@ -5,7 +5,7 @@ edition.workspace = true
 description = "MPU9250/GY-9250/GY-91 SensorSal adapter (real TWIM I2C)"
 
 [dependencies]
-airon-hal = { path = "../../crates/airon-hal" }
+airon-hal = { path = "../../crates/airon-hal", default-features = false }
 airon-kernel = { path = "../../crates/airon-kernel" }
 airon-sal = { path = "../../crates/airon-sal" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
