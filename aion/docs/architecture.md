@@ -131,7 +131,9 @@ Fault handling is intentionally small:
   graph, and routes software watchdog expiry through the same recovery and
   health-report path as explicit module faults. Runtime quota helpers keep
   reserve/release accounting on the admitted `QuotaLedger` so memory discipline
-  continues after boot.
+  continues after boot. Module recovery completion is also explicit: the
+  runtime returns through driver initialization, records a healthy heartbeat,
+  and only then resumes `Running`.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

@@ -321,6 +321,17 @@ impl<
         Ok(sweep)
     }
 
+    pub fn complete_module_recovery(
+        &mut self,
+        module: ModuleId,
+        now_us: u64,
+    ) -> Result<(), RuntimeError> {
+        self.recovery.transition(SystemState::InitDrivers, now_us)?;
+        self.recovery.transition(SystemState::Running, now_us)?;
+        self.record_ok(module, now_us);
+        Ok(())
+    }
+
     pub fn health_report(&self, module: ModuleId) -> Option<HealthReport> {
         let snapshot = self.recovery.snapshot(module)?;
         Some(HealthReport::from_snapshot(
@@ -638,6 +649,45 @@ mod tests {
         );
         assert!(report.verify_checksum());
         assert_eq!(report.total_errors, 1);
+    }
+
+    #[test]
+    fn runtime_completes_module_recovery_back_to_running() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 30)
+            .unwrap();
+        let outcome = runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+        runtime
+            .complete_module_recovery(ModuleId::Sensor, 50)
+            .unwrap();
+        let report = runtime
+            .health_report(ModuleId::Sensor)
+            .expect("health report");
+
+        assert_eq!(outcome.state, SystemState::Recovering);
+        assert_eq!(runtime.state(), SystemState::Running);
+        assert_eq!(report.total_errors, 3);
+        assert_eq!(report.consecutive_errors, 0);
+        assert_eq!(report.last_seen_us(), 50);
+    }
+
+    #[test]
+    fn runtime_rejects_recovery_completion_outside_recovering_state() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        assert!(matches!(
+            runtime.complete_module_recovery(ModuleId::Sensor, 20),
+            Err(RuntimeError::Recovery(RecoveryError::Lifecycle(_)))
+        ));
     }
 
     #[test]
