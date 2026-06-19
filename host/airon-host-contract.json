@@ -70,6 +70,18 @@
       "6": "halted"
     }
   },
+  "board_profile_report": {
+    "symbol": "AIRON_BOARD_PROFILE_REPORT",
+    "magic": "0x41524250",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid",
+      "corrupt": "bad magic, version, or checksum"
+    }
+  },
   "adapter_compat_report": {
     "symbol": "AIRON_ADAPTER_COMPAT_REPORT",
     "magic": "0x41524143",

@@ -18,6 +18,9 @@ pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C;
 pub const RUNTIME_REPORT_SYMBOL: &str = "AIRON_RUNTIME_REPORT";
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4152_5254;
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
+pub const BOARD_PROFILE_REPORT_SYMBOL: &str = "AIRON_BOARD_PROFILE_REPORT";
+pub const BOARD_PROFILE_REPORT_MAGIC: u32 = 0x4152_4250;
+pub const BOARD_PROFILE_REPORT_VERSION: u32 = 1;
 pub const ADAPTER_COMPAT_REPORT_SYMBOL: &str = "AIRON_ADAPTER_COMPAT_REPORT";
 pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4152_4143;
 pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
@@ -80,6 +83,97 @@ pub enum ReportStatus {
     Pass,
     Fail(u32),
     Corrupt,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BoardProfileReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub platform_hash: u32,
+    pub board_hash: u32,
+    pub app_flash_start: u32,
+    pub flash_budget_bytes: u32,
+    pub ram_budget_bytes: u32,
+    pub sample_pool_slots: u32,
+    pub max_modules: u32,
+    pub servo_pin: u32,
+    pub servo_center_us: u32,
+    pub led_pin: u32,
+    pub mvk_trigger_pin: u32,
+    pub checksum: u32,
+}
+
+impl BoardProfileReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            platform_hash: 0,
+            board_hash: 0,
+            app_flash_start: 0,
+            flash_budget_bytes: 0,
+            ram_budget_bytes: 0,
+            sample_pool_slots: 0,
+            max_modules: 0,
+            servo_pin: 0,
+            servo_center_us: 0,
+            led_pin: 0,
+            mvk_trigger_pin: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = BOARD_PROFILE_REPORT_MAGIC;
+        self.version = BOARD_PROFILE_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == BOARD_PROFILE_REPORT_MAGIC
+            && self.version == BOARD_PROFILE_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != BOARD_PROFILE_REPORT_MAGIC || self.version != BOARD_PROFILE_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.verify_checksum() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.platform_hash
+            ^ self.board_hash
+            ^ self.app_flash_start
+            ^ self.flash_budget_bytes
+            ^ self.ram_budget_bytes
+            ^ self.sample_pool_slots
+            ^ self.max_modules
+            ^ self.servo_pin
+            ^ self.servo_center_us
+            ^ self.led_pin
+            ^ self.mvk_trigger_pin
+    }
 }
 
 #[repr(C)]
@@ -510,6 +604,9 @@ mod tests {
         assert_eq!(RUNTIME_REPORT_SYMBOL, "AIRON_RUNTIME_REPORT");
         assert_eq!(RUNTIME_REPORT_MAGIC, 0x4152_5254);
         assert_eq!(RUNTIME_REPORT_VERSION, 1);
+        assert_eq!(BOARD_PROFILE_REPORT_SYMBOL, "AIRON_BOARD_PROFILE_REPORT");
+        assert_eq!(BOARD_PROFILE_REPORT_MAGIC, 0x4152_4250);
+        assert_eq!(BOARD_PROFILE_REPORT_VERSION, 1);
         assert_eq!(ADAPTER_COMPAT_REPORT_SYMBOL, "AIRON_ADAPTER_COMPAT_REPORT");
         assert_eq!(ADAPTER_COMPAT_REPORT_MAGIC, 0x4152_4143);
         assert_eq!(ADAPTER_COMPAT_REPORT_VERSION, 1);
@@ -524,8 +621,10 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(BOARD_PROFILE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADAPTER_COMPAT_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524250"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
         assert!(HOST_CONTRACT_JSON.contains("0x41525254"));
@@ -598,6 +697,31 @@ mod tests {
     }
 
     #[test]
+    fn board_profile_report_status_decodes_success_and_corruption() {
+        let mut report = BoardProfileReport {
+            platform_hash: 0x1111_2222,
+            board_hash: 0x3333_4444,
+            app_flash_start: 0x1000,
+            flash_budget_bytes: 80 * 1024,
+            ram_budget_bytes: 32 * 1024,
+            sample_pool_slots: 8,
+            max_modules: 16,
+            servo_pin: 24,
+            servo_center_us: 1500,
+            led_pin: 15,
+            mvk_trigger_pin: 17,
+            ..BoardProfileReport::zeroed()
+        };
+        report.seal();
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.status(), ReportStatus::Pass);
+
+        report.servo_pin += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn adapter_compatibility_report_status_decodes_success_and_failure() {
         let mut pass = AdapterCompatibilityReport {
             compatible: 1,
@@ -661,6 +785,7 @@ mod tests {
     #[test]
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(BoardProfileReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(
             AdapterCompatibilityReport::zeroed().status(),
             ReportStatus::Missing

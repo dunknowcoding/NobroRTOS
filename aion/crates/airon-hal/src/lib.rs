@@ -40,7 +40,10 @@ pub mod twim_hw;
 pub use board_desc::{BoardCapacity, BoardDesc, BusLayout, ServoProfile};
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;
-pub use snapshots::{BoardParity, EventCaptureSnapshot, PwmSnapshot};
+pub use snapshots::{
+    BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot, BOARD_PROFILE_REPORT_MAGIC,
+    BOARD_PROFILE_REPORT_VERSION,
+};
 pub use traits::{
     HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalSelfTest, HalServoPwm, PlatformHal,
 };

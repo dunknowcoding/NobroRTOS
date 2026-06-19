@@ -18,7 +18,7 @@ use airon_hal::{
     lease::Resource,
     ppi,
     traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
-    ActivePlatform as Hal,
+    ActivePlatform as Hal, BoardProfileReport,
 };
 use airon_kernel::{
     eval::{
@@ -59,12 +59,17 @@ static mut AIRON_RUNTIME_REPORT: RuntimeReport = RuntimeReport::zeroed();
 static mut AIRON_ADAPTER_COMPAT_REPORT: AdapterCompatibilityReport =
     AdapterCompatibilityReport::zeroed();
 
+#[no_mangle]
+#[used]
+static mut AIRON_BOARD_PROFILE_REPORT: BoardProfileReport = BoardProfileReport::zeroed();
+
 type SalDemoRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
 
 fn on_deadline_slot() {}
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    write_board_profile_report();
     admit_sal_demo();
 
     defmt::info!(
@@ -131,6 +136,13 @@ fn main() -> ! {
         } else {
             asm::nop();
         }
+    }
+}
+
+fn write_board_profile_report() {
+    unsafe {
+        AIRON_BOARD_PROFILE_REPORT =
+            BoardProfileReport::from_board::<<Hal as PlatformHal>::Board>();
     }
 }
 
