@@ -65,7 +65,7 @@ pub use report::{
     RUNTIME_REPORT_VERSION,
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
-pub use runtime::{Runtime, RuntimeError, WatchdogSweep};
+pub use runtime::{AlarmDispatch, Runtime, RuntimeError, WatchdogSweep};
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use startup::{

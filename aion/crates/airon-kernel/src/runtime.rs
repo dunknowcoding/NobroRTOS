@@ -94,6 +94,35 @@ impl<const N: usize> Default for WatchdogSweep<N> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlarmDispatch {
+    pub dispatched: usize,
+    pub blocked: Option<Alarm>,
+    pub error: Option<RuntimeError>,
+}
+
+impl AlarmDispatch {
+    pub const fn completed(dispatched: usize) -> Self {
+        Self {
+            dispatched,
+            blocked: None,
+            error: None,
+        }
+    }
+
+    pub const fn blocked(dispatched: usize, alarm: Alarm, error: RuntimeError) -> Self {
+        Self {
+            dispatched,
+            blocked: Some(alarm),
+            error: Some(error),
+        }
+    }
+
+    pub const fn is_blocked(&self) -> bool {
+        self.blocked.is_some()
+    }
+}
+
 pub struct Runtime<
     const STARTUP: usize,
     const QUOTAS: usize,
@@ -212,13 +241,23 @@ impl<
     }
 
     pub fn dispatch_due_alarms(&mut self, now_us: u64) -> Result<usize, RuntimeError> {
+        let dispatch = self.try_dispatch_due_alarms(now_us);
+        match dispatch.error {
+            Some(error) => Err(error),
+            None => Ok(dispatch.dispatched),
+        }
+    }
+
+    pub fn try_dispatch_due_alarms(&mut self, now_us: u64) -> AlarmDispatch {
         let mut dispatched = 0;
         while let Some(alarm) = self.alarms.next_due(now_us) {
-            self.mailbox.push(alarm_message(alarm))?;
+            if let Err(error) = self.mailbox.push(alarm_message(alarm)) {
+                return AlarmDispatch::blocked(dispatched, alarm, RuntimeError::Mailbox(error));
+            }
             self.alarms.pop_due(now_us);
             dispatched += 1;
         }
-        Ok(dispatched)
+        AlarmDispatch::completed(dispatched)
     }
 
     pub fn kv_set(&mut self, key: KvKey, value: KvValue) -> Result<(), RuntimeError> {
@@ -521,6 +560,55 @@ mod tests {
                 150
             ))
         );
+    }
+
+    #[test]
+    fn runtime_alarm_dispatch_reports_blocked_alarm() {
+        type SmallMailboxRuntime = Runtime<4, 4, 1, 4, 4, 4, 16>;
+        let manifest = manifest();
+        let mut runtime = SmallMailboxRuntime::admit(
+            &manifest,
+            &startup(),
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+        runtime
+            .schedule_once(AlarmId(1), ModuleId::Sensor, 10, 0)
+            .unwrap();
+        runtime
+            .schedule_once(AlarmId(2), ModuleId::Kernel, 20, 0)
+            .unwrap();
+
+        let dispatch = runtime.try_dispatch_due_alarms(20);
+
+        assert_eq!(
+            dispatch,
+            AlarmDispatch::blocked(
+                1,
+                Alarm::once(AlarmId(2), ModuleId::Kernel, 20),
+                RuntimeError::Mailbox(MailboxError::Full)
+            )
+        );
+        assert!(dispatch.is_blocked());
+        assert_eq!(
+            runtime.recv_for(ModuleId::Sensor),
+            Some(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Sensor,
+                MessageKind::Notification,
+                1,
+                10
+            ))
+        );
+        assert_eq!(
+            runtime.alarms().next_due(20),
+            Some(Alarm::once(AlarmId(2), ModuleId::Kernel, 20))
+        );
+        assert_eq!(runtime.mailbox().dropped(), 1);
     }
 
     #[test]
