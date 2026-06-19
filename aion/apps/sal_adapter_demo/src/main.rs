@@ -31,7 +31,7 @@ use airon_kernel::{
     AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, MemoryBudget,
     ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
-use airon_sal::{ActuatorSal, SensorSal};
+use airon_sal::{ActuatorSal, AdapterSet, SensorSal};
 
 static SERVO_STEPS: AtomicU32 = AtomicU32::new(0);
 static SERVO_READBACK_OK: AtomicU32 = AtomicU32::new(0);
@@ -133,6 +133,7 @@ fn admit_sal_demo() {
     let specs = [kernel_spec(), robo_servo_spec(), sensor_stub_spec()];
     let manifest =
         SystemManifest::<4>::from_specs(&specs).unwrap_or_else(|_| defmt::panic!("manifest"));
+    validate_adapter_set(active_profile());
 
     let mut startup = manifest
         .startup_graph::<4>()
@@ -165,6 +166,19 @@ fn admit_sal_demo() {
             defmt::panic!("sal demo admission failed");
         }
     }
+}
+
+fn validate_adapter_set(profile: SystemProfile) {
+    let mut adapters = AdapterSet::<2>::new();
+    adapters
+        .add_manifest::<RoboServoAdapter>()
+        .unwrap_or_else(|_| defmt::panic!("robo-servo descriptor"));
+    adapters
+        .add_manifest::<SensorStub>()
+        .unwrap_or_else(|_| defmt::panic!("sensor-stub descriptor"));
+    adapters
+        .validate_profile(profile)
+        .unwrap_or_else(|_| defmt::panic!("adapter compatibility"));
 }
 
 fn active_profile() -> SystemProfile {
