@@ -463,6 +463,10 @@ impl<
 
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
         self.ensure_module_admitted(module)?;
+        if self.module_state(module) == Some(ModuleRunState::Disabled) {
+            self.cleanup_disabled_module(module);
+            return Ok(());
+        }
         self.modules.disable(module, now_us)?;
         self.cleanup_disabled_module(module);
         Ok(())
@@ -1193,6 +1197,26 @@ mod tests {
         );
         assert_eq!(runtime.total_quota_used(), SystemBudget::ZERO);
         assert!(runtime.sweep_watchdogs(200).unwrap().is_empty());
+    }
+
+    #[test]
+    fn runtime_manual_disable_is_idempotent_cleanup() {
+        let mut runtime = runtime();
+
+        runtime.disable_module(ModuleId::Sensor, 10).unwrap();
+        runtime.disable_module(ModuleId::Sensor, 20).unwrap();
+
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Disabled)
+        );
+        assert_eq!(runtime.mailbox().len(), 0);
+        assert_eq!(runtime.alarms().len(), 0);
+        assert_eq!(runtime.watchdog_entry(ModuleId::Sensor), None);
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
     }
 
     #[test]

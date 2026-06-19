@@ -190,7 +190,9 @@ Fault handling is intentionally small:
   before module state changes and the last successful application is retained
   as a fixed-layout host report. Runtime assembly from startup plans is
   fallible, so fixed-capacity module registration errors are reported instead
-  of being silently ignored.
+  of being silently ignored. Manual runtime disable is idempotent at the
+  runtime API boundary, keeping repeated recovery commands safe while the lower
+  module state machine remains strict.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.
