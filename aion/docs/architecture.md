@@ -102,6 +102,8 @@ Fault handling is intentionally small:
 - `CapabilityGrantTable` derives runtime authorization from manifest
   requirements and ownership, keeping module access checks fixed-capacity and
   testable.
+- `Mailbox` provides fixed-capacity control-message IPC; data payloads still
+  move through `Sample` tickets and static pools.
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.

@@ -15,6 +15,7 @@ pub mod executor;
 pub mod fault_inject;
 pub mod health;
 pub mod lifecycle;
+pub mod mailbox;
 pub mod manifest;
 pub mod pool;
 pub mod quota;
@@ -43,6 +44,7 @@ pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskS
 pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
+pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
     kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
     ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest, SystemProfile,
