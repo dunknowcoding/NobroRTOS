@@ -82,6 +82,32 @@
       "corrupt": "bad magic, version, or checksum"
     }
   },
+  "manifest_report": {
+    "symbol": "AIRON_MANIFEST_REPORT",
+    "magic": "0x41524D46",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; fingerprint is FNV-1a over module contracts",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and valid is non-zero",
+      "fail": "checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "full",
+      "2": "duplicate_module",
+      "3": "capability_ownership_conflict",
+      "4": "missing_owned_capability",
+      "5": "missing_deadline",
+      "6": "invalid_deadline",
+      "7": "invalid_fault_threshold",
+      "8": "empty_memory_budget",
+      "9": "module_limit_exceeded",
+      "10": "budget_exceeded",
+      "11": "user_owns_kernel_capability"
+    }
+  },
   "adapter_compat_report": {
     "symbol": "AIRON_ADAPTER_COMPAT_REPORT",
     "magic": "0x41524143",

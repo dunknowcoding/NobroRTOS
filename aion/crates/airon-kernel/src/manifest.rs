@@ -7,6 +7,8 @@ use crate::{
 
 const FNV1A32_OFFSET: u32 = 0x811C_9DC5;
 const FNV1A32_PRIME: u32 = 0x0100_0193;
+pub const MANIFEST_REPORT_MAGIC: u32 = 0x4152_4D46; // "ARMF"
+pub const MANIFEST_REPORT_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Criticality {
@@ -315,6 +317,58 @@ pub enum ManifestError {
     UserOwnsKernelCapability(ModuleId),
 }
 
+impl ManifestError {
+    pub const fn code(self) -> u32 {
+        match self {
+            Self::Full => 1,
+            Self::DuplicateModule(_) => 2,
+            Self::CapabilityOwnershipConflict { .. } => 3,
+            Self::MissingOwnedCapability { .. } => 4,
+            Self::MissingDeadline(_) => 5,
+            Self::InvalidDeadline(_) => 6,
+            Self::InvalidFaultThreshold(_) => 7,
+            Self::EmptyMemoryBudget(_) => 8,
+            Self::ModuleLimitExceeded { .. } => 9,
+            Self::BudgetExceeded { .. } => 10,
+            Self::UserOwnsKernelCapability(_) => 11,
+        }
+    }
+
+    pub const fn module(self) -> Option<ModuleId> {
+        match self {
+            Self::DuplicateModule(module)
+            | Self::MissingDeadline(module)
+            | Self::InvalidDeadline(module)
+            | Self::InvalidFaultThreshold(module)
+            | Self::EmptyMemoryBudget(module)
+            | Self::UserOwnsKernelCapability(module) => Some(module),
+            Self::CapabilityOwnershipConflict { module, .. }
+            | Self::MissingOwnedCapability { module, .. } => Some(module),
+            Self::Full | Self::ModuleLimitExceeded { .. } | Self::BudgetExceeded { .. } => None,
+        }
+    }
+
+    pub const fn capability_bits(self) -> u32 {
+        match self {
+            Self::CapabilityOwnershipConflict {
+                capability_bits, ..
+            }
+            | Self::MissingOwnedCapability {
+                capability_bits, ..
+            } => capability_bits,
+            Self::Full
+            | Self::DuplicateModule(_)
+            | Self::MissingDeadline(_)
+            | Self::InvalidDeadline(_)
+            | Self::InvalidFaultThreshold(_)
+            | Self::EmptyMemoryBudget(_)
+            | Self::ModuleLimitExceeded { .. }
+            | Self::BudgetExceeded { .. }
+            | Self::UserOwnsKernelCapability(_) => 0,
+        }
+    }
+}
+
 pub struct SystemManifest<const N: usize> {
     modules: [Option<ModuleSpec>; N],
 }
@@ -407,6 +461,13 @@ impl<const N: usize> SystemManifest<N> {
         hash
     }
 
+    pub fn required_capabilities(&self) -> CapabilitySet {
+        self.modules
+            .iter()
+            .flatten()
+            .fold(CapabilitySet::empty(), |acc, spec| acc.union(spec.requires))
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = ModuleSpec> + '_ {
         self.modules.iter().flatten().copied()
     }
@@ -468,6 +529,107 @@ impl<const N: usize> SystemManifest<N> {
         }
 
         Ok(())
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ManifestReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub valid: u32,
+    pub module_count: u32,
+    pub fingerprint: u32,
+    pub required_bits: u32,
+    pub owned_bits: u32,
+    pub flash_used_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub pool_used_slots: u32,
+    pub error_code: u32,
+    pub error_module_tag: u32,
+    pub error_capability_bits: u32,
+    pub checksum: u32,
+}
+
+impl ManifestReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            valid: 0,
+            module_count: 0,
+            fingerprint: 0,
+            required_bits: 0,
+            owned_bits: 0,
+            flash_used_bytes: 0,
+            ram_used_bytes: 0,
+            pool_used_slots: 0,
+            error_code: 0,
+            error_module_tag: 0,
+            error_capability_bits: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_result<const N: usize>(
+        manifest: &SystemManifest<N>,
+        result: Result<(), ManifestError>,
+    ) -> Self {
+        let budget = manifest.total_budget();
+        let error = result.err();
+        let mut report = Self {
+            valid: error.is_none() as u32,
+            module_count: manifest.len() as u32,
+            fingerprint: manifest.fingerprint(),
+            required_bits: manifest.required_capabilities().bits(),
+            owned_bits: manifest.provided_capabilities().bits(),
+            flash_used_bytes: budget.flash_bytes,
+            ram_used_bytes: budget.ram_bytes,
+            pool_used_slots: u32::from(budget.pool_slots),
+            error_code: error.map(ManifestError::code).unwrap_or(0),
+            ..Self::zeroed()
+        };
+
+        if let Some(error) = error {
+            report.error_module_tag = error.module().map(module_code).unwrap_or(0);
+            report.error_capability_bits = error.capability_bits();
+        }
+
+        report.seal();
+        report
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = MANIFEST_REPORT_MAGIC;
+        self.version = MANIFEST_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == MANIFEST_REPORT_MAGIC
+            && self.version == MANIFEST_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.valid
+            ^ self.module_count
+            ^ self.fingerprint
+            ^ self.required_bits
+            ^ self.owned_bits
+            ^ self.flash_used_bytes
+            ^ self.ram_used_bytes
+            ^ self.pool_used_slots
+            ^ self.error_code
+            ^ self.error_module_tag
+            ^ self.error_capability_bits
     }
 }
 
@@ -714,6 +876,53 @@ mod tests {
 
         assert_ne!(baseline.fingerprint(), changed.fingerprint());
         assert_ne!(sensor_spec().fingerprint(), changed_sensor.fingerprint());
+    }
+
+    #[test]
+    fn manifest_report_seals_valid_manifest_summary() {
+        let manifest = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+        let report = ManifestReport::from_result(
+            &manifest,
+            manifest.validate_profile(SystemProfile {
+                pool_slot_limit: 10,
+                ..SystemProfile::NRF52840_CORE
+            }),
+        );
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, MANIFEST_REPORT_MAGIC);
+        assert_eq!(report.version, MANIFEST_REPORT_VERSION);
+        assert_eq!(report.valid, 1);
+        assert_eq!(report.module_count, 2);
+        assert_eq!(report.fingerprint, manifest.fingerprint());
+        assert_eq!(report.error_code, 0);
+        assert!(CapabilitySet::from_bits(report.required_bits).contains(Capability::Bus0));
+        assert!(CapabilitySet::from_bits(report.owned_bits).contains(Capability::HostReport));
+    }
+
+    #[test]
+    fn manifest_report_preserves_failure_context() {
+        let manifest = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
+        let report = ManifestReport::from_result(
+            &manifest,
+            manifest.validate_profile(SystemProfile {
+                max_modules: 1,
+                pool_slot_limit: 10,
+                ..SystemProfile::NRF52840_CORE
+            }),
+        );
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.valid, 0);
+        assert_eq!(
+            report.error_code,
+            ManifestError::ModuleLimitExceeded {
+                modules: 2,
+                limit: 1
+            }
+            .code()
+        );
+        assert_eq!(report.error_module_tag, 0);
     }
 
     #[test]

@@ -28,8 +28,8 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, MemoryBudget,
-    ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
+    AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, ManifestReport,
+    MemoryBudget, ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
 use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
 
@@ -62,6 +62,10 @@ static mut AIRON_ADAPTER_COMPAT_REPORT: AdapterCompatibilityReport =
 #[no_mangle]
 #[used]
 static mut AIRON_BOARD_PROFILE_REPORT: BoardProfileReport = BoardProfileReport::zeroed();
+
+#[no_mangle]
+#[used]
+static mut AIRON_MANIFEST_REPORT: ManifestReport = ManifestReport::zeroed();
 
 type SalDemoRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
 
@@ -150,6 +154,10 @@ fn admit_sal_demo() {
     let specs = [kernel_spec(), robo_servo_spec(), sensor_stub_spec()];
     let manifest =
         SystemManifest::<4>::from_specs(&specs).unwrap_or_else(|_| defmt::panic!("manifest"));
+    unsafe {
+        AIRON_MANIFEST_REPORT =
+            ManifestReport::from_result(&manifest, manifest.validate_profile(active_profile()));
+    }
     validate_adapter_set(active_profile());
 
     let mut startup = manifest

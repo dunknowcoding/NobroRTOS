@@ -21,6 +21,9 @@ pub const RUNTIME_REPORT_VERSION: u32 = 1;
 pub const BOARD_PROFILE_REPORT_SYMBOL: &str = "AIRON_BOARD_PROFILE_REPORT";
 pub const BOARD_PROFILE_REPORT_MAGIC: u32 = 0x4152_4250;
 pub const BOARD_PROFILE_REPORT_VERSION: u32 = 1;
+pub const MANIFEST_REPORT_SYMBOL: &str = "AIRON_MANIFEST_REPORT";
+pub const MANIFEST_REPORT_MAGIC: u32 = 0x4152_4D46;
+pub const MANIFEST_REPORT_VERSION: u32 = 1;
 pub const ADAPTER_COMPAT_REPORT_SYMBOL: &str = "AIRON_ADAPTER_COMPAT_REPORT";
 pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4152_4143;
 pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
@@ -88,6 +91,7 @@ pub enum ReportStatus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootStage {
     BoardProfile,
+    Manifest,
     AdapterCompatibility,
     Admission,
     Runtime,
@@ -102,6 +106,7 @@ pub struct BootDiagnostic {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootReports {
     pub board_profile: BoardProfileReport,
+    pub manifest: ManifestReport,
     pub adapter_compatibility: AdapterCompatibilityReport,
     pub admission: AdmissionReport,
     pub runtime: RuntimeReport,
@@ -110,12 +115,14 @@ pub struct BootReports {
 impl BootReports {
     pub const fn new(
         board_profile: BoardProfileReport,
+        manifest: ManifestReport,
         adapter_compatibility: AdapterCompatibilityReport,
         admission: AdmissionReport,
         runtime: RuntimeReport,
     ) -> Self {
         Self {
             board_profile,
+            manifest,
             adapter_compatibility,
             admission,
             runtime,
@@ -128,6 +135,14 @@ impl BootReports {
             return BootDiagnostic {
                 stage: BootStage::BoardProfile,
                 status: board,
+            };
+        }
+
+        let manifest = self.manifest.status();
+        if manifest != ReportStatus::Pass {
+            return BootDiagnostic {
+                stage: BootStage::Manifest,
+                status: manifest,
             };
         }
 
@@ -242,6 +257,99 @@ impl BoardProfileReport {
             ^ self.servo_center_us
             ^ self.led_pin
             ^ self.mvk_trigger_pin
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ManifestReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub valid: u32,
+    pub module_count: u32,
+    pub fingerprint: u32,
+    pub required_bits: u32,
+    pub owned_bits: u32,
+    pub flash_used_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub pool_used_slots: u32,
+    pub error_code: u32,
+    pub error_module_tag: u32,
+    pub error_capability_bits: u32,
+    pub checksum: u32,
+}
+
+impl ManifestReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            valid: 0,
+            module_count: 0,
+            fingerprint: 0,
+            required_bits: 0,
+            owned_bits: 0,
+            flash_used_bytes: 0,
+            ram_used_bytes: 0,
+            pool_used_slots: 0,
+            error_code: 0,
+            error_module_tag: 0,
+            error_capability_bits: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = MANIFEST_REPORT_MAGIC;
+        self.version = MANIFEST_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == MANIFEST_REPORT_MAGIC
+            && self.version == MANIFEST_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != MANIFEST_REPORT_MAGIC || self.version != MANIFEST_REPORT_VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        if self.valid != 0 {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Fail(self.error_code)
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.valid
+            ^ self.module_count
+            ^ self.fingerprint
+            ^ self.required_bits
+            ^ self.owned_bits
+            ^ self.flash_used_bytes
+            ^ self.ram_used_bytes
+            ^ self.pool_used_slots
+            ^ self.error_code
+            ^ self.error_module_tag
+            ^ self.error_capability_bits
     }
 }
 
@@ -676,6 +784,9 @@ mod tests {
         assert_eq!(BOARD_PROFILE_REPORT_SYMBOL, "AIRON_BOARD_PROFILE_REPORT");
         assert_eq!(BOARD_PROFILE_REPORT_MAGIC, 0x4152_4250);
         assert_eq!(BOARD_PROFILE_REPORT_VERSION, 1);
+        assert_eq!(MANIFEST_REPORT_SYMBOL, "AIRON_MANIFEST_REPORT");
+        assert_eq!(MANIFEST_REPORT_MAGIC, 0x4152_4D46);
+        assert_eq!(MANIFEST_REPORT_VERSION, 1);
         assert_eq!(ADAPTER_COMPAT_REPORT_SYMBOL, "AIRON_ADAPTER_COMPAT_REPORT");
         assert_eq!(ADAPTER_COMPAT_REPORT_MAGIC, 0x4152_4143);
         assert_eq!(ADAPTER_COMPAT_REPORT_VERSION, 1);
@@ -691,12 +802,15 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(BOARD_PROFILE_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(MANIFEST_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADAPTER_COMPAT_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x41524250"));
+        assert!(HOST_CONTRACT_JSON.contains("0x41524D46"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524143"));
         assert!(HOST_CONTRACT_JSON.contains("0x41524144"));
         assert!(HOST_CONTRACT_JSON.contains("0x41525254"));
+        assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_ownership_conflict\""));
         assert!(HOST_CONTRACT_JSON.contains("\"unknown_startup_node\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability\""));
@@ -791,6 +905,39 @@ mod tests {
     }
 
     #[test]
+    fn manifest_report_status_decodes_success_and_failure() {
+        let mut pass = ManifestReport {
+            valid: 1,
+            module_count: 3,
+            fingerprint: 0xABCD_1234,
+            required_bits: 0x10,
+            owned_bits: 0x20,
+            flash_used_bytes: 36 * 1024,
+            ram_used_bytes: 10 * 1024,
+            pool_used_slots: 6,
+            ..ManifestReport::zeroed()
+        };
+        pass.seal();
+
+        assert!(pass.verify_checksum());
+        assert_eq!(pass.status(), ReportStatus::Pass);
+
+        let mut fail = ManifestReport {
+            valid: 0,
+            module_count: 3,
+            error_code: 4,
+            error_module_tag: 5,
+            error_capability_bits: 0x02,
+            ..ManifestReport::zeroed()
+        };
+        fail.seal();
+
+        assert_eq!(fail.status(), ReportStatus::Fail(4));
+        fail.error_code = 5;
+        assert_eq!(fail.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn adapter_compatibility_report_status_decodes_success_and_failure() {
         let mut pass = AdapterCompatibilityReport {
             compatible: 1,
@@ -847,6 +994,14 @@ mod tests {
         };
         adapter.seal();
 
+        let mut manifest = ManifestReport {
+            valid: 1,
+            module_count: 3,
+            fingerprint: 0x1234,
+            ..ManifestReport::zeroed()
+        };
+        manifest.seal();
+
         let mut admission = AdmissionReport {
             admitted: 1,
             module_count: 3,
@@ -862,7 +1017,7 @@ mod tests {
         };
         runtime.seal();
 
-        let reports = BootReports::new(board, adapter, admission, runtime);
+        let reports = BootReports::new(board, manifest, adapter, admission, runtime);
         assert_eq!(
             reports.diagnostic(),
             BootDiagnostic {
@@ -875,7 +1030,7 @@ mod tests {
         failed_adapter.compatible = 0;
         failed_adapter.error_code = 3;
         failed_adapter.seal();
-        let reports = BootReports::new(board, failed_adapter, admission, runtime);
+        let reports = BootReports::new(board, manifest, failed_adapter, admission, runtime);
         assert_eq!(
             reports.diagnostic(),
             BootDiagnostic {
@@ -886,6 +1041,7 @@ mod tests {
 
         let reports = BootReports::new(
             BoardProfileReport::zeroed(),
+            manifest,
             failed_adapter,
             admission,
             runtime,
@@ -894,6 +1050,16 @@ mod tests {
             reports.diagnostic(),
             BootDiagnostic {
                 stage: BootStage::BoardProfile,
+                status: ReportStatus::Missing,
+            }
+        );
+
+        let reports =
+            BootReports::new(board, ManifestReport::zeroed(), adapter, admission, runtime);
+        assert_eq!(
+            reports.diagnostic(),
+            BootDiagnostic {
+                stage: BootStage::Manifest,
                 status: ReportStatus::Missing,
             }
         );
@@ -932,6 +1098,7 @@ mod tests {
     fn report_status_detects_missing_and_corrupt_reports() {
         assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(BoardProfileReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(ManifestReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(
             AdapterCompatibilityReport::zeroed().status(),
             ReportStatus::Missing

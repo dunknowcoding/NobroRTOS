@@ -44,8 +44,8 @@ Board compatibility must be data-first:
 - Host scripts consume `airon-host` constants or `host/airon-host-contract.json`
   rather than duplicating magic values.
 - Host tools should summarize boot diagnostics in this order: board profile,
-  adapter compatibility, admission, then runtime. This keeps first-fault
-  guidance stable as more reports are added.
+  manifest, adapter compatibility, admission, then runtime. This keeps
+  first-fault guidance stable as more reports are added.
 
 The current nRF52840 backend uses PPI. The portable HAL term is
 `HalEventCapture`; do not leak "PPI" into app or adapter APIs unless the code is
@@ -139,6 +139,8 @@ Fault handling is intentionally small:
 - `BoardProfileReport` exports the selected platform, board package, flash
   origin, board-class budgets, and critical pins as a fixed host-readable
   record before any hardware-specific probe is needed.
+- `ManifestReport` exports manifest validity, static graph fingerprint,
+  required and owned capability bits, budget use, and validation error context.
 - `AdapterCompatibilityReport` provides an admission-before-admission gate for
   SAL adapters. It records adapter count, required and owned capability bits,
   static budget use, and compatibility error context in a host-readable layout.

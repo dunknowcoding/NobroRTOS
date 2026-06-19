@@ -53,8 +53,8 @@ pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,
-    DeadlineContract, ManifestError, MemoryBudget, ModuleSpec, SystemBudget, SystemManifest,
-    SystemProfile,
+    DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec, SystemBudget,
+    SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC, MANIFEST_REPORT_VERSION,
 };
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
