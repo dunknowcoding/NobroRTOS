@@ -131,6 +131,8 @@ Fault handling is intentionally small:
 - `AdapterCompatibilityReport` provides an admission-before-admission gate for
   SAL adapters. It records adapter count, required and owned capability bits,
   static budget use, and compatibility error context in a host-readable layout.
+- `AdapterPreflight` keeps the first adapter assembly error so duplicate module
+  IDs or fixed-capacity overflow can still be exported as compatibility reports.
 - `Runtime` assembles an admitted plan with mailbox IPC, alarms, kernel KV, and
   recovery into one fixed-capacity control plane for apps and adapters. It can
   be constructed from an admitted plan or directly from a manifest plus startup

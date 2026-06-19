@@ -31,7 +31,7 @@ use airon_kernel::{
     AdmissionController, AdmissionReport, DeadlineContract, FaultThresholds, MemoryBudget,
     ModuleId, ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
 };
-use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterSet, SensorSal};
+use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
 
 static SERVO_STEPS: AtomicU32 = AtomicU32::new(0);
 static SERVO_READBACK_OK: AtomicU32 = AtomicU32::new(0);
@@ -174,14 +174,10 @@ fn admit_sal_demo() {
 }
 
 fn validate_adapter_set(profile: SystemProfile) {
-    let mut adapters = AdapterSet::<2>::new();
-    adapters
-        .add_manifest::<RoboServoAdapter>()
-        .unwrap_or_else(|_| defmt::panic!("robo-servo descriptor"));
-    adapters
-        .add_manifest::<SensorStub>()
-        .unwrap_or_else(|_| defmt::panic!("sensor-stub descriptor"));
-    let report = adapters.compatibility_report(profile);
+    let mut preflight = AdapterPreflight::<2>::new();
+    let _ = preflight.add_manifest::<RoboServoAdapter>();
+    let _ = preflight.add_manifest::<SensorStub>();
+    let report = preflight.compatibility_report(profile);
     unsafe {
         AIRON_ADAPTER_COMPAT_REPORT = report;
     }

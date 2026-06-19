@@ -289,6 +289,58 @@ impl<const N: usize> AdapterSet<N> {
     }
 }
 
+pub struct AdapterPreflight<const N: usize> {
+    adapters: AdapterSet<N>,
+    first_error: Option<AdapterSetError>,
+}
+
+impl<const N: usize> AdapterPreflight<N> {
+    pub const fn new() -> Self {
+        Self {
+            adapters: AdapterSet::new(),
+            first_error: None,
+        }
+    }
+
+    pub fn add(&mut self, descriptor: AdapterDescriptor) -> Result<(), AdapterSetError> {
+        if let Some(error) = self.first_error {
+            return Err(error);
+        }
+
+        let result = self.adapters.add(descriptor);
+        if let Err(error) = result {
+            self.first_error = Some(error);
+        }
+        result
+    }
+
+    pub fn add_manifest<A: AdapterManifest>(&mut self) -> Result<(), AdapterSetError> {
+        self.add(A::descriptor())
+    }
+
+    pub fn compatibility_report(&self, profile: SystemProfile) -> AdapterCompatibilityReport {
+        let result = match self.first_error {
+            Some(error) => Err(error),
+            None => self.adapters.validate_profile(profile),
+        };
+        AdapterCompatibilityReport::from_result(&self.adapters, result)
+    }
+
+    pub const fn first_error(&self) -> Option<AdapterSetError> {
+        self.first_error
+    }
+
+    pub const fn adapters(&self) -> &AdapterSet<N> {
+        &self.adapters
+    }
+}
+
+impl<const N: usize> Default for AdapterPreflight<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> Default for AdapterSet<N> {
     fn default() -> Self {
         Self::new()
@@ -515,5 +567,31 @@ mod tests {
         );
         assert_eq!(report.error_module_tag, module_tag(ModuleId::Bus));
         assert_eq!(report.error_capability_bits, Capability::Bus0.bit());
+    }
+
+    #[test]
+    fn adapter_preflight_reports_add_errors() {
+        let mut preflight = AdapterPreflight::<1>::new();
+        preflight.add_manifest::<FakeAdapter>().unwrap();
+
+        let duplicate = preflight.add_manifest::<FakeAdapter>();
+        let report = preflight.compatibility_report(SystemProfile::new(4096, 1024, 4, 2));
+
+        assert_eq!(
+            duplicate,
+            Err(AdapterSetError::DuplicateModule(ModuleId::Sensor))
+        );
+        assert_eq!(
+            preflight.first_error(),
+            Some(AdapterSetError::DuplicateModule(ModuleId::Sensor))
+        );
+        assert!(report.verify_checksum());
+        assert_eq!(report.compatible, 0);
+        assert_eq!(
+            report.error_code,
+            AdapterSetError::DuplicateModule(ModuleId::Sensor).code()
+        );
+        assert_eq!(report.error_module_tag, module_tag(ModuleId::Sensor));
+        assert_eq!(report.adapter_count, 1);
     }
 }
