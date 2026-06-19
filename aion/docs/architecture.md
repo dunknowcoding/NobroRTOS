@@ -97,8 +97,9 @@ Fault handling is intentionally small:
   of embedding ad hoc loops in adapters.
 - `FaultInjector` provides deterministic host-side failure scenarios for
   recovery tests without requiring hardware faults.
-- `StartupPlanner` makes module dependency order explicit and detects cycles
-  before firmware boot logic is involved.
+- `StartupGraph` and `StartupPlanner` make module dependency order explicit,
+  map module IDs to compact dependency bits, and detect cycles before firmware
+  boot logic is involved.
 - `QuotaLedger` converts manifest budgets into fixed-capacity runtime
   accounting, so modules can reserve and release RAM, flash, and pool slots
   without heap allocation.

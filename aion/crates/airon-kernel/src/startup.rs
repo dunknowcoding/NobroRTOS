@@ -42,8 +42,101 @@ pub struct StartupNode {
 }
 
 impl StartupNode {
+    pub const EMPTY: Self = Self {
+        module: ModuleId::Kernel,
+        depends_on: DependencySet::empty(),
+    };
+
     pub const fn new(module: ModuleId, depends_on: DependencySet) -> Self {
         Self { module, depends_on }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartupGraphError {
+    TooManyNodes,
+    DuplicateModule(ModuleId),
+    UnknownModule(ModuleId),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StartupGraph<const N: usize> {
+    nodes: [StartupNode; N],
+    len: usize,
+}
+
+impl<const N: usize> StartupGraph<N> {
+    pub const fn new() -> Self {
+        Self {
+            nodes: [StartupNode::EMPTY; N],
+            len: 0,
+        }
+    }
+
+    pub fn from_modules(modules: &[ModuleId]) -> Result<Self, StartupGraphError> {
+        let mut graph = Self::new();
+        for module in modules {
+            graph.add(*module)?;
+        }
+        Ok(graph)
+    }
+
+    pub fn add(&mut self, module: ModuleId) -> Result<(), StartupGraphError> {
+        if self.len == N || self.len == 32 {
+            return Err(StartupGraphError::TooManyNodes);
+        }
+        if self.index_of(module).is_some() {
+            return Err(StartupGraphError::DuplicateModule(module));
+        }
+
+        self.nodes[self.len] = StartupNode::new(module, DependencySet::empty());
+        self.len += 1;
+        Ok(())
+    }
+
+    pub fn add_dependency(
+        &mut self,
+        module: ModuleId,
+        depends_on: ModuleId,
+    ) -> Result<(), StartupGraphError> {
+        let Some(module_idx) = self.index_of(module) else {
+            return Err(StartupGraphError::UnknownModule(module));
+        };
+        let Some(dep_idx) = self.index_of(depends_on) else {
+            return Err(StartupGraphError::UnknownModule(depends_on));
+        };
+
+        self.nodes[module_idx].depends_on = self.nodes[module_idx].depends_on.with_index(dep_idx);
+        Ok(())
+    }
+
+    pub fn plan<const OUT: usize>(&self) -> Result<StartupPlan<OUT>, StartupError> {
+        StartupPlanner::plan(self.as_slice())
+    }
+
+    pub fn as_slice(&self) -> &[StartupNode] {
+        &self.nodes[..self.len]
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    fn index_of(&self, module: ModuleId) -> Option<usize> {
+        self.nodes
+            .iter()
+            .take(self.len)
+            .position(|node| node.module == module)
+    }
+}
+
+impl<const N: usize> Default for StartupGraph<N> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -168,5 +261,66 @@ mod tests {
             StartupPlanner::plan::<1>(&nodes),
             Err(StartupError::MissingDependencyBits(0b100))
         );
+    }
+
+    #[test]
+    fn graph_builds_startup_dependencies_by_module_id() {
+        let mut graph = StartupGraph::<4>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Hal,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Hal, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Hal)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+
+        let plan = graph.plan::<4>().unwrap();
+
+        assert_eq!(graph.len(), 4);
+        assert_eq!(plan.order[0], Some(ModuleId::Kernel));
+        assert_eq!(plan.order[1], Some(ModuleId::Hal));
+        assert_eq!(plan.order[2], Some(ModuleId::Sensor));
+        assert_eq!(plan.order[3], Some(ModuleId::App(1)));
+    }
+
+    #[test]
+    fn graph_rejects_duplicate_and_unknown_modules() {
+        let mut graph = StartupGraph::<2>::new();
+        graph.add(ModuleId::Kernel).unwrap();
+
+        assert_eq!(
+            graph.add(ModuleId::Kernel),
+            Err(StartupGraphError::DuplicateModule(ModuleId::Kernel))
+        );
+        assert_eq!(
+            graph.add_dependency(ModuleId::Sensor, ModuleId::Kernel),
+            Err(StartupGraphError::UnknownModule(ModuleId::Sensor))
+        );
+        assert_eq!(
+            graph.add_dependency(ModuleId::Kernel, ModuleId::Sensor),
+            Err(StartupGraphError::UnknownModule(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn graph_preserves_cycle_detection() {
+        let mut graph =
+            StartupGraph::<2>::from_modules(&[ModuleId::Kernel, ModuleId::Hal]).expect("graph");
+        graph
+            .add_dependency(ModuleId::Kernel, ModuleId::Hal)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Hal, ModuleId::Kernel)
+            .unwrap();
+
+        assert_eq!(graph.plan::<2>(), Err(StartupError::Cycle));
     }
 }
