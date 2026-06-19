@@ -193,7 +193,8 @@ fn admit_sal_demo() {
 
     match admission {
         Ok(plan) => {
-            let mut runtime = SalDemoRuntime::from_plan(plan, FaultThresholds::DEFAULT);
+            let mut runtime = SalDemoRuntime::from_plan(plan, FaultThresholds::DEFAULT)
+                .unwrap_or_else(|_| defmt::panic!("runtime assembly"));
             runtime
                 .boot_to_running(0)
                 .unwrap_or_else(|_| defmt::panic!("runtime boot"));

@@ -174,7 +174,9 @@ Fault handling is intentionally small:
   runtime returns through driver initialization, records a healthy heartbeat,
   and only then resumes `Running`. Degraded-mode decisions are validated before
   module state changes and the last successful application is retained as a
-  fixed-layout host report.
+  fixed-layout host report. Runtime assembly from startup plans is fallible, so
+  fixed-capacity module registration errors are reported instead of being
+  silently ignored.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

@@ -54,10 +54,12 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         Self { entries: [None; N] }
     }
 
-    pub fn from_startup_plan<const STARTUP: usize>(plan: &StartupPlan<STARTUP>) -> Self {
+    pub fn try_from_startup_plan<const STARTUP: usize>(
+        plan: &StartupPlan<STARTUP>,
+    ) -> Result<Self, ModuleRuntimeError> {
         let mut guard = Self::new();
-        let _ = guard.register_startup_plan(plan, 0);
-        guard
+        guard.register_startup_plan(plan, 0)?;
+        Ok(guard)
     }
 
     pub fn register(&mut self, module: ModuleId, now_us: u64) -> Result<(), ModuleRuntimeError> {
@@ -333,6 +335,32 @@ mod tests {
                 from: ModuleRunState::Disabled,
                 to: ModuleRunState::Faulted,
             })
+        );
+    }
+
+    #[test]
+    fn startup_plan_registration_reports_capacity_errors() {
+        let plan = StartupPlan::<2> {
+            order: [Some(ModuleId::Kernel), Some(ModuleId::Sensor)],
+            len: 2,
+        };
+
+        assert_eq!(
+            ModuleRuntimeGuard::<1>::try_from_startup_plan(&plan).map(|guard| guard.len()),
+            Err(ModuleRuntimeError::Full)
+        );
+    }
+
+    #[test]
+    fn startup_plan_registration_reports_duplicate_modules() {
+        let plan = StartupPlan::<2> {
+            order: [Some(ModuleId::Kernel), Some(ModuleId::Kernel)],
+            len: 2,
+        };
+
+        assert_eq!(
+            ModuleRuntimeGuard::<2>::try_from_startup_plan(&plan).map(|guard| guard.len()),
+            Err(ModuleRuntimeError::Duplicate(ModuleId::Kernel))
         );
     }
 }

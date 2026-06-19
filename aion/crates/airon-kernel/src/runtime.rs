@@ -13,6 +13,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeError {
+    Admission(AdmissionError),
     Alarm(AlarmError),
     Capability(CapabilityGrantError),
     Kv(KvError),
@@ -21,6 +22,12 @@ pub enum RuntimeError {
     Quota(QuotaError),
     Recovery(RecoveryError),
     Watchdog(WatchdogError),
+}
+
+impl From<AdmissionError> for RuntimeError {
+    fn from(error: AdmissionError) -> Self {
+        Self::Admission(error)
+    }
 }
 
 impl From<AlarmError> for RuntimeError {
@@ -186,9 +193,12 @@ impl<
         const LOG: usize,
     > Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
 {
-    pub fn from_plan(plan: AdmissionPlan<STARTUP, QUOTAS>, thresholds: FaultThresholds) -> Self {
-        let modules = ModuleRuntimeGuard::from_startup_plan(&plan.startup);
-        Self {
+    pub fn from_plan(
+        plan: AdmissionPlan<STARTUP, QUOTAS>,
+        thresholds: FaultThresholds,
+    ) -> Result<Self, RuntimeError> {
+        let modules = ModuleRuntimeGuard::try_from_startup_plan(&plan.startup)?;
+        Ok(Self {
             plan,
             mailbox: Mailbox::new(),
             alarms: AlarmQueue::new(),
@@ -197,7 +207,7 @@ impl<
             watchdog: Watchdog::new(),
             modules,
             degrade: DegradeApplication::none(),
-        }
+        })
     }
 
     pub fn admit<const MODULES: usize>(
@@ -205,13 +215,13 @@ impl<
         startup_nodes: &[StartupNode],
         profile: SystemProfile,
         thresholds: FaultThresholds,
-    ) -> Result<Self, AdmissionError> {
+    ) -> Result<Self, RuntimeError> {
         let plan = AdmissionController::admit::<MODULES, STARTUP, QUOTAS>(
             manifest,
             startup_nodes,
             profile,
         )?;
-        Ok(Self::from_plan(plan, thresholds))
+        Self::from_plan(plan, thresholds)
     }
 
     pub fn admit_graph<const MODULES: usize, const GRAPH: usize>(
@@ -219,7 +229,7 @@ impl<
         startup: &StartupGraph<GRAPH>,
         profile: SystemProfile,
         thresholds: FaultThresholds,
-    ) -> Result<Self, AdmissionError> {
+    ) -> Result<Self, RuntimeError> {
         Self::admit(manifest, startup.as_slice(), profile, thresholds)
     }
 
