@@ -99,6 +99,9 @@ Fault handling is intentionally small:
 - `QuotaLedger` converts manifest budgets into fixed-capacity runtime
   accounting, so modules can reserve and release RAM, flash, and pool slots
   without heap allocation.
+- `CapabilityGrantTable` derives runtime authorization from manifest
+  requirements and ownership, keeping module access checks fixed-capacity and
+  testable.
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.

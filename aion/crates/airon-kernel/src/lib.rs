@@ -6,6 +6,7 @@
 extern crate std;
 
 pub mod admission;
+pub mod capability;
 pub mod degrade;
 pub mod error;
 pub mod eval;
@@ -29,6 +30,7 @@ pub use admission::{
     AdmissionController, AdmissionError, AdmissionPlan, AdmissionReport, ADMISSION_REPORT_MAGIC,
     ADMISSION_REPORT_VERSION,
 };
+pub use capability::{CapabilityGrant, CapabilityGrantError, CapabilityGrantTable};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};
 pub use eval::{
