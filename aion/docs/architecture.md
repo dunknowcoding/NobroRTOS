@@ -104,6 +104,8 @@ Fault handling is intentionally small:
   testable.
 - `Mailbox` provides fixed-capacity control-message IPC; data payloads still
   move through `Sample` tickets and static pools.
+- `AlarmQueue` provides no-heap one-shot and periodic software timers without
+  binding app logic to a specific hardware timer block.
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
