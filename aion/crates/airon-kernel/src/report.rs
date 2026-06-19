@@ -1,8 +1,8 @@
 //! Fixed-layout reports emitted by firmware and decoded by host tools.
 
 use crate::{
-    Action, EventSeverity, KernelError, ModuleId, Supervisor, SupervisorSnapshot, SystemBudget,
-    SystemState,
+    manifest::module_code, Action, EventSeverity, KernelError, ModuleId, Supervisor,
+    SupervisorSnapshot, SystemBudget, SystemState,
 };
 
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C; // "ARHL"
@@ -270,17 +270,7 @@ impl RuntimeReport {
 }
 
 pub const fn module_tag(module: ModuleId) -> u32 {
-    match module {
-        ModuleId::Kernel => 1,
-        ModuleId::Hal => 2,
-        ModuleId::Bus => 3,
-        ModuleId::Radio => 4,
-        ModuleId::Sensor => 5,
-        ModuleId::Actuator => 6,
-        ModuleId::Stream => 7,
-        ModuleId::Crypto => 8,
-        ModuleId::App(id) => 0x100 + id as u32,
-    }
+    module_code(module)
 }
 
 pub const fn state_code(state: SystemState) -> u32 {
