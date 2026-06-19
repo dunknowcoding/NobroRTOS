@@ -17,6 +17,7 @@ pub const HEALTH_REPORT_SYMBOL: &str = "AIRON_HEALTH_REPORT";
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4152_484C;
 pub const ADMISSION_REPORT_SYMBOL: &str = "AIRON_ADMISSION_REPORT";
 pub const ADMISSION_REPORT_MAGIC: u32 = 0x4152_4144;
+pub const ADMISSION_REPORT_VERSION: u32 = 1;
 
 pub const MAX_PHASE1_JITTER_US: u32 = 10;
 pub const MIN_PHASE1_DEADLINE_TICKS: u32 = 150;
@@ -63,6 +64,105 @@ impl HostContract {
 
     pub const fn upload_touch_baud() -> u32 {
         UPLOAD_TOUCH_BAUD
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportStatus {
+    Missing,
+    InProgress,
+    Pass,
+    Fail(u32),
+    Corrupt,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdmissionReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub admitted: u32,
+    pub module_count: u32,
+    pub startup_len: u32,
+    pub flash_used_bytes: u32,
+    pub flash_limit_bytes: u32,
+    pub ram_used_bytes: u32,
+    pub ram_limit_bytes: u32,
+    pub pool_used_slots: u32,
+    pub pool_limit_slots: u32,
+    pub error_code: u32,
+    pub checksum: u32,
+}
+
+impl AdmissionReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            admitted: 0,
+            module_count: 0,
+            startup_len: 0,
+            flash_used_bytes: 0,
+            flash_limit_bytes: 0,
+            ram_used_bytes: 0,
+            ram_limit_bytes: 0,
+            pool_used_slots: 0,
+            pool_limit_slots: 0,
+            error_code: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ADMISSION_REPORT_MAGIC;
+        self.version = ADMISSION_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ADMISSION_REPORT_MAGIC
+            && self.version == ADMISSION_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != ADMISSION_REPORT_MAGIC || self.version != ADMISSION_REPORT_VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        if self.admitted != 0 {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Fail(self.error_code)
+        }
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.admitted
+            ^ self.module_count
+            ^ self.startup_len
+            ^ self.flash_used_bytes
+            ^ self.flash_limit_bytes
+            ^ self.ram_used_bytes
+            ^ self.ram_limit_bytes
+            ^ self.pool_used_slots
+            ^ self.pool_limit_slots
+            ^ self.error_code
     }
 }
 
@@ -132,6 +232,23 @@ impl HealthReport {
             && self.checksum == self.compute_checksum()
     }
 
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != HEALTH_REPORT_MAGIC || self.version != Self::VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.verify_checksum() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
     fn compute_checksum(&self) -> u32 {
         self.magic
             ^ self.version
@@ -181,6 +298,7 @@ mod tests {
         assert_eq!(HEALTH_REPORT_MAGIC, 0x4152_484C);
         assert_eq!(ADMISSION_REPORT_SYMBOL, "AIRON_ADMISSION_REPORT");
         assert_eq!(ADMISSION_REPORT_MAGIC, 0x4152_4144);
+        assert_eq!(ADMISSION_REPORT_VERSION, 1);
     }
 
     #[test]
@@ -214,5 +332,50 @@ mod tests {
 
         report.total_errors += 1;
         assert!(!report.verify_checksum());
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
+    fn admission_report_status_decodes_success_and_failure() {
+        let mut pass = AdmissionReport {
+            admitted: 1,
+            module_count: 3,
+            startup_len: 3,
+            flash_used_bytes: 32 * 1024,
+            flash_limit_bytes: 80 * 1024,
+            ram_used_bytes: 9 * 1024,
+            ram_limit_bytes: 32 * 1024,
+            pool_used_slots: 5,
+            pool_limit_slots: 8,
+            ..AdmissionReport::zeroed()
+        };
+        pass.seal();
+
+        assert!(pass.verify_checksum());
+        assert_eq!(pass.status(), ReportStatus::Pass);
+
+        let mut fail = AdmissionReport {
+            admitted: 0,
+            error_code: 2,
+            ..AdmissionReport::zeroed()
+        };
+        fail.seal();
+
+        assert_eq!(fail.status(), ReportStatus::Fail(2));
+    }
+
+    #[test]
+    fn report_status_detects_missing_and_corrupt_reports() {
+        assert_eq!(AdmissionReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(HealthReport::zeroed().status(), ReportStatus::Missing);
+
+        let mut report = AdmissionReport {
+            admitted: 1,
+            ..AdmissionReport::zeroed()
+        };
+        report.seal();
+        report.flash_used_bytes += 1;
+
+        assert_eq!(report.status(), ReportStatus::Corrupt);
     }
 }
