@@ -129,6 +129,12 @@ class ContractBuilderTests(unittest.TestCase):
             "board_package_report": "NOBRO_BOARD_PACKAGE_REPORT_MAGIC",
             "manifest_report": "NOBRO_MANIFEST_REPORT_MAGIC",
             "adapter_compat_report": "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
+            "admission_report": "NOBRO_ADMISSION_REPORT_MAGIC",
+            "runtime_report": "NOBRO_RUNTIME_REPORT_MAGIC",
+            "health_report": "NOBRO_HEALTH_REPORT_MAGIC",
+            "event_log_report": "NOBRO_EVENT_LOG_REPORT_MAGIC",
+            "module_runtime_report": "NOBRO_MODULE_RUNTIME_REPORT_MAGIC",
+            "degrade_application_report": "NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC",
             "ai_contracts.report": "NOBRO_AI_MODEL_REPORT_MAGIC",
             "ros_bridge_contracts.report": "NOBRO_ROS_BRIDGE_REPORT_MAGIC",
         }
@@ -137,6 +143,12 @@ class ContractBuilderTests(unittest.TestCase):
             "board_package_report": "nobro_board_package_report_t",
             "manifest_report": "nobro_manifest_report_t",
             "adapter_compat_report": "nobro_adapter_compat_report_t",
+            "admission_report": "nobro_admission_report_t",
+            "runtime_report": "nobro_runtime_report_t",
+            "health_report": "nobro_health_report_t",
+            "event_log_report": "nobro_event_log_report_t",
+            "module_runtime_report": "nobro_module_runtime_report_t",
+            "degrade_application_report": "nobro_degrade_application_report_t",
             "ai_contracts.report": "nobro_ai_model_report_t",
             "ros_bridge_contracts.report": "nobro_ros_bridge_report_t",
         }
@@ -163,6 +175,12 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro_ros_bridge_contract_t",
             "nobro_ros_topic_contract_t",
             "nobro_ros_bridge_report_status",
+            "nobro_admission_report_status",
+            "nobro_runtime_report_status",
+            "nobro_health_report_status",
+            "nobro_event_log_report_status",
+            "nobro_module_runtime_report_status",
+            "nobro_degrade_application_report_status",
         ):
             self.assertIn(symbol, header)
 
@@ -173,6 +191,12 @@ class ContractBuilderTests(unittest.TestCase):
             "decide_ai_route",
             "RosBridgeContractView",
             "RosBridgeReportView",
+            "AdmissionReportView",
+            "RuntimeReportView",
+            "HealthReportView",
+            "EventLogReportView",
+            "ModuleRuntimeReportView",
+            "DegradeApplicationReportView",
         ):
             self.assertIn(symbol, cpp_header)
 

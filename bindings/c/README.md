@@ -18,6 +18,12 @@ The header currently mirrors:
 - `nobro_board_package_report_t`
 - `nobro_manifest_report_t`
 - `nobro_adapter_compat_report_t`
+- `nobro_admission_report_t`
+- `nobro_runtime_report_t`
+- `nobro_health_report_t`
+- `nobro_event_log_report_t`
+- `nobro_module_runtime_report_t`
+- `nobro_degrade_application_report_t`
 - `nobro_ai_model_contract_t`
 - `nobro_ai_route_policy_t`
 - `nobro_ros_bridge_contract_t`

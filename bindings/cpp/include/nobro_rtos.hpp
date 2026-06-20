@@ -250,6 +250,160 @@ private:
     const nobro_adapter_compat_report_t* report_;
 };
 
+class AdmissionReportView {
+public:
+    constexpr explicit AdmissionReportView(const nobro_admission_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_admission_report_status(report_));
+    }
+
+    constexpr std::uint32_t module_count() const noexcept {
+        return report_->module_count;
+    }
+
+    constexpr std::uint32_t startup_len() const noexcept {
+        return report_->startup_len;
+    }
+
+    constexpr std::uint32_t error_code() const noexcept {
+        return report_->error_code;
+    }
+
+private:
+    const nobro_admission_report_t* report_;
+};
+
+class RuntimeReportView {
+public:
+    constexpr explicit RuntimeReportView(const nobro_runtime_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_runtime_report_status(report_));
+    }
+
+    constexpr std::uint32_t state() const noexcept {
+        return report_->state;
+    }
+
+    constexpr std::uint32_t module_count() const noexcept {
+        return report_->module_count;
+    }
+
+    constexpr std::uint32_t event_count() const noexcept {
+        return report_->event_count;
+    }
+
+private:
+    const nobro_runtime_report_t* report_;
+};
+
+class HealthReportView {
+public:
+    constexpr explicit HealthReportView(const nobro_health_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_health_report_status(report_));
+    }
+
+    constexpr std::uint32_t module_tag() const noexcept {
+        return report_->module_tag;
+    }
+
+    constexpr std::uint32_t total_errors() const noexcept {
+        return report_->total_errors;
+    }
+
+    constexpr std::uint32_t last_action() const noexcept {
+        return report_->last_action;
+    }
+
+private:
+    const nobro_health_report_t* report_;
+};
+
+class EventLogReportView {
+public:
+    constexpr explicit EventLogReportView(const nobro_event_log_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_event_log_report_status(report_));
+    }
+
+    constexpr std::uint32_t event_count() const noexcept {
+        return report_->event_count;
+    }
+
+    constexpr std::uint32_t latest_kind() const noexcept {
+        return report_->latest_kind;
+    }
+
+    constexpr std::uint32_t latest_payload_kind() const noexcept {
+        return report_->latest_payload_kind;
+    }
+
+private:
+    const nobro_event_log_report_t* report_;
+};
+
+class ModuleRuntimeReportView {
+public:
+    constexpr explicit ModuleRuntimeReportView(
+        const nobro_module_runtime_report_t& report
+    ) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_module_runtime_report_status(report_));
+    }
+
+    constexpr std::uint32_t active_count() const noexcept {
+        return report_->active_count;
+    }
+
+    constexpr std::uint32_t faulted_count() const noexcept {
+        return report_->faulted_count;
+    }
+
+    constexpr std::uint32_t latest_state() const noexcept {
+        return report_->latest_state;
+    }
+
+private:
+    const nobro_module_runtime_report_t* report_;
+};
+
+class DegradeApplicationReportView {
+public:
+    constexpr explicit DegradeApplicationReportView(
+        const nobro_degrade_application_report_t& report
+    ) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_degrade_application_report_status(report_));
+    }
+
+    constexpr std::uint32_t requested_count() const noexcept {
+        return report_->requested_count;
+    }
+
+    constexpr std::uint32_t disabled_count() const noexcept {
+        return report_->disabled_count;
+    }
+
+    constexpr std::uint32_t reason() const noexcept {
+        return report_->reason;
+    }
+
+private:
+    const nobro_degrade_application_report_t* report_;
+};
+
 } // namespace rtos
 } // namespace nobro
 

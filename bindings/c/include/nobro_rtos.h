@@ -30,6 +30,12 @@ extern "C" {
 #define NOBRO_BOARD_PACKAGE_REPORT_MAGIC 0x4E42424Bu
 #define NOBRO_MANIFEST_REPORT_MAGIC 0x4E424D46u
 #define NOBRO_ADAPTER_COMPAT_REPORT_MAGIC 0x4E424143u
+#define NOBRO_ADMISSION_REPORT_MAGIC 0x4E424144u
+#define NOBRO_RUNTIME_REPORT_MAGIC 0x4E425254u
+#define NOBRO_HEALTH_REPORT_MAGIC 0x4E42484Cu
+#define NOBRO_EVENT_LOG_REPORT_MAGIC 0x4E42454Cu
+#define NOBRO_MODULE_RUNTIME_REPORT_MAGIC 0x4E424D52u
+#define NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC 0x4E424447u
 #define NOBRO_AI_MODEL_REPORT_MAGIC 0x4E424149u
 #define NOBRO_ROS_BRIDGE_REPORT_MAGIC 0x4E425253u
 #define NOBRO_FNV1A32_OFFSET 0x811C9DC5u
@@ -257,6 +263,115 @@ typedef struct nobro_ros_bridge_report {
     uint32_t checksum;
 } nobro_ros_bridge_report_t;
 
+typedef struct nobro_admission_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t admitted;
+    uint32_t module_count;
+    uint32_t startup_len;
+    uint32_t flash_used_bytes;
+    uint32_t flash_limit_bytes;
+    uint32_t ram_used_bytes;
+    uint32_t ram_limit_bytes;
+    uint32_t pool_used_slots;
+    uint32_t pool_limit_slots;
+    uint32_t error_code;
+    uint32_t checksum;
+} nobro_admission_report_t;
+
+typedef struct nobro_runtime_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t state;
+    uint32_t module_count;
+    uint32_t mailbox_len;
+    uint32_t mailbox_dropped;
+    uint32_t alarm_len;
+    uint32_t next_alarm_due_us_lo;
+    uint32_t next_alarm_due_us_hi;
+    uint32_t kv_len;
+    uint32_t kv_writes;
+    uint32_t kv_deletes;
+    uint32_t quota_flash_used_bytes;
+    uint32_t quota_ram_used_bytes;
+    uint32_t quota_pool_used_slots;
+    uint32_t event_count;
+    uint32_t dropped_events;
+    uint32_t checksum;
+} nobro_runtime_report_t;
+
+typedef struct nobro_health_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t module_tag;
+    uint32_t total_errors;
+    uint32_t consecutive_errors;
+    uint32_t last_error;
+    uint32_t last_action;
+    uint32_t event_count;
+    uint32_t dropped_events;
+    uint32_t error_events;
+    uint32_t fatal_events;
+    uint32_t last_seen_us_lo;
+    uint32_t last_seen_us_hi;
+    uint32_t checksum;
+} nobro_health_report_t;
+
+typedef struct nobro_event_log_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t event_count;
+    uint32_t capacity;
+    uint32_t dropped_events;
+    uint32_t latest_seq;
+    uint32_t latest_at_us_lo;
+    uint32_t latest_at_us_hi;
+    uint32_t latest_module_tag;
+    uint32_t latest_severity;
+    uint32_t latest_kind;
+    uint32_t latest_payload_kind;
+    uint32_t latest_payload0;
+    uint32_t latest_payload1;
+    uint32_t checksum;
+} nobro_event_log_report_t;
+
+typedef struct nobro_module_runtime_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t module_count;
+    uint32_t capacity;
+    uint32_t active_count;
+    uint32_t suspended_count;
+    uint32_t faulted_count;
+    uint32_t recovering_count;
+    uint32_t disabled_count;
+    uint32_t latest_module_tag;
+    uint32_t latest_state;
+    uint32_t latest_fault_count;
+    uint32_t latest_recovery_count;
+    uint32_t latest_change_us_lo;
+    uint32_t latest_change_us_hi;
+    uint32_t checksum;
+} nobro_module_runtime_report_t;
+
+typedef struct nobro_degrade_application_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t requested_count;
+    uint32_t disabled_count;
+    uint32_t already_disabled_count;
+    uint32_t reason;
+    uint32_t applied_at_us_lo;
+    uint32_t applied_at_us_hi;
+    uint32_t checksum;
+} nobro_degrade_application_report_t;
+
 NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t),
                     "unexpected board profile report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_board_package_report_t) == 20u * sizeof(uint32_t),
@@ -269,6 +384,18 @@ NOBRO_STATIC_ASSERT(sizeof(nobro_ai_model_report_t) == 13u * sizeof(uint32_t),
                     "unexpected AI model report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t),
                     "unexpected ROS bridge report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_admission_report_t) == 14u * sizeof(uint32_t),
+                    "unexpected admission report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t),
+                    "unexpected runtime report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 15u * sizeof(uint32_t),
+                    "unexpected health report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_event_log_report_t) == 16u * sizeof(uint32_t),
+                    "unexpected event log report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32_t),
+                    "unexpected module runtime report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_degrade_application_report_t) == 10u * sizeof(uint32_t),
+                    "unexpected degrade application report size");
 
 static inline uint32_t nobro_report_checksum_words(const uint32_t *words, size_t word_count) {
     uint32_t checksum = 0u;
@@ -559,6 +686,156 @@ static inline nobro_report_status_t nobro_ros_bridge_report_status(
         0,
         report->checksum,
         nobro_ros_bridge_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_admission_report_checksum(
+    const nobro_admission_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->admitted
+        ^ report->module_count ^ report->startup_len ^ report->flash_used_bytes
+        ^ report->flash_limit_bytes ^ report->ram_used_bytes ^ report->ram_limit_bytes
+        ^ report->pool_used_slots ^ report->pool_limit_slots ^ report->error_code;
+}
+
+static inline nobro_report_status_t nobro_admission_report_status(
+    const nobro_admission_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_ADMISSION_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        report->admitted,
+        1,
+        report->checksum,
+        nobro_admission_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_runtime_report_checksum(
+    const nobro_runtime_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->state
+        ^ report->module_count ^ report->mailbox_len ^ report->mailbox_dropped
+        ^ report->alarm_len ^ report->next_alarm_due_us_lo
+        ^ report->next_alarm_due_us_hi ^ report->kv_len ^ report->kv_writes
+        ^ report->kv_deletes ^ report->quota_flash_used_bytes
+        ^ report->quota_ram_used_bytes ^ report->quota_pool_used_slots
+        ^ report->event_count ^ report->dropped_events;
+}
+
+static inline nobro_report_status_t nobro_runtime_report_status(
+    const nobro_runtime_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_RUNTIME_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_runtime_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_health_report_checksum(
+    const nobro_health_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->module_tag
+        ^ report->total_errors ^ report->consecutive_errors ^ report->last_error
+        ^ report->last_action ^ report->event_count ^ report->dropped_events
+        ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo
+        ^ report->last_seen_us_hi;
+}
+
+static inline nobro_report_status_t nobro_health_report_status(
+    const nobro_health_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_HEALTH_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_health_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_event_log_report_checksum(
+    const nobro_event_log_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->event_count
+        ^ report->capacity ^ report->dropped_events ^ report->latest_seq
+        ^ report->latest_at_us_lo ^ report->latest_at_us_hi
+        ^ report->latest_module_tag ^ report->latest_severity ^ report->latest_kind
+        ^ report->latest_payload_kind ^ report->latest_payload0 ^ report->latest_payload1;
+}
+
+static inline nobro_report_status_t nobro_event_log_report_status(
+    const nobro_event_log_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_EVENT_LOG_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_event_log_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_module_runtime_report_checksum(
+    const nobro_module_runtime_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->module_count
+        ^ report->capacity ^ report->active_count ^ report->suspended_count
+        ^ report->faulted_count ^ report->recovering_count ^ report->disabled_count
+        ^ report->latest_module_tag ^ report->latest_state ^ report->latest_fault_count
+        ^ report->latest_recovery_count ^ report->latest_change_us_lo
+        ^ report->latest_change_us_hi;
+}
+
+static inline nobro_report_status_t nobro_module_runtime_report_status(
+    const nobro_module_runtime_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_MODULE_RUNTIME_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_module_runtime_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_degrade_application_report_checksum(
+    const nobro_degrade_application_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->requested_count
+        ^ report->disabled_count ^ report->already_disabled_count ^ report->reason
+        ^ report->applied_at_us_lo ^ report->applied_at_us_hi;
+}
+
+static inline nobro_report_status_t nobro_degrade_application_report_status(
+    const nobro_degrade_application_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_degrade_application_report_checksum(report)
     );
 }
 
