@@ -29,16 +29,18 @@ Completed or substantially present:
 - optional `hal-profile` bridge from `BoardPackage` to admission `SystemProfile`
 - no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
   construction, startup reports, and failure snapshots
+- `sal_adapter_demo` wired through `BootAssembly` while preserving host reports
 
 ## Near-Term Architecture Work
 
+- expand `BootAssembly` app wiring beyond `sal_adapter_demo`
 - keep board package fixtures aligned with every supported boot layout
 - keep board profile fixtures aligned with every supported board feature
 - strengthen adapter manifest examples
 - keep host boot summaries aligned with `NOBRO_*` report additions
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog
   cleanup behavior covered by tests
-- connect adapter preflight reports with `BootAssembly` in the demo apps
+- connect adapter preflight reports with `BootAssembly` in remaining demo apps
 
 ## Adapter Work
 

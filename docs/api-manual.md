@@ -78,6 +78,11 @@ let failure = match AppBoot::build_with_failure(
 assert!(failure.manifest_report.verify_checksum());
 ```
 
+`sal_adapter_demo` uses this path as the reference app assembly pattern. Adapter
+preflight still writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
+demo work begins, so host tools can stop at the adapter stage when descriptors
+do not match the selected board profile.
+
 ### Admission
 
 `AdmissionController` composes manifest validation, startup ordering, quota

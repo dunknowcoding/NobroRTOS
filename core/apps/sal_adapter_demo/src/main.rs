@@ -27,9 +27,9 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionController, AdmissionReport, DeadlineContract, DegradeApplicationReport,
+    AdmissionReport, BootAssembly, BootAssemblyFailure, DeadlineContract, DegradeApplicationReport,
     EventLogReport, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleRuntimeReport,
-    ModuleSpec, Runtime, RuntimeReport, SystemManifest, SystemProfile,
+    ModuleSpec, RuntimeReport, StartupDependency, SystemProfile,
 };
 use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
 
@@ -84,7 +84,12 @@ static mut NOBRO_BOARD_PACKAGE_REPORT: BoardPackageReport = BoardPackageReport::
 #[used]
 static mut NOBRO_MANIFEST_REPORT: ManifestReport = ManifestReport::zeroed();
 
-type SalDemoRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
+type SalDemoBoot = BootAssembly<4, 4, 4, 4, 4, 4, 4, 4, 16>;
+
+const SAL_DEMO_DEPENDENCIES: [StartupDependency; 2] = [
+    StartupDependency::new(ModuleId::Actuator, ModuleId::Kernel),
+    StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel),
+];
 
 fn on_deadline_slot() {}
 
@@ -170,48 +175,40 @@ fn write_board_profile_report() {
 
 fn admit_sal_demo() {
     let specs = [kernel_spec(), robo_servo_spec(), sensor_stub_spec()];
-    let manifest =
-        SystemManifest::<4>::from_specs(&specs).unwrap_or_else(|_| defmt::panic!("manifest"));
-    unsafe {
-        NOBRO_MANIFEST_REPORT =
-            ManifestReport::from_result(&manifest, manifest.validate_profile(active_profile()));
-    }
-    validate_adapter_set(active_profile());
-
-    let mut startup = manifest
-        .startup_graph::<4>()
-        .unwrap_or_else(|_| defmt::panic!("startup graph"));
-    startup
-        .add_dependency(ModuleId::Actuator, ModuleId::Kernel)
-        .unwrap_or_else(|_| defmt::panic!("actuator startup dependency"));
-    startup
-        .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
-        .unwrap_or_else(|_| defmt::panic!("sensor startup dependency"));
-
-    let admission =
-        AdmissionController::admit_graph::<4, 4, 4, 4>(&manifest, &startup, active_profile());
-    unsafe {
-        NOBRO_ADMISSION_REPORT =
-            AdmissionReport::from_result(admission.as_ref().map_err(|error| *error));
-    }
-
-    match admission {
-        Ok(plan) => {
-            let mut runtime = SalDemoRuntime::from_plan(plan, FaultThresholds::DEFAULT)
-                .unwrap_or_else(|_| defmt::panic!("runtime assembly"));
-            runtime
-                .boot_to_running(0)
-                .unwrap_or_else(|_| defmt::panic!("runtime boot"));
-            unsafe {
-                NOBRO_RUNTIME_REPORT = runtime.runtime_report();
-                NOBRO_EVENT_LOG_REPORT = runtime.event_log_report();
-                NOBRO_MODULE_RUNTIME_REPORT = runtime.module_runtime_report();
-                NOBRO_DEGRADE_APPLICATION_REPORT = runtime.degrade_application_report();
-            }
+    let profile = active_profile();
+    let boot = match SalDemoBoot::build_with_failure(
+        &specs,
+        &SAL_DEMO_DEPENDENCIES,
+        profile,
+        FaultThresholds::DEFAULT,
+        0,
+    ) {
+        Ok(boot) => boot,
+        Err(failure) => {
+            write_boot_failure_reports(failure);
+            defmt::panic!("sal demo boot assembly failed");
         }
-        Err(_) => {
-            defmt::panic!("sal demo admission failed");
-        }
+    };
+
+    unsafe {
+        NOBRO_MANIFEST_REPORT = boot.manifest_report;
+        NOBRO_ADMISSION_REPORT = boot.admission_report;
+    }
+    validate_adapter_set(profile);
+
+    let runtime = boot.runtime;
+    unsafe {
+        NOBRO_RUNTIME_REPORT = runtime.runtime_report();
+        NOBRO_EVENT_LOG_REPORT = runtime.event_log_report();
+        NOBRO_MODULE_RUNTIME_REPORT = runtime.module_runtime_report();
+        NOBRO_DEGRADE_APPLICATION_REPORT = runtime.degrade_application_report();
+    }
+}
+
+fn write_boot_failure_reports(failure: BootAssemblyFailure) {
+    unsafe {
+        NOBRO_MANIFEST_REPORT = failure.manifest_report;
+        NOBRO_ADMISSION_REPORT = failure.admission_report;
     }
 }
 

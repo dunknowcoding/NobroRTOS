@@ -131,6 +131,10 @@ let failure = match AppBoot::build_with_failure(
 assert!(failure.manifest_report.verify_checksum());
 ```
 
+The `sal_adapter_demo` app follows this pattern: it assembles the manifest,
+startup graph, admission plan, and runtime through `BootAssembly`, then writes
+the adapter compatibility report before entering hardware-facing demo code.
+
 ## Working With SAL
 
 Application code should depend on `airon-sal` traits:
