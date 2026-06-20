@@ -65,6 +65,11 @@ These builders keep Python-first users on the same contracts as the Rust core:
 fixed budgets, explicit capabilities, bounded AI inference, and bounded
 robotics bridge metadata.
 
+`AiRoutePolicy` mirrors the Rust/C route decision contract for host simulation
+and VS Code workflows. It can choose local inference, a remote endpoint, stale
+snapshot reuse, degraded fallback, or an unavailable state from the same budget
+and circuit-breaker inputs used by firmware.
+
 ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 32-bit hashes (`name_hash`, `message_type_hash`, `bridge_id_hash`, and
 `transport_hash`). Rust-side `RosBridgeContract` code can use those hash fields

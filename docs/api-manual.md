@@ -348,6 +348,10 @@ Python bridge descriptors emit the same stable FNV-1a 32-bit hashes alongside
 readable names, so host-generated metadata can be reviewed by people and still
 map cleanly to Rust `RosBridgeContract` fields.
 
+Python tooling also mirrors `AiRoutePolicy` for host-side simulations and editor
+workflows. Use it to validate route decisions before the same policy is wired
+into Rust or C/C++ firmware code.
+
 ## Host API
 
 `nobro-host` mirrors all report constants:

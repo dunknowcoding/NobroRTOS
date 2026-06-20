@@ -54,6 +54,22 @@ class AiBackendKind(IntEnum):
     HYBRID = 4
 
 
+class AiRoutePreference(IntEnum):
+    LOCAL_ONLY = 1
+    PREFER_LOCAL = 2
+    PREFER_REMOTE = 3
+    HYBRID_FALLBACK = 4
+
+
+class AiRouteTarget(IntEnum):
+    ON_DEVICE = 1
+    REMOTE_API = 2
+    EDGE_SIDECAR = 3
+    STALE_SNAPSHOT = 4
+    DEGRADED_FALLBACK = 5
+    UNAVAILABLE = 6
+
+
 def capability_mask(*capabilities: Capability) -> int:
     mask = 0
     for capability in capabilities:
@@ -220,6 +236,160 @@ class AiModelContract:
             arena_bytes=int(payload.get("arena_bytes", 0)),
             timeout_us=int(payload["timeout_us"]),
             stale_after_us=int(payload["stale_after_us"]),
+        )
+
+
+@dataclass(frozen=True)
+class AiRuntimeState:
+    local_ready: bool
+    endpoint_ready: bool
+    last_success_age_us: int
+    consecutive_endpoint_failures: int
+
+    def validate(self) -> None:
+        if self.last_success_age_us < 0:
+            raise ValueError("last_success_age_us cannot be negative")
+        if self.consecutive_endpoint_failures < 0:
+            raise ValueError("consecutive_endpoint_failures cannot be negative")
+
+
+@dataclass(frozen=True)
+class AiRouteDecision:
+    target: AiRouteTarget
+    endpoint_circuit_open: bool
+    uses_stale_snapshot: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target": self.target.name.lower(),
+            "endpoint_circuit_open": self.endpoint_circuit_open,
+            "uses_stale_snapshot": self.uses_stale_snapshot,
+        }
+
+
+@dataclass(frozen=True)
+class AiRoutePolicy:
+    preference: AiRoutePreference
+    stale_after_us: int
+    endpoint_failure_limit: int
+
+    def validate(self) -> None:
+        if self.stale_after_us < 0:
+            raise ValueError("stale_after_us cannot be negative")
+        if self.endpoint_failure_limit < 0:
+            raise ValueError("endpoint_failure_limit cannot be negative")
+
+    def decide(
+        self,
+        contract: AiModelContract,
+        state: AiRuntimeState,
+        budget_us: int,
+    ) -> AiRouteDecision:
+        self.validate()
+        contract.validate()
+        state.validate()
+        if budget_us < 0:
+            raise ValueError("budget_us cannot be negative")
+
+        failure_limit = self.endpoint_failure_limit or 1
+        endpoint_circuit_open = state.consecutive_endpoint_failures >= failure_limit
+        stale_ready = state.last_success_age_us <= self.stale_after_us
+        fits_budget = contract.timeout_us <= budget_us
+
+        if not fits_budget:
+            return self._fallback(endpoint_circuit_open, stale_ready)
+
+        if contract.backend == AiBackendKind.ON_DEVICE:
+            if state.local_ready:
+                return AiRouteDecision(
+                    AiRouteTarget.ON_DEVICE,
+                    endpoint_circuit_open,
+                    False,
+                )
+            return self._fallback(endpoint_circuit_open, stale_ready)
+
+        if contract.backend == AiBackendKind.REMOTE_API:
+            return self._remote_or_fallback(
+                AiRouteTarget.REMOTE_API,
+                state,
+                endpoint_circuit_open,
+                stale_ready,
+            )
+
+        if contract.backend == AiBackendKind.EDGE_SIDECAR:
+            return self._remote_or_fallback(
+                AiRouteTarget.EDGE_SIDECAR,
+                state,
+                endpoint_circuit_open,
+                stale_ready,
+            )
+
+        if contract.backend == AiBackendKind.HYBRID:
+            return self._hybrid_decision(state, endpoint_circuit_open, stale_ready)
+
+        return self._fallback(endpoint_circuit_open, stale_ready)
+
+    def _remote_or_fallback(
+        self,
+        target: AiRouteTarget,
+        state: AiRuntimeState,
+        endpoint_circuit_open: bool,
+        stale_ready: bool,
+    ) -> AiRouteDecision:
+        if (
+            self.preference != AiRoutePreference.LOCAL_ONLY
+            and state.endpoint_ready
+            and not endpoint_circuit_open
+        ):
+            return AiRouteDecision(target, endpoint_circuit_open, False)
+        return self._fallback(endpoint_circuit_open, stale_ready)
+
+    def _hybrid_decision(
+        self,
+        state: AiRuntimeState,
+        endpoint_circuit_open: bool,
+        stale_ready: bool,
+    ) -> AiRouteDecision:
+        if self.preference in (
+            AiRoutePreference.LOCAL_ONLY,
+            AiRoutePreference.PREFER_LOCAL,
+        ):
+            if state.local_ready:
+                return AiRouteDecision(
+                    AiRouteTarget.ON_DEVICE,
+                    endpoint_circuit_open,
+                    False,
+                )
+            return self._remote_or_fallback(
+                AiRouteTarget.REMOTE_API,
+                state,
+                endpoint_circuit_open,
+                stale_ready,
+            )
+
+        if state.endpoint_ready and not endpoint_circuit_open:
+            return AiRouteDecision(AiRouteTarget.REMOTE_API, endpoint_circuit_open, False)
+        if state.local_ready:
+            return AiRouteDecision(AiRouteTarget.ON_DEVICE, endpoint_circuit_open, False)
+        return self._fallback(endpoint_circuit_open, stale_ready)
+
+    def _fallback(
+        self,
+        endpoint_circuit_open: bool,
+        stale_ready: bool,
+    ) -> AiRouteDecision:
+        if stale_ready:
+            return AiRouteDecision(
+                AiRouteTarget.STALE_SNAPSHOT,
+                endpoint_circuit_open,
+                True,
+            )
+        if self.preference == AiRoutePreference.LOCAL_ONLY:
+            return AiRouteDecision(AiRouteTarget.UNAVAILABLE, endpoint_circuit_open, False)
+        return AiRouteDecision(
+            AiRouteTarget.DEGRADED_FALLBACK,
+            endpoint_circuit_open,
+            False,
         )
 
 

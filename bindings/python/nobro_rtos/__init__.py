@@ -3,6 +3,11 @@
 from .contracts import (
     AiBackendKind,
     AiModelContract,
+    AiRouteDecision,
+    AiRoutePolicy,
+    AiRoutePreference,
+    AiRouteTarget,
+    AiRuntimeState,
     Capability,
     CONTRACT_SCHEMA_VERSION,
     Criticality,
@@ -41,6 +46,11 @@ from .reports import (
 __all__ = [
     "AiBackendKind",
     "AiModelContract",
+    "AiRouteDecision",
+    "AiRoutePolicy",
+    "AiRoutePreference",
+    "AiRouteTarget",
+    "AiRuntimeState",
     "Capability",
     "CONTRACT_SCHEMA_VERSION",
     "Criticality",

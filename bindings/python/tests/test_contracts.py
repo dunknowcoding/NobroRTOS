@@ -6,6 +6,10 @@ import unittest
 from nobro_rtos import (
     AiBackendKind,
     AiModelContract,
+    AiRoutePolicy,
+    AiRoutePreference,
+    AiRouteTarget,
+    AiRuntimeState,
     BootDiagnostic,
     BootReportSummary,
     Capability,
@@ -219,6 +223,63 @@ class ContractBuilderTests(unittest.TestCase):
             stable_hash32("sensor_msgs/Imu"),
         )
         self.assertEqual(payload["services"][0]["name_hash"], stable_hash32("/reset"))
+
+    def test_ai_route_policy_matches_runtime_decision_vectors(self) -> None:
+        hybrid = AiModelContract(
+            42,
+            AiBackendKind.HYBRID,
+            128,
+            32,
+            4096,
+            20_000,
+            100_000,
+        )
+        remote = AiModelContract(
+            43,
+            AiBackendKind.REMOTE_API,
+            128,
+            32,
+            0,
+            20_000,
+            100_000,
+        )
+
+        local_only = AiRoutePolicy(AiRoutePreference.LOCAL_ONLY, 10_000, 3)
+        self.assertEqual(
+            local_only.decide(
+                hybrid,
+                AiRuntimeState(True, True, 1_000, 0),
+                30_000,
+            ).target,
+            AiRouteTarget.ON_DEVICE,
+        )
+
+        prefer_remote = AiRoutePolicy(AiRoutePreference.PREFER_REMOTE, 50_000, 2)
+        tripped = prefer_remote.decide(
+            remote,
+            AiRuntimeState(False, True, 10_000, 2),
+            30_000,
+        )
+        self.assertEqual(tripped.target, AiRouteTarget.STALE_SNAPSHOT)
+        self.assertTrue(tripped.endpoint_circuit_open)
+        self.assertTrue(tripped.uses_stale_snapshot)
+
+        fallback = AiRoutePolicy(AiRoutePreference.HYBRID_FALLBACK, 1_000, 3)
+        self.assertEqual(
+            fallback.decide(
+                remote,
+                AiRuntimeState(False, True, 5_000, 0),
+                5_000,
+            ).target,
+            AiRouteTarget.DEGRADED_FALLBACK,
+        )
+
+        unavailable = local_only.decide(
+            remote,
+            AiRuntimeState(False, False, 50_000, 0),
+            5_000,
+        )
+        self.assertEqual(unavailable.target, AiRouteTarget.UNAVAILABLE)
 
     def test_capability_masks_reject_unknown_bits(self) -> None:
         self.assertEqual(
