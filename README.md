@@ -200,7 +200,7 @@ folders use the `nobro_*` project prefix.
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge model | Present | Bounded topic/service/action/parameter contracts and SAL bridge trait |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
-| C/C++/Python interfaces | In progress | C/C++ report headers plus Python builders, decoders, and validators |
+| C/C++/Python interfaces | In progress | C/C++ reports, AI/ROS contracts, plus Python builders, decoders, and validators |
 
 ## Quick Start
 

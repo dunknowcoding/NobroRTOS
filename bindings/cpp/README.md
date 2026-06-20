@@ -35,6 +35,7 @@ if (!nobro::rtos::passing(view.status())) {
 
 ## Scope
 
-The C++ layer currently focuses on type-safe report views. Builders for module
-manifests, board packages, and adapter descriptors should remain thin wrappers
-over fixed-size C or Rust-compatible records.
+The C++ layer currently focuses on type-safe report views plus small helpers for
+stable hashes, AI route decisions, and ROS bridge contract summaries. Builders
+for module manifests, board packages, and adapter descriptors should remain thin
+wrappers over fixed-size C or Rust-compatible records.

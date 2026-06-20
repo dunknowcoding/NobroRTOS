@@ -27,6 +27,67 @@ constexpr bool passing(ReportStatus status) noexcept {
     return status == ReportStatus::Pass;
 }
 
+inline std::uint32_t stable_hash32(const char* value) noexcept {
+    return nobro_stable_hash32_cstr(value);
+}
+
+class AiRouteDecisionView {
+public:
+    constexpr explicit AiRouteDecisionView(const nobro_ai_route_decision_t& decision) noexcept
+        : decision_(&decision) {}
+
+    constexpr std::uint8_t target() const noexcept {
+        return decision_->target;
+    }
+
+    constexpr bool endpoint_circuit_open() const noexcept {
+        return decision_->endpoint_circuit_open != 0;
+    }
+
+    constexpr bool uses_stale_snapshot() const noexcept {
+        return decision_->uses_stale_snapshot != 0;
+    }
+
+private:
+    const nobro_ai_route_decision_t* decision_;
+};
+
+inline AiRouteDecisionView decide_ai_route(
+    const nobro_ai_route_policy_t& policy,
+    const nobro_ai_model_contract_t& contract,
+    const nobro_ai_runtime_state_t& state,
+    std::uint32_t budget_us,
+    nobro_ai_route_decision_t& out
+) noexcept {
+    out = nobro_ai_route_decide(policy, contract, state, budget_us);
+    return AiRouteDecisionView(out);
+}
+
+class RosBridgeContractView {
+public:
+    constexpr explicit RosBridgeContractView(const nobro_ros_bridge_contract_t& contract) noexcept
+        : contract_(&contract) {}
+
+    constexpr std::uint8_t transport() const noexcept {
+        return contract_->transport;
+    }
+
+    constexpr std::uint32_t bridge_id_hash() const noexcept {
+        return contract_->bridge_id_hash;
+    }
+
+    constexpr std::uint32_t total_buffer_bytes() const noexcept {
+        return contract_->total_buffer_bytes;
+    }
+
+    constexpr std::uint32_t max_timeout_us() const noexcept {
+        return contract_->max_timeout_us;
+    }
+
+private:
+    const nobro_ros_bridge_contract_t* contract_;
+};
+
 class BoardProfileReportView {
 public:
     constexpr explicit BoardProfileReportView(const nobro_board_profile_report_t& report) noexcept

@@ -84,6 +84,9 @@ class ContractBuilderTests(unittest.TestCase):
         header = (repo_root / "bindings" / "c" / "include" / "nobro_rtos.h").read_text(
             encoding="utf-8"
         )
+        cpp_header = (
+            repo_root / "bindings" / "cpp" / "include" / "nobro_rtos.hpp"
+        ).read_text(encoding="utf-8")
         contract = load_repo_host_contract()
         report_defines = {
             "board_profile_report": "NOBRO_BOARD_PROFILE_REPORT_MAGIC",
@@ -106,6 +109,25 @@ class ContractBuilderTests(unittest.TestCase):
                 int(contract.payload[report_key]["magic"], 16),
             )
             self.assertIn(report_structs[report_key], header)
+
+        for symbol in (
+            "NOBRO_FNV1A32_OFFSET",
+            "nobro_stable_hash32_cstr",
+            "nobro_ai_model_contract_t",
+            "nobro_ai_route_policy_t",
+            "nobro_ai_route_decide",
+            "nobro_ros_bridge_contract_t",
+            "nobro_ros_topic_contract_t",
+        ):
+            self.assertIn(symbol, header)
+
+        for symbol in (
+            "stable_hash32",
+            "AiRouteDecisionView",
+            "decide_ai_route",
+            "RosBridgeContractView",
+        ):
+            self.assertIn(symbol, cpp_header)
 
     def test_bundle_exports_stable_masks_and_schema_version(self) -> None:
         bundle = NobroContractBundle(

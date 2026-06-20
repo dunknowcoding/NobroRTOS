@@ -18,6 +18,10 @@ The header currently mirrors:
 - `nobro_board_package_report_t`
 - `nobro_manifest_report_t`
 - `nobro_adapter_compat_report_t`
+- `nobro_ai_model_contract_t`
+- `nobro_ai_route_policy_t`
+- `nobro_ros_bridge_contract_t`
+- ROS topic, service, action, and parameter contract records
 
 Each report has inline checksum and status helpers:
 
@@ -37,8 +41,20 @@ if (nobro_manifest_report_status(&report) != NOBRO_REPORT_STATUS_PASS) {
 The structs use only `uint32_t` fields and include compile-time size checks for
 C11 toolchains. Older C toolchains receive typedef-based static assertions.
 
+AI and ROS bridge helpers stay allocation-free:
+
+```c
+uint32_t imu_hash = nobro_stable_hash32_cstr("/imu");
+nobro_ai_route_decision_t decision = nobro_ai_route_decide(
+    policy,
+    model,
+    runtime_state,
+    20000u
+);
+```
+
 ## Scope
 
-The C binding intentionally starts with report inspection. Module builders,
+The C binding focuses on fixed contracts and report inspection. Module builders,
 board package helpers, and adapter registration wrappers should stay layered on
-top of this ABI instead of changing these report layouts.
+top of this ABI instead of changing these layouts.
