@@ -23,13 +23,14 @@ Completed or substantially present:
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
   capacity budgets, and critical pins
 - host-readable board package reports in the boot diagnostic path
+- board package fixtures for host review without board feature switching
 - no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
   construction, startup reports, and failure snapshots
 
 ## Near-Term Architecture Work
 
 - add generated board profile fixtures for host review
-- add generated board package fixtures for host review
+- keep board package fixtures aligned with every supported boot layout
 - strengthen adapter manifest examples
 - expose richer host decoding examples for `NOBRO_*` reports
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog

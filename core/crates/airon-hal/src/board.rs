@@ -118,4 +118,17 @@ mod tests {
         #[cfg(not(feature = "board-nicenano-s140"))]
         assert_eq!(Board::package().boot.layout, BootLayout::NoSoftDevice);
     }
+
+    #[test]
+    fn active_board_package_matches_fixture() {
+        #[cfg(feature = "board-nicenano-s140")]
+        let fixture = crate::board_fixtures::fixture_for_feature("board-nicenano-s140")
+            .expect("s140 fixture");
+
+        #[cfg(not(feature = "board-nicenano-s140"))]
+        let fixture = crate::board_fixtures::fixture_for_feature("board-promicro-nosd")
+            .expect("nosd fixture");
+
+        assert_eq!(Board::package(), fixture.package);
+    }
 }

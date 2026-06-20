@@ -141,7 +141,7 @@ mindmap
 Near-term engineering focus:
 
 - connect app assembly patterns to `BootAssembly` without hiding contracts
-- generate board profile and board package fixtures for host review
+- generate board profile fixtures and keep board package fixtures aligned
 - harden adapter manifests and compatibility examples
 - expand host decoding examples for `NOBRO_*` reports
 - keep every hardware-facing feature backed by a software validation gate
@@ -177,9 +177,10 @@ until a dedicated crate-name migration is worth the churn.
 | Runtime control plane | Present | Mailbox, alarms, KV, quotas, watchdog, health, recovery |
 | Boot assembly facade | Present | No-heap app startup helper preserving manifest/admission reports |
 | Board package validation | Present | Boot layout, flash/RAM region, capacity, critical pins |
+| Board package fixtures | Present | Host-reviewable package list for current boot layouts |
 | Host ABI contract | Present | JSON contract plus `airon-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
-| Multi-board expansion | In progress | Board facts are data-first; fixture generation is next |
+| Multi-board expansion | In progress | Board facts are data-first; profile fixture generation is next |
 | Host tooling UX | In progress | First-fault decoding examples need to grow |
 
 ## Quick Start

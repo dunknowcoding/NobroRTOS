@@ -74,6 +74,11 @@ selected board feature explicitly.
 
 Good:
 
+## Board Package Fixtures
+
+Each supported boot layout should be mirrored in `BOARD_PACKAGE_FIXTURES`. Fixtures
+let host review tools validate package reports, memory ranges, capacity, and
+critical pins without rebuilding the HAL for every board feature.
 ```toml
 airon-hal = { path = "../../crates/airon-hal", default-features = false }
 board-promicro-nosd = ["airon-hal/board-promicro-nosd"]

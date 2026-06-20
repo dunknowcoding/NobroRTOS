@@ -157,6 +157,16 @@ let report = airon_hal::BoardPackageReport::from_package(&airon_hal::ACTIVE_BOAR
 assert!(report.verify_checksum());
 ```
 
+Board package fixtures make current board layouts reviewable without switching
+Cargo features:
+
+```rust
+for fixture in airon_hal::BOARD_PACKAGE_FIXTURES {
+    assert_eq!(fixture.package.validate(), Ok(()));
+    assert!(fixture.report().verify_checksum());
+}
+```
+
 ### Leases
 
 `ResourceLease` and `LeaseGuard` provide exclusive ownership for shared

@@ -7,6 +7,7 @@
 #![no_std]
 
 pub mod board_desc;
+pub mod board_fixtures;
 pub mod lease;
 pub mod platform;
 pub mod snapshots;
@@ -40,6 +41,10 @@ pub mod twim_hw;
 pub use board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPackageError, BoardPins, BootLayout, BootProfile,
     BusLayout, ServoProfile,
+};
+pub use board_fixtures::{
+    fixture_for_feature, BoardPackageFixture, BOARD_PACKAGE_FIXTURES, NRF52840_BOARD_CAPACITY,
+    NRF52840_BOARD_PINS, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
 };
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;
