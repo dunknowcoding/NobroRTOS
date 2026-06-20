@@ -104,12 +104,14 @@ python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
 python -m nobro_rtos sample-report ai_model
 python -m nobro_rtos sample-report ros_bridge
+python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge. The route sample prints a matching AI route
 policy, runtime state, and decision. The report samples print sealed fixed
-reports that can be fed directly into `decode-report`.
+reports that can be fed directly into `decode-report`. The sensor sample emits
+deterministic fixture records and injected-fault summaries.
 
 Validate the repository host contract against the Python enums:
 

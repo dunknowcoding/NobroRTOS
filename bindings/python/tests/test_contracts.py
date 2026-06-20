@@ -31,7 +31,7 @@ from nobro_rtos import (
     stable_hash32,
     validate_distribution_metadata,
 )
-from nobro_rtos.cli import _sample_report
+from nobro_rtos.cli import _sample_report, _sample_sensor
 
 
 class ContractBuilderTests(unittest.TestCase):
@@ -630,6 +630,17 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIsNotNone(second)
         self.assertTrue(first.plausible)
         self.assertFalse(second.plausible)
+
+    def test_cli_sensor_sample_summarizes_fixture_modes(self) -> None:
+        bad = _sample_sensor("bad_data_every", 3, 1, 2)
+        error = _sample_sensor("error_every", 3, 1, 2)
+
+        self.assertEqual(bad["sample_count"], 3)
+        self.assertEqual(bad["error_count"], 0)
+        self.assertFalse(bad["samples"][1]["plausible"])
+        self.assertEqual(error["sample_count"], 2)
+        self.assertEqual(error["error_count"], 1)
+        self.assertEqual(error["errors"][0]["tick"], 2)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

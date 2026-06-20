@@ -25,6 +25,7 @@ from .contracts import (
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
+from .sim import SensorStubError, SensorStubMode, SensorStubSimulator
 
 
 def main() -> int:
@@ -49,6 +50,34 @@ def main() -> int:
         "kind",
         choices=("ai_model", "ros_bridge"),
         help="sample report kind",
+    )
+    sample_sensor = subparsers.add_parser(
+        "sample-sensor",
+        help="run the deterministic sensor-stub simulator and print JSON",
+    )
+    sample_sensor.add_argument(
+        "--mode",
+        choices=("nominal", "silent", "error_every", "bad_data_every"),
+        default="nominal",
+        help="sensor fixture mode",
+    )
+    sample_sensor.add_argument(
+        "--ticks",
+        type=int,
+        default=8,
+        help="number of simulated polls",
+    )
+    sample_sensor.add_argument(
+        "--period",
+        type=int,
+        default=2,
+        help="sample period in ticks",
+    )
+    sample_sensor.add_argument(
+        "--fault-period",
+        type=int,
+        default=2,
+        help="fault period for error_every or bad_data_every modes",
     )
     subparsers.add_parser(
         "check-host-contract",
@@ -100,6 +129,15 @@ def main() -> int:
         return 0
     if args.command == "sample-report":
         print(json.dumps(_sample_report(args.kind), indent=2, sort_keys=True))
+        return 0
+    if args.command == "sample-sensor":
+        print(
+            json.dumps(
+                _sample_sensor(args.mode, args.ticks, args.period, args.fault_period),
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
@@ -242,3 +280,41 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     raise ValueError(f"unsupported sample report kind: {kind}")
+
+
+def _sample_sensor(
+    mode: str,
+    ticks: int,
+    sample_period_ticks: int,
+    fault_period: int,
+) -> dict[str, object]:
+    if ticks < 0:
+        raise ValueError("ticks must be non-negative")
+
+    simulator = SensorStubSimulator(
+        sample_period_ticks=sample_period_ticks,
+        mode=SensorStubMode(mode),
+        fault_period=fault_period,
+    )
+    samples: list[dict[str, object]] = []
+    errors: list[dict[str, object]] = []
+
+    for index in range(ticks):
+        try:
+            sample = simulator.poll(index)
+        except SensorStubError as error:
+            errors.append({"tick": simulator.tick, "error": str(error)})
+            continue
+        if sample is not None:
+            samples.append(sample.to_dict())
+
+    return {
+        "mode": mode,
+        "ticks": ticks,
+        "sample_period_ticks": sample_period_ticks,
+        "fault_period": fault_period,
+        "sample_count": len(samples),
+        "error_count": len(errors),
+        "samples": samples,
+        "errors": errors,
+    }
