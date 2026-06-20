@@ -12,27 +12,55 @@ from .host_contract import HostContract, load_repo_host_contract
 
 
 BOOT_STAGE_TO_REPORT_KIND = {
+    "board_profile": "board_profile",
+    "board_package": "board_package",
     "manifest": "manifest",
     "adapter_compatibility": "adapter_compatibility",
 }
+BOARD_PROFILE_REPORT_MAGIC = 0x4E42_4250
+BOARD_PACKAGE_REPORT_MAGIC = 0x4E42_424B
 MANIFEST_REPORT_MAGIC = 0x4E42_4D46
 ADAPTER_COMPAT_REPORT_MAGIC = 0x4E42_4143
 REPORT_VERSION = 1
 
-REPORT_FIELDS = (
+BOARD_PROFILE_FIELDS = (
     "magic",
     "version",
     "completed",
-    "ok",
-    "item_count",
-    "required_bits",
-    "owned_bits",
-    "flash_used_bytes",
-    "ram_used_bytes",
-    "pool_used_slots",
+    "platform_hash",
+    "board_hash",
+    "app_flash_start",
+    "flash_budget_bytes",
+    "ram_budget_bytes",
+    "sample_pool_slots",
+    "max_modules",
+    "servo_pin",
+    "servo_center_us",
+    "led_pin",
+    "mvk_trigger_pin",
+    "checksum",
+)
+
+BOARD_PACKAGE_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "valid",
+    "platform_hash",
+    "board_hash",
+    "boot_layout",
+    "app_flash_start",
+    "app_flash_len_bytes",
+    "ram_start",
+    "ram_len_bytes",
+    "flash_budget_bytes",
+    "ram_budget_bytes",
+    "sample_pool_slots",
+    "max_modules",
+    "led_pin",
+    "servo_pin",
+    "mvk_trigger_pin",
     "error_code",
-    "error_module_tag",
-    "error_capability_bits",
     "checksum",
 )
 
@@ -73,6 +101,8 @@ ADAPTER_COMPAT_FIELDS = (
 
 
 class ReportKind(Enum):
+    BOARD_PROFILE = "board_profile"
+    BOARD_PACKAGE = "board_package"
     MANIFEST = "manifest"
     ADAPTER_COMPAT = "adapter_compatibility"
 
@@ -177,8 +207,8 @@ class FixedReport:
     kind: ReportKind
     fields: dict[str, int]
     expected_magic: int
-    ok_field: str
-    count_field: str
+    ok_field: str | None
+    count_field: str | None
     contract: HostContract
 
     @classmethod
@@ -194,6 +224,24 @@ class FixedReport:
     ) -> "FixedReport":
         report_kind = ReportKind(kind)
         contract = load_repo_host_contract() if contract is None else contract
+        if report_kind == ReportKind.BOARD_PROFILE:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, BOARD_PROFILE_FIELDS),
+                BOARD_PROFILE_REPORT_MAGIC,
+                None,
+                None,
+                contract,
+            )
+        if report_kind == ReportKind.BOARD_PACKAGE:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, BOARD_PACKAGE_FIELDS),
+                BOARD_PACKAGE_REPORT_MAGIC,
+                "valid",
+                None,
+                contract,
+            )
         if report_kind == ReportKind.MANIFEST:
             return cls(
                 report_kind,
@@ -231,6 +279,8 @@ class FixedReport:
             return ReportStatus.IN_PROGRESS
         if not self.verify_checksum():
             return ReportStatus.CORRUPT
+        if self.ok_field is None:
+            return ReportStatus.PASS
         if self.fields[self.ok_field] != 0:
             return ReportStatus.PASS
         return ReportStatus.FAIL
@@ -255,7 +305,7 @@ class FixedReport:
         return self.contract.error_label(self.kind.value, self.fields["error_code"])
 
     def error_module_label(self) -> str | None:
-        tag = self.fields["error_module_tag"]
+        tag = self.fields.get("error_module_tag", 0)
         if tag == 0:
             return None
         try:
@@ -269,16 +319,17 @@ class FixedReport:
             "status": self.status.value,
             "passing": self.passing,
             "checksum_ok": self.verify_checksum(),
-            "count": self.fields[self.count_field],
-            "required_bits": self.fields["required_bits"],
-            "owned_bits": self.fields["owned_bits"],
-            "flash_used_bytes": self.fields["flash_used_bytes"],
-            "ram_used_bytes": self.fields["ram_used_bytes"],
-            "pool_used_slots": self.fields["pool_used_slots"],
-            "error_code": self.fields["error_code"],
+            "count": self.fields[self.count_field] if self.count_field else None,
+            "required_bits": self.fields.get("required_bits", 0),
+            "owned_bits": self.fields.get("owned_bits", 0),
+            "flash_used_bytes": self.fields.get("flash_used_bytes", 0),
+            "ram_used_bytes": self.fields.get("ram_used_bytes", 0),
+            "pool_used_slots": self.fields.get("pool_used_slots", 0),
+            "error_code": self.fields.get("error_code", 0),
             "error_label": self.error_label(),
             "error_module_label": self.error_module_label(),
-            "error_capability_bits": self.fields["error_capability_bits"],
+            "error_capability_bits": self.fields.get("error_capability_bits", 0),
+            "raw": dict(self.fields),
         }
 
 
@@ -287,7 +338,13 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
 
     report_kind = ReportKind(kind)
     fields = dict(payload)
-    if report_kind == ReportKind.MANIFEST:
+    if report_kind == ReportKind.BOARD_PROFILE:
+        expected_magic = BOARD_PROFILE_REPORT_MAGIC
+        field_names = BOARD_PROFILE_FIELDS
+    elif report_kind == ReportKind.BOARD_PACKAGE:
+        expected_magic = BOARD_PACKAGE_REPORT_MAGIC
+        field_names = BOARD_PACKAGE_FIELDS
+    elif report_kind == ReportKind.MANIFEST:
         expected_magic = MANIFEST_REPORT_MAGIC
         field_names = MANIFEST_FIELDS
     elif report_kind == ReportKind.ADAPTER_COMPAT:

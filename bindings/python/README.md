@@ -105,6 +105,7 @@ Decode a report JSON file:
 ```powershell
 python tools/nobro_contract_tool.py decode-report manifest path\to\manifest_report.json
 python tools/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
+python tools/nobro_contract_tool.py decode-report board_package path\to\board_package_report.json
 ```
 
 Summarize a boot report bundle:

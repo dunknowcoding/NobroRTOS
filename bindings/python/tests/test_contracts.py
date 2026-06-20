@@ -200,6 +200,58 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report.verify_checksum())
         self.assertEqual(report.to_dict()["count"], 2)
 
+    def test_board_profile_report_decoder_accepts_sealed_pass(self) -> None:
+        payload = seal_report(
+            ReportKind.BOARD_PROFILE,
+            {
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "app_flash_start": 0x1000,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "servo_pin": 24,
+                "servo_center_us": 1500,
+                "led_pin": 15,
+                "mvk_trigger_pin": 17,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.BOARD_PROFILE, payload)
+
+        self.assertEqual(report.status, ReportStatus.PASS)
+        self.assertTrue(report.verify_checksum())
+        self.assertEqual(report.to_dict()["raw"]["servo_pin"], 24)
+
+    def test_board_package_report_decoder_preserves_failure_context(self) -> None:
+        payload = seal_report(
+            ReportKind.BOARD_PACKAGE,
+            {
+                "valid": 0,
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "boot_layout": 1,
+                "app_flash_start": 0x1000,
+                "app_flash_len_bytes": 1020 * 1024,
+                "ram_start": 0x2000_0000,
+                "ram_len_bytes": 256 * 1024,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "led_pin": 15,
+                "servo_pin": 24,
+                "mvk_trigger_pin": 17,
+                "error_code": 7,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.BOARD_PACKAGE, payload)
+
+        self.assertEqual(report.status, ReportStatus.FAIL)
+        self.assertEqual(report.error_label(), "duplicate_critical_pin")
+
     def test_adapter_report_decoder_preserves_failure_context(self) -> None:
         payload = seal_report(
             ReportKind.ADAPTER_COMPAT,
@@ -252,6 +304,42 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(summary.status_counts()["missing"], 5)
 
     def test_boot_summary_reports_adapter_failure_after_passing_early_slots(self) -> None:
+        board_profile = seal_report(
+            ReportKind.BOARD_PROFILE,
+            {
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "app_flash_start": 0x1000,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "servo_pin": 24,
+                "servo_center_us": 1500,
+                "led_pin": 15,
+                "mvk_trigger_pin": 17,
+            },
+        )
+        board_package = seal_report(
+            ReportKind.BOARD_PACKAGE,
+            {
+                "valid": 1,
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "boot_layout": 1,
+                "app_flash_start": 0x1000,
+                "app_flash_len_bytes": 1020 * 1024,
+                "ram_start": 0x2000_0000,
+                "ram_len_bytes": 256 * 1024,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "led_pin": 15,
+                "servo_pin": 24,
+                "mvk_trigger_pin": 17,
+            },
+        )
         manifest = seal_report(
             ReportKind.MANIFEST,
             {
@@ -273,8 +361,8 @@ class ContractBuilderTests(unittest.TestCase):
         summary = BootReportSummary.from_dict(
             {
                 "reports": {
-                    "board_profile": {"status": "pass"},
-                    "board_package": {"status": "pass"},
+                    "board_profile": board_profile,
+                    "board_package": board_package,
                     "manifest": manifest,
                     "adapter_compatibility": adapter,
                 }

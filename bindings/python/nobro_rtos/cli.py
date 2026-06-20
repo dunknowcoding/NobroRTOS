@@ -48,10 +48,17 @@ def main() -> int:
     validate_bundle.add_argument("path", help="path to a contract bundle JSON file")
     decode_report = subparsers.add_parser(
         "decode-report",
-        help="decode a manifest or adapter compatibility report JSON file",
+        help="decode a board, manifest, or adapter report JSON file",
     )
     decode_report.add_argument(
-        "kind", choices=("manifest", "adapter_compatibility"), help="report kind"
+        "kind",
+        choices=(
+            "board_profile",
+            "board_package",
+            "manifest",
+            "adapter_compatibility",
+        ),
+        help="report kind",
     )
     decode_report.add_argument("path", help="path to a report JSON file")
     summarize_boot = subparsers.add_parser(
