@@ -12,6 +12,7 @@ pub enum ModuleId {
     Actuator,
     Stream,
     Crypto,
+    Ai,
     App(u8),
 }
 

@@ -1,7 +1,8 @@
 # NobroRTOS System Architecture
 
 NobroRTOS is a layered embedded RTOS architecture focused on maintainability,
-board compatibility, modular growth, bounded memory, and diagnosable recovery.
+board compatibility, modular growth, bounded memory, AI robotics integration,
+and diagnosable recovery.
 
 ## Architectural Principles
 
@@ -18,7 +19,7 @@ board compatibility, modular growth, bounded memory, and diagnosable recovery.
 | ----- | ------------- | -------------- |
 | App | `core/apps/*` | Compose board, adapters, manifest, startup graph, and runtime |
 | Adapter | `core/adapters/*` | Translate devices or libraries into SAL traits |
-| SAL | `airon-sal` | Stable service traits |
+| SAL | `airon-sal` | Stable service traits for hardware, communication, AI, and edge services |
 | Kernel | `airon-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
 | HAL | `airon-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |
 | Host | `airon-host`, `host/nobro-host-contract.json` | Report decoding and external contracts |
@@ -39,6 +40,7 @@ Future board ports should add:
 - a valid board package
 - capacity budgets
 - critical pin declarations
+- a `HardwareCapabilitySet` through `HalCompatibility`
 - exactly one board feature
 - a linker layout
 - host report coverage
@@ -51,6 +53,26 @@ same contract before manifest and adapter diagnostics.
 With the `airon-kernel/hal-profile` feature, apps can derive `SystemProfile`
 from `BoardPackage`, which keeps manifest and admission budgets aligned with
 the selected board package.
+
+## AI And Robotics Bridges
+
+AI workloads are treated as RTOS-managed modules, not as private background
+runtimes. A local TinyML model, an attached accelerator, a companion computer,
+or a third-party API should enter the system through adapter descriptors,
+capability bits, fixed budgets, caller-owned buffers, timeout policy, and
+host-readable compatibility reports.
+
+`AiInferenceSal` is the first SAL contract for this direction. It models a
+bounded inference request and result without requiring heap ownership inside the
+adapter. Hard-realtime control loops should consume the last valid inference
+state or a degraded fallback state instead of blocking on inference.
+
+ROS and micro-ROS compatibility belongs at the bridge layer. NobroRTOS should
+absorb ROS 2's topic, service, action, and parameter concepts, but map them into
+bounded queues, fixed request/response records, action state records, and
+kernel-owned configuration. DDS, XRCE-DDS, agents, and custom transports should
+stay behind `StreamSal` or `RadioSal` adapters rather than becoming kernel
+dependencies.
 
 ## Static Async Direction
 
@@ -70,6 +92,7 @@ NobroRTOS maps that rule into:
 - deadline contracts
 - degraded-mode planning
 - fixed event and health reports
+- bounded AI and robotics bridge contracts
 
 ## Recovery Model
 
@@ -96,6 +119,8 @@ Default rules:
 - `Sample` tickets instead of cross-crate heap buffers
 - compile-time feature selection instead of runtime plugin loading
 - explicit cleanup when modules are disabled
+- caller-owned or pool-owned buffers for AI input/output
+- fixed message history for ROS-style bridge queues
 
 Any future allocator must be feature-gated, documented, and excluded from
 hard-realtime paths.

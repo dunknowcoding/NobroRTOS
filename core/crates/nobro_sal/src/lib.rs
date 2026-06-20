@@ -1,4 +1,4 @@
-//! NobroRTOS service abstraction layer with six generic capability traits.
+//! NobroRTOS service abstraction layer with portable capability traits.
 
 #![no_std]
 
@@ -439,6 +439,105 @@ pub trait CryptoSal {
     fn random(&mut self, dest: &mut [u8]) -> Result<(), Self::Error>;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AiBackendKind {
+    OnDevice = 1,
+    RemoteApi = 2,
+    EdgeSidecar = 3,
+    Hybrid = 4,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiModelContract {
+    pub backend: AiBackendKind,
+    pub model_id: u32,
+    pub input_bytes_max: u16,
+    pub output_bytes_max: u16,
+    pub arena_bytes: u32,
+    pub timeout_us: u32,
+}
+
+impl AiModelContract {
+    pub const fn new(
+        backend: AiBackendKind,
+        model_id: u32,
+        input_bytes_max: u16,
+        output_bytes_max: u16,
+        arena_bytes: u32,
+        timeout_us: u32,
+    ) -> Self {
+        Self {
+            backend,
+            model_id,
+            input_bytes_max,
+            output_bytes_max,
+            arena_bytes,
+            timeout_us,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiInferenceRequest<'a> {
+    pub model_id: u32,
+    pub input: &'a [u8],
+    pub deadline_us: u64,
+    pub flags: u32,
+}
+
+impl<'a> AiInferenceRequest<'a> {
+    pub const fn new(model_id: u32, input: &'a [u8], deadline_us: u64) -> Self {
+        Self {
+            model_id,
+            input,
+            deadline_us,
+            flags: 0,
+        }
+    }
+
+    pub const fn with_flags(mut self, flags: u32) -> Self {
+        self.flags = flags;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiInferenceResult {
+    pub output_len: u16,
+    pub confidence_q15: u16,
+    pub latency_us: u32,
+    pub flags: u32,
+}
+
+impl AiInferenceResult {
+    pub const fn new(output_len: u16, confidence_q15: u16, latency_us: u32) -> Self {
+        Self {
+            output_len,
+            confidence_q15,
+            latency_us,
+            flags: 0,
+        }
+    }
+
+    pub const fn with_flags(mut self, flags: u32) -> Self {
+        self.flags = flags;
+        self
+    }
+}
+
+/// Bounded AI inference session for on-device, remote API, or edge-sidecar backends.
+pub trait AiInferenceSal {
+    type Error;
+
+    fn contract(&self) -> AiModelContract;
+    fn infer(
+        &mut self,
+        request: AiInferenceRequest<'_>,
+        output: &mut [u8],
+    ) -> Result<AiInferenceResult, Self::Error>;
+}
+
 /// Map kernel errors to actions (registered per adapter in later phases).
 pub fn default_action(err: &KernelError) -> airon_kernel::Action {
     use airon_kernel::Action::*;
@@ -467,6 +566,49 @@ mod tests {
         }
     }
 
+    struct FakeAiAdapter;
+
+    impl AdapterManifest for FakeAiAdapter {
+        fn module_spec() -> ModuleSpec {
+            ModuleSpec::new(ModuleId::Ai, Criticality::User)
+                .requires(
+                    CapabilitySet::empty()
+                        .with(Capability::AiInference)
+                        .with(Capability::AiEndpoint)
+                        .with(Capability::Stream),
+                )
+                .owns(CapabilitySet::empty().with(Capability::AiEndpoint))
+                .memory(MemoryBudget::new(16 * 1024, 6 * 1024, 1))
+        }
+    }
+
+    struct EchoAi;
+
+    impl AiInferenceSal for EchoAi {
+        type Error = ();
+
+        fn contract(&self) -> AiModelContract {
+            AiModelContract::new(AiBackendKind::OnDevice, 42, 8, 8, 4096, 20_000)
+        }
+
+        fn infer(
+            &mut self,
+            request: AiInferenceRequest<'_>,
+            output: &mut [u8],
+        ) -> Result<AiInferenceResult, Self::Error> {
+            if request.input.len() > output.len() {
+                return Err(());
+            }
+
+            output[..request.input.len()].copy_from_slice(request.input);
+            Ok(AiInferenceResult::new(
+                request.input.len() as u16,
+                0x7FFF,
+                120,
+            ))
+        }
+    }
+
     #[test]
     fn adapter_descriptor_is_derived_from_module_spec() {
         let descriptor = FakeAdapter::descriptor();
@@ -476,6 +618,37 @@ mod tests {
         assert_eq!(descriptor.requires_bits, Capability::SamplePool.bit());
         assert_eq!(descriptor.owns_bits, Capability::Bus0.bit());
         assert_eq!(descriptor.budget, SystemBudget::new(2048, 512, 2));
+    }
+
+    #[test]
+    fn ai_adapter_declares_inference_and_endpoint_contracts() {
+        let descriptor = FakeAiAdapter::descriptor();
+
+        assert_eq!(descriptor.module, ModuleId::Ai);
+        assert_eq!(descriptor.criticality, Criticality::User);
+        assert_eq!(
+            descriptor.requires_bits,
+            Capability::AiInference.bit() | Capability::AiEndpoint.bit() | Capability::Stream.bit()
+        );
+        assert_eq!(descriptor.owns_bits, Capability::AiEndpoint.bit());
+        assert_eq!(descriptor.budget, SystemBudget::new(16 * 1024, 6 * 1024, 1));
+    }
+
+    #[test]
+    fn ai_inference_sal_uses_caller_owned_buffers() {
+        let mut ai = EchoAi;
+        let input = [1, 2, 3, 4];
+        let mut output = [0; 8];
+        let contract = ai.contract();
+        let result = ai
+            .infer(AiInferenceRequest::new(42, &input, 10_000), &mut output)
+            .unwrap();
+
+        assert_eq!(contract.backend, AiBackendKind::OnDevice);
+        assert_eq!(contract.arena_bytes, 4096);
+        assert_eq!(result.output_len, 4);
+        assert_eq!(result.confidence_q15, 0x7FFF);
+        assert_eq!(&output[..4], &input);
     }
 
     #[test]

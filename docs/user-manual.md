@@ -148,6 +148,7 @@ Application code should depend on `airon-sal` traits:
 - `ActuatorSal` for deadline-aware actuator output
 - `SensorSal` for sampled sensor data
 - `CryptoSal` for cryptographic operations
+- `AiInferenceSal` for bounded on-device, sidecar, hybrid, or remote inference
 
 Adapters translate concrete hardware or libraries into those traits. Apps
 should not call vendor headers directly.
@@ -156,6 +157,20 @@ For bring-up and CI, `airon-adapter-sensor-stub` can run as a deterministic
 sensor fixture. It can emit plausible IMU samples, stay silent, inject periodic
 adapter errors, or produce implausible payloads without requiring external
 hardware.
+
+## AI And Robotics Bridges
+
+AI modules should declare their model identity, backend kind, memory budget,
+input/output bounds, timeout, and recovery behavior before admission. Local
+TinyML, generated C++ model libraries, accelerator sidecars, companion
+computers, and third-party API calls should all enter the system as adapters
+rather than private schedulers.
+
+ROS and micro-ROS compatibility should be implemented as bridge adapters.
+Topic-like data should use bounded queues, service-like calls should use fixed
+request/response records, action-like work should expose bounded goal,
+feedback, and result state, and parameters should map to fixed-capacity
+configuration.
 
 ## Diagnostics
 

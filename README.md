@@ -1,7 +1,7 @@
 # NobroRTOS
 
 <p align="center">
-  <strong>A compact Rust-first RTOS for robotics firmware with deadline-aware control, explicit resource ownership, and host-readable diagnostics.</strong>
+  <strong>A compact Rust-first RTOS for AI robotics, IoT nodes, deadline-aware control, explicit resource ownership, and host-readable diagnostics.</strong>
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <code>no_std</code> | <code>static capacity</code> | <code>deadline contracts</code> | <code>SAL adapters</code> | <code>NOBRO_* reports</code>
+  <code>no_std</code> | <code>static capacity</code> | <code>AI adapters</code> | <code>ROS bridges</code> | <code>NOBRO_* reports</code>
 </p>
 
 ---
@@ -27,7 +27,8 @@ to many boards without turning every driver into a private universe.
 
 The project starts with nRF52840-class boards and a deliberately compact kernel
 surface: manifests, quotas, capability grants, static sample pools, health
-reports, recovery policy, and a six-trait service abstraction layer.
+reports, recovery policy, bounded AI inference contracts, and a service
+abstraction layer for hardware, communication, and edge intelligence.
 
 **Repository:** https://github.com/dunknowcoding/NobroRTOS
 **Author:** dunknowcoding (YouTube NiusRobotLab)
@@ -71,6 +72,8 @@ The design target is a friendly RTOS with strong engineering bones:
 | Modularity | Keeps apps, adapters, SAL, kernel, HAL, and host contracts separated |
 | Diagnostics | Exports stable `NOBRO_*` symbols for first-fault host decoding |
 | Recovery | Routes faults through health counters, event logs, and module-scoped actions |
+| Edge AI | Treats local inference, sidecars, cloud APIs, and model metadata as bounded RTOS contracts |
+| Robotics bridges | Keeps ROS-style topics, services, actions, and parameters outside hard-realtime hot paths |
 
 ## Boot Diagnostics
 
@@ -132,6 +135,7 @@ mindmap
       Actuator
       Sensor
       Crypto
+      AI
     Host
       JSON Contract
       Status Labels
@@ -143,6 +147,8 @@ Near-term engineering focus:
 - connect app assembly patterns to `BootAssembly` without hiding contracts
 - keep board profile and board package fixtures aligned
 - harden adapter manifests and compatibility examples
+- grow AI inference and ROS/micro-ROS bridge contracts without adding heap
+  pressure to realtime paths
 - expand host decoding examples for `NOBRO_*` reports
 - keep every hardware-facing feature backed by a software validation gate
 
@@ -183,8 +189,10 @@ compatibility, while repository folders use the `nobro_*` project prefix.
 | Board package fixtures | Present | Host-reviewable package list for current boot layouts |
 | Host ABI contract | Present | JSON contract plus `airon-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
+| AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | First-fault decoding examples need to grow |
+| ROS bridge model | Planned | Bounded topic/service/action/parameter bridge descriptors |
 | SDK packaging | Scaffolded | Standalone, Arduino, PlatformIO, and bindings folders are separated |
 | C/C++/Python interfaces | Planned | Bindings will wrap stable core contracts without duplicating the RTOS |
 

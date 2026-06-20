@@ -59,7 +59,8 @@ pub use snapshots::{
     BOARD_PROFILE_REPORT_VERSION,
 };
 pub use traits::{
-    HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalSelfTest, HalServoPwm, PlatformHal,
+    HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalLease, HalSelfTest,
+    HalServoPwm, HardwareCapability, HardwareCapabilitySet, PlatformHal,
 };
 
 #[cfg(feature = "platform-nrf52840")]

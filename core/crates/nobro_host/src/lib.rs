@@ -313,6 +313,7 @@ pub const fn module_tag_label(code: u32) -> Option<&'static str> {
         6 => Some("actuator"),
         7 => Some("stream"),
         8 => Some("crypto"),
+        9 => Some("ai"),
         0x100..=0x1FF => Some("app"),
         _ => None,
     }
@@ -338,6 +339,8 @@ pub const fn capability_bit_label(bit: u32) -> Option<&'static str> {
         8 => Some("crypto"),
         9 => Some("sample_pool"),
         10 => Some("host_report"),
+        11 => Some("ai_inference"),
+        12 => Some("ai_endpoint"),
         _ => None,
     }
 }
@@ -355,6 +358,8 @@ pub const fn capability_mask_label(mask: u32) -> Option<&'static str> {
         0x0000_0100 => Some("crypto"),
         0x0000_0200 => Some("sample_pool"),
         0x0000_0400 => Some("host_report"),
+        0x0000_0800 => Some("ai_inference"),
+        0x0000_1000 => Some("ai_endpoint"),
         _ => None,
     }
 }
@@ -1953,15 +1958,20 @@ mod tests {
         assert_eq!(admission_error_label(99), None);
         assert_eq!(module_tag_label(1), Some("kernel"));
         assert_eq!(module_tag_label(5), Some("sensor"));
+        assert_eq!(module_tag_label(9), Some("ai"));
         assert_eq!(module_tag_label(0x107), Some("app"));
         assert_eq!(module_tag_label(99), None);
         assert_eq!(app_module_tag_index(0x107), Some(7));
         assert_eq!(app_module_tag_index(5), None);
         assert_eq!(capability_bit_label(0), Some("timebase"));
         assert_eq!(capability_bit_label(10), Some("host_report"));
+        assert_eq!(capability_bit_label(11), Some("ai_inference"));
+        assert_eq!(capability_bit_label(12), Some("ai_endpoint"));
         assert_eq!(capability_bit_label(99), None);
         assert_eq!(capability_mask_label(0x0000_0008), Some("bus0"));
         assert_eq!(capability_mask_label(0x0000_0400), Some("host_report"));
+        assert_eq!(capability_mask_label(0x0000_0800), Some("ai_inference"));
+        assert_eq!(capability_mask_label(0x0000_1000), Some("ai_endpoint"));
         assert_eq!(capability_mask_label(0x0000_0408), None);
         assert_eq!(runtime_state_label(3), Some("running"));
         assert_eq!(runtime_state_label(6), Some("halted"));

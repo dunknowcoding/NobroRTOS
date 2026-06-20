@@ -9,7 +9,8 @@ use crate::radio_sim::RadioRxSim;
 use crate::snapshots::EventCaptureSnapshot;
 use crate::timer::MicroTimer;
 use crate::traits::{
-    HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalServoPwm, PlatformHal,
+    HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalLease, HalServoPwm,
+    HardwareCapability, HardwareCapabilitySet, PlatformHal,
 };
 
 pub mod inspect;
@@ -21,6 +22,17 @@ pub const fn bus_layout() -> BusLayout {
         twim0_base: TWIM0_BASE,
         twim1_base: TWIM1_BASE,
     }
+}
+
+impl HalCompatibility for Nrf52840 {
+    const CAPABILITIES: HardwareCapabilitySet = HardwareCapabilitySet::EMPTY
+        .with(HardwareCapability::Timebase)
+        .with(HardwareCapability::ResourceLease)
+        .with(HardwareCapability::DeadlineTimer)
+        .with(HardwareCapability::EventCapture)
+        .with(HardwareCapability::ServoPwm)
+        .with(HardwareCapability::Bus)
+        .with(HardwareCapability::SelfTest);
 }
 
 impl PlatformHal for Nrf52840 {
@@ -137,3 +149,23 @@ impl HalBus for TwimBus {
 
 /// Compile-time selected active backend.
 pub type Active = Nrf52840;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nrf52840_declares_demo_hardware_capabilities() {
+        let required = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Timebase)
+            .with(HardwareCapability::ResourceLease)
+            .with(HardwareCapability::DeadlineTimer)
+            .with(HardwareCapability::EventCapture)
+            .with(HardwareCapability::ServoPwm)
+            .with(HardwareCapability::Bus)
+            .with(HardwareCapability::SelfTest);
+
+        assert!(Nrf52840::supports(required));
+        assert_eq!(Nrf52840::CAPABILITIES.missing(required).bits(), 0);
+    }
+}

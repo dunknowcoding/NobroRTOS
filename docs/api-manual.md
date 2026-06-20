@@ -9,7 +9,7 @@ applications, adapters, and host tooling.
 | ----- | ------- |
 | `airon-kernel` | Manifest, admission, runtime, quota, capability, scheduler, IPC, alarms, recovery, health, and reports |
 | `airon-hal` | Board profiles, platform traits, nRF52840 implementation, leases, timers, PWM, bus, and event capture |
-| `airon-sal` | Stable service traits for adapters and apps |
+| `airon-sal` | Stable service traits for adapters, apps, AI inference, and edge bridges |
 | `airon-host` | Host-side constants, report layouts, labels, and status helpers |
 
 ## Kernel API
@@ -21,7 +21,7 @@ module declares:
 
 - `id`: stable module tag
 - `criticality`: best effort, user, driver, system, or hard realtime
-- `requires`: capability bits needed at runtime
+- `requires`: capability bits needed at runtime, including optional AI and bridge capabilities
 - `owns`: capability bits provided or exclusively owned by the module
 - `memory`: flash, RAM, and sample-pool budget
 - `deadline`: optional periodic contract
@@ -270,6 +270,37 @@ actuator.set_duty_us(channel, 1500, deadline_us)?;
 `StreamSal` handles framed byte streams, `RadioSal` handles radio process loops
 and packet movement, and `CryptoSal` keeps cryptographic services behind a
 portable capability surface.
+
+### AiInferenceSal
+
+Use `AiInferenceSal` for bounded local, sidecar, hybrid, or remote inference.
+The contract declares backend kind, model identity, max input/output sizes,
+arena size, and timeout. Callers provide the input and output buffers so an AI
+adapter does not hide heap allocation behind a model call.
+
+```rust
+let contract = ai.contract();
+assert!(contract.input_bytes_max <= 512);
+
+let input = [0u8; 16];
+let mut output = [0u8; 32];
+let result = ai.infer(
+    airon_sal::AiInferenceRequest::new(contract.model_id, &input, deadline_us),
+    &mut output,
+)?;
+assert!(usize::from(result.output_len) <= output.len());
+```
+
+Hard-realtime modules should not wait directly on remote inference. They should
+consume a fresh result snapshot or a degraded fallback state.
+
+### ROS-Style Bridges
+
+ROS and micro-ROS compatibility should be implemented through adapters and
+metadata, not as kernel dependencies. Topic-like streams map to bounded queues,
+service-like calls map to fixed request/response records, action-like work maps
+to goal/feedback/result records, and parameters map to fixed-capacity
+configuration.
 
 ## Host API
 

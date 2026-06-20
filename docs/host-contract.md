@@ -13,6 +13,13 @@ The Rust mirror is:
 core/crates/nobro_host
 ```
 
+## Stable Labels
+
+Module tag labels include kernel, HAL, bus, radio, sensor, actuator, stream,
+crypto, AI, and app modules. Capability labels include timebase, deadline
+timer, event capture, bus, radio, servo PWM, stream, crypto, sample pool, host
+report, AI inference, and AI endpoint ownership.
+
 ## Report Symbols
 
 | Symbol | Meaning |

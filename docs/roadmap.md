@@ -20,7 +20,10 @@ Completed or substantially present:
 - event log and host-readable reports
 - host boot summary helpers for first-fault decoding
 - adapter descriptors and compatibility reports
+- AI module and capability bits for local or external inference contracts
+- bounded `AiInferenceSal` request/result contract using caller-owned buffers
 - nRF52840 board profile and boot layout features
+- HAL hardware capability metadata through `HalCompatibility`
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
   capacity budgets, and critical pins
 - host-readable board package reports in the boot diagnostic path
@@ -43,6 +46,10 @@ Completed or substantially present:
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog
   cleanup behavior covered by tests
 - connect adapter preflight reports with `BootAssembly` in remaining demo apps
+- add AI model descriptor reports for backend kind, model ID, arena bytes,
+  input/output bounds, timeout, and stale-result policy
+- add ROS/micro-ROS bridge descriptors for bounded topics, services, actions,
+  parameters, and custom transports
 
 ## Adapter Work
 
@@ -51,6 +58,10 @@ Completed or substantially present:
 - mature `mpu9250-imu` while keeping bus access behind `BusSal`
 - add future radio and stream adapters only when their resource ownership model
   is explicit
+- add AI adapters for local TinyML, generated C++ model libraries, sidecar
+  inference, and remote API sessions
+- add robotics bridge adapters that keep ROS-style communication bounded and
+  diagnosable
 
 ## Multi-Board Direction
 
@@ -67,6 +78,8 @@ Completed or substantially present:
 - optional filesystem or flash persistence behind kernel-owned APIs
 - multi-node time synchronization experiments
 - optional ML or VM workloads outside hard-realtime paths
+- ROS/micro-ROS bridge compatibility without making DDS or XRCE-DDS kernel
+  dependencies
 
 Formal release tags and versioned releases will wait until the complete edition
 has a stable public API, documented board support, and a repeatable validation

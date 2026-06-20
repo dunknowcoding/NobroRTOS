@@ -33,6 +33,8 @@ pub enum Capability {
     Crypto = 8,
     SamplePool = 9,
     HostReport = 10,
+    AiInference = 11,
+    AiEndpoint = 12,
 }
 
 impl Capability {
@@ -687,6 +689,7 @@ pub const fn module_code(module: ModuleId) -> u32 {
         ModuleId::Actuator => 6,
         ModuleId::Stream => 7,
         ModuleId::Crypto => 8,
+        ModuleId::Ai => 9,
         ModuleId::App(id) => 0x100 + id as u32,
     }
 }
