@@ -127,6 +127,10 @@ Summarize a boot report bundle:
 python tools/nobro_contract_tool.py summarize-boot path\to\boot_reports.json
 ```
 
+The boot summary output mirrors the host contract: it includes
+`diagnostic_code`, `diagnostic`, `pass_count`, `missing_count`,
+`in_progress_count`, `fail_count`, `corrupt_count`, and the full slot list.
+
 ## Tests
 
 The current tests use only the Python standard library:

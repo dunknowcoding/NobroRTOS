@@ -122,6 +122,13 @@ SUMMARY_STATUS_ORDER = (
     ReportStatus.FAIL,
     ReportStatus.CORRUPT,
 )
+STATUS_CLASS_CODES = {
+    ReportStatus.PASS: 0,
+    ReportStatus.MISSING: 1,
+    ReportStatus.IN_PROGRESS: 2,
+    ReportStatus.CORRUPT: 3,
+    ReportStatus.FAIL: 4,
+}
 
 
 @dataclass(frozen=True)
@@ -136,6 +143,19 @@ class ReportSlot:
     @property
     def passing(self) -> bool:
         return self.status == ReportStatus.PASS
+
+    def stage_code(self, contract: HostContract) -> int:
+        return contract.boot_stage_order().index(self.stage) + 1
+
+    def status_class_code(self) -> int:
+        return STATUS_CLASS_CODES[self.status]
+
+    def diagnostic_code(self, contract: HostContract) -> int:
+        return (
+            (self.stage_code(contract) << 24)
+            | (self.status_class_code() << 16)
+            | (self.error_code & 0xFFFF)
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -152,6 +172,7 @@ class ReportSlot:
 @dataclass(frozen=True)
 class BootReportSummary:
     slots: tuple[ReportSlot, ...]
+    contract: HostContract
 
     @classmethod
     def from_dict(
@@ -163,7 +184,7 @@ class BootReportSummary:
         for stage in contract.boot_stage_order():
             report_payload = reports.get(stage)
             slots.append(_slot_from_payload(stage, report_payload, contract))
-        return cls(tuple(slots))
+        return cls(tuple(slots), contract)
 
     @classmethod
     def from_json_file(
@@ -189,15 +210,31 @@ class BootReportSummary:
             counts[slot.status.value] += 1
         return counts
 
+    def diagnostic_code(self) -> int:
+        return self.first_diagnostic.diagnostic_code(self.contract)
+
+    def observed_count(self) -> int:
+        return len(self.slots)
+
     def to_dict(self) -> dict[str, Any]:
         first = self.first_diagnostic
+        counts = self.status_counts()
         return {
             "passing": self.passing,
+            "diagnostic_code": self.diagnostic_code(),
+            "diagnostic": first.to_dict(),
             "first_stage": first.stage,
             "first_status": first.status.value,
+            "first_symbol": first.symbol,
             "first_error_code": first.error_code,
             "first_error_label": first.error_label,
-            "status_counts": self.status_counts(),
+            "pass_count": counts[ReportStatus.PASS.value],
+            "missing_count": counts[ReportStatus.MISSING.value],
+            "in_progress_count": counts[ReportStatus.IN_PROGRESS.value],
+            "fail_count": counts[ReportStatus.FAIL.value],
+            "corrupt_count": counts[ReportStatus.CORRUPT.value],
+            "observed_count": self.observed_count(),
+            "status_counts": counts,
             "slots": [slot.to_dict() for slot in self.slots],
         }
 

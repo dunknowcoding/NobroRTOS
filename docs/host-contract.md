@@ -62,6 +62,10 @@ Host tools should decode the first non-passing boot stage in this order:
 view of boot state. The summary includes the first diagnostic, all six report
 slots, diagnostic code, and per-status counts. Tools should use this helper
 before rendering user-facing text.
+
+Python host tooling mirrors this shape in `BootReportSummary.to_dict()` and the
+`summarize-boot` CLI command, including the same diagnostic code layout and
+per-status count fields.
 ## Checksum Rule
 
 Fixed reports use XOR checksums over every `u32` field except `checksum`.

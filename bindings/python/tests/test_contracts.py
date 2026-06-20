@@ -487,7 +487,12 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertFalse(summary.passing)
         self.assertEqual(summary.first_diagnostic.stage, "board_profile")
         self.assertEqual(summary.first_diagnostic.status, ReportStatus.MISSING)
+        self.assertEqual(summary.diagnostic_code(), 0x0101_0000)
         self.assertEqual(summary.status_counts()["missing"], 5)
+        payload = summary.to_dict()
+        self.assertEqual(payload["diagnostic_code"], 0x0101_0000)
+        self.assertEqual(payload["missing_count"], 5)
+        self.assertEqual(payload["observed_count"], 6)
 
     def test_boot_summary_reports_adapter_failure_after_passing_early_slots(self) -> None:
         board_profile = seal_report(
@@ -558,9 +563,14 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertFalse(summary.passing)
         self.assertEqual(summary.first_diagnostic.stage, "adapter_compatibility")
         self.assertEqual(summary.first_diagnostic.status, ReportStatus.FAIL)
+        self.assertEqual(summary.diagnostic_code(), 0x0404_0003)
         self.assertEqual(
             summary.first_diagnostic.error_label, "capability_ownership_conflict"
         )
+        payload = summary.to_dict()
+        self.assertEqual(payload["fail_count"], 1)
+        self.assertEqual(payload["pass_count"], 3)
+        self.assertEqual(payload["diagnostic"]["symbol"], "NOBRO_ADAPTER_COMPAT_REPORT")
 
 
 if __name__ == "__main__":
