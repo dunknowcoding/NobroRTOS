@@ -64,3 +64,23 @@ print(bundle.to_json())
 These builders keep Python-first users on the same contracts as the Rust core:
 fixed budgets, explicit capabilities, bounded AI inference, and bounded
 robotics bridge metadata.
+
+## CLI
+
+Run the module from this folder or after installing the package:
+
+```powershell
+python -m nobro_rtos sample-ai-ros
+```
+
+The command prints a sample JSON bundle with one AI module, one model contract,
+and one ROS-style serial bridge.
+
+## Tests
+
+The current tests use only the Python standard library:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE = "1"
+python -m unittest discover -s tests
+```

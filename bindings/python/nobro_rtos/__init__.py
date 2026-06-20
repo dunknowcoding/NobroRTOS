@@ -4,6 +4,7 @@ from .contracts import (
     AiBackendKind,
     AiModelContract,
     Capability,
+    CONTRACT_SCHEMA_VERSION,
     Criticality,
     MemoryBudget,
     ModuleSpec,
@@ -13,12 +14,14 @@ from .contracts import (
     RosParameter,
     RosService,
     RosTopic,
+    capability_mask,
 )
 
 __all__ = [
     "AiBackendKind",
     "AiModelContract",
     "Capability",
+    "CONTRACT_SCHEMA_VERSION",
     "Criticality",
     "MemoryBudget",
     "ModuleSpec",
@@ -28,4 +31,5 @@ __all__ = [
     "RosParameter",
     "RosService",
     "RosTopic",
+    "capability_mask",
 ]

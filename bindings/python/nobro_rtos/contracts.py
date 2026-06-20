@@ -13,6 +13,8 @@ from enum import IntEnum
 import json
 from typing import Any
 
+CONTRACT_SCHEMA_VERSION = 1
+
 
 class Capability(IntEnum):
     TIMEBASE = 0
@@ -159,10 +161,14 @@ class RosTopic:
     depth: int
     max_message_bytes: int
 
-    def to_dict(self) -> dict[str, Any]:
+    def validate(self) -> None:
         _validate_name(self.name)
+        _validate_name(self.message_type)
         _validate_positive("depth", self.depth)
         _validate_positive("max_message_bytes", self.max_message_bytes)
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
             "name": self.name,
             "message_type": self.message_type,
@@ -178,11 +184,14 @@ class RosService:
     response_bytes_max: int
     timeout_us: int
 
-    def to_dict(self) -> dict[str, Any]:
+    def validate(self) -> None:
         _validate_name(self.name)
         _validate_positive("request_bytes_max", self.request_bytes_max)
         _validate_positive("response_bytes_max", self.response_bytes_max)
         _validate_positive("timeout_us", self.timeout_us)
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
             "name": self.name,
             "request_bytes_max": self.request_bytes_max,
@@ -199,12 +208,15 @@ class RosAction:
     result_bytes_max: int
     timeout_us: int
 
-    def to_dict(self) -> dict[str, Any]:
+    def validate(self) -> None:
         _validate_name(self.name)
         _validate_positive("goal_bytes_max", self.goal_bytes_max)
         _validate_positive("feedback_bytes_max", self.feedback_bytes_max)
         _validate_positive("result_bytes_max", self.result_bytes_max)
         _validate_positive("timeout_us", self.timeout_us)
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
             "name": self.name,
             "goal_bytes_max": self.goal_bytes_max,
@@ -219,9 +231,12 @@ class RosParameter:
     name: str
     value_bytes_max: int
 
-    def to_dict(self) -> dict[str, Any]:
+    def validate(self) -> None:
         _validate_name(self.name)
         _validate_positive("value_bytes_max", self.value_bytes_max)
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
             "name": self.name,
             "value_bytes_max": self.value_bytes_max,
@@ -237,9 +252,24 @@ class RosBridgeDescriptor:
     actions: tuple[RosAction, ...] = ()
     parameters: tuple[RosParameter, ...] = ()
 
-    def to_dict(self) -> dict[str, Any]:
+    def validate(self) -> None:
         _validate_name(self.bridge_id)
         _validate_name(self.transport)
+        _validate_unique("ROS topic", [topic.name for topic in self.topics])
+        _validate_unique("ROS service", [service.name for service in self.services])
+        _validate_unique("ROS action", [action.name for action in self.actions])
+        _validate_unique("ROS parameter", [param.name for param in self.parameters])
+        for topic in self.topics:
+            topic.validate()
+        for service in self.services:
+            service.validate()
+        for action in self.actions:
+            action.validate()
+        for param in self.parameters:
+            param.validate()
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
             "bridge_id": self.bridge_id,
             "transport": self.transport,
@@ -257,8 +287,21 @@ class NobroContractBundle:
     ros_bridges: tuple[RosBridgeDescriptor, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
+    def validate(self) -> None:
+        _validate_unique("module", [module.module for module in self.modules])
+        _validate_unique("AI model", [str(model.model_id) for model in self.ai_models])
+        _validate_unique("ROS bridge", [bridge.bridge_id for bridge in self.ros_bridges])
+        for module in self.modules:
+            module.validate()
+        for model in self.ai_models:
+            model.validate()
+        for bridge in self.ros_bridges:
+            bridge.validate()
+
     def to_dict(self) -> dict[str, Any]:
+        self.validate()
         return {
+            "schema_version": CONTRACT_SCHEMA_VERSION,
             "metadata": dict(sorted(self.metadata.items())),
             "modules": [module.to_dict() for module in self.modules],
             "ai_models": [model.to_dict() for model in self.ai_models],
@@ -277,3 +320,11 @@ def _validate_name(value: str) -> None:
 def _validate_positive(name: str, value: int) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _validate_unique(kind: str, values: list[str]) -> None:
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            raise ValueError(f"duplicate {kind}: {value}")
+        seen.add(value)
