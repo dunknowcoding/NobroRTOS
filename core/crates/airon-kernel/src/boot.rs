@@ -50,6 +50,43 @@ impl From<RuntimeError> for BootAssemblyError {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootAssemblyFailure {
+    pub error: BootAssemblyError,
+    pub manifest_report: ManifestReport,
+    pub admission_report: AdmissionReport,
+}
+
+impl BootAssemblyFailure {
+    pub const fn new(error: BootAssemblyError) -> Self {
+        Self {
+            error,
+            manifest_report: ManifestReport::zeroed(),
+            admission_report: AdmissionReport::zeroed(),
+        }
+    }
+
+    pub const fn with_manifest(error: BootAssemblyError, manifest_report: ManifestReport) -> Self {
+        Self {
+            error,
+            manifest_report,
+            admission_report: AdmissionReport::zeroed(),
+        }
+    }
+
+    pub const fn with_reports(
+        error: BootAssemblyError,
+        manifest_report: ManifestReport,
+        admission_report: AdmissionReport,
+    ) -> Self {
+        Self {
+            error,
+            manifest_report,
+            admission_report,
+        }
+    }
+}
+
 pub struct BootAssembly<
     const MODULES: usize,
     const GRAPH: usize,
@@ -87,23 +124,59 @@ impl<
         thresholds: FaultThresholds,
         now_us: u64,
     ) -> Result<Self, BootAssemblyError> {
-        let manifest = SystemManifest::<MODULES>::from_specs(specs)?;
+        Self::build_with_failure(specs, dependencies, profile, thresholds, now_us)
+            .map_err(|failure| failure.error)
+    }
+
+    pub fn build_with_failure(
+        specs: &[ModuleSpec],
+        dependencies: &[StartupDependency],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<Self, BootAssemblyFailure> {
+        let manifest = SystemManifest::<MODULES>::from_specs(specs)
+            .map_err(|error| BootAssemblyFailure::new(error.into()))?;
         let manifest_result = manifest.validate_profile(profile);
         let manifest_report = ManifestReport::from_result(&manifest, manifest_result);
-        manifest_result?;
+        if let Err(error) = manifest_result {
+            return Err(BootAssemblyFailure::with_manifest(
+                error.into(),
+                manifest_report,
+            ));
+        }
 
-        let mut startup = manifest.startup_graph::<GRAPH>()?;
+        let mut startup = manifest
+            .startup_graph::<GRAPH>()
+            .map_err(|error| BootAssemblyFailure::with_manifest(error.into(), manifest_report))?;
         for dependency in dependencies {
-            startup.add_dependency(dependency.module, dependency.depends_on)?;
+            startup
+                .add_dependency(dependency.module, dependency.depends_on)
+                .map_err(|error| {
+                    BootAssemblyFailure::with_manifest(error.into(), manifest_report)
+                })?;
         }
 
         let admission = AdmissionController::admit_graph::<MODULES, GRAPH, STARTUP, QUOTAS>(
             &manifest, &startup, profile,
         );
         let admission_report = AdmissionReport::from_result(admission.as_ref().map_err(|e| *e));
-        let plan = admission?;
-        let mut runtime = Runtime::from_plan(plan, thresholds)?;
-        runtime.boot_to_running(now_us)?;
+        let plan = match admission {
+            Ok(plan) => plan,
+            Err(error) => {
+                return Err(BootAssemblyFailure::with_reports(
+                    error.into(),
+                    manifest_report,
+                    admission_report,
+                ));
+            }
+        };
+        let mut runtime = Runtime::from_plan(plan, thresholds).map_err(|error| {
+            BootAssemblyFailure::with_reports(error.into(), manifest_report, admission_report)
+        })?;
+        runtime.boot_to_running(now_us).map_err(|error| {
+            BootAssemblyFailure::with_reports(error.into(), manifest_report, admission_report)
+        })?;
 
         Ok(Self {
             manifest,
@@ -181,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn boot_assembly_preserves_manifest_errors() {
+    fn boot_assembly_failure_preserves_manifest_report() {
         let specs = [
             kernel_spec(),
             ModuleSpec::new(ModuleId::App(1), Criticality::User)
@@ -189,22 +262,61 @@ mod tests {
                 .memory(MemoryBudget::new(1024, 1024, 0)),
         ];
 
-        let error = match TestAssembly::build(&specs, &[], profile(), FaultThresholds::DEFAULT, 0) {
+        let failure = match TestAssembly::build_with_failure(
+            &specs,
+            &[],
+            profile(),
+            FaultThresholds::DEFAULT,
+            0,
+        ) {
             Ok(_) => panic!("boot assembly unexpectedly succeeded"),
-            Err(error) => error,
+            Err(failure) => failure,
         };
 
         assert!(matches!(
-            error,
+            failure.error,
             BootAssemblyError::Manifest(ManifestError::CapabilityOwnershipConflict {
                 module: ModuleId::App(1),
                 ..
             })
         ));
+        assert!(failure.manifest_report.verify_checksum());
+        assert_eq!(failure.manifest_report.valid, 0);
+        assert_eq!(failure.admission_report, AdmissionReport::zeroed());
     }
 
     #[test]
-    fn boot_assembly_preserves_startup_dependency_errors() {
+    fn boot_assembly_failure_preserves_admission_report() {
+        let specs = [kernel_spec(), bus_spec(), sensor_spec()];
+        let deps = [
+            StartupDependency::new(ModuleId::Kernel, ModuleId::Sensor),
+            StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel),
+        ];
+
+        let failure = match TestAssembly::build_with_failure(
+            &specs,
+            &deps,
+            profile(),
+            FaultThresholds::DEFAULT,
+            0,
+        ) {
+            Ok(_) => panic!("boot assembly unexpectedly succeeded"),
+            Err(failure) => failure,
+        };
+
+        assert!(matches!(
+            failure.error,
+            BootAssemblyError::Admission(AdmissionError::Startup(crate::StartupError::Cycle))
+        ));
+        assert!(failure.manifest_report.verify_checksum());
+        assert_eq!(failure.manifest_report.valid, 1);
+        assert!(failure.admission_report.verify_checksum());
+        assert_eq!(failure.admission_report.admitted, 0);
+        assert_eq!(failure.admission_report.error_code, 2);
+    }
+
+    #[test]
+    fn boot_assembly_preserves_legacy_error_return() {
         let specs = [kernel_spec(), bus_spec()];
         let deps = [StartupDependency::new(ModuleId::Sensor, ModuleId::Bus)];
 

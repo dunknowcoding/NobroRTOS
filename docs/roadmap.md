@@ -24,7 +24,7 @@ Completed or substantially present:
   capacity budgets, and critical pins
 - host-readable board package reports in the boot diagnostic path
 - no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
-  construction, and startup reports
+  construction, startup reports, and failure snapshots
 
 ## Near-Term Architecture Work
 

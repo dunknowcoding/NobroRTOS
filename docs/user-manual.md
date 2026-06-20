@@ -105,6 +105,26 @@ assert!(boot.manifest_report.verify_checksum());
 assert!(boot.admission_report.verify_checksum());
 ```
 
+
+For diagnostics-first startup code, use `build_with_failure` and export the
+reports from the returned `BootAssemblyFailure` before halting or entering a
+maintenance path:
+
+```rust
+let failure = match AppBoot::build_with_failure(
+    &specs,
+    &[StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel)],
+    SystemProfile::new(64 * 1024, 16 * 1024, 8, 4),
+    FaultThresholds::DEFAULT,
+    0,
+) {
+    Ok(_) => unreachable!(),
+    Err(failure) => failure,
+};
+
+assert!(failure.manifest_report.verify_checksum());
+```
+
 ## Working With SAL
 
 Application code should depend on `airon-sal` traits:

@@ -60,7 +60,23 @@ assert_eq!(assembly.runtime.state(), airon_kernel::SystemState::Running);
 ```
 
 Use `BootAssemblyError` to preserve the failing phase: manifest validation,
-startup graph construction, admission, or runtime boot.
+startup graph construction, admission, or runtime boot. Use
+`build_with_failure` when firmware should keep sealed manifest/admission reports
+after a failed boot assembly step:
+
+```rust
+let failure = match AppBoot::build_with_failure(
+    &specs,
+    &dependencies,
+    profile,
+    airon_kernel::FaultThresholds::DEFAULT,
+    now_us,
+) {
+    Ok(_) => unreachable!(),
+    Err(failure) => failure,
+};
+assert!(failure.manifest_report.verify_checksum());
+```
 
 ### Admission
 
