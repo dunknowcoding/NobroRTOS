@@ -82,11 +82,14 @@ Run the module from this folder or after installing the package:
 ```powershell
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
+python -m nobro_rtos sample-report ai_model
+python -m nobro_rtos sample-report ros_bridge
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge. The route sample prints a matching AI route
-policy, runtime state, and decision.
+policy, runtime state, and decision. The report samples print sealed fixed
+reports that can be fed directly into `decode-report`.
 
 Validate the repository host contract against the Python enums:
 

@@ -29,6 +29,7 @@ from nobro_rtos import (
     stable_hash32,
     validate_distribution_metadata,
 )
+from nobro_rtos.cli import _sample_report
 
 
 class ContractBuilderTests(unittest.TestCase):
@@ -588,6 +589,15 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(summary["transport"], "serial")
         self.assertEqual(summary["raw"]["topic_count"], 2)
         self.assertEqual(summary["raw"]["total_buffer_bytes"], 768)
+
+    def test_cli_sample_reports_are_decodable(self) -> None:
+        ai = FixedReport.from_dict(ReportKind.AI_MODEL, _sample_report("ai_model"))
+        ros = FixedReport.from_dict(ReportKind.ROS_BRIDGE, _sample_report("ros_bridge"))
+
+        self.assertEqual(ai.status, ReportStatus.PASS)
+        self.assertEqual(ai.to_dict()["backend"], "hybrid")
+        self.assertEqual(ros.status, ReportStatus.PASS)
+        self.assertEqual(ros.to_dict()["transport"], "serial")
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

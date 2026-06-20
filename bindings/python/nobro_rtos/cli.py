@@ -20,10 +20,11 @@ from .contracts import (
     RosParameter,
     RosService,
     RosTopic,
+    stable_hash32,
 )
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
-from .reports import BootReportSummary, FixedReport
+from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 
 
 def main() -> int:
@@ -39,6 +40,15 @@ def main() -> int:
     subparsers.add_parser(
         "sample-ai-route",
         help="print a sample AI route policy decision as JSON",
+    )
+    sample_report = subparsers.add_parser(
+        "sample-report",
+        help="print a sealed sample fixed report as JSON",
+    )
+    sample_report.add_argument(
+        "kind",
+        choices=("ai_model", "ros_bridge"),
+        help="sample report kind",
     )
     subparsers.add_parser(
         "check-host-contract",
@@ -87,6 +97,9 @@ def main() -> int:
         return 0
     if args.command == "sample-ai-route":
         print(json.dumps(_sample_ai_route(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "sample-report":
+        print(json.dumps(_sample_report(args.kind), indent=2, sort_keys=True))
         return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
@@ -196,3 +209,36 @@ def _sample_ai_route() -> dict[str, object]:
         },
         "decision": decision.to_dict(),
     }
+
+
+def _sample_report(kind: str) -> dict[str, int]:
+    if kind == "ai_model":
+        return seal_report(
+            ReportKind.AI_MODEL,
+            {
+                "backend": int(AiBackendKind.HYBRID),
+                "model_id": 42,
+                "input_bytes_max": 128,
+                "output_bytes_max": 32,
+                "arena_bytes": 4096,
+                "timeout_us": 20_000,
+                "route_preference": int(AiRoutePreference.HYBRID_FALLBACK),
+                "stale_after_us": 50_000,
+                "endpoint_failure_limit": 2,
+            },
+        )
+    if kind == "ros_bridge":
+        return seal_report(
+            ReportKind.ROS_BRIDGE,
+            {
+                "transport": 1,
+                "bridge_id_hash": stable_hash32("robot_core"),
+                "topic_count": 1,
+                "service_count": 1,
+                "action_count": 0,
+                "parameter_count": 1,
+                "total_buffer_bytes": 544,
+                "max_timeout_us": 50_000,
+            },
+        )
+    raise ValueError(f"unsupported sample report kind: {kind}")
