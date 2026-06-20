@@ -26,6 +26,7 @@ from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .sim import (
+    EventLogSimulator,
     KernelErrorKind,
     RecoveryPolicySimulator,
     SchedulerSimulator,
@@ -152,6 +153,13 @@ def main() -> int:
     )
     sample_scheduler.add_argument("--period-us", type=int, default=20_000)
     sample_scheduler.add_argument("--tolerance-us", type=int, default=10)
+    sample_event_log = subparsers.add_parser(
+        "sample-event-log",
+        help="run a deterministic fixed-ring event log simulation and print JSON",
+    )
+    sample_event_log.add_argument("--capacity", type=int, default=3)
+    sample_event_log.add_argument("--events", type=int, default=4)
+    sample_event_log.add_argument("--recent", type=int, default=3)
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -281,6 +289,15 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "sample-event-log":
+        print(
+            json.dumps(
+                _sample_event_log(args.capacity, args.events, args.recent),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
@@ -380,6 +397,7 @@ def _doctor() -> dict[str, object]:
             "recovery",
             "watchdog",
             "scheduler",
+            "event_log",
         ],
     }
 
@@ -727,4 +745,37 @@ def _sample_scheduler(
         "max_jitter_us": simulator.max_jitter_us,
         "deadline_misses": simulator.deadline_misses,
         "timeline": timeline,
+    }
+
+
+def _sample_event_log(capacity: int, events: int, recent: int) -> dict[str, object]:
+    if events < 0:
+        raise ValueError("events must be non-negative")
+    if recent < 0:
+        raise ValueError("recent must be non-negative")
+
+    simulator = EventLogSimulator(capacity=capacity)
+    severities = ("info", "warn", "error", "fatal")
+    kinds = ("boot", "health", "recovery", "host")
+    overwritten: list[dict[str, object]] = []
+
+    for index in range(events):
+        replaced = simulator.push(
+            at_us=(index + 1) * 10,
+            module="sensor" if index % 2 else "kernel",
+            severity=severities[index % len(severities)],
+            kind=kinds[index % len(kinds)],
+            payload_kind="counter",
+            payload0=index + 1,
+        )
+        if replaced is not None:
+            overwritten.append(replaced.to_dict())
+
+    return {
+        **simulator.summary(),
+        "warn_or_higher": simulator.count_at_or_above("warn"),
+        "error_or_higher": simulator.count_at_or_above("error"),
+        "latest": None if simulator.latest() is None else simulator.latest().to_dict(),
+        "recent": [record.to_dict() for record in simulator.copy_recent(recent)],
+        "overwritten": overwritten,
     }

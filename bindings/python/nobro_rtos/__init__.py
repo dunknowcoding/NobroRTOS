@@ -43,6 +43,10 @@ from .reports import (
     seal_report,
 )
 from .sim import (
+    EventKind,
+    EventLogSimulator,
+    EventRecord,
+    EventSeverity,
     ImuSample,
     KernelErrorKind,
     RecoveryAction,
@@ -96,6 +100,10 @@ __all__ = [
     "ReportSlot",
     "ReportStatus",
     "seal_report",
+    "EventKind",
+    "EventLogSimulator",
+    "EventRecord",
+    "EventSeverity",
     "ImuSample",
     "KernelErrorKind",
     "RecoveryAction",

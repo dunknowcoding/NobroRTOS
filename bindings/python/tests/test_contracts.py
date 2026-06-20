@@ -14,6 +14,7 @@ from nobro_rtos import (
     BootReportSummary,
     Capability,
     Criticality,
+    EventLogSimulator,
     MemoryBudget,
     ModuleSpec,
     NobroContractBundle,
@@ -40,6 +41,7 @@ from nobro_rtos import (
 from nobro_rtos.cli import (
     _doctor,
     _sample_actuator,
+    _sample_event_log,
     _sample_recovery,
     _sample_report,
     _sample_scheduler,
@@ -114,6 +116,7 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro-rtos-tools",
         )
         self.assertIn("scheduler", report["host_simulators"])
+        self.assertIn("event_log", report["host_simulators"])
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
@@ -886,6 +889,39 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["max_jitter_us"], 30)
         self.assertEqual(report["deadline_misses"], 1)
         self.assertEqual(report["timeline"][2]["deadline_misses"], 1)
+
+    def test_event_log_simulator_preserves_recent_order_after_wrap(self) -> None:
+        log = EventLogSimulator(capacity=3)
+        for index, severity in enumerate(("info", "warn", "error", "fatal"), start=1):
+            log.push(
+                at_us=index * 10,
+                module="kernel",
+                severity=severity,
+                kind="boot",
+                payload_kind="counter",
+                payload0=index,
+            )
+
+        recent = log.copy_recent(3)
+
+        self.assertTrue(log.is_full)
+        self.assertEqual(log.remaining_capacity, 0)
+        self.assertEqual(log.latest_sequence, 4)
+        self.assertEqual(log.dropped, 1)
+        self.assertTrue(log.has_dropped_events)
+        self.assertEqual([record.at_us for record in recent], [20, 30, 40])
+        self.assertEqual(log.count_at_or_above("warn"), 3)
+        self.assertEqual(log.latest().payload0, 4)
+
+    def test_cli_event_log_sample_summarizes_ring_pressure(self) -> None:
+        report = _sample_event_log(capacity=3, events=4, recent=3)
+
+        self.assertEqual(report["len"], 3)
+        self.assertEqual(report["dropped"], 1)
+        self.assertEqual(report["latest_sequence"], 4)
+        self.assertEqual(len(report["recent"]), 3)
+        self.assertEqual(report["recent"][0]["seq"], 2)
+        self.assertEqual(report["warn_or_higher"], 3)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

@@ -225,6 +225,189 @@ class SchedulerSimulator:
         )
 
 
+class EventSeverity(str, Enum):
+    """Event severity labels mirrored from the Rust event log."""
+
+    TRACE = "trace"
+    INFO = "info"
+    WARN = "warn"
+    ERROR = "error"
+    FATAL = "fatal"
+
+    @property
+    def code(self) -> int:
+        return {
+            EventSeverity.TRACE: 0,
+            EventSeverity.INFO: 1,
+            EventSeverity.WARN: 2,
+            EventSeverity.ERROR: 3,
+            EventSeverity.FATAL: 4,
+        }[self]
+
+
+class EventKind(str, Enum):
+    """Event kind labels mirrored from the Rust event log."""
+
+    BOOT = "boot"
+    HEALTH = "health"
+    RECOVERY = "recovery"
+    TASK_OVERRUN = "task_overrun"
+    LEASE = "lease"
+    SAMPLE_POOL = "sample_pool"
+    MANIFEST = "manifest"
+    HOST = "host"
+
+
+@dataclass(frozen=True)
+class EventRecord:
+    """A compact host-side event record with fixed numeric payload fields."""
+
+    seq: int
+    at_us: int
+    module: str
+    severity: EventSeverity
+    kind: EventKind
+    payload_kind: str = "none"
+    payload0: int = 0
+    payload1: int = 0
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "seq": self.seq,
+            "at_us": self.at_us,
+            "module": self.module,
+            "severity": self.severity.value,
+            "kind": self.kind.value,
+            "payload_kind": self.payload_kind,
+            "payload0": self.payload0,
+            "payload1": self.payload1,
+        }
+
+
+@dataclass
+class EventLogSimulator:
+    """Fixed-capacity ring log for host-side diagnostics drills."""
+
+    capacity: int = 8
+
+    def __post_init__(self) -> None:
+        if self.capacity < 0:
+            raise ValueError("capacity must be non-negative")
+        self._records: list[EventRecord | None] = [None] * self.capacity
+        self._next = 0
+        self._len = 0
+        self._seq = 0
+        self._dropped = 0
+
+    @property
+    def len(self) -> int:
+        return self._len
+
+    @property
+    def dropped(self) -> int:
+        return self._dropped
+
+    @property
+    def latest_sequence(self) -> int:
+        return self._seq
+
+    @property
+    def remaining_capacity(self) -> int:
+        return max(0, self.capacity - self._len)
+
+    @property
+    def is_full(self) -> bool:
+        return self._len == self.capacity
+
+    @property
+    def has_dropped_events(self) -> bool:
+        return self._dropped != 0
+
+    def push(
+        self,
+        at_us: int,
+        module: str,
+        severity: str | EventSeverity,
+        kind: str | EventKind,
+        payload_kind: str = "none",
+        payload0: int = 0,
+        payload1: int = 0,
+    ) -> EventRecord | None:
+        record = EventRecord(
+            seq=0,
+            at_us=int(at_us),
+            module=module,
+            severity=EventSeverity(severity),
+            kind=EventKind(kind),
+            payload_kind=payload_kind,
+            payload0=int(payload0),
+            payload1=int(payload1),
+        )
+        if self.capacity == 0:
+            self._dropped = min(self._dropped + 1, 0xFFFF_FFFF)
+            return record
+
+        self._seq = (self._seq + 1) & 0xFFFF_FFFF
+        record = EventRecord(
+            seq=self._seq,
+            at_us=record.at_us,
+            module=record.module,
+            severity=record.severity,
+            kind=record.kind,
+            payload_kind=record.payload_kind,
+            payload0=record.payload0,
+            payload1=record.payload1,
+        )
+        overwritten = self._records[self._next]
+        self._records[self._next] = record
+        self._next = (self._next + 1) % self.capacity
+        if self._len < self.capacity:
+            self._len += 1
+        else:
+            self._dropped = min(self._dropped + 1, 0xFFFF_FFFF)
+        return overwritten
+
+    def latest(self) -> EventRecord | None:
+        if self.capacity == 0 or self._len == 0:
+            return None
+        index = self.capacity - 1 if self._next == 0 else self._next - 1
+        return self._records[index]
+
+    def copy_recent(self, count: int) -> list[EventRecord]:
+        if count < 0:
+            raise ValueError("count must be non-negative")
+        if self.capacity == 0 or self._len == 0 or count == 0:
+            return []
+        copied = min(count, self._len)
+        start_age = self._len - copied
+        recent: list[EventRecord] = []
+        for age in range(start_age, self._len):
+            index = (self._next + self.capacity - self._len + age) % self.capacity
+            record = self._records[index]
+            if record is not None:
+                recent.append(record)
+        return recent
+
+    def count_at_or_above(self, severity: str | EventSeverity) -> int:
+        threshold = EventSeverity(severity).code
+        return sum(
+            1
+            for record in self._records
+            if record is not None and record.severity.code >= threshold
+        )
+
+    def summary(self) -> dict[str, int | bool]:
+        return {
+            "len": self._len,
+            "capacity": self.capacity,
+            "remaining_capacity": self.remaining_capacity,
+            "latest_sequence": self._seq,
+            "dropped": self._dropped,
+            "is_full": self.is_full,
+            "has_dropped_events": self.has_dropped_events,
+        }
+
+
 @dataclass(frozen=True)
 class WatchdogEntry:
     """A host-side liveness entry matching the Rust watchdog entry shape."""

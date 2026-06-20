@@ -38,4 +38,5 @@ python tools/nobro_contract_tool.py sample-actuator --start-us 1200 --stop-us 18
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
+python tools/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
 ```

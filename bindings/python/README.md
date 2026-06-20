@@ -81,11 +81,13 @@ without carrying dynamic strings in realtime paths.
 workflows. `ServoSimulator` mirrors the RoboServo-style actuator timing and
 readback checks. `WatchdogSimulator` mirrors the kernel heartbeat tracker.
 `SchedulerSimulator` mirrors the kernel deadline tick counters.
+`EventLogSimulator` mirrors the fixed-ring event log.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
 host-side self-healing drills.
 
 ```python
 from nobro_rtos import (
+    EventLogSimulator,
     RecoveryPolicySimulator,
     SchedulerSimulator,
     SensorStubSimulator,
@@ -116,6 +118,11 @@ scheduler = SchedulerSimulator(jitter_tolerance_us=25)
 for tick in (1000, 21020, 41050):
     scheduler.on_deadline_tick(tick)
 assert scheduler.stats().deadline_misses == 1
+
+events = EventLogSimulator(capacity=3)
+for index in range(4):
+    events.push(index * 10, "kernel", "warn", "host", "counter", index)
+assert events.dropped == 1
 ```
 
 The simulator is deterministic and uses only caller-visible records, making it
@@ -139,6 +146,7 @@ python -m nobro_rtos sample-actuator --start-us 1200 --stop-us 1800 --step-us 30
 python -m nobro_rtos sample-recovery --error sensor_read_fail --events 4
 python -m nobro_rtos sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python -m nobro_rtos sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
+python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -150,7 +158,8 @@ emits deterministic servo command records with deadline and readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The watchdog sample emits heartbeat and expiry
 events for liveness planning. The scheduler sample emits deadline jitter
-counters for timing-policy checks.
+counters for timing-policy checks. The event-log sample emits fixed-ring
+pressure, dropped-event, and recent-record summaries.
 
 Validate the repository host contract against the Python enums:
 
