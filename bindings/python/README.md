@@ -75,6 +75,26 @@ ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 `transport_hash`). Rust-side `RosBridgeContract` code can use those hash fields
 without carrying dynamic strings in realtime paths.
 
+## Simulation Helpers
+
+`SensorStubSimulator` mirrors the Rust `sensor-stub` fixture modes for host
+workflows:
+
+```python
+from nobro_rtos import SensorStubSimulator
+
+sim = SensorStubSimulator.bad_data_every(2, sample_period_ticks=1)
+first = sim.poll()
+second = sim.poll()
+
+assert first.plausible
+assert not second.plausible
+```
+
+The simulator is deterministic and uses only caller-visible records, making it
+suitable for VS Code tasks, notebook experiments, and CI checks that should not
+touch a board.
+
 ## CLI
 
 Run the module from this folder or after installing the package:

@@ -23,6 +23,8 @@ from nobro_rtos import (
     RosBridgeDescriptor,
     RosService,
     RosTopic,
+    SensorStubError,
+    SensorStubSimulator,
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
@@ -598,6 +600,36 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(ai.to_dict()["backend"], "hybrid")
         self.assertEqual(ros.status, ReportStatus.PASS)
         self.assertEqual(ros.to_dict()["transport"], "serial")
+
+    def test_sensor_stub_simulator_matches_nominal_fixture_shape(self) -> None:
+        simulator = SensorStubSimulator.nominal(sample_period_ticks=3)
+
+        self.assertIsNone(simulator.poll(10))
+        self.assertIsNone(simulator.poll(11))
+        sample = simulator.poll(12)
+
+        self.assertIsNotNone(sample)
+        self.assertTrue(sample.plausible)
+        self.assertEqual(sample.tick, 3)
+        self.assertEqual(sample.to_dict()["captured_us"], 12)
+
+    def test_sensor_stub_simulator_fault_modes_are_deterministic(self) -> None:
+        silent = SensorStubSimulator.silent(sample_period_ticks=1)
+        self.assertEqual(silent.run(3), [])
+
+        erroring = SensorStubSimulator.error_every(3, sample_period_ticks=1)
+        erroring.poll()
+        erroring.poll()
+        with self.assertRaises(SensorStubError):
+            erroring.poll()
+
+        bad = SensorStubSimulator.bad_data_every(2, sample_period_ticks=1)
+        first = bad.poll()
+        second = bad.poll()
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertTrue(first.plausible)
+        self.assertFalse(second.plausible)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

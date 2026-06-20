@@ -42,6 +42,12 @@ from .reports import (
     ReportStatus,
     seal_report,
 )
+from .sim import (
+    ImuSample,
+    SensorStubError,
+    SensorStubMode,
+    SensorStubSimulator,
+)
 
 __all__ = [
     "AiBackendKind",
@@ -78,4 +84,8 @@ __all__ = [
     "ReportSlot",
     "ReportStatus",
     "seal_report",
+    "ImuSample",
+    "SensorStubError",
+    "SensorStubMode",
+    "SensorStubSimulator",
 ]
