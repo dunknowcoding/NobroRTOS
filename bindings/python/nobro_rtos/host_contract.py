@@ -8,7 +8,7 @@ from pathlib import Path
 import json
 from typing import Any
 
-from .contracts import Capability
+from .contracts import AiBackendKind, AiRoutePreference, AiRouteTarget, Capability
 
 
 DEFAULT_CONTRACT_RELATIVE_PATH = Path("host") / "nobro-host-contract.json"
@@ -26,6 +26,13 @@ ERROR_REPORT_KEYS = {
     "manifest": "manifest_report",
     "adapter_compatibility": "adapter_compat_report",
     "admission": "admission_report",
+}
+EXPECTED_ROS_TRANSPORT_CODES = {
+    "1": "serial",
+    "2": "udp",
+    "3": "radio",
+    "4": "shared_memory",
+    "255": "custom",
 }
 
 
@@ -125,6 +132,8 @@ class HostContract:
             raise ValueError(f"unexpected status labels: {status_labels}")
 
         self._validate_capability_bits()
+        self._validate_ai_contracts()
+        self._validate_ros_bridge_contracts()
 
     def capability_label(self, capability: Capability) -> str:
         return self.payload["capability_bits"][str(int(capability))]
@@ -171,6 +180,53 @@ class HostContract:
                 raise ValueError(
                     f"capability {capability.name} expected {expected}, got {label}"
                 )
+
+    def _validate_ai_contracts(self) -> None:
+        ai_contracts = self._require_object("ai_contracts")
+        self._validate_enum_codes(
+            ai_contracts.get("backend_codes"),
+            AiBackendKind,
+            "AI backend",
+        )
+        self._validate_enum_codes(
+            ai_contracts.get("route_preferences"),
+            AiRoutePreference,
+            "AI route preference",
+        )
+        self._validate_enum_codes(
+            ai_contracts.get("route_targets"),
+            AiRouteTarget,
+            "AI route target",
+        )
+
+    def _validate_ros_bridge_contracts(self) -> None:
+        bridge = self._require_object("ros_bridge_contracts")
+        if bridge.get("hash") != "fnv1a32_utf8":
+            raise ValueError(f"unexpected ROS bridge hash: {bridge.get('hash')}")
+        transports = bridge.get("transport_codes")
+        if transports != EXPECTED_ROS_TRANSPORT_CODES:
+            raise ValueError(f"unexpected ROS transport codes: {transports}")
+        if tuple(bridge.get("entity_kinds", ())) != (
+            "topic",
+            "service",
+            "action",
+            "parameter",
+        ):
+            raise ValueError("unexpected ROS bridge entity kinds")
+
+    def _validate_enum_codes(
+        self,
+        codes: Any,
+        enum_type: type[AiBackendKind] | type[AiRoutePreference] | type[AiRouteTarget],
+        label: str,
+    ) -> None:
+        if not isinstance(codes, dict):
+            raise ValueError(f"missing {label} code table")
+        for item in enum_type:
+            actual = codes.get(str(int(item)))
+            expected = item.name.lower()
+            if actual != expected:
+                raise ValueError(f"{label} {item.name} expected {expected}, got {actual}")
 
 
 def find_repo_root(start: str | Path | None = None) -> Path:

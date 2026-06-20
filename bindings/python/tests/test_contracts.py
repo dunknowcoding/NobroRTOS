@@ -344,6 +344,22 @@ class ContractBuilderTests(unittest.TestCase):
             ),
         )
         self.assertEqual(contract.capability_label(Capability.AI_ENDPOINT), "ai_endpoint")
+        self.assertEqual(
+            contract.payload["ai_contracts"]["backend_codes"]["4"],
+            "hybrid",
+        )
+        self.assertEqual(
+            contract.payload["ai_contracts"]["route_targets"]["5"],
+            "degraded_fallback",
+        )
+        self.assertEqual(
+            contract.payload["ros_bridge_contracts"]["hash"],
+            "fnv1a32_utf8",
+        )
+        self.assertEqual(
+            contract.payload["ros_bridge_contracts"]["transport_codes"]["255"],
+            "custom",
+        )
 
     def test_boot_diagnostic_decoder_preserves_error_label(self) -> None:
         contract = load_repo_host_contract()

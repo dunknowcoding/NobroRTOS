@@ -45,6 +45,39 @@
     "11": "ai_inference",
     "12": "ai_endpoint"
   },
+  "ai_contracts": {
+    "backend_codes": {
+      "1": "on_device",
+      "2": "remote_api",
+      "3": "edge_sidecar",
+      "4": "hybrid"
+    },
+    "route_preferences": {
+      "1": "local_only",
+      "2": "prefer_local",
+      "3": "prefer_remote",
+      "4": "hybrid_fallback"
+    },
+    "route_targets": {
+      "1": "on_device",
+      "2": "remote_api",
+      "3": "edge_sidecar",
+      "4": "stale_snapshot",
+      "5": "degraded_fallback",
+      "6": "unavailable"
+    }
+  },
+  "ros_bridge_contracts": {
+    "hash": "fnv1a32_utf8",
+    "transport_codes": {
+      "1": "serial",
+      "2": "udp",
+      "3": "radio",
+      "4": "shared_memory",
+      "255": "custom"
+    },
+    "entity_kinds": ["topic", "service", "action", "parameter"]
+  },
   "lab": {
     "default_board": "board1",
     "bootloader_policy": "do-not-reflash",

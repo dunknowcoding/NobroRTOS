@@ -79,5 +79,12 @@ Boot diagnostic code layout:
 stage_code << 24 | status_class << 16 | error_code_low16
 ```
 
+## AI And ROS Tables
+
+`ai_contracts` defines stable numeric codes for AI backend kinds, route
+preferences, and route targets. `ros_bridge_contracts` defines the stable
+FNV-1a UTF-8 hash policy, ROS-style entity kinds, and transport codes used by
+Python, C/C++, and Rust bridge metadata.
+
 Use `nobro-host` helper labels rather than duplicating numeric maps in host
 tools.
