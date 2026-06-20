@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import tomllib
 from typing import Any
 
 from .host_contract import find_repo_root
@@ -15,6 +16,9 @@ EXPECTED_REPOSITORY_GIT = f"{EXPECTED_REPOSITORY}.git"
 EXPECTED_LICENSE = "Apache-2.0"
 EXPECTED_INCLUDE = "NobroRTOS.h"
 EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
+EXPECTED_PYTHON_PACKAGE = "bindings/python"
+EXPECTED_PYTHON_PROJECT_NAME = "nobro-rtos-tools"
+EXPECTED_PYTHON_REQUIRES = ">=3.10"
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,8 @@ class DistributionMetadataReport:
     sdk_name: str
     arduino_name: str
     platformio_name: str
+    python_package_name: str
+    python_requires: str
     include_roots: tuple[str, ...]
     host_tools: tuple[str, ...]
 
@@ -32,6 +38,8 @@ class DistributionMetadataReport:
             "sdk_name": self.sdk_name,
             "arduino_name": self.arduino_name,
             "platformio_name": self.platformio_name,
+            "python_package_name": self.python_package_name,
+            "python_requires": self.python_requires,
             "include_roots": list(self.include_roots),
             "host_tools": list(self.host_tools),
         }
@@ -44,6 +52,7 @@ def validate_distribution_metadata(
 
     root = find_repo_root(start)
     sdk_manifest = _read_json(root / "sdk" / "sdk-manifest.json")
+    pyproject = _read_toml(root / "bindings" / "python" / "pyproject.toml")
     platformio = _read_json(root / "packages" / "platformio" / "library.json")
     arduino = _read_properties(root / "packages" / "arduino" / "library.properties")
 
@@ -63,6 +72,33 @@ def validate_distribution_metadata(
     _require_contains(include_roots, "bindings/cpp/include", "SDK include roots")
     host_tools = tuple(sdk_manifest.get("host_tools", ()))
     _require_contains(host_tools, "tools/nobro_contract_tool.py", "SDK host tools")
+    _require_equal(
+        sdk_manifest.get("python_package"),
+        EXPECTED_PYTHON_PACKAGE,
+        "SDK Python package",
+    )
+
+    project = pyproject.get("project", {})
+    _require_equal(
+        project.get("name"),
+        EXPECTED_PYTHON_PROJECT_NAME,
+        "Python project name",
+    )
+    _require_equal(
+        project.get("requires-python"),
+        EXPECTED_PYTHON_REQUIRES,
+        "Python requires-python",
+    )
+    _require_equal(
+        project.get("license", {}).get("text"),
+        EXPECTED_LICENSE,
+        "Python project license",
+    )
+    _require_equal(
+        pyproject.get("tool", {}).get("setuptools", {}).get("packages"),
+        ["nobro_rtos"],
+        "Python package list",
+    )
 
     generated_policy = sdk_manifest.get("generated_output_policy", {})
     for key in ("commit_generated_archives", "commit_compiler_outputs", "commit_cache_dirs"):
@@ -93,6 +129,8 @@ def validate_distribution_metadata(
         sdk_name=str(sdk_manifest.get("name")),
         arduino_name=str(arduino.get("name")),
         platformio_name=str(platformio.get("name")),
+        python_package_name=str(project.get("name")),
+        python_requires=str(project.get("requires-python")),
         include_roots=include_roots,
         host_tools=host_tools,
     )
@@ -103,6 +141,14 @@ def _read_json(path: Path) -> dict[str, Any]:
         value = json.load(handle)
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
+    return value
+
+
+def _read_toml(path: Path) -> dict[str, Any]:
+    with path.open("rb") as handle:
+        value = tomllib.load(handle)
+    if not isinstance(value, dict):
+        raise ValueError(f"expected TOML table: {path}")
     return value
 
 

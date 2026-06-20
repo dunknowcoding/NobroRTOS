@@ -74,6 +74,7 @@ class ContractBuilderTests(unittest.TestCase):
         )
         self.assertIn("bindings/c/include", sdk_manifest["include_roots"])
         self.assertIn("bindings/cpp/include", sdk_manifest["include_roots"])
+        self.assertEqual(sdk_manifest["python_package"], "bindings/python")
         self.assertEqual(
             sdk_manifest["generated_output_policy"]["commit_cache_dirs"],
             False,
@@ -98,6 +99,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.sdk_name, "NobroRTOS Standalone SDK")
         self.assertEqual(report.arduino_name, "NobroRTOS")
         self.assertEqual(report.platformio_name, "NobroRTOS")
+        self.assertEqual(report.python_package_name, "nobro-rtos-tools")
+        self.assertEqual(report.python_requires, ">=3.10")
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

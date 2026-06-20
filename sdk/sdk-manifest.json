@@ -14,6 +14,7 @@
   "host_tools": [
     "tools/nobro_contract_tool.py"
   ],
+  "python_package": "bindings/python",
   "package_surfaces": {
     "arduino": "packages/arduino",
     "platformio": "packages/platformio"

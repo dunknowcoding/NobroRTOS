@@ -10,6 +10,8 @@ Current contents:
   `bindings/cpp/include`.
 - Host report decoding helpers are sourced from `bindings/python` and
   `tools/nobro_contract_tool.py`.
+- Python contract builders, report decoders, and host simulators are packaged
+  from `bindings/python`.
 
 The core implementation remains in `core/`; this folder should contain only the
 stable SDK packaging surface.
