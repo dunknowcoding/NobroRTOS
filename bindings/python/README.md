@@ -84,6 +84,8 @@ readback checks. `WatchdogSimulator` mirrors the kernel heartbeat tracker.
 `EventLogSimulator` mirrors the fixed-ring event log.
 `QuotaLedgerSimulator` mirrors fixed-capacity quota accounting.
 `DegradePlannerSimulator` mirrors degraded-mode module fitting.
+`RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
+checks into one deterministic pressure drill.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
 host-side self-healing drills.
 
@@ -94,6 +96,7 @@ from nobro_rtos import (
     QuotaLedgerSimulator,
     RecoveryPolicySimulator,
     ResourceBudget,
+    RuntimeDrillSimulator,
     SchedulerSimulator,
     SensorStubSimulator,
     ServoSimulator,
@@ -140,6 +143,12 @@ decision = DegradePlannerSimulator.fit(
     profile=SystemProfile(64 * 1024, 16 * 1024, 8, 4),
 )
 assert decision.disabled_count == 0
+
+drill = RuntimeDrillSimulator(
+    modules=(),
+    profile=SystemProfile(64 * 1024, 16 * 1024, 8, 4),
+)
+assert drill.run().decision.disabled_count == 0
 ```
 
 The simulator is deterministic and uses only caller-visible records, making it
@@ -166,6 +175,7 @@ python -m nobro_rtos sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
+python -m nobro_rtos sample-runtime-drill --fault-count 3
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -182,7 +192,9 @@ pressure, dropped-event, and recent-record summaries. The quota sample emits
 fixed-capacity resource reservations, releases, remaining budget, and total
 usage. The degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
-kernel planner.
+kernel planner. The runtime drill sample combines degraded-mode planning, quota
+usage, fixed-ring event logging, and recovery escalation in a single host-side
+JSON scenario.
 
 Validate the repository host contract against the Python enums:
 

@@ -32,6 +32,7 @@ from .sim import (
     QuotaLedgerSimulator,
     RecoveryPolicySimulator,
     ResourceBudget,
+    RuntimeDrillSimulator,
     SchedulerSimulator,
     SensorStubError,
     SensorStubMode,
@@ -176,6 +177,21 @@ def main() -> int:
     sample_degrade.add_argument("--ram-limit", type=int, default=16 * 1024)
     sample_degrade.add_argument("--pool-limit", type=int, default=5)
     sample_degrade.add_argument("--max-modules", type=int, default=4)
+    sample_runtime_drill = subparsers.add_parser(
+        "sample-runtime-drill",
+        help="run a combined runtime pressure drill and print JSON",
+    )
+    sample_runtime_drill.add_argument("--flash-limit", type=int, default=72 * 1024)
+    sample_runtime_drill.add_argument("--ram-limit", type=int, default=16 * 1024)
+    sample_runtime_drill.add_argument("--pool-limit", type=int, default=5)
+    sample_runtime_drill.add_argument("--max-modules", type=int, default=4)
+    sample_runtime_drill.add_argument("--fault-module", default="sensor")
+    sample_runtime_drill.add_argument(
+        "--fault-error",
+        choices=tuple(item.value for item in KernelErrorKind),
+        default=KernelErrorKind.SENSOR_READ_FAIL.value,
+    )
+    sample_runtime_drill.add_argument("--fault-count", type=int, default=3)
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -331,6 +347,23 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "sample-runtime-drill":
+        print(
+            json.dumps(
+                _sample_runtime_drill(
+                    args.flash_limit,
+                    args.ram_limit,
+                    args.pool_limit,
+                    args.max_modules,
+                    args.fault_module,
+                    args.fault_error,
+                    args.fault_count,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
@@ -433,6 +466,7 @@ def _doctor() -> dict[str, object]:
             "event_log",
             "quota",
             "degrade",
+            "runtime_drill",
         ],
     }
 
@@ -882,6 +916,34 @@ def _sample_degrade(
         ],
         "decision": decision.to_dict(),
     }
+
+
+def _sample_runtime_drill(
+    flash_limit: int,
+    ram_limit: int,
+    pool_limit: int,
+    max_modules: int,
+    fault_module: str,
+    fault_error: str,
+    fault_count: int,
+) -> dict[str, object]:
+    profile = SystemProfile(
+        flash_limit_bytes=flash_limit,
+        ram_limit_bytes=ram_limit,
+        pool_slot_limit=pool_limit,
+        max_modules=max_modules,
+    )
+    drill = RuntimeDrillSimulator(
+        modules=_sample_runtime_modules(),
+        profile=profile,
+        capacity=8,
+        event_log_capacity=8,
+    )
+    return drill.run(
+        fault_module=fault_module,
+        fault_error=fault_error,
+        fault_count=fault_count,
+    ).to_dict()
 
 
 def _sample_runtime_modules() -> tuple[ModuleSpec, ...]:

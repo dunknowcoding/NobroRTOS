@@ -735,6 +735,119 @@ class EventLogSimulator:
 
 
 @dataclass(frozen=True)
+class RuntimeDrillResult:
+    """Combined host-side drill result for runtime admission pressure."""
+
+    profile: SystemProfile
+    decision: DegradeDecision
+    quota: dict[str, object]
+    event_log: dict[str, object]
+    recovery: tuple[RecoveryDecision, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "profile": self.profile.to_dict(),
+            "decision": self.decision.to_dict(),
+            "quota": self.quota,
+            "event_log": self.event_log,
+            "recovery": [decision.to_dict() for decision in self.recovery],
+        }
+
+
+@dataclass
+class RuntimeDrillSimulator:
+    """Compose planning, quota, event-log, and recovery checks for host CI."""
+
+    modules: tuple[ModuleSpec, ...]
+    profile: SystemProfile
+    capacity: int = 8
+    event_log_capacity: int = 8
+
+    def __post_init__(self) -> None:
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+        if self.event_log_capacity < 0:
+            raise ValueError("event_log_capacity must be non-negative")
+
+    def run(
+        self,
+        quota_usage: dict[str, ResourceBudget] | None = None,
+        fault_module: str = "sensor",
+        fault_error: str | KernelErrorKind = KernelErrorKind.SENSOR_READ_FAIL,
+        fault_count: int = 2,
+    ) -> RuntimeDrillResult:
+        if fault_count < 0:
+            raise ValueError("fault_count must be non-negative")
+
+        decision = DegradePlannerSimulator.fit(
+            self.modules,
+            self.profile,
+            capacity=self.capacity,
+        )
+        ledger = QuotaLedgerSimulator(capacity=self.capacity)
+        ledger.register_modules(self.modules)
+        events = EventLogSimulator(capacity=self.event_log_capacity)
+        recovery = RecoveryPolicySimulator(notify_after=2, reboot_after=4)
+
+        events.push(0, "kernel", "info", "boot", "counter", len(self.modules))
+        for module in decision.disabled:
+            events.push(10, module, "warn", "recovery", "counter", 1)
+
+        enabled = set(decision.enabled)
+        usage = quota_usage
+        if usage is None:
+            usage = {
+                spec.module: _default_runtime_usage(spec)
+                for spec in self.modules
+                if spec.module in enabled
+            }
+        for module, amount in usage.items():
+            if module not in enabled:
+                continue
+            ledger.reserve(module, amount)
+            events.push(20, module, "info", "sample_pool", "counter", amount.pool_slots)
+
+        recovery_decisions: list[RecoveryDecision] = []
+        if fault_module in enabled:
+            error = KernelErrorKind(fault_error)
+            for index in range(fault_count):
+                now_us = 100 + index * 10
+                fault = recovery.record_error(fault_module, error, now_us)
+                recovery_decisions.append(fault)
+                severity = "warn"
+                if fault.action == RecoveryAction.REBOOT_MODULE:
+                    severity = "error"
+                events.push(
+                    now_us,
+                    fault_module,
+                    severity,
+                    "recovery",
+                    "counter",
+                    fault.consecutive_errors,
+                )
+
+        return RuntimeDrillResult(
+            profile=self.profile,
+            decision=decision,
+            quota=ledger.to_dict(),
+            event_log={
+                **events.summary(),
+                "warn_or_higher": events.count_at_or_above("warn"),
+                "recent": [record.to_dict() for record in events.copy_recent(8)],
+            },
+            recovery=tuple(recovery_decisions),
+        )
+
+
+def _default_runtime_usage(spec: ModuleSpec) -> ResourceBudget:
+    return ResourceBudget(
+        max(1, spec.memory.flash_bytes // 4),
+        max(1, spec.memory.ram_bytes // 4),
+        min(1, spec.memory.pool_slots),
+    )
+
+
+@dataclass(frozen=True)
 class WatchdogEntry:
     """A host-side liveness entry matching the Rust watchdog entry shape."""
 

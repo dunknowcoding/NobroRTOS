@@ -31,6 +31,7 @@ from nobro_rtos import (
     RecoveryAction,
     RecoveryPolicySimulator,
     ResourceBudget,
+    RuntimeDrillSimulator,
     SchedulerSimulator,
     SensorStubError,
     SensorStubSimulator,
@@ -52,6 +53,7 @@ from nobro_rtos.cli import (
     _sample_quota,
     _sample_recovery,
     _sample_report,
+    _sample_runtime_drill,
     _sample_scheduler,
     _sample_sensor,
     _sample_watchdog,
@@ -1019,6 +1021,59 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(degrade["decision"]["disabled"], ["telemetry"])
         self.assertEqual(degrade["decision"]["reason"], "module_limit")
         self.assertIn("kernel", degrade["decision"]["enabled"])
+
+    def test_runtime_drill_simulator_composes_pressure_and_recovery(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(20, 4, 0),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(20, 4, 1)),
+            ModuleSpec("telemetry", Criticality.BEST_EFFORT, MemoryBudget(50, 4, 1)),
+        )
+        drill = RuntimeDrillSimulator(
+            modules=modules,
+            profile=SystemProfile(50, 16, 2, 2),
+            capacity=4,
+            event_log_capacity=8,
+        )
+
+        result = drill.run(fault_module="sensor", fault_count=2).to_dict()
+
+        self.assertEqual(result["decision"]["disabled"], ["telemetry"])
+        self.assertEqual(len(result["recovery"]), 2)
+        self.assertEqual(result["recovery"][1]["action"], "notify_user_task")
+        telemetry_entry = next(
+            entry
+            for entry in result["quota"]["entries"]
+            if entry["module"] == "telemetry"
+        )
+        self.assertEqual(telemetry_entry["used"], ResourceBudget().to_dict())
+        self.assertGreaterEqual(result["event_log"]["warn_or_higher"], 2)
+
+        no_usage = drill.run(quota_usage={}, fault_module="sensor", fault_count=0).to_dict()
+        self.assertEqual(no_usage["quota"]["total_used"], ResourceBudget().to_dict())
+
+    def test_cli_runtime_drill_sample_summarizes_combined_control_plane(self) -> None:
+        report = _sample_runtime_drill(
+            flash_limit=72 * 1024,
+            ram_limit=16 * 1024,
+            pool_limit=5,
+            max_modules=4,
+            fault_module="sensor",
+            fault_error="sensor_read_fail",
+            fault_count=3,
+        )
+
+        self.assertEqual(report["decision"]["disabled"], ["telemetry"])
+        self.assertEqual(report["decision"]["reason"], "module_limit")
+        self.assertEqual(len(report["recovery"]), 3)
+        self.assertEqual(report["recovery"][1]["state"], "degraded")
+        self.assertGreater(report["quota"]["total_used"]["flash_bytes"], 0)
+        self.assertIn("recent", report["event_log"])
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

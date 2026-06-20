@@ -144,6 +144,9 @@ Python host tooling mirrors quota accounting and degraded-mode planning through
 `QuotaLedgerSimulator` and `DegradePlannerSimulator`. These helpers are for
 design review, VS Code tasks, CI checks, and package examples; realtime firmware
 still uses the Rust control plane.
+`RuntimeDrillSimulator` composes the same host-side planning and quota checks
+with fixed-ring event logging and recovery escalation, which makes it useful for
+reviewing a complete control-plane pressure scenario before writing board code.
 
 ### Scheduler
 
