@@ -1,0 +1,10 @@
+[project]
+name = "nobro-rtos-tools"
+version = "0.0.0"
+description = "Host-side NobroRTOS contract builders and inspection helpers."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "dunknowcoding (YouTube NiusRobotLab)" }]
+
+[tool.setuptools]
+packages = ["nobro_rtos"]

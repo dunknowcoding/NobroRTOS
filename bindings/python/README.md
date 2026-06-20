@@ -1,6 +1,7 @@
 # NobroRTOS Python Tooling
 
-This folder is reserved for Python-facing host tooling.
+This folder contains Python-facing host tooling and contract builders. The
+Python layer is for development workflows, not hard-realtime firmware paths.
 
 Initial priorities:
 
@@ -9,3 +10,57 @@ Initial priorities:
 - manifest and adapter compatibility checks
 - simulation harnesses for sensor and actuator fixtures
 - AI/control orchestration hooks outside firmware hot paths
+- VS Code task integration
+- MicroPython, CircuitPython, and mPython-inspired bridge workflows
+
+## Contract Builders
+
+`nobro_rtos.contracts` provides small typed builders for:
+
+- module specs
+- memory budgets
+- AI model contracts
+- ROS-style bridge descriptors
+
+Example:
+
+```python
+from nobro_rtos import (
+    AiBackendKind,
+    AiModelContract,
+    Capability,
+    Criticality,
+    MemoryBudget,
+    ModuleSpec,
+    NobroContractBundle,
+)
+
+bundle = NobroContractBundle(
+    modules=(
+        ModuleSpec(
+            "ai",
+            Criticality.USER,
+            MemoryBudget(16 * 1024, 6 * 1024, 1),
+            requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+            owns=(Capability.AI_ENDPOINT,),
+        ),
+    ),
+    ai_models=(
+        AiModelContract(
+            model_id=42,
+            backend=AiBackendKind.ON_DEVICE,
+            input_bytes_max=128,
+            output_bytes_max=32,
+            arena_bytes=4096,
+            timeout_us=20_000,
+            stale_after_us=100_000,
+        ),
+    ),
+)
+
+print(bundle.to_json())
+```
+
+These builders keep Python-first users on the same contracts as the Rust core:
+fixed budgets, explicit capabilities, bounded AI inference, and bounded
+robotics bridge metadata.

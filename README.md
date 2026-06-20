@@ -5,6 +5,11 @@
 </p>
 
 <p align="center">
+  <strong>中文名：糙哥RTOS</strong><br>
+  糙哥RTOS 是面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
+</p>
+
+<p align="center">
   <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/repo-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
   <img alt="Language" src="https://img.shields.io/badge/Rust-first-b7410e?style=for-the-badge&logo=rust">
   <img alt="Target" src="https://img.shields.io/badge/target-nRF52840-2563eb?style=for-the-badge">
@@ -160,7 +165,7 @@ NobroRTOS/
 |   |-- crates/
 |   |   |-- nobro_kernel/   # manifest, admission, runtime, recovery, reports
 |   |   |-- nobro_hal/      # board data, leases, timers, PWM, bus, capture
-|   |   |-- nobro_sal/      # six public service traits
+|   |   |-- nobro_sal/      # portable service traits
 |   |   `-- nobro_host/     # host report decoders and stable labels
 |   |-- adapters/           # thin SAL implementations
 |   |-- apps/               # firmware compositions and evaluation apps
@@ -191,10 +196,10 @@ compatibility, while repository folders use the `nobro_*` project prefix.
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
-| Host tooling UX | In progress | First-fault decoding examples need to grow |
+| Host tooling UX | In progress | First-fault decoding and Python workflow examples need to grow |
 | ROS bridge model | Planned | Bounded topic/service/action/parameter bridge descriptors |
 | SDK packaging | Scaffolded | Standalone, Arduino, PlatformIO, and bindings folders are separated |
-| C/C++/Python interfaces | Planned | Bindings will wrap stable core contracts without duplicating the RTOS |
+| C/C++/Python interfaces | In progress | Python contract builders can emit module, AI, and ROS bridge metadata |
 
 ## Quick Start
 

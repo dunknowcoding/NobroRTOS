@@ -22,6 +22,7 @@ Completed or substantially present:
 - adapter descriptors and compatibility reports
 - AI module and capability bits for local or external inference contracts
 - bounded `AiInferenceSal` request/result contract using caller-owned buffers
+- Python contract builders for module specs, AI models, and ROS bridge metadata
 - nRF52840 board profile and boot layout features
 - HAL hardware capability metadata through `HalCompatibility`
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
@@ -50,6 +51,8 @@ Completed or substantially present:
   input/output bounds, timeout, and stale-result policy
 - add ROS/micro-ROS bridge descriptors for bounded topics, services, actions,
   parameters, and custom transports
+- expand Python tooling into VS Code tasks, report decoding, and simulation
+  helpers
 
 ## Adapter Work
 
