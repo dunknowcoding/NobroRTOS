@@ -123,6 +123,9 @@ python tools/nobro_contract_tool.py decode-report ai_model path\to\ai_model_repo
 python tools/nobro_contract_tool.py decode-report ros_bridge path\to\ros_bridge_report.json
 ```
 
+AI and ROS report decoding includes host-contract labels for backend,
+route-preference, and transport fields while preserving the raw numeric record.
+
 Summarize a boot report bundle:
 
 ```powershell

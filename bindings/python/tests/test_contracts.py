@@ -548,11 +548,22 @@ class ContractBuilderTests(unittest.TestCase):
         )
 
         report = FixedReport.from_dict(ReportKind.AI_MODEL, payload)
+        summary = report.to_dict()
 
         self.assertEqual(report.status, ReportStatus.PASS)
         self.assertTrue(report.verify_checksum())
-        self.assertEqual(report.to_dict()["raw"]["route_preference"], 4)
-        self.assertEqual(report.to_dict()["raw"]["stale_after_us"], 30_000)
+        self.assertEqual(summary["backend"], "hybrid")
+        self.assertEqual(summary["route_preference"], "hybrid_fallback")
+        self.assertEqual(summary["raw"]["route_preference"], 4)
+        self.assertEqual(summary["raw"]["stale_after_us"], 30_000)
+
+    def test_ai_model_report_decoder_handles_missing_slot(self) -> None:
+        report = FixedReport.from_dict(ReportKind.AI_MODEL, {})
+        summary = report.to_dict()
+
+        self.assertEqual(report.status, ReportStatus.MISSING)
+        self.assertIsNone(summary["backend"])
+        self.assertIsNone(summary["route_preference"])
 
     def test_ros_bridge_report_decoder_preserves_resource_summary(self) -> None:
         payload = seal_report(
@@ -570,11 +581,13 @@ class ContractBuilderTests(unittest.TestCase):
         )
 
         report = FixedReport.from_dict(ReportKind.ROS_BRIDGE, payload)
+        summary = report.to_dict()
 
         self.assertEqual(report.status, ReportStatus.PASS)
         self.assertTrue(report.verify_checksum())
-        self.assertEqual(report.to_dict()["raw"]["topic_count"], 2)
-        self.assertEqual(report.to_dict()["raw"]["total_buffer_bytes"], 768)
+        self.assertEqual(summary["transport"], "serial")
+        self.assertEqual(summary["raw"]["topic_count"], 2)
+        self.assertEqual(summary["raw"]["total_buffer_bytes"], 768)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

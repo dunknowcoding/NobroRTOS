@@ -165,6 +165,26 @@ class HostContract:
             return None
         return labels.get(str(code))
 
+    def ai_backend_label(self, code: int | str) -> str | None:
+        if int(code) == 0:
+            return None
+        return self.payload["ai_contracts"]["backend_codes"][str(code)]
+
+    def ai_route_preference_label(self, code: int | str) -> str | None:
+        if int(code) == 0:
+            return None
+        return self.payload["ai_contracts"]["route_preferences"][str(code)]
+
+    def ai_route_target_label(self, code: int | str) -> str | None:
+        if int(code) == 0:
+            return None
+        return self.payload["ai_contracts"]["route_targets"][str(code)]
+
+    def ros_transport_label(self, code: int | str) -> str | None:
+        if int(code) == 0:
+            return None
+        return self.payload["ros_bridge_contracts"]["transport_codes"][str(code)]
+
     def _require_object(self, key: str) -> dict[str, Any]:
         value = self.payload.get(key)
         if not isinstance(value, dict):

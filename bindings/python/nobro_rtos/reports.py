@@ -404,7 +404,7 @@ class FixedReport:
             return None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        decoded = {
             "kind": self.kind.value,
             "status": self.status.value,
             "passing": self.passing,
@@ -421,6 +421,36 @@ class FixedReport:
             "error_capability_bits": self.fields.get("error_capability_bits", 0),
             "raw": dict(self.fields),
         }
+        decoded.update(self._domain_fields())
+        return decoded
+
+    def _domain_fields(self) -> dict[str, Any]:
+        if self.kind == ReportKind.AI_MODEL:
+            return {
+                "backend": self.contract.ai_backend_label(self.fields["backend"]),
+                "model_id": self.fields["model_id"],
+                "input_bytes_max": self.fields["input_bytes_max"],
+                "output_bytes_max": self.fields["output_bytes_max"],
+                "arena_bytes": self.fields["arena_bytes"],
+                "timeout_us": self.fields["timeout_us"],
+                "route_preference": self.contract.ai_route_preference_label(
+                    self.fields["route_preference"]
+                ),
+                "stale_after_us": self.fields["stale_after_us"],
+                "endpoint_failure_limit": self.fields["endpoint_failure_limit"],
+            }
+        if self.kind == ReportKind.ROS_BRIDGE:
+            return {
+                "transport": self.contract.ros_transport_label(self.fields["transport"]),
+                "bridge_id_hash": self.fields["bridge_id_hash"],
+                "topic_count": self.fields["topic_count"],
+                "service_count": self.fields["service_count"],
+                "action_count": self.fields["action_count"],
+                "parameter_count": self.fields["parameter_count"],
+                "total_buffer_bytes": self.fields["total_buffer_bytes"],
+                "max_timeout_us": self.fields["max_timeout_us"],
+            }
+        return {}
 
 
 def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, int]:
