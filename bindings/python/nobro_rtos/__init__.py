@@ -24,7 +24,14 @@ from .host_contract import (
     find_repo_root,
     load_repo_host_contract,
 )
-from .reports import FixedReport, ReportKind, ReportStatus, seal_report
+from .reports import (
+    BootReportSummary,
+    FixedReport,
+    ReportKind,
+    ReportSlot,
+    ReportStatus,
+    seal_report,
+)
 
 __all__ = [
     "AiBackendKind",
@@ -48,7 +55,9 @@ __all__ = [
     "load_repo_host_contract",
     "ReportStatusClass",
     "FixedReport",
+    "BootReportSummary",
     "ReportKind",
+    "ReportSlot",
     "ReportStatus",
     "seal_report",
 ]

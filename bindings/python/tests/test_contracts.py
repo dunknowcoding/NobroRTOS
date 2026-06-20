@@ -5,6 +5,7 @@ from nobro_rtos import (
     AiBackendKind,
     AiModelContract,
     BootDiagnostic,
+    BootReportSummary,
     Capability,
     Criticality,
     MemoryBudget,
@@ -233,6 +234,59 @@ class ContractBuilderTests(unittest.TestCase):
         report = FixedReport.from_dict(ReportKind.MANIFEST, payload)
 
         self.assertEqual(report.status, ReportStatus.CORRUPT)
+
+    def test_boot_summary_reports_first_missing_stage(self) -> None:
+        manifest = seal_report(
+            ReportKind.MANIFEST,
+            {
+                "valid": 1,
+                "module_count": 2,
+                "fingerprint": 0x1234,
+            },
+        )
+        summary = BootReportSummary.from_dict({"reports": {"manifest": manifest}})
+
+        self.assertFalse(summary.passing)
+        self.assertEqual(summary.first_diagnostic.stage, "board_profile")
+        self.assertEqual(summary.first_diagnostic.status, ReportStatus.MISSING)
+        self.assertEqual(summary.status_counts()["missing"], 5)
+
+    def test_boot_summary_reports_adapter_failure_after_passing_early_slots(self) -> None:
+        manifest = seal_report(
+            ReportKind.MANIFEST,
+            {
+                "valid": 1,
+                "module_count": 2,
+                "fingerprint": 0x1234,
+            },
+        )
+        adapter = seal_report(
+            ReportKind.ADAPTER_COMPAT,
+            {
+                "compatible": 0,
+                "adapter_count": 2,
+                "error_code": 3,
+                "error_module_tag": 3,
+                "error_capability_bits": Capability.BUS0.bit,
+            },
+        )
+        summary = BootReportSummary.from_dict(
+            {
+                "reports": {
+                    "board_profile": {"status": "pass"},
+                    "board_package": {"status": "pass"},
+                    "manifest": manifest,
+                    "adapter_compatibility": adapter,
+                }
+            }
+        )
+
+        self.assertFalse(summary.passing)
+        self.assertEqual(summary.first_diagnostic.stage, "adapter_compatibility")
+        self.assertEqual(summary.first_diagnostic.status, ReportStatus.FAIL)
+        self.assertEqual(
+            summary.first_diagnostic.error_label, "capability_ownership_conflict"
+        )
 
 
 if __name__ == "__main__":

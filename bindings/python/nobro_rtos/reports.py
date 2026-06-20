@@ -11,6 +11,10 @@ from typing import Any
 from .host_contract import HostContract, load_repo_host_contract
 
 
+BOOT_STAGE_TO_REPORT_KIND = {
+    "manifest": "manifest",
+    "adapter_compatibility": "adapter_compatibility",
+}
 MANIFEST_REPORT_MAGIC = 0x4E42_4D46
 ADAPTER_COMPAT_REPORT_MAGIC = 0x4E42_4143
 REPORT_VERSION = 1
@@ -79,6 +83,93 @@ class ReportStatus(str, Enum):
     PASS = "pass"
     FAIL = "fail"
     CORRUPT = "corrupt"
+
+
+SUMMARY_STATUS_ORDER = (
+    ReportStatus.PASS,
+    ReportStatus.MISSING,
+    ReportStatus.IN_PROGRESS,
+    ReportStatus.FAIL,
+    ReportStatus.CORRUPT,
+)
+
+
+@dataclass(frozen=True)
+class ReportSlot:
+    stage: str
+    status: ReportStatus
+    symbol: str
+    error_code: int = 0
+    error_label: str | None = None
+    detail: dict[str, Any] | None = None
+
+    @property
+    def passing(self) -> bool:
+        return self.status == ReportStatus.PASS
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage,
+            "symbol": self.symbol,
+            "status": self.status.value,
+            "passing": self.passing,
+            "error_code": self.error_code,
+            "error_label": self.error_label,
+            "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class BootReportSummary:
+    slots: tuple[ReportSlot, ...]
+
+    @classmethod
+    def from_dict(
+        cls, payload: dict[str, Any], contract: HostContract | None = None
+    ) -> "BootReportSummary":
+        contract = load_repo_host_contract() if contract is None else contract
+        reports = payload.get("reports", payload)
+        slots: list[ReportSlot] = []
+        for stage in contract.boot_stage_order():
+            report_payload = reports.get(stage)
+            slots.append(_slot_from_payload(stage, report_payload, contract))
+        return cls(tuple(slots))
+
+    @classmethod
+    def from_json_file(
+        cls, path: str | Path, contract: HostContract | None = None
+    ) -> "BootReportSummary":
+        with Path(path).open("r", encoding="utf-8-sig") as handle:
+            return cls.from_dict(json.load(handle), contract)
+
+    @property
+    def first_diagnostic(self) -> ReportSlot:
+        for slot in self.slots:
+            if not slot.passing:
+                return slot
+        return self.slots[-1]
+
+    @property
+    def passing(self) -> bool:
+        return all(slot.passing for slot in self.slots)
+
+    def status_counts(self) -> dict[str, int]:
+        counts = {status.value: 0 for status in SUMMARY_STATUS_ORDER}
+        for slot in self.slots:
+            counts[slot.status.value] += 1
+        return counts
+
+    def to_dict(self) -> dict[str, Any]:
+        first = self.first_diagnostic
+        return {
+            "passing": self.passing,
+            "first_stage": first.stage,
+            "first_status": first.status.value,
+            "first_error_code": first.error_code,
+            "first_error_label": first.error_label,
+            "status_counts": self.status_counts(),
+            "slots": [slot.to_dict() for slot in self.slots],
+        }
 
 
 @dataclass(frozen=True)
@@ -220,3 +311,38 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
 
 def _normalize_fields(payload: dict[str, Any], field_names: tuple[str, ...]) -> dict[str, int]:
     return {name: int(payload.get(name, 0)) & 0xFFFF_FFFF for name in field_names}
+
+
+def _slot_from_payload(
+    stage: str, payload: Any, contract: HostContract
+) -> ReportSlot:
+    symbol = contract.payload.get(f"{stage}_report", {}).get("symbol", stage)
+    if stage == "adapter_compatibility":
+        symbol = contract.payload.get("adapter_compat_report", {}).get("symbol", stage)
+
+    if payload is None:
+        return ReportSlot(stage, ReportStatus.MISSING, symbol)
+
+    report_kind = BOOT_STAGE_TO_REPORT_KIND.get(stage)
+    if report_kind is not None:
+        report = FixedReport.from_dict(report_kind, payload, contract)
+        detail = report.to_dict()
+        return ReportSlot(
+            stage=stage,
+            status=report.status,
+            symbol=symbol,
+            error_code=detail["error_code"],
+            error_label=detail["error_label"],
+            detail=detail,
+        )
+
+    status = ReportStatus(str(payload.get("status", ReportStatus.MISSING.value)))
+    error_code = int(payload.get("error_code", 0))
+    return ReportSlot(
+        stage=stage,
+        status=status,
+        symbol=symbol,
+        error_code=error_code,
+        error_label=contract.error_label(stage, error_code),
+        detail=dict(payload),
+    )

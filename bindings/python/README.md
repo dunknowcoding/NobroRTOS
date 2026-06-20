@@ -107,6 +107,12 @@ python tools/nobro_contract_tool.py decode-report manifest path\to\manifest_repo
 python tools/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
 ```
 
+Summarize a boot report bundle:
+
+```powershell
+python tools/nobro_contract_tool.py summarize-boot path\to\boot_reports.json
+```
+
 ## Tests
 
 The current tests use only the Python standard library:
