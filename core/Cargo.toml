@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/airon-sal",
-    "crates/airon-hal",
-    "crates/airon-kernel",
-    "crates/airon-host",
+    "crates/nobro_sal",
+    "crates/nobro_hal",
+    "crates/nobro_kernel",
+    "crates/nobro_host",
     "adapters/robo-servo",
     "adapters/sensor-stub",
     "adapters/mpu9250-imu",

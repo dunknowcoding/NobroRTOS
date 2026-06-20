@@ -4,4 +4,4 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-airon-kernel = { path = "../airon-kernel" }
+airon-kernel = { path = "../nobro_kernel" }

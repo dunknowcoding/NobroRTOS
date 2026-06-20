@@ -8,10 +8,10 @@ symbols, repository, and public documentation use NobroRTOS naming.
 
 | Path | Role |
 | ---- | ---- |
-| `crates/airon-kernel` | Manifest validation, deadline model, quotas, capability grants, IPC, health, recovery, and reports |
-| `crates/airon-hal` | Board descriptions, nRF52840 platform backend, resource leases, timers, PWM, bus, and event capture |
-| `crates/airon-sal` | Bus, stream, radio, actuator, sensor, and crypto traits |
-| `crates/airon-host` | Host constants and fixed-layout report decoders |
+| `crates/nobro_kernel` | Manifest validation, deadline model, quotas, capability grants, IPC, health, recovery, and reports |
+| `crates/nobro_hal` | Board descriptions, nRF52840 platform backend, resource leases, timers, PWM, bus, and event capture |
+| `crates/nobro_sal` | Bus, stream, radio, actuator, sensor, and crypto traits |
+| `crates/nobro_host` | Host constants and fixed-layout report decoders |
 | `adapters/*` | Thin SAL implementations for concrete devices or compatibility stubs |
 | `apps/*` | Firmware compositions used for evaluation and examples |
 

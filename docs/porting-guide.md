@@ -75,7 +75,7 @@ selected board feature explicitly.
 Good:
 
 ```toml
-airon-hal = { path = "../../crates/airon-hal", default-features = false }
+airon-hal = { path = "../../crates/nobro_hal", default-features = false }
 board-promicro-nosd = ["airon-hal/board-promicro-nosd"]
 ```
 

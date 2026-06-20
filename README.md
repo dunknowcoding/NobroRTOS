@@ -152,21 +152,24 @@ Near-term engineering focus:
 NobroRTOS/
 |-- core/
 |   |-- crates/
-|   |   |-- airon-kernel/   # manifest, admission, runtime, recovery, reports
-|   |   |-- airon-hal/      # board data, leases, timers, PWM, bus, capture
-|   |   |-- airon-sal/      # six public service traits
-|   |   `-- airon-host/     # host report decoders and stable labels
+|   |   |-- nobro_kernel/   # manifest, admission, runtime, recovery, reports
+|   |   |-- nobro_hal/      # board data, leases, timers, PWM, bus, capture
+|   |   |-- nobro_sal/      # six public service traits
+|   |   `-- nobro_host/     # host report decoders and stable labels
 |   |-- adapters/           # thin SAL implementations
 |   |-- apps/               # firmware compositions and evaluation apps
 |   `-- boards/             # board-facing notes and layout policy
+|-- sdk/                    # standalone SDK packaging surface
+|-- packages/               # Arduino and PlatformIO package surfaces
+|-- bindings/               # C, C++, and Python-facing wrappers
+|-- tools/                  # package builders, validators, generators
 |-- docs/                   # user, API, architecture, porting, operations, roadmap
 |-- host/                   # JSON mirror of the host contract
 `-- LICENSE
 ```
 
-The Rust crate prefix is still `airon-*` while the product and repository are
-NobroRTOS. That keeps this branding step small and keeps downstream code stable
-until a dedicated crate-name migration is worth the churn.
+The Rust crate package names still use the `airon-*` API prefix for downstream
+compatibility, while repository folders use the `nobro_*` project prefix.
 
 ## Capability Matrix
 
@@ -182,6 +185,8 @@ until a dedicated crate-name migration is worth the churn.
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | First-fault decoding examples need to grow |
+| SDK packaging | Scaffolded | Standalone, Arduino, PlatformIO, and bindings folders are separated |
+| C/C++/Python interfaces | Planned | Bindings will wrap stable core contracts without duplicating the RTOS |
 
 ## Quick Start
 

@@ -10,7 +10,7 @@ host/nobro-host-contract.json
 The Rust mirror is:
 
 ```text
-core/crates/airon-host
+core/crates/nobro_host
 ```
 
 ## Report Symbols

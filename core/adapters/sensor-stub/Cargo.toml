@@ -5,9 +5,9 @@ edition.workspace = true
 description = "Fixture-backed SensorSal IMU adapter for NobroRTOS"
 
 [dependencies]
-airon-hal = { path = "../../crates/airon-hal", default-features = false }
-airon-kernel = { path = "../../crates/airon-kernel" }
-airon-sal = { path = "../../crates/airon-sal" }
+airon-hal = { path = "../../crates/nobro_hal", default-features = false }
+airon-kernel = { path = "../../crates/nobro_kernel" }
+airon-sal = { path = "../../crates/nobro_sal" }
 
 [features]
 default = ["board-promicro-nosd"]

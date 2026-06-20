@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-airon-hal = { path = "../airon-hal", default-features = false, features = ["contract-only"], optional = true }
+airon-hal = { path = "../nobro_hal", default-features = false, features = ["contract-only"], optional = true }
 
 [features]
 default = []
