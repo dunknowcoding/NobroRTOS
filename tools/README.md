@@ -23,6 +23,8 @@ python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
+python tools/nobro_contract_tool.py sample-report runtime
+python tools/nobro_contract_tool.py sample-report health
 ```
 
 ## Host Simulation Commands

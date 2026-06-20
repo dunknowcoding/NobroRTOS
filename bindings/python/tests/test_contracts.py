@@ -654,6 +654,42 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(ros.status, ReportStatus.PASS)
         self.assertEqual(ros.to_dict()["transport"], "serial")
 
+    def test_cli_diagnostic_sample_reports_are_decodable(self) -> None:
+        samples = {
+            "admission": ReportKind.ADMISSION,
+            "runtime": ReportKind.RUNTIME,
+            "health": ReportKind.HEALTH,
+            "event_log": ReportKind.EVENT_LOG,
+            "module_runtime": ReportKind.MODULE_RUNTIME,
+            "degrade_application": ReportKind.DEGRADE_APPLICATION,
+        }
+
+        decoded = {
+            name: FixedReport.from_dict(kind, _sample_report(name)).to_dict()
+            for name, kind in samples.items()
+        }
+
+        self.assertTrue(decoded["admission"]["admitted"])
+        self.assertEqual(decoded["runtime"]["next_alarm_due_us"], 0x1234_5678_9ABC)
+        self.assertEqual(decoded["health"]["module_label"], "sensor")
+        self.assertEqual(decoded["event_log"]["latest_module_label"], "sensor")
+        self.assertEqual(decoded["module_runtime"]["latest_change_us"], 0x1_0000_00C0)
+        self.assertEqual(decoded["degrade_application"]["applied_at_us"], 0x1_0000_0020)
+
+    def test_admission_report_decoder_preserves_failure_context(self) -> None:
+        payload = seal_report(
+            ReportKind.ADMISSION,
+            {
+                "admitted": 0,
+                "error_code": 5,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.ADMISSION, payload)
+
+        self.assertEqual(report.status, ReportStatus.FAIL)
+        self.assertEqual(report.error_label(), "missing_startup_node")
+
     def test_sensor_stub_simulator_matches_nominal_fixture_shape(self) -> None:
         simulator = SensorStubSimulator.nominal(sample_period_ticks=3)
 

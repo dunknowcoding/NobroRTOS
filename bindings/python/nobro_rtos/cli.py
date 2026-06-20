@@ -57,7 +57,16 @@ def main() -> int:
     )
     sample_report.add_argument(
         "kind",
-        choices=("ai_model", "ros_bridge"),
+        choices=(
+            "admission",
+            "runtime",
+            "health",
+            "event_log",
+            "module_runtime",
+            "degrade_application",
+            "ai_model",
+            "ros_bridge",
+        ),
         help="sample report kind",
     )
     sample_sensor = subparsers.add_parser(
@@ -176,6 +185,12 @@ def main() -> int:
             "board_package",
             "manifest",
             "adapter_compatibility",
+            "admission",
+            "runtime",
+            "health",
+            "event_log",
+            "module_runtime",
+            "degrade_application",
             "ai_model",
             "ros_bridge",
         ),
@@ -409,6 +424,96 @@ def _sample_ai_route() -> dict[str, object]:
 
 
 def _sample_report(kind: str) -> dict[str, int]:
+    if kind == "admission":
+        return seal_report(
+            ReportKind.ADMISSION,
+            {
+                "admitted": 1,
+                "module_count": 2,
+                "startup_len": 2,
+                "flash_used_bytes": 24 * 1024,
+                "flash_limit_bytes": 64 * 1024,
+                "ram_used_bytes": 6 * 1024,
+                "ram_limit_bytes": 16 * 1024,
+                "pool_used_slots": 6,
+                "pool_limit_slots": 8,
+            },
+        )
+    if kind == "runtime":
+        return seal_report(
+            ReportKind.RUNTIME,
+            {
+                "state": 3,
+                "module_count": 2,
+                "mailbox_len": 1,
+                "alarm_len": 1,
+                "next_alarm_due_us_lo": 0x5678_9ABC,
+                "next_alarm_due_us_hi": 0x1234,
+                "kv_len": 1,
+                "quota_flash_used_bytes": 4096,
+                "quota_ram_used_bytes": 1024,
+                "quota_pool_used_slots": 1,
+                "event_count": 3,
+            },
+        )
+    if kind == "health":
+        return seal_report(
+            ReportKind.HEALTH,
+            {
+                "module_tag": 5,
+                "total_errors": 2,
+                "consecutive_errors": 1,
+                "last_error": 4,
+                "last_action": 2,
+                "event_count": 5,
+                "error_events": 1,
+                "last_seen_us_lo": 0x40,
+                "last_seen_us_hi": 0x1,
+            },
+        )
+    if kind == "event_log":
+        return seal_report(
+            ReportKind.EVENT_LOG,
+            {
+                "event_count": 3,
+                "capacity": 8,
+                "latest_seq": 3,
+                "latest_at_us_lo": 0x80,
+                "latest_at_us_hi": 0x1,
+                "latest_module_tag": 5,
+                "latest_severity": 2,
+                "latest_kind": 3,
+                "latest_payload_kind": 2,
+                "latest_payload0": 1,
+            },
+        )
+    if kind == "module_runtime":
+        return seal_report(
+            ReportKind.MODULE_RUNTIME,
+            {
+                "module_count": 2,
+                "capacity": 4,
+                "active_count": 1,
+                "faulted_count": 1,
+                "latest_module_tag": 5,
+                "latest_state": 4,
+                "latest_fault_count": 1,
+                "latest_change_us_lo": 0xC0,
+                "latest_change_us_hi": 0x1,
+            },
+        )
+    if kind == "degrade_application":
+        return seal_report(
+            ReportKind.DEGRADE_APPLICATION,
+            {
+                "requested_count": 2,
+                "disabled_count": 1,
+                "already_disabled_count": 1,
+                "reason": 2,
+                "applied_at_us_lo": 0x20,
+                "applied_at_us_hi": 0x1,
+            },
+        )
     if kind == "ai_model":
         return seal_report(
             ReportKind.AI_MODEL,

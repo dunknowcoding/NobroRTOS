@@ -16,11 +16,19 @@ BOOT_STAGE_TO_REPORT_KIND = {
     "board_package": "board_package",
     "manifest": "manifest",
     "adapter_compatibility": "adapter_compatibility",
+    "admission": "admission",
+    "runtime": "runtime",
 }
 BOARD_PROFILE_REPORT_MAGIC = 0x4E42_4250
 BOARD_PACKAGE_REPORT_MAGIC = 0x4E42_424B
 MANIFEST_REPORT_MAGIC = 0x4E42_4D46
 ADAPTER_COMPAT_REPORT_MAGIC = 0x4E42_4143
+ADMISSION_REPORT_MAGIC = 0x4E42_4144
+RUNTIME_REPORT_MAGIC = 0x4E42_5254
+HEALTH_REPORT_MAGIC = 0x4E42_484C
+EVENT_LOG_REPORT_MAGIC = 0x4E42_454C
+MODULE_RUNTIME_REPORT_MAGIC = 0x4E42_4D52
+DEGRADE_APPLICATION_REPORT_MAGIC = 0x4E42_4447
 AI_MODEL_REPORT_MAGIC = 0x4E42_4149
 ROS_BRIDGE_REPORT_MAGIC = 0x4E42_5253
 REPORT_VERSION = 1
@@ -132,12 +140,127 @@ ROS_BRIDGE_FIELDS = (
     "checksum",
 )
 
+ADMISSION_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "admitted",
+    "module_count",
+    "startup_len",
+    "flash_used_bytes",
+    "flash_limit_bytes",
+    "ram_used_bytes",
+    "ram_limit_bytes",
+    "pool_used_slots",
+    "pool_limit_slots",
+    "error_code",
+    "checksum",
+)
+
+RUNTIME_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "state",
+    "module_count",
+    "mailbox_len",
+    "mailbox_dropped",
+    "alarm_len",
+    "next_alarm_due_us_lo",
+    "next_alarm_due_us_hi",
+    "kv_len",
+    "kv_writes",
+    "kv_deletes",
+    "quota_flash_used_bytes",
+    "quota_ram_used_bytes",
+    "quota_pool_used_slots",
+    "event_count",
+    "dropped_events",
+    "checksum",
+)
+
+HEALTH_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "module_tag",
+    "total_errors",
+    "consecutive_errors",
+    "last_error",
+    "last_action",
+    "event_count",
+    "dropped_events",
+    "error_events",
+    "fatal_events",
+    "last_seen_us_lo",
+    "last_seen_us_hi",
+    "checksum",
+)
+
+EVENT_LOG_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "event_count",
+    "capacity",
+    "dropped_events",
+    "latest_seq",
+    "latest_at_us_lo",
+    "latest_at_us_hi",
+    "latest_module_tag",
+    "latest_severity",
+    "latest_kind",
+    "latest_payload_kind",
+    "latest_payload0",
+    "latest_payload1",
+    "checksum",
+)
+
+MODULE_RUNTIME_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "module_count",
+    "capacity",
+    "active_count",
+    "suspended_count",
+    "faulted_count",
+    "recovering_count",
+    "disabled_count",
+    "latest_module_tag",
+    "latest_state",
+    "latest_fault_count",
+    "latest_recovery_count",
+    "latest_change_us_lo",
+    "latest_change_us_hi",
+    "checksum",
+)
+
+DEGRADE_APPLICATION_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "requested_count",
+    "disabled_count",
+    "already_disabled_count",
+    "reason",
+    "applied_at_us_lo",
+    "applied_at_us_hi",
+    "checksum",
+)
+
 
 class ReportKind(Enum):
     BOARD_PROFILE = "board_profile"
     BOARD_PACKAGE = "board_package"
     MANIFEST = "manifest"
     ADAPTER_COMPAT = "adapter_compatibility"
+    ADMISSION = "admission"
+    RUNTIME = "runtime"
+    HEALTH = "health"
+    EVENT_LOG = "event_log"
+    MODULE_RUNTIME = "module_runtime"
+    DEGRADE_APPLICATION = "degrade_application"
     AI_MODEL = "ai_model"
     ROS_BRIDGE = "ros_bridge"
 
@@ -332,6 +455,60 @@ class FixedReport:
                 "adapter_count",
                 contract,
             )
+        if report_kind == ReportKind.ADMISSION:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, ADMISSION_FIELDS),
+                ADMISSION_REPORT_MAGIC,
+                "admitted",
+                "module_count",
+                contract,
+            )
+        if report_kind == ReportKind.RUNTIME:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, RUNTIME_FIELDS),
+                RUNTIME_REPORT_MAGIC,
+                None,
+                "module_count",
+                contract,
+            )
+        if report_kind == ReportKind.HEALTH:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, HEALTH_FIELDS),
+                HEALTH_REPORT_MAGIC,
+                None,
+                None,
+                contract,
+            )
+        if report_kind == ReportKind.EVENT_LOG:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, EVENT_LOG_FIELDS),
+                EVENT_LOG_REPORT_MAGIC,
+                None,
+                "event_count",
+                contract,
+            )
+        if report_kind == ReportKind.MODULE_RUNTIME:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, MODULE_RUNTIME_FIELDS),
+                MODULE_RUNTIME_REPORT_MAGIC,
+                None,
+                "module_count",
+                contract,
+            )
+        if report_kind == ReportKind.DEGRADE_APPLICATION:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, DEGRADE_APPLICATION_FIELDS),
+                DEGRADE_APPLICATION_REPORT_MAGIC,
+                None,
+                "requested_count",
+                contract,
+            )
         if report_kind == ReportKind.AI_MODEL:
             return cls(
                 report_kind,
@@ -450,7 +627,107 @@ class FixedReport:
                 "total_buffer_bytes": self.fields["total_buffer_bytes"],
                 "max_timeout_us": self.fields["max_timeout_us"],
             }
+        if self.kind == ReportKind.ADMISSION:
+            return {
+                "admitted": self.fields["admitted"] != 0,
+                "startup_len": self.fields["startup_len"],
+                "flash_limit_bytes": self.fields["flash_limit_bytes"],
+                "ram_limit_bytes": self.fields["ram_limit_bytes"],
+                "pool_limit_slots": self.fields["pool_limit_slots"],
+            }
+        if self.kind == ReportKind.RUNTIME:
+            return {
+                "state_code": self.fields["state"],
+                "module_count": self.fields["module_count"],
+                "mailbox_len": self.fields["mailbox_len"],
+                "mailbox_dropped": self.fields["mailbox_dropped"],
+                "alarm_len": self.fields["alarm_len"],
+                "next_alarm_due_us": _u64(
+                    self.fields["next_alarm_due_us_lo"],
+                    self.fields["next_alarm_due_us_hi"],
+                ),
+                "kv_len": self.fields["kv_len"],
+                "quota_flash_used_bytes": self.fields["quota_flash_used_bytes"],
+                "quota_ram_used_bytes": self.fields["quota_ram_used_bytes"],
+                "quota_pool_used_slots": self.fields["quota_pool_used_slots"],
+                "event_count": self.fields["event_count"],
+                "dropped_events": self.fields["dropped_events"],
+            }
+        if self.kind == ReportKind.HEALTH:
+            return {
+                "module_label": self._module_label(self.fields["module_tag"]),
+                "total_errors": self.fields["total_errors"],
+                "consecutive_errors": self.fields["consecutive_errors"],
+                "last_error": self.fields["last_error"],
+                "last_action": self.fields["last_action"],
+                "event_count": self.fields["event_count"],
+                "dropped_events": self.fields["dropped_events"],
+                "error_events": self.fields["error_events"],
+                "fatal_events": self.fields["fatal_events"],
+                "last_seen_us": _u64(
+                    self.fields["last_seen_us_lo"],
+                    self.fields["last_seen_us_hi"],
+                ),
+            }
+        if self.kind == ReportKind.EVENT_LOG:
+            return {
+                "event_count": self.fields["event_count"],
+                "capacity": self.fields["capacity"],
+                "dropped_events": self.fields["dropped_events"],
+                "latest_seq": self.fields["latest_seq"],
+                "latest_at_us": _u64(
+                    self.fields["latest_at_us_lo"],
+                    self.fields["latest_at_us_hi"],
+                ),
+                "latest_module_label": self._module_label(
+                    self.fields["latest_module_tag"]
+                ),
+                "latest_severity": self.fields["latest_severity"],
+                "latest_kind": self.fields["latest_kind"],
+                "latest_payload_kind": self.fields["latest_payload_kind"],
+                "latest_payload0": self.fields["latest_payload0"],
+                "latest_payload1": self.fields["latest_payload1"],
+            }
+        if self.kind == ReportKind.MODULE_RUNTIME:
+            return {
+                "module_count": self.fields["module_count"],
+                "capacity": self.fields["capacity"],
+                "active_count": self.fields["active_count"],
+                "suspended_count": self.fields["suspended_count"],
+                "faulted_count": self.fields["faulted_count"],
+                "recovering_count": self.fields["recovering_count"],
+                "disabled_count": self.fields["disabled_count"],
+                "latest_module_label": self._module_label(
+                    self.fields["latest_module_tag"]
+                ),
+                "latest_state": self.fields["latest_state"],
+                "latest_fault_count": self.fields["latest_fault_count"],
+                "latest_recovery_count": self.fields["latest_recovery_count"],
+                "latest_change_us": _u64(
+                    self.fields["latest_change_us_lo"],
+                    self.fields["latest_change_us_hi"],
+                ),
+            }
+        if self.kind == ReportKind.DEGRADE_APPLICATION:
+            return {
+                "requested_count": self.fields["requested_count"],
+                "disabled_count": self.fields["disabled_count"],
+                "already_disabled_count": self.fields["already_disabled_count"],
+                "reason": self.fields["reason"],
+                "applied_at_us": _u64(
+                    self.fields["applied_at_us_lo"],
+                    self.fields["applied_at_us_hi"],
+                ),
+            }
         return {}
+
+    def _module_label(self, tag: int) -> str | None:
+        if tag == 0:
+            return None
+        try:
+            return self.contract.module_label(tag)
+        except KeyError:
+            return None
 
 
 def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, int]:
@@ -470,6 +747,24 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
     elif report_kind == ReportKind.ADAPTER_COMPAT:
         expected_magic = ADAPTER_COMPAT_REPORT_MAGIC
         field_names = ADAPTER_COMPAT_FIELDS
+    elif report_kind == ReportKind.ADMISSION:
+        expected_magic = ADMISSION_REPORT_MAGIC
+        field_names = ADMISSION_FIELDS
+    elif report_kind == ReportKind.RUNTIME:
+        expected_magic = RUNTIME_REPORT_MAGIC
+        field_names = RUNTIME_FIELDS
+    elif report_kind == ReportKind.HEALTH:
+        expected_magic = HEALTH_REPORT_MAGIC
+        field_names = HEALTH_FIELDS
+    elif report_kind == ReportKind.EVENT_LOG:
+        expected_magic = EVENT_LOG_REPORT_MAGIC
+        field_names = EVENT_LOG_FIELDS
+    elif report_kind == ReportKind.MODULE_RUNTIME:
+        expected_magic = MODULE_RUNTIME_REPORT_MAGIC
+        field_names = MODULE_RUNTIME_FIELDS
+    elif report_kind == ReportKind.DEGRADE_APPLICATION:
+        expected_magic = DEGRADE_APPLICATION_REPORT_MAGIC
+        field_names = DEGRADE_APPLICATION_FIELDS
     elif report_kind == ReportKind.AI_MODEL:
         expected_magic = AI_MODEL_REPORT_MAGIC
         field_names = AI_MODEL_FIELDS
@@ -494,6 +789,10 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
 
 def _normalize_fields(payload: dict[str, Any], field_names: tuple[str, ...]) -> dict[str, int]:
     return {name: int(payload.get(name, 0)) & 0xFFFF_FFFF for name in field_names}
+
+
+def _u64(lo: int, hi: int) -> int:
+    return ((hi & 0xFFFF_FFFF) << 32) | (lo & 0xFFFF_FFFF)
 
 
 def _slot_from_payload(

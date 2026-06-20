@@ -130,6 +130,8 @@ Run the module from this folder or after installing the package:
 python -m nobro_rtos doctor
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
+python -m nobro_rtos sample-report runtime
+python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
 python -m nobro_rtos sample-report ros_bridge
 python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
@@ -182,12 +184,20 @@ Decode a report JSON file:
 python tools/nobro_contract_tool.py decode-report manifest path\to\manifest_report.json
 python tools/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
 python tools/nobro_contract_tool.py decode-report board_package path\to\board_package_report.json
+python tools/nobro_contract_tool.py decode-report admission path\to\admission_report.json
+python tools/nobro_contract_tool.py decode-report runtime path\to\runtime_report.json
+python tools/nobro_contract_tool.py decode-report health path\to\health_report.json
+python tools/nobro_contract_tool.py decode-report event_log path\to\event_log_report.json
+python tools/nobro_contract_tool.py decode-report module_runtime path\to\module_runtime_report.json
+python tools/nobro_contract_tool.py decode-report degrade_application path\to\degrade_report.json
 python tools/nobro_contract_tool.py decode-report ai_model path\to\ai_model_report.json
 python tools/nobro_contract_tool.py decode-report ros_bridge path\to\ros_bridge_report.json
 ```
 
 AI and ROS report decoding includes host-contract labels for backend,
 route-preference, and transport fields while preserving the raw numeric record.
+Runtime diagnostics decode fixed timestamps, module labels, health counters,
+event-log payload fields, and degraded-mode summary counters.
 
 Summarize a boot report bundle:
 
