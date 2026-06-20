@@ -170,6 +170,7 @@
     "magic": "0x4E424250",
     "version": 1,
     "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "review_fixtures": "airon-hal::BOARD_PROFILE_FIXTURES",
     "status": {
       "missing": "magic/version/checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
@@ -182,6 +183,7 @@
     "magic": "0x4E42424B",
     "version": 1,
     "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "review_fixtures": "airon-hal::BOARD_PACKAGE_FIXTURES",
     "boot_layout_codes": {
       "1": "no_softdevice",
       "2": "softdevice_s140_v6",

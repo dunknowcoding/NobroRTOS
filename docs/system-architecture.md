@@ -29,6 +29,9 @@ NobroRTOS follows the same broad lesson as Zephyr devicetree: hardware should be
 described as structured data that can be validated before driver code relies on
 it. The current implementation starts with `BoardDesc`, board features, memory
 scripts, and host-readable board profile reports.
+`BOARD_PROFILE_FIXTURES` and `BOARD_PACKAGE_FIXTURES` keep the current board
+features reviewable from one host build, which makes new board ports easier to
+compare before hardware-specific validation begins.
 
 Future board ports should add:
 

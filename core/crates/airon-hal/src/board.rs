@@ -131,4 +131,20 @@ mod tests {
 
         assert_eq!(Board::package(), fixture.package);
     }
+
+    #[test]
+    fn active_board_profile_matches_fixture() {
+        #[cfg(feature = "board-nicenano-s140")]
+        let fixture = crate::board_fixtures::profile_fixture_for_feature("board-nicenano-s140")
+            .expect("s140 fixture");
+
+        #[cfg(not(feature = "board-nicenano-s140"))]
+        let fixture = crate::board_fixtures::profile_fixture_for_feature("board-promicro-nosd")
+            .expect("nosd fixture");
+
+        assert_eq!(
+            crate::snapshots::BoardProfileReport::from_board::<Board>(),
+            fixture.report()
+        );
+    }
 }

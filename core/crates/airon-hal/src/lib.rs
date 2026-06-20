@@ -43,8 +43,9 @@ pub use board_desc::{
     BusLayout, ServoProfile,
 };
 pub use board_fixtures::{
-    fixture_for_feature, BoardPackageFixture, BOARD_PACKAGE_FIXTURES, NRF52840_BOARD_CAPACITY,
-    NRF52840_BOARD_PINS, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
+    fixture_for_feature, profile_fixture_for_feature, BoardPackageFixture, BoardProfileFixture,
+    BOARD_PACKAGE_FIXTURES, BOARD_PROFILE_FIXTURES, NRF52840_BOARD_CAPACITY, NRF52840_BOARD_PINS,
+    NRF52840_SERVO_CENTER_US, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
 };
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 pub use platform::ActivePlatform;

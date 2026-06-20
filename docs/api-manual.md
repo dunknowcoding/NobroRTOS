@@ -138,6 +138,16 @@ policy should stay outside hot-path adapters.
 
 Host-facing board data can be exported through `BoardProfileReport`.
 
+Board profile fixtures make identity, capacity, critical pins, and servo
+defaults reviewable without switching Cargo features:
+
+```rust
+for fixture in airon_hal::BOARD_PROFILE_FIXTURES {
+    let report = fixture.report();
+    assert!(report.verify_checksum());
+}
+```
+
 `BoardPackage` combines `BoardDesc` with boot layout, flash region, RAM region,
 capacity, and critical pins:
 

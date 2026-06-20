@@ -1,6 +1,8 @@
 //! Platform-agnostic self-test snapshot types.
 
-use crate::board_desc::{BoardCapacity, BoardDesc, BoardPackage, BusLayout, ServoProfile};
+use crate::board_desc::{
+    BoardCapacity, BoardDesc, BoardPackage, BoardPins, BusLayout, ServoProfile,
+};
 
 pub const BOARD_PROFILE_REPORT_MAGIC: u32 = 0x4E42_4250; // "NBBP"
 pub const BOARD_PROFILE_REPORT_VERSION: u32 = 1;
@@ -70,19 +72,36 @@ impl BoardProfileReport {
     }
 
     pub fn from_board<B: BoardDesc>() -> Self {
-        let capacity = B::CAPACITY;
+        Self::from_facts(
+            B::PLATFORM_ID,
+            B::BOARD_ID,
+            B::APP_FLASH_START,
+            B::CAPACITY,
+            BoardPins::new(B::LED_PIN, B::SERVO_PWM_PIN, B::MVK_TRIGGER_PIN),
+            B::SERVO_CENTER_US,
+        )
+    }
+
+    pub fn from_facts(
+        platform_id: &str,
+        board_id: &str,
+        app_flash_start: u32,
+        capacity: BoardCapacity,
+        pins: BoardPins,
+        servo_center_us: u32,
+    ) -> Self {
         let mut report = Self {
-            platform_hash: hash_str(B::PLATFORM_ID),
-            board_hash: hash_str(B::BOARD_ID),
-            app_flash_start: B::APP_FLASH_START,
+            platform_hash: hash_str(platform_id),
+            board_hash: hash_str(board_id),
+            app_flash_start,
             flash_budget_bytes: capacity.flash_budget_bytes,
             ram_budget_bytes: capacity.ram_budget_bytes,
             sample_pool_slots: u32::from(capacity.sample_pool_slots),
             max_modules: capacity.max_modules as u32,
-            servo_pin: u32::from(B::SERVO_PWM_PIN),
-            servo_center_us: B::SERVO_CENTER_US,
-            led_pin: u32::from(B::LED_PIN),
-            mvk_trigger_pin: u32::from(B::MVK_TRIGGER_PIN),
+            servo_pin: u32::from(pins.servo_pwm_pin),
+            servo_center_us,
+            led_pin: u32::from(pins.led_pin),
+            mvk_trigger_pin: u32::from(pins.mvk_trigger_pin),
             ..Self::zeroed()
         };
         report.seal();

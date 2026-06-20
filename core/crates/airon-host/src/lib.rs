@@ -1852,6 +1852,8 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_profile\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_package\""));
+        assert!(HOST_CONTRACT_JSON.contains("BOARD_PROFILE_FIXTURES"));
+        assert!(HOST_CONTRACT_JSON.contains("BOARD_PACKAGE_FIXTURES"));
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
         assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
