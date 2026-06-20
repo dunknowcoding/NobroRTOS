@@ -78,10 +78,11 @@ without carrying dynamic strings in realtime paths.
 ## Simulation Helpers
 
 `SensorStubSimulator` mirrors the Rust `sensor-stub` fixture modes for host
-workflows:
+workflows. `ServoSimulator` mirrors the RoboServo-style actuator timing and
+readback checks.
 
 ```python
-from nobro_rtos import SensorStubSimulator
+from nobro_rtos import SensorStubSimulator, ServoSimulator
 
 sim = SensorStubSimulator.bad_data_every(2, sample_period_ticks=1)
 first = sim.poll()
@@ -89,6 +90,10 @@ second = sim.poll()
 
 assert first.plausible
 assert not second.plausible
+
+servo = ServoSimulator(readback_offset_us=10)
+command = servo.set_duty_us(0, 1500, deadline_us=100, issued_at_us=90)
+assert command.accepted
 ```
 
 The simulator is deterministic and uses only caller-visible records, making it
@@ -105,13 +110,15 @@ python -m nobro_rtos sample-ai-route
 python -m nobro_rtos sample-report ai_model
 python -m nobro_rtos sample-report ros_bridge
 python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
+python -m nobro_rtos sample-actuator --start-us 1200 --stop-us 1800 --step-us 300
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge. The route sample prints a matching AI route
 policy, runtime state, and decision. The report samples print sealed fixed
 reports that can be fed directly into `decode-report`. The sensor sample emits
-deterministic fixture records and injected-fault summaries.
+deterministic fixture records and injected-fault summaries. The actuator sample
+emits deterministic servo command records with deadline and readback summaries.
 
 Validate the repository host contract against the Python enums:
 

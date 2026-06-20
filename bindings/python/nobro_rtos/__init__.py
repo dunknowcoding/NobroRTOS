@@ -47,6 +47,9 @@ from .sim import (
     SensorStubError,
     SensorStubMode,
     SensorStubSimulator,
+    ServoCommand,
+    ServoSimulator,
+    ServoSimulatorError,
 )
 
 __all__ = [
@@ -88,4 +91,7 @@ __all__ = [
     "SensorStubError",
     "SensorStubMode",
     "SensorStubSimulator",
+    "ServoCommand",
+    "ServoSimulator",
+    "ServoSimulatorError",
 ]

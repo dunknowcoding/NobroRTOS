@@ -25,13 +25,15 @@ from nobro_rtos import (
     RosTopic,
     SensorStubError,
     SensorStubSimulator,
+    ServoSimulator,
+    ServoSimulatorError,
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
     stable_hash32,
     validate_distribution_metadata,
 )
-from nobro_rtos.cli import _sample_report, _sample_sensor
+from nobro_rtos.cli import _sample_actuator, _sample_report, _sample_sensor
 
 
 class ContractBuilderTests(unittest.TestCase):
@@ -641,6 +643,29 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(error["sample_count"], 2)
         self.assertEqual(error["error_count"], 1)
         self.assertEqual(error["errors"][0]["tick"], 2)
+
+    def test_servo_simulator_checks_channel_range_and_timing(self) -> None:
+        servo = ServoSimulator(readback_offset_us=10, readback_tolerance_us=50)
+        command = servo.set_duty_us(0, 1500, deadline_us=100, issued_at_us=90)
+        late = servo.set_duty_us(0, 1600, deadline_us=100, issued_at_us=120)
+
+        self.assertTrue(command.accepted)
+        self.assertEqual(command.readback_delta_us, 10)
+        self.assertFalse(late.deadline_met)
+        self.assertFalse(late.accepted)
+        with self.assertRaises(ServoSimulatorError):
+            servo.set_duty_us(1, 1500, deadline_us=100)
+        with self.assertRaises(ServoSimulatorError):
+            servo.set_duty_us(0, 2600, deadline_us=100)
+
+    def test_cli_actuator_sample_summarizes_sweep(self) -> None:
+        report = _sample_actuator(1200, 1800, 300, readback_offset_us=60, tolerance_us=50)
+
+        self.assertEqual(report["command_count"], 3)
+        self.assertEqual(report["accepted_count"], 0)
+        self.assertEqual(report["deadline_miss_count"], 0)
+        self.assertEqual(report["readback_fail_count"], 3)
+        self.assertEqual(report["commands"][0]["pulse_us"], 1200)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

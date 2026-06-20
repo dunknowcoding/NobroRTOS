@@ -25,7 +25,7 @@ from .contracts import (
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
-from .sim import SensorStubError, SensorStubMode, SensorStubSimulator
+from .sim import SensorStubError, SensorStubMode, SensorStubSimulator, ServoSimulator
 
 
 def main() -> int:
@@ -79,6 +79,15 @@ def main() -> int:
         default=2,
         help="fault period for error_every or bad_data_every modes",
     )
+    sample_actuator = subparsers.add_parser(
+        "sample-actuator",
+        help="run the deterministic servo actuator simulator and print JSON",
+    )
+    sample_actuator.add_argument("--start-us", type=int, default=1200)
+    sample_actuator.add_argument("--stop-us", type=int, default=1800)
+    sample_actuator.add_argument("--step-us", type=int, default=300)
+    sample_actuator.add_argument("--readback-offset-us", type=int, default=0)
+    sample_actuator.add_argument("--tolerance-us", type=int, default=50)
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -134,6 +143,21 @@ def main() -> int:
         print(
             json.dumps(
                 _sample_sensor(args.mode, args.ticks, args.period, args.fault_period),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "sample-actuator":
+        print(
+            json.dumps(
+                _sample_actuator(
+                    args.start_us,
+                    args.stop_us,
+                    args.step_us,
+                    args.readback_offset_us,
+                    args.tolerance_us,
+                ),
                 indent=2,
                 sort_keys=True,
             )
@@ -317,4 +341,35 @@ def _sample_sensor(
         "error_count": len(errors),
         "samples": samples,
         "errors": errors,
+    }
+
+
+def _sample_actuator(
+    start_us: int,
+    stop_us: int,
+    step_us: int,
+    readback_offset_us: int,
+    tolerance_us: int,
+) -> dict[str, object]:
+    simulator = ServoSimulator(
+        readback_offset_us=readback_offset_us,
+        readback_tolerance_us=tolerance_us,
+    )
+    commands = simulator.sweep(start_us=start_us, stop_us=stop_us, step_us=step_us)
+    command_dicts = [command.to_dict() for command in commands]
+    return {
+        "start_us": start_us,
+        "stop_us": stop_us,
+        "step_us": step_us,
+        "readback_offset_us": readback_offset_us,
+        "tolerance_us": tolerance_us,
+        "command_count": len(command_dicts),
+        "accepted_count": sum(1 for command in command_dicts if command["accepted"]),
+        "deadline_miss_count": sum(
+            1 for command in command_dicts if not command["deadline_met"]
+        ),
+        "readback_fail_count": sum(
+            1 for command in command_dicts if not command["readback_ok"]
+        ),
+        "commands": command_dicts,
     }
