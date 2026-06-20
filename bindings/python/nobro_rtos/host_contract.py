@@ -34,6 +34,18 @@ EXPECTED_ROS_TRANSPORT_CODES = {
     "4": "shared_memory",
     "255": "custom",
 }
+EXPECTED_REPORT_CONTRACTS = {
+    "board_profile_report": ("NOBRO_BOARD_PROFILE_REPORT", "0x4E424250"),
+    "board_package_report": ("NOBRO_BOARD_PACKAGE_REPORT", "0x4E42424B"),
+    "manifest_report": ("NOBRO_MANIFEST_REPORT", "0x4E424D46"),
+    "adapter_compat_report": ("NOBRO_ADAPTER_COMPAT_REPORT", "0x4E424143"),
+    "admission_report": ("NOBRO_ADMISSION_REPORT", "0x4E424144"),
+    "runtime_report": ("NOBRO_RUNTIME_REPORT", "0x4E425254"),
+    "health_report": ("NOBRO_HEALTH_REPORT", "0x4E42484C"),
+    "event_log_report": ("NOBRO_EVENT_LOG_REPORT", "0x4E42454C"),
+    "module_runtime_report": ("NOBRO_MODULE_RUNTIME_REPORT", "0x4E424D52"),
+    "degrade_application_report": ("NOBRO_DEGRADE_APPLICATION_REPORT", "0x4E424447"),
+}
 
 
 class ReportStatusClass(IntEnum):
@@ -132,6 +144,7 @@ class HostContract:
             raise ValueError(f"unexpected status labels: {status_labels}")
 
         self._validate_capability_bits()
+        self._validate_report_contracts()
         self._validate_ai_contracts()
         self._validate_ros_bridge_contracts()
 
@@ -200,6 +213,19 @@ class HostContract:
                 raise ValueError(
                     f"capability {capability.name} expected {expected}, got {label}"
                 )
+
+    def _validate_report_contracts(self) -> None:
+        for key, (expected_symbol, expected_magic) in EXPECTED_REPORT_CONTRACTS.items():
+            report = self._require_object(key)
+            symbol = report.get("symbol")
+            if symbol != expected_symbol:
+                raise ValueError(f"unexpected {key} symbol: {symbol}")
+            magic = report.get("magic")
+            if magic != expected_magic:
+                raise ValueError(f"unexpected {key} magic: {magic}")
+            version = report.get("version")
+            if version != 1:
+                raise ValueError(f"unexpected {key} version: {version}")
 
     def _validate_ai_contracts(self) -> None:
         ai_contracts = self._require_object("ai_contracts")

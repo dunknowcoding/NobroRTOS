@@ -473,6 +473,15 @@ class ContractBuilderTests(unittest.TestCase):
             contract.payload["ros_bridge_contracts"]["transport_codes"]["255"],
             "custom",
         )
+        self.assertEqual(
+            contract.payload["runtime_report"]["symbol"],
+            "NOBRO_RUNTIME_REPORT",
+        )
+        self.assertEqual(contract.payload["health_report"]["magic"], "0x4E42484C")
+        self.assertEqual(
+            contract.payload["degrade_application_report"]["version"],
+            1,
+        )
 
     def test_boot_diagnostic_decoder_preserves_error_label(self) -> None:
         contract = load_repo_host_contract()
