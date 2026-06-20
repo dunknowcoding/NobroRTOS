@@ -344,6 +344,10 @@ assert_eq!(contract.topic_count, 1);
 assert!(contract.total_buffer_bytes <= 512);
 ```
 
+Python bridge descriptors emit the same stable FNV-1a 32-bit hashes alongside
+readable names, so host-generated metadata can be reviewed by people and still
+map cleanly to Rust `RosBridgeContract` fields.
+
 ## Host API
 
 `nobro-host` mirrors all report constants:

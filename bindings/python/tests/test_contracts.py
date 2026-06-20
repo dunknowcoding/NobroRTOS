@@ -22,6 +22,7 @@ from nobro_rtos import (
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
+    stable_hash32,
     validate_distribution_metadata,
 )
 
@@ -176,6 +177,26 @@ class ContractBuilderTests(unittest.TestCase):
         loaded = NobroContractBundle.from_json(bundle.to_json())
 
         self.assertEqual(loaded.to_dict(), bundle.to_dict())
+
+    def test_ros_bridge_metadata_exports_stable_hashes(self) -> None:
+        bridge = RosBridgeDescriptor(
+            "robot_core",
+            "serial",
+            topics=(RosTopic("/imu", "sensor_msgs/Imu", 4, 128),),
+            services=(RosService("/reset", 16, 16, 50_000),),
+        )
+
+        payload = bridge.to_dict()
+
+        self.assertEqual(stable_hash32("/imu"), 0xB4CAA2A7)
+        self.assertEqual(payload["bridge_id_hash"], stable_hash32("robot_core"))
+        self.assertEqual(payload["transport_hash"], stable_hash32("serial"))
+        self.assertEqual(payload["topics"][0]["name_hash"], stable_hash32("/imu"))
+        self.assertEqual(
+            payload["topics"][0]["message_type_hash"],
+            stable_hash32("sensor_msgs/Imu"),
+        )
+        self.assertEqual(payload["services"][0]["name_hash"], stable_hash32("/reset"))
 
     def test_capability_masks_reject_unknown_bits(self) -> None:
         self.assertEqual(

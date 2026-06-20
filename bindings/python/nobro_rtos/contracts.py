@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 CONTRACT_SCHEMA_VERSION = 1
+FNV1A32_OFFSET = 0x811C9DC5
+FNV1A32_PRIME = 0x01000193
 
 
 class Capability(IntEnum):
@@ -66,6 +68,16 @@ def capabilities_from_mask(mask: int) -> tuple[Capability, ...]:
     if unknown_bits:
         raise ValueError(f"unknown capability bits: 0x{unknown_bits:X}")
     return capabilities
+
+
+def stable_hash32(value: str) -> int:
+    """Return the stable FNV-1a 32-bit hash used by bridge metadata."""
+
+    result = FNV1A32_OFFSET
+    for byte in value.encode("utf-8"):
+        result ^= byte
+        result = (result * FNV1A32_PRIME) & 0xFFFF_FFFF
+    return result
 
 
 def _enum_from_label(enum_type: type[IntEnum], label: str) -> IntEnum:
@@ -228,7 +240,9 @@ class RosTopic:
         self.validate()
         return {
             "name": self.name,
+            "name_hash": stable_hash32(self.name),
             "message_type": self.message_type,
+            "message_type_hash": stable_hash32(self.message_type),
             "depth": self.depth,
             "max_message_bytes": self.max_message_bytes,
         }
@@ -260,6 +274,7 @@ class RosService:
         self.validate()
         return {
             "name": self.name,
+            "name_hash": stable_hash32(self.name),
             "request_bytes_max": self.request_bytes_max,
             "response_bytes_max": self.response_bytes_max,
             "timeout_us": self.timeout_us,
@@ -294,6 +309,7 @@ class RosAction:
         self.validate()
         return {
             "name": self.name,
+            "name_hash": stable_hash32(self.name),
             "goal_bytes_max": self.goal_bytes_max,
             "feedback_bytes_max": self.feedback_bytes_max,
             "result_bytes_max": self.result_bytes_max,
@@ -324,6 +340,7 @@ class RosParameter:
         self.validate()
         return {
             "name": self.name,
+            "name_hash": stable_hash32(self.name),
             "value_bytes_max": self.value_bytes_max,
         }
 
@@ -364,7 +381,9 @@ class RosBridgeDescriptor:
         self.validate()
         return {
             "bridge_id": self.bridge_id,
+            "bridge_id_hash": stable_hash32(self.bridge_id),
             "transport": self.transport,
+            "transport_hash": stable_hash32(self.transport),
             "topics": [topic.to_dict() for topic in self.topics],
             "services": [service.to_dict() for service in self.services],
             "actions": [action.to_dict() for action in self.actions],

@@ -16,6 +16,7 @@ from .contracts import (
     RosTopic,
     capability_mask,
     capabilities_from_mask,
+    stable_hash32,
 )
 from .host_contract import (
     BootDiagnostic,
@@ -53,6 +54,7 @@ __all__ = [
     "RosTopic",
     "capability_mask",
     "capabilities_from_mask",
+    "stable_hash32",
     "find_repo_root",
     "BootDiagnostic",
     "HostContract",
