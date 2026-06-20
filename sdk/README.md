@@ -1,14 +1,18 @@
 # NobroRTOS Standalone SDK
 
-This folder is reserved for the standalone SDK distribution surface.
+This folder defines the standalone SDK distribution surface.
 
-Planned contents:
+Current contents:
 
-- exported headers or generated bindings
-- prebuilt metadata for supported board packages
-- host-side report decoding helpers
-- examples that do not depend on Arduino IDE or PlatformIO
-- package build scripts that keep generated artifacts outside the repository
+- `sdk-manifest.json` describes the canonical SDK contract, include roots,
+  host tools, package surfaces, and generated-output policy.
+- C and C++ headers are sourced from `bindings/c/include` and
+  `bindings/cpp/include`.
+- Host report decoding helpers are sourced from `bindings/python` and
+  `tools/nobro_contract_tool.py`.
 
 The core implementation remains in `core/`; this folder should contain only the
 stable SDK packaging surface.
+
+Generated archives, compiler outputs, and local caches must be written under a
+throwaway work directory such as `_work/` and must not be committed.

@@ -1,0 +1,32 @@
+{
+  "name": "NobroRTOS",
+  "version": "0.0.0-dev",
+  "description": "Ultra-light embedded RTOS contracts for AI robotics, IoT, and intelligent control.",
+  "keywords": [
+    "rtos",
+    "embedded",
+    "robotics",
+    "ai",
+    "iot",
+    "diagnostics"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dunknowcoding/NobroRTOS.git"
+  },
+  "authors": [
+    {
+      "name": "dunknowcoding",
+      "maintainer": true
+    }
+  ],
+  "license": "Apache-2.0",
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": [
+    "NobroRTOS.h"
+  ],
+  "build": {
+    "includeDir": "include"
+  }
+}

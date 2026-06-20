@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "NobroRTOS Standalone SDK",
+  "package_id": "nobro-rtos-sdk",
+  "repository": "https://github.com/dunknowcoding/NobroRTOS",
+  "license": "Apache-2.0",
+  "author": "dunknowcoding",
+  "canonical_contract": "host/nobro-host-contract.json",
+  "core_workspace": "core",
+  "include_roots": [
+    "bindings/c/include",
+    "bindings/cpp/include"
+  ],
+  "host_tools": [
+    "tools/nobro_contract_tool.py"
+  ],
+  "package_surfaces": {
+    "arduino": "packages/arduino",
+    "platformio": "packages/platformio"
+  },
+  "generated_output_policy": {
+    "repo_relative_work_dir": "_work",
+    "commit_generated_archives": false,
+    "commit_compiler_outputs": false,
+    "commit_cache_dirs": false
+  }
+}

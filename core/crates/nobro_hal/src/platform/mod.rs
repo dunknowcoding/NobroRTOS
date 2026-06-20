@@ -23,13 +23,13 @@ pub mod nrf52840;
 pub use nrf52840::Active as ActivePlatform;
 
 #[cfg(all(not(feature = "platform-nrf52840"), feature = "platform-esp32"))]
-compile_error!("platform-esp32 is reserved for a future port; implement platform/esp32/ first");
+compile_error!("platform-esp32 requires a platform/esp32/ implementation first");
 
 #[cfg(all(not(feature = "platform-nrf52840"), feature = "platform-rp2040"))]
-compile_error!("platform-rp2040 is reserved for a future port; implement platform/rp2040/ first");
+compile_error!("platform-rp2040 requires a platform/rp2040/ implementation first");
 
 #[cfg(all(not(feature = "platform-nrf52840"), feature = "platform-stm32"))]
-compile_error!("platform-stm32 is reserved for a future port; implement platform/stm32/ first");
+compile_error!("platform-stm32 requires a platform/stm32/ implementation first");
 
 #[cfg(all(
     not(feature = "platform-nrf52840"),

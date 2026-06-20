@@ -1,8 +1,8 @@
 # NobroRTOS Tools
 
-This folder is reserved for repository-native tools.
+This folder contains repository-native tools.
 
-Planned tools:
+Tooling direction:
 
 - SDK package builders
 - Arduino and PlatformIO package generators

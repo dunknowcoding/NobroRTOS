@@ -26,6 +26,52 @@ from nobro_rtos import (
 
 
 class ContractBuilderTests(unittest.TestCase):
+    def test_distribution_metadata_points_to_canonical_contracts(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        sdk_manifest = json.loads(
+            (repo_root / "sdk" / "sdk-manifest.json").read_text(encoding="utf-8")
+        )
+        platformio = json.loads(
+            (repo_root / "packages" / "platformio" / "library.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        arduino_properties = dict(
+            line.split("=", 1)
+            for line in (
+                repo_root / "packages" / "arduino" / "library.properties"
+            ).read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")
+        )
+
+        self.assertEqual(sdk_manifest["name"], "NobroRTOS Standalone SDK")
+        self.assertEqual(sdk_manifest["license"], "Apache-2.0")
+        self.assertEqual(
+            sdk_manifest["canonical_contract"],
+            "host/nobro-host-contract.json",
+        )
+        self.assertIn("bindings/c/include", sdk_manifest["include_roots"])
+        self.assertIn("bindings/cpp/include", sdk_manifest["include_roots"])
+        self.assertEqual(
+            sdk_manifest["generated_output_policy"]["commit_cache_dirs"],
+            False,
+        )
+
+        self.assertEqual(arduino_properties["name"], "NobroRTOS")
+        self.assertEqual(
+            arduino_properties["url"],
+            "https://github.com/dunknowcoding/NobroRTOS",
+        )
+        self.assertEqual(arduino_properties["includes"], "NobroRTOS.h")
+
+        self.assertEqual(platformio["name"], "NobroRTOS")
+        self.assertEqual(platformio["license"], "Apache-2.0")
+        self.assertEqual(
+            platformio["repository"]["url"],
+            "https://github.com/dunknowcoding/NobroRTOS.git",
+        )
+        self.assertEqual(platformio["headers"], ["NobroRTOS.h"])
+
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
         header = (repo_root / "bindings" / "c" / "include" / "nobro_rtos.h").read_text(
