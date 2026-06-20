@@ -88,6 +88,12 @@ From the repository root, use the local tool wrapper:
 python tools/nobro_contract_tool.py check-host-contract
 ```
 
+Decode a boot diagnostic code:
+
+```powershell
+python tools/nobro_contract_tool.py decode-boot 0x04040003
+```
+
 ## Tests
 
 The current tests use only the Python standard library:

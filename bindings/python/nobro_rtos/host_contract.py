@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 import json
 from typing import Any
@@ -20,6 +21,80 @@ EXPECTED_BOOT_STAGES = (
     "runtime",
 )
 EXPECTED_STATUS_LABELS = ("missing", "in_progress", "pass", "fail", "corrupt")
+ERROR_REPORT_KEYS = {
+    "board_package": "board_package_report",
+    "manifest": "manifest_report",
+    "adapter_compatibility": "adapter_compat_report",
+    "admission": "admission_report",
+}
+
+
+class ReportStatusClass(IntEnum):
+    PASS = 0
+    MISSING = 1
+    IN_PROGRESS = 2
+    CORRUPT = 3
+    FAIL = 4
+
+    @property
+    def label(self) -> str:
+        return {
+            self.PASS: "pass",
+            self.MISSING: "missing",
+            self.IN_PROGRESS: "in_progress",
+            self.CORRUPT: "corrupt",
+            self.FAIL: "fail",
+        }[self]
+
+
+@dataclass(frozen=True)
+class BootDiagnostic:
+    """Decoded boot diagnostic code.
+
+    The code layout mirrors `airon-host`:
+    stage_code << 24 | status_class << 16 | error_code_low16.
+    """
+
+    stage_code: int
+    stage: str
+    status_class: ReportStatusClass
+    error_code: int
+    error_label: str | None = None
+
+    @classmethod
+    def decode(
+        cls, code: int, contract: "HostContract | None" = None
+    ) -> "BootDiagnostic":
+        contract = load_repo_host_contract() if contract is None else contract
+        stage_code = (code >> 24) & 0xFF
+        status_class_code = (code >> 16) & 0xFF
+        error_code = code & 0xFFFF
+        status_class = ReportStatusClass(status_class_code)
+        stage = contract.boot_stage_label(stage_code)
+        error_label = (
+            contract.error_label(stage, error_code)
+            if status_class == ReportStatusClass.FAIL
+            else None
+        )
+        return cls(stage_code, stage, status_class, error_code, error_label)
+
+    @property
+    def status(self) -> str:
+        return self.status_class.label
+
+    @property
+    def passing(self) -> bool:
+        return self.status_class == ReportStatusClass.PASS
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage_code": self.stage_code,
+            "stage": self.stage,
+            "status": self.status,
+            "error_code": self.error_code,
+            "error_label": self.error_label,
+            "passing": self.passing,
+        }
 
 
 @dataclass(frozen=True)
@@ -62,6 +137,24 @@ class HostContract:
 
     def status_labels(self) -> tuple[str, ...]:
         return tuple(self.payload["boot_diagnostics"]["status_labels"])
+
+    def boot_stage_label(self, stage_code: int) -> str:
+        stages = self.boot_stage_order()
+        if stage_code < 1 or stage_code > len(stages):
+            raise ValueError(f"unknown boot stage code: {stage_code}")
+        return stages[stage_code - 1]
+
+    def error_label(self, stage: str, code: int) -> str | None:
+        report_key = ERROR_REPORT_KEYS.get(stage)
+        if report_key is None:
+            return None
+        report = self.payload.get(report_key)
+        if not isinstance(report, dict):
+            return None
+        labels = report.get("error_codes")
+        if not isinstance(labels, dict):
+            return None
+        return labels.get(str(code))
 
     def _require_object(self, key: str) -> dict[str, Any]:
         value = self.payload.get(key)

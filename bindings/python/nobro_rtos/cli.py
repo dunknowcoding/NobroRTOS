@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from .contracts import (
     AiBackendKind,
@@ -17,7 +18,7 @@ from .contracts import (
     RosService,
     RosTopic,
 )
-from .host_contract import load_repo_host_contract
+from .host_contract import BootDiagnostic, load_repo_host_contract
 
 
 def main() -> int:
@@ -34,6 +35,11 @@ def main() -> int:
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
     )
+    decode_boot = subparsers.add_parser(
+        "decode-boot",
+        help="decode a boot diagnostic code into stage, status, and error label",
+    )
+    decode_boot.add_argument("code", help="diagnostic code as decimal or 0x-prefixed hex")
     args = parser.parse_args()
 
     if args.command == "sample-ai-ros":
@@ -43,6 +49,11 @@ def main() -> int:
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
         print(f"host contract ok: {stages}")
+        return 0
+    if args.command == "decode-boot":
+        code = int(args.code, 0)
+        diagnostic = BootDiagnostic.decode(code)
+        print(json.dumps(diagnostic.to_dict(), indent=2, sort_keys=True))
         return 0
 
     parser.error(f"unknown command: {args.command}")

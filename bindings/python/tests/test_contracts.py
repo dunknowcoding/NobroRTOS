@@ -4,6 +4,7 @@ import unittest
 from nobro_rtos import (
     AiBackendKind,
     AiModelContract,
+    BootDiagnostic,
     Capability,
     Criticality,
     MemoryBudget,
@@ -106,6 +107,25 @@ class ContractBuilderTests(unittest.TestCase):
             ),
         )
         self.assertEqual(contract.capability_label(Capability.AI_ENDPOINT), "ai_endpoint")
+
+    def test_boot_diagnostic_decoder_preserves_error_label(self) -> None:
+        contract = load_repo_host_contract()
+        diagnostic = BootDiagnostic.decode(0x0404_0003, contract)
+
+        self.assertFalse(diagnostic.passing)
+        self.assertEqual(diagnostic.stage, "adapter_compatibility")
+        self.assertEqual(diagnostic.status, "fail")
+        self.assertEqual(diagnostic.error_code, 3)
+        self.assertEqual(diagnostic.error_label, "capability_ownership_conflict")
+
+    def test_boot_diagnostic_decoder_handles_pass(self) -> None:
+        contract = load_repo_host_contract()
+        diagnostic = BootDiagnostic.decode(0x0600_0000, contract)
+
+        self.assertTrue(diagnostic.passing)
+        self.assertEqual(diagnostic.stage, "runtime")
+        self.assertEqual(diagnostic.status, "pass")
+        self.assertIsNone(diagnostic.error_label)
 
 
 if __name__ == "__main__":
