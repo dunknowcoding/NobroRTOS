@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+import re
 import unittest
 
 from nobro_rtos import (
@@ -24,6 +26,34 @@ from nobro_rtos import (
 
 
 class ContractBuilderTests(unittest.TestCase):
+    def test_c_header_report_constants_match_host_contract(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        header = (repo_root / "bindings" / "c" / "include" / "nobro_rtos.h").read_text(
+            encoding="utf-8"
+        )
+        contract = load_repo_host_contract()
+        report_defines = {
+            "board_profile_report": "NOBRO_BOARD_PROFILE_REPORT_MAGIC",
+            "board_package_report": "NOBRO_BOARD_PACKAGE_REPORT_MAGIC",
+            "manifest_report": "NOBRO_MANIFEST_REPORT_MAGIC",
+            "adapter_compat_report": "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
+        }
+        report_structs = {
+            "board_profile_report": "nobro_board_profile_report_t",
+            "board_package_report": "nobro_board_package_report_t",
+            "manifest_report": "nobro_manifest_report_t",
+            "adapter_compat_report": "nobro_adapter_compat_report_t",
+        }
+
+        for report_key, define in report_defines.items():
+            match = re.search(rf"#define\s+{define}\s+(0x[0-9A-Fa-f]+)u", header)
+            self.assertIsNotNone(match, define)
+            self.assertEqual(
+                int(match.group(1), 16),
+                int(contract.payload[report_key]["magic"], 16),
+            )
+            self.assertIn(report_structs[report_key], header)
+
     def test_bundle_exports_stable_masks_and_schema_version(self) -> None:
         bundle = NobroContractBundle(
             modules=(
