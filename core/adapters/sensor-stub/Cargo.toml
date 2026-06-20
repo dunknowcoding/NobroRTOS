@@ -1,15 +1,15 @@
 [package]
-name = "airon-adapter-sensor-stub"
+name = "nobro-adapter-sensor-stub"
 version.workspace = true
 edition.workspace = true
 description = "Fixture-backed SensorSal IMU adapter for NobroRTOS"
 
 [dependencies]
-airon-hal = { path = "../../crates/nobro_hal", default-features = false }
-airon-kernel = { path = "../../crates/nobro_kernel" }
-airon-sal = { path = "../../crates/nobro_sal" }
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../crates/nobro_kernel" }
+nobro-sal = { path = "../../crates/nobro_sal" }
 
 [features]
 default = ["board-promicro-nosd"]
-board-promicro-nosd = ["airon-hal/board-promicro-nosd"]
-board-nicenano-s140 = ["airon-hal/board-nicenano-s140"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

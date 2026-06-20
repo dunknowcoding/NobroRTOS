@@ -4,19 +4,19 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use airon_adapter_mpu9250_imu::{accel_mag_mg, imu_plausible, Mpu9250Imu};
-use airon_hal::{
+use nobro_adapter_mpu9250_imu::{accel_mag_mg, imu_plausible, Mpu9250Imu};
+use nobro_hal::{
     board_desc::BoardDesc,
     lease::Resource,
     ppi,
     traits::{HalClock, HalLease, PlatformHal},
     ActivePlatform as Hal, Board,
 };
-use airon_kernel::{
+use nobro_kernel::{
     eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, MIN_IMU_HW_READS},
     pool::SamplePool,
 };
-use airon_sal::SensorSal;
+use nobro_sal::SensorSal;
 
 static IMU_READS: AtomicU32 = AtomicU32::new(0);
 static IMU_ERRORS: AtomicU32 = AtomicU32::new(0);
@@ -46,7 +46,7 @@ fn main() -> ! {
 
     unsafe {
         NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
-        NOBRO_IMU_HW_EVAL_REPORT.version = airon_kernel::eval::IMU_HW_EVAL_VERSION;
+        NOBRO_IMU_HW_EVAL_REPORT.version = nobro_kernel::eval::IMU_HW_EVAL_VERSION;
     }
 
     let device_count = Mpu9250Imu::scan_device_count();
@@ -58,7 +58,7 @@ fn main() -> ! {
     let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
         Ok(imu) => imu,
         Err(_) => {
-            if let Ok(raw) = airon_hal::Twim0::read_reg(0x68, 0x75) {
+            if let Ok(raw) = nobro_hal::Twim0::read_reg(0x68, 0x75) {
                 unsafe {
                     NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(raw);
                     NOBRO_IMU_HW_EVAL_REPORT.dev_addr = 0x68;
@@ -98,7 +98,7 @@ fn main() -> ! {
         match imu.poll() {
             Ok(Some(sample)) => {
                 IMU_READS.fetch_add(1, Ordering::AcqRel);
-                if let Some(payload) = airon_kernel::ImuPayload::read_from_handle(sample.handle) {
+                if let Some(payload) = nobro_kernel::ImuPayload::read_from_handle(sample.handle) {
                     if imu_plausible(payload.accel_g) {
                         LAST_MAG_MG.store(accel_mag_mg(payload.accel_g), Ordering::Release);
                     } else {

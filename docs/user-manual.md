@@ -35,9 +35,9 @@ Run commands from `core/` unless noted otherwise:
 
 ```powershell
 cd core
-cargo test -p airon-kernel --target x86_64-pc-windows-msvc
-cargo test -p airon-sal --target x86_64-pc-windows-msvc
-cargo test -p airon-host --target x86_64-pc-windows-msvc
+cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
+cargo test -p nobro-sal --target x86_64-pc-windows-msvc
+cargo test -p nobro-host --target x86_64-pc-windows-msvc
 ```
 
 ## Build Profiles
@@ -75,7 +75,7 @@ For small apps, `BootAssembly` can do steps 3 through 6 while keeping the
 manifest, startup graph, admission result, and runtime visible:
 
 ```rust
-use airon_kernel::{
+use nobro_kernel::{
     kernel_module_spec, BootAssembly, Capability, CapabilitySet, Criticality,
     DeadlineContract, FaultThresholds, MemoryBudget, ModuleId, ModuleSpec,
     StartupDependency, SystemProfile,
@@ -105,11 +105,11 @@ assert!(boot.manifest_report.verify_checksum());
 assert!(boot.admission_report.verify_checksum());
 ```
 
-Firmware that depends on `airon-hal` can enable `airon-kernel/hal-profile` and
+Firmware that depends on `nobro-hal` can enable `nobro-kernel/hal-profile` and
 derive the profile from the active board package:
 
 ```rust
-let profile = SystemProfile::from_board_package(&airon_hal::ACTIVE_BOARD_PACKAGE)?;
+let profile = SystemProfile::from_board_package(&nobro_hal::ACTIVE_BOARD_PACKAGE)?;
 ```
 
 For diagnostics-first startup code, use `build_with_failure` and export the
@@ -140,7 +140,7 @@ the adapter compatibility report before entering hardware-facing demo code.
 
 ## Working With SAL
 
-Application code should depend on `airon-sal` traits:
+Application code should depend on `nobro-sal` traits:
 
 - `BusSal` for I2C, SPI, and UART-like bus access
 - `StreamSal` for framed byte streams
@@ -153,7 +153,7 @@ Application code should depend on `airon-sal` traits:
 Adapters translate concrete hardware or libraries into those traits. Apps
 should not call vendor headers directly.
 
-For bring-up and CI, `airon-adapter-sensor-stub` can run as a deterministic
+For bring-up and CI, `nobro-adapter-sensor-stub` can run as a deterministic
 sensor fixture. It can emit plausible IMU samples, stay silent, inject periodic
 adapter errors, or produce implausible payloads without requiring external
 hardware.

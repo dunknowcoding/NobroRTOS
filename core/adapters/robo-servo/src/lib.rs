@@ -1,14 +1,14 @@
 //! RoboServo-style ActuatorSal using the nRF52840 PWM backend.
 //!
-//! Maps RoboServo semantics (`set_pulse_us` @ 50 Hz) onto `airon-hal` servo PWM.
+//! Maps RoboServo semantics (`set_pulse_us` @ 50 Hz) onto `nobro-hal` servo PWM.
 
 #![no_std]
 
-use airon_hal::{traits::HalServoPwm, ActivePlatform as Hal};
-use airon_kernel::{
+use nobro_hal::{traits::HalServoPwm, ActivePlatform as Hal};
+use nobro_kernel::{
     Capability, CapabilitySet, Criticality, DeadlineContract, MemoryBudget, ModuleId, ModuleSpec,
 };
-use airon_sal::AdapterManifest;
+use nobro_sal::AdapterManifest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoboServoError {
@@ -50,7 +50,7 @@ impl AdapterManifest for RoboServoAdapter {
     }
 }
 
-impl airon_sal::ActuatorSal for RoboServoAdapter {
+impl nobro_sal::ActuatorSal for RoboServoAdapter {
     type Error = RoboServoError;
 
     fn set_duty_us(

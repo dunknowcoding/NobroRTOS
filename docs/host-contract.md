@@ -58,7 +58,7 @@ Host tools should decode the first non-passing boot stage in this order:
 
 ## Boot Summary
 
-`airon-host` exposes `BootReports::summary()` for tools that need one compact
+`nobro-host` exposes `BootReports::summary()` for tools that need one compact
 view of boot state. The summary includes the first diagnostic, all six report
 slots, diagnostic code, and per-status counts. Tools should use this helper
 before rendering user-facing text.
@@ -75,5 +75,5 @@ Boot diagnostic code layout:
 stage_code << 24 | status_class << 16 | error_code_low16
 ```
 
-Use `airon-host` helper labels rather than duplicating numeric maps in host
+Use `nobro-host` helper labels rather than duplicating numeric maps in host
 tools.

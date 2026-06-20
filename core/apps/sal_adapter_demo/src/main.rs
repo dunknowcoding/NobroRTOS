@@ -11,15 +11,15 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use airon_adapter_robo_servo::{module_spec as robo_servo_spec, RoboServoAdapter};
-use airon_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausible, SensorStub};
-use airon_hal::{
+use nobro_adapter_robo_servo::{module_spec as robo_servo_spec, RoboServoAdapter};
+use nobro_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausible, SensorStub};
+use nobro_hal::{
     lease::Resource,
     ppi,
     traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
     ActivePlatform as Hal, BoardPackageReport, BoardProfileReport, ACTIVE_BOARD_PACKAGE,
 };
-use airon_kernel::{
+use nobro_kernel::{
     eval::{
         SalEvalReport, MIN_IMU_SAMPLES, MIN_SERVO_STEPS, SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
     },
@@ -31,7 +31,7 @@ use airon_kernel::{
     EventLogReport, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleRuntimeReport,
     ModuleSpec, RuntimeReport, StartupDependency, SystemProfile,
 };
-use airon_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
+use nobro_sal::{ActuatorSal, AdapterCompatibilityReport, AdapterPreflight, SensorSal};
 
 static SERVO_STEPS: AtomicU32 = AtomicU32::new(0);
 static SERVO_READBACK_OK: AtomicU32 = AtomicU32::new(0);
@@ -131,7 +131,7 @@ fn main() -> ! {
 
     unsafe {
         NOBRO_SAL_EVAL_REPORT.magic = SAL_EVAL_MAGIC;
-        NOBRO_SAL_EVAL_REPORT.version = airon_kernel::eval::SAL_EVAL_VERSION;
+        NOBRO_SAL_EVAL_REPORT.version = nobro_kernel::eval::SAL_EVAL_VERSION;
     }
 
     loop {
@@ -333,7 +333,7 @@ fn write_progress_report() {
     }
     let report = SalEvalReport {
         magic: SAL_EVAL_MAGIC,
-        version: airon_kernel::eval::SAL_EVAL_VERSION,
+        version: nobro_kernel::eval::SAL_EVAL_VERSION,
         servo_steps: SERVO_STEPS.load(Ordering::Acquire),
         servo_readback_ok: SERVO_READBACK_OK.load(Ordering::Acquire),
         imu_samples: IMU_SAMPLES.load(Ordering::Acquire),

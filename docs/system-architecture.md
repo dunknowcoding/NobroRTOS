@@ -19,10 +19,10 @@ and diagnosable recovery.
 | ----- | ------------- | -------------- |
 | App | `core/apps/*` | Compose board, adapters, manifest, startup graph, and runtime |
 | Adapter | `core/adapters/*` | Translate devices or libraries into SAL traits |
-| SAL | `airon-sal` | Stable service traits for hardware, communication, AI, and edge services |
-| Kernel | `airon-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
-| HAL | `airon-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |
-| Host | `airon-host`, `host/nobro-host-contract.json` | Report decoding and external contracts |
+| SAL | `nobro-sal` | Stable service traits for hardware, communication, AI, and edge services |
+| Kernel | `nobro-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
+| HAL | `nobro-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |
+| Host | `nobro-host`, `host/nobro-host-contract.json` | Report decoding and external contracts |
 
 ## Compatibility Strategy
 
@@ -50,7 +50,7 @@ identifiers, aligned flash origin, non-empty flash/RAM regions, usable capacity
 budgets, and distinct critical pins before a port becomes a recommended target.
 Firmware can export `NOBRO_BOARD_PACKAGE_REPORT` so host tooling can inspect the
 same contract before manifest and adapter diagnostics.
-With the `airon-kernel/hal-profile` feature, apps can derive `SystemProfile`
+With the `nobro-kernel/hal-profile` feature, apps can derive `SystemProfile`
 from `BoardPackage`, which keeps manifest and admission budgets aligned with
 the selected board package.
 

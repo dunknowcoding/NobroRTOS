@@ -184,8 +184,8 @@ impl SystemProfile {
 
     #[cfg(feature = "hal-profile")]
     pub fn from_board_package(
-        package: &airon_hal::BoardPackage,
-    ) -> Result<Self, airon_hal::BoardPackageError> {
+        package: &nobro_hal::BoardPackage,
+    ) -> Result<Self, nobro_hal::BoardPackageError> {
         package.validate()?;
         Ok(Self::new(
             package.capacity.flash_budget_bytes,
@@ -847,18 +847,18 @@ mod tests {
     #[cfg(feature = "hal-profile")]
     #[test]
     fn system_profile_can_be_derived_from_board_package() {
-        let package = airon_hal::BoardPackage::new(
+        let package = nobro_hal::BoardPackage::new(
             "test-platform",
             "test-board",
-            airon_hal::BootProfile::new(
-                airon_hal::BootLayout::NoSoftDevice,
+            nobro_hal::BootProfile::new(
+                nobro_hal::BootLayout::NoSoftDevice,
                 0x1000,
                 128 * 1024,
                 0x2000_0000,
                 64 * 1024,
             ),
-            airon_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
-            airon_hal::BoardPins::new(1, 2, 3),
+            nobro_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
+            nobro_hal::BoardPins::new(1, 2, 3),
         );
 
         assert_eq!(
@@ -870,23 +870,23 @@ mod tests {
     #[cfg(feature = "hal-profile")]
     #[test]
     fn system_profile_rejects_invalid_board_package() {
-        let package = airon_hal::BoardPackage::new(
+        let package = nobro_hal::BoardPackage::new(
             "test-platform",
             "test-board",
-            airon_hal::BootProfile::new(
-                airon_hal::BootLayout::NoSoftDevice,
+            nobro_hal::BootProfile::new(
+                nobro_hal::BootLayout::NoSoftDevice,
                 0x1800,
                 128 * 1024,
                 0x2000_0000,
                 64 * 1024,
             ),
-            airon_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
-            airon_hal::BoardPins::new(1, 2, 3),
+            nobro_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
+            nobro_hal::BoardPins::new(1, 2, 3),
         );
 
         assert_eq!(
             SystemProfile::from_board_package(&package),
-            Err(airon_hal::BoardPackageError::UnalignedFlashOrigin)
+            Err(nobro_hal::BoardPackageError::UnalignedFlashOrigin)
         );
     }
 

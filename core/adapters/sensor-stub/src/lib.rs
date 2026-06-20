@@ -1,18 +1,18 @@
 //! SensorSal stub with synthetic IMU samples when no NiusIMU hardware is connected.
 //!
-//! Replace with `airon-adapter-nius-imu` when a real MPU/ICM breakout is wired.
+//! Replace with `nobro-adapter-nius-imu` when a real MPU/ICM breakout is wired.
 
 #![no_std]
 
 #[cfg(test)]
 extern crate std;
 
-use airon_hal::{traits::HalClock, ActivePlatform as Hal};
-use airon_kernel::{
+use nobro_hal::{traits::HalClock, ActivePlatform as Hal};
+use nobro_kernel::{
     pool::{ImuPayload, SamplePool},
     Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
-use airon_sal::{AdapterManifest, SensorSal};
+use nobro_sal::{AdapterManifest, SensorSal};
 
 const STUB_I2C_ADDR: u8 = 0x68;
 

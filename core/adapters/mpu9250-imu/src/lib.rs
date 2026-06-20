@@ -2,14 +2,14 @@
 
 #![no_std]
 
-use airon_hal::{
+use nobro_hal::{
     bus::TwimBus, traits::HalClock, twim_hw::Twim0, ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
 };
-use airon_kernel::{
+use nobro_kernel::{
     pool::{ImuPayload, SamplePool},
     Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
-use airon_sal::{AdapterManifest, SensorSal};
+use nobro_sal::{AdapterManifest, SensorSal};
 
 const REG_WHO_AM_I: u8 = 0x75;
 const REG_PWR_MGMT_1: u8 = 0x6B;

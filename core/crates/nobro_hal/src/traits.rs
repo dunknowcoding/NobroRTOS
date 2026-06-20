@@ -1,7 +1,7 @@
 //! Platform HAL capability traits used by apps and adapters.
 //!
 //! New MCU ports implement these for a `platform::<soc>::Platform` type and register it
-//! as `[features] default = ["platform-nrf52840"]` in `airon-hal/Cargo.toml`.
+//! as `[features] default = ["platform-nrf52840"]` in `nobro-hal/Cargo.toml`.
 
 use crate::board_desc::{BoardDesc, ServoProfile};
 use crate::lease::{LeaseError, LeaseGuard, Resource};

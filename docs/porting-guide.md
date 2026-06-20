@@ -81,8 +81,8 @@ selected board feature explicitly.
 Good:
 
 ```toml
-airon-hal = { path = "../../crates/nobro_hal", default-features = false }
-board-promicro-nosd = ["airon-hal/board-promicro-nosd"]
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
 ```
 
 Avoid hidden default board selection in adapter crates.
@@ -95,7 +95,7 @@ identity, capacity, critical pins, and servo defaults. Package fixtures add boot
 layout, memory ranges, and package validation without rebuilding the HAL for
 every board feature.
 
-Apps that enable `airon-kernel/hal-profile` can derive `SystemProfile` from the
+Apps that enable `nobro-kernel/hal-profile` can derive `SystemProfile` from the
 active `BoardPackage`. This is the preferred path for admission checks because
 the manifest budget then follows the selected board feature.
 
@@ -115,4 +115,4 @@ Before a board port becomes a recommended target, it should provide:
 ## Naming
 
 Public product documentation uses NobroRTOS. Existing Rust crate names retain
-the `airon-*` prefix until a coordinated crate migration is performed.
+the `nobro-*` prefix until a coordinated crate migration is performed.

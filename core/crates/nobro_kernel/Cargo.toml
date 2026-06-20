@@ -1,11 +1,11 @@
 [package]
-name = "airon-kernel"
+name = "nobro-kernel"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-airon-hal = { path = "../nobro_hal", default-features = false, features = ["contract-only"], optional = true }
+nobro-hal = { path = "../nobro_hal", default-features = false, features = ["contract-only"], optional = true }
 
 [features]
 default = []
-hal-profile = ["dep:airon-hal"]
+hal-profile = ["dep:nobro-hal"]

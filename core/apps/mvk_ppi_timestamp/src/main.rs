@@ -8,7 +8,7 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use airon_hal::{
+use nobro_hal::{
     lease::{Resource, ResourceLease},
     ppi,
     timer::MicroTimer,

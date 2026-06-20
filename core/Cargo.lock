@@ -3,63 +3,6 @@
 version = 4
 
 [[package]]
-name = "airon-adapter-mpu9250-imu"
-version = "0.1.0"
-dependencies = [
- "airon-hal",
- "airon-kernel",
- "airon-sal",
- "cortex-m",
- "libm",
-]
-
-[[package]]
-name = "airon-adapter-robo-servo"
-version = "0.1.0"
-dependencies = [
- "airon-hal",
- "airon-kernel",
- "airon-sal",
-]
-
-[[package]]
-name = "airon-adapter-sensor-stub"
-version = "0.1.0"
-dependencies = [
- "airon-hal",
- "airon-kernel",
- "airon-sal",
-]
-
-[[package]]
-name = "airon-hal"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "critical-section",
- "embedded-hal 1.0.0",
- "nrf52840-pac",
-]
-
-[[package]]
-name = "airon-host"
-version = "0.1.0"
-
-[[package]]
-name = "airon-kernel"
-version = "0.1.0"
-dependencies = [
- "airon-hal",
-]
-
-[[package]]
-name = "airon-sal"
-version = "0.1.0"
-dependencies = [
- "airon-kernel",
-]
-
-[[package]]
 name = "bare-metal"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,14 +133,14 @@ checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 name = "imu-i2c-demo"
 version = "0.1.0"
 dependencies = [
- "airon-adapter-mpu9250-imu",
- "airon-hal",
- "airon-kernel",
- "airon-sal",
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
  "defmt-rtt",
+ "nobro-adapter-mpu9250-imu",
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
  "panic-probe",
 ]
 
@@ -211,13 +154,13 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 name = "mvk-ppi-timestamp"
 version = "0.1.0"
 dependencies = [
- "airon-hal",
- "airon-kernel",
  "cortex-m",
  "cortex-m-rt",
  "critical-section",
  "defmt 0.3.100",
  "defmt-rtt",
+ "nobro-hal",
+ "nobro-kernel",
  "nrf52840-pac",
  "panic-probe",
 ]
@@ -236,6 +179,63 @@ name = "nb"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
+
+[[package]]
+name = "nobro-adapter-mpu9250-imu"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "libm",
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
+]
+
+[[package]]
+name = "nobro-adapter-robo-servo"
+version = "0.1.0"
+dependencies = [
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
+]
+
+[[package]]
+name = "nobro-adapter-sensor-stub"
+version = "0.1.0"
+dependencies = [
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
+]
+
+[[package]]
+name = "nobro-hal"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "critical-section",
+ "embedded-hal 1.0.0",
+ "nrf52840-pac",
+]
+
+[[package]]
+name = "nobro-host"
+version = "0.1.0"
+
+[[package]]
+name = "nobro-kernel"
+version = "0.1.0"
+dependencies = [
+ "nobro-hal",
+]
+
+[[package]]
+name = "nobro-sal"
+version = "0.1.0"
+dependencies = [
+ "nobro-kernel",
+]
 
 [[package]]
 name = "nrf52840-pac"
@@ -302,12 +302,12 @@ dependencies = [
 name = "resource-sched-demo"
 version = "0.1.0"
 dependencies = [
- "airon-hal",
- "airon-kernel",
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
  "defmt-rtt",
+ "nobro-hal",
+ "nobro-kernel",
  "nrf52840-pac",
  "panic-probe",
 ]
@@ -325,15 +325,15 @@ dependencies = [
 name = "sal-adapter-demo"
 version = "0.1.0"
 dependencies = [
- "airon-adapter-robo-servo",
- "airon-adapter-sensor-stub",
- "airon-hal",
- "airon-kernel",
- "airon-sal",
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
  "defmt-rtt",
+ "nobro-adapter-robo-servo",
+ "nobro-adapter-sensor-stub",
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
  "panic-probe",
 ]
 

@@ -44,10 +44,10 @@ Board compatibility must be data-first:
   re-enable board features explicitly. This keeps `board-promicro-nosd` from
   leaking into `board-nicenano-s140` builds through dependency defaults.
 - Hardware parity checks read registers back into snapshot structs.
-- Host tools consume `airon-host` constants or `host/nobro-host-contract.json`
+- Host tools consume `nobro-host` constants or `host/nobro-host-contract.json`
   rather than duplicating magic values.
 - Host tools should decode module tags and capability bits through the shared
-  `airon-host` helpers or the JSON contract, so reports stay readable as more
+  `nobro-host` helpers or the JSON contract, so reports stay readable as more
   boards and adapters are added.
 - Host tools should summarize boot diagnostics in this order: board profile,
   board package, manifest, adapter compatibility, admission, then runtime. This keeps

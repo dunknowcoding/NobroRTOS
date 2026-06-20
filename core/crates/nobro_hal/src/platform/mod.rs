@@ -2,7 +2,7 @@
 //!
 //! Adding a new MCU:
 //! 1. Create `platform/<soc>/mod.rs` implementing `traits::PlatformHal`.
-//! 2. Add `[features] platform-<soc> = []` in `airon-hal/Cargo.toml`.
+//! 2. Add `[features] platform-<soc> = []` in `nobro-hal/Cargo.toml`.
 //! 3. Add board features that depend on the platform feature.
 //! 4. Provide `memory.x` + flash script under `boards/<board>/`.
 
@@ -14,7 +14,7 @@
     all(feature = "platform-esp32", feature = "platform-stm32"),
     all(feature = "platform-rp2040", feature = "platform-stm32"),
 ))]
-compile_error!("airon-hal: enable exactly one platform-* feature");
+compile_error!("nobro-hal: enable exactly one platform-* feature");
 
 #[cfg(feature = "platform-nrf52840")]
 pub mod nrf52840;
@@ -38,4 +38,4 @@ compile_error!("platform-stm32 is reserved for a future port; implement platform
     not(feature = "platform-stm32"),
     not(feature = "contract-only"),
 ))]
-compile_error!("airon-hal: enable one platform feature (e.g. platform-nrf52840)");
+compile_error!("nobro-hal: enable one platform feature (e.g. platform-nrf52840)");

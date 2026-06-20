@@ -1,5 +1,5 @@
 //! Phase 1 resource scheduling demo with scenes A through D and autonomous self-evaluation.
-//! Uses `airon_hal::traits` + `ActivePlatform` so apps stay SoC-agnostic.
+//! Uses `nobro_hal::traits` + `ActivePlatform` so apps stay SoC-agnostic.
 
 #![no_std]
 #![no_main]
@@ -10,7 +10,7 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use airon_hal::{
+use nobro_hal::{
     board::Board,
     board_desc::BoardDesc,
     bus::TwimBus,
@@ -20,7 +20,7 @@ use airon_hal::{
     traits::{HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, PlatformHal},
     ActivePlatform as Hal,
 };
-use airon_kernel::{
+use nobro_kernel::{
     eval::{EvalGate, EvalReport, EVAL_MAGIC, MIN_DEADLINE_TICKS},
     executor::{I2cPollTask, Poll, StatsTask, Task},
     scheduler::Scheduler,
@@ -76,7 +76,7 @@ fn main() -> ! {
 
     unsafe {
         NOBRO_EVAL_REPORT.magic = EVAL_MAGIC;
-        NOBRO_EVAL_REPORT.version = airon_kernel::eval::EVAL_VERSION;
+        NOBRO_EVAL_REPORT.version = nobro_kernel::eval::EVAL_VERSION;
     }
 
     loop {
@@ -219,8 +219,8 @@ fn write_progress_report(
     i2c_reads: u32,
     radio_max: u32,
     radio_samples: u32,
-    pwm_snap: &airon_hal::PwmSnapshot,
-    parity: &airon_hal::BoardParity,
+    pwm_snap: &nobro_hal::PwmSnapshot,
+    parity: &nobro_hal::BoardParity,
 ) {
     let mut report = EvalReport {
         scene_a_pass: u32::from(scene_a),
@@ -239,7 +239,7 @@ fn write_progress_report(
         ..EvalReport::zeroed()
     };
     report.magic = EVAL_MAGIC;
-    report.version = airon_kernel::eval::EVAL_VERSION;
+    report.version = nobro_kernel::eval::EVAL_VERSION;
     unsafe {
         NOBRO_EVAL_REPORT = report;
     }

@@ -1,7 +1,7 @@
 [package]
-name = "airon-sal"
+name = "nobro-sal"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-airon-kernel = { path = "../nobro_kernel" }
+nobro-kernel = { path = "../nobro_kernel" }

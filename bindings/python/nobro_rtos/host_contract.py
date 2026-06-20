@@ -51,7 +51,7 @@ class ReportStatusClass(IntEnum):
 class BootDiagnostic:
     """Decoded boot diagnostic code.
 
-    The code layout mirrors `airon-host`:
+    The code layout mirrors `nobro-host`:
     stage_code << 24 | status_class << 16 | error_code_low16.
     """
 

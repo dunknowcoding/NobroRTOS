@@ -7,10 +7,10 @@ applications, adapters, and host tooling.
 
 | Crate | Purpose |
 | ----- | ------- |
-| `airon-kernel` | Manifest, admission, runtime, quota, capability, scheduler, IPC, alarms, recovery, health, and reports |
-| `airon-hal` | Board profiles, platform traits, nRF52840 implementation, leases, timers, PWM, bus, and event capture |
-| `airon-sal` | Stable service traits for adapters, apps, AI inference, and edge bridges |
-| `airon-host` | Host-side constants, report layouts, labels, and status helpers |
+| `nobro-kernel` | Manifest, admission, runtime, quota, capability, scheduler, IPC, alarms, recovery, health, and reports |
+| `nobro-hal` | Board profiles, platform traits, nRF52840 implementation, leases, timers, PWM, bus, and event capture |
+| `nobro-sal` | Stable service traits for adapters, apps, AI inference, and edge bridges |
+| `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
 ## Kernel API
 
@@ -30,7 +30,7 @@ module declares:
 Use manifest validation before constructing runtime state:
 
 ```rust
-let report = airon_kernel::ManifestReport::from_result(
+let report = nobro_kernel::ManifestReport::from_result(
     &manifest,
     manifest.validate_profile(profile),
 );
@@ -46,17 +46,17 @@ module specs, applies startup dependencies, runs admission, constructs the
 runtime, boots it to `Running`, and keeps the manifest and admission reports:
 
 ```rust
-let assembly = airon_kernel::BootAssembly::<4, 4, 4, 4, 4, 4, 4, 4, 16>::build(
+let assembly = nobro_kernel::BootAssembly::<4, 4, 4, 4, 4, 4, 4, 4, 16>::build(
     &specs,
-    &[airon_kernel::StartupDependency::new(
-        airon_kernel::ModuleId::Sensor,
-        airon_kernel::ModuleId::Kernel,
+    &[nobro_kernel::StartupDependency::new(
+        nobro_kernel::ModuleId::Sensor,
+        nobro_kernel::ModuleId::Kernel,
     )],
     profile,
-    airon_kernel::FaultThresholds::DEFAULT,
+    nobro_kernel::FaultThresholds::DEFAULT,
     now_us,
 )?;
-assert_eq!(assembly.runtime.state(), airon_kernel::SystemState::Running);
+assert_eq!(assembly.runtime.state(), nobro_kernel::SystemState::Running);
 ```
 
 Use `BootAssemblyError` to preserve the failing phase: manifest validation,
@@ -69,7 +69,7 @@ let failure = match AppBoot::build_with_failure(
     &specs,
     &dependencies,
     profile,
-    airon_kernel::FaultThresholds::DEFAULT,
+    nobro_kernel::FaultThresholds::DEFAULT,
     now_us,
 ) {
     Ok(_) => unreachable!(),
@@ -97,7 +97,7 @@ do not match the selected board profile.
 seeding, and capability grant construction:
 
 ```rust
-let plan = airon_kernel::AdmissionController::admit::<8, 8, 8>(
+let plan = nobro_kernel::AdmissionController::admit::<8, 8, 8>(
     &manifest,
     &startup_nodes,
     profile,
@@ -105,7 +105,7 @@ let plan = airon_kernel::AdmissionController::admit::<8, 8, 8>(
 ```
 
 Admission failures are reported through `AdmissionReport`, using stable error
-codes mirrored in `airon-host` and `host/nobro-host-contract.json`.
+codes mirrored in `nobro-host` and `host/nobro-host-contract.json`.
 
 ### Runtime
 
@@ -155,7 +155,7 @@ Board profile fixtures make identity, capacity, critical pins, and servo
 defaults reviewable without switching Cargo features:
 
 ```rust
-for fixture in airon_hal::BOARD_PROFILE_FIXTURES {
+for fixture in nobro_hal::BOARD_PROFILE_FIXTURES {
     let report = fixture.report();
     assert!(report.verify_checksum());
 }
@@ -165,19 +165,19 @@ for fixture in airon_hal::BOARD_PROFILE_FIXTURES {
 capacity, and critical pins:
 
 ```rust
-let package = airon_hal::Board::package();
+let package = nobro_hal::Board::package();
 assert_eq!(package.validate(), Ok(()));
 ```
 
 `BoardPackageError` identifies invalid board data such as empty capacity,
 unaligned flash origin, empty memory regions, or duplicate critical pins.
 
-When `airon-kernel` is built with the `hal-profile` feature, admission limits
+When `nobro-kernel` is built with the `hal-profile` feature, admission limits
 can be derived directly from the active package:
 
 ```rust
-let profile = airon_kernel::SystemProfile::from_board_package(
-    &airon_hal::ACTIVE_BOARD_PACKAGE,
+let profile = nobro_kernel::SystemProfile::from_board_package(
+    &nobro_hal::ACTIVE_BOARD_PACKAGE,
 )?;
 ```
 
@@ -185,7 +185,7 @@ let profile = airon_kernel::SystemProfile::from_board_package(
 record:
 
 ```rust
-let report = airon_hal::BoardPackageReport::from_package(&airon_hal::ACTIVE_BOARD_PACKAGE);
+let report = nobro_hal::BoardPackageReport::from_package(&nobro_hal::ACTIVE_BOARD_PACKAGE);
 assert!(report.verify_checksum());
 ```
 
@@ -193,7 +193,7 @@ Board package fixtures make current board layouts reviewable without switching
 Cargo features:
 
 ```rust
-for fixture in airon_hal::BOARD_PACKAGE_FIXTURES {
+for fixture in nobro_hal::BOARD_PACKAGE_FIXTURES {
     assert_eq!(fixture.package.validate(), Ok(()));
     assert!(fixture.report().verify_checksum());
 }
@@ -241,17 +241,17 @@ if let Some(sample) = sensor.poll()? {
 }
 ```
 
-`airon-adapter-sensor-stub` provides a software fixture for adapter and
+`nobro-adapter-sensor-stub` provides a software fixture for adapter and
 recovery tests. The default mode emits a plausible IMU sample every 50 polls;
 custom profiles can model silent sensors, periodic adapter errors, or
 implausible payloads:
 
 ```rust
-let mut sensor = airon_adapter_sensor_stub::SensorStub::with_profile(
+let mut sensor = nobro_adapter_sensor_stub::SensorStub::with_profile(
     2,
-    airon_adapter_sensor_stub::SensorStubProfile::new(
+    nobro_adapter_sensor_stub::SensorStubProfile::new(
         1,
-        airon_adapter_sensor_stub::SensorStubMode::BadDataEvery(4),
+        nobro_adapter_sensor_stub::SensorStubMode::BadDataEvery(4),
     ),
 );
 let sample = sensor.poll_at(1_000)?;
@@ -285,7 +285,7 @@ assert!(contract.input_bytes_max <= 512);
 let input = [0u8; 16];
 let mut output = [0u8; 32];
 let result = ai.infer(
-    airon_sal::AiInferenceRequest::new(contract.model_id, &input, deadline_us),
+    nobro_sal::AiInferenceRequest::new(contract.model_id, &input, deadline_us),
     &mut output,
 )?;
 assert!(usize::from(result.output_len) <= output.len());
@@ -304,10 +304,10 @@ configuration.
 
 ## Host API
 
-`airon-host` mirrors all report constants:
+`nobro-host` mirrors all report constants:
 
 ```rust
-use airon_host::{HostReport, RuntimeReport, RUNTIME_REPORT_SYMBOL};
+use nobro_host::{HostReport, RuntimeReport, RUNTIME_REPORT_SYMBOL};
 
 fn inspect(report: &RuntimeReport) {
     assert_eq!(RuntimeReport::SYMBOL, RUNTIME_REPORT_SYMBOL);
@@ -321,7 +321,7 @@ Boot diagnostics can be collapsed into a fixed summary:
 ```rust
 let summary = reports.summary();
 assert_eq!(summary.first_stage_label(), "runtime");
-assert_eq!(summary.pass_count, airon_host::BOOT_REPORT_STAGE_COUNT as u8);
+assert_eq!(summary.pass_count, nobro_host::BOOT_REPORT_STAGE_COUNT as u8);
 ```
-Host tools should prefer labels from `airon-host` instead of embedding numeric
+Host tools should prefer labels from `nobro-host` instead of embedding numeric
 tables locally.

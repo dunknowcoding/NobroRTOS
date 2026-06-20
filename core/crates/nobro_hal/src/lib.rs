@@ -14,13 +14,13 @@ pub mod snapshots;
 pub mod traits;
 
 #[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
-compile_error!("airon-hal: enable exactly one board-* feature");
+compile_error!("nobro-hal: enable exactly one board-* feature");
 
 #[cfg(all(
     feature = "platform-nrf52840",
     not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))
 ))]
-compile_error!("airon-hal: enable one board-* feature");
+compile_error!("nobro-hal: enable one board-* feature");
 
 #[cfg(feature = "platform-nrf52840")]
 pub mod board;

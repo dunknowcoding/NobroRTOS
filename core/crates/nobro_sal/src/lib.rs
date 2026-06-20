@@ -2,7 +2,7 @@
 
 #![no_std]
 
-use airon_kernel::{
+use nobro_kernel::{
     module_tag, CapabilitySet, Criticality, KernelError, ModuleId, ModuleSpec, Sample,
     SystemBudget, SystemProfile,
 };
@@ -539,8 +539,8 @@ pub trait AiInferenceSal {
 }
 
 /// Map kernel errors to actions (registered per adapter in later phases).
-pub fn default_action(err: &KernelError) -> airon_kernel::Action {
-    use airon_kernel::Action::*;
+pub fn default_action(err: &KernelError) -> nobro_kernel::Action {
+    use nobro_kernel::Action::*;
     match err {
         KernelError::LeaseConflict => Ignore,
         KernelError::BusTimeout => RetryDelay(1000),
@@ -553,7 +553,7 @@ pub fn default_action(err: &KernelError) -> airon_kernel::Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use airon_kernel::{Capability, CapabilitySet, MemoryBudget};
+    use nobro_kernel::{Capability, CapabilitySet, MemoryBudget};
 
     struct FakeAdapter;
 

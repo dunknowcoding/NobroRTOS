@@ -1,8 +1,7 @@
 # NobroRTOS Core Workspace
 
-This directory contains the Rust implementation of NobroRTOS. The crate names
-still use the `airon-*` prefix for continuity, while the product, host report
-symbols, repository, and public documentation use NobroRTOS naming.
+This directory contains the Rust implementation of NobroRTOS. The crate names,
+host report symbols, repository, and public documentation use NobroRTOS naming.
 
 ## Workspace Map
 
@@ -20,9 +19,9 @@ symbols, repository, and public documentation use NobroRTOS naming.
 ```powershell
 $env:CARGO_TARGET_DIR = (Resolve-Path '..\_work').Path + '\cargo-target'
 cargo fmt --all -- --check
-cargo test -p airon-kernel --target x86_64-pc-windows-msvc
-cargo test -p airon-sal --target x86_64-pc-windows-msvc
-cargo test -p airon-host --target x86_64-pc-windows-msvc
+cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
+cargo test -p nobro-sal --target x86_64-pc-windows-msvc
+cargo test -p nobro-host --target x86_64-pc-windows-msvc
 ```
 
 `cargo check --workspace` uses `.cargo/config.toml` and checks the embedded

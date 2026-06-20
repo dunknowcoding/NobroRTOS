@@ -23,9 +23,9 @@ coverage data, or downloaded toolchains.
 cd core
 $env:CARGO_TARGET_DIR = (Resolve-Path '..\_work').Path + '\cargo-target'
 cargo fmt --all -- --check
-cargo test -p airon-kernel --target x86_64-pc-windows-msvc
-cargo test -p airon-sal --target x86_64-pc-windows-msvc
-cargo test -p airon-host --target x86_64-pc-windows-msvc
+cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
+cargo test -p nobro-sal --target x86_64-pc-windows-msvc
+cargo test -p nobro-host --target x86_64-pc-windows-msvc
 cargo check --workspace
 ```
 

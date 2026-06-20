@@ -179,8 +179,8 @@ NobroRTOS/
 `-- LICENSE
 ```
 
-The Rust crate package names still use the `airon-*` API prefix for downstream
-compatibility, while repository folders use the `nobro_*` project prefix.
+The Rust crate package names use the `nobro-*` API prefix, while repository
+folders use the `nobro_*` project prefix.
 
 ## Capability Matrix
 
@@ -192,7 +192,7 @@ compatibility, while repository folders use the `nobro_*` project prefix.
 | Boot assembly facade | Present | No-heap app startup helper preserving manifest/admission reports |
 | Board package validation | Present | Boot layout, flash/RAM region, capacity, critical pins |
 | Board package fixtures | Present | Host-reviewable package list for current boot layouts |
-| Host ABI contract | Present | JSON contract plus `airon-host` layouts and status helpers |
+| Host ABI contract | Present | JSON contract plus `nobro-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
@@ -214,9 +214,9 @@ Run host-side validation from the workspace:
 ```powershell
 cd core
 $env:CARGO_TARGET_DIR = (Resolve-Path '..\_work').Path + '\cargo-target'
-cargo test -p airon-kernel --target x86_64-pc-windows-msvc
-cargo test -p airon-sal --target x86_64-pc-windows-msvc
-cargo test -p airon-host --target x86_64-pc-windows-msvc
+cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
+cargo test -p nobro-sal --target x86_64-pc-windows-msvc
+cargo test -p nobro-host --target x86_64-pc-windows-msvc
 ```
 
 Check the embedded build graph:
