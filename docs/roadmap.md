@@ -31,6 +31,7 @@ Completed or substantially present:
   construction, startup reports, and failure snapshots
 - unified `BootAssemblyReports` helper for success and failure startup exports
 - `sal_adapter_demo` wired through `BootAssembly` while preserving host reports
+- `sensor-stub` fixture modes for nominal, silent, error, and bad-data samples
 
 ## Near-Term Architecture Work
 
@@ -46,7 +47,7 @@ Completed or substantially present:
 ## Adapter Work
 
 - harden `robo-servo` around actuator timing contracts
-- expand `sensor-stub` into a stronger compatibility fixture
+- use `sensor-stub` fault modes in recovery and compatibility scenarios
 - mature `mpu9250-imu` while keeping bus access behind `BusSal`
 - add future radio and stream adapters only when their resource ownership model
   is explicit

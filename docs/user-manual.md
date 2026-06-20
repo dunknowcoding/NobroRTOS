@@ -152,6 +152,11 @@ Application code should depend on `airon-sal` traits:
 Adapters translate concrete hardware or libraries into those traits. Apps
 should not call vendor headers directly.
 
+For bring-up and CI, `airon-adapter-sensor-stub` can run as a deterministic
+sensor fixture. It can emit plausible IMU samples, stay silent, inject periodic
+adapter errors, or produce implausible payloads without requiring external
+hardware.
+
 ## Diagnostics
 
 NobroRTOS exports fixed-layout reports with `NOBRO_*` symbols. The canonical

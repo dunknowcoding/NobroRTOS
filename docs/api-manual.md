@@ -241,6 +241,22 @@ if let Some(sample) = sensor.poll()? {
 }
 ```
 
+`airon-adapter-sensor-stub` provides a software fixture for adapter and
+recovery tests. The default mode emits a plausible IMU sample every 50 polls;
+custom profiles can model silent sensors, periodic adapter errors, or
+implausible payloads:
+
+```rust
+let mut sensor = airon_adapter_sensor_stub::SensorStub::with_profile(
+    2,
+    airon_adapter_sensor_stub::SensorStubProfile::new(
+        1,
+        airon_adapter_sensor_stub::SensorStubMode::BadDataEvery(4),
+    ),
+);
+let sample = sensor.poll_at(1_000)?;
+```
+
 ### ActuatorSal
 
 Use for deadline-aware output.
