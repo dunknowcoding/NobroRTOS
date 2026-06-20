@@ -32,6 +32,7 @@ from .sim import (
     SensorStubMode,
     SensorStubSimulator,
     ServoSimulator,
+    WatchdogSimulator,
 )
 
 
@@ -113,6 +114,20 @@ def main() -> int:
         type=int,
         default=0,
         help="insert an OK event after this many errors; 0 disables it",
+    )
+    sample_watchdog = subparsers.add_parser(
+        "sample-watchdog",
+        help="run a deterministic watchdog heartbeat simulation and print JSON",
+    )
+    sample_watchdog.add_argument("--module", default="sensor")
+    sample_watchdog.add_argument("--timeout-us", type=int, default=100)
+    sample_watchdog.add_argument("--sweeps", type=int, default=3)
+    sample_watchdog.add_argument("--step-us", type=int, default=75)
+    sample_watchdog.add_argument(
+        "--beat-at-sweep",
+        type=int,
+        default=0,
+        help="insert a heartbeat before this sweep; 0 disables it",
     )
     subparsers.add_parser(
         "check-host-contract",
@@ -199,6 +214,21 @@ def main() -> int:
                     args.notify_after,
                     args.reboot_after,
                     args.ok_after,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "sample-watchdog":
+        print(
+            json.dumps(
+                _sample_watchdog(
+                    args.module,
+                    args.timeout_us,
+                    args.sweeps,
+                    args.step_us,
+                    args.beat_at_sweep,
                 ),
                 indent=2,
                 sort_keys=True,
@@ -449,6 +479,55 @@ def _sample_recovery(
         "notify_after": notify_after,
         "reboot_after": reboot_after,
         "ok_after": ok_after,
+        "event_count": len(timeline),
+        "timeline": timeline,
+    }
+
+
+def _sample_watchdog(
+    module: str,
+    timeout_us: int,
+    sweeps: int,
+    step_us: int,
+    beat_at_sweep: int,
+) -> dict[str, object]:
+    if sweeps < 0:
+        raise ValueError("sweeps must be non-negative")
+    if step_us <= 0:
+        raise ValueError("step_us must be positive")
+    if beat_at_sweep < 0:
+        raise ValueError("beat_at_sweep must be non-negative")
+
+    simulator = WatchdogSimulator(capacity=1)
+    simulator.register(module, timeout_us, now_us=0)
+    timeline: list[dict[str, object]] = [
+        {"event": "register", **simulator.get(module).to_dict()},
+    ]
+
+    for index in range(1, sweeps + 1):
+        now_us = index * step_us
+        if beat_at_sweep == index:
+            simulator.beat(module, now_us)
+            timeline.append({"event": "beat", **simulator.get(module).to_dict()})
+        expired = simulator.expired(now_us)
+        timeline.append(
+            {
+                "event": "sweep",
+                "now_us": now_us,
+                "expired_count": len(expired),
+                "expired": [entry.to_dict() for entry in expired],
+                "entry": simulator.get(module).to_dict(),
+            }
+        )
+
+    entry = simulator.get(module)
+    return {
+        "module": module,
+        "timeout_us": timeout_us,
+        "sweeps": sweeps,
+        "step_us": step_us,
+        "beat_at_sweep": beat_at_sweep,
+        "missed": 0 if entry is None else entry.missed,
         "event_count": len(timeline),
         "timeline": timeline,
     }

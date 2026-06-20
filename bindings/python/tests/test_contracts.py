@@ -29,6 +29,7 @@ from nobro_rtos import (
     SensorStubSimulator,
     ServoSimulator,
     ServoSimulatorError,
+    WatchdogSimulator,
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
@@ -40,6 +41,7 @@ from nobro_rtos.cli import (
     _sample_recovery,
     _sample_report,
     _sample_sensor,
+    _sample_watchdog,
 )
 
 
@@ -713,6 +715,45 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["timeline"][1]["event"], "ok")
         self.assertEqual(report["timeline"][2]["action"], "ignore")
         self.assertEqual(report["timeline"][3]["action"], "notify_user_task")
+
+    def test_watchdog_simulator_reports_expired_modules(self) -> None:
+        watchdog = WatchdogSimulator(capacity=2)
+        watchdog.register("sensor", timeout_us=100, now_us=0)
+        watchdog.register("radio", timeout_us=500, now_us=0)
+
+        expired = watchdog.expired(150)
+
+        self.assertEqual([entry.module for entry in expired], ["sensor"])
+        self.assertEqual(watchdog.get("sensor").missed, 1)
+        self.assertEqual(watchdog.get("radio").missed, 0)
+
+    def test_watchdog_simulator_heartbeat_resets_missed_count(self) -> None:
+        watchdog = WatchdogSimulator(capacity=1)
+        watchdog.register("bus", timeout_us=100, now_us=0)
+
+        self.assertEqual(len(watchdog.expired(150)), 1)
+        watchdog.beat("bus", 160)
+
+        entry = watchdog.get("bus")
+        self.assertEqual(entry.missed, 0)
+        self.assertEqual(entry.last_beat_us, 160)
+        self.assertEqual(watchdog.expired(200), [])
+
+    def test_cli_watchdog_sample_summarizes_heartbeat_timeline(self) -> None:
+        report = _sample_watchdog(
+            "sensor",
+            timeout_us=100,
+            sweeps=3,
+            step_us=75,
+            beat_at_sweep=2,
+        )
+
+        self.assertEqual(report["event_count"], 5)
+        self.assertEqual(report["timeline"][0]["event"], "register")
+        self.assertEqual(report["timeline"][1]["expired_count"], 0)
+        self.assertEqual(report["timeline"][2]["event"], "beat")
+        self.assertEqual(report["timeline"][3]["expired_count"], 0)
+        self.assertEqual(report["timeline"][4]["expired_count"], 0)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

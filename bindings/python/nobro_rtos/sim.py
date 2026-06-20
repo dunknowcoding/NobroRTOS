@@ -24,6 +24,10 @@ class ServoSimulatorError(RuntimeError):
     """Raised when the simulated actuator contract is violated."""
 
 
+class WatchdogSimulatorError(RuntimeError):
+    """Raised when the simulated watchdog contract is violated."""
+
+
 class RecoveryAction(str, Enum):
     """Recovery actions mirrored from the Rust kernel action model."""
 
@@ -144,6 +148,92 @@ def default_recovery_action(error: KernelErrorKind) -> tuple[RecoveryAction, int
     if error == KernelErrorKind.DEADLINE_MISSED:
         return RecoveryAction.NOTIFY_USER_TASK, 0
     return RecoveryAction.IGNORE, 0
+
+
+@dataclass(frozen=True)
+class WatchdogEntry:
+    """A host-side liveness entry matching the Rust watchdog entry shape."""
+
+    module: str
+    timeout_us: int
+    last_beat_us: int
+    missed: int = 0
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "module": self.module,
+            "timeout_us": self.timeout_us,
+            "last_beat_us": self.last_beat_us,
+            "missed": self.missed,
+        }
+
+
+@dataclass
+class WatchdogSimulator:
+    """Deterministic Python twin of the kernel software heartbeat tracker."""
+
+    capacity: int = 8
+
+    def __post_init__(self) -> None:
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._entries: dict[str, WatchdogEntry] = {}
+
+    def register(self, module: str, timeout_us: int, now_us: int = 0) -> None:
+        if timeout_us <= 0:
+            raise WatchdogSimulatorError("timeout_us must be positive")
+        if module in self._entries:
+            raise WatchdogSimulatorError("duplicate watchdog module")
+        if len(self._entries) >= self.capacity:
+            raise WatchdogSimulatorError("watchdog capacity exhausted")
+        self._entries[module] = WatchdogEntry(
+            module=module,
+            timeout_us=int(timeout_us),
+            last_beat_us=int(now_us),
+        )
+
+    def beat(self, module: str, now_us: int) -> None:
+        entry = self._entry(module)
+        self._entries[module] = WatchdogEntry(
+            module=entry.module,
+            timeout_us=entry.timeout_us,
+            last_beat_us=int(now_us),
+            missed=0,
+        )
+
+    def expired(self, now_us: int, out_limit: int | None = None) -> list[WatchdogEntry]:
+        if out_limit is not None and out_limit < 0:
+            raise ValueError("out_limit must be non-negative")
+
+        expired_entries: list[WatchdogEntry] = []
+        for module, entry in list(self._entries.items()):
+            if max(0, int(now_us) - entry.last_beat_us) <= entry.timeout_us:
+                continue
+            updated = WatchdogEntry(
+                module=entry.module,
+                timeout_us=entry.timeout_us,
+                last_beat_us=entry.last_beat_us,
+                missed=min(entry.missed + 1, 0xFFFF_FFFF),
+            )
+            self._entries[module] = updated
+            if out_limit is None or len(expired_entries) < out_limit:
+                expired_entries.append(updated)
+        return expired_entries
+
+    def remove(self, module: str) -> WatchdogEntry | None:
+        return self._entries.pop(module, None)
+
+    def get(self, module: str) -> WatchdogEntry | None:
+        return self._entries.get(module)
+
+    def entries(self) -> tuple[WatchdogEntry, ...]:
+        return tuple(self._entries.values())
+
+    def _entry(self, module: str) -> WatchdogEntry:
+        entry = self.get(module)
+        if entry is None:
+            raise WatchdogSimulatorError("missing watchdog module")
+        return entry
 
 
 @dataclass(frozen=True)

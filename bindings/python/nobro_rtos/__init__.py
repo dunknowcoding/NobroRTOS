@@ -54,6 +54,9 @@ from .sim import (
     ServoCommand,
     ServoSimulator,
     ServoSimulatorError,
+    WatchdogEntry,
+    WatchdogSimulator,
+    WatchdogSimulatorError,
 )
 
 __all__ = [
@@ -102,4 +105,7 @@ __all__ = [
     "ServoCommand",
     "ServoSimulator",
     "ServoSimulatorError",
+    "WatchdogEntry",
+    "WatchdogSimulator",
+    "WatchdogSimulatorError",
 ]
