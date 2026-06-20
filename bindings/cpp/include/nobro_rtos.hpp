@@ -88,6 +88,68 @@ private:
     const nobro_ros_bridge_contract_t* contract_;
 };
 
+class AiModelReportView {
+public:
+    constexpr explicit AiModelReportView(const nobro_ai_model_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_ai_model_report_status(report_));
+    }
+
+    constexpr std::uint32_t backend() const noexcept {
+        return report_->backend;
+    }
+
+    constexpr std::uint32_t model_id() const noexcept {
+        return report_->model_id;
+    }
+
+    constexpr std::uint32_t arena_bytes() const noexcept {
+        return report_->arena_bytes;
+    }
+
+    constexpr std::uint32_t timeout_us() const noexcept {
+        return report_->timeout_us;
+    }
+
+    constexpr std::uint32_t route_preference() const noexcept {
+        return report_->route_preference;
+    }
+
+private:
+    const nobro_ai_model_report_t* report_;
+};
+
+class RosBridgeReportView {
+public:
+    constexpr explicit RosBridgeReportView(const nobro_ros_bridge_report_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_ros_bridge_report_status(report_));
+    }
+
+    constexpr std::uint32_t transport() const noexcept {
+        return report_->transport;
+    }
+
+    constexpr std::uint32_t bridge_id_hash() const noexcept {
+        return report_->bridge_id_hash;
+    }
+
+    constexpr std::uint32_t topic_count() const noexcept {
+        return report_->topic_count;
+    }
+
+    constexpr std::uint32_t total_buffer_bytes() const noexcept {
+        return report_->total_buffer_bytes;
+    }
+
+private:
+    const nobro_ros_bridge_report_t* report_;
+};
+
 class BoardProfileReportView {
 public:
     constexpr explicit BoardProfileReportView(const nobro_board_profile_report_t& report) noexcept

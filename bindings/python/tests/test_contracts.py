@@ -137,8 +137,10 @@ class ContractBuilderTests(unittest.TestCase):
         for symbol in (
             "stable_hash32",
             "AiRouteDecisionView",
+            "AiModelReportView",
             "decide_ai_route",
             "RosBridgeContractView",
+            "RosBridgeReportView",
         ):
             self.assertIn(symbol, cpp_header)
 
