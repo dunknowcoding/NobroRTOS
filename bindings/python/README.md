@@ -127,6 +127,7 @@ touch a board.
 Run the module from this folder or after installing the package:
 
 ```powershell
+python -m nobro_rtos doctor
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
 python -m nobro_rtos sample-report ai_model
@@ -158,6 +159,7 @@ python -m nobro_rtos check-host-contract
 From the repository root, use the local tool wrapper:
 
 ```powershell
+python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 ```

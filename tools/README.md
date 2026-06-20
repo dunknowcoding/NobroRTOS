@@ -18,6 +18,7 @@ Generated outputs and caches must stay outside the repository.
 root without requiring package installation:
 
 ```powershell
+python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py sample-ai-ros

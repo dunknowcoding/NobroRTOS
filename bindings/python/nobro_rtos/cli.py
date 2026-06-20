@@ -151,6 +151,10 @@ def main() -> int:
         "check-distribution-metadata",
         help="validate SDK, Arduino, and PlatformIO package metadata",
     )
+    subparsers.add_parser(
+        "doctor",
+        help="run host contract and package metadata checks and print JSON",
+    )
     decode_boot = subparsers.add_parser(
         "decode-boot",
         help="decode a boot diagnostic code into stage, status, and error label",
@@ -271,6 +275,9 @@ def main() -> int:
         report = validate_distribution_metadata()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
+    if args.command == "doctor":
+        print(json.dumps(_doctor(), indent=2, sort_keys=True))
+        return 0
     if args.command == "decode-boot":
         code = int(args.code, 0)
         diagnostic = BootDiagnostic.decode(code)
@@ -331,6 +338,35 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
             ),
         ),
     )
+
+
+def _doctor() -> dict[str, object]:
+    contract = load_repo_host_contract()
+    distribution = validate_distribution_metadata()
+    return {
+        "status": "ok",
+        "host_contract": {
+            "boot_stages": list(contract.boot_stage_order()),
+            "capability_count": len(contract.payload.get("capability_bits", {})),
+            "ai_backend_count": len(
+                contract.payload.get("ai_contracts", {}).get("backend_codes", {})
+            ),
+            "ros_transport_count": len(
+                contract.payload.get("ros_bridge_contracts", {}).get(
+                    "transport_codes",
+                    {},
+                )
+            ),
+        },
+        "distribution": distribution.to_dict(),
+        "host_simulators": [
+            "sensor",
+            "actuator",
+            "recovery",
+            "watchdog",
+            "scheduler",
+        ],
+    }
 
 
 def _sample_ai_route() -> dict[str, object]:

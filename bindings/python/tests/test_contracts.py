@@ -38,6 +38,7 @@ from nobro_rtos import (
     validate_distribution_metadata,
 )
 from nobro_rtos.cli import (
+    _doctor,
     _sample_actuator,
     _sample_recovery,
     _sample_report,
@@ -101,6 +102,18 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.platformio_name, "NobroRTOS")
         self.assertEqual(report.python_package_name, "nobro-rtos-tools")
         self.assertEqual(report.python_requires, ">=3.10")
+
+    def test_doctor_summarizes_host_and_package_health(self) -> None:
+        report = _doctor()
+
+        self.assertEqual(report["status"], "ok")
+        self.assertIn("runtime", report["host_contract"]["boot_stages"])
+        self.assertGreater(report["host_contract"]["capability_count"], 0)
+        self.assertEqual(
+            report["distribution"]["python_package_name"],
+            "nobro-rtos-tools",
+        )
+        self.assertIn("scheduler", report["host_simulators"])
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
