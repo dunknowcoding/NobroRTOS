@@ -25,6 +25,7 @@ from nobro_rtos import (
     RosTopic,
     RecoveryAction,
     RecoveryPolicySimulator,
+    SchedulerSimulator,
     SensorStubError,
     SensorStubSimulator,
     ServoSimulator,
@@ -40,6 +41,7 @@ from nobro_rtos.cli import (
     _sample_actuator,
     _sample_recovery,
     _sample_report,
+    _sample_scheduler,
     _sample_sensor,
     _sample_watchdog,
 )
@@ -754,6 +756,38 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["timeline"][2]["event"], "beat")
         self.assertEqual(report["timeline"][3]["expired_count"], 0)
         self.assertEqual(report["timeline"][4]["expired_count"], 0)
+
+    def test_scheduler_simulator_tracks_configurable_jitter(self) -> None:
+        scheduler = SchedulerSimulator(jitter_tolerance_us=25)
+        scheduler.on_deadline_tick(1_000)
+        scheduler.on_deadline_tick(21_020)
+        scheduler.on_deadline_tick(41_050)
+
+        stats = scheduler.stats()
+        self.assertEqual(stats.tick_count, 3)
+        self.assertEqual(stats.max_jitter_us, 30)
+        self.assertEqual(stats.deadline_misses, 1)
+        self.assertEqual(stats.jitter_tolerance_us, 25)
+
+    def test_scheduler_simulator_handles_u32_wraparound(self) -> None:
+        scheduler = SchedulerSimulator()
+        first = 0xFFFF_FFFF - 5
+        scheduler.on_deadline_tick(first)
+        scheduler.on_deadline_tick(first + 20_000 + 3)
+
+        self.assertEqual(scheduler.max_jitter_us, 3)
+
+    def test_cli_scheduler_sample_summarizes_ticks(self) -> None:
+        report = _sample_scheduler(
+            (1_000, 21_020, 41_050),
+            period_us=20_000,
+            tolerance_us=25,
+        )
+
+        self.assertEqual(report["tick_count"], 3)
+        self.assertEqual(report["max_jitter_us"], 30)
+        self.assertEqual(report["deadline_misses"], 1)
+        self.assertEqual(report["timeline"][2]["deadline_misses"], 1)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

@@ -28,6 +28,10 @@ class WatchdogSimulatorError(RuntimeError):
     """Raised when the simulated watchdog contract is violated."""
 
 
+DEFAULT_DEADLINE_PERIOD_US = 20_000
+DEFAULT_JITTER_TOLERANCE_US = 10
+
+
 class RecoveryAction(str, Enum):
     """Recovery actions mirrored from the Rust kernel action model."""
 
@@ -148,6 +152,77 @@ def default_recovery_action(error: KernelErrorKind) -> tuple[RecoveryAction, int
     if error == KernelErrorKind.DEADLINE_MISSED:
         return RecoveryAction.NOTIFY_USER_TASK, 0
     return RecoveryAction.IGNORE, 0
+
+
+@dataclass(frozen=True)
+class SchedulerStats:
+    """A host-readable snapshot of deadline scheduler counters."""
+
+    tick_count: int
+    max_jitter_us: int
+    deadline_misses: int
+    jitter_tolerance_us: int
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "tick_count": self.tick_count,
+            "max_jitter_us": self.max_jitter_us,
+            "deadline_misses": self.deadline_misses,
+            "jitter_tolerance_us": self.jitter_tolerance_us,
+        }
+
+
+@dataclass
+class SchedulerSimulator:
+    """Deterministic Python mirror of the kernel deadline tick counters."""
+
+    deadline_period_us: int = DEFAULT_DEADLINE_PERIOD_US
+    jitter_tolerance_us: int = DEFAULT_JITTER_TOLERANCE_US
+    expected_next_us: int = 0
+    max_jitter_us: int = 0
+    tick_count: int = 0
+    deadline_misses: int = 0
+
+    def __post_init__(self) -> None:
+        if self.deadline_period_us <= 0:
+            raise ValueError("deadline_period_us must be positive")
+        if self.jitter_tolerance_us < 0:
+            raise ValueError("jitter_tolerance_us must be non-negative")
+
+    def reset_stats(self) -> None:
+        self.expected_next_us = 0
+        self.max_jitter_us = 0
+        self.tick_count = 0
+        self.deadline_misses = 0
+        self.jitter_tolerance_us = DEFAULT_JITTER_TOLERANCE_US
+
+    def set_jitter_tolerance_us(self, tolerance_us: int) -> None:
+        if tolerance_us < 0:
+            raise ValueError("tolerance_us must be non-negative")
+        self.jitter_tolerance_us = int(tolerance_us)
+
+    def on_deadline_tick(self, now_us: int) -> SchedulerStats:
+        now = int(now_us) & 0xFFFF_FFFF
+        expected = self.expected_next_us & 0xFFFF_FFFF
+        if expected != 0:
+            late = (now - expected) & 0xFFFF_FFFF
+            early = (expected - now) & 0xFFFF_FFFF
+            jitter = min(late, early)
+            self.max_jitter_us = max(self.max_jitter_us, jitter)
+            if jitter > self.jitter_tolerance_us:
+                self.deadline_misses += 1
+
+        self.expected_next_us = (now + self.deadline_period_us) & 0xFFFF_FFFF
+        self.tick_count += 1
+        return self.stats()
+
+    def stats(self) -> SchedulerStats:
+        return SchedulerStats(
+            tick_count=self.tick_count,
+            max_jitter_us=self.max_jitter_us,
+            deadline_misses=self.deadline_misses,
+            jitter_tolerance_us=self.jitter_tolerance_us,
+        )
 
 
 @dataclass(frozen=True)

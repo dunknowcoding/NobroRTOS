@@ -80,12 +80,14 @@ without carrying dynamic strings in realtime paths.
 `SensorStubSimulator` mirrors the Rust `sensor-stub` fixture modes for host
 workflows. `ServoSimulator` mirrors the RoboServo-style actuator timing and
 readback checks. `WatchdogSimulator` mirrors the kernel heartbeat tracker.
+`SchedulerSimulator` mirrors the kernel deadline tick counters.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
 host-side self-healing drills.
 
 ```python
 from nobro_rtos import (
     RecoveryPolicySimulator,
+    SchedulerSimulator,
     SensorStubSimulator,
     ServoSimulator,
     WatchdogSimulator,
@@ -108,6 +110,11 @@ assert recovery.record_error("sensor", "sensor_read_fail", 10).action.value == "
 watchdog = WatchdogSimulator(capacity=1)
 watchdog.register("sensor", timeout_us=100, now_us=0)
 assert watchdog.expired(150)[0].module == "sensor"
+
+scheduler = SchedulerSimulator(jitter_tolerance_us=25)
+for tick in (1000, 21020, 41050):
+    scheduler.on_deadline_tick(tick)
+assert scheduler.stats().deadline_misses == 1
 ```
 
 The simulator is deterministic and uses only caller-visible records, making it
@@ -127,6 +134,7 @@ python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
 python -m nobro_rtos sample-actuator --start-us 1200 --stop-us 1800 --step-us 300
 python -m nobro_rtos sample-recovery --error sensor_read_fail --events 4
 python -m nobro_rtos sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
+python -m nobro_rtos sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -137,7 +145,8 @@ deterministic fixture records and injected-fault summaries. The actuator sample
 emits deterministic servo command records with deadline and readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The watchdog sample emits heartbeat and expiry
-events for liveness planning.
+events for liveness planning. The scheduler sample emits deadline jitter
+counters for timing-policy checks.
 
 Validate the repository host contract against the Python enums:
 

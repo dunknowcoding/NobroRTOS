@@ -28,6 +28,7 @@ from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .sim import (
     KernelErrorKind,
     RecoveryPolicySimulator,
+    SchedulerSimulator,
     SensorStubError,
     SensorStubMode,
     SensorStubSimulator,
@@ -129,6 +130,19 @@ def main() -> int:
         default=0,
         help="insert a heartbeat before this sweep; 0 disables it",
     )
+    sample_scheduler = subparsers.add_parser(
+        "sample-scheduler",
+        help="run a deterministic deadline tick simulation and print JSON",
+    )
+    sample_scheduler.add_argument(
+        "--ticks",
+        nargs="+",
+        type=int,
+        default=(1000, 21020, 41050),
+        help="deadline tick timestamps in microseconds",
+    )
+    sample_scheduler.add_argument("--period-us", type=int, default=20_000)
+    sample_scheduler.add_argument("--tolerance-us", type=int, default=10)
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -229,6 +243,19 @@ def main() -> int:
                     args.sweeps,
                     args.step_us,
                     args.beat_at_sweep,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "sample-scheduler":
+        print(
+            json.dumps(
+                _sample_scheduler(
+                    args.ticks,
+                    args.period_us,
+                    args.tolerance_us,
                 ),
                 indent=2,
                 sort_keys=True,
@@ -529,5 +556,34 @@ def _sample_watchdog(
         "beat_at_sweep": beat_at_sweep,
         "missed": 0 if entry is None else entry.missed,
         "event_count": len(timeline),
+        "timeline": timeline,
+    }
+
+
+def _sample_scheduler(
+    ticks: list[int] | tuple[int, ...],
+    period_us: int,
+    tolerance_us: int,
+) -> dict[str, object]:
+    if period_us <= 0:
+        raise ValueError("period_us must be positive")
+    if tolerance_us < 0:
+        raise ValueError("tolerance_us must be non-negative")
+
+    simulator = SchedulerSimulator(
+        deadline_period_us=period_us,
+        jitter_tolerance_us=tolerance_us,
+    )
+    timeline: list[dict[str, object]] = []
+    for now_us in ticks:
+        stats = simulator.on_deadline_tick(now_us)
+        timeline.append({"now_us": int(now_us), **stats.to_dict()})
+
+    return {
+        "period_us": period_us,
+        "tolerance_us": tolerance_us,
+        "tick_count": simulator.tick_count,
+        "max_jitter_us": simulator.max_jitter_us,
+        "deadline_misses": simulator.deadline_misses,
         "timeline": timeline,
     }
