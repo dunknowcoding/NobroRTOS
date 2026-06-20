@@ -14,11 +14,15 @@ from nobro_rtos import (
     BootReportSummary,
     Capability,
     Criticality,
+    DegradePlannerSimulator,
+    DegradePlannerSimulatorError,
     EventLogSimulator,
     MemoryBudget,
     ModuleSpec,
     NobroContractBundle,
     FixedReport,
+    QuotaLedgerSimulator,
+    QuotaLedgerSimulatorError,
     ReportKind,
     ReportStatus,
     RosBridgeDescriptor,
@@ -26,11 +30,13 @@ from nobro_rtos import (
     RosTopic,
     RecoveryAction,
     RecoveryPolicySimulator,
+    ResourceBudget,
     SchedulerSimulator,
     SensorStubError,
     SensorStubSimulator,
     ServoSimulator,
     ServoSimulatorError,
+    SystemProfile,
     WatchdogSimulator,
     capabilities_from_mask,
     load_repo_host_contract,
@@ -42,6 +48,8 @@ from nobro_rtos.cli import (
     _doctor,
     _sample_actuator,
     _sample_event_log,
+    _sample_degrade,
+    _sample_quota,
     _sample_recovery,
     _sample_report,
     _sample_scheduler,
@@ -922,6 +930,95 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(len(report["recent"]), 3)
         self.assertEqual(report["recent"][0]["seq"], 2)
         self.assertEqual(report["warn_or_higher"], 3)
+
+    def test_quota_ledger_simulator_tracks_reserve_and_release(self) -> None:
+        ledger = QuotaLedgerSimulator(capacity=2)
+        ledger.register("sensor", ResourceBudget(1024, 256, 2))
+
+        ledger.reserve("sensor", ResourceBudget(512, 128, 1))
+        ledger.release("sensor", ResourceBudget(128, 64, 1))
+
+        self.assertEqual(ledger.usage("sensor"), ResourceBudget(384, 64, 0))
+        self.assertEqual(ledger.available("sensor"), ResourceBudget(640, 192, 2))
+        self.assertEqual(ledger.total_used(), ResourceBudget(384, 64, 0))
+
+        with self.assertRaisesRegex(QuotaLedgerSimulatorError, "quota limit exceeded"):
+            ledger.reserve("sensor", ResourceBudget(1024, 0, 0))
+
+        released = ledger.reset_usage("sensor")
+        self.assertEqual(released, ResourceBudget(384, 64, 0))
+        self.assertEqual(ledger.usage("sensor"), ResourceBudget())
+
+    def test_degrade_planner_simulator_drops_lowest_criticality_first(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(20, 4, 0),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(20, 4, 0)),
+            ModuleSpec("ai", Criticality.USER, MemoryBudget(20, 4, 0)),
+            ModuleSpec("telemetry", Criticality.BEST_EFFORT, MemoryBudget(50, 4, 0)),
+        )
+
+        decision = DegradePlannerSimulator.fit(
+            modules,
+            SystemProfile(
+                flash_limit_bytes=70,
+                ram_limit_bytes=32,
+                pool_slot_limit=8,
+                max_modules=4,
+            ),
+        )
+
+        self.assertEqual(decision.disabled, ("telemetry",))
+        self.assertEqual(decision.enabled, ("kernel", "sensor", "ai"))
+        self.assertEqual(decision.reason.value, "flash_budget")
+        self.assertEqual(decision.budget, ResourceBudget(60, 12, 0))
+
+    def test_degrade_planner_simulator_reports_essential_over_budget(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(100, 4, 0),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("hal", Criticality.SYSTEM, MemoryBudget(100, 4, 0)),
+        )
+
+        with self.assertRaisesRegex(
+            DegradePlannerSimulatorError,
+            "essential modules exceed profile",
+        ):
+            DegradePlannerSimulator.fit(
+                modules,
+                SystemProfile(
+                    flash_limit_bytes=50,
+                    ram_limit_bytes=32,
+                    pool_slot_limit=8,
+                    max_modules=2,
+                ),
+            )
+
+    def test_cli_quota_and_degrade_samples_summarize_control_plane(self) -> None:
+        quota = _sample_quota()
+        degrade = _sample_degrade(
+            flash_limit=72 * 1024,
+            ram_limit=16 * 1024,
+            pool_limit=5,
+            max_modules=4,
+        )
+
+        self.assertEqual(quota["len"], 5)
+        self.assertEqual(quota["timeline"][0]["event"], "reserve")
+        self.assertGreater(quota["total_used"]["flash_bytes"], 0)
+        self.assertEqual(degrade["decision"]["disabled"], ["telemetry"])
+        self.assertEqual(degrade["decision"]["reason"], "module_limit")
+        self.assertIn("kernel", degrade["decision"]["enabled"])
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

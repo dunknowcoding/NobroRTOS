@@ -140,6 +140,11 @@ through recovery and update missed heartbeat counters.
 them when deciding whether to export a diagnostic report, compact a host trace,
 or raise degraded-mode pressure without pushing another event.
 
+Python host tooling mirrors quota accounting and degraded-mode planning through
+`QuotaLedgerSimulator` and `DegradePlannerSimulator`. These helpers are for
+design review, VS Code tasks, CI checks, and package examples; realtime firmware
+still uses the Rust control plane.
+
 ### Scheduler
 
 `Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap

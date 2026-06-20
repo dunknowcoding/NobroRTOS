@@ -117,7 +117,9 @@ stateDiagram-v2
 The strongest completed area is the software control plane. Local Rust tests
 cover manifests, quota accounting, capability grants, runtime disable paths,
 mailbox cleanup, alarm cleanup, watchdog cleanup, degraded-mode reports,
-board-package validation, boot assembly, and host-readable diagnostics.
+board-package validation, boot assembly, host-readable diagnostics, and Python
+simulators for quota, degraded-mode, scheduler, event-log, recovery, sensor,
+and actuator flows.
 
 ```mermaid
 mindmap

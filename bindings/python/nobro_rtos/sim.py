@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from .contracts import Criticality, MemoryBudget, ModuleSpec
+
 
 class SensorStubMode(str, Enum):
     """Fault modes mirrored from the Rust sensor-stub adapter."""
@@ -26,6 +28,14 @@ class ServoSimulatorError(RuntimeError):
 
 class WatchdogSimulatorError(RuntimeError):
     """Raised when the simulated watchdog contract is violated."""
+
+
+class QuotaLedgerSimulatorError(RuntimeError):
+    """Raised when the simulated quota ledger contract is violated."""
+
+
+class DegradePlannerSimulatorError(RuntimeError):
+    """Raised when the simulated degraded-mode planner cannot fit a profile."""
 
 
 DEFAULT_DEADLINE_PERIOD_US = 20_000
@@ -50,6 +60,322 @@ class KernelErrorKind(str, Enum):
     RADIO_TX_FAIL = "radio_tx_fail"
     SENSOR_READ_FAIL = "sensor_read_fail"
     DEADLINE_MISSED = "deadline_missed"
+
+
+@dataclass(frozen=True)
+class ResourceBudget:
+    """Zero-valid resource budget used by host-side runtime simulations."""
+
+    flash_bytes: int = 0
+    ram_bytes: int = 0
+    pool_slots: int = 0
+
+    def __post_init__(self) -> None:
+        for field_name in ("flash_bytes", "ram_bytes", "pool_slots"):
+            if getattr(self, field_name) < 0:
+                raise ValueError(f"{field_name} must be non-negative")
+
+    @classmethod
+    def from_memory(cls, memory: MemoryBudget) -> "ResourceBudget":
+        return cls(memory.flash_bytes, memory.ram_bytes, memory.pool_slots)
+
+    def fits_within(self, limit: "ResourceBudget") -> bool:
+        return (
+            self.flash_bytes <= limit.flash_bytes
+            and self.ram_bytes <= limit.ram_bytes
+            and self.pool_slots <= limit.pool_slots
+        )
+
+    def checked_add(self, other: "ResourceBudget") -> "ResourceBudget":
+        result = ResourceBudget(
+            self.flash_bytes + other.flash_bytes,
+            self.ram_bytes + other.ram_bytes,
+            self.pool_slots + other.pool_slots,
+        )
+        if result.flash_bytes > 0xFFFF_FFFF:
+            raise QuotaLedgerSimulatorError("flash quota overflow")
+        if result.ram_bytes > 0xFFFF_FFFF:
+            raise QuotaLedgerSimulatorError("RAM quota overflow")
+        if result.pool_slots > 0xFFFF:
+            raise QuotaLedgerSimulatorError("pool quota overflow")
+        return result
+
+    def checked_sub(self, other: "ResourceBudget") -> "ResourceBudget":
+        if (
+            other.flash_bytes > self.flash_bytes
+            or other.ram_bytes > self.ram_bytes
+            or other.pool_slots > self.pool_slots
+        ):
+            raise QuotaLedgerSimulatorError("quota release underflow")
+        return ResourceBudget(
+            self.flash_bytes - other.flash_bytes,
+            self.ram_bytes - other.ram_bytes,
+            self.pool_slots - other.pool_slots,
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "flash_bytes": self.flash_bytes,
+            "ram_bytes": self.ram_bytes,
+            "pool_slots": self.pool_slots,
+        }
+
+
+@dataclass(frozen=True)
+class QuotaEntry:
+    """A host-side quota entry with fixed module identity and usage."""
+
+    module: str
+    limit: ResourceBudget
+    used: ResourceBudget = ResourceBudget()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "module": self.module,
+            "limit": self.limit.to_dict(),
+            "used": self.used.to_dict(),
+            "available": self.limit.checked_sub(self.used).to_dict(),
+        }
+
+
+@dataclass
+class QuotaLedgerSimulator:
+    """Fixed-capacity resource quota ledger for host-side admission drills."""
+
+    capacity: int = 8
+
+    def __post_init__(self) -> None:
+        if self.capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self._entries: dict[str, QuotaEntry] = {}
+
+    @property
+    def len(self) -> int:
+        return len(self._entries)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.len == 0
+
+    def register(self, module: str, limit: ResourceBudget | MemoryBudget) -> None:
+        if module in self._entries:
+            raise QuotaLedgerSimulatorError("duplicate quota module")
+        if len(self._entries) >= self.capacity:
+            raise QuotaLedgerSimulatorError("quota capacity exhausted")
+        self._entries[module] = QuotaEntry(module, _resource_budget(limit))
+
+    def register_modules(self, modules: tuple[ModuleSpec, ...] | list[ModuleSpec]) -> None:
+        for spec in modules:
+            self.register(spec.module, ResourceBudget.from_memory(spec.memory))
+
+    def reserve(self, module: str, amount: ResourceBudget) -> None:
+        entry = self._entry(module)
+        used = entry.used.checked_add(amount)
+        if not used.fits_within(entry.limit):
+            raise QuotaLedgerSimulatorError("quota limit exceeded")
+        self._entries[module] = QuotaEntry(module, entry.limit, used)
+
+    def release(self, module: str, amount: ResourceBudget) -> None:
+        entry = self._entry(module)
+        self._entries[module] = QuotaEntry(
+            module,
+            entry.limit,
+            entry.used.checked_sub(amount),
+        )
+
+    def reset_usage(self, module: str) -> ResourceBudget:
+        entry = self._entry(module)
+        self._entries[module] = QuotaEntry(module, entry.limit)
+        return entry.used
+
+    def usage(self, module: str) -> ResourceBudget | None:
+        entry = self._entries.get(module)
+        return None if entry is None else entry.used
+
+    def limit(self, module: str) -> ResourceBudget | None:
+        entry = self._entries.get(module)
+        return None if entry is None else entry.limit
+
+    def available(self, module: str) -> ResourceBudget | None:
+        entry = self._entries.get(module)
+        return None if entry is None else entry.limit.checked_sub(entry.used)
+
+    def total_used(self) -> ResourceBudget:
+        total = ResourceBudget()
+        for entry in self._entries.values():
+            total = total.checked_add(entry.used)
+        return total
+
+    def entries(self) -> tuple[QuotaEntry, ...]:
+        return tuple(self._entries.values())
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "capacity": self.capacity,
+            "len": self.len,
+            "total_used": self.total_used().to_dict(),
+            "entries": [entry.to_dict() for entry in self.entries()],
+        }
+
+    def _entry(self, module: str) -> QuotaEntry:
+        entry = self._entries.get(module)
+        if entry is None:
+            raise QuotaLedgerSimulatorError("missing quota module")
+        return entry
+
+
+@dataclass(frozen=True)
+class SystemProfile:
+    """Host-side system profile used by the degraded-mode planner."""
+
+    flash_limit_bytes: int
+    ram_limit_bytes: int
+    pool_slot_limit: int
+    max_modules: int
+
+    def __post_init__(self) -> None:
+        if self.flash_limit_bytes < 0 or self.ram_limit_bytes < 0:
+            raise ValueError("profile byte limits must be non-negative")
+        if self.pool_slot_limit < 0:
+            raise ValueError("pool_slot_limit must be non-negative")
+        if self.max_modules < 0:
+            raise ValueError("max_modules must be non-negative")
+
+    @property
+    def budget(self) -> ResourceBudget:
+        return ResourceBudget(
+            self.flash_limit_bytes,
+            self.ram_limit_bytes,
+            self.pool_slot_limit,
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "flash_limit_bytes": self.flash_limit_bytes,
+            "ram_limit_bytes": self.ram_limit_bytes,
+            "pool_slot_limit": self.pool_slot_limit,
+            "max_modules": self.max_modules,
+        }
+
+
+class DegradeReason(str, Enum):
+    """Degraded-mode pressure labels mirrored from the Rust planner."""
+
+    FLASH_BUDGET = "flash_budget"
+    RAM_BUDGET = "ram_budget"
+    POOL_BUDGET = "pool_budget"
+    MODULE_LIMIT = "module_limit"
+
+
+@dataclass(frozen=True)
+class DegradeDecision:
+    """A deterministic host-side degraded-mode planning result."""
+
+    enabled: tuple[str, ...]
+    disabled: tuple[str, ...]
+    budget: ResourceBudget
+    reason: DegradeReason | None = None
+
+    @property
+    def disabled_count(self) -> int:
+        return len(self.disabled)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "enabled": list(self.enabled),
+            "disabled": list(self.disabled),
+            "disabled_count": self.disabled_count,
+            "budget": self.budget.to_dict(),
+            "reason": None if self.reason is None else self.reason.value,
+        }
+
+
+class DegradePlannerSimulator:
+    """Host-side mirror of the kernel degraded-mode module fitting policy."""
+
+    @staticmethod
+    def fit(
+        modules: tuple[ModuleSpec, ...] | list[ModuleSpec],
+        profile: SystemProfile,
+        capacity: int | None = None,
+    ) -> DegradeDecision:
+        if capacity is not None and len(modules) > capacity:
+            raise DegradePlannerSimulatorError("too many modules for planner capacity")
+
+        enabled = [True for _ in modules]
+        disabled: list[str] = []
+        budget = _total_budget(modules, enabled)
+        reason: DegradeReason | None = None
+
+        while not budget.fits_within(profile.budget) or sum(enabled) > profile.max_modules:
+            reason = _overflow_reason(budget, profile, sum(enabled))
+            drop_idx = _pick_drop_candidate(modules, enabled)
+            if drop_idx is None:
+                raise DegradePlannerSimulatorError("essential modules exceed profile")
+
+            enabled[drop_idx] = False
+            disabled.append(modules[drop_idx].module)
+            budget = _total_budget(modules, enabled)
+
+        return DegradeDecision(
+            enabled=tuple(spec.module for idx, spec in enumerate(modules) if enabled[idx]),
+            disabled=tuple(disabled),
+            budget=budget,
+            reason=reason,
+        )
+
+
+def _resource_budget(value: ResourceBudget | MemoryBudget) -> ResourceBudget:
+    if isinstance(value, ResourceBudget):
+        return value
+    return ResourceBudget.from_memory(value)
+
+
+def _total_budget(
+    modules: tuple[ModuleSpec, ...] | list[ModuleSpec],
+    enabled: list[bool],
+) -> ResourceBudget:
+    total = ResourceBudget()
+    for index, spec in enumerate(modules):
+        if enabled[index]:
+            total = total.checked_add(ResourceBudget.from_memory(spec.memory))
+    return total
+
+
+def _pick_drop_candidate(
+    modules: tuple[ModuleSpec, ...] | list[ModuleSpec],
+    enabled: list[bool],
+) -> int | None:
+    selected: int | None = None
+    for index, spec in enumerate(modules):
+        if not enabled[index] or spec.criticality >= Criticality.SYSTEM:
+            continue
+        if selected is None:
+            selected = index
+            continue
+        current = modules[selected]
+        if spec.criticality < current.criticality:
+            selected = index
+        elif (
+            spec.criticality == current.criticality
+            and spec.memory.flash_bytes > current.memory.flash_bytes
+        ):
+            selected = index
+    return selected
+
+
+def _overflow_reason(
+    budget: ResourceBudget,
+    profile: SystemProfile,
+    modules: int,
+) -> DegradeReason:
+    if modules > profile.max_modules:
+        return DegradeReason.MODULE_LIMIT
+    if budget.flash_bytes > profile.flash_limit_bytes:
+        return DegradeReason.FLASH_BUDGET
+    if budget.ram_bytes > profile.ram_limit_bytes:
+        return DegradeReason.RAM_BUDGET
+    return DegradeReason.POOL_BUDGET
 
 
 @dataclass(frozen=True)

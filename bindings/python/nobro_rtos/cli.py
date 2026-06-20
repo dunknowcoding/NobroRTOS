@@ -26,14 +26,18 @@ from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .sim import (
+    DegradePlannerSimulator,
     EventLogSimulator,
     KernelErrorKind,
+    QuotaLedgerSimulator,
     RecoveryPolicySimulator,
+    ResourceBudget,
     SchedulerSimulator,
     SensorStubError,
     SensorStubMode,
     SensorStubSimulator,
     ServoSimulator,
+    SystemProfile,
     WatchdogSimulator,
 )
 
@@ -160,6 +164,18 @@ def main() -> int:
     sample_event_log.add_argument("--capacity", type=int, default=3)
     sample_event_log.add_argument("--events", type=int, default=4)
     sample_event_log.add_argument("--recent", type=int, default=3)
+    subparsers.add_parser(
+        "sample-quota",
+        help="run a deterministic quota ledger simulation and print JSON",
+    )
+    sample_degrade = subparsers.add_parser(
+        "sample-degrade",
+        help="run a deterministic degraded-mode planning simulation and print JSON",
+    )
+    sample_degrade.add_argument("--flash-limit", type=int, default=72 * 1024)
+    sample_degrade.add_argument("--ram-limit", type=int, default=16 * 1024)
+    sample_degrade.add_argument("--pool-limit", type=int, default=5)
+    sample_degrade.add_argument("--max-modules", type=int, default=4)
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -298,6 +314,23 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "sample-quota":
+        print(json.dumps(_sample_quota(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "sample-degrade":
+        print(
+            json.dumps(
+                _sample_degrade(
+                    args.flash_limit,
+                    args.ram_limit,
+                    args.pool_limit,
+                    args.max_modules,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
@@ -398,6 +431,8 @@ def _doctor() -> dict[str, object]:
             "watchdog",
             "scheduler",
             "event_log",
+            "quota",
+            "degrade",
         ],
     }
 
@@ -779,3 +814,108 @@ def _sample_event_log(capacity: int, events: int, recent: int) -> dict[str, obje
         "recent": [record.to_dict() for record in simulator.copy_recent(recent)],
         "overwritten": overwritten,
     }
+
+
+def _sample_quota() -> dict[str, object]:
+    modules = _sample_runtime_modules()
+    ledger = QuotaLedgerSimulator(capacity=8)
+    ledger.register_modules(modules)
+    timeline: list[dict[str, object]] = []
+
+    for module, amount in (
+        ("sensor", ResourceBudget(4096, 512, 1)),
+        ("ai", ResourceBudget(12 * 1024, 4 * 1024, 1)),
+        ("radio", ResourceBudget(2048, 512, 0)),
+    ):
+        ledger.reserve(module, amount)
+        timeline.append(
+            {
+                "event": "reserve",
+                "module": module,
+                "amount": amount.to_dict(),
+                "used": ledger.usage(module).to_dict(),
+                "available": ledger.available(module).to_dict(),
+            }
+        )
+
+    released = ResourceBudget(1024, 128, 0)
+    ledger.release("sensor", released)
+    timeline.append(
+        {
+            "event": "release",
+            "module": "sensor",
+            "amount": released.to_dict(),
+            "used": ledger.usage("sensor").to_dict(),
+            "available": ledger.available("sensor").to_dict(),
+        }
+    )
+
+    return {
+        **ledger.to_dict(),
+        "timeline": timeline,
+    }
+
+
+def _sample_degrade(
+    flash_limit: int,
+    ram_limit: int,
+    pool_limit: int,
+    max_modules: int,
+) -> dict[str, object]:
+    profile = SystemProfile(
+        flash_limit_bytes=flash_limit,
+        ram_limit_bytes=ram_limit,
+        pool_slot_limit=pool_limit,
+        max_modules=max_modules,
+    )
+    modules = _sample_runtime_modules()
+    decision = DegradePlannerSimulator.fit(modules, profile, capacity=8)
+    return {
+        "profile": profile.to_dict(),
+        "modules": [
+            {
+                "module": spec.module,
+                "criticality": spec.criticality.name.lower(),
+                "memory": spec.memory.to_dict(),
+            }
+            for spec in modules
+        ],
+        "decision": decision.to_dict(),
+    }
+
+
+def _sample_runtime_modules() -> tuple[ModuleSpec, ...]:
+    return (
+        ModuleSpec(
+            "kernel",
+            Criticality.HARD_REALTIME,
+            MemoryBudget(18 * 1024, 4 * 1024, 1),
+            owns=(Capability.TIMEBASE, Capability.DEADLINE_TIMER),
+            period_us=20_000,
+            max_jitter_us=10,
+        ),
+        ModuleSpec(
+            "sensor",
+            Criticality.DRIVER,
+            MemoryBudget(12 * 1024, 2 * 1024, 1),
+            requires=(Capability.BUS0, Capability.SAMPLE_POOL),
+        ),
+        ModuleSpec(
+            "radio",
+            Criticality.DRIVER,
+            MemoryBudget(14 * 1024, 2 * 1024, 1),
+            requires=(Capability.RADIO,),
+        ),
+        ModuleSpec(
+            "ai",
+            Criticality.USER,
+            MemoryBudget(28 * 1024, 8 * 1024, 2),
+            requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+        ),
+        ModuleSpec(
+            "telemetry",
+            Criticality.BEST_EFFORT,
+            MemoryBudget(10 * 1024, 1024, 1),
+            requires=(Capability.STREAM,),
+        ),
+    )

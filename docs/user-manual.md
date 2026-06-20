@@ -208,6 +208,8 @@ python tools/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
+python tools/nobro_contract_tool.py sample-quota
+python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
 ```
 
 ## Cleanup
