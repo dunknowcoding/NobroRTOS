@@ -10,6 +10,20 @@ pub struct WatchdogEntry {
     pub missed: u32,
 }
 
+impl WatchdogEntry {
+    pub fn age_us(self, now_us: u64) -> u64 {
+        now_us.saturating_sub(self.last_beat_us)
+    }
+
+    pub fn overdue_us(self, now_us: u64) -> u64 {
+        self.age_us(now_us).saturating_sub(self.timeout_us)
+    }
+
+    pub fn is_expired(self, now_us: u64) -> bool {
+        self.age_us(now_us) > self.timeout_us
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WatchdogError {
     Full,
@@ -69,7 +83,7 @@ impl<const N: usize> Watchdog<N> {
     pub fn expired(&mut self, now_us: u64, out: &mut [ModuleId]) -> usize {
         let mut count = 0;
         for entry in self.entries.iter_mut().flatten() {
-            if now_us.saturating_sub(entry.last_beat_us) <= entry.timeout_us {
+            if !entry.is_expired(now_us) {
                 continue;
             }
             entry.missed = entry.missed.saturating_add(1);
@@ -79,6 +93,14 @@ impl<const N: usize> Watchdog<N> {
             }
         }
         count
+    }
+
+    pub fn expired_count(&self, now_us: u64) -> usize {
+        self.entries
+            .iter()
+            .flatten()
+            .filter(|entry| entry.is_expired(now_us))
+            .count()
     }
 
     pub fn remove(&mut self, module: ModuleId) -> Option<WatchdogEntry> {
@@ -143,6 +165,36 @@ mod tests {
         assert_eq!(entry.missed, 0);
         assert_eq!(entry.last_beat_us, 160);
         assert_eq!(watchdog.expired(200, &mut expired), 0);
+    }
+
+    #[test]
+    fn expired_count_does_not_mutate_missed_count() {
+        let mut watchdog = Watchdog::<2>::new();
+        watchdog.register(ModuleId::Sensor, 100, 0).unwrap();
+        watchdog.register(ModuleId::Radio, 200, 0).unwrap();
+
+        assert_eq!(watchdog.expired_count(150), 1);
+        assert_eq!(watchdog.get(ModuleId::Sensor).expect("sensor").missed, 0);
+
+        let mut expired = [ModuleId::Kernel; 2];
+        assert_eq!(watchdog.expired(150, &mut expired), 1);
+        assert_eq!(watchdog.get(ModuleId::Sensor).expect("sensor").missed, 1);
+    }
+
+    #[test]
+    fn entry_reports_age_and_overdue_time() {
+        let entry = WatchdogEntry {
+            module: ModuleId::Sensor,
+            timeout_us: 100,
+            last_beat_us: 20,
+            missed: 0,
+        };
+
+        assert_eq!(entry.age_us(90), 70);
+        assert_eq!(entry.overdue_us(90), 0);
+        assert!(!entry.is_expired(120));
+        assert_eq!(entry.overdue_us(121), 1);
+        assert!(entry.is_expired(121));
     }
 
     #[test]

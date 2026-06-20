@@ -131,6 +131,10 @@ runtime.disable_module(module_id)?;
 let report = runtime.runtime_report();
 ```
 
+Use `watchdog_expired_count(now_us)` for a non-mutating liveness precheck.
+Use `sweep_watchdogs(now_us)` when the runtime should route expired modules
+through recovery and update missed heartbeat counters.
+
 ### Scheduler
 
 `Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap

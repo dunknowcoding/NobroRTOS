@@ -604,6 +604,10 @@ impl<
         self.watchdog.get(module)
     }
 
+    pub fn watchdog_expired_count(&self, now_us: u64) -> usize {
+        self.watchdog.expired_count(now_us)
+    }
+
     fn ensure_module_admitted(&self, module: ModuleId) -> Result<(), RuntimeError> {
         if self.modules.entry(module).is_some() {
             Ok(())
@@ -1535,6 +1539,14 @@ mod tests {
         runtime.heartbeat(ModuleId::Sensor, 80).unwrap();
 
         assert!(runtime.sweep_watchdogs(150).unwrap().is_empty());
+        assert_eq!(runtime.watchdog_expired_count(181), 1);
+        assert_eq!(
+            runtime
+                .watchdog_entry(ModuleId::Sensor)
+                .expect("watchdog")
+                .missed,
+            0
+        );
         let sweep = runtime.sweep_watchdogs(181).unwrap();
         let report = runtime
             .health_report(ModuleId::Sensor)
