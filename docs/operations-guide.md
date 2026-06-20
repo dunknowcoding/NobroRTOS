@@ -27,6 +27,9 @@ cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
 cargo test -p nobro-sal --target x86_64-pc-windows-msvc
 cargo test -p nobro-host --target x86_64-pc-windows-msvc
 cargo check --workspace
+cd ..
+python tools/nobro_contract_tool.py check-host-contract
+python tools/nobro_contract_tool.py check-distribution-metadata
 ```
 
 ## Commit Hygiene

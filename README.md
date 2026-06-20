@@ -197,10 +197,10 @@ folders use the `nobro_*` project prefix.
 | AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
-| Host tooling UX | In progress | First-fault decoding and Python workflow examples need to grow |
+| Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge model | Planned | Bounded topic/service/action/parameter bridge descriptors |
-| SDK packaging | Scaffolded | Standalone, Arduino, PlatformIO, and bindings folders are separated |
-| C/C++/Python interfaces | In progress | Python contract builders can emit module, AI, and ROS bridge metadata |
+| SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
+| C/C++/Python interfaces | In progress | C/C++ report headers plus Python builders, decoders, and validators |
 
 ## Quick Start
 
@@ -230,6 +230,13 @@ cargo check --workspace
 
 Use `_work/` for local build products, downloaded tools, logs, and scratch
 artifacts. It is intentionally ignored by Git.
+
+Validate public contracts and package metadata:
+
+```powershell
+python tools/nobro_contract_tool.py check-host-contract
+python tools/nobro_contract_tool.py check-distribution-metadata
+```
 
 ## Documentation
 
