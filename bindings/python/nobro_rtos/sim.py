@@ -234,6 +234,15 @@ class WatchdogEntry:
     last_beat_us: int
     missed: int = 0
 
+    def age_us(self, now_us: int) -> int:
+        return max(0, int(now_us) - self.last_beat_us)
+
+    def overdue_us(self, now_us: int) -> int:
+        return max(0, self.age_us(now_us) - self.timeout_us)
+
+    def is_expired(self, now_us: int) -> bool:
+        return self.age_us(now_us) > self.timeout_us
+
     def to_dict(self) -> dict[str, int | str]:
         return {
             "module": self.module,
@@ -282,7 +291,7 @@ class WatchdogSimulator:
 
         expired_entries: list[WatchdogEntry] = []
         for module, entry in list(self._entries.items()):
-            if max(0, int(now_us) - entry.last_beat_us) <= entry.timeout_us:
+            if not entry.is_expired(now_us):
                 continue
             updated = WatchdogEntry(
                 module=entry.module,
@@ -294,6 +303,9 @@ class WatchdogSimulator:
             if out_limit is None or len(expired_entries) < out_limit:
                 expired_entries.append(updated)
         return expired_entries
+
+    def expired_count(self, now_us: int) -> int:
+        return sum(1 for entry in self._entries.values() if entry.is_expired(now_us))
 
     def remove(self, module: str) -> WatchdogEntry | None:
         return self._entries.pop(module, None)

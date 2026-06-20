@@ -109,6 +109,7 @@ assert recovery.record_error("sensor", "sensor_read_fail", 10).action.value == "
 
 watchdog = WatchdogSimulator(capacity=1)
 watchdog.register("sensor", timeout_us=100, now_us=0)
+assert watchdog.expired_count(150) == 1
 assert watchdog.expired(150)[0].module == "sensor"
 
 scheduler = SchedulerSimulator(jitter_tolerance_us=25)

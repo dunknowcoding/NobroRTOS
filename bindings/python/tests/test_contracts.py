@@ -741,6 +741,19 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(entry.last_beat_us, 160)
         self.assertEqual(watchdog.expired(200), [])
 
+    def test_watchdog_simulator_expired_count_does_not_mutate(self) -> None:
+        watchdog = WatchdogSimulator(capacity=2)
+        watchdog.register("sensor", timeout_us=100, now_us=0)
+        watchdog.register("radio", timeout_us=200, now_us=0)
+
+        self.assertEqual(watchdog.expired_count(150), 1)
+        self.assertEqual(watchdog.get("sensor").missed, 0)
+        self.assertEqual(watchdog.get("sensor").overdue_us(150), 50)
+        self.assertTrue(watchdog.get("sensor").is_expired(150))
+
+        self.assertEqual(len(watchdog.expired(150)), 1)
+        self.assertEqual(watchdog.get("sensor").missed, 1)
+
     def test_cli_watchdog_sample_summarizes_heartbeat_timeline(self) -> None:
         report = _sample_watchdog(
             "sensor",
