@@ -1,11 +1,11 @@
 # NobroRTOS Bindings
 
-This folder is reserved for language bindings and compatibility facades.
+This folder contains language bindings and compatibility facades.
 
-Planned binding targets:
+Binding targets:
 
-- `c/` for a stable C ABI over reports, manifests, and selected runtime helpers
-- `cpp/` for small C++ convenience wrappers
+- `c/` for a stable C ABI over report layouts and status helpers
+- `cpp/` for small C++ convenience wrappers over the C ABI
 - `python/` for host tooling, report decoding, simulation, and AI/control
   orchestration outside hard realtime paths
 
