@@ -183,6 +183,13 @@ class HostContract:
 
     def _validate_ai_contracts(self) -> None:
         ai_contracts = self._require_object("ai_contracts")
+        report = ai_contracts.get("report")
+        if not isinstance(report, dict):
+            raise ValueError("missing AI model report contract")
+        if report.get("symbol") != "NOBRO_AI_MODEL_REPORT":
+            raise ValueError(f"unexpected AI model report symbol: {report.get('symbol')}")
+        if report.get("magic") != "0x4E424149":
+            raise ValueError(f"unexpected AI model report magic: {report.get('magic')}")
         self._validate_enum_codes(
             ai_contracts.get("backend_codes"),
             AiBackendKind,
@@ -201,6 +208,13 @@ class HostContract:
 
     def _validate_ros_bridge_contracts(self) -> None:
         bridge = self._require_object("ros_bridge_contracts")
+        report = bridge.get("report")
+        if not isinstance(report, dict):
+            raise ValueError("missing ROS bridge report contract")
+        if report.get("symbol") != "NOBRO_ROS_BRIDGE_REPORT":
+            raise ValueError(f"unexpected ROS bridge report symbol: {report.get('symbol')}")
+        if report.get("magic") != "0x4E425253":
+            raise ValueError(f"unexpected ROS bridge report magic: {report.get('magic')}")
         if bridge.get("hash") != "fnv1a32_utf8":
             raise ValueError(f"unexpected ROS bridge hash: {bridge.get('hash')}")
         transports = bridge.get("transport_codes")

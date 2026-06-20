@@ -30,6 +30,8 @@ extern "C" {
 #define NOBRO_BOARD_PACKAGE_REPORT_MAGIC 0x4E42424Bu
 #define NOBRO_MANIFEST_REPORT_MAGIC 0x4E424D46u
 #define NOBRO_ADAPTER_COMPAT_REPORT_MAGIC 0x4E424143u
+#define NOBRO_AI_MODEL_REPORT_MAGIC 0x4E424149u
+#define NOBRO_ROS_BRIDGE_REPORT_MAGIC 0x4E425253u
 #define NOBRO_FNV1A32_OFFSET 0x811C9DC5u
 #define NOBRO_FNV1A32_PRIME 0x01000193u
 
@@ -224,6 +226,37 @@ typedef struct nobro_adapter_compat_report {
     uint32_t checksum;
 } nobro_adapter_compat_report_t;
 
+typedef struct nobro_ai_model_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t backend;
+    uint32_t model_id;
+    uint32_t input_bytes_max;
+    uint32_t output_bytes_max;
+    uint32_t arena_bytes;
+    uint32_t timeout_us;
+    uint32_t route_preference;
+    uint32_t stale_after_us;
+    uint32_t endpoint_failure_limit;
+    uint32_t checksum;
+} nobro_ai_model_report_t;
+
+typedef struct nobro_ros_bridge_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t transport;
+    uint32_t bridge_id_hash;
+    uint32_t topic_count;
+    uint32_t service_count;
+    uint32_t action_count;
+    uint32_t parameter_count;
+    uint32_t total_buffer_bytes;
+    uint32_t max_timeout_us;
+    uint32_t checksum;
+} nobro_ros_bridge_report_t;
+
 NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t),
                     "unexpected board profile report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_board_package_report_t) == 20u * sizeof(uint32_t),
@@ -232,6 +265,10 @@ NOBRO_STATIC_ASSERT(sizeof(nobro_manifest_report_t) == 15u * sizeof(uint32_t),
                     "unexpected manifest report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_adapter_compat_report_t) == 14u * sizeof(uint32_t),
                     "unexpected adapter compatibility report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_ai_model_report_t) == 13u * sizeof(uint32_t),
+                    "unexpected AI model report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t),
+                    "unexpected ROS bridge report size");
 
 static inline uint32_t nobro_report_checksum_words(const uint32_t *words, size_t word_count) {
     uint32_t checksum = 0u;
@@ -474,6 +511,54 @@ static inline nobro_report_status_t nobro_adapter_compat_report_status(
         1,
         report->checksum,
         nobro_adapter_compat_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_ai_model_report_checksum(
+    const nobro_ai_model_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->backend
+        ^ report->model_id ^ report->input_bytes_max ^ report->output_bytes_max
+        ^ report->arena_bytes ^ report->timeout_us ^ report->route_preference
+        ^ report->stale_after_us ^ report->endpoint_failure_limit;
+}
+
+static inline nobro_report_status_t nobro_ai_model_report_status(
+    const nobro_ai_model_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_AI_MODEL_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_ai_model_report_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_ros_bridge_report_checksum(
+    const nobro_ros_bridge_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->transport
+        ^ report->bridge_id_hash ^ report->topic_count ^ report->service_count
+        ^ report->action_count ^ report->parameter_count ^ report->total_buffer_bytes
+        ^ report->max_timeout_us;
+}
+
+static inline nobro_report_status_t nobro_ros_bridge_report_status(
+    const nobro_ros_bridge_report_t *report
+) {
+    return nobro_report_status_from_checksum(
+        NOBRO_ROS_BRIDGE_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->checksum,
+        nobro_ros_bridge_report_checksum(report)
     );
 }
 

@@ -194,11 +194,11 @@ folders use the `nobro_*` project prefix.
 | Board package fixtures | Present | Host-reviewable package list for current boot layouts |
 | Host ABI contract | Present | JSON contract plus `nobro-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
-| AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
+| AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge model | Present | Bounded topic/service/action/parameter contracts and SAL bridge trait |
+| ROS bridge model | Present | Bounded topic/service/action/parameter contracts, SAL bridge trait, and bridge reports |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
 | C/C++/Python interfaces | In progress | C/C++ reports, AI/ROS contracts, plus Python builders, decoders, and validators |
 

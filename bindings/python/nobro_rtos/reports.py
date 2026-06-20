@@ -21,6 +21,8 @@ BOARD_PROFILE_REPORT_MAGIC = 0x4E42_4250
 BOARD_PACKAGE_REPORT_MAGIC = 0x4E42_424B
 MANIFEST_REPORT_MAGIC = 0x4E42_4D46
 ADAPTER_COMPAT_REPORT_MAGIC = 0x4E42_4143
+AI_MODEL_REPORT_MAGIC = 0x4E42_4149
+ROS_BRIDGE_REPORT_MAGIC = 0x4E42_5253
 REPORT_VERSION = 1
 
 BOARD_PROFILE_FIELDS = (
@@ -99,12 +101,45 @@ ADAPTER_COMPAT_FIELDS = (
     "checksum",
 )
 
+AI_MODEL_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "backend",
+    "model_id",
+    "input_bytes_max",
+    "output_bytes_max",
+    "arena_bytes",
+    "timeout_us",
+    "route_preference",
+    "stale_after_us",
+    "endpoint_failure_limit",
+    "checksum",
+)
+
+ROS_BRIDGE_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "transport",
+    "bridge_id_hash",
+    "topic_count",
+    "service_count",
+    "action_count",
+    "parameter_count",
+    "total_buffer_bytes",
+    "max_timeout_us",
+    "checksum",
+)
+
 
 class ReportKind(Enum):
     BOARD_PROFILE = "board_profile"
     BOARD_PACKAGE = "board_package"
     MANIFEST = "manifest"
     ADAPTER_COMPAT = "adapter_compatibility"
+    AI_MODEL = "ai_model"
+    ROS_BRIDGE = "ros_bridge"
 
 
 class ReportStatus(str, Enum):
@@ -297,6 +332,24 @@ class FixedReport:
                 "adapter_count",
                 contract,
             )
+        if report_kind == ReportKind.AI_MODEL:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, AI_MODEL_FIELDS),
+                AI_MODEL_REPORT_MAGIC,
+                None,
+                None,
+                contract,
+            )
+        if report_kind == ReportKind.ROS_BRIDGE:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, ROS_BRIDGE_FIELDS),
+                ROS_BRIDGE_REPORT_MAGIC,
+                None,
+                None,
+                contract,
+            )
         raise ValueError(f"unsupported report kind: {kind}")
 
     @property
@@ -387,6 +440,12 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
     elif report_kind == ReportKind.ADAPTER_COMPAT:
         expected_magic = ADAPTER_COMPAT_REPORT_MAGIC
         field_names = ADAPTER_COMPAT_FIELDS
+    elif report_kind == ReportKind.AI_MODEL:
+        expected_magic = AI_MODEL_REPORT_MAGIC
+        field_names = AI_MODEL_FIELDS
+    elif report_kind == ReportKind.ROS_BRIDGE:
+        expected_magic = ROS_BRIDGE_REPORT_MAGIC
+        field_names = ROS_BRIDGE_FIELDS
     else:
         raise ValueError(f"unsupported report kind: {kind}")
 

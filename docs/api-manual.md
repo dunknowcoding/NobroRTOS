@@ -316,6 +316,18 @@ let decision = policy.decide(contract, state, 20_000);
 assert_ne!(decision.target, nobro_sal::AiRouteTarget::Unavailable);
 ```
 
+Adapters can export the same model and routing boundary as a host-readable
+report:
+
+```rust
+let report = nobro_sal::AiModelContractReport::from_contract_and_policy(
+    contract,
+    Some(policy),
+);
+assert!(report.verify_checksum());
+assert_eq!(report.route_preference, nobro_sal::AiRoutePreference::HybridFallback as u32);
+```
+
 ### ROS-Style Bridges
 
 ROS and micro-ROS compatibility should be implemented through adapters and
@@ -342,6 +354,15 @@ let contract = nobro_sal::RosBridgeContract::from_parts(
 
 assert_eq!(contract.topic_count, 1);
 assert!(contract.total_buffer_bytes <= 512);
+```
+
+Bridge adapters can also publish a compact report that summarizes transport,
+entity counts, total buffer demand, and maximum timeout:
+
+```rust
+let report = nobro_sal::RosBridgeContractReport::from_contract(contract);
+assert!(report.verify_checksum());
+assert_eq!(report.transport, nobro_sal::RosBridgeTransport::Serial as u32);
 ```
 
 Python bridge descriptors emit the same stable FNV-1a 32-bit hashes alongside

@@ -28,6 +28,8 @@ report, AI inference, and AI endpoint ownership.
 | `NOBRO_BOARD_PACKAGE_REPORT` | Boot layout, flash/RAM regions, board capacity, critical pins, and package validation result |
 | `NOBRO_MANIFEST_REPORT` | Static module graph validity, capability bits, budget use, and error context |
 | `NOBRO_ADAPTER_COMPAT_REPORT` | Adapter inventory compatibility before app admission |
+| `NOBRO_AI_MODEL_REPORT` | AI backend, model ID, input/output bounds, arena bytes, timeout, and route policy |
+| `NOBRO_ROS_BRIDGE_REPORT` | ROS-style bridge transport, entity counts, buffer demand, and maximum timeout |
 | `NOBRO_ADMISSION_REPORT` | Admission result after manifest, startup, quota, and capability checks |
 | `NOBRO_RUNTIME_REPORT` | Runtime lifecycle, mailbox pressure, alarms, KV writes, quota use, and event pressure |
 | `NOBRO_HEALTH_REPORT` | Module health counters and latest recovery context |
@@ -82,8 +84,9 @@ stage_code << 24 | status_class << 16 | error_code_low16
 ## AI And ROS Tables
 
 `ai_contracts` defines stable numeric codes for AI backend kinds, route
-preferences, and route targets. `ros_bridge_contracts` defines the stable
-FNV-1a UTF-8 hash policy, ROS-style entity kinds, and transport codes used by
+preferences, route targets, and the `NOBRO_AI_MODEL_REPORT` layout.
+`ros_bridge_contracts` defines the stable FNV-1a UTF-8 hash policy, ROS-style
+entity kinds, transport codes, and the `NOBRO_ROS_BRIDGE_REPORT` layout used by
 Python, C/C++, and Rust bridge metadata.
 
 Use `nobro-host` helper labels rather than duplicating numeric maps in host

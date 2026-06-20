@@ -39,6 +39,12 @@ pub const MANIFEST_REPORT_VERSION: u32 = 1;
 pub const ADAPTER_COMPAT_REPORT_SYMBOL: &str = "NOBRO_ADAPTER_COMPAT_REPORT";
 pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4E42_4143;
 pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
+pub const AI_MODEL_REPORT_SYMBOL: &str = "NOBRO_AI_MODEL_REPORT";
+pub const AI_MODEL_REPORT_MAGIC: u32 = 0x4E42_4149;
+pub const AI_MODEL_REPORT_VERSION: u32 = 1;
+pub const ROS_BRIDGE_REPORT_SYMBOL: &str = "NOBRO_ROS_BRIDGE_REPORT";
+pub const ROS_BRIDGE_REPORT_MAGIC: u32 = 0x4E42_5253;
+pub const ROS_BRIDGE_REPORT_VERSION: u32 = 1;
 pub const ADMISSION_REPORT_SYMBOL: &str = "NOBRO_ADMISSION_REPORT";
 pub const ADMISSION_REPORT_MAGIC: u32 = 0x4E42_4144;
 pub const ADMISSION_REPORT_VERSION: u32 = 1;
@@ -1087,6 +1093,169 @@ impl AdapterCompatibilityReport {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AiModelReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub backend: u32,
+    pub model_id: u32,
+    pub input_bytes_max: u32,
+    pub output_bytes_max: u32,
+    pub arena_bytes: u32,
+    pub timeout_us: u32,
+    pub route_preference: u32,
+    pub stale_after_us: u32,
+    pub endpoint_failure_limit: u32,
+    pub checksum: u32,
+}
+
+impl AiModelReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            backend: 0,
+            model_id: 0,
+            input_bytes_max: 0,
+            output_bytes_max: 0,
+            arena_bytes: 0,
+            timeout_us: 0,
+            route_preference: 0,
+            stale_after_us: 0,
+            endpoint_failure_limit: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = AI_MODEL_REPORT_MAGIC;
+        self.version = AI_MODEL_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == AI_MODEL_REPORT_MAGIC
+            && self.version == AI_MODEL_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != AI_MODEL_REPORT_MAGIC || self.version != AI_MODEL_REPORT_VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        ReportStatus::Pass
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.backend
+            ^ self.model_id
+            ^ self.input_bytes_max
+            ^ self.output_bytes_max
+            ^ self.arena_bytes
+            ^ self.timeout_us
+            ^ self.route_preference
+            ^ self.stale_after_us
+            ^ self.endpoint_failure_limit
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RosBridgeReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub transport: u32,
+    pub bridge_id_hash: u32,
+    pub topic_count: u32,
+    pub service_count: u32,
+    pub action_count: u32,
+    pub parameter_count: u32,
+    pub total_buffer_bytes: u32,
+    pub max_timeout_us: u32,
+    pub checksum: u32,
+}
+
+impl RosBridgeReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            transport: 0,
+            bridge_id_hash: 0,
+            topic_count: 0,
+            service_count: 0,
+            action_count: 0,
+            parameter_count: 0,
+            total_buffer_bytes: 0,
+            max_timeout_us: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ROS_BRIDGE_REPORT_MAGIC;
+        self.version = ROS_BRIDGE_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ROS_BRIDGE_REPORT_MAGIC
+            && self.version == ROS_BRIDGE_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != ROS_BRIDGE_REPORT_MAGIC || self.version != ROS_BRIDGE_REPORT_VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if !self.verify_checksum() {
+            return ReportStatus::Corrupt;
+        }
+        ReportStatus::Pass
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.transport
+            ^ self.bridge_id_hash
+            ^ self.topic_count
+            ^ self.service_count
+            ^ self.action_count
+            ^ self.parameter_count
+            ^ self.total_buffer_bytes
+            ^ self.max_timeout_us
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AdmissionReport {
     pub magic: u32,
     pub version: u32,
@@ -1733,6 +1902,18 @@ impl_host_report!(
     ADAPTER_COMPAT_REPORT_VERSION
 );
 impl_host_report!(
+    AiModelReport,
+    AI_MODEL_REPORT_SYMBOL,
+    AI_MODEL_REPORT_MAGIC,
+    AI_MODEL_REPORT_VERSION
+);
+impl_host_report!(
+    RosBridgeReport,
+    ROS_BRIDGE_REPORT_SYMBOL,
+    ROS_BRIDGE_REPORT_MAGIC,
+    ROS_BRIDGE_REPORT_VERSION
+);
+impl_host_report!(
     AdmissionReport,
     ADMISSION_REPORT_SYMBOL,
     ADMISSION_REPORT_MAGIC,
@@ -1826,6 +2007,12 @@ mod tests {
         assert_eq!(ADAPTER_COMPAT_REPORT_SYMBOL, "NOBRO_ADAPTER_COMPAT_REPORT");
         assert_eq!(ADAPTER_COMPAT_REPORT_MAGIC, 0x4E42_4143);
         assert_eq!(ADAPTER_COMPAT_REPORT_VERSION, 1);
+        assert_eq!(AI_MODEL_REPORT_SYMBOL, "NOBRO_AI_MODEL_REPORT");
+        assert_eq!(AI_MODEL_REPORT_MAGIC, 0x4E42_4149);
+        assert_eq!(AI_MODEL_REPORT_VERSION, 1);
+        assert_eq!(ROS_BRIDGE_REPORT_SYMBOL, "NOBRO_ROS_BRIDGE_REPORT");
+        assert_eq!(ROS_BRIDGE_REPORT_MAGIC, 0x4E42_5253);
+        assert_eq!(ROS_BRIDGE_REPORT_VERSION, 1);
         assert_eq!(ADMISSION_REPORT_SYMBOL, "NOBRO_ADMISSION_REPORT");
         assert_eq!(ADMISSION_REPORT_MAGIC, 0x4E42_4144);
         assert_eq!(ADMISSION_REPORT_VERSION, 1);
@@ -1844,6 +2031,8 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(BOARD_PACKAGE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MANIFEST_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADAPTER_COMPAT_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(AI_MODEL_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(ROS_BRIDGE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424250"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E42424B"));
@@ -1852,6 +2041,8 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("0x4E424447"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424D46"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424143"));
+        assert!(HOST_CONTRACT_JSON.contains("0x4E424149"));
+        assert!(HOST_CONTRACT_JSON.contains("0x4E425253"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424144"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E425254"));
         assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
@@ -2221,6 +2412,53 @@ mod tests {
     }
 
     #[test]
+    fn ai_model_report_status_tracks_contract_corruption() {
+        let mut report = AiModelReport {
+            backend: 4,
+            model_id: 7,
+            input_bytes_max: 16,
+            output_bytes_max: 24,
+            arena_bytes: 4096,
+            timeout_us: 5_000,
+            route_preference: 4,
+            stale_after_us: 30_000,
+            endpoint_failure_limit: 2,
+            ..AiModelReport::zeroed()
+        };
+        report.seal();
+
+        assert_eq!(report.status(), ReportStatus::Pass);
+        assert_eq!(HostReport::raw_magic(&report), AI_MODEL_REPORT_MAGIC);
+        assert_eq!(HostReport::status(&report), ReportStatus::Pass);
+
+        report.timeout_us += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
+    fn ros_bridge_report_status_tracks_contract_corruption() {
+        let mut report = RosBridgeReport {
+            transport: 1,
+            bridge_id_hash: 0xA11CE,
+            topic_count: 1,
+            service_count: 1,
+            action_count: 1,
+            parameter_count: 1,
+            total_buffer_bytes: 340,
+            max_timeout_us: 100_000,
+            ..RosBridgeReport::zeroed()
+        };
+        report.seal();
+
+        assert_eq!(report.status(), ReportStatus::Pass);
+        assert_eq!(HostReport::raw_magic(&report), ROS_BRIDGE_REPORT_MAGIC);
+        assert_eq!(HostReport::status(&report), ReportStatus::Pass);
+
+        report.topic_count += 1;
+        assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
     fn boot_reports_return_first_non_passing_stage() {
         let mut board = BoardProfileReport {
             platform_hash: 1,
@@ -2557,6 +2795,8 @@ mod tests {
             AdapterCompatibilityReport::zeroed().status(),
             ReportStatus::Missing
         );
+        assert_eq!(AiModelReport::zeroed().status(), ReportStatus::Missing);
+        assert_eq!(RosBridgeReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(HealthReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(EventLogReport::zeroed().status(), ReportStatus::Missing);
         assert_eq!(

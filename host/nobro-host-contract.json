@@ -46,6 +46,12 @@
     "12": "ai_endpoint"
   },
   "ai_contracts": {
+    "report": {
+      "symbol": "NOBRO_AI_MODEL_REPORT",
+      "magic": "0x4E424149",
+      "version": 1,
+      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; route policy fields are zero when no policy is attached"
+    },
     "backend_codes": {
       "1": "on_device",
       "2": "remote_api",
@@ -68,6 +74,12 @@
     }
   },
   "ros_bridge_contracts": {
+    "report": {
+      "symbol": "NOBRO_ROS_BRIDGE_REPORT",
+      "magic": "0x4E425253",
+      "version": 1,
+      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; IDs and entity names use FNV-1a 32-bit hashes"
+    },
     "hash": "fnv1a32_utf8",
     "transport_codes": {
       "1": "serial",

@@ -172,6 +172,11 @@ request/response records, action-like work should expose bounded goal,
 feedback, and result state, and parameters should map to fixed-capacity
 configuration.
 
+AI model contracts and ROS bridge contracts can be exported as fixed reports, so
+host tools can inspect model memory, timeout, stale-result policy, bridge entity
+counts, total buffer demand, and transport choice without running a hardware
+probe.
+
 ## Diagnostics
 
 NobroRTOS exports fixed-layout reports with `NOBRO_*` symbols. The canonical
@@ -183,6 +188,8 @@ Important reports:
 - `NOBRO_BOARD_PACKAGE_REPORT`
 - `NOBRO_MANIFEST_REPORT`
 - `NOBRO_ADAPTER_COMPAT_REPORT`
+- `NOBRO_AI_MODEL_REPORT`
+- `NOBRO_ROS_BRIDGE_REPORT`
 - `NOBRO_ADMISSION_REPORT`
 - `NOBRO_RUNTIME_REPORT`
 - `NOBRO_HEALTH_REPORT`

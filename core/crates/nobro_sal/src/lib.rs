@@ -9,6 +9,10 @@ use nobro_kernel::{
 
 pub const ADAPTER_COMPAT_REPORT_MAGIC: u32 = 0x4E42_4143; // "NBAC"
 pub const ADAPTER_COMPAT_REPORT_VERSION: u32 = 1;
+pub const AI_MODEL_REPORT_MAGIC: u32 = 0x4E42_4149; // "NBAI"
+pub const AI_MODEL_REPORT_VERSION: u32 = 1;
+pub const ROS_BRIDGE_REPORT_MAGIC: u32 = 0x4E42_5253; // "NBRS"
+pub const ROS_BRIDGE_REPORT_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AdapterDescriptor {
@@ -628,6 +632,86 @@ impl RosBridgeContract {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RosBridgeContractReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub transport: u32,
+    pub bridge_id_hash: u32,
+    pub topic_count: u32,
+    pub service_count: u32,
+    pub action_count: u32,
+    pub parameter_count: u32,
+    pub total_buffer_bytes: u32,
+    pub max_timeout_us: u32,
+    pub checksum: u32,
+}
+
+impl RosBridgeContractReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            transport: 0,
+            bridge_id_hash: 0,
+            topic_count: 0,
+            service_count: 0,
+            action_count: 0,
+            parameter_count: 0,
+            total_buffer_bytes: 0,
+            max_timeout_us: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_contract(contract: RosBridgeContract) -> Self {
+        let mut report = Self {
+            transport: contract.transport as u32,
+            bridge_id_hash: contract.bridge_id_hash,
+            topic_count: u32::from(contract.topic_count),
+            service_count: u32::from(contract.service_count),
+            action_count: u32::from(contract.action_count),
+            parameter_count: u32::from(contract.parameter_count),
+            total_buffer_bytes: contract.total_buffer_bytes,
+            max_timeout_us: contract.max_timeout_us,
+            ..Self::zeroed()
+        };
+        report.seal();
+        report
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = ROS_BRIDGE_REPORT_MAGIC;
+        self.version = ROS_BRIDGE_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == ROS_BRIDGE_REPORT_MAGIC
+            && self.version == ROS_BRIDGE_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.transport
+            ^ self.bridge_id_hash
+            ^ self.topic_count
+            ^ self.service_count
+            ^ self.action_count
+            ^ self.parameter_count
+            ^ self.total_buffer_bytes
+            ^ self.max_timeout_us
+    }
+}
+
 /// Bounded ROS-style bridge surface for topics and request/response calls.
 pub trait RosBridgeSal {
     type Error;
@@ -880,6 +964,99 @@ impl AiModelContract {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AiModelContractReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub backend: u32,
+    pub model_id: u32,
+    pub input_bytes_max: u32,
+    pub output_bytes_max: u32,
+    pub arena_bytes: u32,
+    pub timeout_us: u32,
+    pub route_preference: u32,
+    pub stale_after_us: u32,
+    pub endpoint_failure_limit: u32,
+    pub checksum: u32,
+}
+
+impl AiModelContractReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            backend: 0,
+            model_id: 0,
+            input_bytes_max: 0,
+            output_bytes_max: 0,
+            arena_bytes: 0,
+            timeout_us: 0,
+            route_preference: 0,
+            stale_after_us: 0,
+            endpoint_failure_limit: 0,
+            checksum: 0,
+        }
+    }
+
+    pub fn from_contract(contract: AiModelContract) -> Self {
+        Self::from_contract_and_policy(contract, None)
+    }
+
+    pub fn from_contract_and_policy(
+        contract: AiModelContract,
+        policy: Option<AiRoutePolicy>,
+    ) -> Self {
+        let mut report = Self {
+            backend: contract.backend as u32,
+            model_id: contract.model_id,
+            input_bytes_max: u32::from(contract.input_bytes_max),
+            output_bytes_max: u32::from(contract.output_bytes_max),
+            arena_bytes: contract.arena_bytes,
+            timeout_us: contract.timeout_us,
+            route_preference: policy.map(|policy| policy.preference as u32).unwrap_or(0),
+            stale_after_us: policy.map(|policy| policy.stale_after_us).unwrap_or(0),
+            endpoint_failure_limit: policy
+                .map(|policy| u32::from(policy.endpoint_failure_limit))
+                .unwrap_or(0),
+            ..Self::zeroed()
+        };
+        report.seal();
+        report
+    }
+
+    pub fn seal(&mut self) {
+        self.magic = AI_MODEL_REPORT_MAGIC;
+        self.version = AI_MODEL_REPORT_VERSION;
+        self.completed = 1;
+        self.checksum = 0;
+        self.checksum = self.compute_checksum();
+    }
+
+    pub fn verify_checksum(&self) -> bool {
+        self.magic == AI_MODEL_REPORT_MAGIC
+            && self.version == AI_MODEL_REPORT_VERSION
+            && self.checksum == self.compute_checksum()
+    }
+
+    fn compute_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.backend
+            ^ self.model_id
+            ^ self.input_bytes_max
+            ^ self.output_bytes_max
+            ^ self.arena_bytes
+            ^ self.timeout_us
+            ^ self.route_preference
+            ^ self.stale_after_us
+            ^ self.endpoint_failure_limit
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AiInferenceRequest<'a> {
     pub model_id: u32,
@@ -1117,6 +1294,23 @@ mod tests {
     }
 
     #[test]
+    fn ros_bridge_report_seals_bounded_bridge_contract() {
+        let bridge = LoopbackRos;
+        let report = RosBridgeContractReport::from_contract(bridge.contract());
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, ROS_BRIDGE_REPORT_MAGIC);
+        assert_eq!(report.version, ROS_BRIDGE_REPORT_VERSION);
+        assert_eq!(report.transport, RosBridgeTransport::Serial as u32);
+        assert_eq!(report.topic_count, 1);
+        assert_eq!(report.service_count, 1);
+        assert_eq!(report.action_count, 1);
+        assert_eq!(report.parameter_count, 1);
+        assert_eq!(report.total_buffer_bytes, 340);
+        assert_eq!(report.max_timeout_us, 100_000);
+    }
+
+    #[test]
     fn ros_bridge_sal_uses_caller_owned_buffers() {
         let mut bridge = LoopbackRos;
         let request = [1u8, 2, 3, 4];
@@ -1142,6 +1336,29 @@ mod tests {
         assert_eq!(decision.target, AiRouteTarget::OnDevice);
         assert!(!decision.endpoint_circuit_open);
         assert!(!decision.uses_stale_snapshot);
+    }
+
+    #[test]
+    fn ai_model_report_seals_model_and_route_policy_contract() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 30_000, 2);
+        let contract = AiModelContract::new(AiBackendKind::Hybrid, 7, 16, 24, 4096, 5_000);
+        let report = AiModelContractReport::from_contract_and_policy(contract, Some(policy));
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.magic, AI_MODEL_REPORT_MAGIC);
+        assert_eq!(report.version, AI_MODEL_REPORT_VERSION);
+        assert_eq!(report.backend, AiBackendKind::Hybrid as u32);
+        assert_eq!(report.model_id, 7);
+        assert_eq!(report.input_bytes_max, 16);
+        assert_eq!(report.output_bytes_max, 24);
+        assert_eq!(report.arena_bytes, 4096);
+        assert_eq!(report.timeout_us, 5_000);
+        assert_eq!(
+            report.route_preference,
+            AiRoutePreference::HybridFallback as u32
+        );
+        assert_eq!(report.stale_after_us, 30_000);
+        assert_eq!(report.endpoint_failure_limit, 2);
     }
 
     #[test]

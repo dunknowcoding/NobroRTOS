@@ -97,20 +97,27 @@ class ContractBuilderTests(unittest.TestCase):
             "board_package_report": "NOBRO_BOARD_PACKAGE_REPORT_MAGIC",
             "manifest_report": "NOBRO_MANIFEST_REPORT_MAGIC",
             "adapter_compat_report": "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
+            "ai_contracts.report": "NOBRO_AI_MODEL_REPORT_MAGIC",
+            "ros_bridge_contracts.report": "NOBRO_ROS_BRIDGE_REPORT_MAGIC",
         }
         report_structs = {
             "board_profile_report": "nobro_board_profile_report_t",
             "board_package_report": "nobro_board_package_report_t",
             "manifest_report": "nobro_manifest_report_t",
             "adapter_compat_report": "nobro_adapter_compat_report_t",
+            "ai_contracts.report": "nobro_ai_model_report_t",
+            "ros_bridge_contracts.report": "nobro_ros_bridge_report_t",
         }
 
         for report_key, define in report_defines.items():
             match = re.search(rf"#define\s+{define}\s+(0x[0-9A-Fa-f]+)u", header)
             self.assertIsNotNone(match, define)
+            report_contract = contract.payload
+            for key in report_key.split("."):
+                report_contract = report_contract[key]
             self.assertEqual(
                 int(match.group(1), 16),
-                int(contract.payload[report_key]["magic"], 16),
+                int(report_contract["magic"], 16),
             )
             self.assertIn(report_structs[report_key], header)
 
@@ -120,8 +127,10 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro_ai_model_contract_t",
             "nobro_ai_route_policy_t",
             "nobro_ai_route_decide",
+            "nobro_ai_model_report_status",
             "nobro_ros_bridge_contract_t",
             "nobro_ros_topic_contract_t",
+            "nobro_ros_bridge_report_status",
         ):
             self.assertIn(symbol, header)
 
@@ -519,6 +528,51 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertFalse(report.passing)
         self.assertEqual(summary["error_label"], "capability_ownership_conflict")
         self.assertEqual(summary["error_module_label"], "bus")
+
+    def test_ai_model_report_decoder_preserves_route_policy(self) -> None:
+        payload = seal_report(
+            ReportKind.AI_MODEL,
+            {
+                "backend": int(AiBackendKind.HYBRID),
+                "model_id": 7,
+                "input_bytes_max": 16,
+                "output_bytes_max": 24,
+                "arena_bytes": 4096,
+                "timeout_us": 5_000,
+                "route_preference": int(AiRoutePreference.HYBRID_FALLBACK),
+                "stale_after_us": 30_000,
+                "endpoint_failure_limit": 2,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.AI_MODEL, payload)
+
+        self.assertEqual(report.status, ReportStatus.PASS)
+        self.assertTrue(report.verify_checksum())
+        self.assertEqual(report.to_dict()["raw"]["route_preference"], 4)
+        self.assertEqual(report.to_dict()["raw"]["stale_after_us"], 30_000)
+
+    def test_ros_bridge_report_decoder_preserves_resource_summary(self) -> None:
+        payload = seal_report(
+            ReportKind.ROS_BRIDGE,
+            {
+                "transport": 1,
+                "bridge_id_hash": stable_hash32("main"),
+                "topic_count": 2,
+                "service_count": 1,
+                "action_count": 0,
+                "parameter_count": 1,
+                "total_buffer_bytes": 768,
+                "max_timeout_us": 50_000,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.ROS_BRIDGE, payload)
+
+        self.assertEqual(report.status, ReportStatus.PASS)
+        self.assertTrue(report.verify_checksum())
+        self.assertEqual(report.to_dict()["raw"]["topic_count"], 2)
+        self.assertEqual(report.to_dict()["raw"]["total_buffer_bytes"], 768)
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(
