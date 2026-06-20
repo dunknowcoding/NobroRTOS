@@ -135,6 +135,11 @@ Use `watchdog_expired_count(now_us)` for a non-mutating liveness precheck.
 Use `sweep_watchdogs(now_us)` when the runtime should route expired modules
 through recovery and update missed heartbeat counters.
 
+`EventLog` exposes non-mutating capacity helpers such as `is_full()`,
+`remaining_capacity()`, `latest_sequence()`, and `has_dropped_events()`. Use
+them when deciding whether to export a diagnostic report, compact a host trace,
+or raise degraded-mode pressure without pushing another event.
+
 ### Scheduler
 
 `Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap

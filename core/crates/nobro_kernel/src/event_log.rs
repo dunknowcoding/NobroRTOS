@@ -140,8 +140,24 @@ impl<const N: usize> EventLog<N> {
         self.len == 0
     }
 
+    pub fn is_full(&self) -> bool {
+        self.len == N
+    }
+
+    pub fn remaining_capacity(&self) -> usize {
+        N.saturating_sub(self.len)
+    }
+
+    pub fn latest_sequence(&self) -> u32 {
+        self.seq
+    }
+
     pub fn dropped(&self) -> u32 {
         self.dropped
+    }
+
+    pub fn has_dropped_events(&self) -> bool {
+        self.dropped != 0
     }
 
     pub fn latest(&self) -> Option<EventRecord> {
@@ -211,10 +227,33 @@ mod tests {
         assert_eq!(copied, 3);
         assert_eq!(log.len(), 3);
         assert_eq!(log.dropped(), 1);
+        assert!(log.is_full());
+        assert_eq!(log.remaining_capacity(), 0);
+        assert_eq!(log.latest_sequence(), 4);
+        assert!(log.has_dropped_events());
         assert_eq!(out[0].at_us, 20);
         assert_eq!(out[1].at_us, 30);
         assert_eq!(out[2].at_us, 40);
         assert_eq!(log.latest().expect("latest").at_us, 40);
+    }
+
+    #[test]
+    fn empty_and_partially_filled_log_reports_capacity() {
+        let mut log = EventLog::<2>::new();
+
+        assert!(log.is_empty());
+        assert!(!log.is_full());
+        assert_eq!(log.remaining_capacity(), 2);
+        assert_eq!(log.latest_sequence(), 0);
+        assert!(!log.has_dropped_events());
+
+        log.push(event(10, EventSeverity::Info));
+
+        assert!(!log.is_empty());
+        assert!(!log.is_full());
+        assert_eq!(log.remaining_capacity(), 1);
+        assert_eq!(log.latest_sequence(), 1);
+        assert!(!log.has_dropped_events());
     }
 
     #[test]
