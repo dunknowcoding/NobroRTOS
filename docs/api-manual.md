@@ -294,6 +294,28 @@ assert!(usize::from(result.output_len) <= output.len());
 Hard-realtime modules should not wait directly on remote inference. They should
 consume a fresh result snapshot or a degraded fallback state.
 
+Use `AiRoutePolicy` when an application can choose among local inference, an
+edge sidecar, a third-party API, or a hybrid fallback path. The policy is a
+fixed-size control record: it compares the model timeout with the caller's
+budget, trips a small endpoint circuit breaker after repeated failures, and
+returns a route target without allocating memory.
+
+```rust
+let policy = nobro_sal::AiRoutePolicy::new(
+    nobro_sal::AiRoutePreference::HybridFallback,
+    50_000,
+    3,
+);
+let state = nobro_sal::AiRuntimeState::new(
+    true,   // local model is loaded
+    true,   // endpoint transport is ready
+    12_000, // last good inference age
+    0,      // consecutive endpoint failures
+);
+let decision = policy.decide(contract, state, 20_000);
+assert_ne!(decision.target, nobro_sal::AiRouteTarget::Unavailable);
+```
+
 ### ROS-Style Bridges
 
 ROS and micro-ROS compatibility should be implemented through adapters and

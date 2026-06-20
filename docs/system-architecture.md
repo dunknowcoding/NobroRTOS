@@ -67,6 +67,14 @@ bounded inference request and result without requiring heap ownership inside the
 adapter. Hard-realtime control loops should consume the last valid inference
 state or a degraded fallback state instead of blocking on inference.
 
+`AiRoutePolicy` adds a small RTOS-side decision layer for local, edge, remote,
+and hybrid inference. The policy compares timeout against the caller's budget,
+tracks endpoint readiness and consecutive endpoint failures, allows fresh
+snapshot reuse, and chooses degraded fallback when the route is not safe for the
+current control cycle. This keeps cloud APIs and companion-computer inference
+compatible with real-time control instead of letting network latency leak into
+critical paths.
+
 ROS and micro-ROS compatibility belongs at the bridge layer. NobroRTOS should
 absorb ROS 2's topic, service, action, and parameter concepts, but map them into
 bounded queues, fixed request/response records, action state records, and

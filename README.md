@@ -195,6 +195,7 @@ folders use the `nobro_*` project prefix.
 | Host ABI contract | Present | JSON contract plus `nobro-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract and AI capability bits |
+| AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | First-fault decoding and Python workflow examples need to grow |
 | ROS bridge model | Planned | Bounded topic/service/action/parameter bridge descriptors |

@@ -449,6 +449,199 @@ pub enum AiBackendKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AiRoutePreference {
+    LocalOnly = 1,
+    PreferLocal = 2,
+    PreferRemote = 3,
+    HybridFallback = 4,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AiRouteTarget {
+    OnDevice = 1,
+    RemoteApi = 2,
+    EdgeSidecar = 3,
+    StaleSnapshot = 4,
+    DegradedFallback = 5,
+    Unavailable = 6,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiRuntimeState {
+    pub local_ready: bool,
+    pub endpoint_ready: bool,
+    pub last_success_age_us: u32,
+    pub consecutive_endpoint_failures: u8,
+}
+
+impl AiRuntimeState {
+    pub const fn new(
+        local_ready: bool,
+        endpoint_ready: bool,
+        last_success_age_us: u32,
+        consecutive_endpoint_failures: u8,
+    ) -> Self {
+        Self {
+            local_ready,
+            endpoint_ready,
+            last_success_age_us,
+            consecutive_endpoint_failures,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiRouteDecision {
+    pub target: AiRouteTarget,
+    pub endpoint_circuit_open: bool,
+    pub uses_stale_snapshot: bool,
+}
+
+impl AiRouteDecision {
+    pub const fn new(
+        target: AiRouteTarget,
+        endpoint_circuit_open: bool,
+        uses_stale_snapshot: bool,
+    ) -> Self {
+        Self {
+            target,
+            endpoint_circuit_open,
+            uses_stale_snapshot,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiRoutePolicy {
+    pub preference: AiRoutePreference,
+    pub stale_after_us: u32,
+    pub endpoint_failure_limit: u8,
+}
+
+impl AiRoutePolicy {
+    pub const fn new(
+        preference: AiRoutePreference,
+        stale_after_us: u32,
+        endpoint_failure_limit: u8,
+    ) -> Self {
+        Self {
+            preference,
+            stale_after_us,
+            endpoint_failure_limit,
+        }
+    }
+
+    pub fn decide(
+        &self,
+        contract: AiModelContract,
+        state: AiRuntimeState,
+        budget_us: u32,
+    ) -> AiRouteDecision {
+        let endpoint_failure_limit = if self.endpoint_failure_limit == 0 {
+            1
+        } else {
+            self.endpoint_failure_limit
+        };
+        let endpoint_circuit_open = state.consecutive_endpoint_failures >= endpoint_failure_limit;
+        let fits_budget = contract.timeout_us <= budget_us;
+        let stale_ready = state.last_success_age_us <= self.stale_after_us;
+
+        if !fits_budget {
+            return self.fallback(endpoint_circuit_open, stale_ready);
+        }
+
+        match contract.backend {
+            AiBackendKind::OnDevice => {
+                if state.local_ready {
+                    AiRouteDecision::new(AiRouteTarget::OnDevice, endpoint_circuit_open, false)
+                } else {
+                    self.fallback(endpoint_circuit_open, stale_ready)
+                }
+            }
+            AiBackendKind::RemoteApi => self.remote_or_fallback(
+                AiRouteTarget::RemoteApi,
+                state,
+                endpoint_circuit_open,
+                stale_ready,
+            ),
+            AiBackendKind::EdgeSidecar => self.remote_or_fallback(
+                AiRouteTarget::EdgeSidecar,
+                state,
+                endpoint_circuit_open,
+                stale_ready,
+            ),
+            AiBackendKind::Hybrid => {
+                self.hybrid_decision(state, endpoint_circuit_open, stale_ready)
+            }
+        }
+    }
+
+    fn remote_or_fallback(
+        &self,
+        target: AiRouteTarget,
+        state: AiRuntimeState,
+        endpoint_circuit_open: bool,
+        stale_ready: bool,
+    ) -> AiRouteDecision {
+        if self.preference != AiRoutePreference::LocalOnly
+            && state.endpoint_ready
+            && !endpoint_circuit_open
+        {
+            AiRouteDecision::new(target, endpoint_circuit_open, false)
+        } else {
+            self.fallback(endpoint_circuit_open, stale_ready)
+        }
+    }
+
+    fn hybrid_decision(
+        &self,
+        state: AiRuntimeState,
+        endpoint_circuit_open: bool,
+        stale_ready: bool,
+    ) -> AiRouteDecision {
+        match self.preference {
+            AiRoutePreference::LocalOnly | AiRoutePreference::PreferLocal => {
+                if state.local_ready {
+                    AiRouteDecision::new(AiRouteTarget::OnDevice, endpoint_circuit_open, false)
+                } else {
+                    self.remote_or_fallback(
+                        AiRouteTarget::RemoteApi,
+                        state,
+                        endpoint_circuit_open,
+                        stale_ready,
+                    )
+                }
+            }
+            AiRoutePreference::PreferRemote | AiRoutePreference::HybridFallback => {
+                if state.endpoint_ready && !endpoint_circuit_open {
+                    AiRouteDecision::new(AiRouteTarget::RemoteApi, endpoint_circuit_open, false)
+                } else if state.local_ready {
+                    AiRouteDecision::new(AiRouteTarget::OnDevice, endpoint_circuit_open, false)
+                } else {
+                    self.fallback(endpoint_circuit_open, stale_ready)
+                }
+            }
+        }
+    }
+
+    fn fallback(&self, endpoint_circuit_open: bool, stale_ready: bool) -> AiRouteDecision {
+        if stale_ready {
+            AiRouteDecision::new(AiRouteTarget::StaleSnapshot, endpoint_circuit_open, true)
+        } else if self.preference == AiRoutePreference::LocalOnly {
+            AiRouteDecision::new(AiRouteTarget::Unavailable, endpoint_circuit_open, false)
+        } else {
+            AiRouteDecision::new(
+                AiRouteTarget::DegradedFallback,
+                endpoint_circuit_open,
+                false,
+            )
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AiModelContract {
     pub backend: AiBackendKind,
     pub model_id: u32,
@@ -649,6 +842,57 @@ mod tests {
         assert_eq!(result.output_len, 4);
         assert_eq!(result.confidence_q15, 0x7FFF);
         assert_eq!(&output[..4], &input);
+    }
+
+    #[test]
+    fn ai_route_policy_keeps_hard_local_only_work_on_device() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::LocalOnly, 10_000, 3);
+        let contract = AiModelContract::new(AiBackendKind::Hybrid, 7, 16, 16, 4096, 5_000);
+        let state = AiRuntimeState::new(true, true, 1_000, 0);
+
+        let decision = policy.decide(contract, state, 6_000);
+
+        assert_eq!(decision.target, AiRouteTarget::OnDevice);
+        assert!(!decision.endpoint_circuit_open);
+        assert!(!decision.uses_stale_snapshot);
+    }
+
+    #[test]
+    fn ai_route_policy_trips_endpoint_to_fresh_snapshot() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 50_000, 2);
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000);
+        let state = AiRuntimeState::new(false, true, 10_000, 2);
+
+        let decision = policy.decide(contract, state, 30_000);
+
+        assert_eq!(decision.target, AiRouteTarget::StaleSnapshot);
+        assert!(decision.endpoint_circuit_open);
+        assert!(decision.uses_stale_snapshot);
+    }
+
+    #[test]
+    fn ai_route_policy_uses_degraded_fallback_when_budget_is_too_small() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 1_000, 3);
+        let contract = AiModelContract::new(AiBackendKind::EdgeSidecar, 7, 32, 32, 0, 20_000);
+        let state = AiRuntimeState::new(false, true, 5_000, 0);
+
+        let decision = policy.decide(contract, state, 5_000);
+
+        assert_eq!(decision.target, AiRouteTarget::DegradedFallback);
+        assert!(!decision.endpoint_circuit_open);
+        assert!(!decision.uses_stale_snapshot);
+    }
+
+    #[test]
+    fn ai_route_policy_treats_zero_failure_limit_as_one() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 50_000, 0);
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000);
+        let state = AiRuntimeState::new(false, true, 100, 1);
+
+        let decision = policy.decide(contract, state, 30_000);
+
+        assert_eq!(decision.target, AiRouteTarget::StaleSnapshot);
+        assert!(decision.endpoint_circuit_open);
     }
 
     #[test]
