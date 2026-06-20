@@ -24,6 +24,10 @@ from .host_contract import (
     find_repo_root,
     load_repo_host_contract,
 )
+from .distribution import (
+    DistributionMetadataReport,
+    validate_distribution_metadata,
+)
 from .reports import (
     BootReportSummary,
     FixedReport,
@@ -54,6 +58,8 @@ __all__ = [
     "HostContract",
     "load_repo_host_contract",
     "ReportStatusClass",
+    "DistributionMetadataReport",
+    "validate_distribution_metadata",
     "FixedReport",
     "BootReportSummary",
     "ReportKind",

@@ -22,6 +22,7 @@ from nobro_rtos import (
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
+    validate_distribution_metadata,
 )
 
 
@@ -71,6 +72,11 @@ class ContractBuilderTests(unittest.TestCase):
             "https://github.com/dunknowcoding/NobroRTOS.git",
         )
         self.assertEqual(platformio["headers"], ["NobroRTOS.h"])
+
+        report = validate_distribution_metadata(repo_root)
+        self.assertEqual(report.sdk_name, "NobroRTOS Standalone SDK")
+        self.assertEqual(report.arduino_name, "NobroRTOS")
+        self.assertEqual(report.platformio_name, "NobroRTOS")
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

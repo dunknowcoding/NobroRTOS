@@ -86,6 +86,7 @@ From the repository root, use the local tool wrapper:
 
 ```powershell
 python tools/nobro_contract_tool.py check-host-contract
+python tools/nobro_contract_tool.py check-distribution-metadata
 ```
 
 Decode a boot diagnostic code:

@@ -18,6 +18,7 @@ from .contracts import (
     RosService,
     RosTopic,
 )
+from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport
 
@@ -35,6 +36,10 @@ def main() -> int:
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
+    )
+    subparsers.add_parser(
+        "check-distribution-metadata",
+        help="validate SDK, Arduino, and PlatformIO package metadata",
     )
     decode_boot = subparsers.add_parser(
         "decode-boot",
@@ -75,6 +80,10 @@ def main() -> int:
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
         print(f"host contract ok: {stages}")
+        return 0
+    if args.command == "check-distribution-metadata":
+        report = validate_distribution_metadata()
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
     if args.command == "decode-boot":
         code = int(args.code, 0)
