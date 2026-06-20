@@ -10,11 +10,15 @@ from nobro_rtos import (
     MemoryBudget,
     ModuleSpec,
     NobroContractBundle,
+    FixedReport,
+    ReportKind,
+    ReportStatus,
     RosBridgeDescriptor,
     RosService,
     RosTopic,
     capabilities_from_mask,
     load_repo_host_contract,
+    seal_report,
 )
 
 
@@ -172,6 +176,63 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(diagnostic.stage, "runtime")
         self.assertEqual(diagnostic.status, "pass")
         self.assertIsNone(diagnostic.error_label)
+
+    def test_manifest_report_decoder_accepts_sealed_pass(self) -> None:
+        payload = seal_report(
+            ReportKind.MANIFEST,
+            {
+                "valid": 1,
+                "module_count": 2,
+                "fingerprint": 0x1234,
+                "required_bits": Capability.BUS0.bit,
+                "owned_bits": Capability.HOST_REPORT.bit,
+                "flash_used_bytes": 4096,
+                "ram_used_bytes": 1024,
+                "pool_used_slots": 2,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.MANIFEST, payload)
+
+        self.assertEqual(report.status, ReportStatus.PASS)
+        self.assertTrue(report.passing)
+        self.assertTrue(report.verify_checksum())
+        self.assertEqual(report.to_dict()["count"], 2)
+
+    def test_adapter_report_decoder_preserves_failure_context(self) -> None:
+        payload = seal_report(
+            ReportKind.ADAPTER_COMPAT,
+            {
+                "compatible": 0,
+                "adapter_count": 2,
+                "error_code": 3,
+                "error_module_tag": 3,
+                "error_capability_bits": Capability.BUS0.bit,
+            },
+        )
+
+        report = FixedReport.from_dict(ReportKind.ADAPTER_COMPAT, payload)
+        summary = report.to_dict()
+
+        self.assertEqual(report.status, ReportStatus.FAIL)
+        self.assertFalse(report.passing)
+        self.assertEqual(summary["error_label"], "capability_ownership_conflict")
+        self.assertEqual(summary["error_module_label"], "bus")
+
+    def test_report_decoder_marks_corrupt_checksum(self) -> None:
+        payload = seal_report(
+            ReportKind.MANIFEST,
+            {
+                "valid": 1,
+                "module_count": 1,
+                "fingerprint": 0xCAFE,
+            },
+        )
+        payload["module_count"] = 2
+
+        report = FixedReport.from_dict(ReportKind.MANIFEST, payload)
+
+        self.assertEqual(report.status, ReportStatus.CORRUPT)
 
 
 if __name__ == "__main__":

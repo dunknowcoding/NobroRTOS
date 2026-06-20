@@ -100,6 +100,13 @@ Validate a contract bundle JSON file:
 python tools/nobro_contract_tool.py validate-bundle path\to\bundle.json
 ```
 
+Decode a report JSON file:
+
+```powershell
+python tools/nobro_contract_tool.py decode-report manifest path\to\manifest_report.json
+python tools/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
+```
+
 ## Tests
 
 The current tests use only the Python standard library:

@@ -19,6 +19,7 @@ from .contracts import (
     RosTopic,
 )
 from .host_contract import BootDiagnostic, load_repo_host_contract
+from .reports import FixedReport
 
 
 def main() -> int:
@@ -45,6 +46,14 @@ def main() -> int:
         help="load and validate a NobroRTOS contract bundle JSON file",
     )
     validate_bundle.add_argument("path", help="path to a contract bundle JSON file")
+    decode_report = subparsers.add_parser(
+        "decode-report",
+        help="decode a manifest or adapter compatibility report JSON file",
+    )
+    decode_report.add_argument(
+        "kind", choices=("manifest", "adapter_compatibility"), help="report kind"
+    )
+    decode_report.add_argument("path", help="path to a report JSON file")
     args = parser.parse_args()
 
     if args.command == "sample-ai-ros":
@@ -64,6 +73,10 @@ def main() -> int:
         bundle = NobroContractBundle.from_file(args.path)
         bundle.validate()
         print(f"bundle ok: {len(bundle.modules)} modules")
+        return 0
+    if args.command == "decode-report":
+        report = FixedReport.from_json_file(args.kind, args.path)
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
 
     parser.error(f"unknown command: {args.command}")
