@@ -16,7 +16,10 @@ pub mod traits;
 #[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
 compile_error!("airon-hal: enable exactly one board-* feature");
 
-#[cfg(not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140")))]
+#[cfg(all(
+    feature = "platform-nrf52840",
+    not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))
+))]
 compile_error!("airon-hal: enable one board-* feature");
 
 #[cfg(feature = "platform-nrf52840")]
@@ -48,6 +51,7 @@ pub use board_fixtures::{
     NRF52840_SERVO_CENTER_US, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
 };
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+#[cfg(feature = "platform-nrf52840")]
 pub use platform::ActivePlatform;
 pub use snapshots::{
     BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,

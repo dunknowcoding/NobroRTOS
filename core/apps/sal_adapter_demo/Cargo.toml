@@ -11,7 +11,7 @@ path = "src/main.rs"
 airon-adapter-robo-servo = { path = "../../adapters/robo-servo", default-features = false }
 airon-adapter-sensor-stub = { path = "../../adapters/sensor-stub", default-features = false }
 airon-hal = { path = "../../crates/airon-hal", default-features = false }
-airon-kernel = { path = "../../crates/airon-kernel" }
+airon-kernel = { path = "../../crates/airon-kernel", features = ["hal-profile"] }
 airon-sal = { path = "../../crates/airon-sal" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"

@@ -48,6 +48,9 @@ version = "0.1.0"
 [[package]]
 name = "airon-kernel"
 version = "0.1.0"
+dependencies = [
+ "airon-hal",
+]
 
 [[package]]
 name = "airon-sal"

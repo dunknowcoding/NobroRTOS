@@ -105,6 +105,12 @@ assert!(boot.manifest_report.verify_checksum());
 assert!(boot.admission_report.verify_checksum());
 ```
 
+Firmware that depends on `airon-hal` can enable `airon-kernel/hal-profile` and
+derive the profile from the active board package:
+
+```rust
+let profile = SystemProfile::from_board_package(&airon_hal::ACTIVE_BOARD_PACKAGE)?;
+```
 
 For diagnostics-first startup code, use `build_with_failure` and export the
 reports from the returned `BootAssemblyFailure` before halting or entering a

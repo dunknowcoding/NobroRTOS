@@ -179,6 +179,19 @@ impl SystemProfile {
             self.pool_slot_limit,
         )
     }
+
+    #[cfg(feature = "hal-profile")]
+    pub fn from_board_package(
+        package: &airon_hal::BoardPackage,
+    ) -> Result<Self, airon_hal::BoardPackageError> {
+        package.validate()?;
+        Ok(Self::new(
+            package.capacity.flash_budget_bytes,
+            package.capacity.ram_budget_bytes,
+            package.capacity.sample_pool_slots,
+            package.capacity.max_modules,
+        ))
+    }
 }
 
 impl MemoryBudget {
@@ -825,6 +838,52 @@ mod tests {
                 modules: 2,
                 limit: 1
             })
+        );
+    }
+
+    #[cfg(feature = "hal-profile")]
+    #[test]
+    fn system_profile_can_be_derived_from_board_package() {
+        let package = airon_hal::BoardPackage::new(
+            "test-platform",
+            "test-board",
+            airon_hal::BootProfile::new(
+                airon_hal::BootLayout::NoSoftDevice,
+                0x1000,
+                128 * 1024,
+                0x2000_0000,
+                64 * 1024,
+            ),
+            airon_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
+            airon_hal::BoardPins::new(1, 2, 3),
+        );
+
+        assert_eq!(
+            SystemProfile::from_board_package(&package),
+            Ok(SystemProfile::new(40 * 1024, 12 * 1024, 6, 5))
+        );
+    }
+
+    #[cfg(feature = "hal-profile")]
+    #[test]
+    fn system_profile_rejects_invalid_board_package() {
+        let package = airon_hal::BoardPackage::new(
+            "test-platform",
+            "test-board",
+            airon_hal::BootProfile::new(
+                airon_hal::BootLayout::NoSoftDevice,
+                0x1800,
+                128 * 1024,
+                0x2000_0000,
+                64 * 1024,
+            ),
+            airon_hal::BoardCapacity::new(40 * 1024, 12 * 1024, 6, 5),
+            airon_hal::BoardPins::new(1, 2, 3),
+        );
+
+        assert_eq!(
+            SystemProfile::from_board_package(&package),
+            Err(airon_hal::BoardPackageError::UnalignedFlashOrigin)
         );
     }
 

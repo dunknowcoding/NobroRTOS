@@ -159,6 +159,15 @@ assert_eq!(package.validate(), Ok(()));
 `BoardPackageError` identifies invalid board data such as empty capacity,
 unaligned flash origin, empty memory regions, or duplicate critical pins.
 
+When `airon-kernel` is built with the `hal-profile` feature, admission limits
+can be derived directly from the active package:
+
+```rust
+let profile = airon_kernel::SystemProfile::from_board_package(
+    &airon_hal::ACTIVE_BOARD_PACKAGE,
+)?;
+```
+
 `BoardPackageReport` exports the same package contract as a fixed-layout host
 record:
 

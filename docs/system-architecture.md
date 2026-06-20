@@ -48,6 +48,9 @@ identifiers, aligned flash origin, non-empty flash/RAM regions, usable capacity
 budgets, and distinct critical pins before a port becomes a recommended target.
 Firmware can export `NOBRO_BOARD_PACKAGE_REPORT` so host tooling can inspect the
 same contract before manifest and adapter diagnostics.
+With the `airon-kernel/hal-profile` feature, apps can derive `SystemProfile`
+from `BoardPackage`, which keeps manifest and admission budgets aligned with
+the selected board package.
 
 ## Static Async Direction
 

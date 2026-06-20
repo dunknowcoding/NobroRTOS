@@ -36,5 +36,6 @@ compile_error!("platform-stm32 is reserved for a future port; implement platform
     not(feature = "platform-esp32"),
     not(feature = "platform-rp2040"),
     not(feature = "platform-stm32"),
+    not(feature = "contract-only"),
 ))]
 compile_error!("airon-hal: enable one platform feature (e.g. platform-nrf52840)");

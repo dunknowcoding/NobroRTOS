@@ -89,6 +89,10 @@ identity, capacity, critical pins, and servo defaults. Package fixtures add boot
 layout, memory ranges, and package validation without rebuilding the HAL for
 every board feature.
 
+Apps that enable `airon-kernel/hal-profile` can derive `SystemProfile` from the
+active `BoardPackage`. This is the preferred path for admission checks because
+the manifest budget then follows the selected board feature.
+
 ## Acceptance Gates
 
 Before a board port becomes a recommended target, it should provide:

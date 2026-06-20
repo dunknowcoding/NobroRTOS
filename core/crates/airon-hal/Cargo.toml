@@ -17,6 +17,7 @@ platform-nrf52840 = ["dep:cortex-m", "dep:nrf52840-pac"]
 platform-esp32 = []
 platform-rp2040 = []
 platform-stm32 = []
+contract-only = []
 
 # Board packages are mutually exclusive and depend on platform-nrf52840.
 board-promicro-nosd = ["platform-nrf52840"]

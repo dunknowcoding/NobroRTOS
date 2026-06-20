@@ -26,6 +26,7 @@ Completed or substantially present:
 - host-readable board package reports in the boot diagnostic path
 - board profile fixtures for host review without board feature switching
 - board package fixtures for host review without board feature switching
+- optional `hal-profile` bridge from `BoardPackage` to admission `SystemProfile`
 - no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
   construction, startup reports, and failure snapshots
 
@@ -51,7 +52,7 @@ Completed or substantially present:
 
 - keep board facts in descriptors and feature gates
 - require one selected board feature per firmware build
-- add capacity checks before runtime admission
+- derive runtime admission capacity from board packages where HAL is present
 - map `HalEventCapture` to each platform's native trigger fabric
 - keep HAL snapshots available for register and layout review
 

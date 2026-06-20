@@ -14,7 +14,6 @@ use panic_probe as _;
 use airon_adapter_robo_servo::{module_spec as robo_servo_spec, RoboServoAdapter};
 use airon_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausible, SensorStub};
 use airon_hal::{
-    board_desc::BoardDesc,
     lease::Resource,
     ppi,
     traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
@@ -230,13 +229,8 @@ fn validate_adapter_set(profile: SystemProfile) {
 }
 
 fn active_profile() -> SystemProfile {
-    let capacity = <Hal as PlatformHal>::Board::CAPACITY;
-    SystemProfile::new(
-        capacity.flash_budget_bytes,
-        capacity.ram_budget_bytes,
-        capacity.sample_pool_slots,
-        capacity.max_modules,
-    )
+    SystemProfile::from_board_package(&ACTIVE_BOARD_PACKAGE)
+        .unwrap_or_else(|_| defmt::panic!("board package profile"))
 }
 
 fn kernel_spec() -> ModuleSpec {
