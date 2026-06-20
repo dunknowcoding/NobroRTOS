@@ -69,6 +69,8 @@ def main() -> int:
             "board_package",
             "manifest",
             "adapter_compatibility",
+            "ai_model",
+            "ros_bridge",
         ),
         help="report kind",
     )
