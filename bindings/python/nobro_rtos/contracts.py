@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 import json
+from pathlib import Path
 from typing import Any
 
 CONTRACT_SCHEMA_VERSION = 1
@@ -58,6 +59,23 @@ def capability_mask(*capabilities: Capability) -> int:
     return mask
 
 
+def capabilities_from_mask(mask: int) -> tuple[Capability, ...]:
+    capabilities = tuple(capability for capability in Capability if mask & capability.bit)
+    known_bits = capability_mask(*capabilities)
+    unknown_bits = mask & ~known_bits
+    if unknown_bits:
+        raise ValueError(f"unknown capability bits: 0x{unknown_bits:X}")
+    return capabilities
+
+
+def _enum_from_label(enum_type: type[IntEnum], label: str) -> IntEnum:
+    normalized = label.upper()
+    for item in enum_type:
+        if item.name == normalized:
+            return item
+    raise ValueError(f"unknown {enum_type.__name__} label: {label}")
+
+
 @dataclass(frozen=True)
 class MemoryBudget:
     flash_bytes: int
@@ -77,6 +95,14 @@ class MemoryBudget:
             "ram_bytes": self.ram_bytes,
             "pool_slots": self.pool_slots,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryBudget":
+        return cls(
+            int(payload["flash_bytes"]),
+            int(payload["ram_bytes"]),
+            int(payload.get("pool_slots", 0)),
+        )
 
 
 @dataclass(frozen=True)
@@ -117,6 +143,25 @@ class ModuleSpec:
             ),
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ModuleSpec":
+        deadline = payload.get("deadline")
+        period_us = None
+        max_jitter_us = None
+        if deadline is not None:
+            period_us = int(deadline["period_us"])
+            max_jitter_us = int(deadline["max_jitter_us"])
+
+        return cls(
+            module=str(payload["module"]),
+            criticality=_enum_from_label(Criticality, str(payload["criticality"])),
+            memory=MemoryBudget.from_dict(payload["memory"]),
+            requires=capabilities_from_mask(int(payload.get("requires_bits", 0))),
+            owns=capabilities_from_mask(int(payload.get("owns_bits", 0))),
+            period_us=period_us,
+            max_jitter_us=max_jitter_us,
+        )
+
 
 @dataclass(frozen=True)
 class AiModelContract:
@@ -153,6 +198,18 @@ class AiModelContract:
             "stale_after_us": self.stale_after_us,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AiModelContract":
+        return cls(
+            model_id=int(payload["model_id"]),
+            backend=_enum_from_label(AiBackendKind, str(payload["backend"])),
+            input_bytes_max=int(payload["input_bytes_max"]),
+            output_bytes_max=int(payload["output_bytes_max"]),
+            arena_bytes=int(payload.get("arena_bytes", 0)),
+            timeout_us=int(payload["timeout_us"]),
+            stale_after_us=int(payload["stale_after_us"]),
+        )
+
 
 @dataclass(frozen=True)
 class RosTopic:
@@ -176,6 +233,15 @@ class RosTopic:
             "max_message_bytes": self.max_message_bytes,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RosTopic":
+        return cls(
+            name=str(payload["name"]),
+            message_type=str(payload["message_type"]),
+            depth=int(payload["depth"]),
+            max_message_bytes=int(payload["max_message_bytes"]),
+        )
+
 
 @dataclass(frozen=True)
 class RosService:
@@ -198,6 +264,15 @@ class RosService:
             "response_bytes_max": self.response_bytes_max,
             "timeout_us": self.timeout_us,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RosService":
+        return cls(
+            name=str(payload["name"]),
+            request_bytes_max=int(payload["request_bytes_max"]),
+            response_bytes_max=int(payload["response_bytes_max"]),
+            timeout_us=int(payload["timeout_us"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -225,6 +300,16 @@ class RosAction:
             "timeout_us": self.timeout_us,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RosAction":
+        return cls(
+            name=str(payload["name"]),
+            goal_bytes_max=int(payload["goal_bytes_max"]),
+            feedback_bytes_max=int(payload["feedback_bytes_max"]),
+            result_bytes_max=int(payload["result_bytes_max"]),
+            timeout_us=int(payload["timeout_us"]),
+        )
+
 
 @dataclass(frozen=True)
 class RosParameter:
@@ -241,6 +326,13 @@ class RosParameter:
             "name": self.name,
             "value_bytes_max": self.value_bytes_max,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RosParameter":
+        return cls(
+            name=str(payload["name"]),
+            value_bytes_max=int(payload["value_bytes_max"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -279,6 +371,23 @@ class RosBridgeDescriptor:
             "parameters": [param.to_dict() for param in self.parameters],
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RosBridgeDescriptor":
+        return cls(
+            bridge_id=str(payload["bridge_id"]),
+            transport=str(payload["transport"]),
+            topics=tuple(RosTopic.from_dict(item) for item in payload.get("topics", ())),
+            services=tuple(
+                RosService.from_dict(item) for item in payload.get("services", ())
+            ),
+            actions=tuple(
+                RosAction.from_dict(item) for item in payload.get("actions", ())
+            ),
+            parameters=tuple(
+                RosParameter.from_dict(item) for item in payload.get("parameters", ())
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class NobroContractBundle:
@@ -310,6 +419,34 @@ class NobroContractBundle:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2, sort_keys=True)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NobroContractBundle":
+        version = int(payload.get("schema_version", CONTRACT_SCHEMA_VERSION))
+        if version != CONTRACT_SCHEMA_VERSION:
+            raise ValueError(f"unsupported schema version: {version}")
+        return cls(
+            metadata={str(key): str(value) for key, value in payload.get("metadata", {}).items()},
+            modules=tuple(
+                ModuleSpec.from_dict(item) for item in payload.get("modules", ())
+            ),
+            ai_models=tuple(
+                AiModelContract.from_dict(item) for item in payload.get("ai_models", ())
+            ),
+            ros_bridges=tuple(
+                RosBridgeDescriptor.from_dict(item)
+                for item in payload.get("ros_bridges", ())
+            ),
+        )
+
+    @classmethod
+    def from_json(cls, payload: str) -> "NobroContractBundle":
+        return cls.from_dict(json.loads(payload))
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "NobroContractBundle":
+        with Path(path).open("r", encoding="utf-8-sig") as handle:
+            return cls.from_dict(json.load(handle))
 
 
 def _validate_name(value: str) -> None:

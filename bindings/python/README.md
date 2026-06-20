@@ -94,6 +94,12 @@ Decode a boot diagnostic code:
 python tools/nobro_contract_tool.py decode-boot 0x04040003
 ```
 
+Validate a contract bundle JSON file:
+
+```powershell
+python tools/nobro_contract_tool.py validate-bundle path\to\bundle.json
+```
+
 ## Tests
 
 The current tests use only the Python standard library:

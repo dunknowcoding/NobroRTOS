@@ -15,6 +15,7 @@ from .contracts import (
     RosService,
     RosTopic,
     capability_mask,
+    capabilities_from_mask,
 )
 from .host_contract import (
     BootDiagnostic,
@@ -39,6 +40,7 @@ __all__ = [
     "RosService",
     "RosTopic",
     "capability_mask",
+    "capabilities_from_mask",
     "find_repo_root",
     "BootDiagnostic",
     "HostContract",

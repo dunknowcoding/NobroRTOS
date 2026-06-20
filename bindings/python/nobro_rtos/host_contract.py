@@ -105,7 +105,7 @@ class HostContract:
 
     @classmethod
     def from_path(cls, path: str | Path) -> "HostContract":
-        with Path(path).open("r", encoding="utf-8") as handle:
+        with Path(path).open("r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
         contract = cls(payload)
         contract.validate()

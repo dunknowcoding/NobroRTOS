@@ -13,6 +13,7 @@ from nobro_rtos import (
     RosBridgeDescriptor,
     RosService,
     RosTopic,
+    capabilities_from_mask,
     load_repo_host_contract,
 )
 
@@ -51,6 +52,51 @@ class ContractBuilderTests(unittest.TestCase):
         )
         self.assertEqual(payload["modules"][0]["owns_bits"], Capability.AI_ENDPOINT.bit)
         self.assertEqual(payload["ai_models"][0]["backend"], "on_device")
+
+    def test_bundle_round_trips_from_json(self) -> None:
+        bundle = NobroContractBundle(
+            metadata={"profile": "roundtrip"},
+            modules=(
+                ModuleSpec(
+                    "ai",
+                    Criticality.USER,
+                    MemoryBudget(16 * 1024, 6 * 1024, 1),
+                    requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+                    owns=(Capability.AI_ENDPOINT,),
+                ),
+            ),
+            ai_models=(
+                AiModelContract(
+                    42,
+                    AiBackendKind.ON_DEVICE,
+                    128,
+                    32,
+                    4096,
+                    20_000,
+                    100_000,
+                ),
+            ),
+            ros_bridges=(
+                RosBridgeDescriptor(
+                    "robot_core",
+                    "serial",
+                    topics=(RosTopic("/imu", "sensor_msgs/Imu", 4, 128),),
+                    services=(RosService("/reset", 16, 16, 50_000),),
+                ),
+            ),
+        )
+
+        loaded = NobroContractBundle.from_json(bundle.to_json())
+
+        self.assertEqual(loaded.to_dict(), bundle.to_dict())
+
+    def test_capability_masks_reject_unknown_bits(self) -> None:
+        self.assertEqual(
+            capabilities_from_mask(Capability.AI_ENDPOINT.bit),
+            (Capability.AI_ENDPOINT,),
+        )
+        with self.assertRaisesRegex(ValueError, "unknown capability bits"):
+            capabilities_from_mask(1 << 31)
 
     def test_hard_realtime_module_requires_deadline(self) -> None:
         bundle = NobroContractBundle(

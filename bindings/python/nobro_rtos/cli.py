@@ -40,6 +40,11 @@ def main() -> int:
         help="decode a boot diagnostic code into stage, status, and error label",
     )
     decode_boot.add_argument("code", help="diagnostic code as decimal or 0x-prefixed hex")
+    validate_bundle = subparsers.add_parser(
+        "validate-bundle",
+        help="load and validate a NobroRTOS contract bundle JSON file",
+    )
+    validate_bundle.add_argument("path", help="path to a contract bundle JSON file")
     args = parser.parse_args()
 
     if args.command == "sample-ai-ros":
@@ -54,6 +59,11 @@ def main() -> int:
         code = int(args.code, 0)
         diagnostic = BootDiagnostic.decode(code)
         print(json.dumps(diagnostic.to_dict(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "validate-bundle":
+        bundle = NobroContractBundle.from_file(args.path)
+        bundle.validate()
+        print(f"bundle ok: {len(bundle.modules)} modules")
         return 0
 
     parser.error(f"unknown command: {args.command}")
