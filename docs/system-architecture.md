@@ -82,6 +82,12 @@ kernel-owned configuration. DDS, XRCE-DDS, agents, and custom transports should
 stay behind `StreamSal` or `RadioSal` adapters rather than becoming kernel
 dependencies.
 
+`RosBridgeSal` is the bounded Rust contract for that bridge layer. It reports a
+fixed `RosBridgeContract` summary, uses stable hashes instead of dynamic names
+inside realtime paths, and keeps topic publication plus service calls on
+caller-owned buffers. DDS, micro-ROS agents, serial bridges, and companion
+computer bridges can share this contract without becoming kernel dependencies.
+
 ## Static Async Direction
 
 Embassy demonstrates that embedded async can stay allocation-free and efficient.

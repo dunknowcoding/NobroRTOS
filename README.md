@@ -198,7 +198,7 @@ folders use the `nobro_*` project prefix.
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge model | Planned | Bounded topic/service/action/parameter bridge descriptors |
+| ROS bridge model | Present | Bounded topic/service/action/parameter contracts and SAL bridge trait |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
 | C/C++/Python interfaces | In progress | C/C++ report headers plus Python builders, decoders, and validators |
 

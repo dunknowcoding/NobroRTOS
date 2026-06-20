@@ -324,6 +324,26 @@ service-like calls map to fixed request/response records, action-like work maps
 to goal/feedback/result records, and parameters map to fixed-capacity
 configuration.
 
+`RosBridgeSal` provides the Rust-side bounded bridge surface. Names and message
+types are represented by stable hashes so the realtime path does not carry
+dynamic strings. Inputs and outputs remain caller-owned buffers.
+
+```rust
+let topic = nobro_sal::RosTopicContract::new(0x10, 0x20, 4, 64);
+let service = nobro_sal::RosServiceContract::new(0x30, 16, 16, 50_000);
+let contract = nobro_sal::RosBridgeContract::from_parts(
+    nobro_sal::RosBridgeTransport::Serial,
+    0xA11CE,
+    &[topic],
+    &[service],
+    &[],
+    &[],
+);
+
+assert_eq!(contract.topic_count, 1);
+assert!(contract.total_buffer_bytes <= 512);
+```
+
 ## Host API
 
 `nobro-host` mirrors all report constants:

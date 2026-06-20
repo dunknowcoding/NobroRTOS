@@ -441,6 +441,215 @@ pub trait CryptoSal {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
+pub enum RosBridgeTransport {
+    Serial = 1,
+    Udp = 2,
+    Radio = 3,
+    SharedMemory = 4,
+    Custom = 255,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosTopicContract {
+    pub name_hash: u32,
+    pub message_type_hash: u32,
+    pub depth: u8,
+    pub max_message_bytes: u16,
+}
+
+impl RosTopicContract {
+    pub const fn new(
+        name_hash: u32,
+        message_type_hash: u32,
+        depth: u8,
+        max_message_bytes: u16,
+    ) -> Self {
+        Self {
+            name_hash,
+            message_type_hash,
+            depth,
+            max_message_bytes,
+        }
+    }
+
+    pub fn buffer_bytes(self) -> u32 {
+        u32::from(self.depth).saturating_mul(u32::from(self.max_message_bytes))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosServiceContract {
+    pub name_hash: u32,
+    pub request_bytes_max: u16,
+    pub response_bytes_max: u16,
+    pub timeout_us: u32,
+}
+
+impl RosServiceContract {
+    pub const fn new(
+        name_hash: u32,
+        request_bytes_max: u16,
+        response_bytes_max: u16,
+        timeout_us: u32,
+    ) -> Self {
+        Self {
+            name_hash,
+            request_bytes_max,
+            response_bytes_max,
+            timeout_us,
+        }
+    }
+
+    pub fn buffer_bytes(self) -> u32 {
+        u32::from(self.request_bytes_max).saturating_add(u32::from(self.response_bytes_max))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosActionContract {
+    pub name_hash: u32,
+    pub goal_bytes_max: u16,
+    pub feedback_bytes_max: u16,
+    pub result_bytes_max: u16,
+    pub timeout_us: u32,
+}
+
+impl RosActionContract {
+    pub const fn new(
+        name_hash: u32,
+        goal_bytes_max: u16,
+        feedback_bytes_max: u16,
+        result_bytes_max: u16,
+        timeout_us: u32,
+    ) -> Self {
+        Self {
+            name_hash,
+            goal_bytes_max,
+            feedback_bytes_max,
+            result_bytes_max,
+            timeout_us,
+        }
+    }
+
+    pub fn buffer_bytes(self) -> u32 {
+        u32::from(self.goal_bytes_max)
+            .saturating_add(u32::from(self.feedback_bytes_max))
+            .saturating_add(u32::from(self.result_bytes_max))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosParameterContract {
+    pub name_hash: u32,
+    pub value_bytes_max: u16,
+}
+
+impl RosParameterContract {
+    pub const fn new(name_hash: u32, value_bytes_max: u16) -> Self {
+        Self {
+            name_hash,
+            value_bytes_max,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosBridgeContract {
+    pub transport: RosBridgeTransport,
+    pub bridge_id_hash: u32,
+    pub topic_count: u8,
+    pub service_count: u8,
+    pub action_count: u8,
+    pub parameter_count: u8,
+    pub total_buffer_bytes: u32,
+    pub max_timeout_us: u32,
+}
+
+impl RosBridgeContract {
+    pub const fn new(
+        transport: RosBridgeTransport,
+        bridge_id_hash: u32,
+        topic_count: u8,
+        service_count: u8,
+        action_count: u8,
+        parameter_count: u8,
+        total_buffer_bytes: u32,
+        max_timeout_us: u32,
+    ) -> Self {
+        Self {
+            transport,
+            bridge_id_hash,
+            topic_count,
+            service_count,
+            action_count,
+            parameter_count,
+            total_buffer_bytes,
+            max_timeout_us,
+        }
+    }
+
+    pub fn from_parts(
+        transport: RosBridgeTransport,
+        bridge_id_hash: u32,
+        topics: &[RosTopicContract],
+        services: &[RosServiceContract],
+        actions: &[RosActionContract],
+        parameters: &[RosParameterContract],
+    ) -> Self {
+        let mut total_buffer_bytes = 0u32;
+        let mut max_timeout_us = 0u32;
+
+        for topic in topics {
+            total_buffer_bytes = total_buffer_bytes.saturating_add(topic.buffer_bytes());
+        }
+        for service in services {
+            total_buffer_bytes = total_buffer_bytes.saturating_add(service.buffer_bytes());
+            max_timeout_us = max_timeout_us.max(service.timeout_us);
+        }
+        for action in actions {
+            total_buffer_bytes = total_buffer_bytes.saturating_add(action.buffer_bytes());
+            max_timeout_us = max_timeout_us.max(action.timeout_us);
+        }
+        for parameter in parameters {
+            total_buffer_bytes =
+                total_buffer_bytes.saturating_add(u32::from(parameter.value_bytes_max));
+        }
+
+        Self::new(
+            transport,
+            bridge_id_hash,
+            saturated_len(topics.len()),
+            saturated_len(services.len()),
+            saturated_len(actions.len()),
+            saturated_len(parameters.len()),
+            total_buffer_bytes,
+            max_timeout_us,
+        )
+    }
+}
+
+/// Bounded ROS-style bridge surface for topics and request/response calls.
+pub trait RosBridgeSal {
+    type Error;
+
+    fn contract(&self) -> RosBridgeContract;
+    fn publish(
+        &mut self,
+        topic_hash: u32,
+        payload: &[u8],
+        deadline_us: u64,
+    ) -> Result<(), Self::Error>;
+    fn request(
+        &mut self,
+        service_hash: u32,
+        request: &[u8],
+        response: &mut [u8],
+        deadline_us: u64,
+    ) -> Result<usize, Self::Error>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum AiBackendKind {
     OnDevice = 1,
     RemoteApi = 2,
@@ -743,6 +952,14 @@ pub fn default_action(err: &KernelError) -> nobro_kernel::Action {
     }
 }
 
+fn saturated_len(len: usize) -> u8 {
+    if len > u8::MAX as usize {
+        u8::MAX
+    } else {
+        len as u8
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -802,6 +1019,44 @@ mod tests {
         }
     }
 
+    struct LoopbackRos;
+
+    impl RosBridgeSal for LoopbackRos {
+        type Error = ();
+
+        fn contract(&self) -> RosBridgeContract {
+            RosBridgeContract::from_parts(
+                RosBridgeTransport::Serial,
+                0xA11CE,
+                &[RosTopicContract::new(0x10, 0x20, 4, 64)],
+                &[RosServiceContract::new(0x30, 16, 16, 50_000)],
+                &[RosActionContract::new(0x40, 16, 8, 16, 100_000)],
+                &[RosParameterContract::new(0x50, 12)],
+            )
+        }
+
+        fn publish(
+            &mut self,
+            _topic_hash: u32,
+            _payload: &[u8],
+            _deadline_us: u64,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn request(
+            &mut self,
+            _service_hash: u32,
+            request: &[u8],
+            response: &mut [u8],
+            _deadline_us: u64,
+        ) -> Result<usize, Self::Error> {
+            let len = request.len().min(response.len());
+            response[..len].copy_from_slice(&request[..len]);
+            Ok(len)
+        }
+    }
+
     #[test]
     fn adapter_descriptor_is_derived_from_module_spec() {
         let descriptor = FakeAdapter::descriptor();
@@ -842,6 +1097,38 @@ mod tests {
         assert_eq!(result.output_len, 4);
         assert_eq!(result.confidence_q15, 0x7FFF);
         assert_eq!(&output[..4], &input);
+    }
+
+    #[test]
+    fn ros_bridge_contract_summarizes_bounded_entities() {
+        let bridge = LoopbackRos;
+        let contract = bridge.contract();
+
+        assert_eq!(contract.transport, RosBridgeTransport::Serial);
+        assert_eq!(contract.topic_count, 1);
+        assert_eq!(contract.service_count, 1);
+        assert_eq!(contract.action_count, 1);
+        assert_eq!(contract.parameter_count, 1);
+        assert_eq!(
+            contract.total_buffer_bytes,
+            4 * 64 + 16 + 16 + 16 + 8 + 16 + 12
+        );
+        assert_eq!(contract.max_timeout_us, 100_000);
+    }
+
+    #[test]
+    fn ros_bridge_sal_uses_caller_owned_buffers() {
+        let mut bridge = LoopbackRos;
+        let request = [1u8, 2, 3, 4];
+        let mut response = [0u8; 8];
+
+        bridge.publish(0x10, &request, 10_000).unwrap();
+        let len = bridge
+            .request(0x30, &request, &mut response, 10_000)
+            .unwrap();
+
+        assert_eq!(len, 4);
+        assert_eq!(&response[..4], &request);
     }
 
     #[test]
