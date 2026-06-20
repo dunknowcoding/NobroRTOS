@@ -8,6 +8,9 @@ import json
 from .contracts import (
     AiBackendKind,
     AiModelContract,
+    AiRoutePolicy,
+    AiRoutePreference,
+    AiRuntimeState,
     Capability,
     Criticality,
     MemoryBudget,
@@ -32,6 +35,10 @@ def main() -> int:
     subparsers.add_parser(
         "sample-ai-ros",
         help="print a sample AI and ROS bridge contract bundle as JSON",
+    )
+    subparsers.add_parser(
+        "sample-ai-route",
+        help="print a sample AI route policy decision as JSON",
     )
     subparsers.add_parser(
         "check-host-contract",
@@ -75,6 +82,9 @@ def main() -> int:
 
     if args.command == "sample-ai-ros":
         print(_sample_ai_ros_bundle().to_json())
+        return 0
+    if args.command == "sample-ai-route":
+        print(json.dumps(_sample_ai_route(), indent=2, sort_keys=True))
         return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
@@ -145,3 +155,42 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
             ),
         ),
     )
+
+
+def _sample_ai_route() -> dict[str, object]:
+    contract = AiModelContract(
+        model_id=42,
+        backend=AiBackendKind.HYBRID,
+        input_bytes_max=128,
+        output_bytes_max=32,
+        arena_bytes=4096,
+        timeout_us=20_000,
+        stale_after_us=100_000,
+    )
+    policy = AiRoutePolicy(
+        preference=AiRoutePreference.HYBRID_FALLBACK,
+        stale_after_us=50_000,
+        endpoint_failure_limit=2,
+    )
+    state = AiRuntimeState(
+        local_ready=True,
+        endpoint_ready=False,
+        last_success_age_us=12_000,
+        consecutive_endpoint_failures=2,
+    )
+    decision = policy.decide(contract, state, budget_us=25_000)
+    return {
+        "contract": contract.to_dict(),
+        "policy": {
+            "preference": policy.preference.name.lower(),
+            "stale_after_us": policy.stale_after_us,
+            "endpoint_failure_limit": policy.endpoint_failure_limit,
+        },
+        "state": {
+            "local_ready": state.local_ready,
+            "endpoint_ready": state.endpoint_ready,
+            "last_success_age_us": state.last_success_age_us,
+            "consecutive_endpoint_failures": state.consecutive_endpoint_failures,
+        },
+        "decision": decision.to_dict(),
+    }
