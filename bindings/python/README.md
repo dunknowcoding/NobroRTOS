@@ -79,10 +79,11 @@ without carrying dynamic strings in realtime paths.
 
 `SensorStubSimulator` mirrors the Rust `sensor-stub` fixture modes for host
 workflows. `ServoSimulator` mirrors the RoboServo-style actuator timing and
-readback checks.
+readback checks. `RecoveryPolicySimulator` mirrors the kernel's health
+threshold escalation for host-side self-healing drills.
 
 ```python
-from nobro_rtos import SensorStubSimulator, ServoSimulator
+from nobro_rtos import RecoveryPolicySimulator, SensorStubSimulator, ServoSimulator
 
 sim = SensorStubSimulator.bad_data_every(2, sample_period_ticks=1)
 first = sim.poll()
@@ -94,6 +95,9 @@ assert not second.plausible
 servo = ServoSimulator(readback_offset_us=10)
 command = servo.set_duty_us(0, 1500, deadline_us=100, issued_at_us=90)
 assert command.accepted
+
+recovery = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
+assert recovery.record_error("sensor", "sensor_read_fail", 10).action.value == "ignore"
 ```
 
 The simulator is deterministic and uses only caller-visible records, making it
@@ -111,6 +115,7 @@ python -m nobro_rtos sample-report ai_model
 python -m nobro_rtos sample-report ros_bridge
 python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
 python -m nobro_rtos sample-actuator --start-us 1200 --stop-us 1800 --step-us 300
+python -m nobro_rtos sample-recovery --error sensor_read_fail --events 4
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -119,6 +124,8 @@ policy, runtime state, and decision. The report samples print sealed fixed
 reports that can be fed directly into `decode-report`. The sensor sample emits
 deterministic fixture records and injected-fault summaries. The actuator sample
 emits deterministic servo command records with deadline and readback summaries.
+The recovery sample emits a deterministic health-counter timeline for notify
+and reboot escalation drills.
 
 Validate the repository host contract against the Python enums:
 

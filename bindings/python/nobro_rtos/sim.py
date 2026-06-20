@@ -24,6 +24,128 @@ class ServoSimulatorError(RuntimeError):
     """Raised when the simulated actuator contract is violated."""
 
 
+class RecoveryAction(str, Enum):
+    """Recovery actions mirrored from the Rust kernel action model."""
+
+    RETRY_NOW = "retry_now"
+    RETRY_DELAY = "retry_delay"
+    NOTIFY_USER_TASK = "notify_user_task"
+    REBOOT_MODULE = "reboot_module"
+    IGNORE = "ignore"
+
+
+class KernelErrorKind(str, Enum):
+    """Kernel error labels used by host-side recovery simulations."""
+
+    LEASE_CONFLICT = "lease_conflict"
+    BUS_TIMEOUT = "bus_timeout"
+    RADIO_TX_FAIL = "radio_tx_fail"
+    SENSOR_READ_FAIL = "sensor_read_fail"
+    DEADLINE_MISSED = "deadline_missed"
+
+
+@dataclass(frozen=True)
+class RecoveryDecision:
+    """A deterministic recovery decision with health counter context."""
+
+    module: str
+    error: str
+    action: RecoveryAction
+    total_errors: int
+    consecutive_errors: int
+    now_us: int
+    delay_us: int = 0
+
+    @property
+    def state(self) -> str:
+        if self.action == RecoveryAction.REBOOT_MODULE:
+            return "recovering"
+        if self.action == RecoveryAction.NOTIFY_USER_TASK:
+            return "degraded"
+        return "running"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "module": self.module,
+            "error": self.error,
+            "action": self.action.value,
+            "delay_us": self.delay_us,
+            "state": self.state,
+            "total_errors": self.total_errors,
+            "consecutive_errors": self.consecutive_errors,
+            "now_us": self.now_us,
+        }
+
+
+@dataclass
+class RecoveryPolicySimulator:
+    """Host-side mirror of health thresholds and default recovery actions."""
+
+    notify_after: int = 3
+    reboot_after: int = 8
+    total_errors: int = 0
+    consecutive_errors: int = 0
+    last_seen_us: int = 0
+    last_recovery_us: int = 0
+
+    def __post_init__(self) -> None:
+        if self.notify_after <= 0:
+            raise ValueError("notify_after must be positive")
+        if self.reboot_after <= 0:
+            raise ValueError("reboot_after must be positive")
+        if self.notify_after > self.reboot_after:
+            raise ValueError("notify_after must be less than or equal to reboot_after")
+
+    def record_ok(self, now_us: int) -> dict[str, int | str]:
+        self.consecutive_errors = 0
+        self.last_seen_us = int(now_us)
+        return {
+            "event": "ok",
+            "state": "running",
+            "consecutive_errors": self.consecutive_errors,
+            "total_errors": self.total_errors,
+            "now_us": self.last_seen_us,
+        }
+
+    def record_error(
+        self, module: str, error: str | KernelErrorKind, now_us: int
+    ) -> RecoveryDecision:
+        error_kind = KernelErrorKind(error)
+        self.total_errors += 1
+        self.consecutive_errors += 1
+        self.last_seen_us = int(now_us)
+
+        if self.consecutive_errors >= self.reboot_after:
+            action = RecoveryAction.REBOOT_MODULE
+            delay_us = 0
+            self.last_recovery_us = int(now_us)
+        elif self.consecutive_errors >= self.notify_after:
+            action = RecoveryAction.NOTIFY_USER_TASK
+            delay_us = 0
+        else:
+            action, delay_us = default_recovery_action(error_kind)
+
+        return RecoveryDecision(
+            module=module,
+            error=error_kind.value,
+            action=action,
+            delay_us=delay_us,
+            total_errors=self.total_errors,
+            consecutive_errors=self.consecutive_errors,
+            now_us=int(now_us),
+        )
+
+
+def default_recovery_action(error: KernelErrorKind) -> tuple[RecoveryAction, int]:
+    if error == KernelErrorKind.BUS_TIMEOUT:
+        return RecoveryAction.RETRY_DELAY, 1000
+    if error == KernelErrorKind.RADIO_TX_FAIL:
+        return RecoveryAction.RETRY_DELAY, 1000
+    if error == KernelErrorKind.DEADLINE_MISSED:
+        return RecoveryAction.NOTIFY_USER_TASK, 0
+    return RecoveryAction.IGNORE, 0
+
+
 @dataclass(frozen=True)
 class ImuSample:
     """A small host-side IMU sample matching the Rust fixture's shape."""

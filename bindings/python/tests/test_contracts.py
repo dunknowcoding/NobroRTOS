@@ -23,6 +23,8 @@ from nobro_rtos import (
     RosBridgeDescriptor,
     RosService,
     RosTopic,
+    RecoveryAction,
+    RecoveryPolicySimulator,
     SensorStubError,
     SensorStubSimulator,
     ServoSimulator,
@@ -33,7 +35,12 @@ from nobro_rtos import (
     stable_hash32,
     validate_distribution_metadata,
 )
-from nobro_rtos.cli import _sample_actuator, _sample_report, _sample_sensor
+from nobro_rtos.cli import (
+    _sample_actuator,
+    _sample_recovery,
+    _sample_report,
+    _sample_sensor,
+)
 
 
 class ContractBuilderTests(unittest.TestCase):
@@ -666,6 +673,46 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["deadline_miss_count"], 0)
         self.assertEqual(report["readback_fail_count"], 3)
         self.assertEqual(report["commands"][0]["pulse_us"], 1200)
+
+    def test_recovery_policy_simulator_escalates_like_kernel_thresholds(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
+
+        first = simulator.record_error("sensor", "sensor_read_fail", 10)
+        second = simulator.record_error("sensor", "sensor_read_fail", 20)
+        third = simulator.record_error("sensor", "sensor_read_fail", 30)
+
+        self.assertEqual(first.action, RecoveryAction.IGNORE)
+        self.assertEqual(second.action, RecoveryAction.NOTIFY_USER_TASK)
+        self.assertEqual(second.state, "degraded")
+        self.assertEqual(third.action, RecoveryAction.REBOOT_MODULE)
+        self.assertEqual(third.state, "recovering")
+
+    def test_recovery_policy_simulator_ok_resets_consecutive_errors(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=2, reboot_after=4)
+        simulator.record_error("bus", "bus_timeout", 10)
+        ok = simulator.record_ok(11)
+        next_error = simulator.record_error("bus", "bus_timeout", 20)
+
+        self.assertEqual(ok["consecutive_errors"], 0)
+        self.assertEqual(next_error.action, RecoveryAction.RETRY_DELAY)
+        self.assertEqual(next_error.delay_us, 1000)
+        self.assertEqual(next_error.consecutive_errors, 1)
+
+    def test_cli_recovery_sample_preserves_ok_reset(self) -> None:
+        report = _sample_recovery(
+            "sensor",
+            "sensor_read_fail",
+            events=3,
+            notify_after=2,
+            reboot_after=3,
+            ok_after=1,
+        )
+
+        self.assertEqual(report["event_count"], 4)
+        self.assertEqual(report["timeline"][0]["action"], "ignore")
+        self.assertEqual(report["timeline"][1]["event"], "ok")
+        self.assertEqual(report["timeline"][2]["action"], "ignore")
+        self.assertEqual(report["timeline"][3]["action"], "notify_user_task")
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(

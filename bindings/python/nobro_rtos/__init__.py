@@ -44,6 +44,10 @@ from .reports import (
 )
 from .sim import (
     ImuSample,
+    KernelErrorKind,
+    RecoveryAction,
+    RecoveryDecision,
+    RecoveryPolicySimulator,
     SensorStubError,
     SensorStubMode,
     SensorStubSimulator,
@@ -88,6 +92,10 @@ __all__ = [
     "ReportStatus",
     "seal_report",
     "ImuSample",
+    "KernelErrorKind",
+    "RecoveryAction",
+    "RecoveryDecision",
+    "RecoveryPolicySimulator",
     "SensorStubError",
     "SensorStubMode",
     "SensorStubSimulator",

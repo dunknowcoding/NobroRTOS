@@ -25,7 +25,14 @@ from .contracts import (
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
-from .sim import SensorStubError, SensorStubMode, SensorStubSimulator, ServoSimulator
+from .sim import (
+    KernelErrorKind,
+    RecoveryPolicySimulator,
+    SensorStubError,
+    SensorStubMode,
+    SensorStubSimulator,
+    ServoSimulator,
+)
 
 
 def main() -> int:
@@ -88,6 +95,25 @@ def main() -> int:
     sample_actuator.add_argument("--step-us", type=int, default=300)
     sample_actuator.add_argument("--readback-offset-us", type=int, default=0)
     sample_actuator.add_argument("--tolerance-us", type=int, default=50)
+    sample_recovery = subparsers.add_parser(
+        "sample-recovery",
+        help="run a deterministic recovery escalation simulation and print JSON",
+    )
+    sample_recovery.add_argument("--module", default="sensor")
+    sample_recovery.add_argument(
+        "--error",
+        choices=tuple(item.value for item in KernelErrorKind),
+        default=KernelErrorKind.SENSOR_READ_FAIL.value,
+    )
+    sample_recovery.add_argument("--events", type=int, default=4)
+    sample_recovery.add_argument("--notify-after", type=int, default=2)
+    sample_recovery.add_argument("--reboot-after", type=int, default=4)
+    sample_recovery.add_argument(
+        "--ok-after",
+        type=int,
+        default=0,
+        help="insert an OK event after this many errors; 0 disables it",
+    )
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -157,6 +183,22 @@ def main() -> int:
                     args.step_us,
                     args.readback_offset_us,
                     args.tolerance_us,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "sample-recovery":
+        print(
+            json.dumps(
+                _sample_recovery(
+                    args.module,
+                    args.error,
+                    args.events,
+                    args.notify_after,
+                    args.reboot_after,
+                    args.ok_after,
                 ),
                 indent=2,
                 sort_keys=True,
@@ -372,4 +414,41 @@ def _sample_actuator(
             1 for command in command_dicts if not command["readback_ok"]
         ),
         "commands": command_dicts,
+    }
+
+
+def _sample_recovery(
+    module: str,
+    error: str,
+    events: int,
+    notify_after: int,
+    reboot_after: int,
+    ok_after: int,
+) -> dict[str, object]:
+    if events < 0:
+        raise ValueError("events must be non-negative")
+    if ok_after < 0:
+        raise ValueError("ok_after must be non-negative")
+
+    simulator = RecoveryPolicySimulator(
+        notify_after=notify_after,
+        reboot_after=reboot_after,
+    )
+    timeline: list[dict[str, object]] = []
+
+    for index in range(events):
+        now_us = (index + 1) * 10
+        decision = simulator.record_error(module, error, now_us)
+        timeline.append({"event": "error", **decision.to_dict()})
+        if ok_after != 0 and index + 1 == ok_after:
+            timeline.append(simulator.record_ok(now_us + 1))
+
+    return {
+        "module": module,
+        "error": error,
+        "notify_after": notify_after,
+        "reboot_after": reboot_after,
+        "ok_after": ok_after,
+        "event_count": len(timeline),
+        "timeline": timeline,
     }
