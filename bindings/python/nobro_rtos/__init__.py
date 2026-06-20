@@ -16,6 +16,7 @@ from .contracts import (
     RosTopic,
     capability_mask,
 )
+from .host_contract import HostContract, find_repo_root, load_repo_host_contract
 
 __all__ = [
     "AiBackendKind",
@@ -32,4 +33,7 @@ __all__ = [
     "RosService",
     "RosTopic",
     "capability_mask",
+    "find_repo_root",
+    "HostContract",
+    "load_repo_host_contract",
 ]

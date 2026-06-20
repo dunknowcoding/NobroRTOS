@@ -17,6 +17,7 @@ from .contracts import (
     RosService,
     RosTopic,
 )
+from .host_contract import load_repo_host_contract
 
 
 def main() -> int:
@@ -29,10 +30,19 @@ def main() -> int:
         "sample-ai-ros",
         help="print a sample AI and ROS bridge contract bundle as JSON",
     )
+    subparsers.add_parser(
+        "check-host-contract",
+        help="validate host/nobro-host-contract.json against Python enums",
+    )
     args = parser.parse_args()
 
     if args.command == "sample-ai-ros":
         print(_sample_ai_ros_bundle().to_json())
+        return 0
+    if args.command == "check-host-contract":
+        contract = load_repo_host_contract()
+        stages = ", ".join(contract.boot_stage_order())
+        print(f"host contract ok: {stages}")
         return 0
 
     parser.error(f"unknown command: {args.command}")

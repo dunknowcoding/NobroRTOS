@@ -76,6 +76,18 @@ python -m nobro_rtos sample-ai-ros
 The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge.
 
+Validate the repository host contract against the Python enums:
+
+```powershell
+python -m nobro_rtos check-host-contract
+```
+
+From the repository root, use the local tool wrapper:
+
+```powershell
+python tools/nobro_contract_tool.py check-host-contract
+```
+
 ## Tests
 
 The current tests use only the Python standard library:

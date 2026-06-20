@@ -12,6 +12,7 @@ from nobro_rtos import (
     RosBridgeDescriptor,
     RosService,
     RosTopic,
+    load_repo_host_contract,
 )
 
 
@@ -89,6 +90,22 @@ class ContractBuilderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "duplicate module"):
             bundle.to_json()
+
+    def test_repo_host_contract_matches_python_enums(self) -> None:
+        contract = load_repo_host_contract()
+
+        self.assertEqual(
+            contract.boot_stage_order(),
+            (
+                "board_profile",
+                "board_package",
+                "manifest",
+                "adapter_compatibility",
+                "admission",
+                "runtime",
+            ),
+        )
+        self.assertEqual(contract.capability_label(Capability.AI_ENDPOINT), "ai_endpoint")
 
 
 if __name__ == "__main__":
