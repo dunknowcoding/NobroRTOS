@@ -133,6 +133,52 @@ class ContractBuilderTests(unittest.TestCase):
         ):
             self.assertIn(symbol, cpp_header)
 
+    def test_c_header_ai_and_ros_codes_match_host_contract(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        header = (repo_root / "bindings" / "c" / "include" / "nobro_rtos.h").read_text(
+            encoding="utf-8"
+        )
+        contract = load_repo_host_contract()
+
+        c_symbols = {
+            "ai_contracts.backend_codes": {
+                "NOBRO_AI_BACKEND_ON_DEVICE": "on_device",
+                "NOBRO_AI_BACKEND_REMOTE_API": "remote_api",
+                "NOBRO_AI_BACKEND_EDGE_SIDECAR": "edge_sidecar",
+                "NOBRO_AI_BACKEND_HYBRID": "hybrid",
+            },
+            "ai_contracts.route_preferences": {
+                "NOBRO_AI_ROUTE_LOCAL_ONLY": "local_only",
+                "NOBRO_AI_ROUTE_PREFER_LOCAL": "prefer_local",
+                "NOBRO_AI_ROUTE_PREFER_REMOTE": "prefer_remote",
+                "NOBRO_AI_ROUTE_HYBRID_FALLBACK": "hybrid_fallback",
+            },
+            "ai_contracts.route_targets": {
+                "NOBRO_AI_TARGET_ON_DEVICE": "on_device",
+                "NOBRO_AI_TARGET_REMOTE_API": "remote_api",
+                "NOBRO_AI_TARGET_EDGE_SIDECAR": "edge_sidecar",
+                "NOBRO_AI_TARGET_STALE_SNAPSHOT": "stale_snapshot",
+                "NOBRO_AI_TARGET_DEGRADED_FALLBACK": "degraded_fallback",
+                "NOBRO_AI_TARGET_UNAVAILABLE": "unavailable",
+            },
+            "ros_bridge_contracts.transport_codes": {
+                "NOBRO_ROS_TRANSPORT_SERIAL": "serial",
+                "NOBRO_ROS_TRANSPORT_UDP": "udp",
+                "NOBRO_ROS_TRANSPORT_RADIO": "radio",
+                "NOBRO_ROS_TRANSPORT_SHARED_MEMORY": "shared_memory",
+                "NOBRO_ROS_TRANSPORT_CUSTOM": "custom",
+            },
+        }
+
+        for table_path, symbols in c_symbols.items():
+            table = contract.payload
+            for key in table_path.split("."):
+                table = table[key]
+            for symbol, expected_label in symbols.items():
+                match = re.search(rf"\b{symbol}\s*=\s*(\d+)", header)
+                self.assertIsNotNone(match, symbol)
+                self.assertEqual(table[match.group(1)], expected_label)
+
     def test_bundle_exports_stable_masks_and_schema_version(self) -> None:
         bundle = NobroContractBundle(
             modules=(
