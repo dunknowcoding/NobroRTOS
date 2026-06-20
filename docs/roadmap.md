@@ -29,6 +29,7 @@ Completed or substantially present:
 - optional `hal-profile` bridge from `BoardPackage` to admission `SystemProfile`
 - no-heap `BootAssembly` facade for manifest, startup graph, admission, runtime
   construction, startup reports, and failure snapshots
+- unified `BootAssemblyReports` helper for success and failure startup exports
 - `sal_adapter_demo` wired through `BootAssembly` while preserving host reports
 
 ## Near-Term Architecture Work

@@ -78,6 +78,14 @@ let failure = match AppBoot::build_with_failure(
 assert!(failure.manifest_report.verify_checksum());
 ```
 
+Use `BootAssembly::reports()` or `BootAssemblyFailure::reports()` when app code
+only needs to export the sealed startup reports:
+
+```rust
+let reports = failure.reports();
+assert!(reports.manifest.verify_checksum());
+```
+
 `sal_adapter_demo` uses this path as the reference app assembly pattern. Adapter
 preflight still writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
 demo work begins, so host tools can stop at the adapter stage when descriptors

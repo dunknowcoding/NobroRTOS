@@ -27,7 +27,7 @@ use airon_kernel::{
     kernel_module_spec,
     pool::SamplePool,
     scheduler::Scheduler,
-    AdmissionReport, BootAssembly, BootAssemblyFailure, DeadlineContract, DegradeApplicationReport,
+    AdmissionReport, BootAssembly, BootAssemblyReports, DeadlineContract, DegradeApplicationReport,
     EventLogReport, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleRuntimeReport,
     ModuleSpec, RuntimeReport, StartupDependency, SystemProfile,
 };
@@ -185,15 +185,12 @@ fn admit_sal_demo() {
     ) {
         Ok(boot) => boot,
         Err(failure) => {
-            write_boot_failure_reports(failure);
+            write_boot_reports(failure.reports());
             defmt::panic!("sal demo boot assembly failed");
         }
     };
 
-    unsafe {
-        NOBRO_MANIFEST_REPORT = boot.manifest_report;
-        NOBRO_ADMISSION_REPORT = boot.admission_report;
-    }
+    write_boot_reports(boot.reports());
     validate_adapter_set(profile);
 
     let runtime = boot.runtime;
@@ -205,10 +202,10 @@ fn admit_sal_demo() {
     }
 }
 
-fn write_boot_failure_reports(failure: BootAssemblyFailure) {
+fn write_boot_reports(reports: BootAssemblyReports) {
     unsafe {
-        NOBRO_MANIFEST_REPORT = failure.manifest_report;
-        NOBRO_ADMISSION_REPORT = failure.admission_report;
+        NOBRO_MANIFEST_REPORT = reports.manifest;
+        NOBRO_ADMISSION_REPORT = reports.admission;
     }
 }
 

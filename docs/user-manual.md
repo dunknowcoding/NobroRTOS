@@ -131,6 +131,9 @@ let failure = match AppBoot::build_with_failure(
 assert!(failure.manifest_report.verify_checksum());
 ```
 
+Both successful assemblies and `BootAssemblyFailure` expose `reports()`, so
+firmware can publish the manifest and admission reports through one helper.
+
 The `sal_adapter_demo` app follows this pattern: it assembles the manifest,
 startup graph, admission plan, and runtime through `BootAssembly`, then writes
 the adapter compatibility report before entering hardware-facing demo code.

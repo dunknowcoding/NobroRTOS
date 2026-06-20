@@ -38,7 +38,9 @@ pub use admission::{
     ADMISSION_REPORT_VERSION,
 };
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
-pub use boot::{BootAssembly, BootAssemblyError, BootAssemblyFailure, StartupDependency};
+pub use boot::{
+    BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,
+};
 pub use capability::{CapabilityGrant, CapabilityGrantError, CapabilityGrantTable};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};

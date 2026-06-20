@@ -51,6 +51,21 @@ impl From<RuntimeError> for BootAssemblyError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootAssemblyReports {
+    pub manifest: ManifestReport,
+    pub admission: AdmissionReport,
+}
+
+impl BootAssemblyReports {
+    pub const fn zeroed() -> Self {
+        Self {
+            manifest: ManifestReport::zeroed(),
+            admission: AdmissionReport::zeroed(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootAssemblyFailure {
     pub error: BootAssemblyError,
     pub manifest_report: ManifestReport,
@@ -83,6 +98,13 @@ impl BootAssemblyFailure {
             error,
             manifest_report,
             admission_report,
+        }
+    }
+
+    pub const fn reports(self) -> BootAssemblyReports {
+        BootAssemblyReports {
+            manifest: self.manifest_report,
+            admission: self.admission_report,
         }
     }
 }
@@ -186,6 +208,13 @@ impl<
             admission_report,
         })
     }
+
+    pub const fn reports(&self) -> BootAssemblyReports {
+        BootAssemblyReports {
+            manifest: self.manifest_report,
+            admission: self.admission_report,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -242,6 +271,9 @@ mod tests {
         assert_eq!(assembly.manifest_report.valid, 1);
         assert!(assembly.admission_report.verify_checksum());
         assert_eq!(assembly.admission_report.admitted, 1);
+        let reports = assembly.reports();
+        assert_eq!(reports.manifest, assembly.manifest_report);
+        assert_eq!(reports.admission, assembly.admission_report);
         assert_eq!(assembly.runtime.state(), crate::SystemState::Running);
         assert_eq!(
             assembly
@@ -283,6 +315,9 @@ mod tests {
         assert!(failure.manifest_report.verify_checksum());
         assert_eq!(failure.manifest_report.valid, 0);
         assert_eq!(failure.admission_report, AdmissionReport::zeroed());
+        let reports = failure.reports();
+        assert_eq!(reports.manifest, failure.manifest_report);
+        assert_eq!(reports.admission, AdmissionReport::zeroed());
     }
 
     #[test]
@@ -313,6 +348,9 @@ mod tests {
         assert!(failure.admission_report.verify_checksum());
         assert_eq!(failure.admission_report.admitted, 0);
         assert_eq!(failure.admission_report.error_code, 2);
+        let reports = failure.reports();
+        assert_eq!(reports.manifest, failure.manifest_report);
+        assert_eq!(reports.admission, failure.admission_report);
     }
 
     #[test]
