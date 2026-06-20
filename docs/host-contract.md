@@ -49,6 +49,12 @@ Host tools should decode the first non-passing boot stage in this order:
 5. admission
 6. runtime
 
+## Boot Summary
+
+`airon-host` exposes `BootReports::summary()` for tools that need one compact
+view of boot state. The summary includes the first diagnostic, all six report
+slots, diagnostic code, and per-status counts. Tools should use this helper
+before rendering user-facing text.
 ## Checksum Rule
 
 Fixed reports use XOR checksums over every `u32` field except `checksum`.

@@ -18,6 +18,7 @@ Completed or substantially present:
 - fixed key-value store
 - health monitor and recovery coordinator
 - event log and host-readable reports
+- host boot summary helpers for first-fault decoding
 - adapter descriptors and compatibility reports
 - nRF52840 board profile and boot layout features
 - HAL-level `BoardPackage` validation for boot layout, flash/RAM regions,
@@ -32,7 +33,7 @@ Completed or substantially present:
 - add generated board profile fixtures for host review
 - keep board package fixtures aligned with every supported boot layout
 - strengthen adapter manifest examples
-- expose richer host decoding examples for `NOBRO_*` reports
+- keep host boot summaries aligned with `NOBRO_*` report additions
 - keep runtime disable, quota release, mailbox purge, alarm purge, and watchdog
   cleanup behavior covered by tests
 - connect adapter preflight reports with `BootAssembly` in the demo apps

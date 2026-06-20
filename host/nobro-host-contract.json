@@ -15,7 +15,8 @@
     ],
     "status_labels": ["missing", "in_progress", "pass", "fail", "corrupt"],
     "diagnostic_code": "u32: stage_code << 24 | status_class << 16 | error_code_low16; status_class pass=0 missing=1 in_progress=2 corrupt=3 fail=4",
-    "first_non_pass": true
+    "first_non_pass": true,
+    "summary_fields": ["diagnostic", "slots", "pass_count", "missing_count", "in_progress_count", "fail_count", "corrupt_count"]
   },
   "module_tags": {
     "1": "kernel",

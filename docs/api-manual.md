@@ -237,5 +237,12 @@ fn inspect(report: &RuntimeReport) {
 }
 ```
 
+Boot diagnostics can be collapsed into a fixed summary:
+
+```rust
+let summary = reports.summary();
+assert_eq!(summary.first_stage_label(), "runtime");
+assert_eq!(summary.pass_count, airon_host::BOOT_REPORT_STAGE_COUNT as u8);
+```
 Host tools should prefer labels from `airon-host` instead of embedding numeric
 tables locally.

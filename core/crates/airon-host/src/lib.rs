@@ -43,6 +43,8 @@ pub const ADMISSION_REPORT_SYMBOL: &str = "NOBRO_ADMISSION_REPORT";
 pub const ADMISSION_REPORT_MAGIC: u32 = 0x4E42_4144;
 pub const ADMISSION_REPORT_VERSION: u32 = 1;
 
+pub const BOOT_REPORT_STAGE_COUNT: usize = 6;
+
 pub const MAX_PHASE1_JITTER_US: u32 = 10;
 pub const MIN_PHASE1_DEADLINE_TICKS: u32 = 150;
 pub const MIN_PHASE1_I2C_READS: u32 = 10;
@@ -457,6 +459,51 @@ pub struct ReportSlot {
     pub status: ReportStatus,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootSummary {
+    pub diagnostic: BootDiagnostic,
+    pub slots: [ReportSlot; BOOT_REPORT_STAGE_COUNT],
+    pub pass_count: u8,
+    pub missing_count: u8,
+    pub in_progress_count: u8,
+    pub fail_count: u8,
+    pub corrupt_count: u8,
+}
+
+impl BootSummary {
+    pub const fn is_passing(self) -> bool {
+        self.diagnostic.is_passing()
+    }
+
+    pub const fn diagnostic_code(self) -> u32 {
+        self.diagnostic.code()
+    }
+
+    pub const fn first_stage_label(self) -> &'static str {
+        self.diagnostic.stage_label()
+    }
+
+    pub const fn first_status_label(self) -> &'static str {
+        self.diagnostic.status_label()
+    }
+
+    pub const fn first_symbol(self) -> &'static str {
+        self.diagnostic.stage_symbol()
+    }
+
+    pub const fn first_error_label(self) -> Option<&'static str> {
+        self.diagnostic.error_label()
+    }
+
+    pub const fn observed_count(self) -> u8 {
+        self.pass_count
+            + self.missing_count
+            + self.fail_count
+            + self.corrupt_count
+            + self.in_progress_count
+    }
+}
+
 macro_rules! impl_host_report {
     ($report:ty, $symbol:expr, $magic:expr, $version:expr) => {
         impl HostReport for $report {
@@ -567,7 +614,7 @@ impl BootReports {
         }
     }
 
-    pub fn slots(&self) -> [ReportSlot; 6] {
+    pub fn slots(&self) -> [ReportSlot; BOOT_REPORT_STAGE_COUNT] {
         [
             ReportSlot {
                 stage: BootStage::BoardProfile,
@@ -600,6 +647,35 @@ impl BootReports {
                 status: self.runtime.status(),
             },
         ]
+    }
+
+    pub fn summary(&self) -> BootSummary {
+        let slots = self.slots();
+        let mut pass_count = 0;
+        let mut missing_count = 0;
+        let mut in_progress_count = 0;
+        let mut fail_count = 0;
+        let mut corrupt_count = 0;
+
+        for slot in slots {
+            match slot.status {
+                ReportStatus::Pass => pass_count += 1,
+                ReportStatus::Missing => missing_count += 1,
+                ReportStatus::InProgress => in_progress_count += 1,
+                ReportStatus::Fail(_) => fail_count += 1,
+                ReportStatus::Corrupt => corrupt_count += 1,
+            }
+        }
+
+        BootSummary {
+            diagnostic: self.diagnostic(),
+            slots,
+            pass_count,
+            missing_count,
+            in_progress_count,
+            fail_count,
+            corrupt_count,
+        }
     }
 }
 
@@ -1779,6 +1855,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
         assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));
+        assert!(HOST_CONTRACT_JSON.contains("\"summary_fields\""));
         assert!(HOST_CONTRACT_JSON.contains("\"module_tags\""));
         assert!(HOST_CONTRACT_JSON.contains("\"capability_bits\""));
         assert!(HOST_CONTRACT_JSON.contains("\"missing_owned_capability\""));
@@ -1832,6 +1909,7 @@ mod tests {
         assert_eq!(BootStage::AdapterCompatibility.code(), 4);
         assert_eq!(BootStage::Admission.code(), 5);
         assert_eq!(BootStage::Runtime.code(), 6);
+        assert_eq!(BOOT_REPORT_STAGE_COUNT, 6);
         assert_eq!(
             BootStage::BoardPackage.symbol(),
             BOARD_PACKAGE_REPORT_SYMBOL
@@ -2242,6 +2320,16 @@ mod tests {
                 status: ReportStatus::Pass,
             }
         );
+        let summary = reports.summary();
+        assert!(summary.is_passing());
+        assert_eq!(summary.diagnostic_code(), 0x0600_0000);
+        assert_eq!(summary.pass_count, BOOT_REPORT_STAGE_COUNT as u8);
+        assert_eq!(summary.observed_count(), BOOT_REPORT_STAGE_COUNT as u8);
+        assert_eq!(summary.missing_count, 0);
+        assert_eq!(summary.first_stage_label(), "runtime");
+        assert_eq!(summary.first_status_label(), "pass");
+        assert_eq!(summary.first_symbol(), RUNTIME_REPORT_SYMBOL);
+        assert_eq!(summary.first_error_label(), None);
 
         let mut failed_adapter = adapter;
         failed_adapter.compatible = 0;
@@ -2256,6 +2344,19 @@ mod tests {
                 status: ReportStatus::Fail(3),
             }
         );
+        let summary = reports.summary();
+        assert!(!summary.is_passing());
+        assert_eq!(summary.pass_count, 5);
+        assert_eq!(summary.fail_count, 1);
+        assert_eq!(summary.missing_count, 0);
+        assert_eq!(summary.first_stage_label(), "adapter_compatibility");
+        assert_eq!(summary.first_status_label(), "fail");
+        assert_eq!(
+            summary.first_error_label(),
+            Some("capability_ownership_conflict")
+        );
+        assert_eq!(summary.diagnostic_code(), 0x0404_0003);
+        assert_eq!(summary.slots[3].symbol, ADAPTER_COMPAT_REPORT_SYMBOL);
 
         let reports = BootReports::new(
             BoardProfileReport::zeroed(),
@@ -2272,6 +2373,10 @@ mod tests {
                 status: ReportStatus::Missing,
             }
         );
+        let summary = reports.summary();
+        assert_eq!(summary.missing_count, 1);
+        assert_eq!(summary.observed_count(), BOOT_REPORT_STAGE_COUNT as u8);
+        assert_eq!(summary.first_stage_label(), "board_profile");
 
         let reports = BootReports::new(
             board,
