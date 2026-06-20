@@ -23,3 +23,16 @@ python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
 ```
+
+## Host Simulation Commands
+
+These commands exercise deterministic software contracts without requiring a
+board connection:
+
+```powershell
+python tools/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 4 --period 1
+python tools/nobro_contract_tool.py sample-actuator --start-us 1200 --stop-us 1800 --step-us 300
+python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
+python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
+python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
+```
