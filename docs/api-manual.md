@@ -131,6 +131,21 @@ runtime.disable_module(module_id)?;
 let report = runtime.runtime_report();
 ```
 
+### Scheduler
+
+`Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap
+allocation. The default tick period is 20,000 us. Use
+`set_jitter_tolerance_us()` to tune the miss threshold for a board profile,
+host simulation, or timing source, and use `stats()` when exporting scheduler
+health to diagnostics:
+
+```rust
+nobro_kernel::Scheduler::reset_stats();
+nobro_kernel::Scheduler::set_jitter_tolerance_us(25);
+let stats = nobro_kernel::Scheduler::stats();
+assert_eq!(stats.jitter_tolerance_us, 25);
+```
+
 ### Recovery
 
 `RecoveryCoordinator` routes faults through health counters, lifecycle state,

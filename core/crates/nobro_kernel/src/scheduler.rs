@@ -6,15 +6,25 @@ use crate::KernelError;
 
 /// Expected interval between deadline ticks (50 Hz servo loop).
 pub const DEADLINE_PERIOD_US: u64 = 20_000;
+pub const DEFAULT_JITTER_TOLERANCE_US: u32 = 10;
 
 static EXPECTED_NEXT_US: AtomicU32 = AtomicU32::new(0);
 static MAX_JITTER_US: AtomicU32 = AtomicU32::new(0);
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_MISSES: AtomicU32 = AtomicU32::new(0);
+static JITTER_TOLERANCE_US: AtomicU32 = AtomicU32::new(DEFAULT_JITTER_TOLERANCE_US);
 
 pub type DeadlineHandler = fn();
 
 static mut DEADLINE_HANDLER: Option<DeadlineHandler> = None;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SchedulerStats {
+    pub tick_count: u32,
+    pub max_jitter_us: u32,
+    pub deadline_misses: u32,
+    pub jitter_tolerance_us: u32,
+}
 
 pub struct Scheduler;
 
@@ -28,6 +38,7 @@ impl Scheduler {
         MAX_JITTER_US.store(0, Ordering::Release);
         TICK_COUNT.store(0, Ordering::Release);
         DEADLINE_MISSES.store(0, Ordering::Release);
+        JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
     }
 
     pub fn max_jitter_us() -> u32 {
@@ -42,6 +53,23 @@ impl Scheduler {
         DEADLINE_MISSES.load(Ordering::Acquire)
     }
 
+    pub fn jitter_tolerance_us() -> u32 {
+        JITTER_TOLERANCE_US.load(Ordering::Acquire)
+    }
+
+    pub fn set_jitter_tolerance_us(tolerance_us: u32) {
+        JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
+    }
+
+    pub fn stats() -> SchedulerStats {
+        SchedulerStats {
+            tick_count: Self::tick_count(),
+            max_jitter_us: Self::max_jitter_us(),
+            deadline_misses: Self::deadline_misses(),
+            jitter_tolerance_us: Self::jitter_tolerance_us(),
+        }
+    }
+
     /// Called from TIMER1 ISR or polled compare handler.
     pub fn on_deadline_tick(now_us: u64) {
         let now_lo = now_us as u32;
@@ -53,7 +81,7 @@ impl Scheduler {
             if jitter > MAX_JITTER_US.load(Ordering::Relaxed) {
                 MAX_JITTER_US.store(jitter, Ordering::Release);
             }
-            if jitter > 10 {
+            if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
                 DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
             }
         }
@@ -124,6 +152,10 @@ mod tests {
         assert_eq!(Scheduler::tick_count(), 1);
         assert_eq!(Scheduler::max_jitter_us(), 0);
         assert_eq!(Scheduler::deadline_misses(), 0);
+        assert_eq!(
+            Scheduler::jitter_tolerance_us(),
+            DEFAULT_JITTER_TOLERANCE_US
+        );
     }
 
     #[test]
@@ -133,5 +165,20 @@ mod tests {
         Scheduler::on_deadline_tick(first);
         Scheduler::on_deadline_tick(first + DEADLINE_PERIOD_US + 3);
         assert_eq!(Scheduler::max_jitter_us(), 3);
+    }
+
+    #[test]
+    fn jitter_tolerance_is_configurable() {
+        Scheduler::reset_stats();
+        Scheduler::set_jitter_tolerance_us(25);
+        Scheduler::on_deadline_tick(1_000);
+        Scheduler::on_deadline_tick(1_000 + DEADLINE_PERIOD_US + 20);
+        Scheduler::on_deadline_tick(1_000 + DEADLINE_PERIOD_US * 2 + 50);
+
+        let stats = Scheduler::stats();
+        assert_eq!(stats.tick_count, 3);
+        assert_eq!(stats.max_jitter_us, 30);
+        assert_eq!(stats.deadline_misses, 1);
+        assert_eq!(stats.jitter_tolerance_us, 25);
     }
 }
