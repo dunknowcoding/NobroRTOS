@@ -31,6 +31,7 @@ cd ..
 python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
+python tools/nobro_contract_tool.py check-public-headers
 ```
 
 ## Commit Hygiene

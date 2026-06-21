@@ -32,7 +32,9 @@ from .host_contract import (
 )
 from .distribution import (
     DistributionMetadataReport,
+    PublicHeaderSurfaceReport,
     validate_distribution_metadata,
+    validate_public_header_surface,
 )
 from .reports import (
     BootReportSummary,
@@ -114,7 +116,9 @@ __all__ = [
     "load_repo_host_contract",
     "ReportStatusClass",
     "DistributionMetadataReport",
+    "PublicHeaderSurfaceReport",
     "validate_distribution_metadata",
+    "validate_public_header_surface",
     "FixedReport",
     "BootReportSummary",
     "ReportKind",

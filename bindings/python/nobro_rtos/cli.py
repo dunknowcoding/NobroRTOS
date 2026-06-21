@@ -22,7 +22,7 @@ from .contracts import (
     RosTopic,
     stable_hash32,
 )
-from .distribution import validate_distribution_metadata
+from .distribution import validate_distribution_metadata, validate_public_header_surface
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .templates import (
@@ -248,6 +248,10 @@ def main() -> int:
         help="validate SDK, Arduino, and PlatformIO package metadata",
     )
     subparsers.add_parser(
+        "check-public-headers",
+        help="validate public C/C++/Arduino/PlatformIO header surfaces",
+    )
+    subparsers.add_parser(
         "doctor",
         help="run host contract and package metadata checks and print JSON",
     )
@@ -459,6 +463,10 @@ def main() -> int:
         report = validate_distribution_metadata()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
+    if args.command == "check-public-headers":
+        report = validate_public_header_surface()
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return 0
     if args.command == "doctor":
         print(json.dumps(_doctor(), indent=2, sort_keys=True))
         return 0
@@ -527,6 +535,7 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
 def _doctor() -> dict[str, object]:
     contract = load_repo_host_contract()
     distribution = validate_distribution_metadata()
+    headers = validate_public_header_surface()
     return {
         "status": "ok",
         "host_contract": {
@@ -543,6 +552,7 @@ def _doctor() -> dict[str, object]:
             ),
         },
         "distribution": distribution.to_dict(),
+        "public_headers": headers.to_dict(),
         "host_simulators": [
             "sensor",
             "actuator",

@@ -19,6 +19,44 @@ EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
 EXPECTED_PYTHON_PACKAGE = "bindings/python"
 EXPECTED_PYTHON_PROJECT_NAME = "nobro-rtos-tools"
 EXPECTED_PYTHON_REQUIRES = ">=3.10"
+REQUIRED_REPORT_SURFACES = (
+    ("board_profile", "nobro_board_profile_report_t", "BoardProfileReportView"),
+    ("board_package", "nobro_board_package_report_t", "BoardPackageReportView"),
+    ("manifest", "nobro_manifest_report_t", "ManifestReportView"),
+    (
+        "adapter_compat",
+        "nobro_adapter_compat_report_t",
+        "AdapterCompatReportView",
+    ),
+    ("ai_model", "nobro_ai_model_report_t", "AiModelReportView"),
+    ("ros_bridge", "nobro_ros_bridge_report_t", "RosBridgeReportView"),
+    ("admission", "nobro_admission_report_t", "AdmissionReportView"),
+    ("runtime", "nobro_runtime_report_t", "RuntimeReportView"),
+    ("health", "nobro_health_report_t", "HealthReportView"),
+    ("event_log", "nobro_event_log_report_t", "EventLogReportView"),
+    ("module_runtime", "nobro_module_runtime_report_t", "ModuleRuntimeReportView"),
+    (
+        "degrade_application",
+        "nobro_degrade_application_report_t",
+        "DegradeApplicationReportView",
+    ),
+)
+REQUIRED_C_HELPERS = (
+    "nobro_report_checksum_words",
+    "nobro_report_status_from_checksum",
+    "nobro_stable_hash32_cstr",
+    "nobro_ai_effective_stale_after_us",
+    "nobro_ai_route_decide",
+    "nobro_ros_topic_buffer_bytes",
+    "nobro_ros_service_buffer_bytes",
+    "nobro_ros_action_buffer_bytes",
+)
+REQUIRED_CPP_HELPERS = (
+    "stable_hash32",
+    "decide_ai_route",
+    "AiRouteDecisionView",
+    "RosBridgeContractView",
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +80,26 @@ class DistributionMetadataReport:
             "python_requires": self.python_requires,
             "include_roots": list(self.include_roots),
             "host_tools": list(self.host_tools),
+        }
+
+
+@dataclass(frozen=True)
+class PublicHeaderSurfaceReport:
+    """Summary of public C/C++/package header surface validation."""
+
+    c_report_count: int
+    cpp_view_count: int
+    c_helpers: tuple[str, ...]
+    cpp_helpers: tuple[str, ...]
+    forwarding_headers: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "c_report_count": self.c_report_count,
+            "cpp_view_count": self.cpp_view_count,
+            "c_helpers": list(self.c_helpers),
+            "cpp_helpers": list(self.cpp_helpers),
+            "forwarding_headers": list(self.forwarding_headers),
         }
 
 
@@ -136,6 +194,64 @@ def validate_distribution_metadata(
     )
 
 
+def validate_public_header_surface(
+    start: str | Path | None = None,
+) -> PublicHeaderSurfaceReport:
+    """Validate allocation-free public headers without invoking a compiler."""
+
+    root = find_repo_root(start)
+    c_header_path = root / "bindings" / "c" / "include" / "nobro_rtos.h"
+    cpp_header_path = root / "bindings" / "cpp" / "include" / "nobro_rtos.hpp"
+    arduino_header_path = root / "packages" / "arduino" / "src" / EXPECTED_INCLUDE
+    platformio_header_path = root / "packages" / "platformio" / "include" / EXPECTED_INCLUDE
+
+    c_header = c_header_path.read_text(encoding="utf-8")
+    cpp_header = cpp_header_path.read_text(encoding="utf-8")
+
+    for symbol in REQUIRED_C_HELPERS:
+        _require_text(c_header, symbol, "C ABI helper")
+    for symbol in REQUIRED_CPP_HELPERS:
+        _require_text(cpp_header, symbol, "C++ helper")
+
+    report_count = 0
+    view_count = 0
+    for report_name, c_struct, cpp_view in REQUIRED_REPORT_SURFACES:
+        _require_text(c_header, c_struct, f"{report_name} C report")
+        _require_text(
+            c_header,
+            f"nobro_{report_name}_report_checksum",
+            f"{report_name} checksum helper",
+        )
+        _require_text(
+            c_header,
+            f"nobro_{report_name}_report_status",
+            f"{report_name} status helper",
+        )
+        _require_text(cpp_header, cpp_view, f"{report_name} C++ report view")
+        report_count += 1
+        view_count += 1
+
+    _require_forwarding_header(
+        arduino_header_path,
+        "../../../bindings/c/include/nobro_rtos.h",
+    )
+    _require_forwarding_header(
+        platformio_header_path,
+        "../../../bindings/c/include/nobro_rtos.h",
+    )
+
+    return PublicHeaderSurfaceReport(
+        c_report_count=report_count,
+        cpp_view_count=view_count,
+        c_helpers=REQUIRED_C_HELPERS,
+        cpp_helpers=REQUIRED_CPP_HELPERS,
+        forwarding_headers=(
+            arduino_header_path.relative_to(root).as_posix(),
+            platformio_header_path.relative_to(root).as_posix(),
+        ),
+    )
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         value = json.load(handle)
@@ -172,6 +288,11 @@ def _require_equal(actual: Any, expected: Any, label: str) -> None:
 
 def _require_contains(values: tuple[str, ...], expected: str, label: str) -> None:
     if expected not in values:
+        raise ValueError(f"{label} missing {expected!r}")
+
+
+def _require_text(text: str, expected: str, label: str) -> None:
+    if expected not in text:
         raise ValueError(f"{label} missing {expected!r}")
 
 

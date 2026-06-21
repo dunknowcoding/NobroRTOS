@@ -52,6 +52,7 @@ from nobro_rtos import (
     stable_hash32,
     validate_project_template,
     validate_distribution_metadata,
+    validate_public_header_surface,
 )
 from nobro_rtos.cli import (
     _check_project,
@@ -126,6 +127,24 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.python_package_name, "nobro-rtos-tools")
         self.assertEqual(report.python_requires, ">=3.10")
 
+    def test_public_header_surface_keeps_c_and_cpp_abi_visible(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        report = validate_public_header_surface(repo_root)
+
+        self.assertEqual(report.c_report_count, 12)
+        self.assertEqual(report.cpp_view_count, 12)
+        self.assertIn("nobro_ai_route_decide", report.c_helpers)
+        self.assertIn("nobro_ai_effective_stale_after_us", report.c_helpers)
+        self.assertIn("decide_ai_route", report.cpp_helpers)
+        self.assertIn(
+            "packages/arduino/src/NobroRTOS.h",
+            report.forwarding_headers,
+        )
+        self.assertIn(
+            "packages/platformio/include/NobroRTOS.h",
+            report.forwarding_headers,
+        )
+
     def test_doctor_summarizes_host_and_package_health(self) -> None:
         report = _doctor()
 
@@ -136,6 +155,8 @@ class ContractBuilderTests(unittest.TestCase):
             report["distribution"]["python_package_name"],
             "nobro-rtos-tools",
         )
+        self.assertEqual(report["public_headers"]["c_report_count"], 12)
+        self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
