@@ -100,6 +100,9 @@ process status when validation fails, so generated tasks and CI jobs can use it
 as a real gate.
 The `repair-project` CLI conservatively rebuilds `.vscode/tasks.json` when that
 metadata is missing or stale; it does not rewrite user code or contracts.
+The `check-starter-templates` CLI materializes every starter target in a
+temporary directory, validates it, and removes the generated files when the
+gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
 route gate tasks, and the Python board bridge template includes an offline
@@ -226,6 +229,7 @@ python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos check-runtime-drill --fault-count 3
 python -m nobro_rtos check-software-surface
+python -m nobro_rtos check-starter-templates
 python -m nobro_rtos sample-startup
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
@@ -257,11 +261,13 @@ usage, fixed-ring event logging, and recovery escalation in a single host-side
 JSON scenario, including a recovery summary with action counts, final state,
 and reboot requirement flags. The project sample emits a deterministic
 contract-first starter template as JSON for standalone SDK, Arduino,
-PlatformIO, or Python host workflows. The project writer creates the same
-starter files under the selected output directory and refuses to replace
-existing files unless `--overwrite` is passed. The project checker reports
+PlatformIO, Python host, or Python board bridge workflows. The project writer
+creates the same starter files under the selected output directory and refuses
+to replace existing files unless `--overwrite` is passed. The project checker reports
 target detection, module count, discovered files, and validation errors as JSON.
 It returns non-zero when the project is invalid.
+The starter-template checker verifies every generated starter target in a
+temporary directory before packaging or publishing template changes.
 VS Code users can run the generated `NobroRTOS: Check Project` task from the
 starter project.
 The runtime drill checker applies pass/fail limits to disabled modules, reboot
@@ -269,7 +275,8 @@ actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
-headers, AI route policy, and runtime drill gates into one JSON report.
+headers, starter templates, AI route policy, and runtime drill gates into one
+JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
@@ -288,6 +295,7 @@ python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py check-software-surface
+python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 ```
 

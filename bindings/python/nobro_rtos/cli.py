@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import tempfile
 
 from .contracts import (
     AiBackendKind,
@@ -344,6 +346,10 @@ def main() -> int:
         help="expected starter project target",
     )
     subparsers.add_parser(
+        "check-starter-templates",
+        help="materialize and validate every starter project template",
+    )
+    subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
     )
@@ -612,6 +618,10 @@ def main() -> int:
             )
         )
         return 0 if report["passing"] else 1
+    if args.command == "check-starter-templates":
+        report = _check_starter_templates()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
@@ -733,7 +743,58 @@ def _doctor() -> dict[str, object]:
             "runtime_drill_gate",
             "ai_route_gate",
             "project_templates",
+            "starter_template_gate",
         ],
+    }
+
+
+def _check_starter_templates() -> dict[str, object]:
+    targets: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    with tempfile.TemporaryDirectory(prefix="nobro-starters-") as tmp:
+        temp_root = Path(tmp)
+        for target in ProjectTarget:
+            project_name = f"starter_{target.value}"
+            output = temp_root / target.value
+            try:
+                template = build_project_template(
+                    name=project_name,
+                    target=target,
+                    module_name="control",
+                    author="dunknowcoding",
+                )
+                materialization = materialize_project_template(template, output)
+                validation = validate_project_template(output, expected_target=target)
+                target_report = {
+                    "target": target.value,
+                    "passing": validation.passing,
+                    "file_count": len(validation.files),
+                    "module_count": validation.module_count,
+                    "written_count": len(materialization.written),
+                    "errors": list(validation.errors),
+                }
+                targets.append(target_report)
+                for error in validation.errors:
+                    errors.append(f"{target.value}: {error}")
+            except Exception as exc:
+                errors.append(f"{target.value}: {exc}")
+                targets.append(
+                    {
+                        "target": target.value,
+                        "passing": False,
+                        "file_count": 0,
+                        "module_count": 0,
+                        "written_count": 0,
+                        "errors": [str(exc)],
+                    }
+                )
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "target_count": len(targets),
+        "targets": targets,
     }
 
 
@@ -782,6 +843,7 @@ def _check_software_surface() -> dict[str, object]:
     except Exception as exc:
         add_check("public_headers", {"passing": False, "errors": [str(exc)]})
 
+    add_check("starter_templates", _check_starter_templates())
     add_check(
         "ai_route",
         _check_ai_route(

@@ -67,6 +67,7 @@ from nobro_rtos.cli import (
     _check_ai_route,
     _check_project,
     _check_runtime_drill,
+    _check_starter_templates,
     _doctor,
     _sample_actuator,
     _sample_event_log,
@@ -177,6 +178,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("runtime_drill_gate", report["host_simulators"])
         self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
+        self.assertIn("starter_template_gate", report["host_simulators"])
 
     def test_software_surface_gate_composes_release_checks(self) -> None:
         report = _check_software_surface()
@@ -187,12 +189,42 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("host_contract", report["checks"])
         self.assertIn("distribution_metadata", report["checks"])
         self.assertIn("public_headers", report["checks"])
+        self.assertIn("starter_templates", report["checks"])
+        self.assertTrue(report["checks"]["starter_templates"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
             report["checks"]["ai_route"]["summary"]["target"],
             "on_device",
         )
+
+    def test_starter_template_gate_materializes_all_targets(self) -> None:
+        report = _check_starter_templates()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["target_count"], len(ProjectTarget))
+        self.assertEqual(
+            {entry["target"] for entry in report["targets"]},
+            {target.value for target in ProjectTarget},
+        )
+        for entry in report["targets"]:
+            self.assertTrue(entry["passing"])
+            self.assertGreater(entry["file_count"], 0)
+            self.assertEqual(entry["module_count"], 1)
+
+    def test_starter_template_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-starter-templates"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["target_count"], len(ProjectTarget))
 
     def test_project_templates_are_contract_first_and_deterministic(self) -> None:
         for target in ProjectTarget:

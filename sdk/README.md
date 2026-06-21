@@ -27,4 +27,4 @@ python tools/nobro_contract_tool.py check-software-surface
 ```
 
 The gate returns one JSON report for the host contract, package metadata,
-public headers, AI route policy, and runtime drill checks.
+public headers, starter templates, AI route policy, and runtime drill checks.

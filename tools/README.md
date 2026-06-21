@@ -23,6 +23,7 @@ python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py check-software-surface
+python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
@@ -57,7 +58,9 @@ endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
-it combines the host contract, SDK/package metadata, public headers, AI route,
-and runtime drill checks into one JSON report.
+it combines the host contract, SDK/package metadata, public headers, starter
+templates, AI route, and runtime drill checks into one JSON report.
+`check-starter-templates` materializes every starter project in a temporary
+directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
 project remains invalid, so generated VS Code tasks can fail clearly.

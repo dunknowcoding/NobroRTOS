@@ -176,6 +176,8 @@ this validation fails.
 `repair_project_template` can rebuild stale or missing `.vscode/tasks.json`
 metadata for a detected starter target without rewriting application files or
 contracts.
+The `check-starter-templates` CLI materializes and validates every supported
+starter target in a temporary directory, then removes the generated files.
 Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
@@ -451,8 +453,8 @@ Use its backend, preference, budget, readiness, stale-age, and failure-count
 arguments to model on-device, edge-sidecar, remote API, and hybrid inference
 paths in CI.
 The `check-software-surface` CLI composes this AI route gate with host
-contract, SDK/package metadata, public header, and runtime drill validation for
-pre-package review.
+contract, SDK/package metadata, public header, starter template, and runtime
+drill validation for pre-package review.
 
 ## Host API
 
