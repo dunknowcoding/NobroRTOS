@@ -20,6 +20,8 @@ from .contracts import (
     RosParameter,
     RosService,
     RosTopic,
+    StartupDependency,
+    plan_startup,
     stable_hash32,
 )
 from .distribution import validate_distribution_metadata, validate_public_header_surface
@@ -199,6 +201,10 @@ def main() -> int:
         default=KernelErrorKind.SENSOR_READ_FAIL.value,
     )
     sample_runtime_drill.add_argument("--fault-count", type=int, default=3)
+    subparsers.add_parser(
+        "sample-startup",
+        help="print a deterministic startup dependency plan as JSON",
+    )
     sample_project = subparsers.add_parser(
         "sample-project",
         help="print a starter project template as JSON without writing files",
@@ -427,6 +433,9 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "sample-startup":
+        print(json.dumps(_sample_startup(), indent=2, sort_keys=True))
+        return 0
     if args.command == "sample-project":
         print(
             json.dumps(
@@ -554,6 +563,7 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
                 parameters=(RosParameter("mode", 16),),
             ),
         ),
+        startup_dependencies=(),
     )
 
 
@@ -1066,6 +1076,21 @@ def _sample_runtime_drill(
         fault_error=fault_error,
         fault_count=fault_count,
     ).to_dict()
+
+
+def _sample_startup() -> dict[str, object]:
+    modules = _sample_runtime_modules()
+    dependencies = (
+        StartupDependency("sensor", "kernel"),
+        StartupDependency("radio", "kernel"),
+        StartupDependency("ai", "sensor"),
+        StartupDependency("telemetry", "radio"),
+    )
+    plan = plan_startup(modules, dependencies)
+    return {
+        "dependencies": [dependency.to_dict() for dependency in dependencies],
+        **plan.to_dict(),
+    }
 
 
 def _sample_project(

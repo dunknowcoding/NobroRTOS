@@ -19,8 +19,11 @@ from .contracts import (
     RosParameter,
     RosService,
     RosTopic,
+    StartupDependency,
+    StartupPlan,
     capability_mask,
     capabilities_from_mask,
+    plan_startup,
     stable_hash32,
 )
 from .host_contract import (
@@ -109,8 +112,11 @@ __all__ = [
     "RosParameter",
     "RosService",
     "RosTopic",
+    "StartupDependency",
+    "StartupPlan",
     "capability_mask",
     "capabilities_from_mask",
+    "plan_startup",
     "stable_hash32",
     "find_repo_root",
     "BootDiagnostic",

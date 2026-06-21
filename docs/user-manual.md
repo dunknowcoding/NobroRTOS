@@ -211,6 +211,7 @@ python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --
 python tools/nobro_contract_tool.py sample-quota
 python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
 python tools/nobro_contract_tool.py sample-runtime-drill --fault-count 3
+python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-project platformio --name edge_demo --module control
 python tools/nobro_contract_tool.py sample-project python_board_bridge --name edge_demo --module control
 python tools/nobro_contract_tool.py write-project platformio --output _work\edge_demo --name edge_demo
@@ -224,6 +225,9 @@ check, so IDE users can run the validation gate from the command palette.
 or `nobro-contract.json`.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
+The startup sample prints the dependency order for a reference runtime module
+set, which helps keep boot sequencing explicit before adding board-specific
+adapter code.
 
 ## Cleanup
 

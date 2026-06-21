@@ -42,6 +42,10 @@ Python contract bundles mirror the same ownership discipline for host tooling:
 non-kernel capabilities must have a single owning module, and user-level modules
 cannot claim kernel-owned capabilities such as the timebase or host-report
 surface.
+They also carry optional startup dependencies. The Python `plan_startup` helper
+uses the same contract shape as the Rust startup graph, rejects unknown modules,
+duplicate dependencies, and cycles, and emits a deterministic startup order for
+editor tasks and CI gates.
 
 ### Boot Assembly
 
@@ -171,6 +175,8 @@ Starter templates also include VS Code task metadata for that same project
 check. Python host templates add a runtime drill task, and Python board bridge
 templates add an offline bridge smoke task for MicroPython, CircuitPython, and
 mPython-style development.
+Host tooling can also run `sample-startup` to print a JSON startup dependency
+plan for the reference runtime module set.
 
 ### Scheduler
 

@@ -192,6 +192,40 @@ class ModuleSpec:
 
 
 @dataclass(frozen=True)
+class StartupDependency:
+    module: str
+    depends_on: str
+
+    def validate(self) -> None:
+        _validate_name(self.module)
+        _validate_name(self.depends_on)
+        if self.module == self.depends_on:
+            raise ValueError(f"startup dependency self-cycle: {self.module}")
+
+    def to_dict(self) -> dict[str, str]:
+        self.validate()
+        return {
+            "module": self.module,
+            "depends_on": self.depends_on,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StartupDependency":
+        return cls(str(payload["module"]), str(payload["depends_on"]))
+
+
+@dataclass(frozen=True)
+class StartupPlan:
+    order: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "order": list(self.order),
+            "startup_len": len(self.order),
+        }
+
+
+@dataclass(frozen=True)
 class AiModelContract:
     model_id: int
     backend: AiBackendKind
@@ -592,19 +626,30 @@ class NobroContractBundle:
     modules: tuple[ModuleSpec, ...] = ()
     ai_models: tuple[AiModelContract, ...] = ()
     ros_bridges: tuple[RosBridgeDescriptor, ...] = ()
+    startup_dependencies: tuple[StartupDependency, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
     def validate(self) -> None:
         _validate_unique("module", [module.module for module in self.modules])
         _validate_unique("AI model", [str(model.model_id) for model in self.ai_models])
         _validate_unique("ROS bridge", [bridge.bridge_id for bridge in self.ros_bridges])
+        _validate_unique(
+            "startup dependency",
+            [
+                f"{dependency.module}->{dependency.depends_on}"
+                for dependency in self.startup_dependencies
+            ],
+        )
         for module in self.modules:
             module.validate()
         for model in self.ai_models:
             model.validate()
         for bridge in self.ros_bridges:
             bridge.validate()
+        for dependency in self.startup_dependencies:
+            dependency.validate()
         _validate_capability_ownership(self.modules)
+        plan_startup(self.modules, self.startup_dependencies)
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
@@ -614,6 +659,9 @@ class NobroContractBundle:
             "modules": [module.to_dict() for module in self.modules],
             "ai_models": [model.to_dict() for model in self.ai_models],
             "ros_bridges": [bridge.to_dict() for bridge in self.ros_bridges],
+            "startup_dependencies": [
+                dependency.to_dict() for dependency in self.startup_dependencies
+            ],
         }
 
     def to_json(self) -> str:
@@ -636,6 +684,10 @@ class NobroContractBundle:
                 RosBridgeDescriptor.from_dict(item)
                 for item in payload.get("ros_bridges", ())
             ),
+            startup_dependencies=tuple(
+                StartupDependency.from_dict(item)
+                for item in payload.get("startup_dependencies", ())
+            ),
         )
 
     @classmethod
@@ -646,6 +698,52 @@ class NobroContractBundle:
     def from_file(cls, path: str | Path) -> "NobroContractBundle":
         with Path(path).open("r", encoding="utf-8-sig") as handle:
             return cls.from_dict(json.load(handle))
+
+
+def plan_startup(
+    modules: tuple[ModuleSpec, ...] | list[ModuleSpec],
+    dependencies: tuple[StartupDependency, ...] | list[StartupDependency] = (),
+) -> StartupPlan:
+    """Build a deterministic host-side startup order for contract review."""
+
+    module_names = [module.module for module in modules]
+    _validate_unique("module", module_names)
+    _validate_unique(
+        "startup dependency",
+        [f"{dependency.module}->{dependency.depends_on}" for dependency in dependencies],
+    )
+    module_set = set(module_names)
+    graph = {module: set[str]() for module in module_names}
+
+    for dependency in dependencies:
+        dependency.validate()
+        if dependency.module not in module_set:
+            raise ValueError(
+                f"startup dependency references unknown module: {dependency.module}"
+            )
+        if dependency.depends_on not in module_set:
+            raise ValueError(
+                f"startup dependency references unknown module: {dependency.depends_on}"
+            )
+        graph[dependency.module].add(dependency.depends_on)
+
+    order: list[str] = []
+    ready = [module for module in module_names if not graph[module]]
+    while ready:
+        module = ready.pop(0)
+        order.append(module)
+        for candidate in module_names:
+            if module not in graph[candidate]:
+                continue
+            graph[candidate].remove(module)
+            if not graph[candidate] and candidate not in order and candidate not in ready:
+                ready.append(candidate)
+
+    if len(order) != len(module_names):
+        cycle = [module for module in module_names if graph[module]]
+        raise ValueError(f"startup dependency cycle: {', '.join(cycle)}")
+
+    return StartupPlan(tuple(order))
 
 
 def _validate_name(value: str) -> None:

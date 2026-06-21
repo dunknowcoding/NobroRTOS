@@ -20,6 +20,7 @@ Initial priorities:
 
 - module specs
 - memory budgets
+- startup dependencies and startup plans
 - AI model contracts
 - ROS-style bridge descriptors
 
@@ -68,6 +69,10 @@ robotics bridge metadata. Bundle validation also checks capability ownership:
 kernel-owned capabilities are treated as implicit providers, while non-kernel
 capabilities must have exactly one owning module before another module can
 require them.
+`StartupDependency` and `plan_startup` mirror the Rust startup graph for
+host-side ordering checks. They keep dependencies explicit, reject unknown
+modules and cycles, and produce a deterministic order suitable for generated
+project checks and CI.
 
 `AiRoutePolicy` mirrors the Rust/C route decision contract for host simulation
 and VS Code workflows. It can choose local inference, a remote endpoint, stale
@@ -210,6 +215,7 @@ python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
+python -m nobro_rtos sample-startup
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
 python -m nobro_rtos check-project _work\edge_demo --target platformio
@@ -239,6 +245,9 @@ output directory and refuses to replace existing files unless `--overwrite` is
 passed. The project checker reports target detection, module count, discovered
 files, and validation errors as JSON. VS Code users can run the generated
 `NobroRTOS: Check Project` task from the starter project.
+The startup sample emits a deterministic dependency order for the runtime
+module set, making startup sequencing reviewable before firmware code is
+assembled.
 
 Validate the repository host contract against the Python enums:
 

@@ -42,6 +42,8 @@ from nobro_rtos import (
     SensorStubSimulator,
     ServoSimulator,
     ServoSimulatorError,
+    StartupDependency,
+    StartupPlan,
     SystemProfile,
     TemplateFile,
     WatchdogSimulator,
@@ -49,6 +51,7 @@ from nobro_rtos import (
     capabilities_from_mask,
     load_repo_host_contract,
     materialize_project_template,
+    plan_startup,
     repair_project_template,
     seal_report,
     stable_hash32,
@@ -69,6 +72,7 @@ from nobro_rtos.cli import (
     _sample_runtime_drill,
     _sample_scheduler,
     _sample_sensor,
+    _sample_startup,
     _sample_watchdog,
     _write_project,
     _repair_project,
@@ -566,6 +570,13 @@ class ContractBuilderTests(unittest.TestCase):
             metadata={"profile": "roundtrip"},
             modules=(
                 ModuleSpec(
+                    "kernel",
+                    Criticality.HARD_REALTIME,
+                    MemoryBudget(8 * 1024, 2 * 1024, 1),
+                    period_us=20_000,
+                    max_jitter_us=10,
+                ),
+                ModuleSpec(
                     "ai",
                     Criticality.USER,
                     MemoryBudget(16 * 1024, 6 * 1024, 1),
@@ -592,11 +603,71 @@ class ContractBuilderTests(unittest.TestCase):
                     services=(RosService("/reset", 16, 16, 50_000),),
                 ),
             ),
+            startup_dependencies=(StartupDependency("ai", "kernel"),),
         )
 
         loaded = NobroContractBundle.from_json(bundle.to_json())
 
         self.assertEqual(loaded.to_dict(), bundle.to_dict())
+        self.assertEqual(loaded.startup_dependencies[0].depends_on, "kernel")
+
+    def test_startup_plan_orders_dependencies_before_dependents(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(8 * 1024, 2 * 1024, 1),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(8192, 1024)),
+            ModuleSpec("ai", Criticality.USER, MemoryBudget(8192, 1024)),
+        )
+
+        plan = plan_startup(
+            modules,
+            (
+                StartupDependency("sensor", "kernel"),
+                StartupDependency("ai", "sensor"),
+            ),
+        )
+
+        self.assertIsInstance(plan, StartupPlan)
+        self.assertEqual(plan.order, ("kernel", "sensor", "ai"))
+        self.assertEqual(plan.to_dict()["startup_len"], 3)
+
+    def test_startup_plan_rejects_unknown_cycles_and_duplicates(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(8192, 1024),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(8192, 1024)),
+        )
+
+        with self.assertRaisesRegex(ValueError, "unknown module: missing"):
+            plan_startup(modules, (StartupDependency("sensor", "missing"),))
+
+        with self.assertRaisesRegex(ValueError, "startup dependency cycle"):
+            plan_startup(
+                modules,
+                (
+                    StartupDependency("sensor", "kernel"),
+                    StartupDependency("kernel", "sensor"),
+                ),
+            )
+
+        with self.assertRaisesRegex(ValueError, "duplicate startup dependency"):
+            plan_startup(
+                modules,
+                (
+                    StartupDependency("sensor", "kernel"),
+                    StartupDependency("sensor", "kernel"),
+                ),
+            )
 
     def test_ros_bridge_metadata_exports_stable_hashes(self) -> None:
         bridge = RosBridgeDescriptor(
@@ -1415,6 +1486,16 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["recovery"][1]["state"], "degraded")
         self.assertGreater(report["quota"]["total_used"]["flash_bytes"], 0)
         self.assertIn("recent", report["event_log"])
+
+    def test_cli_startup_sample_summarizes_dependency_plan(self) -> None:
+        report = _sample_startup()
+
+        self.assertEqual(report["order"][0], "kernel")
+        self.assertEqual(report["startup_len"], 5)
+        self.assertIn(
+            {"module": "ai", "depends_on": "sensor"},
+            report["dependencies"],
+        )
 
     def test_report_decoder_marks_corrupt_checksum(self) -> None:
         payload = seal_report(
