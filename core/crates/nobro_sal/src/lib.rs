@@ -839,7 +839,7 @@ impl AiRoutePolicy {
         };
         let endpoint_circuit_open = state.consecutive_endpoint_failures >= endpoint_failure_limit;
         let fits_budget = contract.timeout_us <= budget_us;
-        let stale_ready = state.last_success_age_us <= self.stale_after_us;
+        let stale_ready = state.last_success_age_us <= self.effective_stale_after_us(contract);
 
         if !fits_budget {
             return self.fallback(endpoint_circuit_open, stale_ready);
@@ -932,6 +932,16 @@ impl AiRoutePolicy {
             )
         }
     }
+
+    pub const fn effective_stale_after_us(&self, contract: AiModelContract) -> u32 {
+        if self.stale_after_us == 0 {
+            contract.stale_after_us
+        } else if contract.stale_after_us == 0 || self.stale_after_us < contract.stale_after_us {
+            self.stale_after_us
+        } else {
+            contract.stale_after_us
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -942,6 +952,7 @@ pub struct AiModelContract {
     pub output_bytes_max: u16,
     pub arena_bytes: u32,
     pub timeout_us: u32,
+    pub stale_after_us: u32,
 }
 
 impl AiModelContract {
@@ -960,7 +971,13 @@ impl AiModelContract {
             output_bytes_max,
             arena_bytes,
             timeout_us,
+            stale_after_us: 0,
         }
+    }
+
+    pub const fn with_stale_after_us(mut self, stale_after_us: u32) -> Self {
+        self.stale_after_us = stale_after_us;
+        self
     }
 }
 
@@ -1017,7 +1034,9 @@ impl AiModelContractReport {
             arena_bytes: contract.arena_bytes,
             timeout_us: contract.timeout_us,
             route_preference: policy.map(|policy| policy.preference as u32).unwrap_or(0),
-            stale_after_us: policy.map(|policy| policy.stale_after_us).unwrap_or(0),
+            stale_after_us: policy
+                .map(|policy| policy.effective_stale_after_us(contract))
+                .unwrap_or(contract.stale_after_us),
             endpoint_failure_limit: policy
                 .map(|policy| u32::from(policy.endpoint_failure_limit))
                 .unwrap_or(0),
@@ -1341,7 +1360,8 @@ mod tests {
     #[test]
     fn ai_model_report_seals_model_and_route_policy_contract() {
         let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 30_000, 2);
-        let contract = AiModelContract::new(AiBackendKind::Hybrid, 7, 16, 24, 4096, 5_000);
+        let contract = AiModelContract::new(AiBackendKind::Hybrid, 7, 16, 24, 4096, 5_000)
+            .with_stale_after_us(100_000);
         let report = AiModelContractReport::from_contract_and_policy(contract, Some(policy));
 
         assert!(report.verify_checksum());
@@ -1362,9 +1382,22 @@ mod tests {
     }
 
     #[test]
+    fn ai_model_report_uses_model_stale_window_without_policy() {
+        let contract = AiModelContract::new(AiBackendKind::Hybrid, 7, 16, 24, 4096, 5_000)
+            .with_stale_after_us(100_000);
+        let report = AiModelContractReport::from_contract(contract);
+
+        assert!(report.verify_checksum());
+        assert_eq!(report.route_preference, 0);
+        assert_eq!(report.stale_after_us, 100_000);
+        assert_eq!(report.endpoint_failure_limit, 0);
+    }
+
+    #[test]
     fn ai_route_policy_trips_endpoint_to_fresh_snapshot() {
         let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 50_000, 2);
-        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000);
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000)
+            .with_stale_after_us(100_000);
         let state = AiRuntimeState::new(false, true, 10_000, 2);
 
         let decision = policy.decide(contract, state, 30_000);
@@ -1375,9 +1408,38 @@ mod tests {
     }
 
     #[test]
+    fn ai_route_policy_inherits_model_stale_window_when_policy_is_unset() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 0, 2);
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000)
+            .with_stale_after_us(80_000);
+        let state = AiRuntimeState::new(false, true, 70_000, 2);
+
+        let decision = policy.decide(contract, state, 30_000);
+
+        assert_eq!(policy.effective_stale_after_us(contract), 80_000);
+        assert_eq!(decision.target, AiRouteTarget::StaleSnapshot);
+        assert!(decision.uses_stale_snapshot);
+    }
+
+    #[test]
+    fn ai_route_policy_uses_stricter_stale_window_than_model_contract() {
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 10_000, 2);
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000)
+            .with_stale_after_us(80_000);
+        let state = AiRuntimeState::new(false, true, 20_000, 2);
+
+        let decision = policy.decide(contract, state, 30_000);
+
+        assert_eq!(policy.effective_stale_after_us(contract), 10_000);
+        assert_eq!(decision.target, AiRouteTarget::DegradedFallback);
+        assert!(!decision.uses_stale_snapshot);
+    }
+
+    #[test]
     fn ai_route_policy_uses_degraded_fallback_when_budget_is_too_small() {
         let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 1_000, 3);
-        let contract = AiModelContract::new(AiBackendKind::EdgeSidecar, 7, 32, 32, 0, 20_000);
+        let contract = AiModelContract::new(AiBackendKind::EdgeSidecar, 7, 32, 32, 0, 20_000)
+            .with_stale_after_us(100_000);
         let state = AiRuntimeState::new(false, true, 5_000, 0);
 
         let decision = policy.decide(contract, state, 5_000);

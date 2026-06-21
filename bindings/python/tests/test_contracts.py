@@ -339,6 +339,7 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro_stable_hash32_cstr",
             "nobro_ai_model_contract_t",
             "nobro_ai_route_policy_t",
+            "nobro_ai_effective_stale_after_us",
             "nobro_ai_route_decide",
             "nobro_ai_model_report_status",
             "nobro_ros_bridge_contract_t",
@@ -562,6 +563,28 @@ class ContractBuilderTests(unittest.TestCase):
             5_000,
         )
         self.assertEqual(unavailable.target, AiRouteTarget.UNAVAILABLE)
+
+        inherited = AiRoutePolicy(AiRoutePreference.PREFER_REMOTE, 0, 2)
+        self.assertEqual(inherited.effective_stale_after_us(remote), 100_000)
+        self.assertEqual(
+            inherited.decide(
+                remote,
+                AiRuntimeState(False, True, 70_000, 2),
+                30_000,
+            ).target,
+            AiRouteTarget.STALE_SNAPSHOT,
+        )
+
+        stricter = AiRoutePolicy(AiRoutePreference.PREFER_REMOTE, 10_000, 2)
+        self.assertEqual(stricter.effective_stale_after_us(remote), 10_000)
+        self.assertEqual(
+            stricter.decide(
+                remote,
+                AiRuntimeState(False, True, 20_000, 2),
+                30_000,
+            ).target,
+            AiRouteTarget.DEGRADED_FALLBACK,
+        )
 
     def test_capability_masks_reject_unknown_bits(self) -> None:
         self.assertEqual(

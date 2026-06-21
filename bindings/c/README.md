@@ -51,6 +51,7 @@ AI and ROS bridge helpers stay allocation-free:
 
 ```c
 uint32_t imu_hash = nobro_stable_hash32_cstr("/imu");
+uint32_t stale_window = nobro_ai_effective_stale_after_us(policy, model);
 nobro_ai_route_decision_t decision = nobro_ai_route_decide(
     policy,
     model,
@@ -58,6 +59,9 @@ nobro_ai_route_decision_t decision = nobro_ai_route_decide(
     20000u
 );
 ```
+
+For AI routing, a zero policy stale window inherits the model contract's
+`stale_after_us`; otherwise the helper uses the stricter window.
 
 ## Scope
 

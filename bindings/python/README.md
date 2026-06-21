@@ -69,7 +69,8 @@ robotics bridge metadata.
 `AiRoutePolicy` mirrors the Rust/C route decision contract for host simulation
 and VS Code workflows. It can choose local inference, a remote endpoint, stale
 snapshot reuse, degraded fallback, or an unavailable state from the same budget
-and circuit-breaker inputs used by firmware.
+and circuit-breaker inputs used by firmware. A zero policy stale window inherits
+the model contract's `stale_after_us`; otherwise the stricter window is used.
 
 ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 32-bit hashes (`name_hash`, `message_type_hash`, `bridge_id_hash`, and

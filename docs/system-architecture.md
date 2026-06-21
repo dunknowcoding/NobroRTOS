@@ -71,9 +71,10 @@ state or a degraded fallback state instead of blocking on inference.
 and hybrid inference. The policy compares timeout against the caller's budget,
 tracks endpoint readiness and consecutive endpoint failures, allows fresh
 snapshot reuse, and chooses degraded fallback when the route is not safe for the
-current control cycle. This keeps cloud APIs and companion-computer inference
-compatible with real-time control instead of letting network latency leak into
-critical paths.
+current control cycle. Stale snapshot reuse is bounded by the stricter of the
+model contract and runtime policy, so cloud APIs and companion-computer
+inference remain compatible with real-time control instead of letting network
+latency or outdated results leak into critical paths.
 
 ROS and micro-ROS compatibility belongs at the bridge layer. NobroRTOS should
 absorb ROS 2's topic, service, action, and parameter concepts, but map them into

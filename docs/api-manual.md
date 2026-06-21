@@ -344,6 +344,9 @@ edge sidecar, a third-party API, or a hybrid fallback path. The policy is a
 fixed-size control record: it compares the model timeout with the caller's
 budget, trips a small endpoint circuit breaker after repeated failures, and
 returns a route target without allocating memory.
+The stale snapshot window is contract-aware: a zero policy window inherits the
+model contract's `stale_after_us`, while a non-zero policy uses the stricter of
+the policy and model windows.
 
 ```rust
 let policy = nobro_sal::AiRoutePolicy::new(

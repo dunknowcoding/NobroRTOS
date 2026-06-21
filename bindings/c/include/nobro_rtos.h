@@ -440,6 +440,19 @@ static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t
         + (uint32_t)action.result_bytes_max;
 }
 
+static inline uint32_t nobro_ai_effective_stale_after_us(
+    nobro_ai_route_policy_t policy,
+    nobro_ai_model_contract_t contract
+) {
+    if (policy.stale_after_us == 0u) {
+        return contract.stale_after_us;
+    }
+    if (contract.stale_after_us == 0u || policy.stale_after_us < contract.stale_after_us) {
+        return policy.stale_after_us;
+    }
+    return contract.stale_after_us;
+}
+
 static inline nobro_ai_route_decision_t nobro_ai_route_decide(
     nobro_ai_route_policy_t policy,
     nobro_ai_model_contract_t contract,
@@ -451,7 +464,8 @@ static inline nobro_ai_route_decision_t nobro_ai_route_decide(
         : policy.endpoint_failure_limit;
     uint8_t endpoint_circuit_open =
         state.consecutive_endpoint_failures >= failure_limit ? 1u : 0u;
-    uint8_t stale_ready = state.last_success_age_us <= policy.stale_after_us ? 1u : 0u;
+    uint32_t stale_after_us = nobro_ai_effective_stale_after_us(policy, contract);
+    uint8_t stale_ready = state.last_success_age_us <= stale_after_us ? 1u : 0u;
     uint8_t fits_budget = contract.timeout_us <= budget_us ? 1u : 0u;
     nobro_ai_route_decision_t decision = {
         NOBRO_AI_TARGET_DEGRADED_FALLBACK,

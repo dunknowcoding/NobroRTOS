@@ -293,7 +293,7 @@ class AiRoutePolicy:
 
         failure_limit = self.endpoint_failure_limit or 1
         endpoint_circuit_open = state.consecutive_endpoint_failures >= failure_limit
-        stale_ready = state.last_success_age_us <= self.stale_after_us
+        stale_ready = state.last_success_age_us <= self.effective_stale_after_us(contract)
         fits_budget = contract.timeout_us <= budget_us
 
         if not fits_budget:
@@ -391,6 +391,15 @@ class AiRoutePolicy:
             endpoint_circuit_open,
             False,
         )
+
+    def effective_stale_after_us(self, contract: AiModelContract) -> int:
+        """Return the strict stale snapshot window shared by host and firmware."""
+
+        if self.stale_after_us == 0:
+            return contract.stale_after_us
+        if contract.stale_after_us == 0:
+            return self.stale_after_us
+        return min(self.stale_after_us, contract.stale_after_us)
 
 
 @dataclass(frozen=True)
