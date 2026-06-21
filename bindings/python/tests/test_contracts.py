@@ -62,6 +62,7 @@ from nobro_rtos import (
 )
 from nobro_rtos.cli import (
     _check_project,
+    _check_runtime_drill,
     _doctor,
     _sample_actuator,
     _sample_event_log,
@@ -167,6 +168,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
+        self.assertIn("runtime_drill_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
 
     def test_project_templates_are_contract_first_and_deterministic(self) -> None:
@@ -207,6 +209,11 @@ class ContractBuilderTests(unittest.TestCase):
         ).file_map()
         python_tasks = json.loads(python_host[".vscode/tasks.json"])
         self.assertEqual(python_tasks["tasks"][1]["label"], "NobroRTOS: Runtime Drill")
+        self.assertEqual(
+            python_tasks["tasks"][2]["label"],
+            "NobroRTOS: Runtime Drill Gate",
+        )
+        self.assertIn("check-runtime-drill", python_tasks["tasks"][2]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -1527,6 +1534,42 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertFalse(report["recovery_summary"]["reboot_required"])
         self.assertGreater(report["quota"]["total_used"]["flash_bytes"], 0)
         self.assertIn("recent", report["event_log"])
+
+    def test_runtime_drill_gate_reports_pass_and_fail_limits(self) -> None:
+        passing = _check_runtime_drill(
+            flash_limit=72 * 1024,
+            ram_limit=16 * 1024,
+            pool_limit=5,
+            max_modules=4,
+            fault_module="sensor",
+            fault_error="sensor_read_fail",
+            fault_count=3,
+            max_disabled=1,
+            max_reboots=0,
+            max_dropped_events=1,
+        )
+
+        self.assertTrue(passing["passing"])
+        self.assertEqual(passing["errors"], [])
+        self.assertEqual(passing["summary"]["disabled_count"], 1)
+        self.assertEqual(passing["summary"]["reboot_count"], 0)
+
+        failing = _check_runtime_drill(
+            flash_limit=72 * 1024,
+            ram_limit=16 * 1024,
+            pool_limit=5,
+            max_modules=4,
+            fault_module="sensor",
+            fault_error="sensor_read_fail",
+            fault_count=4,
+            max_disabled=1,
+            max_reboots=0,
+            max_dropped_events=1,
+        )
+
+        self.assertFalse(failing["passing"])
+        self.assertIn("module reboots exceeded limit: 1 > 0", failing["errors"])
+        self.assertEqual(failing["summary"]["final_state"], "recovering")
 
     def test_cli_startup_sample_summarizes_dependency_plan(self) -> None:
         report = _sample_startup()

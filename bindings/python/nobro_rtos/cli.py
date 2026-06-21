@@ -201,6 +201,24 @@ def main() -> int:
         default=KernelErrorKind.SENSOR_READ_FAIL.value,
     )
     sample_runtime_drill.add_argument("--fault-count", type=int, default=3)
+    check_runtime_drill = subparsers.add_parser(
+        "check-runtime-drill",
+        help="run a runtime drill gate and print pass/fail JSON",
+    )
+    check_runtime_drill.add_argument("--flash-limit", type=int, default=72 * 1024)
+    check_runtime_drill.add_argument("--ram-limit", type=int, default=16 * 1024)
+    check_runtime_drill.add_argument("--pool-limit", type=int, default=5)
+    check_runtime_drill.add_argument("--max-modules", type=int, default=4)
+    check_runtime_drill.add_argument("--fault-module", default="sensor")
+    check_runtime_drill.add_argument(
+        "--fault-error",
+        choices=tuple(item.value for item in KernelErrorKind),
+        default=KernelErrorKind.SENSOR_READ_FAIL.value,
+    )
+    check_runtime_drill.add_argument("--fault-count", type=int, default=3)
+    check_runtime_drill.add_argument("--max-disabled", type=int, default=1)
+    check_runtime_drill.add_argument("--max-reboots", type=int, default=0)
+    check_runtime_drill.add_argument("--max-dropped-events", type=int, default=1)
     subparsers.add_parser(
         "sample-startup",
         help="print a deterministic startup dependency plan as JSON",
@@ -433,6 +451,21 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "check-runtime-drill":
+        report = _check_runtime_drill(
+            args.flash_limit,
+            args.ram_limit,
+            args.pool_limit,
+            args.max_modules,
+            args.fault_module,
+            args.fault_error,
+            args.fault_count,
+            args.max_disabled,
+            args.max_reboots,
+            args.max_dropped_events,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-startup":
         print(json.dumps(_sample_startup(), indent=2, sort_keys=True))
         return 0
@@ -598,6 +631,7 @@ def _doctor() -> dict[str, object]:
             "quota",
             "degrade",
             "runtime_drill",
+            "runtime_drill_gate",
             "project_templates",
         ],
     }
@@ -1076,6 +1110,70 @@ def _sample_runtime_drill(
         fault_error=fault_error,
         fault_count=fault_count,
     ).to_dict()
+
+
+def _check_runtime_drill(
+    flash_limit: int,
+    ram_limit: int,
+    pool_limit: int,
+    max_modules: int,
+    fault_module: str,
+    fault_error: str,
+    fault_count: int,
+    max_disabled: int,
+    max_reboots: int,
+    max_dropped_events: int,
+) -> dict[str, object]:
+    if max_disabled < 0:
+        raise ValueError("max_disabled must be non-negative")
+    if max_reboots < 0:
+        raise ValueError("max_reboots must be non-negative")
+    if max_dropped_events < 0:
+        raise ValueError("max_dropped_events must be non-negative")
+
+    drill = _sample_runtime_drill(
+        flash_limit,
+        ram_limit,
+        pool_limit,
+        max_modules,
+        fault_module,
+        fault_error,
+        fault_count,
+    )
+    decision = drill["decision"]
+    event_log = drill["event_log"]
+    recovery_summary = drill["recovery_summary"]
+    disabled_count = int(decision["disabled_count"])
+    reboot_count = int(recovery_summary["reboot_count"])
+    dropped_events = int(event_log["dropped"])
+
+    errors: list[str] = []
+    if disabled_count > max_disabled:
+        errors.append(f"disabled modules exceeded limit: {disabled_count} > {max_disabled}")
+    if reboot_count > max_reboots:
+        errors.append(f"module reboots exceeded limit: {reboot_count} > {max_reboots}")
+    if dropped_events > max_dropped_events:
+        errors.append(
+            f"dropped events exceeded limit: {dropped_events} > {max_dropped_events}"
+        )
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "limits": {
+            "max_disabled": max_disabled,
+            "max_reboots": max_reboots,
+            "max_dropped_events": max_dropped_events,
+        },
+        "summary": {
+            "disabled_count": disabled_count,
+            "reboot_count": reboot_count,
+            "dropped_events": dropped_events,
+            "final_state": recovery_summary["final_state"],
+            "self_healing_required": recovery_summary["self_healing_required"],
+        },
+        "drill": drill,
+    }
 
 
 def _sample_startup() -> dict[str, object]:

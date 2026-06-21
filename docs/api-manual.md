@@ -158,6 +158,8 @@ with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
 Its `RecoverySummary` output gives stable retry, notification, reboot, final
 state, and self-healing flags for automated review.
+The `check-runtime-drill` CLI wraps the same scenario in a pass/fail gate for
+disabled-module count, reboot count, and dropped event-log records.
 
 `build_project_template` emits contract-first starter templates for standalone
 SDK, Arduino, PlatformIO, Python host, and Python board bridge workflows. It

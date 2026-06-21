@@ -598,6 +598,22 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "problemMatcher": [],
             }
         )
+        tasks.append(
+            {
+                "label": "NobroRTOS: Runtime Drill Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-runtime-drill",
+                    "--fault-count",
+                    "3",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
         tasks.append(
             {
@@ -678,6 +694,11 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         "NobroRTOS: Runtime Drill",
     ) is None:
         errors.append("missing NobroRTOS: Runtime Drill task")
+    if target == ProjectTarget.PYTHON_HOST and _task_by_label(
+        tasks,
+        "NobroRTOS: Runtime Drill Gate",
+    ) is None:
+        errors.append("missing NobroRTOS: Runtime Drill Gate task")
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE and _task_by_label(
         tasks,
         "NobroRTOS: Bridge Smoke",

@@ -24,6 +24,7 @@ python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
+python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
 python tools/nobro_contract_tool.py sample-report health
@@ -41,8 +42,11 @@ python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --e
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python tools/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
+python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py sample-startup
 ```
 
 `sample-runtime-drill` includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
+`check-runtime-drill` returns non-zero when disabled modules, module reboots, or
+dropped event-log records exceed the configured limits.

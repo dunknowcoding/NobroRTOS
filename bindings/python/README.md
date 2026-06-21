@@ -217,6 +217,7 @@ python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
+python -m nobro_rtos check-runtime-drill --fault-count 3
 python -m nobro_rtos sample-startup
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
@@ -249,6 +250,9 @@ existing files unless `--overwrite` is passed. The project checker reports
 target detection, module count, discovered files, and validation errors as JSON.
 VS Code users can run the generated `NobroRTOS: Check Project` task from the
 starter project.
+The runtime drill checker applies pass/fail limits to disabled modules, reboot
+actions, and dropped event-log records, then returns a non-zero process status
+when a limit is exceeded.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
