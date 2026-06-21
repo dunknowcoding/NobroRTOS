@@ -56,6 +56,10 @@ impl StartupNode {
 pub enum StartupGraphError {
     TooManyNodes,
     DuplicateModule(ModuleId),
+    DuplicateDependency {
+        module: ModuleId,
+        depends_on: ModuleId,
+    },
     UnknownModule(ModuleId),
 }
 
@@ -105,6 +109,9 @@ impl<const N: usize> StartupGraph<N> {
         let Some(dep_idx) = self.index_of(depends_on) else {
             return Err(StartupGraphError::UnknownModule(depends_on));
         };
+        if self.nodes[module_idx].depends_on.contains_index(dep_idx) {
+            return Err(StartupGraphError::DuplicateDependency { module, depends_on });
+        }
 
         self.nodes[module_idx].depends_on = self.nodes[module_idx].depends_on.with_index(dep_idx);
         Ok(())
@@ -307,6 +314,23 @@ mod tests {
         assert_eq!(
             graph.add_dependency(ModuleId::Kernel, ModuleId::Sensor),
             Err(StartupGraphError::UnknownModule(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn graph_rejects_duplicate_dependencies() {
+        let mut graph =
+            StartupGraph::<2>::from_modules(&[ModuleId::Kernel, ModuleId::Sensor]).unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+
+        assert_eq!(
+            graph.add_dependency(ModuleId::Sensor, ModuleId::Kernel),
+            Err(StartupGraphError::DuplicateDependency {
+                module: ModuleId::Sensor,
+                depends_on: ModuleId::Kernel,
+            })
         );
     }
 

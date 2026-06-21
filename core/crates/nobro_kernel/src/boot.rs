@@ -354,6 +354,37 @@ mod tests {
     }
 
     #[test]
+    fn boot_assembly_rejects_duplicate_startup_dependencies() {
+        let specs = [kernel_spec(), bus_spec()];
+        let deps = [
+            StartupDependency::new(ModuleId::Bus, ModuleId::Kernel),
+            StartupDependency::new(ModuleId::Bus, ModuleId::Kernel),
+        ];
+
+        let failure = match TestAssembly::build_with_failure(
+            &specs,
+            &deps,
+            profile(),
+            FaultThresholds::DEFAULT,
+            0,
+        ) {
+            Ok(_) => panic!("boot assembly unexpectedly succeeded"),
+            Err(failure) => failure,
+        };
+
+        assert_eq!(
+            failure.error,
+            BootAssemblyError::StartupGraph(StartupGraphError::DuplicateDependency {
+                module: ModuleId::Bus,
+                depends_on: ModuleId::Kernel,
+            })
+        );
+        assert!(failure.manifest_report.verify_checksum());
+        assert_eq!(failure.manifest_report.valid, 1);
+        assert_eq!(failure.admission_report, AdmissionReport::zeroed());
+    }
+
+    #[test]
     fn boot_assembly_preserves_legacy_error_return() {
         let specs = [kernel_spec(), bus_spec()];
         let deps = [StartupDependency::new(ModuleId::Sensor, ModuleId::Bus)];
