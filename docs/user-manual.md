@@ -224,6 +224,8 @@ python tools/nobro_contract_tool.py repair-project _work\edge_demo --target plat
 
 Generated starter projects include VS Code task metadata for the same project
 check, so IDE users can run the validation gate from the command palette.
+The project check command returns non-zero when validation fails, which makes
+the generated task suitable for CI and editor problem workflows.
 `repair-project` can rebuild that IDE metadata without overwriting project code
 or `nobro-contract.json`.
 Project checks validate the expected task commands, not just task labels, so

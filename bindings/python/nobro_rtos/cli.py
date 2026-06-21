@@ -593,23 +593,25 @@ def main() -> int:
         )
         return 0
     if args.command == "check-project":
+        report = _check_project(args.path, args.target)
         print(
             json.dumps(
-                _check_project(args.path, args.target),
+                report,
                 indent=2,
                 sort_keys=True,
             )
         )
-        return 0
+        return 0 if report["passing"] else 1
     if args.command == "repair-project":
+        report = _repair_project(args.path, args.target)
         print(
             json.dumps(
-                _repair_project(args.path, args.target),
+                report,
                 indent=2,
                 sort_keys=True,
             )
         )
-        return 0
+        return 0 if report["passing"] else 1
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())

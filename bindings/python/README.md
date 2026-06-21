@@ -95,7 +95,9 @@ inspect or filter the template first. The `write-project` CLI materializes the
 same template with path-escape checks and no overwrite unless `--overwrite` is
 set. The `check-project` CLI validates a generated project directory by
 detecting its target shape, loading `nobro-contract.json`, and checking the
-generated VS Code task metadata for the expected target.
+generated VS Code task metadata for the expected target. It returns a non-zero
+process status when validation fails, so generated tasks and CI jobs can use it
+as a real gate.
 The `repair-project` CLI conservatively rebuilds `.vscode/tasks.json` when that
 metadata is missing or stale; it does not rewrite user code or contracts.
 Generated templates include `.vscode/tasks.json` with a project check task; the
@@ -259,6 +261,7 @@ PlatformIO, or Python host workflows. The project writer creates the same
 starter files under the selected output directory and refuses to replace
 existing files unless `--overwrite` is passed. The project checker reports
 target detection, module count, discovered files, and validation errors as JSON.
+It returns non-zero when the project is invalid.
 VS Code users can run the generated `NobroRTOS: Check Project` task from the
 starter project.
 The runtime drill checker applies pass/fail limits to disabled modules, reboot

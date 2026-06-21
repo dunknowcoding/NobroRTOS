@@ -1,8 +1,11 @@
+import contextlib
+import io
 import json
 from pathlib import Path
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 from nobro_rtos import (
     AiBackendKind,
@@ -80,6 +83,7 @@ from nobro_rtos.cli import (
     _check_software_surface,
     _write_project,
     _repair_project,
+    main,
 )
 
 
@@ -491,6 +495,87 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertFalse(report["passing"])
             self.assertEqual(report["target"], "platformio")
             self.assertIn("missing nobro-contract.json", report["errors"])
+
+    def test_check_project_command_returns_nonzero_for_invalid_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "empty_project"
+            root.mkdir()
+            (root / "platformio.ini").write_text("[env:test]\n", encoding="utf-8")
+            (root / "src").mkdir()
+            (root / "src" / "main.cpp").write_text(
+                "int main() { return 0; }\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch(
+                "sys.argv",
+                [
+                    "python -m nobro_rtos",
+                    "check-project",
+                    str(root),
+                    "--target",
+                    "platformio",
+                ],
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    exit_code = main()
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(exit_code, 1)
+            self.assertFalse(payload["passing"])
+            self.assertIn("missing nobro-contract.json", payload["errors"])
+
+    def test_check_project_command_returns_zero_for_valid_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            _write_project(
+                "platformio",
+                str(output),
+                "edge_demo",
+                "control",
+                "dunknowcoding",
+                overwrite=False,
+            )
+
+            with mock.patch(
+                "sys.argv",
+                [
+                    "python -m nobro_rtos",
+                    "check-project",
+                    str(output),
+                    "--target",
+                    "platformio",
+                ],
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as stream:
+                    exit_code = main()
+
+            payload = json.loads(stream.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["passing"])
+            self.assertEqual(payload["target"], "platformio")
+
+    def test_repair_project_command_returns_nonzero_when_unrepairable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing_project"
+
+            with mock.patch(
+                "sys.argv",
+                [
+                    "python -m nobro_rtos",
+                    "repair-project",
+                    str(missing),
+                    "--target",
+                    "platformio",
+                ],
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as stream:
+                    exit_code = main()
+
+            payload = json.loads(stream.getvalue())
+            self.assertEqual(exit_code, 1)
+            self.assertFalse(payload["passing"])
+            self.assertIn("project directory missing", payload["after_errors"][0])
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

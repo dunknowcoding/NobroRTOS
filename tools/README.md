@@ -59,3 +59,5 @@ dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, AI route,
 and runtime drill checks into one JSON report.
+`check-project` and `repair-project` also return non-zero when a starter
+project remains invalid, so generated VS Code tasks can fail clearly.

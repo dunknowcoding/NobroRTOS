@@ -171,7 +171,8 @@ for overwrite behavior.
 `validate_project_template` checks the generated directory shape and validates
 `nobro-contract.json`, then verifies generated VS Code task metadata for the
 detected target. This gives host tools a quick onboarding gate without building
-firmware or contacting a board.
+firmware or contacting a board. The `check-project` CLI returns non-zero when
+this validation fails.
 `repair_project_template` can rebuild stale or missing `.vscode/tasks.json`
 metadata for a detected starter target without rewriting application files or
 contracts.
