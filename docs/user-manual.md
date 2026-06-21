@@ -213,6 +213,7 @@ python tools/nobro_contract_tool.py sample-quota
 python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
 python tools/nobro_contract_tool.py sample-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
+python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-project platformio --name edge_demo --module control
 python tools/nobro_contract_tool.py sample-project python_board_bridge --name edge_demo --module control
@@ -233,7 +234,9 @@ MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
-gate for CI and VS Code tasks.
+gate for CI and VS Code tasks. The software surface checker combines host
+contract, package metadata, public headers, AI route, and runtime drill
+validation before packaging.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,

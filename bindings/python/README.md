@@ -223,6 +223,7 @@ python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos check-runtime-drill --fault-count 3
+python -m nobro_rtos check-software-surface
 python -m nobro_rtos sample-startup
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
@@ -263,6 +264,9 @@ starter project.
 The runtime drill checker applies pass/fail limits to disabled modules, reboot
 actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
+The software surface checker is the recommended pre-package gate for host-side
+validation. It combines the host contract, SDK/package metadata, public C/C++
+headers, AI route policy, and runtime drill gates into one JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
@@ -280,6 +284,7 @@ python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
+python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-ai-route
 ```
 

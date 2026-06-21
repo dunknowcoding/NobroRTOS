@@ -356,6 +356,10 @@ def main() -> int:
         help="validate public C/C++/Arduino/PlatformIO header surfaces",
     )
     subparsers.add_parser(
+        "check-software-surface",
+        help="run the host contract, package, header, AI route, and runtime gates",
+    )
+    subparsers.add_parser(
         "doctor",
         help="run host contract and package metadata checks and print JSON",
     )
@@ -619,6 +623,10 @@ def main() -> int:
         report = validate_public_header_surface()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
+    if args.command == "check-software-surface":
+        report = _check_software_surface()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "doctor":
         print(json.dumps(_doctor(), indent=2, sort_keys=True))
         return 0
@@ -724,6 +732,96 @@ def _doctor() -> dict[str, object]:
             "ai_route_gate",
             "project_templates",
         ],
+    }
+
+
+def _check_software_surface() -> dict[str, object]:
+    checks: dict[str, object] = {}
+    errors: list[str] = []
+
+    def add_check(name: str, report: dict[str, object]) -> None:
+        checks[name] = report
+        if not bool(report.get("passing", True)):
+            for error in report.get("errors", ()):
+                errors.append(f"{name}: {error}")
+
+    try:
+        contract = load_repo_host_contract()
+        add_check(
+            "host_contract",
+            {
+                "passing": True,
+                "boot_stages": list(contract.boot_stage_order()),
+                "capability_count": len(contract.payload.get("capability_bits", {})),
+            },
+        )
+    except Exception as exc:
+        add_check("host_contract", {"passing": False, "errors": [str(exc)]})
+
+    try:
+        add_check(
+            "distribution_metadata",
+            {
+                "passing": True,
+                "report": validate_distribution_metadata().to_dict(),
+            },
+        )
+    except Exception as exc:
+        add_check("distribution_metadata", {"passing": False, "errors": [str(exc)]})
+
+    try:
+        add_check(
+            "public_headers",
+            {
+                "passing": True,
+                "report": validate_public_header_surface().to_dict(),
+            },
+        )
+    except Exception as exc:
+        add_check("public_headers", {"passing": False, "errors": [str(exc)]})
+
+    add_check(
+        "ai_route",
+        _check_ai_route(
+            backend="hybrid",
+            preference="hybrid_fallback",
+            budget_us=25_000,
+            timeout_us=20_000,
+            stale_after_us=50_000,
+            model_stale_after_us=100_000,
+            endpoint_failure_limit=2,
+            local_ready=True,
+            endpoint_ready=False,
+            last_success_age_us=12_000,
+            endpoint_failures=1,
+            require_target="on_device",
+            allow_stale=False,
+            allow_degraded=False,
+            allow_unavailable=False,
+            allow_endpoint_circuit_open=False,
+        ),
+    )
+    add_check(
+        "runtime_drill",
+        _check_runtime_drill(
+            flash_limit=72 * 1024,
+            ram_limit=16 * 1024,
+            pool_limit=5,
+            max_modules=4,
+            fault_module="sensor",
+            fault_error="sensor_read_fail",
+            fault_count=3,
+            max_disabled=1,
+            max_reboots=0,
+            max_dropped_events=1,
+        ),
+    )
+
+    return {
+        "passing": len(errors) == 0,
+        "status": "ok" if len(errors) == 0 else "fail",
+        "errors": errors,
+        "checks": checks,
     }
 
 

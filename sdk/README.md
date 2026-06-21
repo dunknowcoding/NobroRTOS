@@ -18,3 +18,13 @@ stable SDK packaging surface.
 
 Generated archives, compiler outputs, and local caches must be written under a
 throwaway work directory such as `_work/` and must not be committed.
+
+Before packaging the SDK surface, run the software surface gate from the
+repository root:
+
+```powershell
+python tools/nobro_contract_tool.py check-software-surface
+```
+
+The gate returns one JSON report for the host contract, package metadata,
+public headers, AI route policy, and runtime drill checks.

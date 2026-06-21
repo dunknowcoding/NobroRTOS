@@ -449,6 +449,9 @@ and endpoint circuit-breaker state without contacting a network service.
 Use its backend, preference, budget, readiness, stale-age, and failure-count
 arguments to model on-device, edge-sidecar, remote API, and hybrid inference
 paths in CI.
+The `check-software-surface` CLI composes this AI route gate with host
+contract, SDK/package metadata, public header, and runtime drill validation for
+pre-package review.
 
 ## Host API
 

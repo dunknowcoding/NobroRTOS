@@ -77,6 +77,7 @@ from nobro_rtos.cli import (
     _sample_sensor,
     _sample_startup,
     _sample_watchdog,
+    _check_software_surface,
     _write_project,
     _repair_project,
 )
@@ -172,6 +173,22 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("runtime_drill_gate", report["host_simulators"])
         self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
+
+    def test_software_surface_gate_composes_release_checks(self) -> None:
+        report = _check_software_surface()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["errors"], [])
+        self.assertIn("host_contract", report["checks"])
+        self.assertIn("distribution_metadata", report["checks"])
+        self.assertIn("public_headers", report["checks"])
+        self.assertTrue(report["checks"]["ai_route"]["passing"])
+        self.assertTrue(report["checks"]["runtime_drill"]["passing"])
+        self.assertEqual(
+            report["checks"]["ai_route"]["summary"]["target"],
+            "on_device",
+        )
 
     def test_project_templates_are_contract_first_and_deterministic(self) -> None:
         for target in ProjectTarget:
