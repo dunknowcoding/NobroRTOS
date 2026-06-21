@@ -112,6 +112,31 @@ class ProjectValidationReport:
         }
 
 
+@dataclass(frozen=True)
+class ProjectRepairReport:
+    """Structured result for conservative starter project self-repair."""
+
+    root: str
+    target: ProjectTarget | None
+    repaired: tuple[str, ...]
+    before_errors: tuple[str, ...]
+    after_errors: tuple[str, ...]
+
+    @property
+    def passing(self) -> bool:
+        return len(self.after_errors) == 0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root": self.root,
+            "target": None if self.target is None else self.target.value,
+            "passing": self.passing,
+            "repaired": list(self.repaired),
+            "before_errors": list(self.before_errors),
+            "after_errors": list(self.after_errors),
+        }
+
+
 def build_project_template(
     name: str = "nobro_edge_app",
     target: str | ProjectTarget = ProjectTarget.PLATFORMIO,
@@ -230,6 +255,32 @@ def validate_project_template(
         files=tuple(files),
         module_count=module_count,
         errors=tuple(errors),
+    )
+
+
+def repair_project_template(
+    project_dir: str | Path,
+    expected_target: str | ProjectTarget | None = None,
+) -> ProjectRepairReport:
+    """Repair generated IDE metadata without touching user code or contracts."""
+
+    root = Path(project_dir).resolve()
+    before = validate_project_template(root, expected_target=expected_target)
+    repaired: list[str] = []
+
+    if before.target is not None and _has_vscode_task_error(before.errors):
+        tasks_path = root / ".vscode" / "tasks.json"
+        tasks_path.parent.mkdir(parents=True, exist_ok=True)
+        tasks_path.write_text(_vscode_tasks_json(before.target), encoding="utf-8")
+        repaired.append(".vscode/tasks.json")
+
+    after = validate_project_template(root, expected_target=expected_target)
+    return ProjectRepairReport(
+        root=str(root),
+        target=after.target,
+        repaired=tuple(repaired),
+        before_errors=before.errors,
+        after_errors=after.errors,
     )
 
 
@@ -633,3 +684,7 @@ def _task_by_label(tasks: list[object], label: str) -> dict[str, object] | None:
         if isinstance(task, dict) and task.get("label") == label:
             return task
     return None
+
+
+def _has_vscode_task_error(errors: tuple[str, ...]) -> bool:
+    return any(".vscode/tasks.json" in error or " task" in error for error in errors)

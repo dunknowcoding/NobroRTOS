@@ -46,12 +46,14 @@ from .reports import (
 )
 from .templates import (
     ProjectMaterializationReport,
+    ProjectRepairReport,
     ProjectTarget,
     ProjectTemplate,
     ProjectValidationReport,
     TemplateFile,
     build_project_template,
     materialize_project_template,
+    repair_project_template,
     validate_project_template,
 )
 from .sim import (
@@ -128,10 +130,12 @@ __all__ = [
     "ProjectTarget",
     "ProjectTemplate",
     "ProjectMaterializationReport",
+    "ProjectRepairReport",
     "ProjectValidationReport",
     "TemplateFile",
     "build_project_template",
     "materialize_project_template",
+    "repair_project_template",
     "validate_project_template",
     "DegradeDecision",
     "DegradePlannerSimulator",

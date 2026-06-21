@@ -29,6 +29,7 @@ from .templates import (
     ProjectTarget,
     build_project_template,
     materialize_project_template,
+    repair_project_template,
     validate_project_template,
 )
 from .sim import (
@@ -234,6 +235,17 @@ def main() -> int:
     )
     check_project.add_argument("path", help="starter project directory")
     check_project.add_argument(
+        "--target",
+        choices=tuple(item.value for item in ProjectTarget),
+        default=None,
+        help="expected starter project target",
+    )
+    repair_project = subparsers.add_parser(
+        "repair-project",
+        help="repair generated starter project IDE metadata",
+    )
+    repair_project.add_argument("path", help="starter project directory")
+    repair_project.add_argument(
         "--target",
         choices=tuple(item.value for item in ProjectTarget),
         default=None,
@@ -449,6 +461,15 @@ def main() -> int:
         print(
             json.dumps(
                 _check_project(args.path, args.target),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "repair-project":
+        print(
+            json.dumps(
+                _repair_project(args.path, args.target),
                 indent=2,
                 sort_keys=True,
             )
@@ -1080,6 +1101,10 @@ def _write_project(
 
 def _check_project(path: str, target: str | None) -> dict[str, object]:
     return validate_project_template(path, expected_target=target).to_dict()
+
+
+def _repair_project(path: str, target: str | None) -> dict[str, object]:
+    return repair_project_template(path, expected_target=target).to_dict()
 
 
 def _sample_runtime_modules() -> tuple[ModuleSpec, ...]:

@@ -88,6 +88,8 @@ same template with path-escape checks and no overwrite unless `--overwrite` is
 set. The `check-project` CLI validates a generated project directory by
 detecting its target shape, loading `nobro-contract.json`, and checking the
 generated VS Code task metadata for the expected target.
+The `repair-project` CLI conservatively rebuilds `.vscode/tasks.json` when that
+metadata is missing or stale; it does not rewrite user code or contracts.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes a runtime drill task, and the Python board
 bridge template includes an offline bridge smoke task for MicroPython,
@@ -208,6 +210,7 @@ python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
 python -m nobro_rtos check-project _work\edge_demo --target platformio
+python -m nobro_rtos repair-project _work\edge_demo --target platformio
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,

@@ -22,6 +22,7 @@ from nobro_rtos import (
     ModuleSpec,
     NobroContractBundle,
     FixedReport,
+    ProjectRepairReport,
     ProjectTarget,
     ProjectTemplate,
     ProjectValidationReport,
@@ -48,6 +49,7 @@ from nobro_rtos import (
     capabilities_from_mask,
     load_repo_host_contract,
     materialize_project_template,
+    repair_project_template,
     seal_report,
     stable_hash32,
     validate_project_template,
@@ -69,6 +71,7 @@ from nobro_rtos.cli import (
     _sample_sensor,
     _sample_watchdog,
     _write_project,
+    _repair_project,
 )
 
 
@@ -345,6 +348,35 @@ class ContractBuilderTests(unittest.TestCase):
                 expected_target="python_board_bridge",
             )
             self.assertIn("missing .vscode/tasks.json", missing.errors)
+
+    def test_project_template_repair_restores_vscode_tasks_only(self) -> None:
+        template = build_project_template(
+            "edge_demo",
+            ProjectTarget.PYTHON_BOARD_BRIDGE,
+            "control",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            materialize_project_template(template, output)
+            tasks_path = output / ".vscode" / "tasks.json"
+            tasks_path.unlink()
+
+            report = repair_project_template(
+                output,
+                expected_target="python_board_bridge",
+            )
+
+            self.assertIsInstance(report, ProjectRepairReport)
+            self.assertTrue(report.passing)
+            self.assertEqual(report.repaired, (".vscode/tasks.json",))
+            self.assertIn("missing .vscode/tasks.json", report.before_errors)
+            self.assertEqual(report.after_errors, ())
+            self.assertTrue(tasks_path.exists())
+
+            second = _repair_project(str(output), "python_board_bridge")
+            self.assertTrue(second["passing"])
+            self.assertEqual(second["repaired"], [])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

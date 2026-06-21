@@ -159,6 +159,9 @@ for overwrite behavior.
 `nobro-contract.json`, then verifies generated VS Code task metadata for the
 detected target. This gives host tools a quick onboarding gate without building
 firmware or contacting a board.
+`repair_project_template` can rebuild stale or missing `.vscode/tasks.json`
+metadata for a detected starter target without rewriting application files or
+contracts.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add a runtime drill task, and Python board bridge
 templates add an offline bridge smoke task for MicroPython, CircuitPython, and
