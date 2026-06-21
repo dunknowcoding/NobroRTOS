@@ -156,6 +156,8 @@ still uses the Rust control plane.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
+Its `RecoverySummary` output gives stable retry, notification, reboot, final
+state, and self-healing flags for automated review.
 
 `build_project_template` emits contract-first starter templates for standalone
 SDK, Arduino, PlatformIO, Python host, and Python board bridge workflows. It

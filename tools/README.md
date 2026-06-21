@@ -43,3 +43,6 @@ python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --
 python tools/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
 python tools/nobro_contract_tool.py sample-startup
 ```
+
+`sample-runtime-drill` includes a recovery summary with retry, notification,
+reboot, final-state, and self-healing flags for software-only review.

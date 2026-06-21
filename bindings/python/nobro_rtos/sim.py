@@ -411,6 +411,78 @@ class RecoveryDecision:
         }
 
 
+@dataclass(frozen=True)
+class RecoverySummary:
+    """Aggregated recovery state for host-side self-healing drills."""
+
+    module: str
+    total_events: int
+    total_errors: int
+    retry_count: int
+    notification_count: int
+    reboot_count: int
+    final_state: str
+    last_action: RecoveryAction | None = None
+
+    @property
+    def degraded(self) -> bool:
+        return self.final_state in ("degraded", "recovering")
+
+    @property
+    def reboot_required(self) -> bool:
+        return self.reboot_count > 0
+
+    @property
+    def self_healing_required(self) -> bool:
+        return self.retry_count > 0 or self.notification_count > 0 or self.reboot_required
+
+    @classmethod
+    def from_decisions(
+        cls,
+        module: str,
+        decisions: tuple[RecoveryDecision, ...] | list[RecoveryDecision],
+    ) -> "RecoverySummary":
+        retry_count = sum(
+            1
+            for decision in decisions
+            if decision.action in (RecoveryAction.RETRY_NOW, RecoveryAction.RETRY_DELAY)
+        )
+        notification_count = sum(
+            1
+            for decision in decisions
+            if decision.action == RecoveryAction.NOTIFY_USER_TASK
+        )
+        reboot_count = sum(
+            1 for decision in decisions if decision.action == RecoveryAction.REBOOT_MODULE
+        )
+        last = decisions[-1] if decisions else None
+        return cls(
+            module=module,
+            total_events=len(decisions),
+            total_errors=0 if last is None else last.total_errors,
+            retry_count=retry_count,
+            notification_count=notification_count,
+            reboot_count=reboot_count,
+            final_state="running" if last is None else last.state,
+            last_action=None if last is None else last.action,
+        )
+
+    def to_dict(self) -> dict[str, int | bool | str | None]:
+        return {
+            "module": self.module,
+            "total_events": self.total_events,
+            "total_errors": self.total_errors,
+            "retry_count": self.retry_count,
+            "notification_count": self.notification_count,
+            "reboot_count": self.reboot_count,
+            "final_state": self.final_state,
+            "last_action": None if self.last_action is None else self.last_action.value,
+            "degraded": self.degraded,
+            "reboot_required": self.reboot_required,
+            "self_healing_required": self.self_healing_required,
+        }
+
+
 @dataclass
 class RecoveryPolicySimulator:
     """Host-side mirror of health thresholds and default recovery actions."""
@@ -743,6 +815,7 @@ class RuntimeDrillResult:
     quota: dict[str, object]
     event_log: dict[str, object]
     recovery: tuple[RecoveryDecision, ...]
+    recovery_summary: RecoverySummary
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -751,6 +824,7 @@ class RuntimeDrillResult:
             "quota": self.quota,
             "event_log": self.event_log,
             "recovery": [decision.to_dict() for decision in self.recovery],
+            "recovery_summary": self.recovery_summary.to_dict(),
         }
 
 
@@ -836,6 +910,10 @@ class RuntimeDrillSimulator:
                 "recent": [record.to_dict() for record in events.copy_recent(8)],
             },
             recovery=tuple(recovery_decisions),
+            recovery_summary=RecoverySummary.from_decisions(
+                fault_module,
+                recovery_decisions,
+            ),
         )
 
 

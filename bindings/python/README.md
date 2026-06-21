@@ -127,6 +127,8 @@ readback checks. `WatchdogSimulator` mirrors the kernel heartbeat tracker.
 checks into one deterministic pressure drill.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
 host-side self-healing drills.
+`RecoverySummary` turns drill recovery decisions into stable action counts,
+final state, and reboot requirement flags for CI gates and editor views.
 
 ```python
 from nobro_rtos import (
@@ -238,13 +240,15 @@ usage. The degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
 kernel planner. The runtime drill sample combines degraded-mode planning, quota
 usage, fixed-ring event logging, and recovery escalation in a single host-side
-JSON scenario. The project sample emits a deterministic contract-first starter
-template as JSON for standalone SDK, Arduino, PlatformIO, or Python host
-workflows. The project writer creates the same starter files under the selected
-output directory and refuses to replace existing files unless `--overwrite` is
-passed. The project checker reports target detection, module count, discovered
-files, and validation errors as JSON. VS Code users can run the generated
-`NobroRTOS: Check Project` task from the starter project.
+JSON scenario, including a recovery summary with action counts, final state,
+and reboot requirement flags. The project sample emits a deterministic
+contract-first starter template as JSON for standalone SDK, Arduino,
+PlatformIO, or Python host workflows. The project writer creates the same
+starter files under the selected output directory and refuses to replace
+existing files unless `--overwrite` is passed. The project checker reports
+target detection, module count, discovered files, and validation errors as JSON.
+VS Code users can run the generated `NobroRTOS: Check Project` task from the
+starter project.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.

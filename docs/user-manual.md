@@ -225,6 +225,8 @@ check, so IDE users can run the validation gate from the command palette.
 or `nobro-contract.json`.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
+The runtime drill output includes a recovery summary with retry, notification,
+reboot, final-state, and self-healing flags for software-only review.
 The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code.

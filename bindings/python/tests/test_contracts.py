@@ -35,6 +35,7 @@ from nobro_rtos import (
     RosTopic,
     RecoveryAction,
     RecoveryPolicySimulator,
+    RecoverySummary,
     ResourceBudget,
     RuntimeDrillSimulator,
     SchedulerSimulator,
@@ -1212,6 +1213,37 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(next_error.delay_us, 1000)
         self.assertEqual(next_error.consecutive_errors, 1)
 
+    def test_recovery_summary_aggregates_self_healing_state(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
+        decisions = (
+            simulator.record_error("sensor", "sensor_read_fail", 10),
+            simulator.record_error("sensor", "sensor_read_fail", 20),
+            simulator.record_error("sensor", "sensor_read_fail", 30),
+        )
+
+        summary = RecoverySummary.from_decisions("sensor", decisions)
+
+        self.assertEqual(summary.total_events, 3)
+        self.assertEqual(summary.total_errors, 3)
+        self.assertEqual(summary.notification_count, 1)
+        self.assertEqual(summary.reboot_count, 1)
+        self.assertEqual(summary.final_state, "recovering")
+        self.assertTrue(summary.degraded)
+        self.assertTrue(summary.reboot_required)
+        self.assertTrue(summary.self_healing_required)
+        self.assertEqual(summary.to_dict()["last_action"], "reboot_module")
+
+    def test_recovery_summary_reports_clean_running_state(self) -> None:
+        summary = RecoverySummary.from_decisions("sensor", ())
+
+        self.assertEqual(summary.total_events, 0)
+        self.assertEqual(summary.total_errors, 0)
+        self.assertEqual(summary.final_state, "running")
+        self.assertFalse(summary.degraded)
+        self.assertFalse(summary.reboot_required)
+        self.assertFalse(summary.self_healing_required)
+        self.assertIsNone(summary.to_dict()["last_action"])
+
     def test_cli_recovery_sample_preserves_ok_reset(self) -> None:
         report = _sample_recovery(
             "sensor",
@@ -1458,6 +1490,11 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(result["decision"]["disabled"], ["telemetry"])
         self.assertEqual(len(result["recovery"]), 2)
         self.assertEqual(result["recovery"][1]["action"], "notify_user_task")
+        self.assertEqual(result["recovery_summary"]["module"], "sensor")
+        self.assertEqual(result["recovery_summary"]["final_state"], "degraded")
+        self.assertEqual(result["recovery_summary"]["notification_count"], 1)
+        self.assertFalse(result["recovery_summary"]["reboot_required"])
+        self.assertTrue(result["recovery_summary"]["self_healing_required"])
         telemetry_entry = next(
             entry
             for entry in result["quota"]["entries"]
@@ -1468,6 +1505,8 @@ class ContractBuilderTests(unittest.TestCase):
 
         no_usage = drill.run(quota_usage={}, fault_module="sensor", fault_count=0).to_dict()
         self.assertEqual(no_usage["quota"]["total_used"], ResourceBudget().to_dict())
+        self.assertEqual(no_usage["recovery_summary"]["final_state"], "running")
+        self.assertFalse(no_usage["recovery_summary"]["self_healing_required"])
 
     def test_cli_runtime_drill_sample_summarizes_combined_control_plane(self) -> None:
         report = _sample_runtime_drill(
@@ -1484,6 +1523,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["decision"]["reason"], "module_limit")
         self.assertEqual(len(report["recovery"]), 3)
         self.assertEqual(report["recovery"][1]["state"], "degraded")
+        self.assertEqual(report["recovery_summary"]["notification_count"], 2)
+        self.assertFalse(report["recovery_summary"]["reboot_required"])
         self.assertGreater(report["quota"]["total_used"]["flash_bytes"], 0)
         self.assertIn("recent", report["event_log"])
 
