@@ -61,6 +61,7 @@ from nobro_rtos import (
     validate_public_header_surface,
 )
 from nobro_rtos.cli import (
+    _check_ai_route,
     _check_project,
     _check_runtime_drill,
     _doctor,
@@ -169,6 +170,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("runtime_drill_gate", report["host_simulators"])
+        self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
 
     def test_project_templates_are_contract_first_and_deterministic(self) -> None:
@@ -828,6 +830,33 @@ class ContractBuilderTests(unittest.TestCase):
                 30_000,
             ).target,
             AiRouteTarget.DEGRADED_FALLBACK,
+        )
+
+    def test_ai_route_gate_reports_pass_and_target_mismatch(self) -> None:
+        passing = _check_ai_route(
+            require_target=None,
+            allow_stale=False,
+            allow_degraded=False,
+            allow_unavailable=False,
+            allow_endpoint_circuit_open=False,
+        )
+
+        self.assertTrue(passing["passing"])
+        self.assertEqual(passing["errors"], [])
+        self.assertEqual(passing["summary"]["target"], "on_device")
+
+        failing = _check_ai_route(
+            require_target="remote_api",
+            allow_stale=False,
+            allow_degraded=False,
+            allow_unavailable=False,
+            allow_endpoint_circuit_open=False,
+        )
+
+        self.assertFalse(failing["passing"])
+        self.assertIn(
+            "AI route target mismatch: on_device != remote_api",
+            failing["errors"],
         )
 
     def test_capability_masks_reject_unknown_bits(self) -> None:

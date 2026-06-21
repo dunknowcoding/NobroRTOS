@@ -443,6 +443,9 @@ map cleanly to Rust `RosBridgeContract` fields.
 Python tooling also mirrors `AiRoutePolicy` for host-side simulations and editor
 workflows. Use it to validate route decisions before the same policy is wired
 into Rust or C/C++ firmware code.
+The `check-ai-route` CLI wraps a sample policy decision in a pass/fail gate for
+target selection, stale snapshot reuse, degraded fallback, unavailable routes,
+and endpoint circuit-breaker state without contacting a network service.
 
 ## Host API
 

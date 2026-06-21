@@ -24,6 +24,7 @@ python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
+python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
@@ -48,5 +49,8 @@ python tools/nobro_contract_tool.py sample-startup
 
 `sample-runtime-drill` includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
+`check-ai-route` returns non-zero when the sample AI route decision violates
+target, stale snapshot, degraded fallback, unavailable, or endpoint-circuit
+limits.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.

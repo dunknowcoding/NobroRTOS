@@ -207,6 +207,7 @@ Run the module from this folder or after installing the package:
 python -m nobro_rtos doctor
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
+python -m nobro_rtos check-ai-route
 python -m nobro_rtos sample-report runtime
 python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
@@ -230,10 +231,13 @@ python -m nobro_rtos repair-project _work\edge_demo --target platformio
 
 The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge. The route sample prints a matching AI route
-policy, runtime state, and decision. The report samples print sealed fixed
-reports that can be fed directly into `decode-report`. The sensor sample emits
-deterministic fixture records and injected-fault summaries. The actuator sample
-emits deterministic servo command records with deadline and readback summaries.
+policy, runtime state, and decision. The route checker turns that decision into
+a pass/fail gate for target selection, stale snapshots, degraded fallback,
+unavailable routes, and open endpoint circuits. The report samples print sealed
+fixed reports that can be fed directly into `decode-report`. The sensor sample
+emits deterministic fixture records and injected-fault summaries. The actuator
+sample emits deterministic servo command records with deadline and readback
+summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The watchdog sample emits heartbeat and expiry
 events for liveness planning. The scheduler sample emits deadline jitter
@@ -273,6 +277,7 @@ python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
+python tools/nobro_contract_tool.py check-ai-route
 ```
 
 Decode a boot diagnostic code:

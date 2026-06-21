@@ -205,6 +205,7 @@ checks:
 
 ```powershell
 python tools/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 4 --period 1
+python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
@@ -232,6 +233,8 @@ The runtime drill output includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks.
+The AI route checker validates route-policy behavior without contacting a
+remote inference endpoint.
 The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code.

@@ -66,6 +66,36 @@ def main() -> int:
         "sample-ai-route",
         help="print a sample AI route policy decision as JSON",
     )
+    check_ai_route = subparsers.add_parser(
+        "check-ai-route",
+        help="run an AI route decision gate and print pass/fail JSON",
+    )
+    check_ai_route.add_argument(
+        "--require-target",
+        choices=("on_device", "remote_api", "edge_sidecar", "stale_snapshot"),
+        default=None,
+        help="require a specific non-degraded route target",
+    )
+    check_ai_route.add_argument(
+        "--allow-stale",
+        action="store_true",
+        help="allow stale snapshot reuse",
+    )
+    check_ai_route.add_argument(
+        "--allow-degraded",
+        action="store_true",
+        help="allow degraded fallback routing",
+    )
+    check_ai_route.add_argument(
+        "--allow-unavailable",
+        action="store_true",
+        help="allow unavailable route decisions",
+    )
+    check_ai_route.add_argument(
+        "--allow-endpoint-circuit-open",
+        action="store_true",
+        help="allow an open remote endpoint circuit breaker",
+    )
     sample_report = subparsers.add_parser(
         "sample-report",
         help="print a sealed sample fixed report as JSON",
@@ -337,6 +367,16 @@ def main() -> int:
     if args.command == "sample-ai-route":
         print(json.dumps(_sample_ai_route(), indent=2, sort_keys=True))
         return 0
+    if args.command == "check-ai-route":
+        report = _check_ai_route(
+            args.require_target,
+            args.allow_stale,
+            args.allow_degraded,
+            args.allow_unavailable,
+            args.allow_endpoint_circuit_open,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-report":
         print(json.dumps(_sample_report(args.kind), indent=2, sort_keys=True))
         return 0
@@ -632,6 +672,7 @@ def _doctor() -> dict[str, object]:
             "degrade",
             "runtime_drill",
             "runtime_drill_gate",
+            "ai_route_gate",
             "project_templates",
         ],
     }
@@ -656,7 +697,7 @@ def _sample_ai_route() -> dict[str, object]:
         local_ready=True,
         endpoint_ready=False,
         last_success_age_us=12_000,
-        consecutive_endpoint_failures=2,
+        consecutive_endpoint_failures=1,
     )
     decision = policy.decide(contract, state, budget_us=25_000)
     return {
@@ -673,6 +714,48 @@ def _sample_ai_route() -> dict[str, object]:
             "consecutive_endpoint_failures": state.consecutive_endpoint_failures,
         },
         "decision": decision.to_dict(),
+    }
+
+
+def _check_ai_route(
+    require_target: str | None,
+    allow_stale: bool,
+    allow_degraded: bool,
+    allow_unavailable: bool,
+    allow_endpoint_circuit_open: bool,
+) -> dict[str, object]:
+    route = _sample_ai_route()
+    decision = route["decision"]
+    target = str(decision["target"])
+    errors: list[str] = []
+
+    if require_target is not None and target != require_target:
+        errors.append(f"AI route target mismatch: {target} != {require_target}")
+    if target == "unavailable" and not allow_unavailable:
+        errors.append("AI route is unavailable")
+    if target == "degraded_fallback" and not allow_degraded:
+        errors.append("AI route used degraded fallback")
+    if bool(decision["uses_stale_snapshot"]) and not allow_stale:
+        errors.append("AI route used a stale snapshot")
+    if bool(decision["endpoint_circuit_open"]) and not allow_endpoint_circuit_open:
+        errors.append("AI endpoint circuit is open")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "limits": {
+            "require_target": require_target,
+            "allow_stale": allow_stale,
+            "allow_degraded": allow_degraded,
+            "allow_unavailable": allow_unavailable,
+            "allow_endpoint_circuit_open": allow_endpoint_circuit_open,
+        },
+        "summary": {
+            "target": target,
+            "endpoint_circuit_open": decision["endpoint_circuit_open"],
+            "uses_stale_snapshot": decision["uses_stale_snapshot"],
+        },
+        "route": route,
     }
 
 
