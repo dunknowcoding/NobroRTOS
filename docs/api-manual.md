@@ -160,6 +160,8 @@ Its `RecoverySummary` output gives stable retry, notification, reboot, final
 state, and self-healing flags for automated review.
 The `check-runtime-drill` CLI wraps the same scenario in a pass/fail gate for
 disabled-module count, reboot count, and dropped event-log records.
+The `check-recovery-matrix` CLI validates deterministic ignore, retry, notify,
+reboot, and OK-reset recovery paths for self-healing review.
 
 `build_project_template` emits contract-first starter templates for standalone
 SDK, Arduino, PlatformIO, Python host, and Python board bridge workflows. It
@@ -182,9 +184,9 @@ Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add runtime drill, runtime drill gate, and AI
-route plus AI route matrix gate tasks, and Python board bridge templates add an
-offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
-development.
+route, AI route matrix, and recovery matrix gate tasks, and Python board bridge
+templates add an offline bridge smoke task for MicroPython, CircuitPython, and
+mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set.
 
@@ -457,8 +459,8 @@ The `check-ai-route-matrix` CLI runs a deterministic compatibility matrix for
 local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
-public header, starter template, AI route matrix, and runtime drill validation
-for pre-package review.
+public header, starter template, AI route matrix, recovery matrix, and runtime
+drill validation for pre-package review.
 
 ## Host API
 

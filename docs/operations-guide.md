@@ -36,6 +36,7 @@ python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 ```
 

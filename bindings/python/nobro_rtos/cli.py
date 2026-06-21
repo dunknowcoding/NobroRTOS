@@ -42,6 +42,7 @@ from .sim import (
     KernelErrorKind,
     QuotaLedgerSimulator,
     RecoveryPolicySimulator,
+    RecoverySummary,
     ResourceBudget,
     RuntimeDrillSimulator,
     SchedulerSimulator,
@@ -213,6 +214,10 @@ def main() -> int:
         type=int,
         default=0,
         help="insert an OK event after this many errors; 0 disables it",
+    )
+    subparsers.add_parser(
+        "check-recovery-matrix",
+        help="run deterministic self-healing recovery checks",
     )
     sample_watchdog = subparsers.add_parser(
         "sample-watchdog",
@@ -487,6 +492,10 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "check-recovery-matrix":
+        report = _check_recovery_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-watchdog":
         print(
             json.dumps(
@@ -742,6 +751,7 @@ def _doctor() -> dict[str, object]:
             "sensor",
             "actuator",
             "recovery",
+            "recovery_matrix_gate",
             "watchdog",
             "scheduler",
             "event_log",
@@ -854,6 +864,7 @@ def _check_software_surface() -> dict[str, object]:
 
     add_check("starter_templates", _check_starter_templates())
     add_check("ai_route_matrix", _check_ai_route_matrix())
+    add_check("recovery_matrix", _check_recovery_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -1412,6 +1423,188 @@ def _sample_recovery(
         "event_count": len(timeline),
         "timeline": timeline,
     }
+
+
+def _check_recovery_matrix() -> dict[str, object]:
+    scenarios: tuple[dict[str, object], ...] = (
+        {
+            "name": "sensor_ignore_first_error",
+            "module": "sensor",
+            "error": "sensor_read_fail",
+            "events": 1,
+            "notify_after": 2,
+            "reboot_after": 4,
+            "expected_final_state": "running",
+            "expected_last_action": "ignore",
+            "expected_notifications": 0,
+            "expected_reboots": 0,
+            "expected_retry_count": 0,
+            "expected_max_consecutive": 1,
+        },
+        {
+            "name": "bus_timeout_retry_delay",
+            "module": "bus",
+            "error": "bus_timeout",
+            "events": 1,
+            "notify_after": 3,
+            "reboot_after": 4,
+            "expected_final_state": "running",
+            "expected_last_action": "retry_delay",
+            "expected_notifications": 0,
+            "expected_reboots": 0,
+            "expected_retry_count": 1,
+            "expected_max_consecutive": 1,
+        },
+        {
+            "name": "sensor_notify_threshold",
+            "module": "sensor",
+            "error": "sensor_read_fail",
+            "events": 2,
+            "notify_after": 2,
+            "reboot_after": 4,
+            "expected_final_state": "degraded",
+            "expected_last_action": "notify_user_task",
+            "expected_notifications": 1,
+            "expected_reboots": 0,
+            "expected_retry_count": 0,
+            "expected_max_consecutive": 2,
+        },
+        {
+            "name": "sensor_reboot_threshold",
+            "module": "sensor",
+            "error": "sensor_read_fail",
+            "events": 4,
+            "notify_after": 2,
+            "reboot_after": 4,
+            "expected_final_state": "recovering",
+            "expected_last_action": "reboot_module",
+            "expected_notifications": 2,
+            "expected_reboots": 1,
+            "expected_retry_count": 0,
+            "expected_max_consecutive": 4,
+        },
+        {
+            "name": "ok_reset_breaks_error_streak",
+            "module": "bus",
+            "error": "bus_timeout",
+            "events": 2,
+            "notify_after": 2,
+            "reboot_after": 3,
+            "ok_after": 1,
+            "expected_final_state": "running",
+            "expected_last_action": "retry_delay",
+            "expected_notifications": 0,
+            "expected_reboots": 0,
+            "expected_retry_count": 2,
+            "expected_max_consecutive": 1,
+        },
+    )
+    reports: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    for scenario in scenarios:
+        report = _run_recovery_matrix_scenario(scenario)
+        reports.append(report)
+        for error in report["errors"]:
+            errors.append(f"{report['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(reports),
+        "scenarios": reports,
+    }
+
+
+def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, object]:
+    module = str(scenario["module"])
+    error = str(scenario["error"])
+    events = int(scenario["events"])
+    notify_after = int(scenario["notify_after"])
+    reboot_after = int(scenario["reboot_after"])
+    ok_after = int(scenario.get("ok_after", 0))
+    simulator = RecoveryPolicySimulator(
+        notify_after=notify_after,
+        reboot_after=reboot_after,
+    )
+    timeline: list[dict[str, object]] = []
+    decisions = []
+
+    for index in range(events):
+        now_us = (index + 1) * 10
+        decision = simulator.record_error(module, error, now_us)
+        decisions.append(decision)
+        timeline.append({"event": "error", **decision.to_dict()})
+        if ok_after != 0 and index + 1 == ok_after:
+            timeline.append(simulator.record_ok(now_us + 1))
+
+    summary = RecoverySummary.from_decisions(module, decisions).to_dict()
+    max_consecutive = max(
+        (int(entry.get("consecutive_errors", 0)) for entry in timeline),
+        default=0,
+    )
+    action_sequence = [
+        str(entry["action"])
+        for entry in timeline
+        if entry.get("event") == "error"
+    ]
+    errors: list[str] = []
+    _expect_equal(
+        summary["final_state"],
+        scenario["expected_final_state"],
+        "final_state",
+        errors,
+    )
+    _expect_equal(
+        summary["last_action"],
+        scenario["expected_last_action"],
+        "last_action",
+        errors,
+    )
+    _expect_equal(
+        summary["notification_count"],
+        scenario["expected_notifications"],
+        "notification_count",
+        errors,
+    )
+    _expect_equal(
+        summary["reboot_count"],
+        scenario["expected_reboots"],
+        "reboot_count",
+        errors,
+    )
+    _expect_equal(
+        summary["retry_count"],
+        scenario["expected_retry_count"],
+        "retry_count",
+        errors,
+    )
+    _expect_equal(
+        max_consecutive,
+        scenario["expected_max_consecutive"],
+        "max_consecutive_errors",
+        errors,
+    )
+
+    return {
+        "name": scenario["name"],
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "summary": summary,
+        "max_consecutive_errors": max_consecutive,
+        "action_sequence": action_sequence,
+        "timeline": timeline,
+    }
+
+
+def _expect_equal(
+    actual: object,
+    expected: object,
+    label: str,
+    errors: list[str],
+) -> None:
+    if actual != expected:
+        errors.append(f"{label} mismatch: {actual!r} != {expected!r}")
 
 
 def _sample_watchdog(

@@ -105,9 +105,9 @@ temporary directory, validates it, and removes the generated files when the
 gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
-route plus AI route matrix gate tasks, and the Python board bridge template
-includes an offline bridge smoke task for MicroPython, CircuitPython, and
-mPython-style status-line workflows.
+route, AI route matrix, and recovery matrix gate tasks, and the Python board
+bridge template includes an offline bridge smoke task for MicroPython,
+CircuitPython, and mPython-style status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -222,6 +222,7 @@ python -m nobro_rtos sample-report ros_bridge
 python -m nobro_rtos sample-sensor --mode bad_data_every --ticks 4 --period 1
 python -m nobro_rtos sample-actuator --start-us 1200 --stop-us 1800 --step-us 300
 python -m nobro_rtos sample-recovery --error sensor_read_fail --events 4
+python -m nobro_rtos check-recovery-matrix
 python -m nobro_rtos sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
 python -m nobro_rtos sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
@@ -252,10 +253,12 @@ sensor sample emits deterministic fixture records and injected-fault summaries.
 The actuator sample emits deterministic servo command records with deadline and
 readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
-and reboot escalation drills. The watchdog sample emits heartbeat and expiry
-events for liveness planning. The scheduler sample emits deadline jitter
-counters for timing-policy checks. The event-log sample emits fixed-ring
-pressure, dropped-event, and recent-record summaries. The quota sample emits
+and reboot escalation drills. The recovery matrix checker validates ignore,
+retry, notify, reboot, and OK-reset recovery paths in one gate. The watchdog
+sample emits heartbeat and expiry events for liveness planning. The scheduler
+sample emits deadline jitter counters for timing-policy checks. The event-log
+sample emits fixed-ring pressure, dropped-event, and recent-record summaries.
+The quota sample emits
 fixed-capacity resource reservations, releases, remaining budget, and total
 usage. The degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
@@ -278,8 +281,8 @@ actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
-headers, starter templates, AI route matrix, and runtime drill gates into one
-JSON report.
+headers, starter templates, AI route matrix, recovery matrix, and runtime drill
+gates into one JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
@@ -301,6 +304,7 @@ python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-recovery-matrix
 ```
 
 Decode a boot diagnostic code:

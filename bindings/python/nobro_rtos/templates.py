@@ -646,6 +646,20 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "problemMatcher": [],
             }
         )
+        tasks.append(
+            {
+                "label": "NobroRTOS: Recovery Matrix Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-recovery-matrix",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
         tasks.append(
             {
@@ -769,6 +783,18 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         ("-m", "nobro_rtos", "check-ai-route-matrix"),
     ):
         errors.append("AI route matrix gate task command mismatch")
+
+    recovery_matrix_gate_task = _task_by_label(
+        tasks,
+        "NobroRTOS: Recovery Matrix Gate",
+    )
+    if target == ProjectTarget.PYTHON_HOST and recovery_matrix_gate_task is None:
+        errors.append("missing NobroRTOS: Recovery Matrix Gate task")
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        recovery_matrix_gate_task,
+        ("-m", "nobro_rtos", "check-recovery-matrix"),
+    ):
+        errors.append("recovery matrix gate task command mismatch")
 
     bridge_task = _task_by_label(
         tasks,
