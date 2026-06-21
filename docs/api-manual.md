@@ -149,9 +149,9 @@ with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
 
 `build_project_template` emits contract-first starter templates for standalone
-SDK, Arduino, PlatformIO, and Python host workflows. It returns an in-memory file
-manifest so editors, CI jobs, and package tools can decide where to write files
-without hiding the generated contract content.
+SDK, Arduino, PlatformIO, Python host, and Python board bridge workflows. It
+returns an in-memory file manifest so editors, CI jobs, and package tools can
+decide where to write files without hiding the generated contract content.
 `materialize_project_template` writes that manifest only after validating each
 relative path, and it refuses to overwrite existing files unless the caller asks
 for overwrite behavior.
@@ -159,7 +159,9 @@ for overwrite behavior.
 `nobro-contract.json`, giving host tools a quick onboarding gate without
 building firmware or contacting a board.
 Starter templates also include VS Code task metadata for that same project
-check, and Python host templates add a runtime drill task.
+check. Python host templates add a runtime drill task, and Python board bridge
+templates add an offline bridge smoke task for MicroPython, CircuitPython, and
+mPython-style development.
 
 ### Scheduler
 

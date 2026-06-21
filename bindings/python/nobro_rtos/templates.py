@@ -24,6 +24,7 @@ class ProjectTarget(str, Enum):
     ARDUINO = "arduino"
     PLATFORMIO = "platformio"
     PYTHON_HOST = "python_host"
+    PYTHON_BOARD_BRIDGE = "python_board_bridge"
 
 
 @dataclass(frozen=True)
@@ -129,8 +130,10 @@ def build_project_template(
         files = _arduino_files(name, module_name, author)
     elif target == ProjectTarget.PLATFORMIO:
         files = _platformio_files(name, module_name, author)
-    else:
+    elif target == ProjectTarget.PYTHON_HOST:
         files = _python_host_files(name, module_name, author)
+    else:
+        files = _python_board_bridge_files(name, module_name, author)
 
     return ProjectTemplate(name=name, target=target, files=files)
 
@@ -376,6 +379,100 @@ def _python_host_files(
     )
 
 
+def _python_board_bridge_files(
+    name: str,
+    module_name: str,
+    author: str,
+) -> tuple[TemplateFile, ...]:
+    return (
+        TemplateFile("README.md", _readme(name, "Python board bridge", author)),
+        TemplateFile(
+            "nobro-contract.json",
+            _contract_json(name, module_name, requires=(Capability.TIMEBASE, Capability.STREAM)),
+        ),
+        TemplateFile(
+            ".vscode/tasks.json",
+            _vscode_tasks_json(ProjectTarget.PYTHON_BOARD_BRIDGE),
+        ),
+        TemplateFile(
+            "board/code.py",
+            "\n".join(
+                (
+                    "\"\"\"MicroPython/CircuitPython-style NobroRTOS board bridge stub.\"\"\"",
+                    "",
+                    "import sys",
+                    "",
+                    "try:",
+                    "    import time",
+                    "except ImportError:",
+                    "    time = None",
+                    "",
+                    f"MODULE = \"{module_name}\"",
+                    "PERIOD_S = 1",
+                    "RUNTIME = getattr(sys.implementation, \"name\", \"\")",
+                    "BOARD_PYTHON = RUNTIME in (\"micropython\", \"circuitpython\")",
+                    "",
+                    "",
+                    "def emit_status(counter):",
+                    "    print(",
+                    "        \"NOBRO_STATUS module={} counter={} state=ready\".format(",
+                    "            MODULE,",
+                    "            counter,",
+                    "        )",
+                    "    )",
+                    "",
+                    "",
+                    "def main():",
+                    "    counter = 0",
+                    "    while True:",
+                    "        emit_status(counter)",
+                    "        counter += 1",
+                    "        if time is None or not BOARD_PYTHON:",
+                    "            break",
+                    "        time.sleep(PERIOD_S)",
+                    "",
+                    "",
+                    "main()",
+                    "",
+                )
+            ),
+        ),
+        TemplateFile(
+            "host/bridge_smoke.py",
+            "\n".join(
+                (
+                    "\"\"\"Offline parser smoke test for the board bridge status line.\"\"\"",
+                    "",
+                    "",
+                    "def parse_status(line: str) -> dict[str, str]:",
+                    "    parts = line.strip().split()",
+                    "    if not parts or parts[0] != \"NOBRO_STATUS\":",
+                    "        raise ValueError(\"missing NOBRO_STATUS prefix\")",
+                    "    fields: dict[str, str] = {}",
+                    "    for item in parts[1:]:",
+                    "        key, separator, value = item.partition(\"=\")",
+                    "        if not separator:",
+                    "            raise ValueError(f\"invalid status field: {item}\")",
+                    "        fields[key] = value",
+                    "    if fields.get(\"state\") != \"ready\":",
+                    "        raise ValueError(\"bridge is not ready\")",
+                    "    return fields",
+                    "",
+                    "",
+                    "def main() -> None:",
+                    f"    sample = \"NOBRO_STATUS module={module_name} counter=0 state=ready\"",
+                    "    print(parse_status(sample))",
+                    "",
+                    "",
+                    "if __name__ == \"__main__\":",
+                    "    main()",
+                    "",
+                )
+            ),
+        ),
+    )
+
+
 def _readme(name: str, target: str, author: str) -> str:
     return "\n".join(
         (
@@ -392,7 +489,11 @@ def _readme(name: str, target: str, author: str) -> str:
     )
 
 
-def _contract_json(name: str, module_name: str) -> str:
+def _contract_json(
+    name: str,
+    module_name: str,
+    requires: tuple[Capability, ...] = (Capability.TIMEBASE,),
+) -> str:
     bundle = NobroContractBundle(
         metadata={"project": name, "template": "starter"},
         modules=(
@@ -400,7 +501,7 @@ def _contract_json(name: str, module_name: str) -> str:
                 module_name,
                 Criticality.USER,
                 MemoryBudget(8192, 2048, 1),
-                requires=(Capability.TIMEBASE,),
+                requires=requires,
             ),
         ),
     )
@@ -432,6 +533,17 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "type": "shell",
                 "command": "python",
                 "args": ["tools/runtime_drill.py"],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
+    if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
+        tasks.append(
+            {
+                "label": "NobroRTOS: Bridge Smoke",
+                "type": "shell",
+                "command": "python",
+                "args": ["host/bridge_smoke.py"],
                 "group": "test",
                 "problemMatcher": [],
             }
@@ -471,4 +583,6 @@ def _detect_project_target(files: set[str]) -> ProjectTarget | None:
         return ProjectTarget.STANDALONE_SDK
     if "tools/runtime_drill.py" in files:
         return ProjectTarget.PYTHON_HOST
+    if "board/code.py" in files and "host/bridge_smoke.py" in files:
+        return ProjectTarget.PYTHON_BOARD_BRIDGE
     return None

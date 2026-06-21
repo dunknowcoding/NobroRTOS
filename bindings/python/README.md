@@ -80,14 +80,17 @@ without carrying dynamic strings in realtime paths.
 ## Project Templates
 
 `build_project_template` creates starter project manifests in memory for
-standalone SDK, Arduino, PlatformIO, and Python host workflows. The
+standalone SDK, Arduino, PlatformIO, Python host, and Python board bridge
+workflows. The
 `sample-project` CLI prints the file list and contents as JSON, so callers can
 inspect or filter the template first. The `write-project` CLI materializes the
 same template with path-escape checks and no overwrite unless `--overwrite` is
 set. The `check-project` CLI validates a generated project directory by
 detecting its target shape and loading `nobro-contract.json`.
 Generated templates include `.vscode/tasks.json` with a project check task; the
-Python host template also includes a runtime drill task.
+Python host template also includes a runtime drill task, and the Python board
+bridge template includes an offline bridge smoke task for MicroPython,
+CircuitPython, and mPython-style status-line workflows.
 
 ```python
 from nobro_rtos import ProjectTarget, build_project_template

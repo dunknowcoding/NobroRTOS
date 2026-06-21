@@ -199,20 +199,33 @@ class ContractBuilderTests(unittest.TestCase):
         ).file_map()
         python_tasks = json.loads(python_host[".vscode/tasks.json"])
         self.assertEqual(python_tasks["tasks"][1]["label"], "NobroRTOS: Runtime Drill")
+        python_bridge = build_project_template(
+            "edge_demo",
+            ProjectTarget.PYTHON_BOARD_BRIDGE,
+            "control",
+        ).file_map()
+        self.assertIn("board/code.py", python_bridge)
+        self.assertIn("host/bridge_smoke.py", python_bridge)
+        self.assertIn("BOARD_PYTHON", python_bridge["board/code.py"])
+        bridge_bundle = NobroContractBundle.from_json(python_bridge["nobro-contract.json"])
+        self.assertIn(Capability.STREAM, bridge_bundle.modules[0].requires)
+        bridge_tasks = json.loads(python_bridge[".vscode/tasks.json"])
+        self.assertEqual(bridge_tasks["tasks"][1]["label"], "NobroRTOS: Bridge Smoke")
 
     def test_project_template_cli_emits_file_manifest(self) -> None:
         report = _sample_project(
-            "python_host",
+            "python_board_bridge",
             "edge_demo",
             "control",
             "dunknowcoding",
         )
 
-        self.assertEqual(report["target"], "python_host")
+        self.assertEqual(report["target"], "python_board_bridge")
         self.assertEqual(report["name"], "edge_demo")
-        self.assertGreaterEqual(report["file_count"], 3)
+        self.assertGreaterEqual(report["file_count"], 5)
         paths = [file["path"] for file in report["files"]]
-        self.assertIn("tools/runtime_drill.py", paths)
+        self.assertIn("board/code.py", paths)
+        self.assertIn("host/bridge_smoke.py", paths)
         self.assertIn("nobro-contract.json", paths)
 
         with self.assertRaisesRegex(ValueError, "invalid project name"):
@@ -255,7 +268,7 @@ class ContractBuilderTests(unittest.TestCase):
     def test_write_project_cli_materializes_template_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             report = _write_project(
-                "python_host",
+                "python_board_bridge",
                 str(Path(tmp) / "edge_demo"),
                 "edge_demo",
                 "control",
@@ -263,11 +276,18 @@ class ContractBuilderTests(unittest.TestCase):
                 overwrite=False,
             )
 
-            self.assertEqual(report["target"], "python_host")
-            self.assertEqual(report["written_count"], 4)
+            self.assertEqual(report["target"], "python_board_bridge")
+            self.assertEqual(report["written_count"], 5)
             self.assertIn("nobro-contract.json", report["written"])
             self.assertIn(".vscode/tasks.json", report["written"])
-            self.assertTrue((Path(report["root"]) / "tools" / "runtime_drill.py").exists())
+            self.assertTrue((Path(report["root"]) / "board" / "code.py").exists())
+            self.assertTrue((Path(report["root"]) / "host" / "bridge_smoke.py").exists())
+            validation = validate_project_template(
+                Path(report["root"]),
+                expected_target="python_board_bridge",
+            )
+            self.assertTrue(validation.passing)
+            self.assertEqual(validation.target, ProjectTarget.PYTHON_BOARD_BRIDGE)
 
     def test_project_template_validation_reports_target_and_contract(self) -> None:
         template = build_project_template(
