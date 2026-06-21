@@ -105,9 +105,9 @@ temporary directory, validates it, and removes the generated files when the
 gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
-route gate tasks, and the Python board bridge template includes an offline
-bridge smoke task for MicroPython, CircuitPython, and mPython-style status-line
-workflows.
+route plus AI route matrix gate tasks, and the Python board bridge template
+includes an offline bridge smoke task for MicroPython, CircuitPython, and
+mPython-style status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -214,6 +214,7 @@ python -m nobro_rtos doctor
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
 python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
+python -m nobro_rtos check-ai-route-matrix
 python -m nobro_rtos sample-report runtime
 python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
@@ -243,7 +244,9 @@ policy, runtime state, and decision. The route checker turns that decision into
 a pass/fail gate for target selection, stale snapshots, degraded fallback,
 unavailable routes, and open endpoint circuits. It can simulate on-device,
 remote API, edge-sidecar, and hybrid contracts by changing backend, preference,
-budget, readiness, stale-age, and endpoint-failure arguments. The report samples
+budget, readiness, stale-age, and endpoint-failure arguments. The route matrix
+checker validates local, remote API, edge sidecar, stale snapshot, degraded
+fallback, and unavailable scenarios in one gate. The report samples
 print sealed fixed reports that can be fed directly into `decode-report`. The
 sensor sample emits deterministic fixture records and injected-fault summaries.
 The actuator sample emits deterministic servo command records with deadline and
@@ -275,7 +278,7 @@ actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
-headers, starter templates, AI route policy, and runtime drill gates into one
+headers, starter templates, AI route matrix, and runtime drill gates into one
 JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
@@ -297,6 +300,7 @@ python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
+python tools/nobro_contract_tool.py check-ai-route-matrix
 ```
 
 Decode a boot diagnostic code:

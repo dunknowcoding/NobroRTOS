@@ -27,6 +27,7 @@ python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
+python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
@@ -55,11 +56,13 @@ reboot, final-state, and self-healing flags for software-only review.
 target, stale snapshot, degraded fallback, unavailable, or endpoint-circuit
 limits. Use backend, preference, budget, readiness, stale-age, and
 endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
+`check-ai-route-matrix` validates a deterministic set of local, remote API,
+edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, starter
-templates, AI route, and runtime drill checks into one JSON report.
+templates, AI route matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter

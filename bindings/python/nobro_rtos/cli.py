@@ -136,6 +136,10 @@ def main() -> int:
         action="store_true",
         help="allow an open remote endpoint circuit breaker",
     )
+    subparsers.add_parser(
+        "check-ai-route-matrix",
+        help="run deterministic AI route checks across local, edge, remote, and fallback paths",
+    )
     sample_report = subparsers.add_parser(
         "sample-report",
         help="print a sealed sample fixed report as JSON",
@@ -434,6 +438,10 @@ def main() -> int:
             args.allow_unavailable,
             args.allow_endpoint_circuit_open,
         )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
+    if args.command == "check-ai-route-matrix":
+        report = _check_ai_route_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
     if args.command == "sample-report":
@@ -742,6 +750,7 @@ def _doctor() -> dict[str, object]:
             "runtime_drill",
             "runtime_drill_gate",
             "ai_route_gate",
+            "ai_route_matrix_gate",
             "project_templates",
             "starter_template_gate",
         ],
@@ -844,6 +853,7 @@ def _check_software_surface() -> dict[str, object]:
         add_check("public_headers", {"passing": False, "errors": [str(exc)]})
 
     add_check("starter_templates", _check_starter_templates())
+    add_check("ai_route_matrix", _check_ai_route_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -960,6 +970,131 @@ def _build_ai_route(
             "consecutive_endpoint_failures": state.consecutive_endpoint_failures,
         },
         "decision": decision.to_dict(),
+    }
+
+
+def _check_ai_route_matrix() -> dict[str, object]:
+    scenarios: tuple[dict[str, object], ...] = (
+        {
+            "name": "local_on_device",
+            "backend": "on_device",
+            "preference": "local_only",
+            "local_ready": True,
+            "endpoint_ready": False,
+            "last_success_age_us": 80_000,
+            "endpoint_failures": 0,
+            "require_target": "on_device",
+        },
+        {
+            "name": "remote_api_ready",
+            "backend": "remote_api",
+            "preference": "prefer_remote",
+            "local_ready": False,
+            "endpoint_ready": True,
+            "last_success_age_us": 80_000,
+            "endpoint_failures": 0,
+            "require_target": "remote_api",
+        },
+        {
+            "name": "edge_sidecar_ready",
+            "backend": "edge_sidecar",
+            "preference": "prefer_remote",
+            "local_ready": False,
+            "endpoint_ready": True,
+            "last_success_age_us": 80_000,
+            "endpoint_failures": 0,
+            "require_target": "edge_sidecar",
+        },
+        {
+            "name": "hybrid_prefers_local",
+            "backend": "hybrid",
+            "preference": "prefer_local",
+            "local_ready": True,
+            "endpoint_ready": True,
+            "last_success_age_us": 20_000,
+            "endpoint_failures": 0,
+            "require_target": "on_device",
+        },
+        {
+            "name": "remote_circuit_uses_stale_snapshot",
+            "backend": "remote_api",
+            "preference": "prefer_remote",
+            "local_ready": False,
+            "endpoint_ready": True,
+            "last_success_age_us": 10_000,
+            "endpoint_failures": 2,
+            "require_target": "stale_snapshot",
+            "allow_stale": True,
+            "allow_endpoint_circuit_open": True,
+        },
+        {
+            "name": "hybrid_budget_degrades",
+            "backend": "hybrid",
+            "preference": "hybrid_fallback",
+            "budget_us": 5_000,
+            "local_ready": False,
+            "endpoint_ready": False,
+            "last_success_age_us": 100_000,
+            "endpoint_failures": 0,
+            "stale_after_us": 10_000,
+            "require_target": "degraded_fallback",
+            "allow_degraded": True,
+        },
+        {
+            "name": "local_only_unavailable",
+            "backend": "remote_api",
+            "preference": "local_only",
+            "local_ready": False,
+            "endpoint_ready": False,
+            "last_success_age_us": 100_000,
+            "endpoint_failures": 0,
+            "stale_after_us": 10_000,
+            "require_target": "unavailable",
+            "allow_unavailable": True,
+        },
+    )
+    reports: list[dict[str, object]] = []
+    errors: list[str] = []
+
+    for scenario in scenarios:
+        name = str(scenario["name"])
+        report = _check_ai_route(
+            backend=str(scenario["backend"]),
+            preference=str(scenario["preference"]),
+            budget_us=int(scenario.get("budget_us", 25_000)),
+            timeout_us=int(scenario.get("timeout_us", 20_000)),
+            stale_after_us=int(scenario.get("stale_after_us", 50_000)),
+            model_stale_after_us=int(scenario.get("model_stale_after_us", 100_000)),
+            endpoint_failure_limit=int(scenario.get("endpoint_failure_limit", 2)),
+            local_ready=bool(scenario["local_ready"]),
+            endpoint_ready=bool(scenario["endpoint_ready"]),
+            last_success_age_us=int(scenario["last_success_age_us"]),
+            endpoint_failures=int(scenario["endpoint_failures"]),
+            require_target=str(scenario["require_target"]),
+            allow_stale=bool(scenario.get("allow_stale", False)),
+            allow_degraded=bool(scenario.get("allow_degraded", False)),
+            allow_unavailable=bool(scenario.get("allow_unavailable", False)),
+            allow_endpoint_circuit_open=bool(
+                scenario.get("allow_endpoint_circuit_open", False)
+            ),
+        )
+        entry = {
+            "name": name,
+            "passing": report["passing"],
+            "expected_target": scenario["require_target"],
+            "summary": report["summary"],
+            "errors": report["errors"],
+            "route": report["route"],
+        }
+        reports.append(entry)
+        for error in report["errors"]:
+            errors.append(f"{name}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(reports),
+        "scenarios": reports,
     }
 
 

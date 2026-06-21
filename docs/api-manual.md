@@ -181,9 +181,10 @@ starter target in a temporary directory, then removes the generated files.
 Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
-check. Python host templates add runtime drill, runtime drill gate, and AI route
-gate tasks, and Python board bridge templates add an offline bridge smoke task
-for MicroPython, CircuitPython, and mPython-style development.
+check. Python host templates add runtime drill, runtime drill gate, and AI
+route plus AI route matrix gate tasks, and Python board bridge templates add an
+offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
+development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set.
 
@@ -452,9 +453,12 @@ and endpoint circuit-breaker state without contacting a network service.
 Use its backend, preference, budget, readiness, stale-age, and failure-count
 arguments to model on-device, edge-sidecar, remote API, and hybrid inference
 paths in CI.
-The `check-software-surface` CLI composes this AI route gate with host
-contract, SDK/package metadata, public header, starter template, and runtime
-drill validation for pre-package review.
+The `check-ai-route-matrix` CLI runs a deterministic compatibility matrix for
+local, remote API, edge sidecar, stale snapshot, degraded fallback, and
+unavailable route outcomes.
+The `check-software-surface` CLI composes host contract, SDK/package metadata,
+public header, starter template, AI route matrix, and runtime drill validation
+for pre-package review.
 
 ## Host API
 
