@@ -11,6 +11,7 @@ Initial priorities:
 - simulation harnesses for sensor and actuator fixtures
 - AI/control orchestration hooks outside firmware hot paths
 - VS Code task integration
+- project template generation
 - MicroPython, CircuitPython, and mPython-inspired bridge workflows
 
 ## Contract Builders
@@ -74,6 +75,24 @@ ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 32-bit hashes (`name_hash`, `message_type_hash`, `bridge_id_hash`, and
 `transport_hash`). Rust-side `RosBridgeContract` code can use those hash fields
 without carrying dynamic strings in realtime paths.
+
+## Project Templates
+
+`build_project_template` creates starter project manifests in memory for
+standalone SDK, Arduino, PlatformIO, and Python host workflows. The CLI prints
+the file list and contents as JSON, so callers can inspect, filter, or write the
+files from their own tooling without the generator touching the filesystem.
+
+```python
+from nobro_rtos import ProjectTarget, build_project_template
+
+template = build_project_template(
+    name="edge_demo",
+    target=ProjectTarget.PLATFORMIO,
+    module_name="control",
+)
+assert "nobro-contract.json" in template.file_map()
+```
 
 ## Simulation Helpers
 
@@ -176,6 +195,7 @@ python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
+python -m nobro_rtos sample-project platformio --name edge_demo --module control
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -194,7 +214,9 @@ usage. The degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
 kernel planner. The runtime drill sample combines degraded-mode planning, quota
 usage, fixed-ring event logging, and recovery escalation in a single host-side
-JSON scenario.
+JSON scenario. The project sample emits a deterministic contract-first starter
+template as JSON for standalone SDK, Arduino, PlatformIO, or Python host
+workflows.
 
 Validate the repository host contract against the Python enums:
 

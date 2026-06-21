@@ -21,6 +21,7 @@ from nobro_rtos import (
     ModuleSpec,
     NobroContractBundle,
     FixedReport,
+    ProjectTarget,
     QuotaLedgerSimulator,
     QuotaLedgerSimulatorError,
     ReportKind,
@@ -39,6 +40,7 @@ from nobro_rtos import (
     ServoSimulatorError,
     SystemProfile,
     WatchdogSimulator,
+    build_project_template,
     capabilities_from_mask,
     load_repo_host_contract,
     seal_report,
@@ -51,6 +53,7 @@ from nobro_rtos.cli import (
     _sample_event_log,
     _sample_degrade,
     _sample_quota,
+    _sample_project,
     _sample_recovery,
     _sample_report,
     _sample_runtime_drill,
@@ -127,6 +130,52 @@ class ContractBuilderTests(unittest.TestCase):
         )
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
+        self.assertIn("project_templates", report["host_simulators"])
+
+    def test_project_templates_are_contract_first_and_deterministic(self) -> None:
+        for target in ProjectTarget:
+            template = build_project_template(
+                name="edge_demo",
+                target=target,
+                module_name="control",
+                author="dunknowcoding",
+            )
+            files = template.file_map()
+
+            self.assertIn("README.md", files)
+            self.assertIn("nobro-contract.json", files)
+            self.assertEqual(template.target, target)
+
+            bundle = NobroContractBundle.from_json(files["nobro-contract.json"])
+            self.assertEqual(bundle.modules[0].module, "control")
+            self.assertEqual(bundle.modules[0].memory, MemoryBudget(8192, 2048, 1))
+
+        platformio = build_project_template(
+            "edge_demo",
+            ProjectTarget.PLATFORMIO,
+            "control",
+        ).file_map()
+        self.assertIn("platformio.ini", platformio)
+        self.assertIn("src/main.cpp", platformio)
+        self.assertNotIn("NobroRuntime", platformio["src/main.cpp"])
+
+    def test_project_template_cli_emits_file_manifest(self) -> None:
+        report = _sample_project(
+            "python_host",
+            "edge_demo",
+            "control",
+            "dunknowcoding",
+        )
+
+        self.assertEqual(report["target"], "python_host")
+        self.assertEqual(report["name"], "edge_demo")
+        self.assertGreaterEqual(report["file_count"], 3)
+        paths = [file["path"] for file in report["files"]]
+        self.assertIn("tools/runtime_drill.py", paths)
+        self.assertIn("nobro-contract.json", paths)
+
+        with self.assertRaisesRegex(ValueError, "invalid project name"):
+            build_project_template("bad name", "arduino")
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

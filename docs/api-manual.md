@@ -148,6 +148,11 @@ still uses the Rust control plane.
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
 
+`build_project_template` emits contract-first starter templates for standalone
+SDK, Arduino, PlatformIO, and Python host workflows. It returns an in-memory file
+manifest so editors, CI jobs, and package tools can decide where to write files
+without hiding the generated contract content.
+
 ### Scheduler
 
 `Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap

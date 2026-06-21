@@ -25,6 +25,7 @@ from .contracts import (
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
+from .templates import ProjectTarget, build_project_template
 from .sim import (
     DegradePlannerSimulator,
     EventLogSimulator,
@@ -192,6 +193,18 @@ def main() -> int:
         default=KernelErrorKind.SENSOR_READ_FAIL.value,
     )
     sample_runtime_drill.add_argument("--fault-count", type=int, default=3)
+    sample_project = subparsers.add_parser(
+        "sample-project",
+        help="print a starter project template as JSON without writing files",
+    )
+    sample_project.add_argument(
+        "target",
+        choices=tuple(item.value for item in ProjectTarget),
+        help="starter project target",
+    )
+    sample_project.add_argument("--name", default="nobro_edge_app")
+    sample_project.add_argument("--module", default="app")
+    sample_project.add_argument("--author", default="dunknowcoding")
     subparsers.add_parser(
         "check-host-contract",
         help="validate host/nobro-host-contract.json against Python enums",
@@ -364,6 +377,20 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "sample-project":
+        print(
+            json.dumps(
+                _sample_project(
+                    args.target,
+                    args.name,
+                    args.module,
+                    args.author,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "check-host-contract":
         contract = load_repo_host_contract()
         stages = ", ".join(contract.boot_stage_order())
@@ -467,6 +494,7 @@ def _doctor() -> dict[str, object]:
             "quota",
             "degrade",
             "runtime_drill",
+            "project_templates",
         ],
     }
 
@@ -943,6 +971,20 @@ def _sample_runtime_drill(
         fault_module=fault_module,
         fault_error=fault_error,
         fault_count=fault_count,
+    ).to_dict()
+
+
+def _sample_project(
+    target: str,
+    name: str,
+    module_name: str,
+    author: str,
+) -> dict[str, object]:
+    return build_project_template(
+        name=name,
+        target=target,
+        module_name=module_name,
+        author=author,
     ).to_dict()
 
 

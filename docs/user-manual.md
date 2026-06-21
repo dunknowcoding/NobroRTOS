@@ -211,6 +211,7 @@ python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --
 python tools/nobro_contract_tool.py sample-quota
 python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
 python tools/nobro_contract_tool.py sample-runtime-drill --fault-count 3
+python tools/nobro_contract_tool.py sample-project platformio --name edge_demo --module control
 ```
 
 ## Cleanup
