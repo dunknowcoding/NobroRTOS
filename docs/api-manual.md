@@ -178,9 +178,9 @@ contracts.
 Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
-check. Python host templates add a runtime drill task, and Python board bridge
-templates add an offline bridge smoke task for MicroPython, CircuitPython, and
-mPython-style development.
+check. Python host templates add runtime drill, runtime drill gate, and AI route
+gate tasks, and Python board bridge templates add an offline bridge smoke task
+for MicroPython, CircuitPython, and mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set.
 

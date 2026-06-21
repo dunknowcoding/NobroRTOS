@@ -614,6 +614,24 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "problemMatcher": [],
             }
         )
+        tasks.append(
+            {
+                "label": "NobroRTOS: AI Route Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-ai-route",
+                    "--backend",
+                    "hybrid",
+                    "--require-target",
+                    "on_device",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
         tasks.append(
             {
@@ -713,6 +731,18 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         ("-m", "nobro_rtos", "check-runtime-drill"),
     ):
         errors.append("runtime drill gate task command mismatch")
+
+    ai_route_gate_task = _task_by_label(
+        tasks,
+        "NobroRTOS: AI Route Gate",
+    )
+    if target == ProjectTarget.PYTHON_HOST and ai_route_gate_task is None:
+        errors.append("missing NobroRTOS: AI Route Gate task")
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        ai_route_gate_task,
+        ("-m", "nobro_rtos", "check-ai-route", "--backend", "hybrid"),
+    ):
+        errors.append("AI route gate task command mismatch")
 
     bridge_task = _task_by_label(
         tasks,

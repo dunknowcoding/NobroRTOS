@@ -216,6 +216,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Runtime Drill Gate",
         )
         self.assertIn("check-runtime-drill", python_tasks["tasks"][2]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][3]["label"],
+            "NobroRTOS: AI Route Gate",
+        )
+        self.assertIn("check-ai-route", python_tasks["tasks"][3]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -424,11 +429,14 @@ class ContractBuilderTests(unittest.TestCase):
             for task in tasks["tasks"]:
                 if task["label"] == "NobroRTOS: Runtime Drill Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-runtime-drill"]
+                if task["label"] == "NobroRTOS: AI Route Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-ai-route"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
             self.assertFalse(before.passing)
             self.assertIn("runtime drill gate task command mismatch", before.errors)
+            self.assertIn("AI route gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -438,6 +446,7 @@ class ContractBuilderTests(unittest.TestCase):
                 "runtime drill gate task command mismatch",
                 report.before_errors,
             )
+            self.assertIn("AI route gate task command mismatch", report.before_errors)
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
             gate = next(
                 task
@@ -445,6 +454,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Runtime Drill Gate"
             )
             self.assertIn("check-runtime-drill", gate["args"])
+            ai_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: AI Route Gate"
+            )
+            self.assertIn("check-ai-route", ai_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
