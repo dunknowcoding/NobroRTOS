@@ -604,6 +604,7 @@ class NobroContractBundle:
             model.validate()
         for bridge in self.ros_bridges:
             bridge.validate()
+        _validate_capability_ownership(self.modules)
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
@@ -663,3 +664,41 @@ def _validate_unique(kind: str, values: list[str]) -> None:
         if value in seen:
             raise ValueError(f"duplicate {kind}: {value}")
         seen.add(value)
+
+
+def _validate_capability_ownership(modules: tuple[ModuleSpec, ...]) -> None:
+    kernel_capabilities = _kernel_capabilities()
+    owned_by: dict[Capability, str] = {}
+    for module in modules:
+        for capability in module.owns:
+            if (
+                module.criticality <= Criticality.USER
+                and capability in kernel_capabilities
+            ):
+                raise ValueError(
+                    f"user module {module.module} cannot own kernel capability "
+                    f"{capability.name.lower()}"
+                )
+            owner = owned_by.get(capability)
+            if owner is not None:
+                raise ValueError(
+                    f"duplicate capability owner for {capability.name.lower()}: "
+                    f"{owner}, {module.module}"
+                )
+            owned_by[capability] = module.module
+
+    provided = set(owned_by) | kernel_capabilities
+    for module in modules:
+        missing = [capability for capability in module.requires if capability not in provided]
+        if missing:
+            labels = ", ".join(capability.name.lower() for capability in missing)
+            raise ValueError(f"module {module.module} requires unowned capability: {labels}")
+
+
+def _kernel_capabilities() -> set[Capability]:
+    return {
+        Capability.TIMEBASE,
+        Capability.DEADLINE_TIMER,
+        Capability.SAMPLE_POOL,
+        Capability.HOST_REPORT,
+    }

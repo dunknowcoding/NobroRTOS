@@ -532,7 +532,7 @@ class ContractBuilderTests(unittest.TestCase):
                     Criticality.USER,
                     MemoryBudget(16 * 1024, 6 * 1024, 1),
                     requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
-                    owns=(Capability.AI_ENDPOINT,),
+                    owns=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
                 ),
             ),
             ai_models=(
@@ -555,7 +555,10 @@ class ContractBuilderTests(unittest.TestCase):
             payload["modules"][0]["requires_bits"],
             Capability.AI_INFERENCE.bit | Capability.AI_ENDPOINT.bit,
         )
-        self.assertEqual(payload["modules"][0]["owns_bits"], Capability.AI_ENDPOINT.bit)
+        self.assertEqual(
+            payload["modules"][0]["owns_bits"],
+            Capability.AI_INFERENCE.bit | Capability.AI_ENDPOINT.bit,
+        )
         self.assertEqual(payload["ai_models"][0]["backend"], "on_device")
 
     def test_bundle_round_trips_from_json(self) -> None:
@@ -567,7 +570,7 @@ class ContractBuilderTests(unittest.TestCase):
                     Criticality.USER,
                     MemoryBudget(16 * 1024, 6 * 1024, 1),
                     requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
-                    owns=(Capability.AI_ENDPOINT,),
+                    owns=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
                 ),
             ),
             ai_models=(
@@ -740,6 +743,57 @@ class ContractBuilderTests(unittest.TestCase):
         bundle = NobroContractBundle(modules=(spec, spec))
 
         with self.assertRaisesRegex(ValueError, "duplicate module"):
+            bundle.to_json()
+
+    def test_bundle_rejects_unowned_runtime_capabilities(self) -> None:
+        bundle = NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "sensor",
+                    Criticality.DRIVER,
+                    MemoryBudget(8192, 1024),
+                    requires=(Capability.BUS0,),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "unowned capability: bus0"):
+            bundle.to_json()
+
+    def test_bundle_rejects_duplicate_capability_owners(self) -> None:
+        bundle = NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "bus",
+                    Criticality.DRIVER,
+                    MemoryBudget(4096, 512),
+                    owns=(Capability.BUS0,),
+                ),
+                ModuleSpec(
+                    "sensor",
+                    Criticality.DRIVER,
+                    MemoryBudget(8192, 1024),
+                    owns=(Capability.BUS0,),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "duplicate capability owner"):
+            bundle.to_json()
+
+    def test_bundle_rejects_user_owned_kernel_capabilities(self) -> None:
+        bundle = NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "app",
+                    Criticality.USER,
+                    MemoryBudget(4096, 512),
+                    owns=(Capability.TIMEBASE,),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot own kernel capability"):
             bundle.to_json()
 
     def test_repo_host_contract_matches_python_enums(self) -> None:

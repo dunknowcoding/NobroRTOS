@@ -38,6 +38,11 @@ assert!(report.verify_checksum());
 assert_eq!(report.valid, 1);
 ```
 
+Python contract bundles mirror the same ownership discipline for host tooling:
+non-kernel capabilities must have a single owning module, and user-level modules
+cannot claim kernel-owned capabilities such as the timebase or host-report
+surface.
+
 ### Boot Assembly
 
 `BootAssembly` is a no-heap helper for firmware that wants less startup

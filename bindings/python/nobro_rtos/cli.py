@@ -527,7 +527,11 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
                     Capability.AI_ENDPOINT,
                     Capability.STREAM,
                 ),
-                owns=(Capability.AI_ENDPOINT,),
+                owns=(
+                    Capability.AI_INFERENCE,
+                    Capability.AI_ENDPOINT,
+                    Capability.STREAM,
+                ),
             ),
         ),
         ai_models=(
@@ -1122,23 +1126,27 @@ def _sample_runtime_modules() -> tuple[ModuleSpec, ...]:
             Criticality.DRIVER,
             MemoryBudget(12 * 1024, 2 * 1024, 1),
             requires=(Capability.BUS0, Capability.SAMPLE_POOL),
+            owns=(Capability.BUS0,),
         ),
         ModuleSpec(
             "radio",
             Criticality.DRIVER,
             MemoryBudget(14 * 1024, 2 * 1024, 1),
             requires=(Capability.RADIO,),
+            owns=(Capability.RADIO,),
         ),
         ModuleSpec(
             "ai",
             Criticality.USER,
             MemoryBudget(28 * 1024, 8 * 1024, 2),
             requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+            owns=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
         ),
         ModuleSpec(
             "telemetry",
             Criticality.BEST_EFFORT,
             MemoryBudget(10 * 1024, 1024, 1),
             requires=(Capability.STREAM,),
+            owns=(Capability.STREAM,),
         ),
     )

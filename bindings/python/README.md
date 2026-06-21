@@ -43,7 +43,7 @@ bundle = NobroContractBundle(
             Criticality.USER,
             MemoryBudget(16 * 1024, 6 * 1024, 1),
             requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
-            owns=(Capability.AI_ENDPOINT,),
+            owns=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
         ),
     ),
     ai_models=(
@@ -64,7 +64,10 @@ print(bundle.to_json())
 
 These builders keep Python-first users on the same contracts as the Rust core:
 fixed budgets, explicit capabilities, bounded AI inference, and bounded
-robotics bridge metadata.
+robotics bridge metadata. Bundle validation also checks capability ownership:
+kernel-owned capabilities are treated as implicit providers, while non-kernel
+capabilities must have exactly one owning module before another module can
+require them.
 
 `AiRoutePolicy` mirrors the Rust/C route decision contract for host simulation
 and VS Code workflows. It can choose local inference, a remote endpoint, stale

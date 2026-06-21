@@ -442,7 +442,12 @@ def _python_board_bridge_files(
         TemplateFile("README.md", _readme(name, "Python board bridge", author)),
         TemplateFile(
             "nobro-contract.json",
-            _contract_json(name, module_name, requires=(Capability.TIMEBASE, Capability.STREAM)),
+            _contract_json(
+                name,
+                module_name,
+                requires=(Capability.TIMEBASE, Capability.STREAM),
+                owns=(Capability.STREAM,),
+            ),
         ),
         TemplateFile(
             ".vscode/tasks.json",
@@ -547,6 +552,7 @@ def _contract_json(
     name: str,
     module_name: str,
     requires: tuple[Capability, ...] = (Capability.TIMEBASE,),
+    owns: tuple[Capability, ...] = (),
 ) -> str:
     bundle = NobroContractBundle(
         metadata={"project": name, "template": "starter"},
@@ -556,6 +562,7 @@ def _contract_json(
                 Criticality.USER,
                 MemoryBudget(8192, 2048, 1),
                 requires=requires,
+                owns=owns,
             ),
         ),
     )
