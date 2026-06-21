@@ -24,6 +24,7 @@ from nobro_rtos import (
     FixedReport,
     ProjectTarget,
     ProjectTemplate,
+    ProjectValidationReport,
     QuotaLedgerSimulator,
     QuotaLedgerSimulatorError,
     ReportKind,
@@ -49,9 +50,11 @@ from nobro_rtos import (
     materialize_project_template,
     seal_report,
     stable_hash32,
+    validate_project_template,
     validate_distribution_metadata,
 )
 from nobro_rtos.cli import (
+    _check_project,
     _doctor,
     _sample_actuator,
     _sample_event_log,
@@ -231,6 +234,42 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertEqual(report["written_count"], 3)
             self.assertIn("nobro-contract.json", report["written"])
             self.assertTrue((Path(report["root"]) / "tools" / "runtime_drill.py").exists())
+
+    def test_project_template_validation_reports_target_and_contract(self) -> None:
+        template = build_project_template(
+            "edge_demo",
+            ProjectTarget.ARDUINO,
+            "control",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            materialize_project_template(template, output)
+            report = validate_project_template(output, expected_target="arduino")
+
+            self.assertIsInstance(report, ProjectValidationReport)
+            self.assertTrue(report.passing)
+            self.assertEqual(report.target, ProjectTarget.ARDUINO)
+            self.assertEqual(report.module_count, 1)
+            self.assertIn("nobro-contract.json", report.files)
+
+            mismatch = validate_project_template(output, expected_target="platformio")
+            self.assertFalse(mismatch.passing)
+            self.assertIn("target mismatch", mismatch.errors[0])
+
+    def test_check_project_cli_reports_missing_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "empty_project"
+            root.mkdir()
+            (root / "platformio.ini").write_text("[env:test]\n", encoding="utf-8")
+            (root / "src").mkdir()
+            (root / "src" / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
+
+            report = _check_project(str(root), "platformio")
+
+            self.assertFalse(report["passing"])
+            self.assertEqual(report["target"], "platformio")
+            self.assertIn("missing nobro-contract.json", report["errors"])
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

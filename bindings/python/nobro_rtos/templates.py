@@ -85,6 +85,32 @@ class ProjectMaterializationReport:
         }
 
 
+@dataclass(frozen=True)
+class ProjectValidationReport:
+    """Structured validation result for a generated starter project."""
+
+    root: str
+    target: ProjectTarget | None
+    files: tuple[str, ...]
+    module_count: int
+    errors: tuple[str, ...] = ()
+
+    @property
+    def passing(self) -> bool:
+        return len(self.errors) == 0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root": self.root,
+            "target": None if self.target is None else self.target.value,
+            "passing": self.passing,
+            "file_count": len(self.files),
+            "module_count": self.module_count,
+            "files": list(self.files),
+            "errors": list(self.errors),
+        }
+
+
 def build_project_template(
     name: str = "nobro_edge_app",
     target: str | ProjectTarget = ProjectTarget.PLATFORMIO,
@@ -142,6 +168,62 @@ def materialize_project_template(
         target=template.target,
         written=tuple(written),
         overwritten=tuple(overwritten),
+    )
+
+
+def validate_project_template(
+    project_dir: str | Path,
+    expected_target: str | ProjectTarget | None = None,
+) -> ProjectValidationReport:
+    """Validate a starter project directory without building or flashing it."""
+
+    root = Path(project_dir).resolve()
+    errors: list[str] = []
+    files: list[str] = []
+    module_count = 0
+    target: ProjectTarget | None = None
+
+    if not root.exists() or not root.is_dir():
+        return ProjectValidationReport(
+            root=str(root),
+            target=None,
+            files=(),
+            module_count=0,
+            errors=(f"project directory missing: {root}",),
+        )
+
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        files.append(path.relative_to(root).as_posix())
+
+    contract_path = root / "nobro-contract.json"
+    if not contract_path.exists():
+        errors.append("missing nobro-contract.json")
+    else:
+        try:
+            bundle = NobroContractBundle.from_file(contract_path)
+            bundle.validate()
+            module_count = len(bundle.modules)
+            if module_count == 0:
+                errors.append("contract has no modules")
+        except Exception as error:  # noqa: BLE001 - report validation context.
+            errors.append(f"invalid nobro-contract.json: {error}")
+
+    target = _detect_project_target(set(files))
+    if target is None:
+        errors.append("unable to detect project target")
+
+    if expected_target is not None:
+        expected = ProjectTarget(expected_target)
+        if target != expected:
+            label = None if target is None else target.value
+            errors.append(f"target mismatch: expected {expected.value}, found {label}")
+
+    return ProjectValidationReport(
+        root=str(root),
+        target=target,
+        files=tuple(files),
+        module_count=module_count,
+        errors=tuple(errors),
     )
 
 
@@ -341,3 +423,15 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _detect_project_target(files: set[str]) -> ProjectTarget | None:
+    if "platformio.ini" in files and "src/main.cpp" in files:
+        return ProjectTarget.PLATFORMIO
+    if any(path.endswith(".ino") for path in files):
+        return ProjectTarget.ARDUINO
+    if "src/main.rs" in files:
+        return ProjectTarget.STANDALONE_SDK
+    if "tools/runtime_drill.py" in files:
+        return ProjectTarget.PYTHON_HOST
+    return None

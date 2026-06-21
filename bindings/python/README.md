@@ -83,7 +83,8 @@ standalone SDK, Arduino, PlatformIO, and Python host workflows. The
 `sample-project` CLI prints the file list and contents as JSON, so callers can
 inspect or filter the template first. The `write-project` CLI materializes the
 same template with path-escape checks and no overwrite unless `--overwrite` is
-set.
+set. The `check-project` CLI validates a generated project directory by
+detecting its target shape and loading `nobro-contract.json`.
 
 ```python
 from nobro_rtos import ProjectTarget, build_project_template
@@ -199,6 +200,7 @@ python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
+python -m nobro_rtos check-project _work\edge_demo --target platformio
 ```
 
 The command prints a sample JSON bundle with one AI module, one model contract,
@@ -221,7 +223,8 @@ JSON scenario. The project sample emits a deterministic contract-first starter
 template as JSON for standalone SDK, Arduino, PlatformIO, or Python host
 workflows. The project writer creates the same starter files under the selected
 output directory and refuses to replace existing files unless `--overwrite` is
-passed.
+passed. The project checker reports target detection, module count, discovered
+files, and validation errors as JSON.
 
 Validate the repository host contract against the Python enums:
 

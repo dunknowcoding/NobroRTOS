@@ -25,7 +25,12 @@ from .contracts import (
 from .distribution import validate_distribution_metadata
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
-from .templates import ProjectTarget, build_project_template, materialize_project_template
+from .templates import (
+    ProjectTarget,
+    build_project_template,
+    materialize_project_template,
+    validate_project_template,
+)
 from .sim import (
     DegradePlannerSimulator,
     EventLogSimulator,
@@ -222,6 +227,17 @@ def main() -> int:
         "--overwrite",
         action="store_true",
         help="allow generated files to overwrite existing files",
+    )
+    check_project = subparsers.add_parser(
+        "check-project",
+        help="validate a generated starter project directory",
+    )
+    check_project.add_argument("path", help="starter project directory")
+    check_project.add_argument(
+        "--target",
+        choices=tuple(item.value for item in ProjectTarget),
+        default=None,
+        help="expected starter project target",
     )
     subparsers.add_parser(
         "check-host-contract",
@@ -420,6 +436,15 @@ def main() -> int:
                     args.author,
                     args.overwrite,
                 ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.command == "check-project":
+        print(
+            json.dumps(
+                _check_project(args.path, args.target),
                 indent=2,
                 sort_keys=True,
             )
@@ -1041,6 +1066,10 @@ def _write_project(
         output_dir=output,
         overwrite=overwrite,
     ).to_dict()
+
+
+def _check_project(path: str, target: str | None) -> dict[str, object]:
+    return validate_project_template(path, expected_target=target).to_dict()
 
 
 def _sample_runtime_modules() -> tuple[ModuleSpec, ...]:

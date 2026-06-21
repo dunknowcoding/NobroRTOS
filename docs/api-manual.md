@@ -155,6 +155,9 @@ without hiding the generated contract content.
 `materialize_project_template` writes that manifest only after validating each
 relative path, and it refuses to overwrite existing files unless the caller asks
 for overwrite behavior.
+`validate_project_template` checks the generated directory shape and validates
+`nobro-contract.json`, giving host tools a quick onboarding gate without
+building firmware or contacting a board.
 
 ### Scheduler
 

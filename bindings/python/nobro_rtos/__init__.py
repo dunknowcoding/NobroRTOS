@@ -46,9 +46,11 @@ from .templates import (
     ProjectMaterializationReport,
     ProjectTarget,
     ProjectTemplate,
+    ProjectValidationReport,
     TemplateFile,
     build_project_template,
     materialize_project_template,
+    validate_project_template,
 )
 from .sim import (
     DegradeDecision,
@@ -122,9 +124,11 @@ __all__ = [
     "ProjectTarget",
     "ProjectTemplate",
     "ProjectMaterializationReport",
+    "ProjectValidationReport",
     "TemplateFile",
     "build_project_template",
     "materialize_project_template",
+    "validate_project_template",
     "DegradeDecision",
     "DegradePlannerSimulator",
     "DegradePlannerSimulatorError",
