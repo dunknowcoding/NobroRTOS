@@ -71,10 +71,48 @@ def main() -> int:
         help="run an AI route decision gate and print pass/fail JSON",
     )
     check_ai_route.add_argument(
+        "--backend",
+        choices=("on_device", "remote_api", "edge_sidecar", "hybrid"),
+        default="hybrid",
+        help="AI backend contract to simulate",
+    )
+    check_ai_route.add_argument(
+        "--preference",
+        choices=("local_only", "prefer_local", "prefer_remote", "hybrid_fallback"),
+        default="hybrid_fallback",
+        help="AI route preference to simulate",
+    )
+    check_ai_route.add_argument("--budget-us", type=int, default=25_000)
+    check_ai_route.add_argument("--timeout-us", type=int, default=20_000)
+    check_ai_route.add_argument("--stale-after-us", type=int, default=50_000)
+    check_ai_route.add_argument("--model-stale-after-us", type=int, default=100_000)
+    check_ai_route.add_argument("--endpoint-failure-limit", type=int, default=2)
+    check_ai_route.add_argument("--last-success-age-us", type=int, default=12_000)
+    check_ai_route.add_argument("--endpoint-failures", type=int, default=1)
+    check_ai_route.add_argument(
+        "--local-ready",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="whether local inference is ready",
+    )
+    check_ai_route.add_argument(
+        "--endpoint-ready",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="whether a remote or sidecar endpoint is ready",
+    )
+    check_ai_route.add_argument(
         "--require-target",
-        choices=("on_device", "remote_api", "edge_sidecar", "stale_snapshot"),
+        choices=(
+            "on_device",
+            "remote_api",
+            "edge_sidecar",
+            "stale_snapshot",
+            "degraded_fallback",
+            "unavailable",
+        ),
         default=None,
-        help="require a specific non-degraded route target",
+        help="require a specific route target",
     )
     check_ai_route.add_argument(
         "--allow-stale",
@@ -369,6 +407,17 @@ def main() -> int:
         return 0
     if args.command == "check-ai-route":
         report = _check_ai_route(
+            args.backend,
+            args.preference,
+            args.budget_us,
+            args.timeout_us,
+            args.stale_after_us,
+            args.model_stale_after_us,
+            args.endpoint_failure_limit,
+            args.local_ready,
+            args.endpoint_ready,
+            args.last_success_age_us,
+            args.endpoint_failures,
             args.require_target,
             args.allow_stale,
             args.allow_degraded,
@@ -679,27 +728,61 @@ def _doctor() -> dict[str, object]:
 
 
 def _sample_ai_route() -> dict[str, object]:
-    contract = AiModelContract(
-        model_id=42,
-        backend=AiBackendKind.HYBRID,
-        input_bytes_max=128,
-        output_bytes_max=32,
-        arena_bytes=4096,
+    return _build_ai_route(
+        backend="hybrid",
+        preference="hybrid_fallback",
+        budget_us=25_000,
         timeout_us=20_000,
-        stale_after_us=100_000,
-    )
-    policy = AiRoutePolicy(
-        preference=AiRoutePreference.HYBRID_FALLBACK,
         stale_after_us=50_000,
+        model_stale_after_us=100_000,
         endpoint_failure_limit=2,
-    )
-    state = AiRuntimeState(
         local_ready=True,
         endpoint_ready=False,
         last_success_age_us=12_000,
-        consecutive_endpoint_failures=1,
+        endpoint_failures=1,
     )
-    decision = policy.decide(contract, state, budget_us=25_000)
+
+
+def _build_ai_route(
+    backend: str,
+    preference: str,
+    budget_us: int,
+    timeout_us: int,
+    stale_after_us: int,
+    model_stale_after_us: int,
+    endpoint_failure_limit: int,
+    local_ready: bool,
+    endpoint_ready: bool,
+    last_success_age_us: int,
+    endpoint_failures: int,
+) -> dict[str, object]:
+    backend_kind = _ai_backend_from_label(backend)
+    route_preference = _ai_preference_from_label(preference)
+    contract = AiModelContract(
+        model_id=42,
+        backend=backend_kind,
+        input_bytes_max=128,
+        output_bytes_max=32,
+        arena_bytes=(
+            4096
+            if backend_kind in (AiBackendKind.ON_DEVICE, AiBackendKind.HYBRID)
+            else 0
+        ),
+        timeout_us=timeout_us,
+        stale_after_us=model_stale_after_us,
+    )
+    policy = AiRoutePolicy(
+        preference=route_preference,
+        stale_after_us=stale_after_us,
+        endpoint_failure_limit=endpoint_failure_limit,
+    )
+    state = AiRuntimeState(
+        local_ready=local_ready,
+        endpoint_ready=endpoint_ready,
+        last_success_age_us=last_success_age_us,
+        consecutive_endpoint_failures=endpoint_failures,
+    )
+    decision = policy.decide(contract, state, budget_us=budget_us)
     return {
         "contract": contract.to_dict(),
         "policy": {
@@ -707,6 +790,7 @@ def _sample_ai_route() -> dict[str, object]:
             "stale_after_us": policy.stale_after_us,
             "endpoint_failure_limit": policy.endpoint_failure_limit,
         },
+        "budget_us": budget_us,
         "state": {
             "local_ready": state.local_ready,
             "endpoint_ready": state.endpoint_ready,
@@ -718,13 +802,36 @@ def _sample_ai_route() -> dict[str, object]:
 
 
 def _check_ai_route(
+    backend: str,
+    preference: str,
+    budget_us: int,
+    timeout_us: int,
+    stale_after_us: int,
+    model_stale_after_us: int,
+    endpoint_failure_limit: int,
+    local_ready: bool,
+    endpoint_ready: bool,
+    last_success_age_us: int,
+    endpoint_failures: int,
     require_target: str | None,
     allow_stale: bool,
     allow_degraded: bool,
     allow_unavailable: bool,
     allow_endpoint_circuit_open: bool,
 ) -> dict[str, object]:
-    route = _sample_ai_route()
+    route = _build_ai_route(
+        backend,
+        preference,
+        budget_us,
+        timeout_us,
+        stale_after_us,
+        model_stale_after_us,
+        endpoint_failure_limit,
+        local_ready,
+        endpoint_ready,
+        last_success_age_us,
+        endpoint_failures,
+    )
     decision = route["decision"]
     target = str(decision["target"])
     errors: list[str] = []
@@ -744,6 +851,10 @@ def _check_ai_route(
         "passing": len(errors) == 0,
         "errors": errors,
         "limits": {
+            "backend": backend,
+            "preference": preference,
+            "budget_us": budget_us,
+            "timeout_us": timeout_us,
             "require_target": require_target,
             "allow_stale": allow_stale,
             "allow_degraded": allow_degraded,
@@ -757,6 +868,24 @@ def _check_ai_route(
         },
         "route": route,
     }
+
+
+def _ai_backend_from_label(label: str) -> AiBackendKind:
+    return {
+        "on_device": AiBackendKind.ON_DEVICE,
+        "remote_api": AiBackendKind.REMOTE_API,
+        "edge_sidecar": AiBackendKind.EDGE_SIDECAR,
+        "hybrid": AiBackendKind.HYBRID,
+    }[label]
+
+
+def _ai_preference_from_label(label: str) -> AiRoutePreference:
+    return {
+        "local_only": AiRoutePreference.LOCAL_ONLY,
+        "prefer_local": AiRoutePreference.PREFER_LOCAL,
+        "prefer_remote": AiRoutePreference.PREFER_REMOTE,
+        "hybrid_fallback": AiRoutePreference.HYBRID_FALLBACK,
+    }[label]
 
 
 def _sample_report(kind: str) -> dict[str, int]:

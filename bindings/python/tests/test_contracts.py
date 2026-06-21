@@ -833,7 +833,21 @@ class ContractBuilderTests(unittest.TestCase):
         )
 
     def test_ai_route_gate_reports_pass_and_target_mismatch(self) -> None:
+        base = {
+            "backend": "hybrid",
+            "preference": "hybrid_fallback",
+            "budget_us": 25_000,
+            "timeout_us": 20_000,
+            "stale_after_us": 50_000,
+            "model_stale_after_us": 100_000,
+            "endpoint_failure_limit": 2,
+            "local_ready": True,
+            "endpoint_ready": False,
+            "last_success_age_us": 12_000,
+            "endpoint_failures": 1,
+        }
         passing = _check_ai_route(
+            **base,
             require_target=None,
             allow_stale=False,
             allow_degraded=False,
@@ -846,6 +860,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(passing["summary"]["target"], "on_device")
 
         failing = _check_ai_route(
+            **base,
             require_target="remote_api",
             allow_stale=False,
             allow_degraded=False,
@@ -858,6 +873,54 @@ class ContractBuilderTests(unittest.TestCase):
             "AI route target mismatch: on_device != remote_api",
             failing["errors"],
         )
+
+    def test_ai_route_gate_can_model_remote_stale_snapshot_policy(self) -> None:
+        report = _check_ai_route(
+            backend="remote_api",
+            preference="prefer_remote",
+            budget_us=30_000,
+            timeout_us=20_000,
+            stale_after_us=50_000,
+            model_stale_after_us=100_000,
+            endpoint_failure_limit=2,
+            local_ready=False,
+            endpoint_ready=True,
+            last_success_age_us=10_000,
+            endpoint_failures=2,
+            require_target="stale_snapshot",
+            allow_stale=True,
+            allow_degraded=False,
+            allow_unavailable=False,
+            allow_endpoint_circuit_open=True,
+        )
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["summary"]["target"], "stale_snapshot")
+        self.assertTrue(report["summary"]["uses_stale_snapshot"])
+        self.assertTrue(report["summary"]["endpoint_circuit_open"])
+
+        strict = _check_ai_route(
+            backend="remote_api",
+            preference="prefer_remote",
+            budget_us=30_000,
+            timeout_us=20_000,
+            stale_after_us=50_000,
+            model_stale_after_us=100_000,
+            endpoint_failure_limit=2,
+            local_ready=False,
+            endpoint_ready=True,
+            last_success_age_us=10_000,
+            endpoint_failures=2,
+            require_target="stale_snapshot",
+            allow_stale=False,
+            allow_degraded=False,
+            allow_unavailable=False,
+            allow_endpoint_circuit_open=False,
+        )
+
+        self.assertFalse(strict["passing"])
+        self.assertIn("AI route used a stale snapshot", strict["errors"])
+        self.assertIn("AI endpoint circuit is open", strict["errors"])
 
     def test_capability_masks_reject_unknown_bits(self) -> None:
         self.assertEqual(

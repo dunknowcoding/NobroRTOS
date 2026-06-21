@@ -49,8 +49,9 @@ python tools/nobro_contract_tool.py sample-startup
 
 `sample-runtime-drill` includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
-`check-ai-route` returns non-zero when the sample AI route decision violates
+`check-ai-route` returns non-zero when a configured AI route decision violates
 target, stale snapshot, degraded fallback, unavailable, or endpoint-circuit
-limits.
+limits. Use backend, preference, budget, readiness, stale-age, and
+endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.

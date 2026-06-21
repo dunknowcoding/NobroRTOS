@@ -207,7 +207,7 @@ Run the module from this folder or after installing the package:
 python -m nobro_rtos doctor
 python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
-python -m nobro_rtos check-ai-route
+python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
 python -m nobro_rtos sample-report runtime
 python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
@@ -233,11 +233,13 @@ The command prints a sample JSON bundle with one AI module, one model contract,
 and one ROS-style serial bridge. The route sample prints a matching AI route
 policy, runtime state, and decision. The route checker turns that decision into
 a pass/fail gate for target selection, stale snapshots, degraded fallback,
-unavailable routes, and open endpoint circuits. The report samples print sealed
-fixed reports that can be fed directly into `decode-report`. The sensor sample
-emits deterministic fixture records and injected-fault summaries. The actuator
-sample emits deterministic servo command records with deadline and readback
-summaries.
+unavailable routes, and open endpoint circuits. It can simulate on-device,
+remote API, edge-sidecar, and hybrid contracts by changing backend, preference,
+budget, readiness, stale-age, and endpoint-failure arguments. The report samples
+print sealed fixed reports that can be fed directly into `decode-report`. The
+sensor sample emits deterministic fixture records and injected-fault summaries.
+The actuator sample emits deterministic servo command records with deadline and
+readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The watchdog sample emits heartbeat and expiry
 events for liveness planning. The scheduler sample emits deadline jitter

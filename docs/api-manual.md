@@ -446,6 +446,9 @@ into Rust or C/C++ firmware code.
 The `check-ai-route` CLI wraps a sample policy decision in a pass/fail gate for
 target selection, stale snapshot reuse, degraded fallback, unavailable routes,
 and endpoint circuit-breaker state without contacting a network service.
+Use its backend, preference, budget, readiness, stale-age, and failure-count
+arguments to model on-device, edge-sidecar, remote API, and hybrid inference
+paths in CI.
 
 ## Host API
 

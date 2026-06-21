@@ -234,7 +234,9 @@ reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks.
 The AI route checker validates route-policy behavior without contacting a
-remote inference endpoint.
+remote inference endpoint. It can model on-device, edge-sidecar, remote API,
+and hybrid route decisions by changing backend, readiness, budget, stale-age,
+and endpoint-failure arguments.
 The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code.
