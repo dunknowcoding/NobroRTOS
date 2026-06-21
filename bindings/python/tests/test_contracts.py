@@ -152,11 +152,16 @@ class ContractBuilderTests(unittest.TestCase):
 
             self.assertIn("README.md", files)
             self.assertIn("nobro-contract.json", files)
+            self.assertIn(".vscode/tasks.json", files)
             self.assertEqual(template.target, target)
 
             bundle = NobroContractBundle.from_json(files["nobro-contract.json"])
             self.assertEqual(bundle.modules[0].module, "control")
             self.assertEqual(bundle.modules[0].memory, MemoryBudget(8192, 2048, 1))
+            tasks = json.loads(files[".vscode/tasks.json"])
+            self.assertEqual(tasks["version"], "2.0.0")
+            self.assertEqual(tasks["tasks"][0]["label"], "NobroRTOS: Check Project")
+            self.assertIn(target.value, tasks["tasks"][0]["args"])
 
         platformio = build_project_template(
             "edge_demo",
@@ -166,6 +171,13 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("platformio.ini", platformio)
         self.assertIn("src/main.cpp", platformio)
         self.assertNotIn("NobroRuntime", platformio["src/main.cpp"])
+        python_host = build_project_template(
+            "edge_demo",
+            ProjectTarget.PYTHON_HOST,
+            "control",
+        ).file_map()
+        python_tasks = json.loads(python_host[".vscode/tasks.json"])
+        self.assertEqual(python_tasks["tasks"][1]["label"], "NobroRTOS: Runtime Drill")
 
     def test_project_template_cli_emits_file_manifest(self) -> None:
         report = _sample_project(
@@ -231,8 +243,9 @@ class ContractBuilderTests(unittest.TestCase):
             )
 
             self.assertEqual(report["target"], "python_host")
-            self.assertEqual(report["written_count"], 3)
+            self.assertEqual(report["written_count"], 4)
             self.assertIn("nobro-contract.json", report["written"])
+            self.assertIn(".vscode/tasks.json", report["written"])
             self.assertTrue((Path(report["root"]) / "tools" / "runtime_drill.py").exists())
 
     def test_project_template_validation_reports_target_and_contract(self) -> None:

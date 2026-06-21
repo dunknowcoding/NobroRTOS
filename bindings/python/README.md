@@ -85,6 +85,8 @@ inspect or filter the template first. The `write-project` CLI materializes the
 same template with path-escape checks and no overwrite unless `--overwrite` is
 set. The `check-project` CLI validates a generated project directory by
 detecting its target shape and loading `nobro-contract.json`.
+Generated templates include `.vscode/tasks.json` with a project check task; the
+Python host template also includes a runtime drill task.
 
 ```python
 from nobro_rtos import ProjectTarget, build_project_template
@@ -224,7 +226,8 @@ template as JSON for standalone SDK, Arduino, PlatformIO, or Python host
 workflows. The project writer creates the same starter files under the selected
 output directory and refuses to replace existing files unless `--overwrite` is
 passed. The project checker reports target detection, module count, discovered
-files, and validation errors as JSON.
+files, and validation errors as JSON. VS Code users can run the generated
+`NobroRTOS: Check Project` task from the starter project.
 
 Validate the repository host contract against the Python enums:
 

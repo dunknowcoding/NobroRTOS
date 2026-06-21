@@ -158,6 +158,8 @@ for overwrite behavior.
 `validate_project_template` checks the generated directory shape and validates
 `nobro-contract.json`, giving host tools a quick onboarding gate without
 building firmware or contacting a board.
+Starter templates also include VS Code task metadata for that same project
+check, and Python host templates add a runtime drill task.
 
 ### Scheduler
 

@@ -216,6 +216,9 @@ python tools/nobro_contract_tool.py write-project platformio --output _work\edge
 python tools/nobro_contract_tool.py check-project _work\edge_demo --target platformio
 ```
 
+Generated starter projects include VS Code task metadata for the same project
+check, so IDE users can run the validation gate from the command palette.
+
 ## Cleanup
 
 Keep generated data under `_work/`:

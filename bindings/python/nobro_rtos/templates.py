@@ -235,6 +235,7 @@ def _standalone_sdk_files(
     return (
         TemplateFile("README.md", _readme(name, "Standalone SDK", author)),
         TemplateFile("nobro-contract.json", _contract_json(name, module_name)),
+        TemplateFile(".vscode/tasks.json", _vscode_tasks_json(ProjectTarget.STANDALONE_SDK)),
         TemplateFile(
             "src/main.rs",
             "\n".join(
@@ -262,6 +263,7 @@ def _arduino_files(
     return (
         TemplateFile("README.md", _readme(name, "Arduino", author)),
         TemplateFile("nobro-contract.json", _contract_json(name, module_name)),
+        TemplateFile(".vscode/tasks.json", _vscode_tasks_json(ProjectTarget.ARDUINO)),
         TemplateFile(
             f"{name}.ino",
             "\n".join(
@@ -304,6 +306,7 @@ def _platformio_files(
             ),
         ),
         TemplateFile("nobro-contract.json", _contract_json(name, module_name)),
+        TemplateFile(".vscode/tasks.json", _vscode_tasks_json(ProjectTarget.PLATFORMIO)),
         TemplateFile(
             "src/main.cpp",
             "\n".join(
@@ -333,6 +336,7 @@ def _python_host_files(
     return (
         TemplateFile("README.md", _readme(name, "Python host", author)),
         TemplateFile("nobro-contract.json", _contract_json(name, module_name)),
+        TemplateFile(".vscode/tasks.json", _vscode_tasks_json(ProjectTarget.PYTHON_HOST)),
         TemplateFile(
             "tools/runtime_drill.py",
             "\n".join(
@@ -401,6 +405,39 @@ def _contract_json(name: str, module_name: str) -> str:
         ),
     )
     return json.dumps(bundle.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
+def _vscode_tasks_json(target: ProjectTarget) -> str:
+    tasks: list[dict[str, object]] = [
+        {
+            "label": "NobroRTOS: Check Project",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "nobro_rtos",
+                "check-project",
+                "${workspaceFolder}",
+                "--target",
+                target.value,
+            ],
+            "group": "test",
+            "problemMatcher": [],
+        }
+    ]
+    if target == ProjectTarget.PYTHON_HOST:
+        tasks.append(
+            {
+                "label": "NobroRTOS: Runtime Drill",
+                "type": "shell",
+                "command": "python",
+                "args": ["tools/runtime_drill.py"],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
+
+    return json.dumps({"version": "2.0.0", "tasks": tasks}, indent=2) + "\n"
 
 
 def _validate_identifier(value: str, label: str) -> None:
