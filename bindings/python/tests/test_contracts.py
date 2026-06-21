@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 from nobro_rtos import (
@@ -22,6 +23,7 @@ from nobro_rtos import (
     NobroContractBundle,
     FixedReport,
     ProjectTarget,
+    ProjectTemplate,
     QuotaLedgerSimulator,
     QuotaLedgerSimulatorError,
     ReportKind,
@@ -39,10 +41,12 @@ from nobro_rtos import (
     ServoSimulator,
     ServoSimulatorError,
     SystemProfile,
+    TemplateFile,
     WatchdogSimulator,
     build_project_template,
     capabilities_from_mask,
     load_repo_host_contract,
+    materialize_project_template,
     seal_report,
     stable_hash32,
     validate_distribution_metadata,
@@ -60,6 +64,7 @@ from nobro_rtos.cli import (
     _sample_scheduler,
     _sample_sensor,
     _sample_watchdog,
+    _write_project,
 )
 
 
@@ -176,6 +181,56 @@ class ContractBuilderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "invalid project name"):
             build_project_template("bad name", "arduino")
+
+    def test_project_template_materialization_is_safe_by_default(self) -> None:
+        template = build_project_template(
+            "edge_demo",
+            ProjectTarget.PLATFORMIO,
+            "control",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            report = materialize_project_template(template, output)
+
+            self.assertEqual(report.target, ProjectTarget.PLATFORMIO)
+            self.assertEqual(set(report.written), set(template.file_map()))
+            self.assertEqual(report.overwritten, ())
+            self.assertTrue((output / "nobro-contract.json").exists())
+            self.assertTrue((output / "src" / "main.cpp").exists())
+
+            with self.assertRaises(FileExistsError):
+                materialize_project_template(template, output)
+
+            overwrite = materialize_project_template(template, output, overwrite=True)
+            self.assertEqual(set(overwrite.overwritten), set(template.file_map()))
+
+    def test_project_template_materialization_rejects_path_escape(self) -> None:
+        template = ProjectTemplate(
+            name="bad",
+            target=ProjectTarget.PYTHON_HOST,
+            files=(TemplateFile("../escape.txt", "nope"),),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "invalid template path"):
+                materialize_project_template(template, tmp)
+
+    def test_write_project_cli_materializes_template_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report = _write_project(
+                "python_host",
+                str(Path(tmp) / "edge_demo"),
+                "edge_demo",
+                "control",
+                "dunknowcoding",
+                overwrite=False,
+            )
+
+            self.assertEqual(report["target"], "python_host")
+            self.assertEqual(report["written_count"], 3)
+            self.assertIn("nobro-contract.json", report["written"])
+            self.assertTrue((Path(report["root"]) / "tools" / "runtime_drill.py").exists())
 
     def test_c_header_report_constants_match_host_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

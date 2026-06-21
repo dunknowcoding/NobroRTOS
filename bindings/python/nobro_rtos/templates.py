@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import json
+from pathlib import Path, PurePosixPath
 import re
 
 from .contracts import (
@@ -64,6 +65,26 @@ class ProjectTemplate:
         return {file.path: file.content for file in self.files}
 
 
+@dataclass(frozen=True)
+class ProjectMaterializationReport:
+    """Result of safely writing a starter template to disk."""
+
+    root: str
+    target: ProjectTarget
+    written: tuple[str, ...]
+    overwritten: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root": self.root,
+            "target": self.target.value,
+            "written_count": len(self.written),
+            "overwritten_count": len(self.overwritten),
+            "written": list(self.written),
+            "overwritten": list(self.overwritten),
+        }
+
+
 def build_project_template(
     name: str = "nobro_edge_app",
     target: str | ProjectTarget = ProjectTarget.PLATFORMIO,
@@ -86,6 +107,42 @@ def build_project_template(
         files = _python_host_files(name, module_name, author)
 
     return ProjectTemplate(name=name, target=target, files=files)
+
+
+def materialize_project_template(
+    template: ProjectTemplate,
+    output_dir: str | Path,
+    overwrite: bool = False,
+) -> ProjectMaterializationReport:
+    """Safely write a generated template into an output directory."""
+
+    root = Path(output_dir).resolve()
+    if root.exists() and not root.is_dir():
+        raise ValueError(f"template output is not a directory: {root}")
+
+    written: list[str] = []
+    overwritten: list[str] = []
+    root.mkdir(parents=True, exist_ok=True)
+
+    for template_file in template.files:
+        relative = _safe_template_relative_path(template_file.path)
+        destination = (root / Path(*relative.parts)).resolve()
+        if not _is_relative_to(destination, root):
+            raise ValueError(f"template path escapes output directory: {template_file.path}")
+        if destination.exists() and not overwrite:
+            raise FileExistsError(f"template file already exists: {destination}")
+        if destination.exists():
+            overwritten.append(template_file.path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(template_file.content, encoding="utf-8")
+        written.append(template_file.path)
+
+    return ProjectMaterializationReport(
+        root=str(root),
+        target=template.target,
+        written=tuple(written),
+        overwritten=tuple(overwritten),
+    )
 
 
 def _standalone_sdk_files(
@@ -267,3 +324,20 @@ def _contract_json(name: str, module_name: str) -> str:
 def _validate_identifier(value: str, label: str) -> None:
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", value):
         raise ValueError(f"invalid {label}: {value}")
+
+
+def _safe_template_relative_path(path: str) -> PurePosixPath:
+    relative = PurePosixPath(path)
+    if relative.is_absolute() or not relative.parts:
+        raise ValueError(f"invalid template path: {path}")
+    if any(part in ("", ".", "..") for part in relative.parts):
+        raise ValueError(f"invalid template path: {path}")
+    return relative
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False

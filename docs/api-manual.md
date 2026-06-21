@@ -152,6 +152,9 @@ reviewing a complete control-plane pressure scenario before writing board code.
 SDK, Arduino, PlatformIO, and Python host workflows. It returns an in-memory file
 manifest so editors, CI jobs, and package tools can decide where to write files
 without hiding the generated contract content.
+`materialize_project_template` writes that manifest only after validating each
+relative path, and it refuses to overwrite existing files unless the caller asks
+for overwrite behavior.
 
 ### Scheduler
 

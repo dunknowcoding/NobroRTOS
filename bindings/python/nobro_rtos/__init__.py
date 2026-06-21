@@ -43,10 +43,12 @@ from .reports import (
     seal_report,
 )
 from .templates import (
+    ProjectMaterializationReport,
     ProjectTarget,
     ProjectTemplate,
     TemplateFile,
     build_project_template,
+    materialize_project_template,
 )
 from .sim import (
     DegradeDecision,
@@ -119,8 +121,10 @@ __all__ = [
     "seal_report",
     "ProjectTarget",
     "ProjectTemplate",
+    "ProjectMaterializationReport",
     "TemplateFile",
     "build_project_template",
+    "materialize_project_template",
     "DegradeDecision",
     "DegradePlannerSimulator",
     "DegradePlannerSimulatorError",
