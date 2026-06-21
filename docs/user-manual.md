@@ -224,6 +224,8 @@ Generated starter projects include VS Code task metadata for the same project
 check, so IDE users can run the validation gate from the command palette.
 `repair-project` can rebuild that IDE metadata without overwriting project code
 or `nobro-contract.json`.
+Project checks validate the expected task commands, not just task labels, so
+renamed or stale editor tasks are reported before they mislead a workflow.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,

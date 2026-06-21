@@ -354,6 +354,23 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertFalse(report.passing)
             self.assertIn("missing NobroRTOS: Bridge Smoke task", report.errors)
 
+            bridge_tasks = build_project_template(
+                "edge_demo",
+                ProjectTarget.PYTHON_BOARD_BRIDGE,
+                "control",
+            ).file_map()[".vscode/tasks.json"]
+            tasks = json.loads(bridge_tasks)
+            for task in tasks["tasks"]:
+                if task["label"] == "NobroRTOS: Bridge Smoke":
+                    task["args"] = ["host/wrong.py"]
+            tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+            stale = validate_project_template(
+                output,
+                expected_target="python_board_bridge",
+            )
+            self.assertFalse(stale.passing)
+            self.assertIn("bridge smoke task command mismatch", stale.errors)
+
             tasks_path.unlink()
             missing = validate_project_template(
                 output,
@@ -389,6 +406,43 @@ class ContractBuilderTests(unittest.TestCase):
             second = _repair_project(str(output), "python_board_bridge")
             self.assertTrue(second["passing"])
             self.assertEqual(second["repaired"], [])
+
+    def test_project_template_repair_restores_stale_python_host_gate_task(self) -> None:
+        template = build_project_template(
+            "edge_demo",
+            ProjectTarget.PYTHON_HOST,
+            "control",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            materialize_project_template(template, output)
+            tasks_path = output / ".vscode" / "tasks.json"
+            tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+            for task in tasks["tasks"]:
+                if task["label"] == "NobroRTOS: Runtime Drill Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-runtime-drill"]
+            tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+
+            before = validate_project_template(output, expected_target="python_host")
+            self.assertFalse(before.passing)
+            self.assertIn("runtime drill gate task command mismatch", before.errors)
+
+            report = repair_project_template(output, expected_target="python_host")
+
+            self.assertTrue(report.passing)
+            self.assertEqual(report.repaired, (".vscode/tasks.json",))
+            self.assertIn(
+                "runtime drill gate task command mismatch",
+                report.before_errors,
+            )
+            repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
+            gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Runtime Drill Gate"
+            )
+            self.assertIn("check-runtime-drill", gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

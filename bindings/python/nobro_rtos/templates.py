@@ -684,26 +684,47 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
     check_task = _task_by_label(tasks, "NobroRTOS: Check Project")
     if check_task is None:
         errors.append("missing NobroRTOS: Check Project task")
-    else:
-        args = check_task.get("args", ())
-        if not isinstance(args, list) or target.value not in args:
-            errors.append("check task target mismatch")
+    elif not _task_has_args(
+        check_task,
+        ("-m", "nobro_rtos", "check-project", "--target", target.value),
+    ):
+        errors.append("check task target mismatch")
 
-    if target == ProjectTarget.PYTHON_HOST and _task_by_label(
+    runtime_drill_task = _task_by_label(
         tasks,
         "NobroRTOS: Runtime Drill",
-    ) is None:
+    )
+    if target == ProjectTarget.PYTHON_HOST and runtime_drill_task is None:
         errors.append("missing NobroRTOS: Runtime Drill task")
-    if target == ProjectTarget.PYTHON_HOST and _task_by_label(
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        runtime_drill_task,
+        ("tools/runtime_drill.py",),
+    ):
+        errors.append("runtime drill task command mismatch")
+
+    runtime_gate_task = _task_by_label(
         tasks,
         "NobroRTOS: Runtime Drill Gate",
-    ) is None:
+    )
+    if target == ProjectTarget.PYTHON_HOST and runtime_gate_task is None:
         errors.append("missing NobroRTOS: Runtime Drill Gate task")
-    if target == ProjectTarget.PYTHON_BOARD_BRIDGE and _task_by_label(
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        runtime_gate_task,
+        ("-m", "nobro_rtos", "check-runtime-drill"),
+    ):
+        errors.append("runtime drill gate task command mismatch")
+
+    bridge_task = _task_by_label(
         tasks,
         "NobroRTOS: Bridge Smoke",
-    ) is None:
+    )
+    if target == ProjectTarget.PYTHON_BOARD_BRIDGE and bridge_task is None:
         errors.append("missing NobroRTOS: Bridge Smoke task")
+    elif target == ProjectTarget.PYTHON_BOARD_BRIDGE and not _task_has_args(
+        bridge_task,
+        ("host/bridge_smoke.py",),
+    ):
+        errors.append("bridge smoke task command mismatch")
     return errors
 
 
@@ -712,6 +733,15 @@ def _task_by_label(tasks: list[object], label: str) -> dict[str, object] | None:
         if isinstance(task, dict) and task.get("label") == label:
             return task
     return None
+
+
+def _task_has_args(task: dict[str, object] | None, expected: tuple[str, ...]) -> bool:
+    if task is None:
+        return False
+    args = task.get("args")
+    if not isinstance(args, list):
+        return False
+    return all(item in args for item in expected)
 
 
 def _has_vscode_task_error(errors: tuple[str, ...]) -> bool:

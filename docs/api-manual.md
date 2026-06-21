@@ -175,6 +175,8 @@ firmware or contacting a board.
 `repair_project_template` can rebuild stale or missing `.vscode/tasks.json`
 metadata for a detected starter target without rewriting application files or
 contracts.
+Task validation checks the expected command arguments as well as labels, so a
+stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add a runtime drill task, and Python board bridge
 templates add an offline bridge smoke task for MicroPython, CircuitPython, and

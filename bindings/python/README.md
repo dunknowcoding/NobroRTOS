@@ -102,6 +102,9 @@ Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes a runtime drill task, and the Python board
 bridge template includes an offline bridge smoke task for MicroPython,
 CircuitPython, and mPython-style status-line workflows.
+Project validation checks both task labels and the expected task command
+arguments, so stale editor metadata cannot silently point to the wrong host
+tool.
 
 ```python
 from nobro_rtos import ProjectTarget, build_project_template
