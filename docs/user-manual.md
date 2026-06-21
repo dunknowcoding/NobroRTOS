@@ -210,6 +210,7 @@ python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
+python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python tools/nobro_contract_tool.py sample-quota
 python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
@@ -237,7 +238,7 @@ renamed or stale editor tasks are reported before they mislead a workflow.
 directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
 Python host starter projects include runtime drill, AI route, AI route matrix,
-and recovery matrix gate tasks.
+recovery matrix, and watchdog matrix gate tasks.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,
@@ -245,7 +246,7 @@ reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
-recovery matrix, and runtime drill validation before packaging.
+recovery matrix, watchdog matrix, and runtime drill validation before packaging.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,
@@ -254,6 +255,8 @@ remote API, edge sidecar, stale snapshot, degraded fallback, and unavailable
 paths in one gate.
 The recovery matrix checker validates ignore, retry, notify, reboot, and
 OK-reset self-healing paths in one gate.
+The watchdog matrix checker validates non-mutating liveness prechecks, expiry
+mutation, heartbeat reset, multi-module expiry, and capacity errors.
 The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code.

@@ -233,6 +233,10 @@ def main() -> int:
         default=0,
         help="insert a heartbeat before this sweep; 0 disables it",
     )
+    subparsers.add_parser(
+        "check-watchdog-matrix",
+        help="run deterministic watchdog liveness checks",
+    )
     sample_scheduler = subparsers.add_parser(
         "sample-scheduler",
         help="run a deterministic deadline tick simulation and print JSON",
@@ -511,6 +515,10 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "check-watchdog-matrix":
+        report = _check_watchdog_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-scheduler":
         print(
             json.dumps(
@@ -753,6 +761,7 @@ def _doctor() -> dict[str, object]:
             "recovery",
             "recovery_matrix_gate",
             "watchdog",
+            "watchdog_matrix_gate",
             "scheduler",
             "event_log",
             "quota",
@@ -865,6 +874,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("starter_templates", _check_starter_templates())
     add_check("ai_route_matrix", _check_ai_route_matrix())
     add_check("recovery_matrix", _check_recovery_matrix())
+    add_check("watchdog_matrix", _check_watchdog_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -1653,6 +1663,122 @@ def _sample_watchdog(
         "missed": 0 if entry is None else entry.missed,
         "event_count": len(timeline),
         "timeline": timeline,
+    }
+
+
+def _check_watchdog_matrix() -> dict[str, object]:
+    scenarios = (
+        _watchdog_precheck_scenario(),
+        _watchdog_expiry_scenario(),
+        _watchdog_heartbeat_reset_scenario(),
+        _watchdog_multi_module_scenario(),
+        _watchdog_capacity_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _watchdog_precheck_scenario() -> dict[str, object]:
+    watchdog = WatchdogSimulator(capacity=1)
+    watchdog.register("sensor", timeout_us=100, now_us=0)
+    before = watchdog.expired_count(150)
+    missed_after_count = watchdog.get("sensor").missed
+    errors: list[str] = []
+    _expect_equal(before, 1, "expired_count", errors)
+    _expect_equal(missed_after_count, 0, "missed_after_count", errors)
+    return {
+        "name": "non_mutating_precheck",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "expired_count": before,
+        "entry": watchdog.get("sensor").to_dict(),
+    }
+
+
+def _watchdog_expiry_scenario() -> dict[str, object]:
+    watchdog = WatchdogSimulator(capacity=1)
+    watchdog.register("sensor", timeout_us=100, now_us=0)
+    expired = watchdog.expired(150)
+    entry = watchdog.get("sensor")
+    errors: list[str] = []
+    _expect_equal(len(expired), 1, "expired_len", errors)
+    _expect_equal(entry.missed, 1, "missed", errors)
+    _expect_equal(expired[0].overdue_us(150), 50, "overdue_us", errors)
+    return {
+        "name": "expiry_updates_missed",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "expired": [item.to_dict() for item in expired],
+        "entry": entry.to_dict(),
+    }
+
+
+def _watchdog_heartbeat_reset_scenario() -> dict[str, object]:
+    watchdog = WatchdogSimulator(capacity=1)
+    watchdog.register("bus", timeout_us=100, now_us=0)
+    watchdog.expired(150)
+    watchdog.beat("bus", 160)
+    expired_after_beat = watchdog.expired(200)
+    entry = watchdog.get("bus")
+    errors: list[str] = []
+    _expect_equal(entry.missed, 0, "missed_after_beat", errors)
+    _expect_equal(entry.last_beat_us, 160, "last_beat_us", errors)
+    _expect_equal(len(expired_after_beat), 0, "expired_after_beat", errors)
+    return {
+        "name": "heartbeat_resets_missed",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "expired_after_beat": [item.to_dict() for item in expired_after_beat],
+        "entry": entry.to_dict(),
+    }
+
+
+def _watchdog_multi_module_scenario() -> dict[str, object]:
+    watchdog = WatchdogSimulator(capacity=2)
+    watchdog.register("sensor", timeout_us=100, now_us=0)
+    watchdog.register("radio", timeout_us=500, now_us=0)
+    expired = watchdog.expired(150)
+    sensor = watchdog.get("sensor")
+    radio = watchdog.get("radio")
+    errors: list[str] = []
+    _expect_equal([entry.module for entry in expired], ["sensor"], "expired_modules", errors)
+    _expect_equal(sensor.missed, 1, "sensor_missed", errors)
+    _expect_equal(radio.missed, 0, "radio_missed", errors)
+    return {
+        "name": "multi_module_selective_expiry",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "expired": [item.to_dict() for item in expired],
+        "entries": [entry.to_dict() for entry in watchdog.entries()],
+    }
+
+
+def _watchdog_capacity_scenario() -> dict[str, object]:
+    watchdog = WatchdogSimulator(capacity=1)
+    watchdog.register("sensor", timeout_us=100, now_us=0)
+    error_label = None
+    try:
+        watchdog.register("radio", timeout_us=100, now_us=0)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        error_label = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(error_label, "watchdog capacity exhausted", "capacity_error", errors)
+    return {
+        "name": "capacity_exhaustion_is_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "error_label": error_label,
+        "entries": [entry.to_dict() for entry in watchdog.entries()],
     }
 
 

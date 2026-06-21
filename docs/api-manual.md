@@ -143,6 +143,8 @@ let report = runtime.runtime_report();
 Use `watchdog_expired_count(now_us)` for a non-mutating liveness precheck.
 Use `sweep_watchdogs(now_us)` when the runtime should route expired modules
 through recovery and update missed heartbeat counters.
+The `check-watchdog-matrix` CLI validates non-mutating liveness prechecks,
+expiry mutation, heartbeat reset, multi-module expiry, and capacity errors.
 
 `EventLog` exposes non-mutating capacity helpers such as `is_full()`,
 `remaining_capacity()`, `latest_sequence()`, and `has_dropped_events()`. Use
@@ -184,9 +186,9 @@ Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add runtime drill, runtime drill gate, and AI
-route, AI route matrix, and recovery matrix gate tasks, and Python board bridge
-templates add an offline bridge smoke task for MicroPython, CircuitPython, and
-mPython-style development.
+route, AI route matrix, recovery matrix, and watchdog matrix gate tasks, and
+Python board bridge templates add an offline bridge smoke task for MicroPython,
+CircuitPython, and mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set.
 
@@ -460,7 +462,7 @@ local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
 public header, starter template, AI route matrix, recovery matrix, and runtime
-drill validation for pre-package review.
+watchdog matrix, and runtime drill validation for pre-package review.
 
 ## Host API
 
