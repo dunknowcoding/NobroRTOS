@@ -86,7 +86,8 @@ workflows. The
 inspect or filter the template first. The `write-project` CLI materializes the
 same template with path-escape checks and no overwrite unless `--overwrite` is
 set. The `check-project` CLI validates a generated project directory by
-detecting its target shape and loading `nobro-contract.json`.
+detecting its target shape, loading `nobro-contract.json`, and checking the
+generated VS Code task metadata for the expected target.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes a runtime drill task, and the Python board
 bridge template includes an offline bridge smoke task for MicroPython,

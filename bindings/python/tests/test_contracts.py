@@ -311,6 +311,41 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertFalse(mismatch.passing)
             self.assertIn("target mismatch", mismatch.errors[0])
 
+    def test_project_template_validation_checks_vscode_tasks(self) -> None:
+        template = build_project_template(
+            "edge_demo",
+            ProjectTarget.PYTHON_BOARD_BRIDGE,
+            "control",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "edge_demo"
+            materialize_project_template(template, output)
+
+            tasks_path = output / ".vscode" / "tasks.json"
+            tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+            tasks["tasks"] = [
+                task
+                for task in tasks["tasks"]
+                if task["label"] != "NobroRTOS: Bridge Smoke"
+            ]
+            tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+
+            report = validate_project_template(
+                output,
+                expected_target="python_board_bridge",
+            )
+
+            self.assertFalse(report.passing)
+            self.assertIn("missing NobroRTOS: Bridge Smoke task", report.errors)
+
+            tasks_path.unlink()
+            missing = validate_project_template(
+                output,
+                expected_target="python_board_bridge",
+            )
+            self.assertIn("missing .vscode/tasks.json", missing.errors)
+
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "empty_project"

@@ -156,8 +156,9 @@ decide where to write files without hiding the generated contract content.
 relative path, and it refuses to overwrite existing files unless the caller asks
 for overwrite behavior.
 `validate_project_template` checks the generated directory shape and validates
-`nobro-contract.json`, giving host tools a quick onboarding gate without
-building firmware or contacting a board.
+`nobro-contract.json`, then verifies generated VS Code task metadata for the
+detected target. This gives host tools a quick onboarding gate without building
+firmware or contacting a board.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add a runtime drill task, and Python board bridge
 templates add an offline bridge smoke task for MicroPython, CircuitPython, and

@@ -221,6 +221,9 @@ def validate_project_template(
             label = None if target is None else target.value
             errors.append(f"target mismatch: expected {expected.value}, found {label}")
 
+    if target is not None:
+        errors.extend(_validate_vscode_tasks(root, target))
+
     return ProjectValidationReport(
         root=str(root),
         target=target,
@@ -585,4 +588,48 @@ def _detect_project_target(files: set[str]) -> ProjectTarget | None:
         return ProjectTarget.PYTHON_HOST
     if "board/code.py" in files and "host/bridge_smoke.py" in files:
         return ProjectTarget.PYTHON_BOARD_BRIDGE
+    return None
+
+
+def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
+    tasks_path = root / ".vscode" / "tasks.json"
+    if not tasks_path.exists():
+        return ["missing .vscode/tasks.json"]
+    try:
+        payload = json.loads(tasks_path.read_text(encoding="utf-8"))
+    except Exception as error:  # noqa: BLE001 - report validation context.
+        return [f"invalid .vscode/tasks.json: {error}"]
+
+    errors: list[str] = []
+    tasks = payload.get("tasks")
+    if payload.get("version") != "2.0.0":
+        errors.append("invalid .vscode/tasks.json version")
+    if not isinstance(tasks, list):
+        return errors + ["invalid .vscode/tasks.json tasks"]
+
+    check_task = _task_by_label(tasks, "NobroRTOS: Check Project")
+    if check_task is None:
+        errors.append("missing NobroRTOS: Check Project task")
+    else:
+        args = check_task.get("args", ())
+        if not isinstance(args, list) or target.value not in args:
+            errors.append("check task target mismatch")
+
+    if target == ProjectTarget.PYTHON_HOST and _task_by_label(
+        tasks,
+        "NobroRTOS: Runtime Drill",
+    ) is None:
+        errors.append("missing NobroRTOS: Runtime Drill task")
+    if target == ProjectTarget.PYTHON_BOARD_BRIDGE and _task_by_label(
+        tasks,
+        "NobroRTOS: Bridge Smoke",
+    ) is None:
+        errors.append("missing NobroRTOS: Bridge Smoke task")
+    return errors
+
+
+def _task_by_label(tasks: list[object], label: str) -> dict[str, object] | None:
+    for task in tasks:
+        if isinstance(task, dict) and task.get("label") == label:
+            return task
     return None
