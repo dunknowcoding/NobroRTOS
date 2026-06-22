@@ -23,6 +23,7 @@ python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 python tools/nobro_contract_tool.py check-python-surface
+python tools/nobro_contract_tool.py check-cli-command-surface
 python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py sample-ai-ros
@@ -92,6 +93,8 @@ queue depth, parameter value size, and timeout budget.
 helpers, forwarding headers, and AI/ROS preflight error bits.
 `check-python-surface` keeps the top-level Python package API aligned with its
 explicit re-export list, catching missing `__all__` entries and stale imports.
+`check-cli-command-surface` keeps command registration aligned with the README
+command lists, catching stale onboarding and release-check instructions.
 `check-bundle-matrix` validates deterministic contract bundle roundtrip,
 capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
 and startup dependency error paths.
@@ -120,7 +123,7 @@ and corrupt states, checksum handling, error labels, and AI/ROS domain fields.
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, Python
-public surface, starter templates, AI route matrix, AI preflight matrix, ROS preflight matrix,
+public surface, CLI command surface, starter templates, AI route matrix, AI preflight matrix, ROS preflight matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
 matrix, bundle matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary

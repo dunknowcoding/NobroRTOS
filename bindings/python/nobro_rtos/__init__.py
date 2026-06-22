@@ -44,9 +44,11 @@ from .host_contract import (
     load_repo_host_contract,
 )
 from .distribution import (
+    CliCommandSurfaceReport,
     DistributionMetadataReport,
     PublicHeaderSurfaceReport,
     PythonPublicSurfaceReport,
+    validate_cli_command_surface,
     validate_distribution_metadata,
     validate_public_header_surface,
     validate_python_public_surface,
@@ -156,9 +158,11 @@ __all__ = [
     "HostContract",
     "load_repo_host_contract",
     "ReportStatusClass",
+    "CliCommandSurfaceReport",
     "DistributionMetadataReport",
     "PublicHeaderSurfaceReport",
     "PythonPublicSurfaceReport",
+    "validate_cli_command_surface",
     "validate_distribution_metadata",
     "validate_public_header_surface",
     "validate_python_public_surface",

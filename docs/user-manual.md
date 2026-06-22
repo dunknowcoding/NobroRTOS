@@ -226,6 +226,7 @@ python tools/nobro_contract_tool.py sample-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-python-surface
+python tools/nobro_contract_tool.py check-cli-command-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py check-startup-matrix
@@ -258,14 +259,17 @@ The runtime drill output includes a recovery summary with retry, notification,
 reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
-contract, package metadata, public headers, Python public surface, starter
-templates, AI route matrix, AI preflight matrix, ROS preflight matrix, recovery
+contract, package metadata, public headers, Python public surface, CLI command
+surface, starter templates, AI route matrix, AI preflight matrix, ROS preflight matrix, recovery
 matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, report matrix, and runtime drill validation before packaging.
 The Python public surface checker validates the top-level package exports with
 AST parsing, so host tools can catch stale imports without executing package
 initialization.
+The CLI command surface checker validates command registration and README
+coverage together, so onboarding instructions fail early when a command name
+drifts.
 The report matrix checker verifies fixed-report status classes, checksum
 handling, error labels, and decoded runtime, AI model, and ROS bridge fields.
 The AI route checker validates route-policy behavior without contacting a

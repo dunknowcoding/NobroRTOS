@@ -112,7 +112,56 @@ REQUIRED_PYTHON_EXPORTS = (
     "startup_dependency_impact",
     "validate_distribution_metadata",
     "validate_public_header_surface",
+    "validate_cli_command_surface",
     "validate_python_public_surface",
+)
+REQUIRED_CLI_COMMANDS = (
+    "sample-ai-ros",
+    "sample-ai-route",
+    "check-ai-route",
+    "check-ai-route-matrix",
+    "sample-ai-preflight",
+    "check-ai-preflight-matrix",
+    "sample-ros-preflight",
+    "check-ros-preflight-matrix",
+    "check-bundle-matrix",
+    "check-report-matrix",
+    "sample-report",
+    "sample-sensor",
+    "sample-actuator",
+    "sample-recovery",
+    "check-recovery-matrix",
+    "sample-watchdog",
+    "check-watchdog-matrix",
+    "check-scheduler-matrix",
+    "sample-scheduler",
+    "sample-event-log",
+    "check-event-log-matrix",
+    "sample-quota",
+    "check-quota-matrix",
+    "sample-degrade",
+    "check-degrade-matrix",
+    "sample-runtime-drill",
+    "check-runtime-drill",
+    "sample-startup",
+    "check-startup-matrix",
+    "check-boot-summary-matrix",
+    "sample-project",
+    "write-project",
+    "check-project",
+    "repair-project",
+    "check-starter-templates",
+    "check-host-contract",
+    "check-distribution-metadata",
+    "check-public-headers",
+    "check-python-surface",
+    "check-cli-command-surface",
+    "check-software-surface",
+    "doctor",
+    "decode-boot",
+    "validate-bundle",
+    "decode-report",
+    "summarize-boot",
 )
 
 
@@ -177,6 +226,24 @@ class PythonPublicSurfaceReport:
             "imported_count": self.imported_count,
             "required_exports": list(self.required_exports),
             "exported_names": list(self.exported_names),
+        }
+
+
+@dataclass(frozen=True)
+class CliCommandSurfaceReport:
+    """Summary of CLI command registration and documentation coverage."""
+
+    command_count: int
+    required_commands: tuple[str, ...]
+    commands: tuple[str, ...]
+    documented_commands: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "command_count": self.command_count,
+            "required_commands": list(self.required_commands),
+            "commands": list(self.commands),
+            "documented_commands": list(self.documented_commands),
         }
 
 
@@ -268,6 +335,43 @@ def validate_distribution_metadata(
         python_requires=str(project.get("requires-python")),
         include_roots=include_roots,
         host_tools=host_tools,
+    )
+
+
+def validate_cli_command_surface(
+    start: str | Path | None = None,
+) -> CliCommandSurfaceReport:
+    """Validate CLI command registration and command documentation coverage."""
+
+    root = find_repo_root(start)
+    cli_path = root / "bindings" / "python" / "nobro_rtos" / "cli.py"
+    tree = ast.parse(cli_path.read_text(encoding="utf-8"), filename=str(cli_path))
+    commands = _extract_cli_commands(tree)
+    command_set = set(commands)
+
+    if len(command_set) != len(commands):
+        duplicates = _duplicates(commands)
+        raise ValueError(f"CLI command parser contains duplicates: {duplicates}")
+
+    for command in REQUIRED_CLI_COMMANDS:
+        _require_contains(commands, command, "CLI command")
+
+    docs_text = "\n".join(
+        (
+            (root / "bindings" / "python" / "README.md").read_text(encoding="utf-8"),
+            (root / "tools" / "README.md").read_text(encoding="utf-8"),
+        )
+    )
+    documented = tuple(command for command in REQUIRED_CLI_COMMANDS if command in docs_text)
+    missing_docs = tuple(command for command in REQUIRED_CLI_COMMANDS if command not in docs_text)
+    if missing_docs:
+        raise ValueError(f"CLI commands missing documentation: {missing_docs}")
+
+    return CliCommandSurfaceReport(
+        command_count=len(commands),
+        required_commands=REQUIRED_CLI_COMMANDS,
+        commands=commands,
+        documented_commands=documented,
     )
 
 
@@ -452,6 +556,23 @@ def _collect_public_imports(tree: ast.Module) -> tuple[str, ...]:
             if not name.startswith("_"):
                 names.append(name)
     return tuple(names)
+
+
+def _extract_cli_commands(tree: ast.Module) -> tuple[str, ...]:
+    commands: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "add_parser":
+            continue
+        if not node.args:
+            continue
+        first_arg = node.args[0]
+        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+            commands.append(first_arg.value)
+    return tuple(commands)
 
 
 def _duplicates(values: tuple[str, ...]) -> tuple[str, ...]:

@@ -76,6 +76,7 @@ from nobro_rtos import (
     seal_report,
     stable_hash32,
     startup_dependency_impact,
+    validate_cli_command_surface,
     validate_project_template,
     validate_distribution_metadata,
     validate_public_header_surface,
@@ -225,6 +226,32 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(payload["exported_count"], payload["imported_count"])
         self.assertIn("RecoveryRuntimeSimulator", payload["exported_names"])
 
+    def test_cli_command_surface_keeps_gates_registered_and_documented(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        report = validate_cli_command_surface(repo_root)
+
+        self.assertGreaterEqual(report.command_count, 46)
+        self.assertIn("check-software-surface", report.commands)
+        self.assertIn("check-cli-command-surface", report.commands)
+        self.assertIn("check-cli-command-surface", report.documented_commands)
+        self.assertEqual(
+            set(report.required_commands) - set(report.commands),
+            set(),
+        )
+
+    def test_cli_command_surface_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-cli-command-surface"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertIn("doctor", payload["commands"])
+        self.assertIn("check-cli-command-surface", payload["documented_commands"])
+
     def test_doctor_summarizes_host_and_package_health(self) -> None:
         report = _doctor()
 
@@ -240,6 +267,10 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn(
             "RecoveryRuntimeSimulator",
             report["python_public_surface"]["exported_names"],
+        )
+        self.assertIn(
+            "check-cli-command-surface",
+            report["cli_command_surface"]["commands"],
         )
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
@@ -272,6 +303,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("public_headers", report["checks"])
         self.assertIn("python_public_surface", report["checks"])
         self.assertTrue(report["checks"]["python_public_surface"]["passing"])
+        self.assertIn("cli_command_surface", report["checks"])
+        self.assertTrue(report["checks"]["cli_command_surface"]["passing"])
         self.assertIn("starter_templates", report["checks"])
         self.assertTrue(report["checks"]["starter_templates"]["passing"])
         self.assertIn("ai_route_matrix", report["checks"])
