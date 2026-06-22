@@ -48,6 +48,9 @@ from .sim import (
     EventLogSimulator,
     KernelErrorKind,
     QuotaLedgerSimulator,
+    RecoveryDecision,
+    RecoveryPlan,
+    RecoveryPlanExecution,
     RecoveryPolicySimulator,
     RecoverySummary,
     ResourceBudget,
@@ -2751,6 +2754,7 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_reboots": 0,
             "expected_retry_count": 0,
             "expected_max_consecutive": 1,
+            "expected_plan_steps": 1,
         },
         {
             "name": "bus_timeout_retry_delay",
@@ -2765,6 +2769,7 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_reboots": 0,
             "expected_retry_count": 1,
             "expected_max_consecutive": 1,
+            "expected_plan_steps": 2,
         },
         {
             "name": "sensor_notify_threshold",
@@ -2779,6 +2784,7 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_reboots": 0,
             "expected_retry_count": 0,
             "expected_max_consecutive": 2,
+            "expected_plan_steps": 1,
         },
         {
             "name": "sensor_reboot_threshold",
@@ -2793,6 +2799,7 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_reboots": 1,
             "expected_retry_count": 0,
             "expected_max_consecutive": 4,
+            "expected_plan_steps": 4,
         },
         {
             "name": "ok_reset_breaks_error_streak",
@@ -2808,6 +2815,7 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_reboots": 0,
             "expected_retry_count": 2,
             "expected_max_consecutive": 1,
+            "expected_plan_steps": 2,
         },
     )
     reports: list[dict[str, object]] = []
@@ -2850,6 +2858,9 @@ def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, obje
             timeline.append(simulator.record_ok(now_us + 1))
 
     summary = RecoverySummary.from_decisions(module, decisions).to_dict()
+    plan_report = (
+        _run_recovery_plan_execution_scenario(decisions[-1]) if decisions else None
+    )
     max_consecutive = max(
         (int(entry.get("consecutive_errors", 0)) for entry in timeline),
         default=0,
@@ -2896,15 +2907,59 @@ def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, obje
         "max_consecutive_errors",
         errors,
     )
+    if plan_report is None:
+        errors.append("missing recovery plan report")
+    else:
+        _expect_equal(
+            plan_report["step_count"],
+            scenario["expected_plan_steps"],
+            "plan_step_count",
+            errors,
+        )
+        _expect_equal(
+            plan_report["completed"],
+            True,
+            "plan_execution_completed",
+            errors,
+        )
+        if int(plan_report["step_count"]) > 1:
+            _expect_equal(
+                plan_report["blocked_by_output"],
+                True,
+                "plan_backpressure_visibility",
+                errors,
+            )
 
     return {
         "name": scenario["name"],
         "passing": len(errors) == 0,
         "errors": errors,
         "summary": summary,
+        "plan": plan_report,
         "max_consecutive_errors": max_consecutive,
         "action_sequence": action_sequence,
         "timeline": timeline,
+    }
+
+
+def _run_recovery_plan_execution_scenario(
+    decision: RecoveryDecision,
+) -> dict[str, object]:
+    plan = RecoveryPlan.from_decision(decision)
+    execution = RecoveryPlanExecution(plan)
+    dispatch_time = plan.deadline_us + 100
+    first = execution.dispatch_due(dispatch_time, capacity=1)
+    drain = execution.dispatch_due(dispatch_time, capacity=plan.len)
+    return {
+        "step_count": plan.len,
+        "required_budget_us": plan.required_budget_us,
+        "deadline_us": plan.deadline_us,
+        "first_dispatch": first.to_dict(),
+        "drain_dispatch": drain.to_dict(),
+        "blocked_by_output": first.is_blocked_by_output,
+        "completed": execution.complete,
+        "consumed_budget_us": execution.consumed_budget_us,
+        "remaining": execution.remaining_count,
     }
 
 

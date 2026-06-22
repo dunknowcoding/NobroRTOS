@@ -165,6 +165,9 @@ paths.
 checks into one deterministic pressure drill.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
 host-side self-healing drills.
+`RecoveryPlan` and `RecoveryPlanExecution` mirror the kernel's fixed-capacity
+recovery planner and dispatch cursor for host-side restart, retry, and
+heartbeat-verification checks.
 `RecoverySummary` turns drill recovery decisions into stable action counts,
 final state, and reboot requirement flags for CI gates and editor views.
 
@@ -173,6 +176,8 @@ from nobro_rtos import (
     EventLogSimulator,
     DegradePlannerSimulator,
     QuotaLedgerSimulator,
+    RecoveryPlan,
+    RecoveryPlanExecution,
     RecoveryPolicySimulator,
     ResourceBudget,
     RuntimeDrillSimulator,
@@ -195,7 +200,13 @@ command = servo.set_duty_us(0, 1500, deadline_us=100, issued_at_us=90)
 assert command.accepted
 
 recovery = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
-assert recovery.record_error("sensor", "sensor_read_fail", 10).action.value == "ignore"
+recovery.record_error("sensor", "sensor_read_fail", 10)
+recovery.record_error("sensor", "sensor_read_fail", 20)
+decision = recovery.record_error("sensor", "sensor_read_fail", 30)
+plan = RecoveryPlan.from_decision(decision)
+execution = RecoveryPlanExecution(plan)
+dispatch = execution.dispatch_due(plan.deadline_us + 100, capacity=1)
+assert dispatch.dispatched == 1
 
 watchdog = WatchdogSimulator(capacity=1)
 watchdog.register("sensor", timeout_us=100, now_us=0)
@@ -303,7 +314,8 @@ The actuator sample emits deterministic servo command records with deadline and
 readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The recovery matrix checker validates ignore,
-retry, notify, reboot, and OK-reset recovery paths in one gate. The watchdog
+retry, notify, reboot, OK-reset, fixed-plan execution, and output-buffer
+backpressure paths in one gate. The watchdog
 sample emits heartbeat and expiry events for liveness planning. The watchdog
 matrix checker validates non-mutating prechecks, expiry mutation, heartbeat
 reset, multi-module expiry, and capacity errors. The scheduler sample emits

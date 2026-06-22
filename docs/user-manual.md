@@ -276,8 +276,8 @@ unavailable routes, and endpoint circuit state.
 The ROS preflight matrix checker validates bridge-call admission before a ROS
 transport or agent is contacted: topic payload bounds, service/action response
 capacity, queue depth, parameter value size, and timeout budget.
-The recovery matrix checker validates ignore, retry, notify, reboot, and
-OK-reset self-healing paths in one gate.
+The recovery matrix checker validates ignore, retry, notify, reboot, OK-reset,
+fixed-plan execution, and output-buffer backpressure paths in one gate.
 The watchdog matrix checker validates non-mutating liveness prechecks, expiry
 mutation, heartbeat reset, multi-module expiry, and capacity errors.
 The scheduler matrix checker validates on-time ticks, tolerated early/late

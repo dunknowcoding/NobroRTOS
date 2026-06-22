@@ -41,7 +41,10 @@ from nobro_rtos import (
     RosService,
     RosTopic,
     RecoveryAction,
+    RecoveryPlan,
+    RecoveryPlanExecution,
     RecoveryPolicySimulator,
+    RecoveryStepKind,
     RecoverySummary,
     ResourceBudget,
     RuntimeDrillSimulator,
@@ -2223,6 +2226,41 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertFalse(summary.self_healing_required)
         self.assertIsNone(summary.to_dict()["last_action"])
 
+    def test_recovery_plan_mirror_builds_bounded_reboot_steps(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
+        simulator.record_error("sensor", "sensor_read_fail", 10)
+        simulator.record_error("sensor", "sensor_read_fail", 20)
+        decision = simulator.record_error("sensor", "sensor_read_fail", 30)
+
+        plan = RecoveryPlan.from_decision(decision)
+
+        self.assertEqual(plan.len, 4)
+        self.assertEqual(plan.required_budget_us, 7000)
+        self.assertEqual(plan.deadline_us, 7030)
+        self.assertEqual(plan.steps[0].kind, RecoveryStepKind.QUIESCE_MODULE)
+        self.assertEqual(plan.steps[1].kind, RecoveryStepKind.RESTART_MODULE)
+        self.assertEqual(plan.steps[2].kind, RecoveryStepKind.VERIFY_HEARTBEAT)
+        self.assertEqual(plan.steps[3].kind, RecoveryStepKind.RESUME_MODULE)
+
+    def test_recovery_plan_execution_mirror_preserves_backpressure(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=4, reboot_after=5)
+        decision = simulator.record_error("bus", "bus_timeout", 10)
+        plan = RecoveryPlan.from_decision(decision)
+        execution = RecoveryPlanExecution(plan)
+
+        first = execution.dispatch_due(3000, capacity=1)
+        second = execution.dispatch_due(3000, capacity=1)
+
+        self.assertEqual(plan.len, 2)
+        self.assertEqual(first.dispatched, 1)
+        self.assertEqual(first.remaining, 1)
+        self.assertTrue(first.is_blocked_by_output)
+        self.assertEqual(first.steps[0].kind, RecoveryStepKind.RETRY)
+        self.assertEqual(second.dispatched, 1)
+        self.assertEqual(second.remaining, 0)
+        self.assertTrue(second.completed)
+        self.assertEqual(execution.consumed_budget_us, 2000)
+
     def test_cli_recovery_sample_preserves_ok_reset(self) -> None:
         report = _sample_recovery(
             "sensor",
@@ -2262,6 +2300,14 @@ class ContractBuilderTests(unittest.TestCase):
             scenarios["sensor_reboot_threshold"]["summary"]["reboot_count"],
             1,
         )
+        self.assertEqual(
+            scenarios["sensor_reboot_threshold"]["plan"]["step_count"],
+            4,
+        )
+        self.assertTrue(
+            scenarios["sensor_reboot_threshold"]["plan"]["blocked_by_output"]
+        )
+        self.assertTrue(scenarios["bus_timeout_retry_delay"]["plan"]["completed"])
         self.assertEqual(
             scenarios["ok_reset_breaks_error_streak"]["max_consecutive_errors"],
             1,

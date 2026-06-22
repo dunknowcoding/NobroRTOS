@@ -52,6 +52,18 @@ class RecoveryAction(str, Enum):
     IGNORE = "ignore"
 
 
+class RecoveryStepKind(str, Enum):
+    """Recovery plan step labels mirrored from the Rust kernel."""
+
+    OBSERVE = "observe"
+    NOTIFY = "notify"
+    RETRY = "retry"
+    QUIESCE_MODULE = "quiesce_module"
+    RESTART_MODULE = "restart_module"
+    VERIFY_HEARTBEAT = "verify_heartbeat"
+    RESUME_MODULE = "resume_module"
+
+
 class KernelErrorKind(str, Enum):
     """Kernel error labels used by host-side recovery simulations."""
 
@@ -481,6 +493,267 @@ class RecoverySummary:
             "reboot_required": self.reboot_required,
             "self_healing_required": self.self_healing_required,
         }
+
+
+class RecoveryPlanSimulatorError(RuntimeError):
+    """Raised when a host-side recovery plan cannot be built."""
+
+
+@dataclass(frozen=True)
+class RecoveryStep:
+    """A bounded recovery action scheduled by the host-side plan mirror."""
+
+    module: str
+    kind: RecoveryStepKind
+    due_us: int
+    budget_us: int
+
+    def __post_init__(self) -> None:
+        if self.due_us < 0:
+            raise ValueError("due_us must be non-negative")
+        if self.budget_us < 0:
+            raise ValueError("budget_us must be non-negative")
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "module": self.module,
+            "kind": self.kind.value,
+            "due_us": self.due_us,
+            "budget_us": self.budget_us,
+        }
+
+
+@dataclass(frozen=True)
+class RecoveryPlanPolicy:
+    """Host-side recovery budget policy mirrored from the Rust kernel."""
+
+    notify_budget_us: int = 500
+    retry_budget_us: int = 1000
+    restart_budget_us: int = 5000
+    verify_budget_us: int = 1000
+    resume_budget_us: int = 500
+    max_total_budget_us: int = 20_000
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "notify_budget_us",
+            "retry_budget_us",
+            "restart_budget_us",
+            "verify_budget_us",
+            "resume_budget_us",
+            "max_total_budget_us",
+        ):
+            if getattr(self, field_name) < 0:
+                raise ValueError(f"{field_name} must be non-negative")
+
+
+@dataclass(frozen=True)
+class RecoveryPlan:
+    """Fixed-capacity recovery plan mirror for Python host checks."""
+
+    decision: RecoveryDecision
+    steps: tuple[RecoveryStep, ...]
+    deadline_us: int
+    required_budget_us: int
+
+    @classmethod
+    def from_decision(
+        cls,
+        decision: RecoveryDecision,
+        *,
+        policy: RecoveryPlanPolicy | None = None,
+        max_steps: int = 4,
+    ) -> "RecoveryPlan":
+        if max_steps < 0:
+            raise ValueError("max_steps must be non-negative")
+        policy = RecoveryPlanPolicy() if policy is None else policy
+        steps: list[RecoveryStep] = []
+        required_budget_us = 0
+        now_us = decision.now_us
+
+        def push(kind: RecoveryStepKind, due_us: int, budget_us: int) -> None:
+            if len(steps) >= max_steps:
+                raise RecoveryPlanSimulatorError("recovery plan step capacity exceeded")
+            steps.append(
+                RecoveryStep(
+                    module=decision.module,
+                    kind=kind,
+                    due_us=due_us,
+                    budget_us=budget_us,
+                )
+            )
+
+        if decision.action == RecoveryAction.IGNORE:
+            push(RecoveryStepKind.OBSERVE, now_us, 0)
+        elif decision.action == RecoveryAction.NOTIFY_USER_TASK:
+            push(RecoveryStepKind.NOTIFY, now_us, policy.notify_budget_us)
+        elif decision.action == RecoveryAction.RETRY_NOW:
+            push(RecoveryStepKind.RETRY, now_us, policy.retry_budget_us)
+            push(
+                RecoveryStepKind.VERIFY_HEARTBEAT,
+                now_us + policy.retry_budget_us,
+                policy.verify_budget_us,
+            )
+        elif decision.action == RecoveryAction.RETRY_DELAY:
+            retry_due = now_us + decision.delay_us
+            required_budget_us += decision.delay_us
+            push(RecoveryStepKind.RETRY, retry_due, policy.retry_budget_us)
+            push(
+                RecoveryStepKind.VERIFY_HEARTBEAT,
+                retry_due + policy.retry_budget_us,
+                policy.verify_budget_us,
+            )
+        elif decision.action == RecoveryAction.REBOOT_MODULE:
+            push(RecoveryStepKind.QUIESCE_MODULE, now_us, policy.notify_budget_us)
+            push(
+                RecoveryStepKind.RESTART_MODULE,
+                now_us + policy.notify_budget_us,
+                policy.restart_budget_us,
+            )
+            push(
+                RecoveryStepKind.VERIFY_HEARTBEAT,
+                now_us + policy.notify_budget_us + policy.restart_budget_us,
+                policy.verify_budget_us,
+            )
+            push(
+                RecoveryStepKind.RESUME_MODULE,
+                now_us
+                + policy.notify_budget_us
+                + policy.restart_budget_us
+                + policy.verify_budget_us,
+                policy.resume_budget_us,
+            )
+
+        required_budget_us += sum(step.budget_us for step in steps)
+        if required_budget_us > policy.max_total_budget_us:
+            raise RecoveryPlanSimulatorError(
+                f"recovery plan budget {required_budget_us} exceeds {policy.max_total_budget_us}"
+            )
+        return cls(
+            decision=decision,
+            steps=tuple(steps),
+            deadline_us=now_us + required_budget_us,
+            required_budget_us=required_budget_us,
+        )
+
+    @property
+    def len(self) -> int:
+        return len(self.steps)
+
+    def due_count(self, now_us: int) -> int:
+        return sum(1 for step in self.steps if step.due_us <= now_us)
+
+    def remaining_count(self, now_us: int) -> int:
+        return max(0, self.len - self.due_count(now_us))
+
+    def next_due(self, now_us: int) -> RecoveryStep | None:
+        for step in self.steps:
+            if step.due_us <= now_us:
+                return step
+        return None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "module": self.decision.module,
+            "action": self.decision.action.value,
+            "deadline_us": self.deadline_us,
+            "required_budget_us": self.required_budget_us,
+            "step_count": self.len,
+            "steps": [step.to_dict() for step in self.steps],
+        }
+
+
+@dataclass(frozen=True)
+class RecoveryPlanDispatch:
+    """Host-side recovery execution dispatch report."""
+
+    dispatched: int
+    remaining: int
+    next_due_us: int
+    consumed_budget_us: int
+    overdue_us: int
+    completed: bool
+    steps: tuple[RecoveryStep, ...]
+
+    @property
+    def is_blocked_by_output(self) -> bool:
+        return self.overdue_us != 0 and self.remaining != 0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "dispatched": self.dispatched,
+            "remaining": self.remaining,
+            "next_due_us": self.next_due_us,
+            "consumed_budget_us": self.consumed_budget_us,
+            "overdue_us": self.overdue_us,
+            "completed": self.completed,
+            "blocked_by_output": self.is_blocked_by_output,
+            "steps": [step.to_dict() for step in self.steps],
+        }
+
+
+@dataclass
+class RecoveryPlanExecution:
+    """Stateful host-side cursor for dispatching recovery plan steps once."""
+
+    plan: RecoveryPlan
+    next_step: int = 0
+    consumed_budget_us: int = 0
+    last_dispatch_us: int = 0
+
+    @property
+    def dispatched_count(self) -> int:
+        return self.next_step
+
+    @property
+    def remaining_count(self) -> int:
+        return max(0, self.plan.len - self.next_step)
+
+    @property
+    def complete(self) -> bool:
+        return self.next_step >= self.plan.len
+
+    def next_pending(self) -> RecoveryStep | None:
+        if self.complete:
+            return None
+        return self.plan.steps[self.next_step]
+
+    def due_pending_count(self, now_us: int) -> int:
+        return sum(
+            1
+            for step in self.plan.steps[self.next_step :]
+            if step.due_us <= now_us
+        )
+
+    def dispatch_due(self, now_us: int, *, capacity: int) -> RecoveryPlanDispatch:
+        if capacity < 0:
+            raise ValueError("capacity must be non-negative")
+        dispatched_steps: list[RecoveryStep] = []
+        while self.next_step < self.plan.len and len(dispatched_steps) < capacity:
+            step = self.plan.steps[self.next_step]
+            if step.due_us > now_us:
+                break
+            dispatched_steps.append(step)
+            self.next_step += 1
+            self.consumed_budget_us += step.budget_us
+            self.last_dispatch_us = now_us
+
+        next_pending = self.next_pending()
+        next_due_us = 0 if next_pending is None else next_pending.due_us
+        overdue_us = (
+            max(0, now_us - next_due_us)
+            if next_due_us != 0 and next_due_us < now_us
+            else 0
+        )
+        return RecoveryPlanDispatch(
+            dispatched=len(dispatched_steps),
+            remaining=self.remaining_count,
+            next_due_us=next_due_us,
+            consumed_budget_us=self.consumed_budget_us,
+            overdue_us=overdue_us,
+            completed=self.complete,
+            steps=tuple(dispatched_steps),
+        )
 
 
 @dataclass

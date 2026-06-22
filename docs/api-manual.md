@@ -207,7 +207,8 @@ state, and self-healing flags for automated review.
 The `check-runtime-drill` CLI wraps the same scenario in a pass/fail gate for
 disabled-module count, reboot count, and dropped event-log records.
 The `check-recovery-matrix` CLI validates deterministic ignore, retry, notify,
-reboot, and OK-reset recovery paths for self-healing review.
+reboot, OK-reset, fixed-plan execution, and output-buffer backpressure paths
+for self-healing review.
 
 `build_project_template` emits contract-first starter templates for standalone
 SDK, Arduino, PlatformIO, Python host, and Python board bridge workflows. It
