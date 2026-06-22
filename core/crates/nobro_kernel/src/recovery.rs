@@ -211,6 +211,44 @@ impl<const N: usize> RecoveryPlan<N> {
         }
     }
 
+    pub fn due_count(&self, now_us: u64) -> usize {
+        self.steps
+            .iter()
+            .copied()
+            .take(self.len)
+            .flatten()
+            .filter(|step| step.due_us <= now_us)
+            .count()
+    }
+
+    pub fn remaining_count(&self, now_us: u64) -> usize {
+        self.len.saturating_sub(self.due_count(now_us))
+    }
+
+    pub fn next_due(&self, now_us: u64) -> Option<RecoveryStep> {
+        for step in self.steps.iter().copied().take(self.len).flatten() {
+            if step.due_us <= now_us {
+                return Some(step);
+            }
+        }
+        None
+    }
+
+    pub fn copy_due(&self, now_us: u64, out: &mut [RecoveryStep]) -> usize {
+        let mut copied = 0;
+        for step in self.steps.iter().copied().take(self.len).flatten() {
+            if step.due_us > now_us {
+                continue;
+            }
+            if copied == out.len() {
+                break;
+            }
+            out[copied] = step;
+            copied += 1;
+        }
+        copied
+    }
+
     fn push(&mut self, step: RecoveryStep) -> Result<(), RecoveryPlanError> {
         if self.len == N {
             return Err(RecoveryPlanError::Full);
@@ -491,6 +529,53 @@ mod tests {
                 6_550,
                 500
             ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_reports_due_steps_without_mutation() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Actuator,
+            error: KernelError::DeadlineMissed,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+        let plan =
+            RecoveryPlan::<4>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
+        let empty = RecoveryStep::new(ModuleId::Kernel, RecoveryStepKind::Observe, 0, 0);
+        let mut due = [empty; 2];
+
+        assert_eq!(plan.next_due(99), None);
+        assert_eq!(plan.due_count(99), 0);
+        assert_eq!(plan.remaining_count(99), 4);
+        assert_eq!(
+            plan.next_due(600),
+            Some(RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::QuiesceModule,
+                100,
+                500
+            ))
+        );
+        assert_eq!(plan.due_count(6_100), 3);
+        assert_eq!(plan.remaining_count(6_100), 1);
+        assert_eq!(plan.copy_due(6_100, &mut due), 2);
+        assert_eq!(
+            due,
+            [
+                RecoveryStep::new(
+                    ModuleId::Actuator,
+                    RecoveryStepKind::QuiesceModule,
+                    100,
+                    500,
+                ),
+                RecoveryStep::new(
+                    ModuleId::Actuator,
+                    RecoveryStepKind::RestartModule,
+                    600,
+                    5_000,
+                ),
+            ]
         );
     }
 

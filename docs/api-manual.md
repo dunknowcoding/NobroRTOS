@@ -293,6 +293,9 @@ errors, so self-healing can be reviewed before being attached to board-specific
 restart or power-control code.
 Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
 `RecoveryOutcome` with the generated plan.
+Use `next_due`, `due_count`, `remaining_count`, and `copy_due` to inspect
+time-ready recovery steps from a firmware loop or host simulator without
+mutating the plan or executing board-specific actions.
 
 ## HAL API
 
