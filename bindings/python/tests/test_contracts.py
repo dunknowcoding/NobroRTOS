@@ -23,6 +23,7 @@ from nobro_rtos import (
     DegradePlannerSimulatorError,
     EventLogSimulator,
     MemoryBudget,
+    ModuleRunState,
     ModuleSpec,
     NobroContractBundle,
     FixedReport,
@@ -44,6 +45,8 @@ from nobro_rtos import (
     RecoveryPlan,
     RecoveryPlanExecution,
     RecoveryPolicySimulator,
+    RecoveryRuntimeSimulator,
+    RecoveryRuntimeSimulatorError,
     RecoveryStepKind,
     RecoverySummary,
     ResourceBudget,
@@ -2349,6 +2352,25 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(plan.steps[6].module, "sensor")
         self.assertEqual(plan.steps[7].module, "app")
         self.assertEqual(plan.steps[7].kind, RecoveryStepKind.RESUME_MODULE)
+
+        runtime = RecoveryRuntimeSimulator.from_modules(["bus", "sensor", "app"])
+        runtime.mark_recovering("bus")
+        for step in plan.steps[:3]:
+            runtime.apply_recovery_step(step)
+        self.assertEqual(runtime.state("app"), ModuleRunState.SUSPENDED)
+        self.assertEqual(runtime.state("sensor"), ModuleRunState.SUSPENDED)
+        self.assertEqual(runtime.state("bus"), ModuleRunState.RECOVERING)
+
+        for step in plan.steps[3:]:
+            runtime.apply_recovery_step(step)
+        self.assertEqual(
+            runtime.to_dict(),
+            {"bus": "active", "sensor": "active", "app": "active"},
+        )
+
+        runtime.disable("sensor")
+        with self.assertRaisesRegex(RecoveryRuntimeSimulatorError, "disabled module: sensor"):
+            runtime.apply_recovery_step(plan.steps[6])
 
     def test_recovery_plan_execution_mirror_preserves_backpressure(self) -> None:
         simulator = RecoveryPolicySimulator(notify_after=4, reboot_after=5)

@@ -170,6 +170,9 @@ host-side self-healing drills.
 recovery planner and dispatch cursor for host-side restart, retry, and
 heartbeat-verification checks, including dependent-module quiesce and resume
 ordering for reboot plans built from startup impact data.
+`RecoveryRuntimeSimulator` applies dispatched recovery steps to host-side module
+state so notebooks, tests, and editor tasks can rehearse quiesce/resume
+bookkeeping without pretending to restart hardware.
 `RecoverySummary` turns drill recovery decisions into stable action counts,
 final state, and reboot requirement flags for CI gates and editor views.
 
@@ -181,6 +184,7 @@ from nobro_rtos import (
     RecoveryPlan,
     RecoveryPlanExecution,
     RecoveryPolicySimulator,
+    RecoveryRuntimeSimulator,
     ResourceBudget,
     RuntimeDrillSimulator,
     SchedulerSimulator,
@@ -213,6 +217,11 @@ plan = RecoveryPlan.from_decision(
 execution = RecoveryPlanExecution(plan)
 dispatch = execution.dispatch_due(plan.deadline_us + 100, capacity=1)
 assert dispatch.dispatched == 1
+runtime = RecoveryRuntimeSimulator.from_modules(["bus", "sensor", "app"])
+runtime.mark_recovering("bus")
+for step in plan.steps:
+    runtime.apply_recovery_step(step)
+assert runtime.to_dict()["app"] == "active"
 
 watchdog = WatchdogSimulator(capacity=1)
 watchdog.register("sensor", timeout_us=100, now_us=0)

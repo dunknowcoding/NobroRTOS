@@ -64,6 +64,17 @@ class RecoveryStepKind(str, Enum):
     RESUME_MODULE = "resume_module"
 
 
+class ModuleRunState(str, Enum):
+    """Module runtime states mirrored from the Rust runtime guard."""
+
+    REGISTERED = "registered"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    FAULTED = "faulted"
+    RECOVERING = "recovering"
+    DISABLED = "disabled"
+
+
 class KernelErrorKind(str, Enum):
     """Kernel error labels used by host-side recovery simulations."""
 
@@ -499,6 +510,10 @@ class RecoveryPlanSimulatorError(RuntimeError):
     """Raised when a host-side recovery plan cannot be built."""
 
 
+class RecoveryRuntimeSimulatorError(RuntimeError):
+    """Raised when host-side recovery step bookkeeping is invalid."""
+
+
 @dataclass(frozen=True)
 class RecoveryStep:
     """A bounded recovery action scheduled by the host-side plan mirror."""
@@ -766,6 +781,83 @@ class RecoveryPlanExecution:
             completed=self.complete,
             steps=tuple(dispatched_steps),
         )
+
+
+@dataclass
+class RecoveryRuntimeSimulator:
+    """Small host-side module-state mirror for dispatched recovery steps."""
+
+    states: dict[str, ModuleRunState]
+
+    @classmethod
+    def from_modules(cls, modules: tuple[str, ...] | list[str]) -> "RecoveryRuntimeSimulator":
+        if not modules:
+            raise ValueError("modules must not be empty")
+        states: dict[str, ModuleRunState] = {}
+        for module in modules:
+            name = str(module)
+            if name in states:
+                raise RecoveryRuntimeSimulatorError(f"duplicate module: {name}")
+            states[name] = ModuleRunState.ACTIVE
+        return cls(states)
+
+    def state(self, module: str) -> ModuleRunState | None:
+        return self.states.get(module)
+
+    def mark_recovering(self, module: str) -> None:
+        self._require_enabled(module)
+        self.states[module] = ModuleRunState.RECOVERING
+
+    def disable(self, module: str) -> None:
+        self._require_module(module)
+        self.states[module] = ModuleRunState.DISABLED
+
+    def apply_recovery_step(self, step: RecoveryStep) -> None:
+        self._require_enabled(step.module)
+        if step.kind in (
+            RecoveryStepKind.OBSERVE,
+            RecoveryStepKind.NOTIFY,
+            RecoveryStepKind.RETRY,
+            RecoveryStepKind.RESTART_MODULE,
+            RecoveryStepKind.VERIFY_HEARTBEAT,
+        ):
+            return
+        if step.kind == RecoveryStepKind.QUIESCE_MODULE:
+            if self.states[step.module] in (
+                ModuleRunState.SUSPENDED,
+                ModuleRunState.RECOVERING,
+            ):
+                return
+            if self.states[step.module] != ModuleRunState.ACTIVE:
+                raise RecoveryRuntimeSimulatorError(
+                    f"cannot quiesce {step.module} from {self.states[step.module].value}"
+                )
+            self.states[step.module] = ModuleRunState.SUSPENDED
+            return
+        if step.kind == RecoveryStepKind.RESUME_MODULE:
+            if self.states[step.module] == ModuleRunState.ACTIVE:
+                return
+            if self.states[step.module] not in (
+                ModuleRunState.SUSPENDED,
+                ModuleRunState.FAULTED,
+                ModuleRunState.RECOVERING,
+            ):
+                raise RecoveryRuntimeSimulatorError(
+                    f"cannot resume {step.module} from {self.states[step.module].value}"
+                )
+            self.states[step.module] = ModuleRunState.ACTIVE
+
+    def to_dict(self) -> dict[str, str]:
+        return {module: state.value for module, state in self.states.items()}
+
+    def _require_module(self, module: str) -> None:
+        if module not in self.states:
+            raise RecoveryRuntimeSimulatorError(f"missing module: {module}")
+
+    def _require_enabled(self, module: str) -> None:
+        self._require_module(module)
+        if self.states[module] == ModuleRunState.DISABLED:
+            raise RecoveryRuntimeSimulatorError(f"disabled module: {module}")
 
 
 @dataclass
