@@ -262,6 +262,10 @@ def main() -> int:
     sample_event_log.add_argument("--events", type=int, default=4)
     sample_event_log.add_argument("--recent", type=int, default=3)
     subparsers.add_parser(
+        "check-event-log-matrix",
+        help="run deterministic fixed-ring event log checks",
+    )
+    subparsers.add_parser(
         "sample-quota",
         help="run a deterministic quota ledger simulation and print JSON",
     )
@@ -549,6 +553,10 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "check-event-log-matrix":
+        report = _check_event_log_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-quota":
         print(json.dumps(_sample_quota(), indent=2, sort_keys=True))
         return 0
@@ -773,6 +781,7 @@ def _doctor() -> dict[str, object]:
             "scheduler",
             "scheduler_matrix_gate",
             "event_log",
+            "event_log_matrix_gate",
             "quota",
             "degrade",
             "runtime_drill",
@@ -885,6 +894,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("recovery_matrix", _check_recovery_matrix())
     add_check("watchdog_matrix", _check_watchdog_matrix())
     add_check("scheduler_matrix", _check_scheduler_matrix())
+    add_check("event_log_matrix", _check_event_log_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -2011,6 +2021,177 @@ def _sample_event_log(capacity: int, events: int, recent: int) -> dict[str, obje
         "latest": None if simulator.latest() is None else simulator.latest().to_dict(),
         "recent": [record.to_dict() for record in simulator.copy_recent(recent)],
         "overwritten": overwritten,
+    }
+
+
+def _check_event_log_matrix() -> dict[str, object]:
+    scenarios = (
+        _event_log_empty_scenario(),
+        _event_log_ring_overwrite_scenario(),
+        _event_log_zero_capacity_scenario(),
+        _event_log_severity_count_scenario(),
+        _event_log_invalid_config_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _event_log_empty_scenario() -> dict[str, object]:
+    log = EventLogSimulator(capacity=3)
+    errors: list[str] = []
+    _expect_equal(log.len, 0, "len", errors)
+    _expect_equal(log.remaining_capacity, 3, "remaining_capacity", errors)
+    _expect_equal(log.latest_sequence, 0, "latest_sequence", errors)
+    _expect_equal(log.has_dropped_events, False, "has_dropped_events", errors)
+    _expect_equal(log.latest(), None, "latest", errors)
+    _expect_equal(log.copy_recent(3), [], "recent", errors)
+    return {
+        "name": "empty_log_reports_capacity",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "summary": log.summary(),
+        "recent": [],
+    }
+
+
+def _event_log_ring_overwrite_scenario() -> dict[str, object]:
+    report = _sample_event_log(capacity=3, events=4, recent=3)
+    errors: list[str] = []
+    _expect_equal(report["len"], 3, "len", errors)
+    _expect_equal(report["dropped"], 1, "dropped", errors)
+    _expect_equal(report["latest_sequence"], 4, "latest_sequence", errors)
+    _expect_equal(report["remaining_capacity"], 0, "remaining_capacity", errors)
+    _expect_equal(
+        [record["at_us"] for record in report["recent"]],
+        [20, 30, 40],
+        "recent_order",
+        errors,
+    )
+    _expect_equal(
+        [record["seq"] for record in report["overwritten"]],
+        [1],
+        "overwritten_sequence",
+        errors,
+    )
+    return {
+        "name": "ring_overwrite_preserves_recent_order",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        **report,
+    }
+
+
+def _event_log_zero_capacity_scenario() -> dict[str, object]:
+    log = EventLogSimulator(capacity=0)
+    returned = [
+        log.push(10, "kernel", "warn", "boot", payload_kind="counter", payload0=1),
+        log.push(20, "sensor", "error", "health", payload_kind="counter", payload0=2),
+    ]
+    errors: list[str] = []
+    _expect_equal(log.len, 0, "len", errors)
+    _expect_equal(log.dropped, 2, "dropped", errors)
+    _expect_equal(log.latest_sequence, 0, "latest_sequence", errors)
+    _expect_equal(log.latest(), None, "latest", errors)
+    _expect_equal(log.copy_recent(1), [], "recent", errors)
+    _expect_equal(
+        [record.seq for record in returned if record is not None],
+        [0, 0],
+        "returned_sequences",
+        errors,
+    )
+    return {
+        "name": "zero_capacity_counts_drops_without_storing",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "summary": log.summary(),
+        "returned": [
+            None if record is None else record.to_dict() for record in returned
+        ],
+    }
+
+
+def _event_log_severity_count_scenario() -> dict[str, object]:
+    log = EventLogSimulator(capacity=5)
+    for index, severity in enumerate(("trace", "info", "warn", "error", "fatal")):
+        log.push(
+            at_us=(index + 1) * 10,
+            module="kernel",
+            severity=severity,
+            kind="host",
+            payload_kind="counter",
+            payload0=index,
+        )
+
+    errors: list[str] = []
+    _expect_equal(log.count_at_or_above("warn"), 3, "warn_or_higher", errors)
+    _expect_equal(log.count_at_or_above("error"), 2, "error_or_higher", errors)
+    _expect_equal(log.count_at_or_above("fatal"), 1, "fatal_or_higher", errors)
+    _expect_equal(
+        log.latest().severity.value if log.latest() else None,
+        "fatal",
+        "latest",
+        errors,
+    )
+    return {
+        "name": "severity_threshold_counts_are_stable",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "summary": log.summary(),
+        "warn_or_higher": log.count_at_or_above("warn"),
+        "error_or_higher": log.count_at_or_above("error"),
+        "fatal_or_higher": log.count_at_or_above("fatal"),
+    }
+
+
+def _event_log_invalid_config_scenario() -> dict[str, object]:
+    capacity_error = None
+    recent_error = None
+    severity_error = None
+    try:
+        EventLogSimulator(capacity=-1)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        capacity_error = str(exc)
+
+    try:
+        EventLogSimulator(capacity=1).copy_recent(-1)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        recent_error = str(exc)
+
+    try:
+        EventLogSimulator(capacity=1).push(10, "kernel", "invalid", "boot")
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        severity_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        capacity_error,
+        "capacity must be non-negative",
+        "capacity_error",
+        errors,
+    )
+    _expect_equal(recent_error, "count must be non-negative", "recent_error", errors)
+    _expect_equal(
+        severity_error,
+        "'invalid' is not a valid EventSeverity",
+        "severity_error",
+        errors,
+    )
+    return {
+        "name": "invalid_config_is_rejected",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "capacity_error": capacity_error,
+        "recent_error": recent_error,
+        "severity_error": severity_error,
     }
 
 

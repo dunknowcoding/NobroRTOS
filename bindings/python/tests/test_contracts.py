@@ -66,6 +66,7 @@ from nobro_rtos import (
 from nobro_rtos.cli import (
     _check_ai_route,
     _check_ai_route_matrix,
+    _check_event_log_matrix,
     _check_project,
     _check_recovery_matrix,
     _check_runtime_drill,
@@ -179,6 +180,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
+        self.assertIn("event_log_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -207,6 +209,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["watchdog_matrix"]["passing"])
         self.assertIn("scheduler_matrix", report["checks"])
         self.assertTrue(report["checks"]["scheduler_matrix"]["passing"])
+        self.assertIn("event_log_matrix", report["checks"])
+        self.assertTrue(report["checks"]["event_log_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -310,6 +314,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Scheduler Matrix Gate",
         )
         self.assertIn("check-scheduler-matrix", python_tasks["tasks"][7]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][8]["label"],
+            "NobroRTOS: Event Log Matrix Gate",
+        )
+        self.assertIn("check-event-log-matrix", python_tasks["tasks"][8]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -528,6 +537,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-watchdog"]
                 if task["label"] == "NobroRTOS: Scheduler Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-scheduler"]
+                if task["label"] == "NobroRTOS: Event Log Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-event-log"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -538,6 +549,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("recovery matrix gate task command mismatch", before.errors)
             self.assertIn("watchdog matrix gate task command mismatch", before.errors)
             self.assertIn("scheduler matrix gate task command mismatch", before.errors)
+            self.assertIn("event log matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -562,6 +574,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "scheduler matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "event log matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -601,6 +617,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Scheduler Matrix Gate"
             )
             self.assertIn("check-scheduler-matrix", scheduler_matrix_gate["args"])
+            event_log_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Event Log Matrix Gate"
+            )
+            self.assertIn("check-event-log-matrix", event_log_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1922,6 +1944,58 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(len(report["recent"]), 3)
         self.assertEqual(report["recent"][0]["seq"], 2)
         self.assertEqual(report["warn_or_higher"], 3)
+
+    def test_event_log_matrix_covers_ring_pressure_paths(self) -> None:
+        report = _check_event_log_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 5)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["empty_log_reports_capacity"]["summary"]["remaining_capacity"],
+            3,
+        )
+        self.assertEqual(
+            scenarios["ring_overwrite_preserves_recent_order"]["dropped"],
+            1,
+        )
+        self.assertEqual(
+            [
+                record["at_us"]
+                for record in scenarios["ring_overwrite_preserves_recent_order"][
+                    "recent"
+                ]
+            ],
+            [20, 30, 40],
+        )
+        self.assertEqual(
+            scenarios["zero_capacity_counts_drops_without_storing"]["summary"][
+                "dropped"
+            ],
+            2,
+        )
+        self.assertEqual(
+            scenarios["severity_threshold_counts_are_stable"]["warn_or_higher"],
+            3,
+        )
+        self.assertEqual(
+            scenarios["invalid_config_is_rejected"]["recent_error"],
+            "count must be non-negative",
+        )
+
+    def test_event_log_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-event-log-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 5)
 
     def test_quota_ledger_simulator_tracks_reserve_and_release(self) -> None:
         ledger = QuotaLedgerSimulator(capacity=2)

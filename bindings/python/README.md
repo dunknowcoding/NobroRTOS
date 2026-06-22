@@ -105,10 +105,10 @@ temporary directory, validates it, and removes the generated files when the
 gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
-route, AI route matrix, recovery matrix, watchdog matrix, and scheduler matrix
-gate tasks, and the Python board bridge template includes an offline bridge
-smoke task for MicroPython, CircuitPython, and mPython-style status-line
-workflows.
+route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix, and
+event log matrix gate tasks, and the Python board bridge template includes an
+offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
+status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -133,7 +133,10 @@ readback checks. `WatchdogSimulator` mirrors the kernel heartbeat tracker.
 `check-scheduler-matrix` CLI validates on-time ticks, early/late jitter within
 tolerance, missed deadlines, 32-bit time wraparound, counter reset, and invalid
 scheduler configuration.
-`EventLogSimulator` mirrors the fixed-ring event log.
+`EventLogSimulator` mirrors the fixed-ring event log. The
+`check-event-log-matrix` CLI validates capacity accounting, overwrite pressure,
+recent-record order, severity thresholds, zero-capacity behavior, and invalid
+input handling.
 `QuotaLedgerSimulator` mirrors fixed-capacity quota accounting.
 `DegradePlannerSimulator` mirrors degraded-mode module fitting.
 `RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
@@ -232,6 +235,7 @@ python -m nobro_rtos check-watchdog-matrix
 python -m nobro_rtos sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python -m nobro_rtos check-scheduler-matrix
 python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
+python -m nobro_rtos check-event-log-matrix
 python -m nobro_rtos sample-quota
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
@@ -267,7 +271,9 @@ reset, multi-module expiry, and capacity errors. The scheduler sample emits
 deadline jitter counters for timing-policy checks. The scheduler matrix checker
 validates on-time, tolerance, deadline-miss, wraparound, reset, and invalid
 configuration paths. The event-log sample emits
-fixed-ring pressure, dropped-event, and recent-record summaries. The quota sample emits
+fixed-ring pressure, dropped-event, and recent-record summaries. The event log
+matrix checker validates capacity, overwrite, recent-order, severity-threshold,
+zero-capacity, and invalid-input paths. The quota sample emits
 fixed-capacity resource reservations, releases, remaining budget, and total
 usage. The degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
@@ -291,7 +297,8 @@ when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
-scheduler matrix, and runtime drill gates into one JSON report.
+scheduler matrix, event log matrix, and runtime drill gates into one JSON
+report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
@@ -316,6 +323,7 @@ python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
+python tools/nobro_contract_tool.py check-event-log-matrix
 ```
 
 Decode a boot diagnostic code:

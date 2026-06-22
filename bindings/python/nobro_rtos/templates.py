@@ -688,6 +688,20 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "problemMatcher": [],
             }
         )
+        tasks.append(
+            {
+                "label": "NobroRTOS: Event Log Matrix Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-event-log-matrix",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
         tasks.append(
             {
@@ -847,6 +861,18 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         ("-m", "nobro_rtos", "check-scheduler-matrix"),
     ):
         errors.append("scheduler matrix gate task command mismatch")
+
+    event_log_matrix_gate_task = _task_by_label(
+        tasks,
+        "NobroRTOS: Event Log Matrix Gate",
+    )
+    if target == ProjectTarget.PYTHON_HOST and event_log_matrix_gate_task is None:
+        errors.append("missing NobroRTOS: Event Log Matrix Gate task")
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        event_log_matrix_gate_task,
+        ("-m", "nobro_rtos", "check-event-log-matrix"),
+    ):
+        errors.append("event log matrix gate task command mismatch")
 
     bridge_task = _task_by_label(
         tasks,

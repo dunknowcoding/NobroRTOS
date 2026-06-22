@@ -153,6 +153,9 @@ scheduler configuration.
 `remaining_capacity()`, `latest_sequence()`, and `has_dropped_events()`. Use
 them when deciding whether to export a diagnostic report, compact a host trace,
 or raise degraded-mode pressure without pushing another event.
+The `check-event-log-matrix` CLI validates fixed-ring capacity accounting,
+overwrite pressure, recent-record order, severity thresholds, zero-capacity
+drop accounting, and invalid input handling.
 
 Python host tooling mirrors quota accounting and degraded-mode planning through
 `QuotaLedgerSimulator` and `DegradePlannerSimulator`. These helpers are for
@@ -189,9 +192,10 @@ Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add runtime drill, runtime drill gate, and AI
-route, AI route matrix, recovery matrix, watchdog matrix, and scheduler matrix
-gate tasks, and Python board bridge templates add an offline bridge smoke task
-for MicroPython, CircuitPython, and mPython-style development.
+route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix, and
+event log matrix gate tasks, and Python board bridge templates add an offline
+bridge smoke task for MicroPython, CircuitPython, and mPython-style
+development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set.
 
@@ -469,7 +473,8 @@ local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
 public header, starter template, AI route matrix, recovery matrix, watchdog
-matrix, scheduler matrix, and runtime drill validation for pre-package review.
+matrix, scheduler matrix, event log matrix, and runtime drill validation for
+pre-package review.
 
 ## Host API
 
