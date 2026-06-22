@@ -25,7 +25,16 @@ cargo test -p nobro-host --target x86_64-pc-windows-msvc
 ```
 
 `cargo check --workspace` uses `.cargo/config.toml` and checks the embedded
-`thumbv7em-none-eabihf` target by default.
+`thumbv7em-none-eabihf` target by default. Run crate tests with an explicit
+host target because the embedded target does not provide the Rust test harness.
+
+## Recovery Planning
+
+`nobro-kernel` keeps recovery decisions allocation-free. `RecoveryOutcome`
+captures the supervisor action, and `RecoveryPlan<N>` converts it into bounded
+steps such as notify, retry, quiesce, restart, heartbeat verification, and
+resume. Plans are fixed-capacity arrays and fail explicitly when capacity or
+total recovery budget is exceeded.
 
 ## Compatibility Notes
 

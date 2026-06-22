@@ -14,6 +14,217 @@ pub struct RecoveryOutcome {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecoveryStepKind {
+    Observe,
+    Notify,
+    Retry,
+    QuiesceModule,
+    RestartModule,
+    VerifyHeartbeat,
+    ResumeModule,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryStep {
+    pub module: ModuleId,
+    pub kind: RecoveryStepKind,
+    pub due_us: u64,
+    pub budget_us: u32,
+}
+
+impl RecoveryStep {
+    pub const fn new(
+        module: ModuleId,
+        kind: RecoveryStepKind,
+        due_us: u64,
+        budget_us: u32,
+    ) -> Self {
+        Self {
+            module,
+            kind,
+            due_us,
+            budget_us,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryPlanPolicy {
+    pub notify_budget_us: u32,
+    pub retry_budget_us: u32,
+    pub restart_budget_us: u32,
+    pub verify_budget_us: u32,
+    pub resume_budget_us: u32,
+    pub max_total_budget_us: u32,
+}
+
+impl RecoveryPlanPolicy {
+    pub const DEFAULT: Self = Self {
+        notify_budget_us: 500,
+        retry_budget_us: 1_000,
+        restart_budget_us: 5_000,
+        verify_budget_us: 1_000,
+        resume_budget_us: 500,
+        max_total_budget_us: 20_000,
+    };
+}
+
+impl Default for RecoveryPlanPolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecoveryPlanError {
+    Full,
+    BudgetExceeded { required_us: u64, limit_us: u32 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryPlan<const N: usize> {
+    pub outcome: RecoveryOutcome,
+    pub steps: [Option<RecoveryStep>; N],
+    pub len: usize,
+    pub deadline_us: u64,
+    pub required_budget_us: u64,
+}
+
+impl<const N: usize> RecoveryPlan<N> {
+    pub fn from_outcome(
+        outcome: RecoveryOutcome,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<Self, RecoveryPlanError> {
+        let mut plan = Self {
+            outcome,
+            steps: [None; N],
+            len: 0,
+            deadline_us: now_us,
+            required_budget_us: 0,
+        };
+
+        match outcome.action {
+            Action::Ignore => {
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::Observe,
+                    now_us,
+                    0,
+                ))?;
+            }
+            Action::NotifyUserTask => {
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::Notify,
+                    now_us,
+                    policy.notify_budget_us,
+                ))?;
+            }
+            Action::RetryNow => {
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::Retry,
+                    now_us,
+                    policy.retry_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::VerifyHeartbeat,
+                    now_us.saturating_add(u64::from(policy.retry_budget_us)),
+                    policy.verify_budget_us,
+                ))?;
+            }
+            Action::RetryDelay(delay_us) => {
+                let retry_due = now_us.saturating_add(u64::from(delay_us));
+                plan.required_budget_us =
+                    plan.required_budget_us.saturating_add(u64::from(delay_us));
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::Retry,
+                    retry_due,
+                    policy.retry_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::VerifyHeartbeat,
+                    retry_due.saturating_add(u64::from(policy.retry_budget_us)),
+                    policy.verify_budget_us,
+                ))?;
+            }
+            Action::RebootModule => {
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::QuiesceModule,
+                    now_us,
+                    policy.notify_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::RestartModule,
+                    now_us.saturating_add(u64::from(policy.notify_budget_us)),
+                    policy.restart_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::VerifyHeartbeat,
+                    now_us
+                        .saturating_add(u64::from(policy.notify_budget_us))
+                        .saturating_add(u64::from(policy.restart_budget_us)),
+                    policy.verify_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::ResumeModule,
+                    now_us
+                        .saturating_add(u64::from(policy.notify_budget_us))
+                        .saturating_add(u64::from(policy.restart_budget_us))
+                        .saturating_add(u64::from(policy.verify_budget_us)),
+                    policy.resume_budget_us,
+                ))?;
+            }
+        }
+
+        if plan.required_budget_us > u64::from(policy.max_total_budget_us) {
+            return Err(RecoveryPlanError::BudgetExceeded {
+                required_us: plan.required_budget_us,
+                limit_us: policy.max_total_budget_us,
+            });
+        }
+        plan.deadline_us = now_us.saturating_add(plan.required_budget_us);
+        Ok(plan)
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn first(&self) -> Option<RecoveryStep> {
+        self.steps.first().copied().flatten()
+    }
+
+    pub fn last(&self) -> Option<RecoveryStep> {
+        if self.len == 0 {
+            None
+        } else {
+            self.steps[self.len - 1]
+        }
+    }
+
+    fn push(&mut self, step: RecoveryStep) -> Result<(), RecoveryPlanError> {
+        if self.len == N {
+            return Err(RecoveryPlanError::Full);
+        }
+        self.required_budget_us = self
+            .required_budget_us
+            .saturating_add(u64::from(step.budget_us));
+        self.steps[self.len] = Some(step);
+        self.len += 1;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecoveryError {
     Lifecycle(LifecycleError),
 }
@@ -167,6 +378,147 @@ mod tests {
         assert_eq!(outcome.error, KernelError::DeadlineMissed);
         assert_eq!(outcome.action, Action::NotifyUserTask);
         assert_eq!(outcome.state, SystemState::Degraded);
+    }
+
+    #[test]
+    fn recovery_plan_notifies_without_heap_allocation() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Sensor,
+            error: KernelError::SensorReadFail,
+            action: Action::NotifyUserTask,
+            state: SystemState::Degraded,
+        };
+
+        let plan =
+            RecoveryPlan::<2>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
+
+        assert_eq!(plan.len, 1);
+        assert_eq!(plan.required_budget_us, 500);
+        assert_eq!(plan.deadline_us, 600);
+        assert_eq!(
+            plan.first(),
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::Notify,
+                100,
+                500
+            ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_delays_retry_and_verifies_heartbeat() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Radio,
+            error: KernelError::RadioTxFail,
+            action: Action::RetryDelay(2_000),
+            state: SystemState::Running,
+        };
+
+        let plan =
+            RecoveryPlan::<2>::from_outcome(outcome, 10_000, RecoveryPlanPolicy::DEFAULT).unwrap();
+
+        assert_eq!(plan.len, 2);
+        assert_eq!(plan.required_budget_us, 4_000);
+        assert_eq!(plan.deadline_us, 14_000);
+        assert_eq!(
+            plan.steps[0],
+            Some(RecoveryStep::new(
+                ModuleId::Radio,
+                RecoveryStepKind::Retry,
+                12_000,
+                1_000
+            ))
+        );
+        assert_eq!(
+            plan.steps[1],
+            Some(RecoveryStep::new(
+                ModuleId::Radio,
+                RecoveryStepKind::VerifyHeartbeat,
+                13_000,
+                1_000
+            ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_reboot_sequence_is_ordered_and_bounded() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Actuator,
+            error: KernelError::DeadlineMissed,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+
+        let plan =
+            RecoveryPlan::<4>::from_outcome(outcome, 50, RecoveryPlanPolicy::DEFAULT).unwrap();
+
+        assert_eq!(plan.len, 4);
+        assert_eq!(plan.required_budget_us, 7_000);
+        assert_eq!(plan.deadline_us, 7_050);
+        assert_eq!(
+            plan.steps[0],
+            Some(RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::QuiesceModule,
+                50,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[1],
+            Some(RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::RestartModule,
+                550,
+                5_000
+            ))
+        );
+        assert_eq!(
+            plan.steps[2],
+            Some(RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::VerifyHeartbeat,
+                5_550,
+                1_000
+            ))
+        );
+        assert_eq!(
+            plan.last(),
+            Some(RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::ResumeModule,
+                6_550,
+                500
+            ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_reports_capacity_and_budget_failures() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Bus,
+            error: KernelError::BusTimeout,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+
+        assert_eq!(
+            RecoveryPlan::<3>::from_outcome(outcome, 0, RecoveryPlanPolicy::DEFAULT),
+            Err(RecoveryPlanError::Full)
+        );
+
+        let tight = RecoveryPlanPolicy {
+            max_total_budget_us: 1_000,
+            ..RecoveryPlanPolicy::DEFAULT
+        };
+        assert_eq!(
+            RecoveryPlan::<4>::from_outcome(outcome, 0, tight),
+            Err(RecoveryPlanError::BudgetExceeded {
+                required_us: 7_000,
+                limit_us: 1_000,
+            })
+        );
     }
 
     #[test]

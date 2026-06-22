@@ -255,6 +255,29 @@ and invalid-configuration paths.
 actions, and event records. Recovery is module-scoped by default; global reset
 policy should stay outside hot-path adapters.
 
+`RecoveryPlan<N>` turns a `RecoveryOutcome` into ordered fixed-capacity steps
+with due times, per-step budgets, and a total deadline:
+
+```rust
+let outcome = nobro_kernel::RecoveryOutcome {
+    module: nobro_kernel::ModuleId::Sensor,
+    error: nobro_kernel::KernelError::SensorReadFail,
+    action: nobro_kernel::Action::RebootModule,
+    state: nobro_kernel::SystemState::Recovering,
+};
+let plan = nobro_kernel::RecoveryPlan::<4>::from_outcome(
+    outcome,
+    now_us,
+    nobro_kernel::RecoveryPlanPolicy::DEFAULT,
+)?;
+assert_eq!(plan.len, 4);
+```
+
+Use `RecoveryPlanPolicy` to tune notify, retry, restart, verification, resume,
+and maximum total recovery budgets. Capacity and budget failures are explicit
+errors, so self-healing can be reviewed before being attached to board-specific
+restart or power-control code.
+
 ## HAL API
 
 ### BoardDesc

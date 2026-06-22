@@ -123,8 +123,15 @@ Recovery is module-scoped first:
 2. update health counters
 3. record a bounded event
 4. choose an action
-5. transition lifecycle state
-6. export the result through reports
+5. build a fixed-capacity recovery plan
+6. transition lifecycle state
+7. export the result through reports
+
+`RecoveryPlan` converts a recovery outcome into ordered, bounded steps such as
+notify, retry, quiesce, restart, heartbeat verification, and resume. The plan
+uses caller-provided capacity, reports capacity failures explicitly, and checks
+the total recovery budget before a supervisor turns an action into work. This
+keeps self-healing deterministic and reviewable without heap allocation.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are
