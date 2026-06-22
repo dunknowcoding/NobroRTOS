@@ -723,6 +723,173 @@ class RosParameter:
 
 
 @dataclass(frozen=True)
+class RosPreflightReport:
+    kind: str
+    name: str
+    passing: bool
+    errors: tuple[str, ...]
+    required_buffer_bytes: int
+    limits: dict[str, int]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "name": self.name,
+            "passing": self.passing,
+            "errors": list(self.errors),
+            "required_buffer_bytes": self.required_buffer_bytes,
+            "limits": dict(sorted(self.limits.items())),
+        }
+
+
+def preflight_ros_topic(topic: RosTopic, payload_bytes: int) -> RosPreflightReport:
+    topic.validate()
+    _validate_non_negative("payload_bytes", payload_bytes)
+    errors: list[str] = []
+    if payload_bytes > topic.max_message_bytes:
+        errors.append(
+            "ROS topic payload exceeds contract: "
+            f"{payload_bytes} > {topic.max_message_bytes}"
+        )
+    return RosPreflightReport(
+        kind="topic",
+        name=topic.name,
+        passing=len(errors) == 0,
+        errors=tuple(errors),
+        required_buffer_bytes=topic.depth * topic.max_message_bytes,
+        limits={
+            "payload_bytes": payload_bytes,
+            "depth": topic.depth,
+            "max_message_bytes": topic.max_message_bytes,
+        },
+    )
+
+
+def preflight_ros_service(
+    service: RosService,
+    request_bytes: int,
+    response_capacity_bytes: int,
+    budget_us: int,
+) -> RosPreflightReport:
+    service.validate()
+    _validate_non_negative("request_bytes", request_bytes)
+    _validate_non_negative("response_capacity_bytes", response_capacity_bytes)
+    _validate_non_negative("budget_us", budget_us)
+    errors: list[str] = []
+    if request_bytes > service.request_bytes_max:
+        errors.append(
+            "ROS service request exceeds contract: "
+            f"{request_bytes} > {service.request_bytes_max}"
+        )
+    if response_capacity_bytes < service.response_bytes_max:
+        errors.append(
+            "ROS service response capacity is too small: "
+            f"{response_capacity_bytes} < {service.response_bytes_max}"
+        )
+    if service.timeout_us > budget_us:
+        errors.append(
+            "ROS service timeout exceeds budget: "
+            f"{service.timeout_us} > {budget_us}"
+        )
+    return RosPreflightReport(
+        kind="service",
+        name=service.name,
+        passing=len(errors) == 0,
+        errors=tuple(errors),
+        required_buffer_bytes=service.request_bytes_max + service.response_bytes_max,
+        limits={
+            "request_bytes": request_bytes,
+            "response_capacity_bytes": response_capacity_bytes,
+            "budget_us": budget_us,
+            "request_bytes_max": service.request_bytes_max,
+            "response_bytes_max": service.response_bytes_max,
+            "timeout_us": service.timeout_us,
+        },
+    )
+
+
+def preflight_ros_action(
+    action: RosAction,
+    goal_bytes: int,
+    feedback_capacity_bytes: int,
+    result_capacity_bytes: int,
+    budget_us: int,
+) -> RosPreflightReport:
+    action.validate()
+    _validate_non_negative("goal_bytes", goal_bytes)
+    _validate_non_negative("feedback_capacity_bytes", feedback_capacity_bytes)
+    _validate_non_negative("result_capacity_bytes", result_capacity_bytes)
+    _validate_non_negative("budget_us", budget_us)
+    errors: list[str] = []
+    if goal_bytes > action.goal_bytes_max:
+        errors.append(
+            "ROS action goal exceeds contract: "
+            f"{goal_bytes} > {action.goal_bytes_max}"
+        )
+    if feedback_capacity_bytes < action.feedback_bytes_max:
+        errors.append(
+            "ROS action feedback capacity is too small: "
+            f"{feedback_capacity_bytes} < {action.feedback_bytes_max}"
+        )
+    if result_capacity_bytes < action.result_bytes_max:
+        errors.append(
+            "ROS action result capacity is too small: "
+            f"{result_capacity_bytes} < {action.result_bytes_max}"
+        )
+    if action.timeout_us > budget_us:
+        errors.append(
+            "ROS action timeout exceeds budget: "
+            f"{action.timeout_us} > {budget_us}"
+        )
+    return RosPreflightReport(
+        kind="action",
+        name=action.name,
+        passing=len(errors) == 0,
+        errors=tuple(errors),
+        required_buffer_bytes=(
+            action.goal_bytes_max
+            + action.feedback_bytes_max
+            + action.result_bytes_max
+        ),
+        limits={
+            "goal_bytes": goal_bytes,
+            "feedback_capacity_bytes": feedback_capacity_bytes,
+            "result_capacity_bytes": result_capacity_bytes,
+            "budget_us": budget_us,
+            "goal_bytes_max": action.goal_bytes_max,
+            "feedback_bytes_max": action.feedback_bytes_max,
+            "result_bytes_max": action.result_bytes_max,
+            "timeout_us": action.timeout_us,
+        },
+    )
+
+
+def preflight_ros_parameter(
+    parameter: RosParameter,
+    value_bytes: int,
+) -> RosPreflightReport:
+    parameter.validate()
+    _validate_non_negative("value_bytes", value_bytes)
+    errors: list[str] = []
+    if value_bytes > parameter.value_bytes_max:
+        errors.append(
+            "ROS parameter value exceeds contract: "
+            f"{value_bytes} > {parameter.value_bytes_max}"
+        )
+    return RosPreflightReport(
+        kind="parameter",
+        name=parameter.name,
+        passing=len(errors) == 0,
+        errors=tuple(errors),
+        required_buffer_bytes=parameter.value_bytes_max,
+        limits={
+            "value_bytes": value_bytes,
+            "value_bytes_max": parameter.value_bytes_max,
+        },
+    )
+
+
+@dataclass(frozen=True)
 class RosBridgeDescriptor:
     bridge_id: str
     transport: str
@@ -911,6 +1078,11 @@ def _validate_name(value: str) -> None:
 def _validate_positive(name: str, value: int) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _validate_non_negative(name: str, value: int) -> None:
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
 
 
 def _validate_unique(kind: str, values: list[str]) -> None:

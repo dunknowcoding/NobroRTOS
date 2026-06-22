@@ -34,7 +34,10 @@ from nobro_rtos import (
     QuotaLedgerSimulatorError,
     ReportKind,
     ReportStatus,
+    RosAction,
     RosBridgeDescriptor,
+    RosParameter,
+    RosPreflightReport,
     RosService,
     RosTopic,
     RecoveryAction,
@@ -58,6 +61,10 @@ from nobro_rtos import (
     materialize_project_template,
     plan_startup,
     preflight_ai_invocation,
+    preflight_ros_action,
+    preflight_ros_parameter,
+    preflight_ros_service,
+    preflight_ros_topic,
     repair_project_template,
     seal_report,
     stable_hash32,
@@ -77,6 +84,7 @@ from nobro_rtos.cli import (
     _check_quota_matrix,
     _check_report_matrix,
     _check_recovery_matrix,
+    _check_ros_preflight_matrix,
     _check_runtime_drill,
     _check_scheduler_matrix,
     _check_starter_templates,
@@ -91,6 +99,7 @@ from nobro_rtos.cli import (
     _sample_project,
     _sample_recovery,
     _sample_report,
+    _sample_ros_preflight,
     _sample_runtime_drill,
     _sample_scheduler,
     _sample_sensor,
@@ -204,6 +213,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("ai_route_matrix_gate", report["host_simulators"])
         self.assertIn("ai_preflight_gate", report["host_simulators"])
+        self.assertIn("ros_preflight_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
         self.assertIn("starter_template_gate", report["host_simulators"])
 
@@ -222,6 +232,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["ai_route_matrix"]["passing"])
         self.assertIn("ai_preflight_matrix", report["checks"])
         self.assertTrue(report["checks"]["ai_preflight_matrix"]["passing"])
+        self.assertIn("ros_preflight_matrix", report["checks"])
+        self.assertTrue(report["checks"]["ros_preflight_matrix"]["passing"])
         self.assertIn("recovery_matrix", report["checks"])
         self.assertTrue(report["checks"]["recovery_matrix"]["passing"])
         self.assertIn("watchdog_matrix", report["checks"])
@@ -337,54 +349,59 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("check-ai-preflight-matrix", python_tasks["tasks"][5]["args"])
         self.assertEqual(
             python_tasks["tasks"][6]["label"],
-            "NobroRTOS: Recovery Matrix Gate",
+            "NobroRTOS: ROS Preflight Matrix Gate",
         )
-        self.assertIn("check-recovery-matrix", python_tasks["tasks"][6]["args"])
+        self.assertIn("check-ros-preflight-matrix", python_tasks["tasks"][6]["args"])
         self.assertEqual(
             python_tasks["tasks"][7]["label"],
-            "NobroRTOS: Watchdog Matrix Gate",
+            "NobroRTOS: Recovery Matrix Gate",
         )
-        self.assertIn("check-watchdog-matrix", python_tasks["tasks"][7]["args"])
+        self.assertIn("check-recovery-matrix", python_tasks["tasks"][7]["args"])
         self.assertEqual(
             python_tasks["tasks"][8]["label"],
-            "NobroRTOS: Scheduler Matrix Gate",
+            "NobroRTOS: Watchdog Matrix Gate",
         )
-        self.assertIn("check-scheduler-matrix", python_tasks["tasks"][8]["args"])
+        self.assertIn("check-watchdog-matrix", python_tasks["tasks"][8]["args"])
         self.assertEqual(
             python_tasks["tasks"][9]["label"],
-            "NobroRTOS: Event Log Matrix Gate",
+            "NobroRTOS: Scheduler Matrix Gate",
         )
-        self.assertIn("check-event-log-matrix", python_tasks["tasks"][9]["args"])
+        self.assertIn("check-scheduler-matrix", python_tasks["tasks"][9]["args"])
         self.assertEqual(
             python_tasks["tasks"][10]["label"],
-            "NobroRTOS: Quota Matrix Gate",
+            "NobroRTOS: Event Log Matrix Gate",
         )
-        self.assertIn("check-quota-matrix", python_tasks["tasks"][10]["args"])
+        self.assertIn("check-event-log-matrix", python_tasks["tasks"][10]["args"])
         self.assertEqual(
             python_tasks["tasks"][11]["label"],
-            "NobroRTOS: Degrade Matrix Gate",
+            "NobroRTOS: Quota Matrix Gate",
         )
-        self.assertIn("check-degrade-matrix", python_tasks["tasks"][11]["args"])
+        self.assertIn("check-quota-matrix", python_tasks["tasks"][11]["args"])
         self.assertEqual(
             python_tasks["tasks"][12]["label"],
-            "NobroRTOS: Startup Matrix Gate",
+            "NobroRTOS: Degrade Matrix Gate",
         )
-        self.assertIn("check-startup-matrix", python_tasks["tasks"][12]["args"])
+        self.assertIn("check-degrade-matrix", python_tasks["tasks"][12]["args"])
         self.assertEqual(
             python_tasks["tasks"][13]["label"],
-            "NobroRTOS: Boot Summary Matrix Gate",
+            "NobroRTOS: Startup Matrix Gate",
         )
-        self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][13]["args"])
+        self.assertIn("check-startup-matrix", python_tasks["tasks"][13]["args"])
         self.assertEqual(
             python_tasks["tasks"][14]["label"],
-            "NobroRTOS: Bundle Matrix Gate",
+            "NobroRTOS: Boot Summary Matrix Gate",
         )
-        self.assertIn("check-bundle-matrix", python_tasks["tasks"][14]["args"])
+        self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][14]["args"])
         self.assertEqual(
             python_tasks["tasks"][15]["label"],
+            "NobroRTOS: Bundle Matrix Gate",
+        )
+        self.assertIn("check-bundle-matrix", python_tasks["tasks"][15]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][16]["label"],
             "NobroRTOS: Report Matrix Gate",
         )
-        self.assertIn("check-report-matrix", python_tasks["tasks"][15]["args"])
+        self.assertIn("check-report-matrix", python_tasks["tasks"][16]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -599,6 +616,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "check-ai-route"]
                 if task["label"] == "NobroRTOS: AI Preflight Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-ai-preflight"]
+                if task["label"] == "NobroRTOS: ROS Preflight Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-ros-preflight"]
                 if task["label"] == "NobroRTOS: Recovery Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-recovery"]
                 if task["label"] == "NobroRTOS: Watchdog Matrix Gate":
@@ -627,6 +646,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("AI route gate task command mismatch", before.errors)
             self.assertIn("AI route matrix gate task command mismatch", before.errors)
             self.assertIn("AI preflight matrix gate task command mismatch", before.errors)
+            self.assertIn("ROS preflight matrix gate task command mismatch", before.errors)
             self.assertIn("recovery matrix gate task command mismatch", before.errors)
             self.assertIn("watchdog matrix gate task command mismatch", before.errors)
             self.assertIn("scheduler matrix gate task command mismatch", before.errors)
@@ -656,6 +676,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "AI preflight matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "ROS preflight matrix gate task command mismatch",
                 report.before_errors,
             )
             self.assertIn(
@@ -723,6 +747,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: AI Preflight Matrix Gate"
             )
             self.assertIn("check-ai-preflight-matrix", ai_preflight_gate["args"])
+            ros_preflight_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: ROS Preflight Matrix Gate"
+            )
+            self.assertIn("check-ros-preflight-matrix", ros_preflight_gate["args"])
             recovery_matrix_gate = next(
                 task
                 for task in repaired["tasks"]
@@ -1521,6 +1551,78 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["passing"])
         self.assertEqual(payload["scenario_count"], 6)
+
+    def test_ros_preflight_checks_bridge_payloads_buffers_and_timeouts(self) -> None:
+        topic = preflight_ros_topic(RosTopic("/imu", "sensor_msgs/Imu", 4, 64), 48)
+        self.assertIsInstance(topic, RosPreflightReport)
+        self.assertTrue(topic.passing)
+        self.assertEqual(topic.required_buffer_bytes, 256)
+
+        service = preflight_ros_service(
+            RosService("/calibrate", 16, 32, 50_000),
+            request_bytes=24,
+            response_capacity_bytes=8,
+            budget_us=20_000,
+        ).to_dict()
+        self.assertFalse(service["passing"])
+        self.assertIn("ROS service request exceeds contract: 24 > 16", service["errors"])
+        self.assertIn(
+            "ROS service response capacity is too small: 8 < 32",
+            service["errors"],
+        )
+        self.assertIn("ROS service timeout exceeds budget: 50000 > 20000", service["errors"])
+
+        action = preflight_ros_action(
+            RosAction("/dock", 16, 8, 24, 100_000),
+            goal_bytes=32,
+            feedback_capacity_bytes=4,
+            result_capacity_bytes=8,
+            budget_us=50_000,
+        )
+        self.assertFalse(action.passing)
+        self.assertEqual(action.required_buffer_bytes, 48)
+        self.assertIn("ROS action result capacity is too small: 8 < 24", action.errors)
+
+        parameter = preflight_ros_parameter(RosParameter("/robot/name", 12), 16)
+        self.assertFalse(parameter.passing)
+        self.assertIn("ROS parameter value exceeds contract: 16 > 12", parameter.errors)
+
+    def test_ros_preflight_matrix_covers_bridge_admission_paths(self) -> None:
+        sample = _sample_ros_preflight()
+        self.assertTrue(sample["passing"])
+        self.assertEqual(len(sample["reports"]), 4)
+
+        report = _check_ros_preflight_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 5)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["service_buffers_and_budget_are_checked"]["preflight"][
+                "required_buffer_bytes"
+            ],
+            48,
+        )
+        self.assertIn(
+            "ROS action timeout exceeds budget: 100000 > 50000",
+            scenarios["action_goal_feedback_result_and_budget_are_checked"][
+                "preflight"
+            ]["errors"],
+        )
+
+    def test_ros_preflight_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-ros-preflight-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 5)
 
     def test_ai_route_gate_reports_pass_and_target_mismatch(self) -> None:
         base = {

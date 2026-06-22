@@ -19,6 +19,7 @@ from .contracts import (
     MemoryBudget,
     ModuleSpec,
     NobroContractBundle,
+    RosAction,
     RosBridgeDescriptor,
     RosParameter,
     RosService,
@@ -26,6 +27,10 @@ from .contracts import (
     StartupDependency,
     plan_startup,
     preflight_ai_invocation,
+    preflight_ros_action,
+    preflight_ros_parameter,
+    preflight_ros_service,
+    preflight_ros_topic,
     stable_hash32,
 )
 from .distribution import validate_distribution_metadata, validate_public_header_surface
@@ -150,6 +155,14 @@ def main() -> int:
     subparsers.add_parser(
         "check-ai-preflight-matrix",
         help="run deterministic AI invocation admission checks",
+    )
+    subparsers.add_parser(
+        "sample-ros-preflight",
+        help="print deterministic ROS bridge preflight reports as JSON",
+    )
+    subparsers.add_parser(
+        "check-ros-preflight-matrix",
+        help="run deterministic ROS bridge admission checks",
     )
     subparsers.add_parser(
         "check-bundle-matrix",
@@ -500,6 +513,13 @@ def main() -> int:
         return 0
     if args.command == "check-ai-preflight-matrix":
         report = _check_ai_preflight_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
+    if args.command == "sample-ros-preflight":
+        print(json.dumps(_sample_ros_preflight(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "check-ros-preflight-matrix":
+        report = _check_ros_preflight_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
     if args.command == "check-bundle-matrix":
@@ -1222,6 +1242,7 @@ def _doctor() -> dict[str, object]:
             "ai_route_gate",
             "ai_route_matrix_gate",
             "ai_preflight_gate",
+            "ros_preflight_gate",
             "bundle_matrix_gate",
             "report_matrix_gate",
             "project_templates",
@@ -1328,6 +1349,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("starter_templates", _check_starter_templates())
     add_check("ai_route_matrix", _check_ai_route_matrix())
     add_check("ai_preflight_matrix", _check_ai_preflight_matrix())
+    add_check("ros_preflight_matrix", _check_ros_preflight_matrix())
     add_check("recovery_matrix", _check_recovery_matrix())
     add_check("watchdog_matrix", _check_watchdog_matrix())
     add_check("scheduler_matrix", _check_scheduler_matrix())
@@ -1798,6 +1820,144 @@ def _ai_preflight_model(backend: AiBackendKind) -> AiModelContract:
         timeout_us=20_000,
         stale_after_us=100_000,
     )
+
+
+def _sample_ros_preflight() -> dict[str, object]:
+    return {
+        "passing": True,
+        "reports": [
+            preflight_ros_topic(
+                RosTopic("/imu", "sensor_msgs/Imu", 4, 64),
+                payload_bytes=48,
+            ).to_dict(),
+            preflight_ros_service(
+                RosService("/calibrate", 16, 16, 50_000),
+                request_bytes=12,
+                response_capacity_bytes=16,
+                budget_us=60_000,
+            ).to_dict(),
+            preflight_ros_action(
+                RosAction("/dock", 16, 8, 16, 100_000),
+                goal_bytes=12,
+                feedback_capacity_bytes=8,
+                result_capacity_bytes=16,
+                budget_us=120_000,
+            ).to_dict(),
+            preflight_ros_parameter(
+                RosParameter("/robot/name", 24),
+                value_bytes=16,
+            ).to_dict(),
+        ],
+    }
+
+
+def _check_ros_preflight_matrix() -> dict[str, object]:
+    scenarios = (
+        _ros_preflight_scenario(
+            name="topic_payload_within_depth_buffer",
+            report=preflight_ros_topic(
+                RosTopic("/imu", "sensor_msgs/Imu", 4, 64),
+                payload_bytes=48,
+            ).to_dict(),
+            expected_passing=True,
+            expected_required_buffer=256,
+            expected_errors=(),
+        ),
+        _ros_preflight_scenario(
+            name="topic_payload_over_contract",
+            report=preflight_ros_topic(
+                RosTopic("/image", "sensor_msgs/Image", 2, 128),
+                payload_bytes=256,
+            ).to_dict(),
+            expected_passing=False,
+            expected_required_buffer=256,
+            expected_errors=("ROS topic payload exceeds contract: 256 > 128",),
+        ),
+        _ros_preflight_scenario(
+            name="service_buffers_and_budget_are_checked",
+            report=preflight_ros_service(
+                RosService("/calibrate", 16, 32, 50_000),
+                request_bytes=24,
+                response_capacity_bytes=8,
+                budget_us=20_000,
+            ).to_dict(),
+            expected_passing=False,
+            expected_required_buffer=48,
+            expected_errors=(
+                "ROS service request exceeds contract: 24 > 16",
+                "ROS service response capacity is too small: 8 < 32",
+                "ROS service timeout exceeds budget: 50000 > 20000",
+            ),
+        ),
+        _ros_preflight_scenario(
+            name="action_goal_feedback_result_and_budget_are_checked",
+            report=preflight_ros_action(
+                RosAction("/dock", 16, 8, 24, 100_000),
+                goal_bytes=32,
+                feedback_capacity_bytes=4,
+                result_capacity_bytes=8,
+                budget_us=50_000,
+            ).to_dict(),
+            expected_passing=False,
+            expected_required_buffer=48,
+            expected_errors=(
+                "ROS action goal exceeds contract: 32 > 16",
+                "ROS action feedback capacity is too small: 4 < 8",
+                "ROS action result capacity is too small: 8 < 24",
+                "ROS action timeout exceeds budget: 100000 > 50000",
+            ),
+        ),
+        _ros_preflight_scenario(
+            name="parameter_value_size_is_checked",
+            report=preflight_ros_parameter(
+                RosParameter("/robot/name", 12),
+                value_bytes=16,
+            ).to_dict(),
+            expected_passing=False,
+            expected_required_buffer=12,
+            expected_errors=("ROS parameter value exceeds contract: 16 > 12",),
+        ),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _ros_preflight_scenario(
+    *,
+    name: str,
+    report: dict[str, object],
+    expected_passing: bool,
+    expected_required_buffer: int,
+    expected_errors: tuple[str, ...],
+) -> dict[str, object]:
+    errors: list[str] = []
+    _expect_equal(report["passing"], expected_passing, "passing", errors)
+    _expect_equal(
+        report["required_buffer_bytes"],
+        expected_required_buffer,
+        "required_buffer_bytes",
+        errors,
+    )
+    for expected_error in expected_errors:
+        if expected_error not in report["errors"]:
+            errors.append(f"missing error: {expected_error}")
+    unexpected = [error for error in report["errors"] if error not in expected_errors]
+    if unexpected:
+        errors.append(f"unexpected errors: {unexpected!r}")
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "preflight": report,
+    }
 
 
 def _check_ai_route(

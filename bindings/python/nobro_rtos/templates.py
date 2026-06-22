@@ -662,6 +662,20 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
         )
         tasks.append(
             {
+                "label": "NobroRTOS: ROS Preflight Matrix Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-ros-preflight-matrix",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
+        tasks.append(
+            {
                 "label": "NobroRTOS: Recovery Matrix Gate",
                 "type": "shell",
                 "command": "python",
@@ -935,6 +949,18 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         ("-m", "nobro_rtos", "check-ai-preflight-matrix"),
     ):
         errors.append("AI preflight matrix gate task command mismatch")
+
+    ros_preflight_matrix_gate_task = _task_by_label(
+        tasks,
+        "NobroRTOS: ROS Preflight Matrix Gate",
+    )
+    if target == ProjectTarget.PYTHON_HOST and ros_preflight_matrix_gate_task is None:
+        errors.append("missing NobroRTOS: ROS Preflight Matrix Gate task")
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        ros_preflight_matrix_gate_task,
+        ("-m", "nobro_rtos", "check-ros-preflight-matrix"),
+    ):
+        errors.append("ROS preflight matrix gate task command mismatch")
 
     recovery_matrix_gate_task = _task_by_label(
         tasks,

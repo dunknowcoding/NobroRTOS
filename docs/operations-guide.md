@@ -37,6 +37,7 @@ python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
@@ -59,6 +60,10 @@ starter templates. It catches oversized inference buffers, insufficient module
 RAM, missing AI capabilities, stale snapshot policy violations, degraded
 fallback, unavailable routes, and open endpoint circuits without contacting a
 model or endpoint.
+`check-ros-preflight-matrix` should pass before packaging ROS-style bridge
+tooling or starter templates. It catches oversized bridge payloads, undersized
+response buffers, zero-depth queues, parameter value overflow, and timeout
+budget violations without contacting a ROS transport or agent.
 
 ## Commit Hygiene
 

@@ -112,8 +112,8 @@ temporary directory, validates it, and removes the generated files when the
 gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
-route, AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix,
-scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
+route, AI route matrix, AI preflight matrix, ROS preflight matrix, recovery
+matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
 matrix, boot summary matrix, bundle matrix, and report matrix gate tasks. The Python board bridge
 template includes an offline bridge smoke task for MicroPython, CircuitPython,
 and mPython-style status-line workflows.
@@ -246,6 +246,8 @@ python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
 python -m nobro_rtos check-ai-route-matrix
 python -m nobro_rtos sample-ai-preflight
 python -m nobro_rtos check-ai-preflight-matrix
+python -m nobro_rtos sample-ros-preflight
+python -m nobro_rtos check-ros-preflight-matrix
 python -m nobro_rtos check-bundle-matrix
 python -m nobro_rtos check-report-matrix
 python -m nobro_rtos sample-report runtime
@@ -292,8 +294,10 @@ fallback, and unavailable scenarios in one gate. The AI preflight checker runs
 before inference and rejects oversized buffers, insufficient module RAM,
 missing AI capabilities, stale snapshots that exceed invocation limits,
 degraded fallback, unavailable routes, and open endpoint circuits according to
-explicit policy flags. The report samples
-print sealed fixed reports that can be fed directly into `decode-report`. The
+explicit policy flags. The ROS preflight checker validates bridge payload,
+response-capacity, queue-depth, parameter-size, and timeout bounds before a ROS
+agent or transport is contacted. The report samples print sealed fixed reports
+that can be fed directly into `decode-report`. The
 sensor sample emits deterministic fixture records and injected-fault summaries.
 The actuator sample emits deterministic servo command records with deadline and
 readback summaries.
@@ -336,7 +340,7 @@ when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, AI preflight matrix, recovery
-matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+matrix, ROS preflight matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
 matrix, and runtime drill gates into one
 JSON report.
@@ -369,6 +373,7 @@ python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix

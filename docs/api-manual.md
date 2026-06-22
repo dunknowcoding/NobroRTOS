@@ -230,8 +230,8 @@ Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add runtime drill, runtime drill gate, AI route,
-AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix,
-scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
+AI route matrix, AI preflight matrix, ROS preflight matrix, recovery matrix,
+watchdog matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
 matrix, boot summary matrix, bundle matrix, and report matrix gate tasks.
 Python board bridge templates add an offline bridge smoke task for MicroPython,
 CircuitPython, and mPython-style development.
@@ -583,9 +583,12 @@ The `check-ai-preflight-matrix` CLI validates inference-call admission for
 buffer bounds, arena and scratch RAM, declared AI capabilities, route budget,
 stale snapshot limits, degraded fallback, unavailable routes, and endpoint
 circuit state.
+The `check-ros-preflight-matrix` CLI validates ROS bridge-call admission for
+topic payload bounds, service/action response capacity, queue depth, parameter
+value size, and timeout budget.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
-public header, starter template, AI route matrix, AI preflight matrix, recovery
-matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+public header, starter template, AI route matrix, AI preflight matrix, ROS
+preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
 matrix, and runtime drill validation for pre-package review.
 

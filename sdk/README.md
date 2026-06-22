@@ -25,6 +25,7 @@ repository root:
 ```powershell
 python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-report-matrix
 ```
 
@@ -34,9 +35,12 @@ The AI preflight matrix gate protects SDK-facing inference adapters by checking
 buffer limits, scratch and arena RAM, module capabilities, route budget, stale
 snapshot limits, fallback policy, unavailable routes, and endpoint circuit
 state without contacting a model or service.
+The ROS preflight matrix gate protects SDK-facing bridge adapters by checking
+payload, response-buffer, queue-depth, parameter-size, and timeout bounds
+without contacting a ROS transport or agent.
 
 The gate returns one JSON report for the host contract, package metadata,
-public headers, starter templates, AI route matrix, AI preflight matrix,
-recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
+public headers, starter templates, AI route matrix, AI preflight matrix, ROS
+preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
 matrix, degrade matrix, startup matrix, boot summary matrix, bundle matrix,
 report matrix, and runtime drill checks.

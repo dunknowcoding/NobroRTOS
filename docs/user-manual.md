@@ -208,6 +208,7 @@ python tools/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py check-recovery-matrix
@@ -247,8 +248,8 @@ renamed or stale editor tasks are reported before they mislead a workflow.
 directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
 Python host starter projects include runtime drill, AI route, AI route matrix,
-AI preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event
-log matrix, quota matrix, degrade matrix, startup matrix, boot summary matrix,
+AI preflight matrix, ROS preflight matrix, recovery matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix, degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, and report matrix gate tasks.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
@@ -257,8 +258,8 @@ reboot, final-state, and self-healing flags for software-only review.
 The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
-AI preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event
-log matrix, quota matrix, degrade matrix, startup matrix, boot summary matrix,
+AI preflight matrix, ROS preflight matrix, recovery matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix, degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, report matrix, and runtime drill validation before packaging.
 The report matrix checker verifies fixed-report status classes, checksum
 handling, error labels, and decoded runtime, AI model, and ROS bridge fields.
@@ -272,6 +273,9 @@ The AI preflight matrix checker validates inference-call admission before a
 model runs: input/output buffers, scratch and arena RAM, module capability
 declarations, route budget, stale snapshot limits, degraded fallback,
 unavailable routes, and endpoint circuit state.
+The ROS preflight matrix checker validates bridge-call admission before a ROS
+transport or agent is contacted: topic payload bounds, service/action response
+capacity, queue depth, parameter value size, and timeout budget.
 The recovery matrix checker validates ignore, retry, notify, reboot, and
 OK-reset self-healing paths in one gate.
 The watchdog matrix checker validates non-mutating liveness prechecks, expiry

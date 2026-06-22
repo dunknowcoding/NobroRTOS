@@ -29,6 +29,7 @@ python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
@@ -60,6 +61,7 @@ python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --
 python tools/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
 python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
@@ -81,6 +83,9 @@ edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
 `check-ai-preflight-matrix` validates AI invocation admission before inference:
 input/output buffers, scratch and arena RAM, route budget, capability
 declarations, stale snapshots, and endpoint circuit policy.
+`check-ros-preflight-matrix` validates ROS-style bridge admission before a
+transport is contacted: topic payload bounds, service/action response capacity,
+queue depth, parameter value size, and timeout budget.
 `check-bundle-matrix` validates deterministic contract bundle roundtrip,
 capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
 and startup dependency error paths.
@@ -107,8 +112,8 @@ and corrupt states, checksum handling, error labels, and AI/ROS domain fields.
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, starter
-templates, AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix, scheduler matrix,
-event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
+templates, AI route matrix, AI preflight matrix, ROS preflight matrix,
+recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
 matrix, bundle matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary
 directory, validates it, and removes the temporary files when the gate exits.
