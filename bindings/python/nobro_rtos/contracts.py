@@ -289,6 +289,43 @@ class AiRuntimeState:
 
 
 @dataclass(frozen=True)
+class AiInvocationConstraints:
+    input_bytes: int
+    output_bytes: int
+    scratch_bytes: int
+    budget_us: int
+    max_stale_us: int = 0
+    allow_stale_snapshot: bool = False
+    allow_degraded_fallback: bool = False
+    allow_unavailable: bool = False
+    allow_endpoint_circuit_open: bool = False
+
+    def validate(self) -> None:
+        _validate_positive("input_bytes", self.input_bytes)
+        _validate_positive("output_bytes", self.output_bytes)
+        if self.scratch_bytes < 0:
+            raise ValueError("scratch_bytes cannot be negative")
+        if self.budget_us < 0:
+            raise ValueError("budget_us cannot be negative")
+        if self.max_stale_us < 0:
+            raise ValueError("max_stale_us cannot be negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "input_bytes": self.input_bytes,
+            "output_bytes": self.output_bytes,
+            "scratch_bytes": self.scratch_bytes,
+            "budget_us": self.budget_us,
+            "max_stale_us": self.max_stale_us,
+            "allow_stale_snapshot": self.allow_stale_snapshot,
+            "allow_degraded_fallback": self.allow_degraded_fallback,
+            "allow_unavailable": self.allow_unavailable,
+            "allow_endpoint_circuit_open": self.allow_endpoint_circuit_open,
+        }
+
+
+@dataclass(frozen=True)
 class AiRouteDecision:
     target: AiRouteTarget
     endpoint_circuit_open: bool
@@ -435,6 +472,125 @@ class AiRoutePolicy:
         if contract.stale_after_us == 0:
             return self.stale_after_us
         return min(self.stale_after_us, contract.stale_after_us)
+
+
+@dataclass(frozen=True)
+class AiPreflightReport:
+    passing: bool
+    errors: tuple[str, ...]
+    required_capabilities: tuple[Capability, ...]
+    route: AiRouteDecision
+    required_ram_bytes: int
+    available_ram_bytes: int
+    constraints: AiInvocationConstraints
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "passing": self.passing,
+            "errors": list(self.errors),
+            "required_capabilities": [
+                capability.name.lower() for capability in self.required_capabilities
+            ],
+            "route": self.route.to_dict(),
+            "required_ram_bytes": self.required_ram_bytes,
+            "available_ram_bytes": self.available_ram_bytes,
+            "constraints": self.constraints.to_dict(),
+        }
+
+
+def preflight_ai_invocation(
+    module: ModuleSpec,
+    contract: AiModelContract,
+    policy: AiRoutePolicy,
+    state: AiRuntimeState,
+    constraints: AiInvocationConstraints,
+) -> AiPreflightReport:
+    """Check deterministic AI call admission without contacting an inference backend."""
+
+    module.validate()
+    contract.validate()
+    policy.validate()
+    state.validate()
+    constraints.validate()
+
+    route = policy.decide(contract, state, constraints.budget_us)
+    required_capabilities = _required_ai_capabilities(contract.backend)
+    local_arena_bytes = (
+        contract.arena_bytes
+        if contract.backend in (AiBackendKind.ON_DEVICE, AiBackendKind.HYBRID)
+        else 0
+    )
+    required_ram_bytes = (
+        constraints.input_bytes
+        + constraints.output_bytes
+        + constraints.scratch_bytes
+        + local_arena_bytes
+    )
+    errors: list[str] = []
+
+    if constraints.input_bytes > contract.input_bytes_max:
+        errors.append(
+            "AI input exceeds model contract: "
+            f"{constraints.input_bytes} > {contract.input_bytes_max}"
+        )
+    if constraints.output_bytes > contract.output_bytes_max:
+        errors.append(
+            "AI output exceeds model contract: "
+            f"{constraints.output_bytes} > {contract.output_bytes_max}"
+        )
+    if required_ram_bytes > module.memory.ram_bytes:
+        errors.append(
+            "AI invocation RAM exceeds module budget: "
+            f"{required_ram_bytes} > {module.memory.ram_bytes}"
+        )
+
+    missing_capabilities = tuple(
+        capability for capability in required_capabilities if capability not in module.requires
+    )
+    if missing_capabilities:
+        labels = ", ".join(capability.name.lower() for capability in missing_capabilities)
+        errors.append(f"AI module missing required capabilities: {labels}")
+
+    if route.target == AiRouteTarget.UNAVAILABLE and not constraints.allow_unavailable:
+        errors.append("AI route is unavailable")
+    if (
+        route.target == AiRouteTarget.DEGRADED_FALLBACK
+        and not constraints.allow_degraded_fallback
+    ):
+        errors.append("AI route used degraded fallback")
+    if route.uses_stale_snapshot and not constraints.allow_stale_snapshot:
+        errors.append("AI route used a stale snapshot")
+    if (
+        route.uses_stale_snapshot
+        and constraints.max_stale_us > 0
+        and state.last_success_age_us > constraints.max_stale_us
+    ):
+        errors.append(
+            "AI stale snapshot exceeds invocation limit: "
+            f"{state.last_success_age_us} > {constraints.max_stale_us}"
+        )
+    if route.endpoint_circuit_open and not constraints.allow_endpoint_circuit_open:
+        errors.append("AI endpoint circuit is open")
+
+    return AiPreflightReport(
+        passing=len(errors) == 0,
+        errors=tuple(errors),
+        required_capabilities=required_capabilities,
+        route=route,
+        required_ram_bytes=required_ram_bytes,
+        available_ram_bytes=module.memory.ram_bytes,
+        constraints=constraints,
+    )
+
+
+def _required_ai_capabilities(backend: AiBackendKind) -> tuple[Capability, ...]:
+    if backend == AiBackendKind.ON_DEVICE:
+        return (Capability.AI_INFERENCE,)
+    if backend in (AiBackendKind.REMOTE_API, AiBackendKind.EDGE_SIDECAR):
+        return (Capability.AI_ENDPOINT,)
+    if backend == AiBackendKind.HYBRID:
+        return (Capability.AI_INFERENCE, Capability.AI_ENDPOINT)
+    return ()
 
 
 @dataclass(frozen=True)

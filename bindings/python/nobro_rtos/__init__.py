@@ -2,7 +2,9 @@
 
 from .contracts import (
     AiBackendKind,
+    AiInvocationConstraints,
     AiModelContract,
+    AiPreflightReport,
     AiRouteDecision,
     AiRoutePolicy,
     AiRoutePreference,
@@ -24,6 +26,7 @@ from .contracts import (
     capability_mask,
     capabilities_from_mask,
     plan_startup,
+    preflight_ai_invocation,
     stable_hash32,
 )
 from .host_contract import (
@@ -96,7 +99,9 @@ from .sim import (
 
 __all__ = [
     "AiBackendKind",
+    "AiInvocationConstraints",
     "AiModelContract",
+    "AiPreflightReport",
     "AiRouteDecision",
     "AiRoutePolicy",
     "AiRoutePreference",
@@ -118,6 +123,7 @@ __all__ = [
     "capability_mask",
     "capabilities_from_mask",
     "plan_startup",
+    "preflight_ai_invocation",
     "stable_hash32",
     "find_repo_root",
     "BootDiagnostic",

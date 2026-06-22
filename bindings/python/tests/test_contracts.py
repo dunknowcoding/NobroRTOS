@@ -9,6 +9,7 @@ from unittest import mock
 
 from nobro_rtos import (
     AiBackendKind,
+    AiInvocationConstraints,
     AiModelContract,
     AiRoutePolicy,
     AiRoutePreference,
@@ -56,6 +57,7 @@ from nobro_rtos import (
     load_repo_host_contract,
     materialize_project_template,
     plan_startup,
+    preflight_ai_invocation,
     repair_project_template,
     seal_report,
     stable_hash32,
@@ -64,6 +66,7 @@ from nobro_rtos import (
     validate_public_header_surface,
 )
 from nobro_rtos.cli import (
+    _check_ai_preflight_matrix,
     _check_ai_route,
     _check_ai_route_matrix,
     _check_boot_summary_matrix,
@@ -81,6 +84,7 @@ from nobro_rtos.cli import (
     _check_watchdog_matrix,
     _doctor,
     _sample_actuator,
+    _sample_ai_preflight,
     _sample_event_log,
     _sample_degrade,
     _sample_quota,
@@ -199,6 +203,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("runtime_drill_gate", report["host_simulators"])
         self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("ai_route_matrix_gate", report["host_simulators"])
+        self.assertIn("ai_preflight_gate", report["host_simulators"])
         self.assertIn("project_templates", report["host_simulators"])
         self.assertIn("starter_template_gate", report["host_simulators"])
 
@@ -215,6 +220,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["starter_templates"]["passing"])
         self.assertIn("ai_route_matrix", report["checks"])
         self.assertTrue(report["checks"]["ai_route_matrix"]["passing"])
+        self.assertIn("ai_preflight_matrix", report["checks"])
+        self.assertTrue(report["checks"]["ai_preflight_matrix"]["passing"])
         self.assertIn("recovery_matrix", report["checks"])
         self.assertTrue(report["checks"]["recovery_matrix"]["passing"])
         self.assertIn("watchdog_matrix", report["checks"])
@@ -325,54 +332,59 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("check-ai-route-matrix", python_tasks["tasks"][4]["args"])
         self.assertEqual(
             python_tasks["tasks"][5]["label"],
-            "NobroRTOS: Recovery Matrix Gate",
+            "NobroRTOS: AI Preflight Matrix Gate",
         )
-        self.assertIn("check-recovery-matrix", python_tasks["tasks"][5]["args"])
+        self.assertIn("check-ai-preflight-matrix", python_tasks["tasks"][5]["args"])
         self.assertEqual(
             python_tasks["tasks"][6]["label"],
-            "NobroRTOS: Watchdog Matrix Gate",
+            "NobroRTOS: Recovery Matrix Gate",
         )
-        self.assertIn("check-watchdog-matrix", python_tasks["tasks"][6]["args"])
+        self.assertIn("check-recovery-matrix", python_tasks["tasks"][6]["args"])
         self.assertEqual(
             python_tasks["tasks"][7]["label"],
-            "NobroRTOS: Scheduler Matrix Gate",
+            "NobroRTOS: Watchdog Matrix Gate",
         )
-        self.assertIn("check-scheduler-matrix", python_tasks["tasks"][7]["args"])
+        self.assertIn("check-watchdog-matrix", python_tasks["tasks"][7]["args"])
         self.assertEqual(
             python_tasks["tasks"][8]["label"],
-            "NobroRTOS: Event Log Matrix Gate",
+            "NobroRTOS: Scheduler Matrix Gate",
         )
-        self.assertIn("check-event-log-matrix", python_tasks["tasks"][8]["args"])
+        self.assertIn("check-scheduler-matrix", python_tasks["tasks"][8]["args"])
         self.assertEqual(
             python_tasks["tasks"][9]["label"],
-            "NobroRTOS: Quota Matrix Gate",
+            "NobroRTOS: Event Log Matrix Gate",
         )
-        self.assertIn("check-quota-matrix", python_tasks["tasks"][9]["args"])
+        self.assertIn("check-event-log-matrix", python_tasks["tasks"][9]["args"])
         self.assertEqual(
             python_tasks["tasks"][10]["label"],
-            "NobroRTOS: Degrade Matrix Gate",
+            "NobroRTOS: Quota Matrix Gate",
         )
-        self.assertIn("check-degrade-matrix", python_tasks["tasks"][10]["args"])
+        self.assertIn("check-quota-matrix", python_tasks["tasks"][10]["args"])
         self.assertEqual(
             python_tasks["tasks"][11]["label"],
-            "NobroRTOS: Startup Matrix Gate",
+            "NobroRTOS: Degrade Matrix Gate",
         )
-        self.assertIn("check-startup-matrix", python_tasks["tasks"][11]["args"])
+        self.assertIn("check-degrade-matrix", python_tasks["tasks"][11]["args"])
         self.assertEqual(
             python_tasks["tasks"][12]["label"],
-            "NobroRTOS: Boot Summary Matrix Gate",
+            "NobroRTOS: Startup Matrix Gate",
         )
-        self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][12]["args"])
+        self.assertIn("check-startup-matrix", python_tasks["tasks"][12]["args"])
         self.assertEqual(
             python_tasks["tasks"][13]["label"],
-            "NobroRTOS: Bundle Matrix Gate",
+            "NobroRTOS: Boot Summary Matrix Gate",
         )
-        self.assertIn("check-bundle-matrix", python_tasks["tasks"][13]["args"])
+        self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][13]["args"])
         self.assertEqual(
             python_tasks["tasks"][14]["label"],
+            "NobroRTOS: Bundle Matrix Gate",
+        )
+        self.assertIn("check-bundle-matrix", python_tasks["tasks"][14]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][15]["label"],
             "NobroRTOS: Report Matrix Gate",
         )
-        self.assertIn("check-report-matrix", python_tasks["tasks"][14]["args"])
+        self.assertIn("check-report-matrix", python_tasks["tasks"][15]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -585,6 +597,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-ai-route"]
                 if task["label"] == "NobroRTOS: AI Route Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "check-ai-route"]
+                if task["label"] == "NobroRTOS: AI Preflight Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-ai-preflight"]
                 if task["label"] == "NobroRTOS: Recovery Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-recovery"]
                 if task["label"] == "NobroRTOS: Watchdog Matrix Gate":
@@ -612,6 +626,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("runtime drill gate task command mismatch", before.errors)
             self.assertIn("AI route gate task command mismatch", before.errors)
             self.assertIn("AI route matrix gate task command mismatch", before.errors)
+            self.assertIn("AI preflight matrix gate task command mismatch", before.errors)
             self.assertIn("recovery matrix gate task command mismatch", before.errors)
             self.assertIn("watchdog matrix gate task command mismatch", before.errors)
             self.assertIn("scheduler matrix gate task command mismatch", before.errors)
@@ -637,6 +652,10 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("AI route gate task command mismatch", report.before_errors)
             self.assertIn(
                 "AI route matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "AI preflight matrix gate task command mismatch",
                 report.before_errors,
             )
             self.assertIn(
@@ -698,6 +717,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: AI Route Matrix Gate"
             )
             self.assertIn("check-ai-route-matrix", ai_matrix_gate["args"])
+            ai_preflight_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: AI Preflight Matrix Gate"
+            )
+            self.assertIn("check-ai-preflight-matrix", ai_preflight_gate["args"])
             recovery_matrix_gate = next(
                 task
                 for task in repaired["tasks"]
@@ -1369,6 +1394,114 @@ class ContractBuilderTests(unittest.TestCase):
             ).target,
             AiRouteTarget.DEGRADED_FALLBACK,
         )
+
+    def test_ai_invocation_preflight_checks_buffers_ram_and_capabilities(self) -> None:
+        model = AiModelContract(
+            42,
+            AiBackendKind.HYBRID,
+            128,
+            32,
+            4096,
+            20_000,
+            100_000,
+        )
+        policy = AiRoutePolicy(AiRoutePreference.PREFER_LOCAL, 50_000, 2)
+        state = AiRuntimeState(True, False, 10_000, 0)
+        passing = preflight_ai_invocation(
+            ModuleSpec(
+                "ai",
+                Criticality.USER,
+                MemoryBudget(16 * 1024, 8 * 1024, 1),
+                requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+            ),
+            model,
+            policy,
+            state,
+            AiInvocationConstraints(96, 24, 512, 25_000),
+        )
+
+        self.assertTrue(passing.passing)
+        self.assertEqual(passing.required_ram_bytes, 4728)
+        self.assertEqual(passing.route.target, AiRouteTarget.ON_DEVICE)
+        self.assertEqual(
+            passing.required_capabilities,
+            (Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+        )
+
+        failing = preflight_ai_invocation(
+            ModuleSpec(
+                "ai",
+                Criticality.USER,
+                MemoryBudget(16 * 1024, 4 * 1024, 1),
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            model,
+            policy,
+            state,
+            AiInvocationConstraints(256, 64, 512, 25_000),
+        ).to_dict()
+
+        self.assertFalse(failing["passing"])
+        self.assertIn(
+            "AI input exceeds model contract: 256 > 128",
+            failing["errors"],
+        )
+        self.assertIn(
+            "AI output exceeds model contract: 64 > 32",
+            failing["errors"],
+        )
+        self.assertIn(
+            "AI invocation RAM exceeds module budget: 4928 > 4096",
+            failing["errors"],
+        )
+        self.assertIn(
+            "AI module missing required capabilities: ai_endpoint",
+            failing["errors"],
+        )
+
+    def test_ai_preflight_matrix_covers_admission_paths(self) -> None:
+        sample = _sample_ai_preflight()
+        self.assertTrue(sample["passing"])
+        self.assertEqual(sample["required_ram_bytes"], 4728)
+        self.assertEqual(sample["route"]["target"], "on_device")
+
+        report = _check_ai_preflight_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 6)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["remote_endpoint_caps_do_not_reserve_local_arena"]["preflight"][
+                "required_ram_bytes"
+            ],
+            376,
+        )
+        self.assertIn(
+            "AI module missing required capabilities: ai_endpoint",
+            scenarios["hybrid_modules_must_declare_endpoint_capability"][
+                "preflight"
+            ]["errors"],
+        )
+        self.assertEqual(
+            scenarios["stale_snapshot_policy_is_explicit"]["preflight"]["route"][
+                "target"
+            ],
+            "stale_snapshot",
+        )
+
+    def test_ai_preflight_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-ai-preflight-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 6)
 
     def test_ai_route_gate_reports_pass_and_target_mismatch(self) -> None:
         base = {

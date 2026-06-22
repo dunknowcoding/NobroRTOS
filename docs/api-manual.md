@@ -180,6 +180,11 @@ ownership, module naming, AI/ROS uniqueness, hard-realtime deadline, and startup
 dependency error paths.
 The `check-report-matrix` CLI validates fixed report status classes, checksum
 handling, failure labels, and decoded runtime, AI model, and ROS bridge fields.
+`AiInvocationConstraints` and `preflight_ai_invocation` validate AI inference
+admission before any model or endpoint is contacted. They check buffer sizes,
+scratch and arena RAM, module capability declarations, route budget, stale
+snapshot policy, degraded fallback, unavailable routes, and endpoint circuit
+state.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
@@ -210,12 +215,12 @@ starter target in a temporary directory, then removes the generated files.
 Task validation checks the expected command arguments as well as labels, so a
 stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
-check. Python host templates add runtime drill, runtime drill gate, and AI
-route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix, and
-event log matrix, quota matrix, degrade matrix, startup matrix, and boot
-summary matrix gate tasks, and Python board bridge templates add an offline
-bridge smoke task for MicroPython, CircuitPython, and mPython-style
-development.
+check. Python host templates add runtime drill, runtime drill gate, AI route,
+AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
+matrix, boot summary matrix, bundle matrix, and report matrix gate tasks.
+Python board bridge templates add an offline bridge smoke task for MicroPython,
+CircuitPython, and mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set, or `check-startup-matrix` to verify
 startup graph edge cases before adding board-specific adapters.
@@ -497,11 +502,15 @@ paths in CI.
 The `check-ai-route-matrix` CLI runs a deterministic compatibility matrix for
 local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
+The `check-ai-preflight-matrix` CLI validates inference-call admission for
+buffer bounds, arena and scratch RAM, declared AI capabilities, route budget,
+stale snapshot limits, degraded fallback, unavailable routes, and endpoint
+circuit state.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
-public header, starter template, AI route matrix, recovery matrix, watchdog
-matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix,
-startup matrix, boot summary matrix, bundle matrix, and runtime drill validation for
-pre-package review.
+public header, starter template, AI route matrix, AI preflight matrix, recovery
+matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
+matrix, and runtime drill validation for pre-package review.
 
 ## Host API
 

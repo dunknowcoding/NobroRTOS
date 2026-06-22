@@ -82,6 +82,10 @@ and VS Code workflows. It can choose local inference, a remote endpoint, stale
 snapshot reuse, degraded fallback, or an unavailable state from the same budget
 and circuit-breaker inputs used by firmware. A zero policy stale window inherits
 the model contract's `stale_after_us`; otherwise the stricter window is used.
+`AiInvocationConstraints` and `preflight_ai_invocation` add a host-side
+admission check before inference. They validate input/output buffers, scratch
+and arena RAM, budget, declared AI capabilities, stale snapshots, degraded
+fallback, and endpoint circuit policy without contacting a model or cloud API.
 
 ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 32-bit hashes (`name_hash`, `message_type_hash`, `bridge_id_hash`, and
@@ -108,9 +112,9 @@ temporary directory, validates it, and removes the generated files when the
 gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
-route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
-event log matrix, quota matrix, degrade matrix, startup matrix, and boot
-summary matrix, and bundle matrix gate tasks, and the Python board bridge
+route, AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
+matrix, boot summary matrix, bundle matrix, and report matrix gate tasks. The Python board bridge
 template includes an offline bridge smoke task for MicroPython, CircuitPython,
 and mPython-style status-line workflows.
 Project validation checks both task labels and the expected task command
@@ -240,6 +244,8 @@ python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
 python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
 python -m nobro_rtos check-ai-route-matrix
+python -m nobro_rtos sample-ai-preflight
+python -m nobro_rtos check-ai-preflight-matrix
 python -m nobro_rtos check-bundle-matrix
 python -m nobro_rtos check-report-matrix
 python -m nobro_rtos sample-report runtime
@@ -282,7 +288,11 @@ unavailable routes, and open endpoint circuits. It can simulate on-device,
 remote API, edge-sidecar, and hybrid contracts by changing backend, preference,
 budget, readiness, stale-age, and endpoint-failure arguments. The route matrix
 checker validates local, remote API, edge sidecar, stale snapshot, degraded
-fallback, and unavailable scenarios in one gate. The report samples
+fallback, and unavailable scenarios in one gate. The AI preflight checker runs
+before inference and rejects oversized buffers, insufficient module RAM,
+missing AI capabilities, stale snapshots that exceed invocation limits,
+degraded fallback, unavailable routes, and open endpoint circuits according to
+explicit policy flags. The report samples
 print sealed fixed reports that can be fed directly into `decode-report`. The
 sensor sample emits deterministic fixture records and injected-fault summaries.
 The actuator sample emits deterministic servo command records with deadline and
@@ -325,9 +335,10 @@ actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
-headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
-scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
-matrix, boot summary matrix, bundle matrix, report matrix, and runtime drill gates into one
+headers, starter templates, AI route matrix, AI preflight matrix, recovery
+matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
+matrix, and runtime drill gates into one
 JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
@@ -357,6 +368,7 @@ python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-ai-preflight-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix

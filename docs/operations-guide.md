@@ -36,6 +36,7 @@ python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-ai-preflight-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
@@ -53,6 +54,11 @@ python tools/nobro_contract_tool.py check-runtime-drill
 `check-report-matrix` should pass before packaging any host tooling change that
 touches fixed reports, boot diagnostics, AI model descriptors, or ROS bridge
 descriptors.
+`check-ai-preflight-matrix` should pass before packaging AI-facing tooling or
+starter templates. It catches oversized inference buffers, insufficient module
+RAM, missing AI capabilities, stale snapshot policy violations, degraded
+fallback, unavailable routes, and open endpoint circuits without contacting a
+model or endpoint.
 
 ## Commit Hygiene
 

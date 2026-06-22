@@ -28,6 +28,7 @@ python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-ai-preflight-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
@@ -58,6 +59,7 @@ python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 
 python tools/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
 python tools/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
 python tools/nobro_contract_tool.py check-event-log-matrix
+python tools/nobro_contract_tool.py check-ai-preflight-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
@@ -76,6 +78,9 @@ limits. Use backend, preference, budget, readiness, stale-age, and
 endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
 `check-ai-route-matrix` validates a deterministic set of local, remote API,
 edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
+`check-ai-preflight-matrix` validates AI invocation admission before inference:
+input/output buffers, scratch and arena RAM, route budget, capability
+declarations, stale snapshots, and endpoint circuit policy.
 `check-bundle-matrix` validates deterministic contract bundle roundtrip,
 capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
 and startup dependency error paths.
@@ -102,7 +107,7 @@ and corrupt states, checksum handling, error labels, and AI/ROS domain fields.
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, starter
-templates, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
+templates, AI route matrix, AI preflight matrix, recovery matrix, watchdog matrix, scheduler matrix,
 event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
 matrix, bundle matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary

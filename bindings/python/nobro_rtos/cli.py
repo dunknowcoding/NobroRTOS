@@ -9,6 +9,7 @@ import tempfile
 
 from .contracts import (
     AiBackendKind,
+    AiInvocationConstraints,
     AiModelContract,
     AiRoutePolicy,
     AiRoutePreference,
@@ -24,6 +25,7 @@ from .contracts import (
     RosTopic,
     StartupDependency,
     plan_startup,
+    preflight_ai_invocation,
     stable_hash32,
 )
 from .distribution import validate_distribution_metadata, validate_public_header_surface
@@ -140,6 +142,14 @@ def main() -> int:
     subparsers.add_parser(
         "check-ai-route-matrix",
         help="run deterministic AI route checks across local, edge, remote, and fallback paths",
+    )
+    subparsers.add_parser(
+        "sample-ai-preflight",
+        help="print a deterministic AI invocation preflight report as JSON",
+    )
+    subparsers.add_parser(
+        "check-ai-preflight-matrix",
+        help="run deterministic AI invocation admission checks",
     )
     subparsers.add_parser(
         "check-bundle-matrix",
@@ -483,6 +493,13 @@ def main() -> int:
         return 0 if report["passing"] else 1
     if args.command == "check-ai-route-matrix":
         report = _check_ai_route_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
+    if args.command == "sample-ai-preflight":
+        print(json.dumps(_sample_ai_preflight(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "check-ai-preflight-matrix":
+        report = _check_ai_preflight_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
     if args.command == "check-bundle-matrix":
@@ -1204,6 +1221,7 @@ def _doctor() -> dict[str, object]:
             "runtime_drill_gate",
             "ai_route_gate",
             "ai_route_matrix_gate",
+            "ai_preflight_gate",
             "bundle_matrix_gate",
             "report_matrix_gate",
             "project_templates",
@@ -1309,6 +1327,7 @@ def _check_software_surface() -> dict[str, object]:
 
     add_check("starter_templates", _check_starter_templates())
     add_check("ai_route_matrix", _check_ai_route_matrix())
+    add_check("ai_preflight_matrix", _check_ai_preflight_matrix())
     add_check("recovery_matrix", _check_recovery_matrix())
     add_check("watchdog_matrix", _check_watchdog_matrix())
     add_check("scheduler_matrix", _check_scheduler_matrix())
@@ -1561,6 +1580,224 @@ def _check_ai_route_matrix() -> dict[str, object]:
         "scenario_count": len(reports),
         "scenarios": reports,
     }
+
+
+def _sample_ai_preflight() -> dict[str, object]:
+    return _ai_preflight_report(
+        module=_ai_preflight_module(
+            ram_bytes=8 * 1024,
+            requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+        ),
+        model=_ai_preflight_model(AiBackendKind.HYBRID),
+        policy=AiRoutePolicy(AiRoutePreference.PREFER_LOCAL, 50_000, 2),
+        state=AiRuntimeState(
+            local_ready=True,
+            endpoint_ready=False,
+            last_success_age_us=12_000,
+            consecutive_endpoint_failures=1,
+        ),
+        constraints=AiInvocationConstraints(
+            input_bytes=96,
+            output_bytes=24,
+            scratch_bytes=512,
+            budget_us=25_000,
+        ),
+    )
+
+
+def _check_ai_preflight_matrix() -> dict[str, object]:
+    scenarios = (
+        _ai_preflight_scenario(
+            name="hybrid_local_fits_buffers_and_budget",
+            module=_ai_preflight_module(
+                ram_bytes=8 * 1024,
+                requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+            ),
+            model=_ai_preflight_model(AiBackendKind.HYBRID),
+            policy=AiRoutePolicy(AiRoutePreference.PREFER_LOCAL, 50_000, 2),
+            state=AiRuntimeState(True, False, 12_000, 1),
+            constraints=AiInvocationConstraints(96, 24, 512, 25_000),
+            expected_passing=True,
+            expected_target="on_device",
+            expected_required_ram=4728,
+            expected_errors=(),
+        ),
+        _ai_preflight_scenario(
+            name="remote_endpoint_caps_do_not_reserve_local_arena",
+            module=_ai_preflight_module(
+                ram_bytes=2 * 1024,
+                requires=(Capability.AI_ENDPOINT,),
+            ),
+            model=_ai_preflight_model(AiBackendKind.REMOTE_API),
+            policy=AiRoutePolicy(AiRoutePreference.PREFER_REMOTE, 50_000, 2),
+            state=AiRuntimeState(False, True, 40_000, 0),
+            constraints=AiInvocationConstraints(96, 24, 256, 25_000),
+            expected_passing=True,
+            expected_target="remote_api",
+            expected_required_ram=376,
+            expected_errors=(),
+        ),
+        _ai_preflight_scenario(
+            name="oversized_io_buffers_are_rejected",
+            module=_ai_preflight_module(
+                ram_bytes=8 * 1024,
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            model=_ai_preflight_model(AiBackendKind.ON_DEVICE),
+            policy=AiRoutePolicy(AiRoutePreference.LOCAL_ONLY, 50_000, 2),
+            state=AiRuntimeState(True, False, 10_000, 0),
+            constraints=AiInvocationConstraints(256, 64, 512, 25_000),
+            expected_passing=False,
+            expected_target="on_device",
+            expected_required_ram=4928,
+            expected_errors=(
+                "AI input exceeds model contract: 256 > 128",
+                "AI output exceeds model contract: 64 > 32",
+            ),
+        ),
+        _ai_preflight_scenario(
+            name="local_arena_ram_overflow_is_rejected",
+            module=_ai_preflight_module(
+                ram_bytes=4 * 1024,
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            model=_ai_preflight_model(AiBackendKind.ON_DEVICE),
+            policy=AiRoutePolicy(AiRoutePreference.LOCAL_ONLY, 50_000, 2),
+            state=AiRuntimeState(True, False, 10_000, 0),
+            constraints=AiInvocationConstraints(96, 24, 512, 25_000),
+            expected_passing=False,
+            expected_target="on_device",
+            expected_required_ram=4728,
+            expected_errors=("AI invocation RAM exceeds module budget: 4728 > 4096",),
+        ),
+        _ai_preflight_scenario(
+            name="hybrid_modules_must_declare_endpoint_capability",
+            module=_ai_preflight_module(
+                ram_bytes=8 * 1024,
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            model=_ai_preflight_model(AiBackendKind.HYBRID),
+            policy=AiRoutePolicy(AiRoutePreference.PREFER_LOCAL, 50_000, 2),
+            state=AiRuntimeState(True, False, 10_000, 0),
+            constraints=AiInvocationConstraints(96, 24, 512, 25_000),
+            expected_passing=False,
+            expected_target="on_device",
+            expected_required_ram=4728,
+            expected_errors=("AI module missing required capabilities: ai_endpoint",),
+        ),
+        _ai_preflight_scenario(
+            name="stale_snapshot_policy_is_explicit",
+            module=_ai_preflight_module(
+                ram_bytes=2 * 1024,
+                requires=(Capability.AI_ENDPOINT,),
+            ),
+            model=_ai_preflight_model(AiBackendKind.REMOTE_API),
+            policy=AiRoutePolicy(AiRoutePreference.PREFER_REMOTE, 100_000, 2),
+            state=AiRuntimeState(False, True, 60_000, 2),
+            constraints=AiInvocationConstraints(
+                input_bytes=96,
+                output_bytes=24,
+                scratch_bytes=128,
+                budget_us=25_000,
+                max_stale_us=50_000,
+            ),
+            expected_passing=False,
+            expected_target="stale_snapshot",
+            expected_required_ram=248,
+            expected_errors=(
+                "AI route used a stale snapshot",
+                "AI stale snapshot exceeds invocation limit: 60000 > 50000",
+                "AI endpoint circuit is open",
+            ),
+        ),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _ai_preflight_scenario(
+    *,
+    name: str,
+    module: ModuleSpec,
+    model: AiModelContract,
+    policy: AiRoutePolicy,
+    state: AiRuntimeState,
+    constraints: AiInvocationConstraints,
+    expected_passing: bool,
+    expected_target: str,
+    expected_required_ram: int,
+    expected_errors: tuple[str, ...],
+) -> dict[str, object]:
+    report = _ai_preflight_report(module, model, policy, state, constraints)
+    errors: list[str] = []
+    _expect_equal(report["passing"], expected_passing, "passing", errors)
+    _expect_equal(report["route"]["target"], expected_target, "target", errors)
+    _expect_equal(
+        report["required_ram_bytes"],
+        expected_required_ram,
+        "required_ram_bytes",
+        errors,
+    )
+    for expected_error in expected_errors:
+        if expected_error not in report["errors"]:
+            errors.append(f"missing error: {expected_error}")
+    unexpected = [error for error in report["errors"] if error not in expected_errors]
+    if unexpected:
+        errors.append(f"unexpected errors: {unexpected!r}")
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "preflight": report,
+    }
+
+
+def _ai_preflight_report(
+    module: ModuleSpec,
+    model: AiModelContract,
+    policy: AiRoutePolicy,
+    state: AiRuntimeState,
+    constraints: AiInvocationConstraints,
+) -> dict[str, object]:
+    report = preflight_ai_invocation(module, model, policy, state, constraints)
+    payload = report.to_dict()
+    payload["module"] = module.module
+    payload["model_id"] = model.model_id
+    payload["backend"] = model.backend.name.lower()
+    return payload
+
+
+def _ai_preflight_module(
+    ram_bytes: int,
+    requires: tuple[Capability, ...],
+) -> ModuleSpec:
+    return ModuleSpec(
+        "ai",
+        Criticality.USER,
+        MemoryBudget(16 * 1024, ram_bytes, 1),
+        requires=requires,
+        owns=requires,
+    )
+
+
+def _ai_preflight_model(backend: AiBackendKind) -> AiModelContract:
+    return AiModelContract(
+        model_id=42,
+        backend=backend,
+        input_bytes_max=128,
+        output_bytes_max=32,
+        arena_bytes=4096 if backend in (AiBackendKind.ON_DEVICE, AiBackendKind.HYBRID) else 0,
+        timeout_us=20_000,
+        stale_after_us=100_000,
+    )
 
 
 def _check_ai_route(
