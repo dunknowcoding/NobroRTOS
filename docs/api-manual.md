@@ -299,6 +299,20 @@ let plan = nobro_kernel::RecoveryPlan::<4>::from_outcome(
 assert_eq!(plan.len, 4);
 ```
 
+When a rebooted module is a shared dependency, feed startup impact data into the
+planner so dependent modules are quiesced before the root restart and resumed in
+startup order afterward:
+
+```rust
+let impact = startup.dependency_impact::<4>(nobro_kernel::ModuleId::Bus)?;
+let plan = nobro_kernel::RecoveryPlan::<8>::from_outcome_with_impact(
+    outcome,
+    &impact,
+    now_us,
+    nobro_kernel::RecoveryPlanPolicy::DEFAULT,
+)?;
+```
+
 Use `RecoveryPlanPolicy` to tune notify, retry, restart, verification, resume,
 and maximum total recovery budgets. Capacity and budget failures are explicit
 errors, so self-healing can be reviewed before being attached to board-specific

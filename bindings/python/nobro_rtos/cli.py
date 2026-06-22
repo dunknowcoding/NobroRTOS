@@ -2818,6 +2818,22 @@ def _check_recovery_matrix() -> dict[str, object]:
             "expected_max_consecutive": 1,
             "expected_plan_steps": 2,
         },
+        {
+            "name": "bus_reboot_with_dependency_impact",
+            "module": "bus",
+            "error": "bus_timeout",
+            "events": 4,
+            "notify_after": 2,
+            "reboot_after": 4,
+            "impact_modules": ("app", "sensor"),
+            "expected_final_state": "recovering",
+            "expected_last_action": "reboot_module",
+            "expected_notifications": 2,
+            "expected_reboots": 1,
+            "expected_retry_count": 1,
+            "expected_max_consecutive": 4,
+            "expected_plan_steps": 8,
+        },
     )
     reports: list[dict[str, object]] = []
     errors: list[str] = []
@@ -2859,8 +2875,11 @@ def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, obje
             timeline.append(simulator.record_ok(now_us + 1))
 
     summary = RecoverySummary.from_decisions(module, decisions).to_dict()
+    impact_modules = tuple(str(module) for module in scenario.get("impact_modules", ()))
     plan_report = (
-        _run_recovery_plan_execution_scenario(decisions[-1]) if decisions else None
+        _run_recovery_plan_execution_scenario(decisions[-1], impact_modules)
+        if decisions
+        else None
     )
     max_consecutive = max(
         (int(entry.get("consecutive_errors", 0)) for entry in timeline),
@@ -2930,6 +2949,12 @@ def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, obje
                 "plan_backpressure_visibility",
                 errors,
             )
+        _expect_equal(
+            tuple(plan_report["affected_modules"]),
+            impact_modules,
+            "plan_affected_modules",
+            errors,
+        )
 
     return {
         "name": scenario["name"],
@@ -2945,8 +2970,13 @@ def _run_recovery_matrix_scenario(scenario: dict[str, object]) -> dict[str, obje
 
 def _run_recovery_plan_execution_scenario(
     decision: RecoveryDecision,
+    affected_modules: tuple[str, ...] = (),
 ) -> dict[str, object]:
-    plan = RecoveryPlan.from_decision(decision)
+    plan = RecoveryPlan.from_decision(
+        decision,
+        max_steps=4 + len(affected_modules) * 2,
+        affected_modules=affected_modules,
+    )
     execution = RecoveryPlanExecution(plan)
     dispatch_time = plan.deadline_us + 100
     first = execution.dispatch_due(dispatch_time, capacity=1)
@@ -2955,6 +2985,7 @@ def _run_recovery_plan_execution_scenario(
         "step_count": plan.len,
         "required_budget_us": plan.required_budget_us,
         "deadline_us": plan.deadline_us,
+        "affected_modules": list(affected_modules),
         "first_dispatch": first.to_dict(),
         "drain_dispatch": drain.to_dict(),
         "blocked_by_output": first.is_blocked_by_output,

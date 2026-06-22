@@ -144,6 +144,10 @@ steps that were already handed to board-specific adapters.
 transitively depend on a faulted root module. It returns the affected modules in
 reverse startup order, which gives recovery adapters a deterministic
 quiesce-before-restart order without heap allocation.
+`RecoveryPlan::from_outcome_with_impact` consumes that impact directly, so a
+dependency reboot can pause affected modules, restart and verify the root, and
+resume the affected modules in startup order with explicit capacity and budget
+checks.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

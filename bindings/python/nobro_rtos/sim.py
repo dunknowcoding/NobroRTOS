@@ -563,6 +563,7 @@ class RecoveryPlan:
         *,
         policy: RecoveryPlanPolicy | None = None,
         max_steps: int = 4,
+        affected_modules: tuple[str, ...] | list[str] = (),
     ) -> "RecoveryPlan":
         if max_steps < 0:
             raise ValueError("max_steps must be non-negative")
@@ -571,12 +572,17 @@ class RecoveryPlan:
         required_budget_us = 0
         now_us = decision.now_us
 
-        def push(kind: RecoveryStepKind, due_us: int, budget_us: int) -> None:
+        def push(
+            kind: RecoveryStepKind,
+            due_us: int,
+            budget_us: int,
+            module: str = decision.module,
+        ) -> None:
             if len(steps) >= max_steps:
                 raise RecoveryPlanSimulatorError("recovery plan step capacity exceeded")
             steps.append(
                 RecoveryStep(
-                    module=decision.module,
+                    module=module,
                     kind=kind,
                     due_us=due_us,
                     budget_us=budget_us,
@@ -604,25 +610,31 @@ class RecoveryPlan:
                 policy.verify_budget_us,
             )
         elif decision.action == RecoveryAction.REBOOT_MODULE:
-            push(RecoveryStepKind.QUIESCE_MODULE, now_us, policy.notify_budget_us)
-            push(
-                RecoveryStepKind.RESTART_MODULE,
-                now_us + policy.notify_budget_us,
-                policy.restart_budget_us,
-            )
-            push(
-                RecoveryStepKind.VERIFY_HEARTBEAT,
-                now_us + policy.notify_budget_us + policy.restart_budget_us,
-                policy.verify_budget_us,
-            )
-            push(
-                RecoveryStepKind.RESUME_MODULE,
-                now_us
-                + policy.notify_budget_us
-                + policy.restart_budget_us
-                + policy.verify_budget_us,
-                policy.resume_budget_us,
-            )
+            due_us = now_us
+            for module in affected_modules:
+                push(
+                    RecoveryStepKind.QUIESCE_MODULE,
+                    due_us,
+                    policy.notify_budget_us,
+                    module,
+                )
+                due_us += policy.notify_budget_us
+            push(RecoveryStepKind.QUIESCE_MODULE, due_us, policy.notify_budget_us)
+            due_us += policy.notify_budget_us
+            push(RecoveryStepKind.RESTART_MODULE, due_us, policy.restart_budget_us)
+            due_us += policy.restart_budget_us
+            push(RecoveryStepKind.VERIFY_HEARTBEAT, due_us, policy.verify_budget_us)
+            due_us += policy.verify_budget_us
+            push(RecoveryStepKind.RESUME_MODULE, due_us, policy.resume_budget_us)
+            due_us += policy.resume_budget_us
+            for module in reversed(tuple(affected_modules)):
+                push(
+                    RecoveryStepKind.RESUME_MODULE,
+                    due_us,
+                    policy.resume_budget_us,
+                    module,
+                )
+                due_us += policy.resume_budget_us
 
         required_budget_us += sum(step.budget_us for step in steps)
         if required_budget_us > policy.max_total_budget_us:

@@ -1,8 +1,8 @@
 //! Recovery coordinator for health, lifecycle, and watchdog-triggered faults.
 
 use crate::{
-    Action, EventLog, FaultThresholds, KernelError, Lifecycle, LifecycleError, ModuleId,
-    Supervisor, SupervisorSnapshot, SystemState,
+    Action, DependencyImpact, EventLog, FaultThresholds, KernelError, Lifecycle, LifecycleError,
+    ModuleId, Supervisor, SupervisorSnapshot, SystemState,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,6 +183,96 @@ impl<const N: usize> RecoveryPlan<N> {
                     policy.resume_budget_us,
                 ))?;
             }
+        }
+
+        if plan.required_budget_us > u64::from(policy.max_total_budget_us) {
+            return Err(RecoveryPlanError::BudgetExceeded {
+                required_us: plan.required_budget_us,
+                limit_us: policy.max_total_budget_us,
+            });
+        }
+        plan.deadline_us = now_us.saturating_add(plan.required_budget_us);
+        Ok(plan)
+    }
+
+    pub fn from_outcome_with_impact<const IMPACT: usize>(
+        outcome: RecoveryOutcome,
+        impact: &DependencyImpact<IMPACT>,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<Self, RecoveryPlanError> {
+        if outcome.action != Action::RebootModule || impact.is_empty() {
+            return Self::from_outcome(outcome, now_us, policy);
+        }
+
+        let mut plan = Self {
+            outcome,
+            steps: [None; N],
+            len: 0,
+            deadline_us: now_us,
+            required_budget_us: 0,
+        };
+        let mut due_us = now_us;
+
+        for module in impact.affected.iter().copied().take(impact.affected_count) {
+            let Some(module) = module else {
+                continue;
+            };
+            plan.push(RecoveryStep::new(
+                module,
+                RecoveryStepKind::QuiesceModule,
+                due_us,
+                policy.notify_budget_us,
+            ))?;
+            due_us = due_us.saturating_add(u64::from(policy.notify_budget_us));
+        }
+
+        plan.push(RecoveryStep::new(
+            outcome.module,
+            RecoveryStepKind::QuiesceModule,
+            due_us,
+            policy.notify_budget_us,
+        ))?;
+        due_us = due_us.saturating_add(u64::from(policy.notify_budget_us));
+        plan.push(RecoveryStep::new(
+            outcome.module,
+            RecoveryStepKind::RestartModule,
+            due_us,
+            policy.restart_budget_us,
+        ))?;
+        due_us = due_us.saturating_add(u64::from(policy.restart_budget_us));
+        plan.push(RecoveryStep::new(
+            outcome.module,
+            RecoveryStepKind::VerifyHeartbeat,
+            due_us,
+            policy.verify_budget_us,
+        ))?;
+        due_us = due_us.saturating_add(u64::from(policy.verify_budget_us));
+        plan.push(RecoveryStep::new(
+            outcome.module,
+            RecoveryStepKind::ResumeModule,
+            due_us,
+            policy.resume_budget_us,
+        ))?;
+        due_us = due_us.saturating_add(u64::from(policy.resume_budget_us));
+
+        for module in impact
+            .affected
+            .iter()
+            .copied()
+            .take(impact.affected_count)
+            .rev()
+        {
+            let Some(module) = module else {
+                continue;
+            };
+            plan.push(RecoveryStep::new(
+                module,
+                RecoveryStepKind::ResumeModule,
+                due_us,
+                policy.resume_budget_us,
+            ))?;
+            due_us = due_us.saturating_add(u64::from(policy.resume_budget_us));
         }
 
         if plan.required_budget_us > u64::from(policy.max_total_budget_us) {
@@ -468,7 +558,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> Default
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EventKind, EventPayload, EventRecord, EventSeverity};
+    use crate::{EventKind, EventPayload, EventRecord, EventSeverity, StartupGraph};
 
     fn running_coordinator() -> RecoveryCoordinator<2, 12> {
         let mut recovery = RecoveryCoordinator::<2, 12>::new(FaultThresholds {
@@ -645,6 +735,148 @@ mod tests {
                 6_550,
                 500
             ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_uses_dependency_impact_for_quiesce_and_resume_order() {
+        let mut graph = StartupGraph::<4>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Bus,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Bus, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Bus)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+        let impact = graph.dependency_impact::<2>(ModuleId::Bus).unwrap();
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Bus,
+            error: KernelError::BusTimeout,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+
+        let plan = RecoveryPlan::<8>::from_outcome_with_impact(
+            outcome,
+            &impact,
+            100,
+            RecoveryPlanPolicy::DEFAULT,
+        )
+        .unwrap();
+
+        assert_eq!(
+            impact.affected,
+            [Some(ModuleId::App(1)), Some(ModuleId::Sensor)]
+        );
+        assert_eq!(plan.len, 8);
+        assert_eq!(plan.required_budget_us, 9_000);
+        assert_eq!(plan.deadline_us, 9_100);
+        assert_eq!(
+            plan.steps[0],
+            Some(RecoveryStep::new(
+                ModuleId::App(1),
+                RecoveryStepKind::QuiesceModule,
+                100,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[1],
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::QuiesceModule,
+                600,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[2],
+            Some(RecoveryStep::new(
+                ModuleId::Bus,
+                RecoveryStepKind::QuiesceModule,
+                1_100,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[5],
+            Some(RecoveryStep::new(
+                ModuleId::Bus,
+                RecoveryStepKind::ResumeModule,
+                7_600,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[6],
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::ResumeModule,
+                8_100,
+                500
+            ))
+        );
+        assert_eq!(
+            plan.steps[7],
+            Some(RecoveryStep::new(
+                ModuleId::App(1),
+                RecoveryStepKind::ResumeModule,
+                8_600,
+                500
+            ))
+        );
+    }
+
+    #[test]
+    fn recovery_plan_with_impact_reports_capacity_and_budget_failures() {
+        let mut graph = StartupGraph::<3>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+        let impact = graph.dependency_impact::<1>(ModuleId::Sensor).unwrap();
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Sensor,
+            error: KernelError::DeadlineMissed,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+
+        assert_eq!(
+            RecoveryPlan::<4>::from_outcome_with_impact(
+                outcome,
+                &impact,
+                0,
+                RecoveryPlanPolicy::DEFAULT
+            ),
+            Err(RecoveryPlanError::Full)
+        );
+
+        let tight = RecoveryPlanPolicy {
+            max_total_budget_us: 7_000,
+            ..RecoveryPlanPolicy::DEFAULT
+        };
+        assert_eq!(
+            RecoveryPlan::<6>::from_outcome_with_impact(outcome, &impact, 0, tight),
+            Err(RecoveryPlanError::BudgetExceeded {
+                required_us: 8_000,
+                limit_us: 7_000,
+            })
         );
     }
 

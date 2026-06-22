@@ -167,7 +167,8 @@ checks into one deterministic pressure drill.
 host-side self-healing drills.
 `RecoveryPlan` and `RecoveryPlanExecution` mirror the kernel's fixed-capacity
 recovery planner and dispatch cursor for host-side restart, retry, and
-heartbeat-verification checks.
+heartbeat-verification checks, including dependent-module quiesce and resume
+ordering for reboot plans built from startup impact data.
 `RecoverySummary` turns drill recovery decisions into stable action counts,
 final state, and reboot requirement flags for CI gates and editor views.
 
@@ -200,10 +201,14 @@ command = servo.set_duty_us(0, 1500, deadline_us=100, issued_at_us=90)
 assert command.accepted
 
 recovery = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
-recovery.record_error("sensor", "sensor_read_fail", 10)
-recovery.record_error("sensor", "sensor_read_fail", 20)
-decision = recovery.record_error("sensor", "sensor_read_fail", 30)
-plan = RecoveryPlan.from_decision(decision)
+recovery.record_error("bus", "bus_timeout", 10)
+recovery.record_error("bus", "bus_timeout", 20)
+decision = recovery.record_error("bus", "bus_timeout", 30)
+plan = RecoveryPlan.from_decision(
+    decision,
+    affected_modules=("app", "sensor"),
+    max_steps=8,
+)
 execution = RecoveryPlanExecution(plan)
 dispatch = execution.dispatch_due(plan.deadline_us + 100, capacity=1)
 assert dispatch.dispatched == 1
@@ -314,8 +319,8 @@ The actuator sample emits deterministic servo command records with deadline and
 readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The recovery matrix checker validates ignore,
-retry, notify, reboot, OK-reset, fixed-plan execution, and output-buffer
-backpressure paths in one gate. The watchdog
+retry, notify, reboot, OK-reset, fixed-plan execution, dependency-impact reboot
+planning, and output-buffer backpressure paths in one gate. The watchdog
 sample emits heartbeat and expiry events for liveness planning. The watchdog
 matrix checker validates non-mutating prechecks, expiry mutation, heartbeat
 reset, multi-module expiry, and capacity errors. The scheduler sample emits

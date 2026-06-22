@@ -2288,6 +2288,30 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(plan.steps[2].kind, RecoveryStepKind.VERIFY_HEARTBEAT)
         self.assertEqual(plan.steps[3].kind, RecoveryStepKind.RESUME_MODULE)
 
+    def test_recovery_plan_mirror_includes_dependency_impact_steps(self) -> None:
+        simulator = RecoveryPolicySimulator(notify_after=2, reboot_after=3)
+        simulator.record_error("bus", "bus_timeout", 10)
+        simulator.record_error("bus", "bus_timeout", 20)
+        decision = simulator.record_error("bus", "bus_timeout", 30)
+
+        plan = RecoveryPlan.from_decision(
+            decision,
+            max_steps=8,
+            affected_modules=("app", "sensor"),
+        )
+
+        self.assertEqual(plan.len, 8)
+        self.assertEqual(plan.required_budget_us, 9000)
+        self.assertEqual(plan.deadline_us, 9030)
+        self.assertEqual(plan.steps[0].module, "app")
+        self.assertEqual(plan.steps[0].kind, RecoveryStepKind.QUIESCE_MODULE)
+        self.assertEqual(plan.steps[1].module, "sensor")
+        self.assertEqual(plan.steps[2].module, "bus")
+        self.assertEqual(plan.steps[5].module, "bus")
+        self.assertEqual(plan.steps[6].module, "sensor")
+        self.assertEqual(plan.steps[7].module, "app")
+        self.assertEqual(plan.steps[7].kind, RecoveryStepKind.RESUME_MODULE)
+
     def test_recovery_plan_execution_mirror_preserves_backpressure(self) -> None:
         simulator = RecoveryPolicySimulator(notify_after=4, reboot_after=5)
         decision = simulator.record_error("bus", "bus_timeout", 10)
@@ -2328,7 +2352,7 @@ class ContractBuilderTests(unittest.TestCase):
 
         self.assertTrue(report["passing"])
         self.assertEqual(report["errors"], [])
-        self.assertEqual(report["scenario_count"], 5)
+        self.assertEqual(report["scenario_count"], 6)
         scenarios = {entry["name"]: entry for entry in report["scenarios"]}
         self.assertEqual(
             scenarios["sensor_ignore_first_error"]["summary"]["last_action"],
@@ -2355,6 +2379,28 @@ class ContractBuilderTests(unittest.TestCase):
         )
         self.assertTrue(scenarios["bus_timeout_retry_delay"]["plan"]["completed"])
         self.assertEqual(
+            scenarios["bus_reboot_with_dependency_impact"]["plan"]["step_count"],
+            8,
+        )
+        self.assertEqual(
+            scenarios["bus_reboot_with_dependency_impact"]["plan"][
+                "affected_modules"
+            ],
+            ["app", "sensor"],
+        )
+        self.assertEqual(
+            scenarios["bus_reboot_with_dependency_impact"]["plan"][
+                "first_dispatch"
+            ]["steps"][0]["module"],
+            "app",
+        )
+        self.assertEqual(
+            scenarios["bus_reboot_with_dependency_impact"]["plan"][
+                "drain_dispatch"
+            ]["steps"][-1]["module"],
+            "app",
+        )
+        self.assertEqual(
             scenarios["ok_reset_breaks_error_streak"]["max_consecutive_errors"],
             1,
         )
@@ -2370,7 +2416,7 @@ class ContractBuilderTests(unittest.TestCase):
         payload = json.loads(stream.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["passing"])
-        self.assertEqual(payload["scenario_count"], 5)
+        self.assertEqual(payload["scenario_count"], 6)
 
     def test_watchdog_simulator_reports_expired_modules(self) -> None:
         watchdog = WatchdogSimulator(capacity=2)
