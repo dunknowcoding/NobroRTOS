@@ -95,6 +95,9 @@ fixed `RosBridgeContract` summary, uses stable hashes instead of dynamic names
 inside realtime paths, and keeps topic publication plus service calls on
 caller-owned buffers. DDS, micro-ROS agents, serial bridges, and companion
 computer bridges can share this contract without becoming kernel dependencies.
+ROS bridge preflight checks topic payloads, service/action response capacity,
+queue depth, parameter value size, and timeout budgets before a transport or
+agent is contacted.
 
 ## Static Async Direction
 

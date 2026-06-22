@@ -550,6 +550,19 @@ assert!(report.verify_checksum());
 assert_eq!(report.transport, nobro_sal::RosBridgeTransport::Serial as u32);
 ```
 
+Use ROS bridge preflight helpers before moving payloads through an adapter:
+
+```rust
+let topic_check = nobro_sal::preflight_ros_topic(topic, 32);
+let service_check = nobro_sal::preflight_ros_service(service, 16, 16, 50_000);
+assert!(topic_check.passing());
+assert!(service_check.passing());
+```
+
+`preflight_ros_topic`, `preflight_ros_service`, `preflight_ros_action`, and
+`preflight_ros_parameter` check payload bounds, response capacity, queue depth,
+and timeout budgets without contacting a ROS agent or transport.
+
 Python bridge descriptors emit the same stable FNV-1a 32-bit hashes alongside
 readable names, so host-generated metadata can be reviewed by people and still
 map cleanly to Rust `RosBridgeContract` fields.

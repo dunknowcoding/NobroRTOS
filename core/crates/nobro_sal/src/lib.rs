@@ -632,6 +632,106 @@ impl RosBridgeContract {
     }
 }
 
+pub const ROS_PREFLIGHT_PAYLOAD_TOO_LARGE: u32 = 1 << 0;
+pub const ROS_PREFLIGHT_RESPONSE_TOO_SMALL: u32 = 1 << 1;
+pub const ROS_PREFLIGHT_TIMEOUT_EXCEEDED: u32 = 1 << 2;
+pub const ROS_PREFLIGHT_QUEUE_DEPTH_ZERO: u32 = 1 << 3;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RosBridgePreflight {
+    pub required_buffer_bytes: u32,
+    pub error_bits: u32,
+}
+
+impl RosBridgePreflight {
+    pub const fn passing(&self) -> bool {
+        self.error_bits == 0
+    }
+
+    pub const fn has_error(&self, error: u32) -> bool {
+        (self.error_bits & error) != 0
+    }
+}
+
+pub fn preflight_ros_topic(topic: RosTopicContract, payload_bytes: u16) -> RosBridgePreflight {
+    let mut error_bits = 0;
+    if topic.depth == 0 {
+        error_bits |= ROS_PREFLIGHT_QUEUE_DEPTH_ZERO;
+    }
+    if payload_bytes > topic.max_message_bytes {
+        error_bits |= ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+
+    RosBridgePreflight {
+        required_buffer_bytes: topic.buffer_bytes(),
+        error_bits,
+    }
+}
+
+pub fn preflight_ros_service(
+    service: RosServiceContract,
+    request_bytes: u16,
+    response_capacity_bytes: u16,
+    budget_us: u32,
+) -> RosBridgePreflight {
+    let mut error_bits = 0;
+    if request_bytes > service.request_bytes_max {
+        error_bits |= ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+    if response_capacity_bytes < service.response_bytes_max {
+        error_bits |= ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if service.timeout_us > budget_us {
+        error_bits |= ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
+    }
+
+    RosBridgePreflight {
+        required_buffer_bytes: service.buffer_bytes(),
+        error_bits,
+    }
+}
+
+pub fn preflight_ros_action(
+    action: RosActionContract,
+    goal_bytes: u16,
+    feedback_capacity_bytes: u16,
+    result_capacity_bytes: u16,
+    budget_us: u32,
+) -> RosBridgePreflight {
+    let mut error_bits = 0;
+    if goal_bytes > action.goal_bytes_max {
+        error_bits |= ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+    if feedback_capacity_bytes < action.feedback_bytes_max
+        || result_capacity_bytes < action.result_bytes_max
+    {
+        error_bits |= ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if action.timeout_us > budget_us {
+        error_bits |= ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
+    }
+
+    RosBridgePreflight {
+        required_buffer_bytes: action.buffer_bytes(),
+        error_bits,
+    }
+}
+
+pub fn preflight_ros_parameter(
+    parameter: RosParameterContract,
+    value_bytes: u16,
+) -> RosBridgePreflight {
+    let mut error_bits = 0;
+    if value_bytes > parameter.value_bytes_max {
+        error_bits |= ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+
+    RosBridgePreflight {
+        required_buffer_bytes: u32::from(parameter.value_bytes_max),
+        error_bits,
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RosBridgeContractReport {
@@ -1577,6 +1677,49 @@ mod tests {
 
         assert_eq!(len, 4);
         assert_eq!(&response[..4], &request);
+    }
+
+    #[test]
+    fn ros_topic_preflight_checks_payload_and_depth() {
+        let topic = RosTopicContract::new(0x10, 0x20, 4, 64);
+        let pass = preflight_ros_topic(topic, 32);
+
+        assert!(pass.passing());
+        assert_eq!(pass.required_buffer_bytes, 256);
+
+        let fail = preflight_ros_topic(RosTopicContract::new(0x10, 0x20, 0, 64), 128);
+        assert!(!fail.passing());
+        assert!(fail.has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
+        assert!(fail.has_error(ROS_PREFLIGHT_QUEUE_DEPTH_ZERO));
+    }
+
+    #[test]
+    fn ros_service_preflight_checks_buffers_and_timeout() {
+        let service = RosServiceContract::new(0x30, 16, 32, 50_000);
+        let pass = preflight_ros_service(service, 16, 32, 60_000);
+
+        assert!(pass.passing());
+        assert_eq!(pass.required_buffer_bytes, 48);
+
+        let fail = preflight_ros_service(service, 24, 8, 20_000);
+        assert!(fail.has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
+        assert!(fail.has_error(ROS_PREFLIGHT_RESPONSE_TOO_SMALL));
+        assert!(fail.has_error(ROS_PREFLIGHT_TIMEOUT_EXCEEDED));
+    }
+
+    #[test]
+    fn ros_action_and_parameter_preflight_are_bounded() {
+        let action = RosActionContract::new(0x40, 16, 8, 24, 100_000);
+        let action_fail = preflight_ros_action(action, 32, 4, 8, 50_000);
+
+        assert_eq!(action_fail.required_buffer_bytes, 48);
+        assert!(action_fail.has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
+        assert!(action_fail.has_error(ROS_PREFLIGHT_RESPONSE_TOO_SMALL));
+        assert!(action_fail.has_error(ROS_PREFLIGHT_TIMEOUT_EXCEEDED));
+
+        let parameter = RosParameterContract::new(0x50, 12);
+        assert!(preflight_ros_parameter(parameter, 8).passing());
+        assert!(preflight_ros_parameter(parameter, 16).has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
     }
 
     #[test]
