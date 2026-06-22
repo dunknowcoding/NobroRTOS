@@ -32,6 +32,7 @@ from .contracts import (
     preflight_ros_service,
     preflight_ros_topic,
     stable_hash32,
+    startup_dependency_impact,
 )
 from .distribution import validate_distribution_metadata, validate_public_header_surface
 from .host_contract import BootDiagnostic, load_repo_host_contract
@@ -4139,6 +4140,7 @@ def _check_startup_matrix() -> dict[str, object]:
         _startup_no_dependencies_scenario(),
         _startup_chain_scenario(),
         _startup_fan_in_out_scenario(),
+        _startup_dependency_impact_scenario(),
         _startup_error_scenario(),
     )
     errors: list[str] = []
@@ -4230,6 +4232,48 @@ def _startup_fan_in_out_scenario() -> dict[str, object]:
         ),
         ("kernel", "bus", "sensor", "radio", "ai", "telemetry"),
     )
+
+
+def _startup_dependency_impact_scenario() -> dict[str, object]:
+    modules = _startup_modules(("kernel", "bus", "sensor", "radio", "ai", "telemetry"))
+    dependencies = (
+        StartupDependency("bus", "kernel"),
+        StartupDependency("sensor", "bus"),
+        StartupDependency("radio", "bus"),
+        StartupDependency("ai", "sensor"),
+        StartupDependency("ai", "radio"),
+        StartupDependency("telemetry", "radio"),
+    )
+    impact = startup_dependency_impact(modules, dependencies, "bus")
+    errors: list[str] = []
+    _expect_equal(
+        impact.affected,
+        ("telemetry", "ai", "radio", "sensor"),
+        "affected",
+        errors,
+    )
+    _expect_equal(impact.to_dict()["affected_count"], 4, "affected_count", errors)
+
+    unknown_root_error = None
+    try:
+        startup_dependency_impact(modules, dependencies, "missing")
+    except ValueError as exc:
+        unknown_root_error = str(exc)
+    _expect_equal(
+        unknown_root_error,
+        "startup impact root references unknown module: missing",
+        "unknown_root_error",
+        errors,
+    )
+
+    return {
+        "name": "dependency_impact_is_reverse_startup_order",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "dependencies": [dependency.to_dict() for dependency in dependencies],
+        "impact": impact.to_dict(),
+        "unknown_root_error": unknown_root_error,
+    }
 
 
 def _startup_error_scenario() -> dict[str, object]:

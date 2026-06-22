@@ -23,6 +23,7 @@ from .contracts import (
     RosService,
     RosTopic,
     StartupDependency,
+    StartupImpact,
     StartupPlan,
     capability_mask,
     capabilities_from_mask,
@@ -33,6 +34,7 @@ from .contracts import (
     preflight_ros_service,
     preflight_ros_topic,
     stable_hash32,
+    startup_dependency_impact,
 )
 from .host_contract import (
     BootDiagnostic,
@@ -132,6 +134,7 @@ __all__ = [
     "RosService",
     "RosTopic",
     "StartupDependency",
+    "StartupImpact",
     "StartupPlan",
     "capability_mask",
     "capabilities_from_mask",
@@ -142,6 +145,7 @@ __all__ = [
     "preflight_ros_service",
     "preflight_ros_topic",
     "stable_hash32",
+    "startup_dependency_impact",
     "find_repo_root",
     "BootDiagnostic",
     "HostContract",

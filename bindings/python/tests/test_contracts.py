@@ -54,6 +54,7 @@ from nobro_rtos import (
     ServoSimulator,
     ServoSimulatorError,
     StartupDependency,
+    StartupImpact,
     StartupPlan,
     SystemProfile,
     TemplateFile,
@@ -71,6 +72,7 @@ from nobro_rtos import (
     repair_project_template,
     seal_report,
     stable_hash32,
+    startup_dependency_impact,
     validate_project_template,
     validate_distribution_metadata,
     validate_public_header_surface,
@@ -1299,12 +1301,44 @@ class ContractBuilderTests(unittest.TestCase):
                 ),
             )
 
+    def test_startup_dependency_impact_reports_reverse_startup_order(self) -> None:
+        modules = (
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(8192, 1024),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec("bus", Criticality.SYSTEM, MemoryBudget(4096, 512)),
+            ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(4096, 512)),
+            ModuleSpec("radio", Criticality.DRIVER, MemoryBudget(4096, 512)),
+            ModuleSpec("ai", Criticality.USER, MemoryBudget(4096, 512)),
+        )
+        dependencies = (
+            StartupDependency("bus", "kernel"),
+            StartupDependency("sensor", "bus"),
+            StartupDependency("radio", "bus"),
+            StartupDependency("ai", "sensor"),
+            StartupDependency("ai", "radio"),
+        )
+
+        impact = startup_dependency_impact(modules, dependencies, "bus")
+
+        self.assertIsInstance(impact, StartupImpact)
+        self.assertEqual(impact.root, "bus")
+        self.assertEqual(impact.affected, ("ai", "radio", "sensor"))
+        self.assertEqual(impact.to_dict()["affected_count"], 3)
+
+        with self.assertRaisesRegex(ValueError, "unknown module: missing"):
+            startup_dependency_impact(modules, dependencies, "missing")
+
     def test_startup_matrix_covers_dependency_paths(self) -> None:
         report = _check_startup_matrix()
 
         self.assertTrue(report["passing"])
         self.assertEqual(report["errors"], [])
-        self.assertEqual(report["scenario_count"], 4)
+        self.assertEqual(report["scenario_count"], 5)
         scenarios = {entry["name"]: entry for entry in report["scenarios"]}
         self.assertEqual(
             scenarios["no_dependencies_preserve_manifest_order"]["order"],
@@ -1317,6 +1351,18 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(
             scenarios["fan_in_out_is_deterministic"]["order"],
             ["kernel", "bus", "sensor", "radio", "ai", "telemetry"],
+        )
+        self.assertEqual(
+            scenarios["dependency_impact_is_reverse_startup_order"]["impact"][
+                "affected"
+            ],
+            ["telemetry", "ai", "radio", "sensor"],
+        )
+        self.assertEqual(
+            scenarios["dependency_impact_is_reverse_startup_order"][
+                "unknown_root_error"
+            ],
+            "startup impact root references unknown module: missing",
         )
         self.assertEqual(
             scenarios["planner_errors_are_reported"]["unknown_dependency_error"],
@@ -1346,7 +1392,7 @@ class ContractBuilderTests(unittest.TestCase):
         payload = json.loads(stream.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["passing"])
-        self.assertEqual(payload["scenario_count"], 4)
+        self.assertEqual(payload["scenario_count"], 5)
 
     def test_ros_bridge_metadata_exports_stable_hashes(self) -> None:
         bridge = RosBridgeDescriptor(

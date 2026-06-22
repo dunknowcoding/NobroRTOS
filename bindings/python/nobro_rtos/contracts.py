@@ -227,6 +227,22 @@ class StartupPlan:
 
 
 @dataclass(frozen=True)
+class StartupImpact:
+    root: str
+    affected: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        _validate_name(self.root)
+        for module in self.affected:
+            _validate_name(module)
+        return {
+            "root": self.root,
+            "affected": list(self.affected),
+            "affected_count": len(self.affected),
+        }
+
+
+@dataclass(frozen=True)
 class AiModelContract:
     model_id: int
     backend: AiBackendKind
@@ -1068,6 +1084,41 @@ def plan_startup(
         raise ValueError(f"startup dependency cycle: {', '.join(cycle)}")
 
     return StartupPlan(tuple(order))
+
+
+def startup_dependency_impact(
+    modules: tuple[ModuleSpec, ...] | list[ModuleSpec],
+    dependencies: tuple[StartupDependency, ...] | list[StartupDependency],
+    root: str,
+) -> StartupImpact:
+    """Return transitive dependents of root in reverse startup order."""
+
+    _validate_name(root)
+    plan = plan_startup(modules, dependencies)
+    module_names = [module.module for module in modules]
+    module_set = set(module_names)
+    if root not in module_set:
+        raise ValueError(f"startup impact root references unknown module: {root}")
+
+    reverse_graph = {module: set[str]() for module in module_names}
+    for dependency in dependencies:
+        dependency.validate()
+        reverse_graph[dependency.depends_on].add(dependency.module)
+
+    affected: set[str] = set()
+    frontier = {root}
+    while frontier:
+        next_frontier: set[str] = set()
+        for module in frontier:
+            for dependent in reverse_graph[module]:
+                if dependent in affected:
+                    continue
+                affected.add(dependent)
+                next_frontier.add(dependent)
+        frontier = next_frontier
+
+    ordered = tuple(module for module in reversed(plan.order) if module in affected)
+    return StartupImpact(root=root, affected=ordered)
 
 
 def _validate_name(value: str) -> None:

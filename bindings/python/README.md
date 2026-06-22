@@ -153,8 +153,8 @@ configuration errors, and arithmetic overflow.
 `check-degrade-matrix` CLI validates flash, RAM, pool, module-limit,
 same-criticality, capacity, and essential-module pressure paths.
 The `check-startup-matrix` CLI validates no-dependency, dependency-chain,
-fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths for
-the deterministic startup planner.
+fan-in/fan-out, dependency-impact, unknown-node, self-cycle, duplicate-edge,
+and cycle paths for the deterministic startup planner.
 The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.

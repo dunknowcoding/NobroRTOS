@@ -102,7 +102,8 @@ reserve, release, total-use, identity, limit, underflow, and overflow paths.
 `check-degrade-matrix` validates deterministic degraded-mode flash, RAM, pool,
 module-limit, same-criticality, capacity, and essential-module paths.
 `check-startup-matrix` validates deterministic no-dependency, dependency-chain,
-fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
+fan-in/fan-out, dependency-impact, unknown-node, self-cycle, duplicate-edge,
+and cycle paths.
 `check-boot-summary-matrix` validates deterministic all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
