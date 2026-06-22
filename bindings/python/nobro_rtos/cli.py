@@ -34,7 +34,11 @@ from .contracts import (
     stable_hash32,
     startup_dependency_impact,
 )
-from .distribution import validate_distribution_metadata, validate_public_header_surface
+from .distribution import (
+    validate_distribution_metadata,
+    validate_public_header_surface,
+    validate_python_public_surface,
+)
 from .host_contract import BootDiagnostic, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .templates import (
@@ -436,6 +440,10 @@ def main() -> int:
         help="validate public C/C++/Arduino/PlatformIO header surfaces",
     )
     subparsers.add_parser(
+        "check-python-surface",
+        help="validate top-level Python package re-exports",
+    )
+    subparsers.add_parser(
         "check-software-surface",
         help="run the host contract, package, header, AI route, and runtime gates",
     )
@@ -765,6 +773,10 @@ def main() -> int:
         return 0
     if args.command == "check-public-headers":
         report = validate_public_header_surface()
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        return 0
+    if args.command == "check-python-surface":
+        report = validate_python_public_surface()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
         return 0
     if args.command == "check-software-surface":
@@ -1209,6 +1221,7 @@ def _doctor() -> dict[str, object]:
     contract = load_repo_host_contract()
     distribution = validate_distribution_metadata()
     headers = validate_public_header_surface()
+    python_surface = validate_python_public_surface()
     return {
         "status": "ok",
         "host_contract": {
@@ -1226,6 +1239,7 @@ def _doctor() -> dict[str, object]:
         },
         "distribution": distribution.to_dict(),
         "public_headers": headers.to_dict(),
+        "python_public_surface": python_surface.to_dict(),
         "host_simulators": [
             "sensor",
             "actuator",
@@ -1351,6 +1365,17 @@ def _check_software_surface() -> dict[str, object]:
         )
     except Exception as exc:
         add_check("public_headers", {"passing": False, "errors": [str(exc)]})
+
+    try:
+        add_check(
+            "python_public_surface",
+            {
+                "passing": True,
+                "report": validate_python_public_surface().to_dict(),
+            },
+        )
+    except Exception as exc:
+        add_check("python_public_surface", {"passing": False, "errors": [str(exc)]})
 
     add_check("starter_templates", _check_starter_templates())
     add_check("ai_route_matrix", _check_ai_route_matrix())

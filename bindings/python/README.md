@@ -297,6 +297,7 @@ python -m nobro_rtos check-degrade-matrix
 python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos check-runtime-drill --fault-count 3
 python -m nobro_rtos check-software-surface
+python -m nobro_rtos check-python-surface
 python -m nobro_rtos check-starter-templates
 python -m nobro_rtos sample-startup
 python -m nobro_rtos check-startup-matrix
@@ -362,13 +363,17 @@ The starter-template checker verifies every generated starter target in a
 temporary directory before packaging or publishing template changes.
 VS Code users can run the generated `NobroRTOS: Check Project` task from the
 starter project.
+The Python surface checker validates the top-level package re-export list
+without importing the package, catching missing `__all__` entries and stale
+imports before release tooling publishes a partial host API.
 The runtime drill checker applies pass/fail limits to disabled modules, reboot
 actions, and dropped event-log records, then returns a non-zero process status
 when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
-headers, starter templates, AI route matrix, AI preflight matrix, recovery
-matrix, ROS preflight matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+headers, Python public surface, starter templates, AI route matrix, AI
+preflight matrix, recovery matrix, ROS preflight matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
 matrix, and runtime drill gates into one
 JSON report.
@@ -396,6 +401,7 @@ python tools/nobro_contract_tool.py doctor
 python tools/nobro_contract_tool.py check-host-contract
 python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
+python tools/nobro_contract_tool.py check-python-surface
 python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route

@@ -79,6 +79,7 @@ from nobro_rtos import (
     validate_project_template,
     validate_distribution_metadata,
     validate_public_header_surface,
+    validate_python_public_surface,
 )
 from nobro_rtos.cli import (
     _check_ai_preflight_matrix,
@@ -199,6 +200,31 @@ class ContractBuilderTests(unittest.TestCase):
             report.forwarding_headers,
         )
 
+    def test_python_public_surface_keeps_top_level_api_visible(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        report = validate_python_public_surface(repo_root)
+
+        self.assertEqual(report.exported_count, report.imported_count)
+        self.assertGreater(report.exported_count, 80)
+        self.assertIn("RecoveryRuntimeSimulator", report.exported_names)
+        self.assertIn("RuntimeDrillSimulator", report.exported_names)
+        self.assertIn("preflight_ai_invocation", report.required_exports)
+        self.assertIn("preflight_ros_action", report.required_exports)
+        self.assertIn("validate_python_public_surface", report.required_exports)
+
+    def test_python_surface_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-python-surface"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["exported_count"], payload["imported_count"])
+        self.assertIn("RecoveryRuntimeSimulator", payload["exported_names"])
+
     def test_doctor_summarizes_host_and_package_health(self) -> None:
         report = _doctor()
 
@@ -211,6 +237,10 @@ class ContractBuilderTests(unittest.TestCase):
         )
         self.assertEqual(report["public_headers"]["c_report_count"], 12)
         self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])
+        self.assertIn(
+            "RecoveryRuntimeSimulator",
+            report["python_public_surface"]["exported_names"],
+        )
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("event_log_matrix_gate", report["host_simulators"])
@@ -240,6 +270,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("host_contract", report["checks"])
         self.assertIn("distribution_metadata", report["checks"])
         self.assertIn("public_headers", report["checks"])
+        self.assertIn("python_public_surface", report["checks"])
+        self.assertTrue(report["checks"]["python_public_surface"]["passing"])
         self.assertIn("starter_templates", report["checks"])
         self.assertTrue(report["checks"]["starter_templates"]["passing"])
         self.assertIn("ai_route_matrix", report["checks"])

@@ -650,9 +650,12 @@ topic payload bounds, service/action response capacity, queue depth, parameter
 value size, and timeout budget.
 The `check-public-headers` CLI validates public C/C++ report structs, helper
 functions, forwarding headers, and AI/ROS preflight error-bit coverage.
+The `check-python-surface` CLI validates top-level Python package re-exports
+against `__all__` and required host APIs without importing the package.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
-public header, starter template, AI route matrix, AI preflight matrix, ROS
-preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
+public header, Python public surface, starter template, AI route matrix, AI
+preflight matrix, ROS preflight matrix, recovery matrix, watchdog matrix,
+scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
 matrix, and runtime drill validation for pre-package review.
 

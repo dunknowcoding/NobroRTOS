@@ -46,8 +46,10 @@ from .host_contract import (
 from .distribution import (
     DistributionMetadataReport,
     PublicHeaderSurfaceReport,
+    PythonPublicSurfaceReport,
     validate_distribution_metadata,
     validate_public_header_surface,
+    validate_python_public_surface,
 )
 from .reports import (
     BootReportSummary,
@@ -156,8 +158,10 @@ __all__ = [
     "ReportStatusClass",
     "DistributionMetadataReport",
     "PublicHeaderSurfaceReport",
+    "PythonPublicSurfaceReport",
     "validate_distribution_metadata",
     "validate_public_header_surface",
+    "validate_python_public_surface",
     "FixedReport",
     "BootReportSummary",
     "ReportKind",

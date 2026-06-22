@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -90,6 +91,29 @@ REQUIRED_CPP_HELPERS = (
     "preflight_ros_action",
     "preflight_ros_parameter",
 )
+REQUIRED_PYTHON_EXPORTS = (
+    "Capability",
+    "MemoryBudget",
+    "ModuleSpec",
+    "NobroContractBundle",
+    "ProjectTarget",
+    "RecoveryRuntimeSimulator",
+    "RuntimeDrillSimulator",
+    "StartupDependency",
+    "StartupImpact",
+    "StartupPlan",
+    "build_project_template",
+    "plan_startup",
+    "preflight_ai_invocation",
+    "preflight_ros_action",
+    "preflight_ros_parameter",
+    "preflight_ros_service",
+    "preflight_ros_topic",
+    "startup_dependency_impact",
+    "validate_distribution_metadata",
+    "validate_public_header_surface",
+    "validate_python_public_surface",
+)
 
 
 @dataclass(frozen=True)
@@ -135,6 +159,24 @@ class PublicHeaderSurfaceReport:
             "c_preflight_bits": list(self.c_preflight_bits),
             "cpp_helpers": list(self.cpp_helpers),
             "forwarding_headers": list(self.forwarding_headers),
+        }
+
+
+@dataclass(frozen=True)
+class PythonPublicSurfaceReport:
+    """Summary of Python package public re-export validation."""
+
+    exported_count: int
+    imported_count: int
+    required_exports: tuple[str, ...]
+    exported_names: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "exported_count": self.exported_count,
+            "imported_count": self.imported_count,
+            "required_exports": list(self.required_exports),
+            "exported_names": list(self.exported_names),
         }
 
 
@@ -226,6 +268,42 @@ def validate_distribution_metadata(
         python_requires=str(project.get("requires-python")),
         include_roots=include_roots,
         host_tools=host_tools,
+    )
+
+
+def validate_python_public_surface(
+    start: str | Path | None = None,
+) -> PythonPublicSurfaceReport:
+    """Validate top-level Python re-exports without importing the package."""
+
+    root = find_repo_root(start)
+    init_path = root / "bindings" / "python" / "nobro_rtos" / "__init__.py"
+    tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    exported_names = _extract_all_names(tree, init_path)
+    imported_names = _collect_public_imports(tree)
+    exported_set = set(exported_names)
+    imported_set = set(imported_names)
+
+    if len(exported_set) != len(exported_names):
+        duplicates = _duplicates(exported_names)
+        raise ValueError(f"Python __all__ contains duplicate exports: {duplicates}")
+
+    for symbol in REQUIRED_PYTHON_EXPORTS:
+        _require_contains(exported_names, symbol, "Python public export")
+
+    missing_imports = tuple(name for name in exported_names if name not in imported_set)
+    if missing_imports:
+        raise ValueError(f"Python __all__ references missing imports: {missing_imports}")
+
+    missing_exports = tuple(name for name in imported_names if name not in exported_set)
+    if missing_exports:
+        raise ValueError(f"Python imports are missing from __all__: {missing_exports}")
+
+    return PythonPublicSurfaceReport(
+        exported_count=len(exported_names),
+        imported_count=len(imported_names),
+        required_exports=REQUIRED_PYTHON_EXPORTS,
+        exported_names=exported_names,
     )
 
 
@@ -338,3 +416,49 @@ def _require_forwarding_header(path: Path, target: str) -> None:
     text = path.read_text(encoding="utf-8")
     if f'#include "{target}"' not in text:
         raise ValueError(f"{path} must forward to {target}")
+
+
+def _extract_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        ):
+            continue
+        if not isinstance(node.value, (ast.List, ast.Tuple)):
+            raise ValueError(f"{path} __all__ must be a list or tuple literal")
+        names: list[str] = []
+        for item in node.value.elts:
+            if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
+                raise ValueError(f"{path} __all__ must contain only string literals")
+            names.append(item.value)
+        return tuple(names)
+    raise ValueError(f"{path} is missing __all__")
+
+
+def _collect_public_imports(tree: ast.Module) -> tuple[str, ...]:
+    names: list[str] = []
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level == 0:
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                raise ValueError("Python public surface must not use star imports")
+            name = alias.asname or alias.name
+            if not name.startswith("_"):
+                names.append(name)
+    return tuple(names)
+
+
+def _duplicates(values: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    duplicated: list[str] = []
+    for value in values:
+        if value in seen and value not in duplicated:
+            duplicated.append(value)
+        seen.add(value)
+    return tuple(duplicated)
