@@ -218,6 +218,7 @@ python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py sample-quota
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
+python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py sample-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py check-software-surface
@@ -243,7 +244,7 @@ directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
 Python host starter projects include runtime drill, AI route, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, and quota
-matrix gate tasks.
+matrix, and degrade matrix gate tasks.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,
@@ -252,7 +253,7 @@ The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
-matrix, and runtime drill validation before packaging.
+matrix, degrade matrix, and runtime drill validation before packaging.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,
@@ -272,6 +273,8 @@ drop accounting, and invalid input handling.
 The quota matrix checker validates fixed-capacity registration, reserve,
 release, total-use, strict module identity, limit enforcement, underflow, and
 overflow paths.
+The degrade matrix checker validates flash, RAM, pool, module-limit,
+same-criticality, planner-capacity, and essential-module pressure paths.
 The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code.

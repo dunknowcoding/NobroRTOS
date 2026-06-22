@@ -41,6 +41,7 @@ python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
 python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
+python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 ```
 

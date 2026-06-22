@@ -66,6 +66,7 @@ from nobro_rtos import (
 from nobro_rtos.cli import (
     _check_ai_route,
     _check_ai_route_matrix,
+    _check_degrade_matrix,
     _check_event_log_matrix,
     _check_project,
     _check_quota_matrix,
@@ -183,6 +184,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("event_log_matrix_gate", report["host_simulators"])
         self.assertIn("quota_matrix_gate", report["host_simulators"])
+        self.assertIn("degrade_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -215,6 +217,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["event_log_matrix"]["passing"])
         self.assertIn("quota_matrix", report["checks"])
         self.assertTrue(report["checks"]["quota_matrix"]["passing"])
+        self.assertIn("degrade_matrix", report["checks"])
+        self.assertTrue(report["checks"]["degrade_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -328,6 +332,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Quota Matrix Gate",
         )
         self.assertIn("check-quota-matrix", python_tasks["tasks"][9]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][10]["label"],
+            "NobroRTOS: Degrade Matrix Gate",
+        )
+        self.assertIn("check-degrade-matrix", python_tasks["tasks"][10]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -550,6 +559,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-event-log"]
                 if task["label"] == "NobroRTOS: Quota Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-quota"]
+                if task["label"] == "NobroRTOS: Degrade Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-degrade"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -562,6 +573,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("scheduler matrix gate task command mismatch", before.errors)
             self.assertIn("event log matrix gate task command mismatch", before.errors)
             self.assertIn("quota matrix gate task command mismatch", before.errors)
+            self.assertIn("degrade matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -594,6 +606,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "quota matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "degrade matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -645,6 +661,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Quota Matrix Gate"
             )
             self.assertIn("check-quota-matrix", quota_matrix_gate["args"])
+            degrade_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Degrade Matrix Gate"
+            )
+            self.assertIn("check-degrade-matrix", degrade_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2134,6 +2156,51 @@ class ContractBuilderTests(unittest.TestCase):
                     max_modules=2,
                 ),
             )
+
+    def test_degrade_matrix_covers_planner_pressure_paths(self) -> None:
+        report = _check_degrade_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 6)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["flash_pressure_drops_best_effort"]["decision"]["disabled"],
+            ["telemetry"],
+        )
+        self.assertEqual(
+            scenarios["ram_pressure_drops_best_effort_then_user"]["decision"][
+                "disabled"
+            ],
+            ["telemetry", "vision"],
+        )
+        self.assertEqual(
+            scenarios["pool_pressure_drops_best_effort"]["decision"]["reason"],
+            "pool_budget",
+        )
+        self.assertEqual(
+            scenarios["same_criticality_drops_larger_flash_first"]["decision"][
+                "disabled"
+            ],
+            ["ai_large"],
+        )
+        self.assertEqual(
+            scenarios["planner_errors_are_reported"]["capacity_error"],
+            "too many modules for planner capacity",
+        )
+
+    def test_degrade_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-degrade-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 6)
 
     def test_cli_quota_and_degrade_samples_summarize_control_plane(self) -> None:
         quota = _sample_quota()

@@ -281,6 +281,10 @@ def main() -> int:
     sample_degrade.add_argument("--ram-limit", type=int, default=16 * 1024)
     sample_degrade.add_argument("--pool-limit", type=int, default=5)
     sample_degrade.add_argument("--max-modules", type=int, default=4)
+    subparsers.add_parser(
+        "check-degrade-matrix",
+        help="run deterministic degraded-mode planner checks",
+    )
     sample_runtime_drill = subparsers.add_parser(
         "sample-runtime-drill",
         help="run a combined runtime pressure drill and print JSON",
@@ -582,6 +586,10 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "check-degrade-matrix":
+        report = _check_degrade_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-runtime-drill":
         print(
             json.dumps(
@@ -793,6 +801,7 @@ def _doctor() -> dict[str, object]:
             "quota",
             "quota_matrix_gate",
             "degrade",
+            "degrade_matrix_gate",
             "runtime_drill",
             "runtime_drill_gate",
             "ai_route_gate",
@@ -905,6 +914,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("scheduler_matrix", _check_scheduler_matrix())
     add_check("event_log_matrix", _check_event_log_matrix())
     add_check("quota_matrix", _check_quota_matrix())
+    add_check("degrade_matrix", _check_degrade_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -2487,6 +2497,218 @@ def _sample_degrade(
         ],
         "decision": decision.to_dict(),
     }
+
+
+def _check_degrade_matrix() -> dict[str, object]:
+    scenarios = (
+        _degrade_flash_pressure_scenario(),
+        _degrade_ram_pressure_scenario(),
+        _degrade_pool_pressure_scenario(),
+        _degrade_module_limit_scenario(),
+        _degrade_same_criticality_scenario(),
+        _degrade_error_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _degrade_scenario(
+    name: str,
+    modules: tuple[ModuleSpec, ...],
+    profile: SystemProfile,
+    expected_disabled: tuple[str, ...],
+    expected_enabled: tuple[str, ...],
+    expected_reason: str | None,
+) -> dict[str, object]:
+    decision = DegradePlannerSimulator.fit(modules, profile, capacity=8)
+    errors: list[str] = []
+    _expect_equal(decision.disabled, expected_disabled, "disabled", errors)
+    _expect_equal(decision.enabled, expected_enabled, "enabled", errors)
+    _expect_equal(
+        None if decision.reason is None else decision.reason.value,
+        expected_reason,
+        "reason",
+        errors,
+    )
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "profile": profile.to_dict(),
+        "decision": decision.to_dict(),
+    }
+
+
+def _degrade_flash_pressure_scenario() -> dict[str, object]:
+    modules = (
+        _degrade_module("kernel", Criticality.HARD_REALTIME, 20, 4, 1),
+        _degrade_module("sensor", Criticality.DRIVER, 20, 4, 1),
+        _degrade_module("ai", Criticality.USER, 20, 4, 1),
+        _degrade_module("telemetry", Criticality.BEST_EFFORT, 50, 4, 1),
+    )
+    return _degrade_scenario(
+        "flash_pressure_drops_best_effort",
+        modules,
+        SystemProfile(70, 32, 8, 4),
+        expected_disabled=("telemetry",),
+        expected_enabled=("kernel", "sensor", "ai"),
+        expected_reason="flash_budget",
+    )
+
+
+def _degrade_ram_pressure_scenario() -> dict[str, object]:
+    modules = (
+        _degrade_module("kernel", Criticality.HARD_REALTIME, 10, 8, 1),
+        _degrade_module("sensor", Criticality.DRIVER, 10, 8, 1),
+        _degrade_module("vision", Criticality.USER, 10, 16, 1),
+        _degrade_module("telemetry", Criticality.BEST_EFFORT, 10, 4, 1),
+    )
+    return _degrade_scenario(
+        "ram_pressure_drops_best_effort_then_user",
+        modules,
+        SystemProfile(64, 20, 8, 4),
+        expected_disabled=("telemetry", "vision"),
+        expected_enabled=("kernel", "sensor"),
+        expected_reason="ram_budget",
+    )
+
+
+def _degrade_pool_pressure_scenario() -> dict[str, object]:
+    modules = (
+        _degrade_module("kernel", Criticality.HARD_REALTIME, 10, 4, 1),
+        _degrade_module("sensor", Criticality.DRIVER, 10, 4, 1),
+        _degrade_module("ai", Criticality.USER, 10, 4, 2),
+        _degrade_module("telemetry", Criticality.BEST_EFFORT, 10, 4, 1),
+    )
+    return _degrade_scenario(
+        "pool_pressure_drops_best_effort",
+        modules,
+        SystemProfile(64, 32, 4, 4),
+        expected_disabled=("telemetry",),
+        expected_enabled=("kernel", "sensor", "ai"),
+        expected_reason="pool_budget",
+    )
+
+
+def _degrade_module_limit_scenario() -> dict[str, object]:
+    modules = (
+        _degrade_module("kernel", Criticality.HARD_REALTIME, 10, 4, 1),
+        _degrade_module("sensor", Criticality.DRIVER, 10, 4, 1),
+        _degrade_module("radio", Criticality.DRIVER, 10, 4, 1),
+        _degrade_module("ai", Criticality.USER, 10, 4, 1),
+        _degrade_module("telemetry", Criticality.BEST_EFFORT, 10, 4, 1),
+    )
+    return _degrade_scenario(
+        "module_limit_drops_lowest_criticality",
+        modules,
+        SystemProfile(80, 40, 8, 4),
+        expected_disabled=("telemetry",),
+        expected_enabled=("kernel", "sensor", "radio", "ai"),
+        expected_reason="module_limit",
+    )
+
+
+def _degrade_same_criticality_scenario() -> dict[str, object]:
+    modules = (
+        _degrade_module("kernel", Criticality.HARD_REALTIME, 10, 4, 1),
+        _degrade_module("sensor", Criticality.DRIVER, 10, 4, 1),
+        _degrade_module("ai_small", Criticality.USER, 10, 4, 1),
+        _degrade_module("ai_large", Criticality.USER, 30, 4, 1),
+    )
+    return _degrade_scenario(
+        "same_criticality_drops_larger_flash_first",
+        modules,
+        SystemProfile(40, 32, 8, 4),
+        expected_disabled=("ai_large",),
+        expected_enabled=("kernel", "sensor", "ai_small"),
+        expected_reason="flash_budget",
+    )
+
+
+def _degrade_error_scenario() -> dict[str, object]:
+    essential_error = None
+    capacity_error = None
+    profile_error = None
+    try:
+        DegradePlannerSimulator.fit(
+            (
+                _degrade_module("kernel", Criticality.HARD_REALTIME, 100, 4, 1),
+                _degrade_module("hal", Criticality.SYSTEM, 100, 4, 1),
+            ),
+            SystemProfile(50, 16, 4, 2),
+        )
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        essential_error = str(exc)
+
+    try:
+        DegradePlannerSimulator.fit(
+            (
+                _degrade_module("kernel", Criticality.HARD_REALTIME, 10, 4, 1),
+                _degrade_module("sensor", Criticality.DRIVER, 10, 4, 1),
+            ),
+            SystemProfile(64, 32, 8, 2),
+            capacity=1,
+        )
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        capacity_error = str(exc)
+
+    try:
+        SystemProfile(-1, 16, 4, 2)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        profile_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        essential_error,
+        "essential modules exceed profile",
+        "essential_error",
+        errors,
+    )
+    _expect_equal(
+        capacity_error,
+        "too many modules for planner capacity",
+        "capacity_error",
+        errors,
+    )
+    _expect_equal(
+        profile_error,
+        "profile byte limits must be non-negative",
+        "profile_error",
+        errors,
+    )
+    return {
+        "name": "planner_errors_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "essential_error": essential_error,
+        "capacity_error": capacity_error,
+        "profile_error": profile_error,
+    }
+
+
+def _degrade_module(
+    name: str,
+    criticality: Criticality,
+    flash_bytes: int,
+    ram_bytes: int,
+    pool_slots: int,
+) -> ModuleSpec:
+    return ModuleSpec(
+        name,
+        criticality,
+        MemoryBudget(flash_bytes, ram_bytes, pool_slots),
+        period_us=20_000 if criticality == Criticality.HARD_REALTIME else None,
+        max_jitter_us=10 if criticality == Criticality.HARD_REALTIME else None,
+    )
 
 
 def _sample_runtime_drill(
