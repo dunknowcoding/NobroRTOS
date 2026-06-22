@@ -50,11 +50,13 @@ extern "C" {
 #define NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT (1u << 6)
 #define NOBRO_AI_PREFLIGHT_STALE_TOO_OLD (1u << 7)
 #define NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN (1u << 8)
+#define NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING (1u << 9)
 
 #define NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE (1u << 0)
 #define NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL (1u << 1)
 #define NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED (1u << 2)
 #define NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO (1u << 3)
+#define NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO (1u << 4)
 
 typedef enum nobro_report_status {
     NOBRO_REPORT_STATUS_MISSING = 1,
@@ -526,6 +528,9 @@ static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight(
     if (response_capacity_bytes < service.response_bytes_max) {
         error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
     }
+    if (service.timeout_us == 0u) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;
+    }
     if (service.timeout_us > budget_us) {
         error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
     }
@@ -551,6 +556,9 @@ static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight(
     if (feedback_capacity_bytes < action.feedback_bytes_max
         || result_capacity_bytes < action.result_bytes_max) {
         error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if (action.timeout_us == 0u) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;
     }
     if (action.timeout_us > budget_us) {
         error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
@@ -720,6 +728,11 @@ static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight(
     }
     if (required_ram_bytes > limits.available_ram_bytes) {
         error_bits |= NOBRO_AI_PREFLIGHT_RAM_EXCEEDED;
+    }
+    if ((contract.backend == NOBRO_AI_BACKEND_ON_DEVICE
+            || contract.backend == NOBRO_AI_BACKEND_HYBRID)
+        && contract.arena_bytes == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING;
     }
     if (route.target == NOBRO_AI_TARGET_UNAVAILABLE && limits.allow_unavailable == 0u) {
         error_bits |= NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE;

@@ -636,6 +636,7 @@ pub const ROS_PREFLIGHT_PAYLOAD_TOO_LARGE: u32 = 1 << 0;
 pub const ROS_PREFLIGHT_RESPONSE_TOO_SMALL: u32 = 1 << 1;
 pub const ROS_PREFLIGHT_TIMEOUT_EXCEEDED: u32 = 1 << 2;
 pub const ROS_PREFLIGHT_QUEUE_DEPTH_ZERO: u32 = 1 << 3;
+pub const ROS_PREFLIGHT_TIMEOUT_ZERO: u32 = 1 << 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RosBridgePreflight {
@@ -681,6 +682,9 @@ pub fn preflight_ros_service(
     if response_capacity_bytes < service.response_bytes_max {
         error_bits |= ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
     }
+    if service.timeout_us == 0 {
+        error_bits |= ROS_PREFLIGHT_TIMEOUT_ZERO;
+    }
     if service.timeout_us > budget_us {
         error_bits |= ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
     }
@@ -706,6 +710,9 @@ pub fn preflight_ros_action(
         || result_capacity_bytes < action.result_bytes_max
     {
         error_bits |= ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if action.timeout_us == 0 {
+        error_bits |= ROS_PREFLIGHT_TIMEOUT_ZERO;
     }
     if action.timeout_us > budget_us {
         error_bits |= ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
@@ -1734,6 +1741,10 @@ mod tests {
         assert!(fail.has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
         assert!(fail.has_error(ROS_PREFLIGHT_RESPONSE_TOO_SMALL));
         assert!(fail.has_error(ROS_PREFLIGHT_TIMEOUT_EXCEEDED));
+
+        let zero_timeout =
+            preflight_ros_service(RosServiceContract::new(0x30, 16, 32, 0), 16, 32, 20_000);
+        assert!(zero_timeout.has_error(ROS_PREFLIGHT_TIMEOUT_ZERO));
     }
 
     #[test]
@@ -1745,6 +1756,15 @@ mod tests {
         assert!(action_fail.has_error(ROS_PREFLIGHT_PAYLOAD_TOO_LARGE));
         assert!(action_fail.has_error(ROS_PREFLIGHT_RESPONSE_TOO_SMALL));
         assert!(action_fail.has_error(ROS_PREFLIGHT_TIMEOUT_EXCEEDED));
+
+        let zero_timeout = preflight_ros_action(
+            RosActionContract::new(0x40, 16, 8, 24, 0),
+            16,
+            8,
+            24,
+            20_000,
+        );
+        assert!(zero_timeout.has_error(ROS_PREFLIGHT_TIMEOUT_ZERO));
 
         let parameter = RosParameterContract::new(0x50, 12);
         assert!(preflight_ros_parameter(parameter, 8).passing());
