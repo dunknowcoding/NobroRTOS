@@ -28,4 +28,5 @@ python tools/nobro_contract_tool.py check-software-surface
 
 The gate returns one JSON report for the host contract, package metadata,
 public headers, starter templates, AI route matrix, recovery matrix, watchdog
-matrix, scheduler matrix, event log matrix, and runtime drill checks.
+matrix, scheduler matrix, event log matrix, quota matrix, and runtime drill
+checks.

@@ -269,6 +269,10 @@ def main() -> int:
         "sample-quota",
         help="run a deterministic quota ledger simulation and print JSON",
     )
+    subparsers.add_parser(
+        "check-quota-matrix",
+        help="run deterministic fixed-capacity quota ledger checks",
+    )
     sample_degrade = subparsers.add_parser(
         "sample-degrade",
         help="run a deterministic degraded-mode planning simulation and print JSON",
@@ -560,6 +564,10 @@ def main() -> int:
     if args.command == "sample-quota":
         print(json.dumps(_sample_quota(), indent=2, sort_keys=True))
         return 0
+    if args.command == "check-quota-matrix":
+        report = _check_quota_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-degrade":
         print(
             json.dumps(
@@ -783,6 +791,7 @@ def _doctor() -> dict[str, object]:
             "event_log",
             "event_log_matrix_gate",
             "quota",
+            "quota_matrix_gate",
             "degrade",
             "runtime_drill",
             "runtime_drill_gate",
@@ -895,6 +904,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("watchdog_matrix", _check_watchdog_matrix())
     add_check("scheduler_matrix", _check_scheduler_matrix())
     add_check("event_log_matrix", _check_event_log_matrix())
+    add_check("quota_matrix", _check_quota_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -2232,6 +2242,222 @@ def _sample_quota() -> dict[str, object]:
     return {
         **ledger.to_dict(),
         "timeline": timeline,
+    }
+
+
+def _check_quota_matrix() -> dict[str, object]:
+    scenarios = (
+        _quota_reserve_release_scenario(),
+        _quota_capacity_scenario(),
+        _quota_module_identity_scenario(),
+        _quota_limit_and_underflow_scenario(),
+        _quota_invalid_and_overflow_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _quota_reserve_release_scenario() -> dict[str, object]:
+    report = _sample_quota()
+    entries = {entry["module"]: entry for entry in report["entries"]}
+    errors: list[str] = []
+    _expect_equal(report["len"], 5, "len", errors)
+    _expect_equal(
+        report["total_used"],
+        {"flash_bytes": 17_408, "ram_bytes": 4_992, "pool_slots": 2},
+        "total_used",
+        errors,
+    )
+    _expect_equal(
+        entries["sensor"]["used"],
+        {"flash_bytes": 3_072, "ram_bytes": 384, "pool_slots": 1},
+        "sensor_used",
+        errors,
+    )
+    _expect_equal(
+        entries["ai"]["available"],
+        {"flash_bytes": 16_384, "ram_bytes": 4_096, "pool_slots": 1},
+        "ai_available",
+        errors,
+    )
+    return {
+        "name": "reserve_release_totals",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        **report,
+    }
+
+
+def _quota_capacity_scenario() -> dict[str, object]:
+    ledger = QuotaLedgerSimulator(capacity=1)
+    ledger.register("sensor", ResourceBudget(1024, 256, 1))
+    capacity_error = None
+    try:
+        ledger.register("radio", ResourceBudget(1024, 256, 1))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        capacity_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        capacity_error,
+        "quota capacity exhausted",
+        "capacity_error",
+        errors,
+    )
+    _expect_equal(ledger.len, 1, "len", errors)
+    return {
+        "name": "capacity_exhaustion_is_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "capacity_error": capacity_error,
+        "ledger": ledger.to_dict(),
+    }
+
+
+def _quota_module_identity_scenario() -> dict[str, object]:
+    ledger = QuotaLedgerSimulator(capacity=2)
+    ledger.register("sensor", ResourceBudget(1024, 256, 1))
+    duplicate_error = None
+    missing_error = None
+    try:
+        ledger.register("sensor", ResourceBudget(1024, 256, 1))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        duplicate_error = str(exc)
+
+    try:
+        ledger.reserve("radio", ResourceBudget(1, 1, 0))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        missing_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        duplicate_error,
+        "duplicate quota module",
+        "duplicate_error",
+        errors,
+    )
+    _expect_equal(missing_error, "missing quota module", "missing_error", errors)
+    _expect_equal(ledger.usage("radio"), None, "unknown_usage", errors)
+    return {
+        "name": "module_identity_is_strict",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "duplicate_error": duplicate_error,
+        "missing_error": missing_error,
+        "ledger": ledger.to_dict(),
+    }
+
+
+def _quota_limit_and_underflow_scenario() -> dict[str, object]:
+    ledger = QuotaLedgerSimulator(capacity=1)
+    ledger.register("sensor", ResourceBudget(1024, 256, 1))
+    ledger.reserve("sensor", ResourceBudget(512, 128, 1))
+    limit_error = None
+    underflow_error = None
+    try:
+        ledger.reserve("sensor", ResourceBudget(600, 0, 0))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        limit_error = str(exc)
+
+    try:
+        ledger.release("sensor", ResourceBudget(0, 0, 2))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        underflow_error = str(exc)
+
+    released = ledger.reset_usage("sensor")
+    errors: list[str] = []
+    _expect_equal(limit_error, "quota limit exceeded", "limit_error", errors)
+    _expect_equal(
+        underflow_error,
+        "quota release underflow",
+        "underflow_error",
+        errors,
+    )
+    _expect_equal(released, ResourceBudget(512, 128, 1), "released", errors)
+    _expect_equal(
+        ledger.total_used(),
+        ResourceBudget(),
+        "total_used_after_reset",
+        errors,
+    )
+    return {
+        "name": "limit_and_underflow_are_rejected",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "limit_error": limit_error,
+        "underflow_error": underflow_error,
+        "released": released.to_dict(),
+        "ledger": ledger.to_dict(),
+    }
+
+
+def _quota_invalid_and_overflow_scenario() -> dict[str, object]:
+    capacity_error = None
+    negative_error = None
+    flash_overflow_error = None
+    pool_overflow_error = None
+    try:
+        QuotaLedgerSimulator(capacity=0)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        capacity_error = str(exc)
+
+    try:
+        ResourceBudget(flash_bytes=-1)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        negative_error = str(exc)
+
+    try:
+        ResourceBudget(0xFFFF_FFFF, 0, 0).checked_add(ResourceBudget(1, 0, 0))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        flash_overflow_error = str(exc)
+
+    try:
+        ResourceBudget(0, 0, 0xFFFF).checked_add(ResourceBudget(0, 0, 1))
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        pool_overflow_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        capacity_error,
+        "capacity must be positive",
+        "capacity_error",
+        errors,
+    )
+    _expect_equal(
+        negative_error,
+        "flash_bytes must be non-negative",
+        "negative_error",
+        errors,
+    )
+    _expect_equal(
+        flash_overflow_error,
+        "flash quota overflow",
+        "flash_overflow_error",
+        errors,
+    )
+    _expect_equal(
+        pool_overflow_error,
+        "pool quota overflow",
+        "pool_overflow_error",
+        errors,
+    )
+    return {
+        "name": "invalid_config_and_overflow_are_rejected",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "capacity_error": capacity_error,
+        "negative_error": negative_error,
+        "flash_overflow_error": flash_overflow_error,
+        "pool_overflow_error": pool_overflow_error,
     }
 
 

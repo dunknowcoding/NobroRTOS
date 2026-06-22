@@ -106,9 +106,9 @@ gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
 route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix, and
-event log matrix gate tasks, and the Python board bridge template includes an
-offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
-status-line workflows.
+event log matrix, and quota matrix gate tasks, and the Python board bridge
+template includes an offline bridge smoke task for MicroPython, CircuitPython,
+and mPython-style status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -137,7 +137,10 @@ scheduler configuration.
 `check-event-log-matrix` CLI validates capacity accounting, overwrite pressure,
 recent-record order, severity thresholds, zero-capacity behavior, and invalid
 input handling.
-`QuotaLedgerSimulator` mirrors fixed-capacity quota accounting.
+`QuotaLedgerSimulator` mirrors fixed-capacity quota accounting. The
+`check-quota-matrix` CLI validates registration capacity, reserve/release
+totals, strict module identity, limit enforcement, release underflow,
+configuration errors, and arithmetic overflow.
 `DegradePlannerSimulator` mirrors degraded-mode module fitting.
 `RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
 checks into one deterministic pressure drill.
@@ -237,6 +240,7 @@ python -m nobro_rtos check-scheduler-matrix
 python -m nobro_rtos sample-event-log --capacity 3 --events 4 --recent 3
 python -m nobro_rtos check-event-log-matrix
 python -m nobro_rtos sample-quota
+python -m nobro_rtos check-quota-matrix
 python -m nobro_rtos sample-degrade --flash-limit 73728 --ram-limit 16384
 python -m nobro_rtos sample-runtime-drill --fault-count 3
 python -m nobro_rtos check-runtime-drill --fault-count 3
@@ -275,7 +279,9 @@ fixed-ring pressure, dropped-event, and recent-record summaries. The event log
 matrix checker validates capacity, overwrite, recent-order, severity-threshold,
 zero-capacity, and invalid-input paths. The quota sample emits
 fixed-capacity resource reservations, releases, remaining budget, and total
-usage. The degraded-mode sample emits a pressure reason plus the enabled and
+usage. The quota matrix checker validates registration capacity, reserve,
+release, total-use, identity, limit, underflow, and overflow paths. The
+degraded-mode sample emits a pressure reason plus the enabled and
 disabled module sets selected by the same criticality-first policy used by the
 kernel planner. The runtime drill sample combines degraded-mode planning, quota
 usage, fixed-ring event logging, and recovery escalation in a single host-side
@@ -297,8 +303,8 @@ when a limit is exceeded.
 The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
-scheduler matrix, event log matrix, and runtime drill gates into one JSON
-report.
+scheduler matrix, event log matrix, quota matrix, and runtime drill gates into
+one JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled.
@@ -324,6 +330,7 @@ python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
 python tools/nobro_contract_tool.py check-event-log-matrix
+python tools/nobro_contract_tool.py check-quota-matrix
 ```
 
 Decode a boot diagnostic code:

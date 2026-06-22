@@ -68,6 +68,7 @@ from nobro_rtos.cli import (
     _check_ai_route_matrix,
     _check_event_log_matrix,
     _check_project,
+    _check_quota_matrix,
     _check_recovery_matrix,
     _check_runtime_drill,
     _check_scheduler_matrix,
@@ -181,6 +182,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("scheduler", report["host_simulators"])
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("event_log_matrix_gate", report["host_simulators"])
+        self.assertIn("quota_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -211,6 +213,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["scheduler_matrix"]["passing"])
         self.assertIn("event_log_matrix", report["checks"])
         self.assertTrue(report["checks"]["event_log_matrix"]["passing"])
+        self.assertIn("quota_matrix", report["checks"])
+        self.assertTrue(report["checks"]["quota_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -319,6 +323,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Event Log Matrix Gate",
         )
         self.assertIn("check-event-log-matrix", python_tasks["tasks"][8]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][9]["label"],
+            "NobroRTOS: Quota Matrix Gate",
+        )
+        self.assertIn("check-quota-matrix", python_tasks["tasks"][9]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -539,6 +548,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-scheduler"]
                 if task["label"] == "NobroRTOS: Event Log Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-event-log"]
+                if task["label"] == "NobroRTOS: Quota Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-quota"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -550,6 +561,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("watchdog matrix gate task command mismatch", before.errors)
             self.assertIn("scheduler matrix gate task command mismatch", before.errors)
             self.assertIn("event log matrix gate task command mismatch", before.errors)
+            self.assertIn("quota matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -578,6 +590,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "event log matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "quota matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -623,6 +639,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Event Log Matrix Gate"
             )
             self.assertIn("check-event-log-matrix", event_log_matrix_gate["args"])
+            quota_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Quota Matrix Gate"
+            )
+            self.assertIn("check-quota-matrix", quota_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2014,6 +2036,49 @@ class ContractBuilderTests(unittest.TestCase):
         released = ledger.reset_usage("sensor")
         self.assertEqual(released, ResourceBudget(384, 64, 0))
         self.assertEqual(ledger.usage("sensor"), ResourceBudget())
+
+    def test_quota_matrix_covers_fixed_capacity_paths(self) -> None:
+        report = _check_quota_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 5)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["reserve_release_totals"]["total_used"],
+            {"flash_bytes": 17_408, "ram_bytes": 4_992, "pool_slots": 2},
+        )
+        self.assertEqual(
+            scenarios["capacity_exhaustion_is_reported"]["capacity_error"],
+            "quota capacity exhausted",
+        )
+        self.assertEqual(
+            scenarios["module_identity_is_strict"]["missing_error"],
+            "missing quota module",
+        )
+        self.assertEqual(
+            scenarios["limit_and_underflow_are_rejected"]["released"],
+            {"flash_bytes": 512, "ram_bytes": 128, "pool_slots": 1},
+        )
+        self.assertEqual(
+            scenarios["invalid_config_and_overflow_are_rejected"][
+                "pool_overflow_error"
+            ],
+            "pool quota overflow",
+        )
+
+    def test_quota_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-quota-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 5)
 
     def test_degrade_planner_simulator_drops_lowest_criticality_first(self) -> None:
         modules = (
