@@ -84,8 +84,9 @@ and circuit-breaker inputs used by firmware. A zero policy stale window inherits
 the model contract's `stale_after_us`; otherwise the stricter window is used.
 `AiInvocationConstraints` and `preflight_ai_invocation` add a host-side
 admission check before inference. They validate input/output buffers, scratch
-and arena RAM, budget, declared AI capabilities, stale snapshots, degraded
-fallback, and endpoint circuit policy without contacting a model or cloud API.
+and arena RAM, non-zero local arena declarations, budget, declared AI
+capabilities, stale snapshots, degraded fallback, and endpoint circuit policy
+without contacting a model or cloud API.
 
 ROS-style bridge descriptors keep readable names and also emit stable FNV-1a
 32-bit hashes (`name_hash`, `message_type_hash`, `bridge_id_hash`, and
@@ -308,12 +309,12 @@ budget, readiness, stale-age, and endpoint-failure arguments. The route matrix
 checker validates local, remote API, edge sidecar, stale snapshot, degraded
 fallback, and unavailable scenarios in one gate. The AI preflight checker runs
 before inference and rejects oversized buffers, insufficient module RAM,
-missing AI capabilities, stale snapshots that exceed invocation limits,
-degraded fallback, unavailable routes, and open endpoint circuits according to
-explicit policy flags. The ROS preflight checker validates bridge payload,
-response-capacity, queue-depth, parameter-size, and timeout bounds before a ROS
-agent or transport is contacted. The report samples print sealed fixed reports
-that can be fed directly into `decode-report`. The
+missing local arenas, missing AI capabilities, stale snapshots that exceed
+invocation limits, degraded fallback, unavailable routes, and open endpoint
+circuits according to explicit policy flags. The ROS preflight checker validates
+bridge payload, response-capacity, queue-depth, parameter-size, and timeout
+bounds before a ROS agent or transport is contacted. The report samples print
+sealed fixed reports that can be fed directly into `decode-report`. The
 sensor sample emits deterministic fixture records and injected-fault summaries.
 The actuator sample emits deterministic servo command records with deadline and
 readback summaries.

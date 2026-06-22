@@ -270,9 +270,9 @@ and endpoint-failure arguments. The AI route matrix checker validates local,
 remote API, edge sidecar, stale snapshot, degraded fallback, and unavailable
 paths in one gate.
 The AI preflight matrix checker validates inference-call admission before a
-model runs: input/output buffers, scratch and arena RAM, module capability
-declarations, route budget, stale snapshot limits, degraded fallback,
-unavailable routes, and endpoint circuit state.
+model runs: input/output buffers, scratch and arena RAM, non-zero local arena
+declarations, module capability declarations, route budget, stale snapshot
+limits, degraded fallback, unavailable routes, and endpoint circuit state.
 The ROS preflight matrix checker validates bridge-call admission before a ROS
 transport or agent is contacted: topic payload bounds, service/action response
 capacity, queue depth, parameter value size, and timeout budget.

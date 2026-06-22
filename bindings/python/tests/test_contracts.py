@@ -1557,6 +1557,32 @@ class ContractBuilderTests(unittest.TestCase):
             failing["errors"],
         )
 
+        missing_arena = preflight_ai_invocation(
+            ModuleSpec(
+                "ai",
+                Criticality.USER,
+                MemoryBudget(16 * 1024, 8 * 1024, 1),
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            AiModelContract(
+                7,
+                AiBackendKind.ON_DEVICE,
+                128,
+                32,
+                0,
+                20_000,
+                100_000,
+            ),
+            AiRoutePolicy(AiRoutePreference.LOCAL_ONLY, 50_000, 2),
+            AiRuntimeState(True, False, 10_000, 0),
+            AiInvocationConstraints(96, 24, 512, 25_000),
+        ).to_dict()
+        self.assertFalse(missing_arena["passing"])
+        self.assertIn(
+            "AI local inference requires a non-zero arena",
+            missing_arena["errors"],
+        )
+
     def test_ai_preflight_matrix_covers_admission_paths(self) -> None:
         sample = _sample_ai_preflight()
         self.assertTrue(sample["passing"])
@@ -1567,13 +1593,17 @@ class ContractBuilderTests(unittest.TestCase):
 
         self.assertTrue(report["passing"])
         self.assertEqual(report["errors"], [])
-        self.assertEqual(report["scenario_count"], 6)
+        self.assertEqual(report["scenario_count"], 7)
         scenarios = {entry["name"]: entry for entry in report["scenarios"]}
         self.assertEqual(
             scenarios["remote_endpoint_caps_do_not_reserve_local_arena"]["preflight"][
                 "required_ram_bytes"
             ],
             376,
+        )
+        self.assertIn(
+            "AI local inference requires a non-zero arena",
+            scenarios["local_backends_must_declare_arena"]["preflight"]["errors"],
         )
         self.assertIn(
             "AI module missing required capabilities: ai_endpoint",
@@ -1599,7 +1629,7 @@ class ContractBuilderTests(unittest.TestCase):
         payload = json.loads(stream.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["passing"])
-        self.assertEqual(payload["scenario_count"], 6)
+        self.assertEqual(payload["scenario_count"], 7)
 
     def test_ros_preflight_checks_bridge_payloads_buffers_and_timeouts(self) -> None:
         topic = preflight_ros_topic(RosTopic("/imu", "sensor_msgs/Imu", 4, 64), 48)

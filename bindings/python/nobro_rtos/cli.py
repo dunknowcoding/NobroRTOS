@@ -1697,6 +1697,29 @@ def _check_ai_preflight_matrix() -> dict[str, object]:
             expected_errors=("AI invocation RAM exceeds module budget: 4728 > 4096",),
         ),
         _ai_preflight_scenario(
+            name="local_backends_must_declare_arena",
+            module=_ai_preflight_module(
+                ram_bytes=8 * 1024,
+                requires=(Capability.AI_INFERENCE,),
+            ),
+            model=AiModelContract(
+                model_id=42,
+                backend=AiBackendKind.ON_DEVICE,
+                input_bytes_max=128,
+                output_bytes_max=32,
+                arena_bytes=0,
+                timeout_us=20_000,
+                stale_after_us=100_000,
+            ),
+            policy=AiRoutePolicy(AiRoutePreference.LOCAL_ONLY, 50_000, 2),
+            state=AiRuntimeState(True, False, 10_000, 0),
+            constraints=AiInvocationConstraints(96, 24, 512, 25_000),
+            expected_passing=False,
+            expected_target="on_device",
+            expected_required_ram=632,
+            expected_errors=("AI local inference requires a non-zero arena",),
+        ),
+        _ai_preflight_scenario(
             name="hybrid_modules_must_declare_endpoint_capability",
             module=_ai_preflight_module(
                 ram_bytes=8 * 1024,

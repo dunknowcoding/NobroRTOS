@@ -559,6 +559,11 @@ def preflight_ai_invocation(
             "AI invocation RAM exceeds module budget: "
             f"{required_ram_bytes} > {module.memory.ram_bytes}"
         )
+    if (
+        contract.backend in (AiBackendKind.ON_DEVICE, AiBackendKind.HYBRID)
+        and contract.arena_bytes == 0
+    ):
+        errors.append("AI local inference requires a non-zero arena")
 
     missing_capabilities = tuple(
         capability for capability in required_capabilities if capability not in module.requires

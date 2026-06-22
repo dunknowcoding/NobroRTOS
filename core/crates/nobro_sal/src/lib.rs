@@ -1233,6 +1233,7 @@ pub const AI_PREFLIGHT_DEGRADED_FALLBACK: u32 = 1 << 5;
 pub const AI_PREFLIGHT_STALE_SNAPSHOT: u32 = 1 << 6;
 pub const AI_PREFLIGHT_STALE_TOO_OLD: u32 = 1 << 7;
 pub const AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN: u32 = 1 << 8;
+pub const AI_PREFLIGHT_LOCAL_ARENA_MISSING: u32 = 1 << 9;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AiInvocationLimits {
@@ -1341,6 +1342,13 @@ pub fn preflight_ai_invocation(
     }
     if required_ram_bytes > limits.available_ram_bytes {
         error_bits |= AI_PREFLIGHT_RAM_EXCEEDED;
+    }
+    if matches!(
+        contract.backend,
+        AiBackendKind::OnDevice | AiBackendKind::Hybrid
+    ) && contract.arena_bytes == 0
+    {
+        error_bits |= AI_PREFLIGHT_LOCAL_ARENA_MISSING;
     }
     if route.target == AiRouteTarget::Unavailable && !limits.allow_unavailable {
         error_bits |= AI_PREFLIGHT_ROUTE_UNAVAILABLE;
@@ -1591,6 +1599,27 @@ mod tests {
         assert!(report.has_error(AI_PREFLIGHT_OUTPUT_TOO_SMALL));
         assert!(report.has_error(AI_PREFLIGHT_RAM_EXCEEDED));
         assert_eq!(report.required_ram_bytes, 12 + 4 + 128 + 4096);
+    }
+
+    #[test]
+    fn ai_invocation_preflight_requires_local_arena_for_local_backends() {
+        let contract = AiModelContract::new(AiBackendKind::OnDevice, 42, 8, 8, 0, 20_000);
+        let policy = AiRoutePolicy::new(AiRoutePreference::LocalOnly, 50_000, 2);
+        let state = AiRuntimeState::new(true, false, 1_000, 0);
+        let input = [1, 2, 3, 4];
+        let limits = AiInvocationLimits::new(8, 128, 8 * 1024, 25_000);
+
+        let report = preflight_ai_invocation(
+            contract,
+            policy,
+            state,
+            AiInferenceRequest::new(42, &input, 10_000),
+            limits,
+        );
+
+        assert!(!report.passing());
+        assert!(report.has_error(AI_PREFLIGHT_LOCAL_ARENA_MISSING));
+        assert_eq!(report.required_ram_bytes, 4 + 8 + 128);
     }
 
     #[test]

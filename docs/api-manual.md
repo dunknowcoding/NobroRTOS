@@ -196,9 +196,9 @@ The `check-report-matrix` CLI validates fixed report status classes, checksum
 handling, failure labels, and decoded runtime, AI model, and ROS bridge fields.
 `AiInvocationConstraints` and `preflight_ai_invocation` validate AI inference
 admission before any model or endpoint is contacted. They check buffer sizes,
-scratch and arena RAM, module capability declarations, route budget, stale
-snapshot policy, degraded fallback, unavailable routes, and endpoint circuit
-state.
+scratch and arena RAM, non-zero local arena declarations, module capability
+declarations, route budget, stale snapshot policy, degraded fallback,
+unavailable routes, and endpoint circuit state.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
@@ -508,9 +508,9 @@ Hard-realtime modules should not wait directly on remote inference. They should
 consume a fresh result snapshot or a degraded fallback state.
 
 Use `preflight_ai_invocation` before calling an adapter. It checks model ID,
-input size, output capacity, scratch and arena RAM, route availability,
-degraded fallback, stale-snapshot policy, and endpoint circuit state without
-contacting a model or remote endpoint:
+input size, output capacity, scratch and arena RAM, local arena declarations,
+route availability, degraded fallback, stale-snapshot policy, and endpoint
+circuit state without contacting a model or remote endpoint:
 
 ```rust
 let limits = nobro_sal::AiInvocationLimits::new(
@@ -633,9 +633,9 @@ The `check-ai-route-matrix` CLI runs a deterministic compatibility matrix for
 local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
 The `check-ai-preflight-matrix` CLI validates inference-call admission for
-buffer bounds, arena and scratch RAM, declared AI capabilities, route budget,
-stale snapshot limits, degraded fallback, unavailable routes, and endpoint
-circuit state.
+buffer bounds, arena and scratch RAM, declared local arenas, declared AI
+capabilities, route budget, stale snapshot limits, degraded fallback,
+unavailable routes, and endpoint circuit state.
 The `check-ros-preflight-matrix` CLI validates ROS bridge-call admission for
 topic payload bounds, service/action response capacity, queue depth, parameter
 value size, and timeout budget.

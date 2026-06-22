@@ -81,8 +81,9 @@ endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
 `check-ai-route-matrix` validates a deterministic set of local, remote API,
 edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
 `check-ai-preflight-matrix` validates AI invocation admission before inference:
-input/output buffers, scratch and arena RAM, route budget, capability
-declarations, stale snapshots, and endpoint circuit policy.
+input/output buffers, scratch and arena RAM, non-zero local arena declarations,
+route budget, capability declarations, stale snapshots, and endpoint circuit
+policy.
 `check-ros-preflight-matrix` validates ROS-style bridge admission before a
 transport is contacted: topic payload bounds, service/action response capacity,
 queue depth, parameter value size, and timeout budget.
