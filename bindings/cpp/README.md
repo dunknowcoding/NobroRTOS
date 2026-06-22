@@ -37,7 +37,7 @@ if (!nobro::rtos::passing(view.status())) {
 
 The C++ layer currently focuses on type-safe report views plus small helpers for
 stable hashes, AI route decisions, AI invocation preflight, AI model reports,
-ROS bridge summaries, and runtime diagnostics such as admission, runtime,
-health, event-log, module-runtime, and degraded-mode reports. Builders for
-module manifests, board packages, and adapter descriptors should remain thin
-wrappers over fixed-size C or Rust-compatible records.
+ROS bridge summaries, ROS bridge preflight, and runtime diagnostics such as
+admission, runtime, health, event-log, module-runtime, and degraded-mode
+reports. Builders for module manifests, board packages, and adapter descriptors
+should remain thin wrappers over fixed-size C or Rust-compatible records.

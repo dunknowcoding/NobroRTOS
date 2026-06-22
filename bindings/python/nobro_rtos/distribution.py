@@ -53,6 +53,12 @@ REQUIRED_C_HELPERS = (
     "nobro_ros_topic_buffer_bytes",
     "nobro_ros_service_buffer_bytes",
     "nobro_ros_action_buffer_bytes",
+    "nobro_ros_topic_preflight",
+    "nobro_ros_service_preflight",
+    "nobro_ros_action_preflight",
+    "nobro_ros_parameter_preflight",
+    "nobro_ros_preflight_passing",
+    "nobro_ros_preflight_has_error",
 )
 REQUIRED_CPP_HELPERS = (
     "stable_hash32",
@@ -61,6 +67,11 @@ REQUIRED_CPP_HELPERS = (
     "AiRouteDecisionView",
     "AiInvocationPreflightView",
     "RosBridgeContractView",
+    "RosBridgePreflightView",
+    "preflight_ros_topic",
+    "preflight_ros_service",
+    "preflight_ros_action",
+    "preflight_ros_parameter",
 )
 
 

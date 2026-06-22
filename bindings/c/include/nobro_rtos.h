@@ -51,6 +51,11 @@ extern "C" {
 #define NOBRO_AI_PREFLIGHT_STALE_TOO_OLD (1u << 7)
 #define NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN (1u << 8)
 
+#define NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE (1u << 0)
+#define NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL (1u << 1)
+#define NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED (1u << 2)
+#define NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO (1u << 3)
+
 typedef enum nobro_report_status {
     NOBRO_REPORT_STATUS_MISSING = 1,
     NOBRO_REPORT_STATUS_IN_PROGRESS = 2,
@@ -173,6 +178,11 @@ typedef struct nobro_ros_parameter_contract {
     uint32_t name_hash;
     uint16_t value_bytes_max;
 } nobro_ros_parameter_contract_t;
+
+typedef struct nobro_ros_bridge_preflight {
+    uint32_t required_buffer_bytes;
+    uint32_t error_bits;
+} nobro_ros_bridge_preflight_t;
 
 typedef struct nobro_ros_bridge_contract {
     uint8_t transport;
@@ -467,6 +477,104 @@ static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t
     return (uint32_t)action.goal_bytes_max
         + (uint32_t)action.feedback_bytes_max
         + (uint32_t)action.result_bytes_max;
+}
+
+static inline uint8_t nobro_ros_preflight_passing(
+    nobro_ros_bridge_preflight_t preflight
+) {
+    return preflight.error_bits == 0u ? 1u : 0u;
+}
+
+static inline uint8_t nobro_ros_preflight_has_error(
+    nobro_ros_bridge_preflight_t preflight,
+    uint32_t error
+) {
+    return (preflight.error_bits & error) != 0u ? 1u : 0u;
+}
+
+static inline nobro_ros_bridge_preflight_t nobro_ros_topic_preflight(
+    nobro_ros_topic_contract_t topic,
+    uint16_t payload_bytes
+) {
+    uint32_t error_bits = 0u;
+    nobro_ros_bridge_preflight_t preflight;
+
+    if (topic.depth == 0u) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO;
+    }
+    if (payload_bytes > topic.max_message_bytes) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+
+    preflight.required_buffer_bytes = nobro_ros_topic_buffer_bytes(topic);
+    preflight.error_bits = error_bits;
+    return preflight;
+}
+
+static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight(
+    nobro_ros_service_contract_t service,
+    uint16_t request_bytes,
+    uint16_t response_capacity_bytes,
+    uint32_t budget_us
+) {
+    uint32_t error_bits = 0u;
+    nobro_ros_bridge_preflight_t preflight;
+
+    if (request_bytes > service.request_bytes_max) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+    if (response_capacity_bytes < service.response_bytes_max) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if (service.timeout_us > budget_us) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
+    }
+
+    preflight.required_buffer_bytes = nobro_ros_service_buffer_bytes(service);
+    preflight.error_bits = error_bits;
+    return preflight;
+}
+
+static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight(
+    nobro_ros_action_contract_t action,
+    uint16_t goal_bytes,
+    uint16_t feedback_capacity_bytes,
+    uint16_t result_capacity_bytes,
+    uint32_t budget_us
+) {
+    uint32_t error_bits = 0u;
+    nobro_ros_bridge_preflight_t preflight;
+
+    if (goal_bytes > action.goal_bytes_max) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+    if (feedback_capacity_bytes < action.feedback_bytes_max
+        || result_capacity_bytes < action.result_bytes_max) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;
+    }
+    if (action.timeout_us > budget_us) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;
+    }
+
+    preflight.required_buffer_bytes = nobro_ros_action_buffer_bytes(action);
+    preflight.error_bits = error_bits;
+    return preflight;
+}
+
+static inline nobro_ros_bridge_preflight_t nobro_ros_parameter_preflight(
+    nobro_ros_parameter_contract_t parameter,
+    uint16_t value_bytes
+) {
+    uint32_t error_bits = 0u;
+    nobro_ros_bridge_preflight_t preflight;
+
+    if (value_bytes > parameter.value_bytes_max) {
+        error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;
+    }
+
+    preflight.required_buffer_bytes = (uint32_t)parameter.value_bytes_max;
+    preflight.error_bits = error_bits;
+    return preflight;
 }
 
 static inline uint32_t nobro_ai_effective_stale_after_us(

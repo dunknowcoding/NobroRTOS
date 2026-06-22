@@ -143,6 +143,85 @@ private:
     const nobro_ros_bridge_contract_t* contract_;
 };
 
+class RosBridgePreflightView {
+public:
+    constexpr explicit RosBridgePreflightView(
+        const nobro_ros_bridge_preflight_t& preflight
+    ) noexcept
+        : preflight_(&preflight) {}
+
+    constexpr std::uint32_t required_buffer_bytes() const noexcept {
+        return preflight_->required_buffer_bytes;
+    }
+
+    constexpr std::uint32_t error_bits() const noexcept {
+        return preflight_->error_bits;
+    }
+
+    bool passing() const noexcept {
+        return nobro_ros_preflight_passing(*preflight_) != 0;
+    }
+
+    bool has_error(std::uint32_t error) const noexcept {
+        return nobro_ros_preflight_has_error(*preflight_, error) != 0;
+    }
+
+private:
+    const nobro_ros_bridge_preflight_t* preflight_;
+};
+
+inline RosBridgePreflightView preflight_ros_topic(
+    const nobro_ros_topic_contract_t& topic,
+    std::uint16_t payload_bytes,
+    nobro_ros_bridge_preflight_t& out
+) noexcept {
+    out = nobro_ros_topic_preflight(topic, payload_bytes);
+    return RosBridgePreflightView(out);
+}
+
+inline RosBridgePreflightView preflight_ros_service(
+    const nobro_ros_service_contract_t& service,
+    std::uint16_t request_bytes,
+    std::uint16_t response_capacity_bytes,
+    std::uint32_t budget_us,
+    nobro_ros_bridge_preflight_t& out
+) noexcept {
+    out = nobro_ros_service_preflight(
+        service,
+        request_bytes,
+        response_capacity_bytes,
+        budget_us
+    );
+    return RosBridgePreflightView(out);
+}
+
+inline RosBridgePreflightView preflight_ros_action(
+    const nobro_ros_action_contract_t& action,
+    std::uint16_t goal_bytes,
+    std::uint16_t feedback_capacity_bytes,
+    std::uint16_t result_capacity_bytes,
+    std::uint32_t budget_us,
+    nobro_ros_bridge_preflight_t& out
+) noexcept {
+    out = nobro_ros_action_preflight(
+        action,
+        goal_bytes,
+        feedback_capacity_bytes,
+        result_capacity_bytes,
+        budget_us
+    );
+    return RosBridgePreflightView(out);
+}
+
+inline RosBridgePreflightView preflight_ros_parameter(
+    const nobro_ros_parameter_contract_t& parameter,
+    std::uint16_t value_bytes,
+    nobro_ros_bridge_preflight_t& out
+) noexcept {
+    out = nobro_ros_parameter_preflight(parameter, value_bytes);
+    return RosBridgePreflightView(out);
+}
+
 class AiModelReportView {
 public:
     constexpr explicit AiModelReportView(const nobro_ai_model_report_t& report) noexcept

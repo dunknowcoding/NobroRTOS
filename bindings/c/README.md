@@ -77,12 +77,23 @@ nobro_ai_invocation_preflight_t preflight = nobro_ai_invocation_preflight(
     16u,
     limits
 );
+nobro_ros_topic_contract_t topic = {
+    nobro_stable_hash32_cstr("/imu"),
+    nobro_stable_hash32_cstr("sensor_msgs/Imu"),
+    4u,
+    64u,
+};
+nobro_ros_bridge_preflight_t topic_check =
+    nobro_ros_topic_preflight(topic, 32u);
 ```
 
 For AI routing, a zero policy stale window inherits the model contract's
 `stale_after_us`; otherwise the helper uses the stricter window. AI preflight
 checks buffer sizes, RAM demand, route fallback, stale snapshots, and endpoint
 circuit state before a model or remote endpoint is contacted.
+ROS preflight checks topic payloads, service/action response capacity, queue
+depth, parameter value size, and timeout budget before a ROS agent or transport
+is contacted.
 
 ## Scope
 
