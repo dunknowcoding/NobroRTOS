@@ -41,6 +41,16 @@ extern "C" {
 #define NOBRO_FNV1A32_OFFSET 0x811C9DC5u
 #define NOBRO_FNV1A32_PRIME 0x01000193u
 
+#define NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH (1u << 0)
+#define NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE (1u << 1)
+#define NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL (1u << 2)
+#define NOBRO_AI_PREFLIGHT_RAM_EXCEEDED (1u << 3)
+#define NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE (1u << 4)
+#define NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK (1u << 5)
+#define NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT (1u << 6)
+#define NOBRO_AI_PREFLIGHT_STALE_TOO_OLD (1u << 7)
+#define NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN (1u << 8)
+
 typedef enum nobro_report_status {
     NOBRO_REPORT_STATUS_MISSING = 1,
     NOBRO_REPORT_STATUS_IN_PROGRESS = 2,
@@ -117,6 +127,25 @@ typedef struct nobro_ai_route_decision {
     uint8_t endpoint_circuit_open;
     uint8_t uses_stale_snapshot;
 } nobro_ai_route_decision_t;
+
+typedef struct nobro_ai_invocation_limits {
+    uint32_t output_capacity_bytes;
+    uint32_t scratch_bytes;
+    uint32_t available_ram_bytes;
+    uint32_t budget_us;
+    uint32_t max_stale_us;
+    uint8_t allow_stale_snapshot;
+    uint8_t allow_degraded_fallback;
+    uint8_t allow_unavailable;
+    uint8_t allow_endpoint_circuit_open;
+} nobro_ai_invocation_limits_t;
+
+typedef struct nobro_ai_invocation_preflight {
+    nobro_ai_route_decision_t route;
+    uint32_t required_ram_bytes;
+    uint32_t available_ram_bytes;
+    uint32_t error_bits;
+} nobro_ai_invocation_preflight_t;
 
 typedef struct nobro_ros_topic_contract {
     uint32_t name_hash;
@@ -453,6 +482,11 @@ static inline uint32_t nobro_ai_effective_stale_after_us(
     return contract.stale_after_us;
 }
 
+static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right) {
+    uint32_t result = left + right;
+    return result < left ? UINT32_MAX : result;
+}
+
 static inline nobro_ai_route_decision_t nobro_ai_route_decide(
     nobro_ai_route_policy_t policy,
     nobro_ai_model_contract_t contract,
@@ -527,6 +561,82 @@ static inline nobro_ai_route_decision_t nobro_ai_route_decide(
         decision.target = NOBRO_AI_TARGET_UNAVAILABLE;
     }
     return decision;
+}
+
+static inline uint8_t nobro_ai_preflight_passing(
+    nobro_ai_invocation_preflight_t preflight
+) {
+    return preflight.error_bits == 0u ? 1u : 0u;
+}
+
+static inline uint8_t nobro_ai_preflight_has_error(
+    nobro_ai_invocation_preflight_t preflight,
+    uint32_t error
+) {
+    return (preflight.error_bits & error) != 0u ? 1u : 0u;
+}
+
+static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight(
+    nobro_ai_route_policy_t policy,
+    nobro_ai_model_contract_t contract,
+    nobro_ai_runtime_state_t state,
+    uint32_t model_id,
+    uint32_t input_bytes,
+    nobro_ai_invocation_limits_t limits
+) {
+    nobro_ai_route_decision_t route =
+        nobro_ai_route_decide(policy, contract, state, limits.budget_us);
+    uint32_t local_arena_bytes =
+        (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE
+         || contract.backend == NOBRO_AI_BACKEND_HYBRID)
+            ? contract.arena_bytes
+            : 0u;
+    uint32_t required_ram_bytes = nobro_saturating_add_u32(
+        nobro_saturating_add_u32(
+            nobro_saturating_add_u32(input_bytes, limits.output_capacity_bytes),
+            limits.scratch_bytes
+        ),
+        local_arena_bytes
+    );
+    uint32_t error_bits = 0u;
+    nobro_ai_invocation_preflight_t preflight;
+
+    if (model_id != contract.model_id) {
+        error_bits |= NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH;
+    }
+    if (input_bytes > (uint32_t)contract.input_bytes_max) {
+        error_bits |= NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE;
+    }
+    if (limits.output_capacity_bytes < (uint32_t)contract.output_bytes_max) {
+        error_bits |= NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL;
+    }
+    if (required_ram_bytes > limits.available_ram_bytes) {
+        error_bits |= NOBRO_AI_PREFLIGHT_RAM_EXCEEDED;
+    }
+    if (route.target == NOBRO_AI_TARGET_UNAVAILABLE && limits.allow_unavailable == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE;
+    }
+    if (route.target == NOBRO_AI_TARGET_DEGRADED_FALLBACK
+        && limits.allow_degraded_fallback == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK;
+    }
+    if (route.uses_stale_snapshot != 0u && limits.allow_stale_snapshot == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT;
+    }
+    if (route.uses_stale_snapshot != 0u
+        && limits.max_stale_us > 0u
+        && state.last_success_age_us > limits.max_stale_us) {
+        error_bits |= NOBRO_AI_PREFLIGHT_STALE_TOO_OLD;
+    }
+    if (route.endpoint_circuit_open != 0u && limits.allow_endpoint_circuit_open == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN;
+    }
+
+    preflight.route = route;
+    preflight.required_ram_bytes = required_ram_bytes;
+    preflight.available_ram_bytes = limits.available_ram_bytes;
+    preflight.error_bits = error_bits;
+    return preflight;
 }
 
 static inline nobro_report_status_t nobro_report_status_from_checksum(

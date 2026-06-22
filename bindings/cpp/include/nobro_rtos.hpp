@@ -63,6 +63,61 @@ inline AiRouteDecisionView decide_ai_route(
     return AiRouteDecisionView(out);
 }
 
+class AiInvocationPreflightView {
+public:
+    constexpr explicit AiInvocationPreflightView(
+        const nobro_ai_invocation_preflight_t& preflight
+    ) noexcept
+        : preflight_(&preflight) {}
+
+    constexpr AiRouteDecisionView route() const noexcept {
+        return AiRouteDecisionView(preflight_->route);
+    }
+
+    constexpr std::uint32_t required_ram_bytes() const noexcept {
+        return preflight_->required_ram_bytes;
+    }
+
+    constexpr std::uint32_t available_ram_bytes() const noexcept {
+        return preflight_->available_ram_bytes;
+    }
+
+    constexpr std::uint32_t error_bits() const noexcept {
+        return preflight_->error_bits;
+    }
+
+    bool passing() const noexcept {
+        return nobro_ai_preflight_passing(*preflight_) != 0;
+    }
+
+    bool has_error(std::uint32_t error) const noexcept {
+        return nobro_ai_preflight_has_error(*preflight_, error) != 0;
+    }
+
+private:
+    const nobro_ai_invocation_preflight_t* preflight_;
+};
+
+inline AiInvocationPreflightView preflight_ai_invocation(
+    const nobro_ai_route_policy_t& policy,
+    const nobro_ai_model_contract_t& contract,
+    const nobro_ai_runtime_state_t& state,
+    std::uint32_t model_id,
+    std::uint32_t input_bytes,
+    const nobro_ai_invocation_limits_t& limits,
+    nobro_ai_invocation_preflight_t& out
+) noexcept {
+    out = nobro_ai_invocation_preflight(
+        policy,
+        contract,
+        state,
+        model_id,
+        input_bytes,
+        limits
+    );
+    return AiInvocationPreflightView(out);
+}
+
 class RosBridgeContractView {
 public:
     constexpr explicit RosBridgeContractView(const nobro_ros_bridge_contract_t& contract) noexcept

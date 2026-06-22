@@ -47,6 +47,9 @@ REQUIRED_C_HELPERS = (
     "nobro_stable_hash32_cstr",
     "nobro_ai_effective_stale_after_us",
     "nobro_ai_route_decide",
+    "nobro_ai_invocation_preflight",
+    "nobro_ai_preflight_passing",
+    "nobro_ai_preflight_has_error",
     "nobro_ros_topic_buffer_bytes",
     "nobro_ros_service_buffer_bytes",
     "nobro_ros_action_buffer_bytes",
@@ -54,7 +57,9 @@ REQUIRED_C_HELPERS = (
 REQUIRED_CPP_HELPERS = (
     "stable_hash32",
     "decide_ai_route",
+    "preflight_ai_invocation",
     "AiRouteDecisionView",
+    "AiInvocationPreflightView",
     "RosBridgeContractView",
 )
 

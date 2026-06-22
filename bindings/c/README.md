@@ -58,10 +58,31 @@ nobro_ai_route_decision_t decision = nobro_ai_route_decide(
     runtime_state,
     20000u
 );
+nobro_ai_invocation_limits_t limits = {
+    32u,
+    128u,
+    8192u,
+    20000u,
+    50000u,
+    0u,
+    0u,
+    0u,
+    0u,
+};
+nobro_ai_invocation_preflight_t preflight = nobro_ai_invocation_preflight(
+    policy,
+    model,
+    runtime_state,
+    model.model_id,
+    16u,
+    limits
+);
 ```
 
 For AI routing, a zero policy stale window inherits the model contract's
-`stale_after_us`; otherwise the helper uses the stricter window.
+`stale_after_us`; otherwise the helper uses the stricter window. AI preflight
+checks buffer sizes, RAM demand, route fallback, stale snapshots, and endpoint
+circuit state before a model or remote endpoint is contacted.
 
 ## Scope
 
