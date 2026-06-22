@@ -87,6 +87,8 @@ policy.
 `check-ros-preflight-matrix` validates ROS-style bridge admission before a
 transport is contacted: topic payload bounds, service/action response capacity,
 queue depth, parameter value size, and timeout budget.
+`check-public-headers` keeps the C/C++ SDK surface aligned with report structs,
+helpers, forwarding headers, and AI/ROS preflight error bits.
 `check-bundle-matrix` validates deterministic contract bundle roundtrip,
 capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
 and startup dependency error paths.

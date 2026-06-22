@@ -639,6 +639,8 @@ unavailable routes, and endpoint circuit state.
 The `check-ros-preflight-matrix` CLI validates ROS bridge-call admission for
 topic payload bounds, service/action response capacity, queue depth, parameter
 value size, and timeout budget.
+The `check-public-headers` CLI validates public C/C++ report structs, helper
+functions, forwarding headers, and AI/ROS preflight error-bit coverage.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
 public header, starter template, AI route matrix, AI preflight matrix, ROS
 preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,

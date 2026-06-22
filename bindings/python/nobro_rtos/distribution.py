@@ -60,6 +60,23 @@ REQUIRED_C_HELPERS = (
     "nobro_ros_preflight_passing",
     "nobro_ros_preflight_has_error",
 )
+REQUIRED_C_PREFLIGHT_BITS = (
+    "NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH",
+    "NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE",
+    "NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL",
+    "NOBRO_AI_PREFLIGHT_RAM_EXCEEDED",
+    "NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE",
+    "NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK",
+    "NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT",
+    "NOBRO_AI_PREFLIGHT_STALE_TOO_OLD",
+    "NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN",
+    "NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING",
+    "NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE",
+    "NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL",
+    "NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED",
+    "NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO",
+    "NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO",
+)
 REQUIRED_CPP_HELPERS = (
     "stable_hash32",
     "decide_ai_route",
@@ -106,6 +123,7 @@ class PublicHeaderSurfaceReport:
     c_report_count: int
     cpp_view_count: int
     c_helpers: tuple[str, ...]
+    c_preflight_bits: tuple[str, ...]
     cpp_helpers: tuple[str, ...]
     forwarding_headers: tuple[str, ...]
 
@@ -114,6 +132,7 @@ class PublicHeaderSurfaceReport:
             "c_report_count": self.c_report_count,
             "cpp_view_count": self.cpp_view_count,
             "c_helpers": list(self.c_helpers),
+            "c_preflight_bits": list(self.c_preflight_bits),
             "cpp_helpers": list(self.cpp_helpers),
             "forwarding_headers": list(self.forwarding_headers),
         }
@@ -226,6 +245,8 @@ def validate_public_header_surface(
 
     for symbol in REQUIRED_C_HELPERS:
         _require_text(c_header, symbol, "C ABI helper")
+    for symbol in REQUIRED_C_PREFLIGHT_BITS:
+        _require_text(c_header, symbol, "C preflight bit")
     for symbol in REQUIRED_CPP_HELPERS:
         _require_text(cpp_header, symbol, "C++ helper")
 
@@ -260,6 +281,7 @@ def validate_public_header_surface(
         c_report_count=report_count,
         cpp_view_count=view_count,
         c_helpers=REQUIRED_C_HELPERS,
+        c_preflight_bits=REQUIRED_C_PREFLIGHT_BITS,
         cpp_helpers=REQUIRED_CPP_HELPERS,
         forwarding_headers=(
             arduino_header_path.relative_to(root).as_posix(),

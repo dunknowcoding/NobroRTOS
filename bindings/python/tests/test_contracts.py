@@ -180,6 +180,12 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.cpp_view_count, 12)
         self.assertIn("nobro_ai_route_decide", report.c_helpers)
         self.assertIn("nobro_ai_effective_stale_after_us", report.c_helpers)
+        self.assertEqual(len(report.c_preflight_bits), 15)
+        self.assertIn(
+            "NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING",
+            report.c_preflight_bits,
+        )
+        self.assertIn("NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO", report.c_preflight_bits)
         self.assertIn("decide_ai_route", report.cpp_helpers)
         self.assertIn(
             "packages/arduino/src/NobroRTOS.h",
