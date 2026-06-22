@@ -295,7 +295,9 @@ The startup sample prints the dependency order for a reference runtime module
 set, which helps keep boot sequencing explicit before adding board-specific
 adapter code. The startup matrix checker validates no-dependency, chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths for
-the same deterministic planner.
+the same deterministic planner. Rust startup graphs can also report the
+transitive impact of a faulted dependency in reverse startup order, which gives
+recovery code a stable quiesce-before-restart list.
 The boot summary matrix checker validates all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for host-side boot report review.

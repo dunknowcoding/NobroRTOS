@@ -86,8 +86,8 @@ pub use runtime::{
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use startup::{
-    DependencySet, StartupError, StartupGraph, StartupGraphError, StartupNode, StartupPlan,
-    StartupPlanner,
+    DependencyImpact, DependencySet, StartupError, StartupGraph, StartupGraphError, StartupNode,
+    StartupPlan, StartupPlanner,
 };
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};

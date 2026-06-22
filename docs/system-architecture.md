@@ -140,6 +140,10 @@ keeps self-healing deterministic and reviewable without heap allocation.
 loops and host simulators can dispatch only time-ready steps, keep overdue work
 visible when the caller-provided output buffer is full, and avoid replaying
 steps that were already handed to board-specific adapters.
+`StartupGraph::dependency_impact` lets the same recovery path ask which modules
+transitively depend on a faulted root module. It returns the affected modules in
+reverse startup order, which gives recovery adapters a deterministic
+quiesce-before-restart order without heap allocation.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

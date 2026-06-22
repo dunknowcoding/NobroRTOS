@@ -239,6 +239,17 @@ CircuitPython, and mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
 plan for the reference runtime module set, or `check-startup-matrix` to verify
 startup graph edge cases before adding board-specific adapters.
+Rust firmware can call `StartupGraph::dependency_impact` to compute the
+transitive modules affected by a faulted dependency before building a recovery
+adapter action sequence:
+
+```rust
+let impact = startup.dependency_impact::<4>(nobro_kernel::ModuleId::Hal)?;
+for module in impact.affected.iter().take(impact.affected_count).flatten() {
+    let _ = module; // Quiesce affected modules before restarting the root.
+}
+```
+
 `check-boot-summary-matrix` verifies first-diagnostic priority, diagnostic-code
 layout, checksum corruption, failed-adapter labels, in-progress reports, and
 per-status counts for the same host report path. `check-report-matrix` keeps the

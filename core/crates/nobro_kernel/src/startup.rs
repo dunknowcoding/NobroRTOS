@@ -30,6 +30,10 @@ impl DependencySet {
         Self(self.0 & !(1u32 << idx))
     }
 
+    pub const fn intersects(self, other: Self) -> bool {
+        (self.0 & other.0) != 0
+    }
+
     pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
@@ -61,6 +65,7 @@ pub enum StartupGraphError {
         depends_on: ModuleId,
     },
     UnknownModule(ModuleId),
+    InvalidPlan(StartupError),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +126,50 @@ impl<const N: usize> StartupGraph<N> {
         StartupPlanner::plan(self.as_slice())
     }
 
+    pub fn dependency_impact<const OUT: usize>(
+        &self,
+        root: ModuleId,
+    ) -> Result<DependencyImpact<OUT>, StartupGraphError> {
+        let Some(root_idx) = self.index_of(root) else {
+            return Err(StartupGraphError::UnknownModule(root));
+        };
+        let startup = self.plan::<N>().map_err(StartupGraphError::InvalidPlan)?;
+        let mut affected = DependencySet::empty();
+        let mut changed = true;
+
+        while changed {
+            changed = false;
+            for idx in 0..self.len {
+                if idx == root_idx || affected.contains_index(idx) {
+                    continue;
+                }
+                let deps = self.nodes[idx].depends_on;
+                if deps.contains_index(root_idx) || deps.intersects(affected) {
+                    affected = affected.with_index(idx);
+                    changed = true;
+                }
+            }
+        }
+
+        let mut impact = DependencyImpact::new(root);
+        for module in startup
+            .order
+            .iter()
+            .copied()
+            .take(startup.len)
+            .rev()
+            .flatten()
+        {
+            let Some(idx) = self.index_of(module) else {
+                continue;
+            };
+            if affected.contains_index(idx) {
+                impact.push(module)?;
+            }
+        }
+        Ok(impact)
+    }
+
     pub fn as_slice(&self) -> &[StartupNode] {
         &self.nodes[..self.len]
     }
@@ -144,6 +193,43 @@ impl<const N: usize> StartupGraph<N> {
 impl<const N: usize> Default for StartupGraph<N> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DependencyImpact<const N: usize> {
+    pub root: ModuleId,
+    pub affected: [Option<ModuleId>; N],
+    pub affected_count: usize,
+}
+
+impl<const N: usize> DependencyImpact<N> {
+    pub const fn new(root: ModuleId) -> Self {
+        Self {
+            root,
+            affected: [None; N],
+            affected_count: 0,
+        }
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.affected_count == 0
+    }
+
+    pub fn contains(&self, module: ModuleId) -> bool {
+        self.affected
+            .iter()
+            .take(self.affected_count)
+            .any(|entry| *entry == Some(module))
+    }
+
+    fn push(&mut self, module: ModuleId) -> Result<(), StartupGraphError> {
+        if self.affected_count == N {
+            return Err(StartupGraphError::TooManyNodes);
+        }
+        self.affected[self.affected_count] = Some(module);
+        self.affected_count += 1;
+        Ok(())
     }
 }
 
@@ -331,6 +417,82 @@ mod tests {
                 module: ModuleId::Sensor,
                 depends_on: ModuleId::Kernel,
             })
+        );
+    }
+
+    #[test]
+    fn graph_reports_transitive_fault_impact_in_reverse_startup_order() {
+        let mut graph = StartupGraph::<5>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Hal,
+            ModuleId::Sensor,
+            ModuleId::Radio,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Hal, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Hal)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Radio, ModuleId::Hal)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+
+        let impact = graph.dependency_impact::<4>(ModuleId::Hal).unwrap();
+
+        assert_eq!(impact.root, ModuleId::Hal);
+        assert_eq!(impact.affected_count, 3);
+        assert_eq!(impact.affected[0], Some(ModuleId::App(1)));
+        assert_eq!(impact.affected[1], Some(ModuleId::Radio));
+        assert_eq!(impact.affected[2], Some(ModuleId::Sensor));
+        assert!(impact.contains(ModuleId::Sensor));
+        assert!(!impact.contains(ModuleId::Kernel));
+    }
+
+    #[test]
+    fn graph_fault_impact_reports_capacity_unknown_and_cycle_errors() {
+        let mut graph = StartupGraph::<4>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Hal,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Hal, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Hal)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+
+        assert_eq!(
+            graph.dependency_impact::<1>(ModuleId::Hal),
+            Err(StartupGraphError::TooManyNodes)
+        );
+        assert_eq!(
+            graph.dependency_impact::<4>(ModuleId::Radio),
+            Err(StartupGraphError::UnknownModule(ModuleId::Radio))
+        );
+
+        let mut cyclic =
+            StartupGraph::<2>::from_modules(&[ModuleId::Kernel, ModuleId::Hal]).unwrap();
+        cyclic
+            .add_dependency(ModuleId::Kernel, ModuleId::Hal)
+            .unwrap();
+        cyclic
+            .add_dependency(ModuleId::Hal, ModuleId::Kernel)
+            .unwrap();
+        assert_eq!(
+            cyclic.dependency_impact::<2>(ModuleId::Kernel),
+            Err(StartupGraphError::InvalidPlan(StartupError::Cycle))
         );
     }
 
