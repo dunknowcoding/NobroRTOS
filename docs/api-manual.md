@@ -146,6 +146,20 @@ let report = runtime.runtime_report();
 Use `watchdog_expired_count(now_us)` for a non-mutating liveness precheck.
 Use `sweep_watchdogs(now_us)` when the runtime should route expired modules
 through recovery and update missed heartbeat counters.
+Use `record_error_with_plan` or `record_watchdog_expired_with_plan` when a
+supervisor needs the updated health/lifecycle state and the next bounded
+recovery steps in one result:
+
+```rust
+let planning = runtime.record_error_with_plan::<4>(
+    nobro_kernel::ModuleId::Sensor,
+    nobro_kernel::KernelError::SensorReadFail,
+    now_us,
+    nobro_kernel::RecoveryPlanPolicy::DEFAULT,
+)?;
+assert!(planning.plan.deadline_us >= now_us);
+```
+
 The `check-watchdog-matrix` CLI validates non-mutating liveness prechecks,
 expiry mutation, heartbeat reset, multi-module expiry, and capacity errors.
 The `check-scheduler-matrix` CLI validates on-time ticks, tolerated early/late
@@ -277,6 +291,8 @@ Use `RecoveryPlanPolicy` to tune notify, retry, restart, verification, resume,
 and maximum total recovery budgets. Capacity and budget failures are explicit
 errors, so self-healing can be reviewed before being attached to board-specific
 restart or power-control code.
+Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
+`RecoveryOutcome` with the generated plan.
 
 ## HAL API
 

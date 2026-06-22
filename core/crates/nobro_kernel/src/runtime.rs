@@ -6,9 +6,9 @@ use crate::{
     EventLogReport, EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey,
     KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState,
     ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RuntimeReport, RuntimeReportInput,
-    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
-    WatchdogEntry, WatchdogError,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
+    RecoveryPlanPolicy, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget,
+    SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +21,7 @@ pub enum RuntimeError {
     Module(ModuleRuntimeError),
     Quota(QuotaError),
     Recovery(RecoveryError),
+    RecoveryPlan(RecoveryPlanError),
     Watchdog(WatchdogError),
 }
 
@@ -72,6 +73,12 @@ impl From<RecoveryError> for RuntimeError {
     }
 }
 
+impl From<RecoveryPlanError> for RuntimeError {
+    fn from(error: RecoveryPlanError) -> Self {
+        Self::RecoveryPlan(error)
+    }
+}
+
 impl From<WatchdogError> for RuntimeError {
     fn from(error: WatchdogError) -> Self {
         Self::Watchdog(error)
@@ -108,6 +115,12 @@ impl<const N: usize> Default for WatchdogSweep<N> {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryPlanning<const N: usize> {
+    pub outcome: RecoveryOutcome,
+    pub plan: RecoveryPlan<N>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -392,6 +405,18 @@ impl<
         Ok(outcome)
     }
 
+    pub fn record_error_with_plan<const STEPS: usize>(
+        &mut self,
+        module: ModuleId,
+        error: KernelError,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
+        let outcome = self.record_error(module, error, now_us)?;
+        let plan = RecoveryPlan::from_outcome(outcome, now_us, policy)?;
+        Ok(RecoveryPlanning { outcome, plan })
+    }
+
     pub fn record_watchdog_expired(
         &mut self,
         module: ModuleId,
@@ -404,6 +429,17 @@ impl<
             .map_err(RuntimeError::from)?;
         self.modules.note_recovery_outcome(outcome, now_us)?;
         Ok(outcome)
+    }
+
+    pub fn record_watchdog_expired_with_plan<const STEPS: usize>(
+        &mut self,
+        module: ModuleId,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
+        let outcome = self.record_watchdog_expired(module, now_us)?;
+        let plan = RecoveryPlan::from_outcome(outcome, now_us, policy)?;
+        Ok(RecoveryPlanning { outcome, plan })
     }
 
     pub fn register_watchdog(
@@ -655,8 +691,9 @@ fn alarm_message(alarm: Alarm) -> Message {
 mod tests {
     use super::*;
     use crate::{
-        kernel_module_spec, CapabilitySet, Criticality, DeadlineContract, DependencySet,
-        FaultThresholds, MemoryBudget, ModuleSpec,
+        kernel_module_spec, Action, CapabilitySet, Criticality, DeadlineContract, DependencySet,
+        FaultThresholds, MemoryBudget, ModuleSpec, RecoveryPlanError, RecoveryPlanPolicy,
+        RecoveryStep, RecoveryStepKind,
     };
 
     type TestRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
@@ -1318,6 +1355,104 @@ mod tests {
         assert_eq!(runtime.recovery().events().len(), before_events);
         assert_eq!(runtime.health_report(ModuleId::Radio), None);
         assert_eq!(runtime.module_state(ModuleId::Radio), None);
+    }
+
+    #[test]
+    fn runtime_records_fault_with_recovery_plan() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        let planning = runtime
+            .record_error_with_plan::<2>(
+                ModuleId::Sensor,
+                KernelError::SensorReadFail,
+                20,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+
+        assert_eq!(planning.outcome.action, Action::NotifyUserTask);
+        assert_eq!(planning.outcome.state, SystemState::Degraded);
+        assert_eq!(planning.plan.len, 1);
+        assert_eq!(planning.plan.required_budget_us, 500);
+        assert_eq!(
+            planning.plan.first(),
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::Notify,
+                20,
+                500
+            ))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Faulted)
+        );
+    }
+
+    #[test]
+    fn runtime_records_watchdog_fault_with_reboot_plan() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        runtime
+            .record_watchdog_expired(ModuleId::Sensor, 20)
+            .unwrap();
+        runtime
+            .record_watchdog_expired(ModuleId::Sensor, 30)
+            .unwrap();
+        let planning = runtime
+            .record_watchdog_expired_with_plan::<4>(
+                ModuleId::Sensor,
+                40,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+
+        assert_eq!(planning.outcome.action, Action::RebootModule);
+        assert_eq!(planning.outcome.state, SystemState::Recovering);
+        assert_eq!(planning.plan.len, 4);
+        assert_eq!(planning.plan.deadline_us, 7_040);
+        assert_eq!(
+            planning.plan.last(),
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::ResumeModule,
+                6_540,
+                500
+            ))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Recovering)
+        );
+    }
+
+    #[test]
+    fn runtime_surfaces_recovery_plan_capacity_errors() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 30)
+            .unwrap();
+
+        assert_eq!(
+            runtime.record_error_with_plan::<3>(
+                ModuleId::Sensor,
+                KernelError::SensorReadFail,
+                40,
+                RecoveryPlanPolicy::DEFAULT,
+            ),
+            Err(RuntimeError::RecoveryPlan(RecoveryPlanError::Full))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Recovering)
+        );
     }
 
     #[test]
