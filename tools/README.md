@@ -30,6 +30,7 @@ python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
+python tools/nobro_contract_tool.py check-scheduler-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
@@ -64,12 +65,14 @@ edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
 and OK-reset recovery paths.
 `check-watchdog-matrix` validates deterministic liveness precheck, expiry,
 heartbeat reset, multi-module expiry, and capacity-error paths.
+`check-scheduler-matrix` validates deterministic on-time, tolerance,
+deadline-miss, wraparound, reset, and invalid-configuration scheduler paths.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, starter
-templates, AI route matrix, recovery matrix, watchdog matrix, and runtime drill
-checks into one JSON report.
+templates, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
+and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter

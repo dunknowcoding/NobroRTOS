@@ -237,6 +237,10 @@ def main() -> int:
         "check-watchdog-matrix",
         help="run deterministic watchdog liveness checks",
     )
+    subparsers.add_parser(
+        "check-scheduler-matrix",
+        help="run deterministic scheduler deadline checks",
+    )
     sample_scheduler = subparsers.add_parser(
         "sample-scheduler",
         help="run a deterministic deadline tick simulation and print JSON",
@@ -519,6 +523,10 @@ def main() -> int:
         report = _check_watchdog_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
+    if args.command == "check-scheduler-matrix":
+        report = _check_scheduler_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-scheduler":
         print(
             json.dumps(
@@ -763,6 +771,7 @@ def _doctor() -> dict[str, object]:
             "watchdog",
             "watchdog_matrix_gate",
             "scheduler",
+            "scheduler_matrix_gate",
             "event_log",
             "quota",
             "degrade",
@@ -875,6 +884,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("ai_route_matrix", _check_ai_route_matrix())
     add_check("recovery_matrix", _check_recovery_matrix())
     add_check("watchdog_matrix", _check_watchdog_matrix())
+    add_check("scheduler_matrix", _check_scheduler_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -1808,6 +1818,166 @@ def _sample_scheduler(
         "max_jitter_us": simulator.max_jitter_us,
         "deadline_misses": simulator.deadline_misses,
         "timeline": timeline,
+    }
+
+
+def _check_scheduler_matrix() -> dict[str, object]:
+    scenarios = (
+        _scheduler_nominal_scenario(),
+        _scheduler_within_tolerance_scenario(),
+        _scheduler_late_miss_scenario(),
+        _scheduler_wraparound_scenario(),
+        _scheduler_reset_scenario(),
+        _scheduler_invalid_config_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _scheduler_scenario(
+    name: str,
+    ticks: tuple[int, ...],
+    period_us: int,
+    tolerance_us: int,
+    expected_tick_count: int,
+    expected_max_jitter_us: int,
+    expected_deadline_misses: int,
+) -> dict[str, object]:
+    report = _sample_scheduler(ticks, period_us, tolerance_us)
+    errors: list[str] = []
+    _expect_equal(report["tick_count"], expected_tick_count, "tick_count", errors)
+    _expect_equal(
+        report["max_jitter_us"],
+        expected_max_jitter_us,
+        "max_jitter_us",
+        errors,
+    )
+    _expect_equal(
+        report["deadline_misses"],
+        expected_deadline_misses,
+        "deadline_misses",
+        errors,
+    )
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        **report,
+    }
+
+
+def _scheduler_nominal_scenario() -> dict[str, object]:
+    return _scheduler_scenario(
+        name="on_time_ticks",
+        ticks=(1_000, 21_000, 41_000),
+        period_us=20_000,
+        tolerance_us=0,
+        expected_tick_count=3,
+        expected_max_jitter_us=0,
+        expected_deadline_misses=0,
+    )
+
+
+def _scheduler_within_tolerance_scenario() -> dict[str, object]:
+    return _scheduler_scenario(
+        name="early_late_within_tolerance",
+        ticks=(1_000, 21_020, 41_010),
+        period_us=20_000,
+        tolerance_us=25,
+        expected_tick_count=3,
+        expected_max_jitter_us=20,
+        expected_deadline_misses=0,
+    )
+
+
+def _scheduler_late_miss_scenario() -> dict[str, object]:
+    return _scheduler_scenario(
+        name="late_ticks_miss_deadline",
+        ticks=(1_000, 21_030, 41_080),
+        period_us=20_000,
+        tolerance_us=25,
+        expected_tick_count=3,
+        expected_max_jitter_us=50,
+        expected_deadline_misses=2,
+    )
+
+
+def _scheduler_wraparound_scenario() -> dict[str, object]:
+    first = 0xFFFF_FFFF - 5
+    return _scheduler_scenario(
+        name="u32_wraparound",
+        ticks=(first, first + 20_003),
+        period_us=20_000,
+        tolerance_us=5,
+        expected_tick_count=2,
+        expected_max_jitter_us=3,
+        expected_deadline_misses=0,
+    )
+
+
+def _scheduler_reset_scenario() -> dict[str, object]:
+    simulator = SchedulerSimulator(jitter_tolerance_us=5)
+    simulator.on_deadline_tick(1_000)
+    simulator.on_deadline_tick(21_010)
+    before = simulator.stats().to_dict()
+    simulator.reset_stats()
+    after = simulator.stats().to_dict()
+    errors: list[str] = []
+    _expect_equal(before["deadline_misses"], 1, "before_deadline_misses", errors)
+    _expect_equal(after["tick_count"], 0, "after_tick_count", errors)
+    _expect_equal(after["max_jitter_us"], 0, "after_max_jitter_us", errors)
+    _expect_equal(after["deadline_misses"], 0, "after_deadline_misses", errors)
+    _expect_equal(after["jitter_tolerance_us"], 10, "after_jitter_tolerance_us", errors)
+    return {
+        "name": "reset_clears_counters",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "before": before,
+        "after": after,
+    }
+
+
+def _scheduler_invalid_config_scenario() -> dict[str, object]:
+    period_error = None
+    tolerance_error = None
+    try:
+        SchedulerSimulator(deadline_period_us=0)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        period_error = str(exc)
+
+    try:
+        SchedulerSimulator().set_jitter_tolerance_us(-1)
+    except Exception as exc:  # noqa: BLE001 - report simulator gate context.
+        tolerance_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        period_error,
+        "deadline_period_us must be positive",
+        "period_error",
+        errors,
+    )
+    _expect_equal(
+        tolerance_error,
+        "tolerance_us must be non-negative",
+        "tolerance_error",
+        errors,
+    )
+    return {
+        "name": "invalid_config_is_rejected",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "period_error": period_error,
+        "tolerance_error": tolerance_error,
     }
 
 

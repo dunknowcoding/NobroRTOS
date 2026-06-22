@@ -69,6 +69,7 @@ from nobro_rtos.cli import (
     _check_project,
     _check_recovery_matrix,
     _check_runtime_drill,
+    _check_scheduler_matrix,
     _check_starter_templates,
     _check_watchdog_matrix,
     _doctor,
@@ -180,6 +181,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("event_log", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
+        self.assertIn("scheduler_matrix_gate", report["host_simulators"])
         self.assertIn("runtime_drill_gate", report["host_simulators"])
         self.assertIn("ai_route_gate", report["host_simulators"])
         self.assertIn("ai_route_matrix_gate", report["host_simulators"])
@@ -203,6 +205,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["recovery_matrix"]["passing"])
         self.assertIn("watchdog_matrix", report["checks"])
         self.assertTrue(report["checks"]["watchdog_matrix"]["passing"])
+        self.assertIn("scheduler_matrix", report["checks"])
+        self.assertTrue(report["checks"]["scheduler_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -301,6 +305,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Watchdog Matrix Gate",
         )
         self.assertIn("check-watchdog-matrix", python_tasks["tasks"][6]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][7]["label"],
+            "NobroRTOS: Scheduler Matrix Gate",
+        )
+        self.assertIn("check-scheduler-matrix", python_tasks["tasks"][7]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -517,6 +526,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-recovery"]
                 if task["label"] == "NobroRTOS: Watchdog Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-watchdog"]
+                if task["label"] == "NobroRTOS: Scheduler Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-scheduler"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -526,6 +537,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("AI route matrix gate task command mismatch", before.errors)
             self.assertIn("recovery matrix gate task command mismatch", before.errors)
             self.assertIn("watchdog matrix gate task command mismatch", before.errors)
+            self.assertIn("scheduler matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -546,6 +558,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "watchdog matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "scheduler matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -579,6 +595,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Watchdog Matrix Gate"
             )
             self.assertIn("check-watchdog-matrix", watchdog_matrix_gate["args"])
+            scheduler_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Scheduler Matrix Gate"
+            )
+            self.assertIn("check-scheduler-matrix", scheduler_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1828,6 +1850,45 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report["max_jitter_us"], 30)
         self.assertEqual(report["deadline_misses"], 1)
         self.assertEqual(report["timeline"][2]["deadline_misses"], 1)
+
+    def test_scheduler_matrix_covers_deadline_paths(self) -> None:
+        report = _check_scheduler_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 6)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(scenarios["on_time_ticks"]["deadline_misses"], 0)
+        self.assertEqual(
+            scenarios["early_late_within_tolerance"]["max_jitter_us"],
+            20,
+        )
+        self.assertEqual(
+            scenarios["late_ticks_miss_deadline"]["deadline_misses"],
+            2,
+        )
+        self.assertEqual(scenarios["u32_wraparound"]["max_jitter_us"], 3)
+        self.assertEqual(
+            scenarios["reset_clears_counters"]["after"]["deadline_misses"],
+            0,
+        )
+        self.assertEqual(
+            scenarios["invalid_config_is_rejected"]["period_error"],
+            "deadline_period_us must be positive",
+        )
+
+    def test_scheduler_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-scheduler-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 6)
 
     def test_event_log_simulator_preserves_recent_order_after_wrap(self) -> None:
         log = EventLogSimulator(capacity=3)
