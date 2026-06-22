@@ -744,6 +744,20 @@ def _vscode_tasks_json(target: ProjectTarget) -> str:
                 "problemMatcher": [],
             }
         )
+        tasks.append(
+            {
+                "label": "NobroRTOS: Boot Summary Matrix Gate",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "nobro_rtos",
+                    "check-boot-summary-matrix",
+                ],
+                "group": "test",
+                "problemMatcher": [],
+            }
+        )
     if target == ProjectTarget.PYTHON_BOARD_BRIDGE:
         tasks.append(
             {
@@ -951,6 +965,18 @@ def _validate_vscode_tasks(root: Path, target: ProjectTarget) -> list[str]:
         ("-m", "nobro_rtos", "check-startup-matrix"),
     ):
         errors.append("startup matrix gate task command mismatch")
+
+    boot_summary_matrix_gate_task = _task_by_label(
+        tasks,
+        "NobroRTOS: Boot Summary Matrix Gate",
+    )
+    if target == ProjectTarget.PYTHON_HOST and boot_summary_matrix_gate_task is None:
+        errors.append("missing NobroRTOS: Boot Summary Matrix Gate task")
+    elif target == ProjectTarget.PYTHON_HOST and not _task_has_args(
+        boot_summary_matrix_gate_task,
+        ("-m", "nobro_rtos", "check-boot-summary-matrix"),
+    ):
+        errors.append("boot summary matrix gate task command mismatch")
 
     bridge_task = _task_by_label(
         tasks,

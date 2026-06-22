@@ -225,6 +225,7 @@ python tools/nobro_contract_tool.py check-software-surface
 python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py check-startup-matrix
+python tools/nobro_contract_tool.py check-boot-summary-matrix
 python tools/nobro_contract_tool.py sample-project platformio --name edge_demo --module control
 python tools/nobro_contract_tool.py sample-project python_board_bridge --name edge_demo --module control
 python tools/nobro_contract_tool.py write-project platformio --output _work\edge_demo --name edge_demo
@@ -245,7 +246,7 @@ directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
 Python host starter projects include runtime drill, AI route, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, and quota
-matrix, degrade matrix, and startup matrix gate tasks.
+matrix, degrade matrix, startup matrix, and boot summary matrix gate tasks.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,
@@ -254,8 +255,8 @@ The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
-matrix, degrade matrix, startup matrix, and runtime drill validation before
-packaging.
+matrix, degrade matrix, startup matrix, boot summary matrix, and runtime drill
+validation before packaging.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,
@@ -282,6 +283,9 @@ set, which helps keep boot sequencing explicit before adding board-specific
 adapter code. The startup matrix checker validates no-dependency, chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths for
 the same deterministic planner.
+The boot summary matrix checker validates all-pass, missing-stage,
+corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+status-count paths for host-side boot report review.
 
 ## Cleanup
 

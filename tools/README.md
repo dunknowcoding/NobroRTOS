@@ -35,6 +35,7 @@ python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
+python tools/nobro_contract_tool.py check-boot-summary-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
@@ -57,6 +58,7 @@ python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
+python tools/nobro_contract_tool.py check-boot-summary-matrix
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py sample-startup
 ```
@@ -83,13 +85,16 @@ reserve, release, total-use, identity, limit, underflow, and overflow paths.
 module-limit, same-criticality, capacity, and essential-module paths.
 `check-startup-matrix` validates deterministic no-dependency, dependency-chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
+`check-boot-summary-matrix` validates deterministic all-pass, missing-stage,
+corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+status-count paths for boot report summaries.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:
 it combines the host contract, SDK/package metadata, public headers, starter
 templates, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
-event log matrix, quota matrix, degrade matrix, startup matrix, and runtime
-drill checks into one JSON report.
+event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
+matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter

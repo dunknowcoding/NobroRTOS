@@ -326,6 +326,10 @@ def main() -> int:
         "check-startup-matrix",
         help="run deterministic startup dependency planner checks",
     )
+    subparsers.add_parser(
+        "check-boot-summary-matrix",
+        help="run deterministic boot report summary checks",
+    )
     sample_project = subparsers.add_parser(
         "sample-project",
         help="print a starter project template as JSON without writing files",
@@ -633,6 +637,10 @@ def main() -> int:
         report = _check_startup_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
+    if args.command == "check-boot-summary-matrix":
+        report = _check_boot_summary_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-project":
         print(
             json.dumps(
@@ -811,6 +819,7 @@ def _doctor() -> dict[str, object]:
             "degrade",
             "degrade_matrix_gate",
             "startup_matrix_gate",
+            "boot_summary_matrix_gate",
             "runtime_drill",
             "runtime_drill_gate",
             "ai_route_gate",
@@ -925,6 +934,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("quota_matrix", _check_quota_matrix())
     add_check("degrade_matrix", _check_degrade_matrix())
     add_check("startup_matrix", _check_startup_matrix())
+    add_check("boot_summary_matrix", _check_boot_summary_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -1377,6 +1387,226 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     raise ValueError(f"unsupported sample report kind: {kind}")
+
+
+def _check_boot_summary_matrix() -> dict[str, object]:
+    scenarios = (
+        _boot_all_pass_scenario(),
+        _boot_missing_profile_scenario(),
+        _boot_manifest_corrupt_scenario(),
+        _boot_adapter_failure_scenario(),
+        _boot_admission_in_progress_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _boot_summary_scenario(
+    name: str,
+    reports: dict[str, dict[str, int]],
+    expected_passing: bool,
+    expected_stage: str,
+    expected_status: str,
+    expected_code: int,
+    expected_counts: dict[str, int],
+) -> dict[str, object]:
+    summary = BootReportSummary.from_dict({"reports": reports}).to_dict()
+    errors: list[str] = []
+    _expect_equal(summary["passing"], expected_passing, "passing", errors)
+    _expect_equal(summary["first_stage"], expected_stage, "first_stage", errors)
+    _expect_equal(summary["first_status"], expected_status, "first_status", errors)
+    _expect_equal(summary["diagnostic_code"], expected_code, "diagnostic_code", errors)
+    for key, expected in expected_counts.items():
+        _expect_equal(summary["status_counts"][key], expected, f"{key}_count", errors)
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "summary": summary,
+    }
+
+
+def _boot_pass_reports() -> dict[str, dict[str, int]]:
+    return {
+        "board_profile": seal_report(
+            ReportKind.BOARD_PROFILE,
+            {
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "app_flash_start": 0x1000,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "servo_pin": 24,
+                "servo_center_us": 1500,
+                "led_pin": 15,
+                "mvk_trigger_pin": 17,
+            },
+        ),
+        "board_package": seal_report(
+            ReportKind.BOARD_PACKAGE,
+            {
+                "valid": 1,
+                "platform_hash": 0x1111,
+                "board_hash": 0x2222,
+                "boot_layout": 1,
+                "app_flash_start": 0x1000,
+                "app_flash_len_bytes": 1020 * 1024,
+                "ram_start": 0x2000_0000,
+                "ram_len_bytes": 256 * 1024,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "led_pin": 15,
+                "servo_pin": 24,
+                "mvk_trigger_pin": 17,
+            },
+        ),
+        "manifest": seal_report(
+            ReportKind.MANIFEST,
+            {
+                "valid": 1,
+                "module_count": 2,
+                "fingerprint": 0x1234,
+            },
+        ),
+        "adapter_compatibility": seal_report(
+            ReportKind.ADAPTER_COMPAT,
+            {
+                "compatible": 1,
+                "adapter_count": 2,
+            },
+        ),
+        "admission": _sample_report("admission"),
+        "runtime": _sample_report("runtime"),
+    }
+
+
+def _boot_all_pass_scenario() -> dict[str, object]:
+    return _boot_summary_scenario(
+        "all_pass_reports_runtime_pass",
+        _boot_pass_reports(),
+        expected_passing=True,
+        expected_stage="runtime",
+        expected_status="pass",
+        expected_code=0x0600_0000,
+        expected_counts={
+            "pass": 6,
+            "missing": 0,
+            "in_progress": 0,
+            "fail": 0,
+            "corrupt": 0,
+        },
+    )
+
+
+def _boot_missing_profile_scenario() -> dict[str, object]:
+    reports = {"manifest": _boot_pass_reports()["manifest"]}
+    return _boot_summary_scenario(
+        "missing_profile_takes_priority",
+        reports,
+        expected_passing=False,
+        expected_stage="board_profile",
+        expected_status="missing",
+        expected_code=0x0101_0000,
+        expected_counts={
+            "pass": 1,
+            "missing": 5,
+            "in_progress": 0,
+            "fail": 0,
+            "corrupt": 0,
+        },
+    )
+
+
+def _boot_manifest_corrupt_scenario() -> dict[str, object]:
+    reports = _boot_pass_reports()
+    reports["manifest"] = dict(reports["manifest"])
+    reports["manifest"]["module_count"] = 3
+    return _boot_summary_scenario(
+        "manifest_checksum_corruption_stops_boot",
+        reports,
+        expected_passing=False,
+        expected_stage="manifest",
+        expected_status="corrupt",
+        expected_code=0x0303_0000,
+        expected_counts={
+            "pass": 5,
+            "missing": 0,
+            "in_progress": 0,
+            "fail": 0,
+            "corrupt": 1,
+        },
+    )
+
+
+def _boot_adapter_failure_scenario() -> dict[str, object]:
+    reports = _boot_pass_reports()
+    reports["adapter_compatibility"] = seal_report(
+        ReportKind.ADAPTER_COMPAT,
+        {
+            "compatible": 0,
+            "adapter_count": 2,
+            "error_code": 3,
+            "error_module_tag": 3,
+            "error_capability_bits": Capability.BUS0.bit,
+        },
+    )
+    scenario = _boot_summary_scenario(
+        "adapter_failure_preserves_error_label",
+        reports,
+        expected_passing=False,
+        expected_stage="adapter_compatibility",
+        expected_status="fail",
+        expected_code=0x0404_0003,
+        expected_counts={
+            "pass": 5,
+            "missing": 0,
+            "in_progress": 0,
+            "fail": 1,
+            "corrupt": 0,
+        },
+    )
+    _expect_equal(
+        scenario["summary"]["first_error_label"],
+        "capability_ownership_conflict",
+        "first_error_label",
+        scenario["errors"],
+    )
+    scenario["passing"] = len(scenario["errors"]) == 0
+    return scenario
+
+
+def _boot_admission_in_progress_scenario() -> dict[str, object]:
+    reports = _boot_pass_reports()
+    reports["admission"] = dict(reports["admission"])
+    reports["admission"]["completed"] = 0
+    return _boot_summary_scenario(
+        "admission_in_progress_blocks_runtime",
+        reports,
+        expected_passing=False,
+        expected_stage="admission",
+        expected_status="in_progress",
+        expected_code=0x0502_0000,
+        expected_counts={
+            "pass": 5,
+            "missing": 0,
+            "in_progress": 1,
+            "fail": 0,
+            "corrupt": 0,
+        },
+    )
 
 
 def _sample_sensor(

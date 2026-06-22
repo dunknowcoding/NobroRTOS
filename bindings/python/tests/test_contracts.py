@@ -66,6 +66,7 @@ from nobro_rtos import (
 from nobro_rtos.cli import (
     _check_ai_route,
     _check_ai_route_matrix,
+    _check_boot_summary_matrix,
     _check_degrade_matrix,
     _check_event_log_matrix,
     _check_project,
@@ -187,6 +188,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("quota_matrix_gate", report["host_simulators"])
         self.assertIn("degrade_matrix_gate", report["host_simulators"])
         self.assertIn("startup_matrix_gate", report["host_simulators"])
+        self.assertIn("boot_summary_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -223,6 +225,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["degrade_matrix"]["passing"])
         self.assertIn("startup_matrix", report["checks"])
         self.assertTrue(report["checks"]["startup_matrix"]["passing"])
+        self.assertIn("boot_summary_matrix", report["checks"])
+        self.assertTrue(report["checks"]["boot_summary_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -346,6 +350,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Startup Matrix Gate",
         )
         self.assertIn("check-startup-matrix", python_tasks["tasks"][11]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][12]["label"],
+            "NobroRTOS: Boot Summary Matrix Gate",
+        )
+        self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][12]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -572,6 +581,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-degrade"]
                 if task["label"] == "NobroRTOS: Startup Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-startup"]
+                if task["label"] == "NobroRTOS: Boot Summary Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "summarize-boot"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -586,6 +597,10 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("quota matrix gate task command mismatch", before.errors)
             self.assertIn("degrade matrix gate task command mismatch", before.errors)
             self.assertIn("startup matrix gate task command mismatch", before.errors)
+            self.assertIn(
+                "boot summary matrix gate task command mismatch",
+                before.errors,
+            )
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -626,6 +641,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "startup matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "boot summary matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -689,6 +708,15 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Startup Matrix Gate"
             )
             self.assertIn("check-startup-matrix", startup_matrix_gate["args"])
+            boot_summary_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Boot Summary Matrix Gate"
+            )
+            self.assertIn(
+                "check-boot-summary-matrix",
+                boot_summary_matrix_gate["args"],
+            )
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2510,6 +2538,58 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(payload["fail_count"], 1)
         self.assertEqual(payload["pass_count"], 3)
         self.assertEqual(payload["diagnostic"]["symbol"], "NOBRO_ADAPTER_COMPAT_REPORT")
+
+    def test_boot_summary_matrix_covers_diagnostic_paths(self) -> None:
+        report = _check_boot_summary_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 5)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertTrue(scenarios["all_pass_reports_runtime_pass"]["summary"]["passing"])
+        self.assertEqual(
+            scenarios["all_pass_reports_runtime_pass"]["summary"]["diagnostic_code"],
+            0x0600_0000,
+        )
+        self.assertEqual(
+            scenarios["missing_profile_takes_priority"]["summary"]["first_stage"],
+            "board_profile",
+        )
+        self.assertEqual(
+            scenarios["missing_profile_takes_priority"]["summary"]["missing_count"],
+            5,
+        )
+        self.assertEqual(
+            scenarios["manifest_checksum_corruption_stops_boot"]["summary"][
+                "first_status"
+            ],
+            "corrupt",
+        )
+        self.assertEqual(
+            scenarios["adapter_failure_preserves_error_label"]["summary"][
+                "first_error_label"
+            ],
+            "capability_ownership_conflict",
+        )
+        self.assertEqual(
+            scenarios["admission_in_progress_blocks_runtime"]["summary"][
+                "diagnostic_code"
+            ],
+            0x0502_0000,
+        )
+
+    def test_boot_summary_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-boot-summary-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 5)
 
 
 if __name__ == "__main__":

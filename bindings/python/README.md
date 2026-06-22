@@ -106,9 +106,10 @@ gate exits.
 Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
 route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
-event log matrix, quota matrix, degrade matrix, and startup matrix gate tasks,
-and the Python board bridge template includes an offline bridge smoke task for
-MicroPython, CircuitPython, and mPython-style status-line workflows.
+event log matrix, quota matrix, degrade matrix, startup matrix, and boot
+summary matrix gate tasks, and the Python board bridge template includes an
+offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
+status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -147,6 +148,9 @@ same-criticality, capacity, and essential-module pressure paths.
 The `check-startup-matrix` CLI validates no-dependency, dependency-chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths for
 the deterministic startup planner.
+The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
+corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+status-count paths for boot report summaries.
 `RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
 checks into one deterministic pressure drill.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
@@ -254,6 +258,7 @@ python -m nobro_rtos check-software-surface
 python -m nobro_rtos check-starter-templates
 python -m nobro_rtos sample-startup
 python -m nobro_rtos check-startup-matrix
+python -m nobro_rtos check-boot-summary-matrix
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
 python -m nobro_rtos check-project _work\edge_demo --target platformio
@@ -313,11 +318,14 @@ The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
 scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
-matrix, and runtime drill gates into one JSON report.
+matrix, boot summary matrix, and runtime drill gates into one JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled. The startup matrix checker validates no-dependency, chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
+The boot summary matrix checker validates first-diagnostic priority,
+diagnostic-code layout, checksum corruption, adapter failure labels, and
+per-status counts.
 
 Validate the repository host contract against the Python enums:
 
@@ -343,6 +351,7 @@ python tools/nobro_contract_tool.py check-event-log-matrix
 python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
+python tools/nobro_contract_tool.py check-boot-summary-matrix
 ```
 
 Decode a boot diagnostic code:

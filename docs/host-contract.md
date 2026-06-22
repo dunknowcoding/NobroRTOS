@@ -68,6 +68,9 @@ before rendering user-facing text.
 Python host tooling mirrors this shape in `BootReportSummary.to_dict()` and the
 `summarize-boot` CLI command, including the same diagnostic code layout and
 per-status count fields.
+Use `check-boot-summary-matrix` to validate all-pass, missing-stage,
+corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+status-count paths before changing report layouts or host tooling.
 ## Checksum Rule
 
 Fixed reports use XOR checksums over every `u32` field except `checksum`.
