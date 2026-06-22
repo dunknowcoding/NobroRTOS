@@ -49,10 +49,12 @@ from .sim import (
     EventLogSimulator,
     KernelErrorKind,
     QuotaLedgerSimulator,
+    RecoveryAction,
     RecoveryDecision,
     RecoveryPlan,
     RecoveryPlanExecution,
     RecoveryPolicySimulator,
+    RecoveryRuntimeSimulator,
     RecoverySummary,
     ResourceBudget,
     RuntimeDrillSimulator,
@@ -3004,11 +3006,19 @@ def _run_recovery_plan_execution_scenario(
     dispatch_time = plan.deadline_us + 100
     first = execution.dispatch_due(dispatch_time, capacity=1)
     drain = execution.dispatch_due(dispatch_time, capacity=plan.len)
+    runtime = RecoveryRuntimeSimulator.from_modules(
+        tuple(dict.fromkeys((decision.module, *affected_modules)))
+    )
+    if decision.action == RecoveryAction.REBOOT_MODULE:
+        runtime.mark_recovering(decision.module)
+    for step in plan.steps:
+        runtime.apply_recovery_step(step)
     return {
         "step_count": plan.len,
         "required_budget_us": plan.required_budget_us,
         "deadline_us": plan.deadline_us,
         "affected_modules": list(affected_modules),
+        "runtime_states": runtime.to_dict(),
         "first_dispatch": first.to_dict(),
         "drain_dispatch": drain.to_dict(),
         "blocked_by_output": first.is_blocked_by_output,

@@ -93,8 +93,8 @@ helpers, forwarding headers, and AI/ROS preflight error bits.
 capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
 and startup dependency error paths.
 `check-recovery-matrix` validates deterministic ignore, retry, notify, reboot,
-OK-reset, fixed-plan execution, dependency-impact reboot planning, and
-output-buffer backpressure paths.
+OK-reset, fixed-plan execution, dependency-impact reboot planning, runtime
+state bookkeeping, and output-buffer backpressure paths.
 `check-watchdog-matrix` validates deterministic liveness precheck, expiry,
 heartbeat reset, multi-module expiry, and capacity-error paths.
 `check-scheduler-matrix` validates deterministic on-time, tolerance,

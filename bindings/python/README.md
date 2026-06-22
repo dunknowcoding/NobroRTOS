@@ -330,7 +330,8 @@ readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify
 and reboot escalation drills. The recovery matrix checker validates ignore,
 retry, notify, reboot, OK-reset, fixed-plan execution, dependency-impact reboot
-planning, and output-buffer backpressure paths in one gate. The watchdog
+planning, runtime state bookkeeping, and output-buffer backpressure paths in
+one gate. The watchdog
 sample emits heartbeat and expiry events for liveness planning. The watchdog
 matrix checker validates non-mutating prechecks, expiry mutation, heartbeat
 reset, multi-module expiry, and capacity errors. The scheduler sample emits

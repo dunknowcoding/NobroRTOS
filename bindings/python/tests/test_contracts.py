@@ -2434,6 +2434,10 @@ class ContractBuilderTests(unittest.TestCase):
             scenarios["sensor_reboot_threshold"]["plan"]["step_count"],
             4,
         )
+        self.assertEqual(
+            scenarios["sensor_reboot_threshold"]["plan"]["runtime_states"],
+            {"sensor": "active"},
+        )
         self.assertTrue(
             scenarios["sensor_reboot_threshold"]["plan"]["blocked_by_output"]
         )
@@ -2459,6 +2463,12 @@ class ContractBuilderTests(unittest.TestCase):
                 "drain_dispatch"
             ]["steps"][-1]["module"],
             "app",
+        )
+        self.assertEqual(
+            scenarios["bus_reboot_with_dependency_impact"]["plan"][
+                "runtime_states"
+            ],
+            {"bus": "active", "app": "active", "sensor": "active"},
         )
         self.assertEqual(
             scenarios["ok_reset_breaks_error_streak"]["max_consecutive_errors"],
