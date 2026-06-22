@@ -73,6 +73,9 @@ require them.
 host-side ordering checks. They keep dependencies explicit, reject unknown
 modules and cycles, and produce a deterministic order suitable for generated
 project checks and CI.
+The `check-bundle-matrix` CLI validates bundle roundtrip, capability ownership,
+module naming, AI/ROS uniqueness, hard-realtime deadline, and startup
+dependency error paths.
 
 `AiRoutePolicy` mirrors the Rust/C route decision contract for host simulation
 and VS Code workflows. It can choose local inference, a remote endpoint, stale
@@ -107,9 +110,9 @@ Generated templates include `.vscode/tasks.json` with a project check task; the
 Python host template also includes runtime drill, runtime drill gate, and AI
 route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
 event log matrix, quota matrix, degrade matrix, startup matrix, and boot
-summary matrix gate tasks, and the Python board bridge template includes an
-offline bridge smoke task for MicroPython, CircuitPython, and mPython-style
-status-line workflows.
+summary matrix, and bundle matrix gate tasks, and the Python board bridge
+template includes an offline bridge smoke task for MicroPython, CircuitPython,
+and mPython-style status-line workflows.
 Project validation checks both task labels and the expected task command
 arguments, so stale editor metadata cannot silently point to the wrong host
 tool.
@@ -234,6 +237,7 @@ python -m nobro_rtos sample-ai-ros
 python -m nobro_rtos sample-ai-route
 python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
 python -m nobro_rtos check-ai-route-matrix
+python -m nobro_rtos check-bundle-matrix
 python -m nobro_rtos sample-report runtime
 python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
@@ -318,7 +322,8 @@ The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
 scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
-matrix, boot summary matrix, and runtime drill gates into one JSON report.
+matrix, boot summary matrix, bundle matrix, and runtime drill gates into one
+JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
 assembled. The startup matrix checker validates no-dependency, chain,
@@ -326,6 +331,9 @@ fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
 The boot summary matrix checker validates first-diagnostic priority,
 diagnostic-code layout, checksum corruption, adapter failure labels, and
 per-status counts.
+The bundle matrix checker validates module naming, capability ownership,
+AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency
+errors, and JSON roundtrip stability.
 
 Validate the repository host contract against the Python enums:
 
@@ -352,6 +360,7 @@ python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
+python tools/nobro_contract_tool.py check-bundle-matrix
 ```
 
 Decode a boot diagnostic code:

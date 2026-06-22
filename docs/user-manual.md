@@ -207,6 +207,7 @@ checks:
 python tools/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 4 --period 1
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
@@ -246,7 +247,8 @@ directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
 Python host starter projects include runtime drill, AI route, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, and quota
-matrix, degrade matrix, startup matrix, and boot summary matrix gate tasks.
+matrix, degrade matrix, startup matrix, boot summary matrix, and bundle matrix
+gate tasks.
 Python board bridge templates also include an offline bridge smoke task for
 MicroPython, CircuitPython, and mPython-style status-line workflows.
 The runtime drill output includes a recovery summary with retry, notification,
@@ -255,8 +257,8 @@ The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
-matrix, degrade matrix, startup matrix, boot summary matrix, and runtime drill
-validation before packaging.
+matrix, degrade matrix, startup matrix, boot summary matrix, bundle matrix, and
+runtime drill validation before packaging.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,
@@ -286,6 +288,9 @@ the same deterministic planner.
 The boot summary matrix checker validates all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for host-side boot report review.
+The bundle matrix checker validates module naming, capability ownership,
+AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency
+errors, and JSON roundtrip stability.
 
 ## Cleanup
 

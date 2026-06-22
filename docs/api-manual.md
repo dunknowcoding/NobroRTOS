@@ -42,6 +42,9 @@ Python contract bundles mirror the same ownership discipline for host tooling:
 non-kernel capabilities must have a single owning module, and user-level modules
 cannot claim kernel-owned capabilities such as the timebase or host-report
 surface.
+Use `check-bundle-matrix` to validate module naming, capability ownership,
+AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency
+errors, and JSON roundtrip stability.
 They also carry optional startup dependencies. The Python `plan_startup` helper
 uses the same contract shape as the Rust startup graph, rejects unknown modules,
 duplicate dependencies, and cycles, and emits a deterministic startup order for
@@ -172,6 +175,9 @@ startup graph construction.
 The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
+The `check-bundle-matrix` CLI validates contract bundle roundtrip, capability
+ownership, module naming, AI/ROS uniqueness, hard-realtime deadline, and startup
+dependency error paths.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
@@ -490,7 +496,7 @@ unavailable route outcomes.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
 public header, starter template, AI route matrix, recovery matrix, watchdog
 matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix,
-startup matrix, boot summary matrix, and runtime drill validation for
+startup matrix, boot summary matrix, bundle matrix, and runtime drill validation for
 pre-package review.
 
 ## Host API

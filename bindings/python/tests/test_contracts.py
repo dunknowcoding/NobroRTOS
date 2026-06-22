@@ -67,6 +67,7 @@ from nobro_rtos.cli import (
     _check_ai_route,
     _check_ai_route_matrix,
     _check_boot_summary_matrix,
+    _check_bundle_matrix,
     _check_degrade_matrix,
     _check_event_log_matrix,
     _check_project,
@@ -189,6 +190,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("degrade_matrix_gate", report["host_simulators"])
         self.assertIn("startup_matrix_gate", report["host_simulators"])
         self.assertIn("boot_summary_matrix_gate", report["host_simulators"])
+        self.assertIn("bundle_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -227,6 +229,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["startup_matrix"]["passing"])
         self.assertIn("boot_summary_matrix", report["checks"])
         self.assertTrue(report["checks"]["boot_summary_matrix"]["passing"])
+        self.assertIn("bundle_matrix", report["checks"])
+        self.assertTrue(report["checks"]["bundle_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -355,6 +359,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Boot Summary Matrix Gate",
         )
         self.assertIn("check-boot-summary-matrix", python_tasks["tasks"][12]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][13]["label"],
+            "NobroRTOS: Bundle Matrix Gate",
+        )
+        self.assertIn("check-bundle-matrix", python_tasks["tasks"][13]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -583,6 +592,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-startup"]
                 if task["label"] == "NobroRTOS: Boot Summary Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "summarize-boot"]
+                if task["label"] == "NobroRTOS: Bundle Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "validate-bundle"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -601,6 +612,7 @@ class ContractBuilderTests(unittest.TestCase):
                 "boot summary matrix gate task command mismatch",
                 before.errors,
             )
+            self.assertIn("bundle matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -645,6 +657,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "boot summary matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "bundle matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -717,6 +733,12 @@ class ContractBuilderTests(unittest.TestCase):
                 "check-boot-summary-matrix",
                 boot_summary_matrix_gate["args"],
             )
+            bundle_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Bundle Matrix Gate"
+            )
+            self.assertIn("check-bundle-matrix", bundle_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1027,6 +1049,53 @@ class ContractBuilderTests(unittest.TestCase):
 
         self.assertEqual(loaded.to_dict(), bundle.to_dict())
         self.assertEqual(loaded.startup_dependencies[0].depends_on, "kernel")
+
+    def test_bundle_matrix_covers_contract_validation_paths(self) -> None:
+        report = _check_bundle_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 4)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["valid_ai_ros_startup_bundle_roundtrips"]["startup_order"],
+            ["kernel", "bus", "ai", "telemetry"],
+        )
+        self.assertEqual(
+            scenarios["valid_ai_ros_startup_bundle_roundtrips"]["module_count"],
+            4,
+        )
+        self.assertEqual(
+            scenarios["capability_ownership_errors_are_reported"][
+                "duplicate_owner_error"
+            ],
+            "duplicate capability owner for bus0: bus, sensor",
+        )
+        self.assertEqual(
+            scenarios["capability_ownership_errors_are_reported"]["unowned_error"],
+            "module sensor requires unowned capability: bus0",
+        )
+        self.assertEqual(
+            scenarios["structural_errors_are_reported"]["module_name_error"],
+            "names must be non-empty and trimmed",
+        )
+        self.assertEqual(
+            scenarios["startup_dependency_errors_are_reported"]["cycle_error"],
+            "startup dependency cycle: kernel, sensor",
+        )
+
+    def test_bundle_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-bundle-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 4)
 
     def test_startup_plan_orders_dependencies_before_dependents(self) -> None:
         modules = (

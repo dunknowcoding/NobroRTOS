@@ -141,6 +141,10 @@ def main() -> int:
         "check-ai-route-matrix",
         help="run deterministic AI route checks across local, edge, remote, and fallback paths",
     )
+    subparsers.add_parser(
+        "check-bundle-matrix",
+        help="run deterministic contract bundle validation checks",
+    )
     sample_report = subparsers.add_parser(
         "sample-report",
         help="print a sealed sample fixed report as JSON",
@@ -477,6 +481,10 @@ def main() -> int:
         report = _check_ai_route_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
+    if args.command == "check-bundle-matrix":
+        report = _check_bundle_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-report":
         print(json.dumps(_sample_report(args.kind), indent=2, sort_keys=True))
         return 0
@@ -782,6 +790,370 @@ def _sample_ai_ros_bundle() -> NobroContractBundle:
     )
 
 
+def _check_bundle_matrix() -> dict[str, object]:
+    scenarios = (
+        _bundle_valid_ai_ros_startup_scenario(),
+        _bundle_capability_error_scenario(),
+        _bundle_structural_error_scenario(),
+        _bundle_startup_error_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _bundle_valid_ai_ros_startup_scenario() -> dict[str, object]:
+    bundle = _bundle_reference()
+    payload = json.loads(bundle.to_json())
+    loaded = NobroContractBundle.from_dict(payload)
+    order = plan_startup(loaded.modules, loaded.startup_dependencies).order
+    errors: list[str] = []
+    _expect_equal(loaded.to_dict(), payload, "roundtrip", errors)
+    _expect_equal(order, ("kernel", "bus", "ai", "telemetry"), "startup_order", errors)
+    return {
+        "name": "valid_ai_ros_startup_bundle_roundtrips",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "module_count": len(payload["modules"]),
+        "ai_model_count": len(payload["ai_models"]),
+        "ros_bridge_count": len(payload["ros_bridges"]),
+        "startup_order": list(order),
+        "metadata": payload["metadata"],
+    }
+
+
+def _bundle_capability_error_scenario() -> dict[str, object]:
+    duplicate_owner_error = _bundle_error(
+        NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "bus",
+                    Criticality.DRIVER,
+                    MemoryBudget(4096, 512),
+                    owns=(Capability.BUS0,),
+                ),
+                ModuleSpec(
+                    "sensor",
+                    Criticality.DRIVER,
+                    MemoryBudget(8192, 1024),
+                    owns=(Capability.BUS0,),
+                ),
+            ),
+        )
+    )
+    unowned_error = _bundle_error(
+        NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "sensor",
+                    Criticality.DRIVER,
+                    MemoryBudget(8192, 1024),
+                    requires=(Capability.BUS0,),
+                ),
+            ),
+        )
+    )
+    user_kernel_owner_error = _bundle_error(
+        NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "app",
+                    Criticality.USER,
+                    MemoryBudget(4096, 512),
+                    owns=(Capability.TIMEBASE,),
+                ),
+            ),
+        )
+    )
+
+    errors: list[str] = []
+    _expect_equal(
+        duplicate_owner_error,
+        "duplicate capability owner for bus0: bus, sensor",
+        "duplicate_owner_error",
+        errors,
+    )
+    _expect_equal(
+        unowned_error,
+        "module sensor requires unowned capability: bus0",
+        "unowned_error",
+        errors,
+    )
+    _expect_equal(
+        user_kernel_owner_error,
+        "user module app cannot own kernel capability timebase",
+        "user_kernel_owner_error",
+        errors,
+    )
+    return {
+        "name": "capability_ownership_errors_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "duplicate_owner_error": duplicate_owner_error,
+        "unowned_error": unowned_error,
+        "user_kernel_owner_error": user_kernel_owner_error,
+    }
+
+
+def _bundle_structural_error_scenario() -> dict[str, object]:
+    module = ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(8192, 1024))
+    duplicate_module_error = _bundle_error(NobroContractBundle(modules=(module, module)))
+    duplicate_ai_error = _bundle_error(
+        NobroContractBundle(
+            ai_models=(
+                AiModelContract(
+                    42,
+                    AiBackendKind.ON_DEVICE,
+                    128,
+                    32,
+                    4096,
+                    20_000,
+                    100_000,
+                ),
+                AiModelContract(
+                    42,
+                    AiBackendKind.REMOTE_API,
+                    128,
+                    32,
+                    0,
+                    20_000,
+                    100_000,
+                ),
+            )
+        )
+    )
+    duplicate_ros_error = _bundle_error(
+        NobroContractBundle(
+            ros_bridges=(
+                RosBridgeDescriptor("robot_core", "serial"),
+                RosBridgeDescriptor("robot_core", "udp"),
+            )
+        )
+    )
+    duplicate_topic_error = _bundle_error(
+        NobroContractBundle(
+            ros_bridges=(
+                RosBridgeDescriptor(
+                    "robot_core",
+                    "serial",
+                    topics=(
+                        RosTopic("/imu", "sensor_msgs/Imu", 4, 128),
+                        RosTopic("/imu", "sensor_msgs/Imu", 4, 128),
+                    ),
+                ),
+            )
+        )
+    )
+    hard_realtime_error = _bundle_error(
+        NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    "actuator",
+                    Criticality.HARD_REALTIME,
+                    MemoryBudget(4096, 512),
+                ),
+            )
+        )
+    )
+    module_name_error = _bundle_error(
+        NobroContractBundle(
+            modules=(
+                ModuleSpec(
+                    " sensor",
+                    Criticality.DRIVER,
+                    MemoryBudget(4096, 512),
+                ),
+            )
+        )
+    )
+
+    errors: list[str] = []
+    _expect_equal(
+        duplicate_module_error,
+        "duplicate module: sensor",
+        "duplicate_module_error",
+        errors,
+    )
+    _expect_equal(duplicate_ai_error, "duplicate AI model: 42", "duplicate_ai_error", errors)
+    _expect_equal(
+        duplicate_ros_error,
+        "duplicate ROS bridge: robot_core",
+        "duplicate_ros_error",
+        errors,
+    )
+    _expect_equal(
+        duplicate_topic_error,
+        "duplicate ROS topic: /imu",
+        "duplicate_topic_error",
+        errors,
+    )
+    _expect_equal(
+        hard_realtime_error,
+        "hard realtime modules require a deadline",
+        "hard_realtime_error",
+        errors,
+    )
+    _expect_equal(
+        module_name_error,
+        "names must be non-empty and trimmed",
+        "module_name_error",
+        errors,
+    )
+    return {
+        "name": "structural_errors_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "duplicate_module_error": duplicate_module_error,
+        "duplicate_ai_error": duplicate_ai_error,
+        "duplicate_ros_error": duplicate_ros_error,
+        "duplicate_topic_error": duplicate_topic_error,
+        "hard_realtime_error": hard_realtime_error,
+        "module_name_error": module_name_error,
+    }
+
+
+def _bundle_startup_error_scenario() -> dict[str, object]:
+    modules = (
+        ModuleSpec(
+            "kernel",
+            Criticality.HARD_REALTIME,
+            MemoryBudget(4096, 512),
+            period_us=20_000,
+            max_jitter_us=10,
+        ),
+        ModuleSpec("sensor", Criticality.DRIVER, MemoryBudget(8192, 1024)),
+    )
+    unknown_dependency_error = _bundle_error(
+        NobroContractBundle(
+            modules=modules,
+            startup_dependencies=(StartupDependency("sensor", "missing"),),
+        )
+    )
+    duplicate_dependency_error = _bundle_error(
+        NobroContractBundle(
+            modules=modules,
+            startup_dependencies=(
+                StartupDependency("sensor", "kernel"),
+                StartupDependency("sensor", "kernel"),
+            ),
+        )
+    )
+    cycle_error = _bundle_error(
+        NobroContractBundle(
+            modules=modules,
+            startup_dependencies=(
+                StartupDependency("kernel", "sensor"),
+                StartupDependency("sensor", "kernel"),
+            ),
+        )
+    )
+
+    errors: list[str] = []
+    _expect_equal(
+        unknown_dependency_error,
+        "startup dependency references unknown module: missing",
+        "unknown_dependency_error",
+        errors,
+    )
+    _expect_equal(
+        duplicate_dependency_error,
+        "duplicate startup dependency: sensor->kernel",
+        "duplicate_dependency_error",
+        errors,
+    )
+    _expect_equal(
+        cycle_error,
+        "startup dependency cycle: kernel, sensor",
+        "cycle_error",
+        errors,
+    )
+    return {
+        "name": "startup_dependency_errors_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "unknown_dependency_error": unknown_dependency_error,
+        "duplicate_dependency_error": duplicate_dependency_error,
+        "cycle_error": cycle_error,
+    }
+
+
+def _bundle_reference() -> NobroContractBundle:
+    return NobroContractBundle(
+        metadata={"profile": "bundle-matrix"},
+        modules=(
+            ModuleSpec(
+                "kernel",
+                Criticality.HARD_REALTIME,
+                MemoryBudget(12 * 1024, 2 * 1024, 1),
+                period_us=20_000,
+                max_jitter_us=10,
+            ),
+            ModuleSpec(
+                "bus",
+                Criticality.DRIVER,
+                MemoryBudget(8 * 1024, 1024, 1),
+                requires=(Capability.BUS0,),
+                owns=(Capability.BUS0,),
+            ),
+            ModuleSpec(
+                "ai",
+                Criticality.USER,
+                MemoryBudget(16 * 1024, 6 * 1024, 1),
+                requires=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+                owns=(Capability.AI_INFERENCE, Capability.AI_ENDPOINT),
+            ),
+            ModuleSpec(
+                "telemetry",
+                Criticality.BEST_EFFORT,
+                MemoryBudget(8 * 1024, 1024, 1),
+                requires=(Capability.STREAM,),
+                owns=(Capability.STREAM,),
+            ),
+        ),
+        ai_models=(
+            AiModelContract(
+                42,
+                AiBackendKind.HYBRID,
+                128,
+                32,
+                4096,
+                20_000,
+                100_000,
+            ),
+        ),
+        ros_bridges=(
+            RosBridgeDescriptor(
+                "robot_core",
+                "serial",
+                topics=(RosTopic("/imu", "sensor_msgs/Imu", 4, 128),),
+                services=(RosService("/reset", 16, 16, 50_000),),
+                parameters=(RosParameter("mode", 16),),
+            ),
+        ),
+        startup_dependencies=(
+            StartupDependency("bus", "kernel"),
+            StartupDependency("ai", "bus"),
+            StartupDependency("telemetry", "bus"),
+        ),
+    )
+
+
+def _bundle_error(bundle: NobroContractBundle) -> str | None:
+    try:
+        bundle.to_json()
+    except Exception as exc:  # noqa: BLE001 - report bundle gate context.
+        return str(exc)
+    return None
+
+
 def _doctor() -> dict[str, object]:
     contract = load_repo_host_contract()
     distribution = validate_distribution_metadata()
@@ -824,6 +1196,7 @@ def _doctor() -> dict[str, object]:
             "runtime_drill_gate",
             "ai_route_gate",
             "ai_route_matrix_gate",
+            "bundle_matrix_gate",
             "project_templates",
             "starter_template_gate",
         ],
@@ -935,6 +1308,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("degrade_matrix", _check_degrade_matrix())
     add_check("startup_matrix", _check_startup_matrix())
     add_check("boot_summary_matrix", _check_boot_summary_matrix())
+    add_check("bundle_matrix", _check_bundle_matrix())
     add_check(
         "ai_route",
         _check_ai_route(

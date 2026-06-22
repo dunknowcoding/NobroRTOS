@@ -144,6 +144,7 @@ class ModuleSpec:
     max_jitter_us: int | None = None
 
     def validate(self) -> None:
+        _validate_name(self.module)
         self.memory.validate()
         if self.criticality == Criticality.HARD_REALTIME:
             if not self.period_us or not self.max_jitter_us:

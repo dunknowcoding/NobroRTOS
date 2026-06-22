@@ -28,6 +28,7 @@ python tools/nobro_contract_tool.py sample-ai-ros
 python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
@@ -59,6 +60,7 @@ python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
+python tools/nobro_contract_tool.py check-bundle-matrix
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py sample-startup
 ```
@@ -71,6 +73,9 @@ limits. Use backend, preference, budget, readiness, stale-age, and
 endpoint-failure arguments to model local, edge, remote API, and hybrid paths.
 `check-ai-route-matrix` validates a deterministic set of local, remote API,
 edge sidecar, stale snapshot, degraded fallback, and unavailable route paths.
+`check-bundle-matrix` validates deterministic contract bundle roundtrip,
+capability ownership, module naming, AI/ROS uniqueness, hard-realtime deadline,
+and startup dependency error paths.
 `check-recovery-matrix` validates deterministic ignore, retry, notify, reboot,
 and OK-reset recovery paths.
 `check-watchdog-matrix` validates deterministic liveness precheck, expiry,
@@ -94,7 +99,7 @@ dropped event-log records exceed the configured limits.
 it combines the host contract, SDK/package metadata, public headers, starter
 templates, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix,
 event log matrix, quota matrix, degrade matrix, startup matrix, boot summary
-matrix, and runtime drill checks into one JSON report.
+matrix, bundle matrix, and runtime drill checks into one JSON report.
 `check-starter-templates` materializes every starter project in a temporary
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
