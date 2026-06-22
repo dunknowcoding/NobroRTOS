@@ -1124,6 +1124,151 @@ impl AiInferenceResult {
     }
 }
 
+pub const AI_PREFLIGHT_MODEL_ID_MISMATCH: u32 = 1 << 0;
+pub const AI_PREFLIGHT_INPUT_TOO_LARGE: u32 = 1 << 1;
+pub const AI_PREFLIGHT_OUTPUT_TOO_SMALL: u32 = 1 << 2;
+pub const AI_PREFLIGHT_RAM_EXCEEDED: u32 = 1 << 3;
+pub const AI_PREFLIGHT_ROUTE_UNAVAILABLE: u32 = 1 << 4;
+pub const AI_PREFLIGHT_DEGRADED_FALLBACK: u32 = 1 << 5;
+pub const AI_PREFLIGHT_STALE_SNAPSHOT: u32 = 1 << 6;
+pub const AI_PREFLIGHT_STALE_TOO_OLD: u32 = 1 << 7;
+pub const AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN: u32 = 1 << 8;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiInvocationLimits {
+    pub output_capacity_bytes: u32,
+    pub scratch_bytes: u32,
+    pub available_ram_bytes: u32,
+    pub budget_us: u32,
+    pub max_stale_us: u32,
+    pub allow_stale_snapshot: bool,
+    pub allow_degraded_fallback: bool,
+    pub allow_unavailable: bool,
+    pub allow_endpoint_circuit_open: bool,
+}
+
+impl AiInvocationLimits {
+    pub const fn new(
+        output_capacity_bytes: u32,
+        scratch_bytes: u32,
+        available_ram_bytes: u32,
+        budget_us: u32,
+    ) -> Self {
+        Self {
+            output_capacity_bytes,
+            scratch_bytes,
+            available_ram_bytes,
+            budget_us,
+            max_stale_us: 0,
+            allow_stale_snapshot: false,
+            allow_degraded_fallback: false,
+            allow_unavailable: false,
+            allow_endpoint_circuit_open: false,
+        }
+    }
+
+    pub const fn with_max_stale_us(mut self, max_stale_us: u32) -> Self {
+        self.max_stale_us = max_stale_us;
+        self
+    }
+
+    pub const fn allow_stale_snapshot(mut self) -> Self {
+        self.allow_stale_snapshot = true;
+        self
+    }
+
+    pub const fn allow_degraded_fallback(mut self) -> Self {
+        self.allow_degraded_fallback = true;
+        self
+    }
+
+    pub const fn allow_unavailable(mut self) -> Self {
+        self.allow_unavailable = true;
+        self
+    }
+
+    pub const fn allow_endpoint_circuit_open(mut self) -> Self {
+        self.allow_endpoint_circuit_open = true;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AiInvocationPreflight {
+    pub route: AiRouteDecision,
+    pub required_ram_bytes: u32,
+    pub available_ram_bytes: u32,
+    pub error_bits: u32,
+}
+
+impl AiInvocationPreflight {
+    pub const fn passing(&self) -> bool {
+        self.error_bits == 0
+    }
+
+    pub const fn has_error(&self, error: u32) -> bool {
+        (self.error_bits & error) != 0
+    }
+}
+
+pub fn preflight_ai_invocation(
+    contract: AiModelContract,
+    policy: AiRoutePolicy,
+    state: AiRuntimeState,
+    request: AiInferenceRequest<'_>,
+    limits: AiInvocationLimits,
+) -> AiInvocationPreflight {
+    let route = policy.decide(contract, state, limits.budget_us);
+    let input_bytes = saturated_usize_to_u32(request.input.len());
+    let local_arena_bytes = match contract.backend {
+        AiBackendKind::OnDevice | AiBackendKind::Hybrid => contract.arena_bytes,
+        AiBackendKind::RemoteApi | AiBackendKind::EdgeSidecar => 0,
+    };
+    let required_ram_bytes = input_bytes
+        .saturating_add(limits.output_capacity_bytes)
+        .saturating_add(limits.scratch_bytes)
+        .saturating_add(local_arena_bytes);
+    let mut error_bits = 0;
+
+    if request.model_id != contract.model_id {
+        error_bits |= AI_PREFLIGHT_MODEL_ID_MISMATCH;
+    }
+    if input_bytes > u32::from(contract.input_bytes_max) {
+        error_bits |= AI_PREFLIGHT_INPUT_TOO_LARGE;
+    }
+    if limits.output_capacity_bytes < u32::from(contract.output_bytes_max) {
+        error_bits |= AI_PREFLIGHT_OUTPUT_TOO_SMALL;
+    }
+    if required_ram_bytes > limits.available_ram_bytes {
+        error_bits |= AI_PREFLIGHT_RAM_EXCEEDED;
+    }
+    if route.target == AiRouteTarget::Unavailable && !limits.allow_unavailable {
+        error_bits |= AI_PREFLIGHT_ROUTE_UNAVAILABLE;
+    }
+    if route.target == AiRouteTarget::DegradedFallback && !limits.allow_degraded_fallback {
+        error_bits |= AI_PREFLIGHT_DEGRADED_FALLBACK;
+    }
+    if route.uses_stale_snapshot && !limits.allow_stale_snapshot {
+        error_bits |= AI_PREFLIGHT_STALE_SNAPSHOT;
+    }
+    if route.uses_stale_snapshot
+        && limits.max_stale_us > 0
+        && state.last_success_age_us > limits.max_stale_us
+    {
+        error_bits |= AI_PREFLIGHT_STALE_TOO_OLD;
+    }
+    if route.endpoint_circuit_open && !limits.allow_endpoint_circuit_open {
+        error_bits |= AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN;
+    }
+
+    AiInvocationPreflight {
+        route,
+        required_ram_bytes,
+        available_ram_bytes: limits.available_ram_bytes,
+        error_bits,
+    }
+}
+
 /// Bounded AI inference session for on-device, remote API, or edge-sidecar backends.
 pub trait AiInferenceSal {
     type Error;
@@ -1153,6 +1298,14 @@ fn saturated_len(len: usize) -> u8 {
         u8::MAX
     } else {
         len as u8
+    }
+}
+
+fn saturated_usize_to_u32(len: usize) -> u32 {
+    if len > u32::MAX as usize {
+        u32::MAX
+    } else {
+        len as u32
     }
 }
 
@@ -1293,6 +1446,88 @@ mod tests {
         assert_eq!(result.output_len, 4);
         assert_eq!(result.confidence_q15, 0x7FFF);
         assert_eq!(&output[..4], &input);
+    }
+
+    #[test]
+    fn ai_invocation_preflight_accepts_bounded_local_call() {
+        let contract = AiModelContract::new(AiBackendKind::OnDevice, 42, 8, 8, 4096, 20_000);
+        let policy = AiRoutePolicy::new(AiRoutePreference::LocalOnly, 50_000, 2);
+        let state = AiRuntimeState::new(true, false, 1_000, 0);
+        let input = [1, 2, 3, 4];
+        let limits = AiInvocationLimits::new(8, 128, 8 * 1024, 25_000);
+
+        let report = preflight_ai_invocation(
+            contract,
+            policy,
+            state,
+            AiInferenceRequest::new(42, &input, 10_000),
+            limits,
+        );
+
+        assert!(report.passing());
+        assert_eq!(report.route.target, AiRouteTarget::OnDevice);
+        assert_eq!(report.required_ram_bytes, 4 + 8 + 128 + 4096);
+    }
+
+    #[test]
+    fn ai_invocation_preflight_rejects_buffers_ram_and_model_mismatch() {
+        let contract = AiModelContract::new(AiBackendKind::Hybrid, 42, 4, 8, 4096, 20_000);
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferLocal, 50_000, 2);
+        let state = AiRuntimeState::new(true, false, 1_000, 0);
+        let input = [0u8; 12];
+        let limits = AiInvocationLimits::new(4, 128, 512, 25_000);
+
+        let report = preflight_ai_invocation(
+            contract,
+            policy,
+            state,
+            AiInferenceRequest::new(7, &input, 10_000),
+            limits,
+        );
+
+        assert!(!report.passing());
+        assert!(report.has_error(AI_PREFLIGHT_MODEL_ID_MISMATCH));
+        assert!(report.has_error(AI_PREFLIGHT_INPUT_TOO_LARGE));
+        assert!(report.has_error(AI_PREFLIGHT_OUTPUT_TOO_SMALL));
+        assert!(report.has_error(AI_PREFLIGHT_RAM_EXCEEDED));
+        assert_eq!(report.required_ram_bytes, 12 + 4 + 128 + 4096);
+    }
+
+    #[test]
+    fn ai_invocation_preflight_flags_stale_and_endpoint_policy() {
+        let contract = AiModelContract::new(AiBackendKind::RemoteApi, 7, 32, 32, 0, 20_000)
+            .with_stale_after_us(100_000);
+        let policy = AiRoutePolicy::new(AiRoutePreference::PreferRemote, 80_000, 2);
+        let state = AiRuntimeState::new(false, true, 70_000, 2);
+        let input = [1u8; 16];
+        let limits = AiInvocationLimits::new(32, 64, 1024, 30_000).with_max_stale_us(50_000);
+
+        let report = preflight_ai_invocation(
+            contract,
+            policy,
+            state,
+            AiInferenceRequest::new(7, &input, 10_000),
+            limits,
+        );
+
+        assert!(!report.passing());
+        assert_eq!(report.route.target, AiRouteTarget::StaleSnapshot);
+        assert!(report.route.endpoint_circuit_open);
+        assert!(report.has_error(AI_PREFLIGHT_STALE_SNAPSHOT));
+        assert!(report.has_error(AI_PREFLIGHT_STALE_TOO_OLD));
+        assert!(report.has_error(AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN));
+
+        let allowed = preflight_ai_invocation(
+            contract,
+            policy,
+            state,
+            AiInferenceRequest::new(7, &input, 10_000),
+            limits
+                .allow_stale_snapshot()
+                .allow_endpoint_circuit_open()
+                .with_max_stale_us(80_000),
+        );
+        assert!(allowed.passing());
     }
 
     #[test]

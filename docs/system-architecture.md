@@ -67,11 +67,12 @@ bounded inference request and result without requiring heap ownership inside the
 adapter. Hard-realtime control loops should consume the last valid inference
 state or a degraded fallback state instead of blocking on inference.
 
-AI invocation preflight sits before route execution. Host and editor tooling use
-the same contract shape to reject oversized input/output buffers, excess scratch
-or arena RAM, missing AI capability declarations, stale snapshot policy
-violations, degraded fallback, unavailable routes, and open endpoint circuits
-before a model or remote API is contacted.
+AI invocation preflight sits before route execution. Rust SAL code and host
+tooling use the same contract shape to reject oversized input/output buffers,
+excess scratch or arena RAM, stale snapshot policy violations, degraded
+fallback, unavailable routes, and open endpoint circuits before a model or
+remote API is contacted. Host contract checks additionally verify module AI
+capability declarations because they can see the full application bundle.
 
 `AiRoutePolicy` adds a small RTOS-side decision layer for local, edge, remote,
 and hybrid inference. The policy compares timeout against the caller's budget,

@@ -454,6 +454,28 @@ assert!(usize::from(result.output_len) <= output.len());
 Hard-realtime modules should not wait directly on remote inference. They should
 consume a fresh result snapshot or a degraded fallback state.
 
+Use `preflight_ai_invocation` before calling an adapter. It checks model ID,
+input size, output capacity, scratch and arena RAM, route availability,
+degraded fallback, stale-snapshot policy, and endpoint circuit state without
+contacting a model or remote endpoint:
+
+```rust
+let limits = nobro_sal::AiInvocationLimits::new(
+    output.len() as u32,
+    128,
+    8 * 1024,
+    25_000,
+);
+let report = nobro_sal::preflight_ai_invocation(
+    contract,
+    policy,
+    state,
+    nobro_sal::AiInferenceRequest::new(contract.model_id, &input, deadline_us),
+    limits,
+);
+assert!(report.passing());
+```
+
 Use `AiRoutePolicy` when an application can choose among local inference, an
 edge sidecar, a third-party API, or a hybrid fallback path. The policy is a
 fixed-size control record: it compares the model timeout with the caller's
