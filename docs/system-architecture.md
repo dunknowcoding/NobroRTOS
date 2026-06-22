@@ -136,6 +136,10 @@ notify, retry, quiesce, restart, heartbeat verification, and resume. The plan
 uses caller-provided capacity, reports capacity failures explicitly, and checks
 the total recovery budget before a supervisor turns an action into work. This
 keeps self-healing deterministic and reviewable without heap allocation.
+`RecoveryPlanExecution` adds a fixed-capacity cursor over that plan so firmware
+loops and host simulators can dispatch only time-ready steps, keep overdue work
+visible when the caller-provided output buffer is full, and avoid replaying
+steps that were already handed to board-specific adapters.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

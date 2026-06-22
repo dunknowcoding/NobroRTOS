@@ -67,8 +67,8 @@ pub use module_runtime::{
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
-    RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanDispatch,
+    RecoveryPlanError, RecoveryPlanExecution, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
 };
 pub use report::{
     action_code, degrade_reason_code, error_code, event_kind_code, module_run_state_code,

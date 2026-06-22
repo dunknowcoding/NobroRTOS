@@ -296,6 +296,28 @@ Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
 Use `next_due`, `due_count`, `remaining_count`, and `copy_due` to inspect
 time-ready recovery steps from a firmware loop or host simulator without
 mutating the plan or executing board-specific actions.
+Use `RecoveryPlanExecution<N>` when a loop needs to advance the plan without
+replaying already-dispatched work:
+
+```rust
+let mut execution = nobro_kernel::RecoveryPlanExecution::from_plan(plan);
+let empty = nobro_kernel::RecoveryStep::new(
+    nobro_kernel::ModuleId::Kernel,
+    nobro_kernel::RecoveryStepKind::Observe,
+    0,
+    0,
+);
+let mut due = [empty; 2];
+let dispatch = execution.dispatch_due(now_us, &mut due);
+for step in due.iter().take(dispatch.dispatched) {
+    // Map the step to board-specific notify, retry, restart, or resume work.
+    let _ = step;
+}
+```
+
+The execution cursor owns no heap memory, uses caller-owned output buffers, and
+reports remaining steps, next due time, consumed budget, overdue work, and
+completion status.
 
 ## HAL API
 

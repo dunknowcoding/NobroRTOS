@@ -263,6 +263,122 @@ impl<const N: usize> RecoveryPlan<N> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryPlanDispatch {
+    pub dispatched: usize,
+    pub remaining: usize,
+    pub next_due_us: u64,
+    pub consumed_budget_us: u64,
+    pub overdue_us: u64,
+    pub completed: bool,
+}
+
+impl RecoveryPlanDispatch {
+    pub const fn is_blocked_by_output(&self) -> bool {
+        self.overdue_us != 0 && self.remaining != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryPlanExecution<const N: usize> {
+    plan: RecoveryPlan<N>,
+    next_step: usize,
+    consumed_budget_us: u64,
+    last_dispatch_us: u64,
+}
+
+impl<const N: usize> RecoveryPlanExecution<N> {
+    pub const fn from_plan(plan: RecoveryPlan<N>) -> Self {
+        Self {
+            plan,
+            next_step: 0,
+            consumed_budget_us: 0,
+            last_dispatch_us: 0,
+        }
+    }
+
+    pub const fn plan(&self) -> &RecoveryPlan<N> {
+        &self.plan
+    }
+
+    pub const fn dispatched_count(&self) -> usize {
+        self.next_step
+    }
+
+    pub const fn remaining_count(&self) -> usize {
+        self.plan.len.saturating_sub(self.next_step)
+    }
+
+    pub const fn consumed_budget_us(&self) -> u64 {
+        self.consumed_budget_us
+    }
+
+    pub const fn last_dispatch_us(&self) -> u64 {
+        self.last_dispatch_us
+    }
+
+    pub const fn is_complete(&self) -> bool {
+        self.next_step >= self.plan.len
+    }
+
+    pub fn next_pending(&self) -> Option<RecoveryStep> {
+        if self.next_step >= self.plan.len {
+            None
+        } else {
+            self.plan.steps[self.next_step]
+        }
+    }
+
+    pub fn due_pending_count(&self, now_us: u64) -> usize {
+        self.plan
+            .steps
+            .iter()
+            .copied()
+            .take(self.plan.len)
+            .skip(self.next_step)
+            .flatten()
+            .filter(|step| step.due_us <= now_us)
+            .count()
+    }
+
+    pub fn dispatch_due(&mut self, now_us: u64, out: &mut [RecoveryStep]) -> RecoveryPlanDispatch {
+        let mut dispatched = 0;
+        while self.next_step < self.plan.len && dispatched < out.len() {
+            let Some(step) = self.plan.steps[self.next_step] else {
+                self.next_step += 1;
+                continue;
+            };
+            if step.due_us > now_us {
+                break;
+            }
+            out[dispatched] = step;
+            dispatched += 1;
+            self.next_step += 1;
+            self.consumed_budget_us = self
+                .consumed_budget_us
+                .saturating_add(u64::from(step.budget_us));
+            self.last_dispatch_us = now_us;
+        }
+
+        let remaining = self.remaining_count();
+        let next_due_us = self.next_pending().map(|step| step.due_us).unwrap_or(0);
+        let overdue_us = if next_due_us != 0 && next_due_us < now_us {
+            now_us.saturating_sub(next_due_us)
+        } else {
+            0
+        };
+
+        RecoveryPlanDispatch {
+            dispatched,
+            remaining,
+            next_due_us,
+            consumed_budget_us: self.consumed_budget_us,
+            overdue_us,
+            completed: remaining == 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecoveryError {
     Lifecycle(LifecycleError),
 }
@@ -576,6 +692,120 @@ mod tests {
                     5_000,
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn recovery_plan_execution_dispatches_due_steps_once() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Actuator,
+            error: KernelError::DeadlineMissed,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+        let plan =
+            RecoveryPlan::<4>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
+        let empty = RecoveryStep::new(ModuleId::Kernel, RecoveryStepKind::Observe, 0, 0);
+        let mut due = [empty; 2];
+        let mut execution = RecoveryPlanExecution::from_plan(plan);
+
+        assert_eq!(execution.due_pending_count(99), 0);
+        assert_eq!(execution.dispatch_due(99, &mut due).dispatched, 0);
+        assert_eq!(execution.dispatched_count(), 0);
+
+        let dispatch = execution.dispatch_due(100, &mut due);
+        assert_eq!(dispatch.dispatched, 1);
+        assert_eq!(dispatch.remaining, 3);
+        assert_eq!(dispatch.next_due_us, 600);
+        assert_eq!(dispatch.consumed_budget_us, 500);
+        assert!(!dispatch.completed);
+        assert_eq!(
+            due[0],
+            RecoveryStep::new(
+                ModuleId::Actuator,
+                RecoveryStepKind::QuiesceModule,
+                100,
+                500
+            )
+        );
+        assert_eq!(execution.dispatched_count(), 1);
+        assert_eq!(execution.last_dispatch_us(), 100);
+
+        let dispatch = execution.dispatch_due(6_100, &mut due);
+        assert_eq!(dispatch.dispatched, 2);
+        assert_eq!(dispatch.remaining, 1);
+        assert_eq!(dispatch.next_due_us, 6_600);
+        assert_eq!(dispatch.consumed_budget_us, 6_500);
+        assert_eq!(
+            execution.next_pending().map(|step| step.kind),
+            Some(RecoveryStepKind::ResumeModule)
+        );
+    }
+
+    #[test]
+    fn recovery_plan_execution_preserves_overdue_steps_when_output_is_full() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Sensor,
+            error: KernelError::DeadlineMissed,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+        };
+        let plan =
+            RecoveryPlan::<4>::from_outcome(outcome, 10, RecoveryPlanPolicy::DEFAULT).unwrap();
+        let empty = RecoveryStep::new(ModuleId::Kernel, RecoveryStepKind::Observe, 0, 0);
+        let mut one = [empty; 1];
+        let mut execution = RecoveryPlanExecution::from_plan(plan);
+
+        let dispatch = execution.dispatch_due(10_000, &mut one);
+        assert_eq!(dispatch.dispatched, 1);
+        assert_eq!(dispatch.remaining, 3);
+        assert_eq!(dispatch.next_due_us, 510);
+        assert_eq!(dispatch.overdue_us, 9_490);
+        assert!(dispatch.is_blocked_by_output());
+        assert_eq!(
+            execution.next_pending(),
+            Some(RecoveryStep::new(
+                ModuleId::Sensor,
+                RecoveryStepKind::RestartModule,
+                510,
+                5_000
+            ))
+        );
+
+        let dispatch = execution.dispatch_due(10_000, &mut one);
+        assert_eq!(dispatch.dispatched, 1);
+        assert_eq!(dispatch.remaining, 2);
+        assert_eq!(dispatch.next_due_us, 5_510);
+        assert_eq!(dispatch.consumed_budget_us, 5_500);
+    }
+
+    #[test]
+    fn recovery_plan_execution_does_not_advance_with_empty_output() {
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Radio,
+            error: KernelError::RadioTxFail,
+            action: Action::RetryDelay(1_000),
+            state: SystemState::Running,
+        };
+        let plan =
+            RecoveryPlan::<2>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
+        let mut execution = RecoveryPlanExecution::from_plan(plan);
+
+        let dispatch = execution.dispatch_due(2_000, &mut []);
+        assert_eq!(dispatch.dispatched, 0);
+        assert_eq!(dispatch.remaining, 2);
+        assert_eq!(dispatch.next_due_us, 1_100);
+        assert_eq!(dispatch.overdue_us, 900);
+        assert_eq!(execution.dispatched_count(), 0);
+        assert_eq!(execution.consumed_budget_us(), 0);
+        assert_eq!(
+            execution.next_pending(),
+            Some(RecoveryStep::new(
+                ModuleId::Radio,
+                RecoveryStepKind::Retry,
+                1_100,
+                1_000
+            ))
         );
     }
 

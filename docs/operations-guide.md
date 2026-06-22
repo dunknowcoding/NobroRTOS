@@ -64,6 +64,10 @@ model or endpoint.
 tooling or starter templates. It catches oversized bridge payloads, undersized
 response buffers, zero-depth queues, parameter value overflow, and timeout
 budget violations without contacting a ROS transport or agent.
+Kernel recovery tests should pass before changing self-healing logic. They
+cover fixed-capacity recovery planning, execution cursor progress, overdue-step
+visibility, output-buffer backpressure, watchdog escalation, and module
+lifecycle recovery completion without contacting external hardware.
 
 ## Commit Hygiene
 
