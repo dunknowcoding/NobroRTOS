@@ -148,6 +148,10 @@ quiesce-before-restart order without heap allocation.
 dependency reboot can pause affected modules, restart and verify the root, and
 resume the affected modules in startup order with explicit capacity and budget
 checks.
+Runtime impact-aware recovery entry points require the caller to pass the
+dependency impact explicitly and reject mismatched impact roots, keeping startup
+graph ownership outside the hot runtime state while still preserving misuse
+detection.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

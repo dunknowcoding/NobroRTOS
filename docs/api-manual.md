@@ -319,6 +319,11 @@ errors, so self-healing can be reviewed before being attached to board-specific
 restart or power-control code.
 Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
 `RecoveryOutcome` with the generated plan.
+Use `Runtime::record_error_with_plan_and_impact` or
+`Runtime::record_watchdog_expired_with_plan_and_impact` when the caller already
+has startup impact data for a shared dependency. The planner validates that the
+impact root matches the recovery outcome module before emitting dependent-module
+steps.
 Use `next_due`, `due_count`, `remaining_count`, and `copy_due` to inspect
 time-ready recovery steps from a firmware loop or host simulator without
 mutating the plan or executing board-specific actions.

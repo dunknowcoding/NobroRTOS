@@ -3,12 +3,13 @@
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
-    EventLogReport, EventSeverity, FaultThresholds, HealthReport, KernelError, KvError, KvKey,
-    KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState,
-    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
-    RecoveryPlanPolicy, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget,
-    SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    DependencyImpact, EventLogReport, EventSeverity, FaultThresholds, HealthReport, KernelError,
+    KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
+    ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
+    ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
+    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RuntimeReport, RuntimeReportInput,
+    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
+    WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -417,6 +418,19 @@ impl<
         Ok(RecoveryPlanning { outcome, plan })
     }
 
+    pub fn record_error_with_plan_and_impact<const STEPS: usize, const IMPACT: usize>(
+        &mut self,
+        module: ModuleId,
+        error: KernelError,
+        impact: &DependencyImpact<IMPACT>,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
+        let outcome = self.record_error(module, error, now_us)?;
+        let plan = RecoveryPlan::from_outcome_with_impact(outcome, impact, now_us, policy)?;
+        Ok(RecoveryPlanning { outcome, plan })
+    }
+
     pub fn record_watchdog_expired(
         &mut self,
         module: ModuleId,
@@ -439,6 +453,18 @@ impl<
     ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
         let outcome = self.record_watchdog_expired(module, now_us)?;
         let plan = RecoveryPlan::from_outcome(outcome, now_us, policy)?;
+        Ok(RecoveryPlanning { outcome, plan })
+    }
+
+    pub fn record_watchdog_expired_with_plan_and_impact<const STEPS: usize, const IMPACT: usize>(
+        &mut self,
+        module: ModuleId,
+        impact: &DependencyImpact<IMPACT>,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
+        let outcome = self.record_watchdog_expired(module, now_us)?;
+        let plan = RecoveryPlan::from_outcome_with_impact(outcome, impact, now_us, policy)?;
         Ok(RecoveryPlanning { outcome, plan })
     }
 
@@ -1424,6 +1450,101 @@ mod tests {
         );
         assert_eq!(
             runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Recovering)
+        );
+    }
+
+    #[test]
+    fn runtime_records_fault_with_dependency_impact_plan() {
+        let manifest: SystemManifest<4> = SystemManifest::from_specs(&[
+            kernel_module_spec(
+                MemoryBudget::new(16 * 1024, 4 * 1024, 4),
+                DeadlineContract::new(20_000, 10),
+            ),
+            ModuleSpec::new(ModuleId::Bus, Criticality::System).memory(MemoryBudget::new(
+                4 * 1024,
+                1 * 1024,
+                1,
+            )),
+            ModuleSpec::new(ModuleId::Sensor, Criticality::Driver).memory(MemoryBudget::new(
+                4 * 1024,
+                1 * 1024,
+                1,
+            )),
+            ModuleSpec::new(ModuleId::App(1), Criticality::User).memory(MemoryBudget::new(
+                4 * 1024,
+                1 * 1024,
+                1,
+            )),
+        ])
+        .unwrap();
+        let mut graph = StartupGraph::<4>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Bus,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        graph
+            .add_dependency(ModuleId::Bus, ModuleId::Kernel)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::Sensor, ModuleId::Bus)
+            .unwrap();
+        graph
+            .add_dependency(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+        let impact = graph.dependency_impact::<2>(ModuleId::Bus).unwrap();
+        let mut runtime = Runtime::<4, 4, 4, 4, 4, 4, 16>::admit_graph(
+            &manifest,
+            &graph,
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Bus, KernelError::BusTimeout, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Bus, KernelError::BusTimeout, 30)
+            .unwrap();
+
+        let planning = runtime
+            .record_error_with_plan_and_impact::<8, 2>(
+                ModuleId::Bus,
+                KernelError::BusTimeout,
+                &impact,
+                40,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+
+        assert_eq!(planning.outcome.action, Action::RebootModule);
+        assert_eq!(planning.plan.len, 8);
+        assert_eq!(
+            planning.plan.steps[0],
+            Some(RecoveryStep::new(
+                ModuleId::App(1),
+                RecoveryStepKind::QuiesceModule,
+                40,
+                500
+            ))
+        );
+        assert_eq!(
+            planning.plan.steps[7],
+            Some(RecoveryStep::new(
+                ModuleId::App(1),
+                RecoveryStepKind::ResumeModule,
+                8_540,
+                500
+            ))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Bus),
             Some(ModuleRunState::Recovering)
         );
     }

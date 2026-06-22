@@ -79,6 +79,7 @@ impl Default for RecoveryPlanPolicy {
 pub enum RecoveryPlanError {
     Full,
     BudgetExceeded { required_us: u64, limit_us: u32 },
+    ImpactRootMismatch { outcome: ModuleId, impact: ModuleId },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,7 +202,16 @@ impl<const N: usize> RecoveryPlan<N> {
         now_us: u64,
         policy: RecoveryPlanPolicy,
     ) -> Result<Self, RecoveryPlanError> {
-        if outcome.action != Action::RebootModule || impact.is_empty() {
+        if outcome.action != Action::RebootModule {
+            return Self::from_outcome(outcome, now_us, policy);
+        }
+        if impact.root != outcome.module {
+            return Err(RecoveryPlanError::ImpactRootMismatch {
+                outcome: outcome.module,
+                impact: impact.root,
+            });
+        }
+        if impact.is_empty() {
             return Self::from_outcome(outcome, now_us, policy);
         }
 
@@ -876,6 +886,20 @@ mod tests {
             Err(RecoveryPlanError::BudgetExceeded {
                 required_us: 8_000,
                 limit_us: 7_000,
+            })
+        );
+
+        let wrong_root = DependencyImpact::<1>::new(ModuleId::Bus);
+        assert_eq!(
+            RecoveryPlan::<6>::from_outcome_with_impact(
+                outcome,
+                &wrong_root,
+                0,
+                RecoveryPlanPolicy::DEFAULT
+            ),
+            Err(RecoveryPlanError::ImpactRootMismatch {
+                outcome: ModuleId::Sensor,
+                impact: ModuleId::Bus,
             })
         );
     }
