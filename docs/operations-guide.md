@@ -37,6 +37,7 @@ python tools/nobro_contract_tool.py check-starter-templates
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
@@ -45,8 +46,13 @@ python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 ```
+
+`check-report-matrix` should pass before packaging any host tooling change that
+touches fixed reports, boot diagnostics, AI model descriptors, or ROS bridge
+descriptors.
 
 ## Commit Hygiene
 

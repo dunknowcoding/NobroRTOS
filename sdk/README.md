@@ -24,7 +24,11 @@ repository root:
 
 ```powershell
 python tools/nobro_contract_tool.py check-software-surface
+python tools/nobro_contract_tool.py check-report-matrix
 ```
+
+The report matrix gate protects the SDK-facing diagnostic surface by checking
+fixed-report statuses, checksums, error labels, and decoded AI/ROS report fields.
 
 The gate returns one JSON report for the host contract, package metadata,
 public headers, starter templates, AI route matrix, recovery matrix, watchdog

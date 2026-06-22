@@ -257,8 +257,10 @@ The runtime drill checker turns the same scenario into a pass/fail software
 gate for CI and VS Code tasks. The software surface checker combines host
 contract, package metadata, public headers, starter templates, AI route matrix,
 recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
-matrix, degrade matrix, startup matrix, boot summary matrix, bundle matrix, and
+matrix, degrade matrix, startup matrix, boot summary matrix, bundle matrix, report matrix, and
 runtime drill validation before packaging.
+The report matrix checker verifies fixed-report status classes, checksum
+handling, error labels, and decoded runtime, AI model, and ROS bridge fields.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
 and hybrid route decisions by changing backend, readiness, budget, stale-age,

@@ -154,6 +154,9 @@ the deterministic startup planner.
 The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
+The `check-report-matrix` CLI validates fixed report pass, fail, missing,
+in-progress, corrupt, checksum, error-label, AI model, and ROS bridge decode
+paths.
 `RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
 checks into one deterministic pressure drill.
 `RecoveryPolicySimulator` mirrors the kernel's health threshold escalation for
@@ -238,6 +241,7 @@ python -m nobro_rtos sample-ai-route
 python -m nobro_rtos check-ai-route --backend hybrid --require-target on_device
 python -m nobro_rtos check-ai-route-matrix
 python -m nobro_rtos check-bundle-matrix
+python -m nobro_rtos check-report-matrix
 python -m nobro_rtos sample-report runtime
 python -m nobro_rtos sample-report health
 python -m nobro_rtos sample-report ai_model
@@ -263,6 +267,7 @@ python -m nobro_rtos check-starter-templates
 python -m nobro_rtos sample-startup
 python -m nobro_rtos check-startup-matrix
 python -m nobro_rtos check-boot-summary-matrix
+python -m nobro_rtos check-report-matrix
 python -m nobro_rtos sample-project platformio --name edge_demo --module control
 python -m nobro_rtos write-project platformio --output _work\edge_demo --name edge_demo
 python -m nobro_rtos check-project _work\edge_demo --target platformio
@@ -322,7 +327,7 @@ The software surface checker is the recommended pre-package gate for host-side
 validation. It combines the host contract, SDK/package metadata, public C/C++
 headers, starter templates, AI route matrix, recovery matrix, watchdog matrix,
 scheduler matrix, event log matrix, quota matrix, degrade matrix, startup
-matrix, boot summary matrix, bundle matrix, and runtime drill gates into one
+matrix, boot summary matrix, bundle matrix, report matrix, and runtime drill gates into one
 JSON report.
 The startup sample emits a deterministic dependency order for the runtime
 module set, making startup sequencing reviewable before firmware code is
@@ -361,6 +366,7 @@ python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 ```
 
 Decode a boot diagnostic code:

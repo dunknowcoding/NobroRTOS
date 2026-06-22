@@ -29,6 +29,7 @@ python tools/nobro_contract_tool.py sample-ai-route
 python tools/nobro_contract_tool.py check-ai-route
 python tools/nobro_contract_tool.py check-ai-route-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-recovery-matrix
 python tools/nobro_contract_tool.py check-watchdog-matrix
 python tools/nobro_contract_tool.py check-scheduler-matrix
@@ -37,6 +38,7 @@ python tools/nobro_contract_tool.py check-quota-matrix
 python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
@@ -61,6 +63,7 @@ python tools/nobro_contract_tool.py check-degrade-matrix
 python tools/nobro_contract_tool.py check-startup-matrix
 python tools/nobro_contract_tool.py check-boot-summary-matrix
 python tools/nobro_contract_tool.py check-bundle-matrix
+python tools/nobro_contract_tool.py check-report-matrix
 python tools/nobro_contract_tool.py check-runtime-drill --fault-count 3
 python tools/nobro_contract_tool.py sample-startup
 ```
@@ -93,6 +96,8 @@ fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
 `check-boot-summary-matrix` validates deterministic all-pass, missing-stage,
 corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
+`check-report-matrix` validates fixed report pass, fail, missing, in-progress,
+and corrupt states, checksum handling, error labels, and AI/ROS domain fields.
 `check-runtime-drill` returns non-zero when disabled modules, module reboots, or
 dropped event-log records exceed the configured limits.
 `check-software-surface` is the pre-package gate for software-only validation:

@@ -145,6 +145,10 @@ def main() -> int:
         "check-bundle-matrix",
         help="run deterministic contract bundle validation checks",
     )
+    subparsers.add_parser(
+        "check-report-matrix",
+        help="run deterministic fixed report decoder checks",
+    )
     sample_report = subparsers.add_parser(
         "sample-report",
         help="print a sealed sample fixed report as JSON",
@@ -483,6 +487,10 @@ def main() -> int:
         return 0 if report["passing"] else 1
     if args.command == "check-bundle-matrix":
         report = _check_bundle_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
+    if args.command == "check-report-matrix":
+        report = _check_report_matrix()
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
     if args.command == "sample-report":
@@ -1197,6 +1205,7 @@ def _doctor() -> dict[str, object]:
             "ai_route_gate",
             "ai_route_matrix_gate",
             "bundle_matrix_gate",
+            "report_matrix_gate",
             "project_templates",
             "starter_template_gate",
         ],
@@ -1309,6 +1318,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("startup_matrix", _check_startup_matrix())
     add_check("boot_summary_matrix", _check_boot_summary_matrix())
     add_check("bundle_matrix", _check_bundle_matrix())
+    add_check("report_matrix", _check_report_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -1762,6 +1772,246 @@ def _sample_report(kind: str) -> dict[str, int]:
         )
     raise ValueError(f"unsupported sample report kind: {kind}")
 
+
+def _check_report_matrix() -> dict[str, object]:
+    scenarios = (
+        _report_sample_decode_scenario(),
+        _report_status_class_scenario(),
+        _report_failure_label_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _report_sample_decode_scenario() -> dict[str, object]:
+    kinds = (
+        "admission",
+        "runtime",
+        "health",
+        "event_log",
+        "module_runtime",
+        "degrade_application",
+        "ai_model",
+        "ros_bridge",
+    )
+    decoded = {
+        kind: FixedReport.from_dict(ReportKind(kind), _sample_report(kind)).to_dict()
+        for kind in kinds
+    }
+    errors: list[str] = []
+    for kind, report in decoded.items():
+        _expect_equal(report["status"], "pass", f"{kind}.status", errors)
+        _expect_equal(report["checksum_ok"], True, f"{kind}.checksum_ok", errors)
+
+    _expect_equal(decoded["admission"]["admitted"], True, "admission.admitted", errors)
+    _expect_equal(
+        decoded["runtime"]["next_alarm_due_us"],
+        0x1234_5678_9ABC,
+        "runtime.next_alarm_due_us",
+        errors,
+    )
+    _expect_equal(
+        decoded["health"]["module_label"], "sensor", "health.module_label", errors
+    )
+    _expect_equal(
+        decoded["event_log"]["latest_module_label"],
+        "sensor",
+        "event_log.latest_module_label",
+        errors,
+    )
+    _expect_equal(
+        decoded["module_runtime"]["latest_change_us"],
+        0x1_0000_00C0,
+        "module_runtime.latest_change_us",
+        errors,
+    )
+    _expect_equal(
+        decoded["degrade_application"]["applied_at_us"],
+        0x1_0000_0020,
+        "degrade_application.applied_at_us",
+        errors,
+    )
+    _expect_equal(decoded["ai_model"]["backend"], "hybrid", "ai_model.backend", errors)
+    _expect_equal(
+        decoded["ai_model"]["route_preference"],
+        "hybrid_fallback",
+        "ai_model.route_preference",
+        errors,
+    )
+    _expect_equal(
+        decoded["ros_bridge"]["transport"], "serial", "ros_bridge.transport", errors
+    )
+
+    return {
+        "name": "sample_reports_decode_domain_fields",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "decoded": {
+            kind: {
+                "status": report["status"],
+                "checksum_ok": report["checksum_ok"],
+                **{
+                    key: report[key]
+                    for key in (
+                        "admitted",
+                        "next_alarm_due_us",
+                        "module_label",
+                        "latest_module_label",
+                        "latest_change_us",
+                        "applied_at_us",
+                        "backend",
+                        "route_preference",
+                        "transport",
+                    )
+                    if key in report
+                },
+            }
+            for kind, report in decoded.items()
+        },
+    }
+
+
+def _report_status_class_scenario() -> dict[str, object]:
+    pass_payload = seal_report(
+        ReportKind.MANIFEST,
+        {
+            "valid": 1,
+            "module_count": 2,
+            "fingerprint": 0xCAFE,
+            "required_bits": Capability.TIMEBASE.bit,
+            "owned_bits": Capability.HOST_REPORT.bit,
+        },
+    )
+    in_progress = dict(pass_payload)
+    in_progress["completed"] = 0
+    corrupt_magic = dict(pass_payload)
+    corrupt_magic["magic"] = 0
+    corrupt_checksum = dict(pass_payload)
+    corrupt_checksum["module_count"] = 3
+
+    reports = {
+        "missing": FixedReport.from_dict(ReportKind.MANIFEST, {}).to_dict(),
+        "in_progress": FixedReport.from_dict(ReportKind.MANIFEST, in_progress).to_dict(),
+        "corrupt_magic": FixedReport.from_dict(ReportKind.MANIFEST, corrupt_magic).to_dict(),
+        "corrupt_checksum": FixedReport.from_dict(
+            ReportKind.MANIFEST, corrupt_checksum
+        ).to_dict(),
+        "pass": FixedReport.from_dict(ReportKind.MANIFEST, pass_payload).to_dict(),
+    }
+    statuses = {name: report["status"] for name, report in reports.items()}
+    errors: list[str] = []
+    _expect_equal(statuses["missing"], "missing", "missing.status", errors)
+    _expect_equal(statuses["in_progress"], "in_progress", "in_progress.status", errors)
+    _expect_equal(statuses["corrupt_magic"], "corrupt", "corrupt_magic.status", errors)
+    _expect_equal(
+        statuses["corrupt_checksum"], "corrupt", "corrupt_checksum.status", errors
+    )
+    _expect_equal(statuses["pass"], "pass", "pass.status", errors)
+    _expect_equal(reports["pass"]["checksum_ok"], True, "pass.checksum_ok", errors)
+    _expect_equal(
+        reports["corrupt_checksum"]["checksum_ok"],
+        False,
+        "corrupt_checksum.checksum_ok",
+        errors,
+    )
+
+    return {
+        "name": "status_classes_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "statuses": statuses,
+        "checksum_ok": {
+            name: report["checksum_ok"] for name, report in reports.items()
+        },
+    }
+
+
+def _report_failure_label_scenario() -> dict[str, object]:
+    board_package = FixedReport.from_dict(
+        ReportKind.BOARD_PACKAGE,
+        seal_report(
+            ReportKind.BOARD_PACKAGE,
+            {
+                "valid": 0,
+                "board_hash": 0x2222,
+                "boot_layout": 1,
+                "app_flash_start": 0x1000,
+                "app_flash_len_bytes": 1020 * 1024,
+                "ram_start": 0x2000_0000,
+                "ram_len_bytes": 256 * 1024,
+                "flash_budget_bytes": 80 * 1024,
+                "ram_budget_bytes": 32 * 1024,
+                "sample_pool_slots": 8,
+                "max_modules": 16,
+                "led_pin": 15,
+                "servo_pin": 24,
+                "mvk_trigger_pin": 17,
+                "error_code": 7,
+            },
+        ),
+    ).to_dict()
+    adapter = FixedReport.from_dict(
+        ReportKind.ADAPTER_COMPAT,
+        seal_report(
+            ReportKind.ADAPTER_COMPAT,
+            {
+                "compatible": 0,
+                "adapter_count": 2,
+                "error_code": 3,
+                "error_module_tag": 3,
+                "error_capability_bits": Capability.BUS0.bit,
+            },
+        ),
+    ).to_dict()
+    admission = FixedReport.from_dict(
+        ReportKind.ADMISSION,
+        seal_report(ReportKind.ADMISSION, {"admitted": 0, "error_code": 5}),
+    ).to_dict()
+
+    errors: list[str] = []
+    _expect_equal(board_package["status"], "fail", "board_package.status", errors)
+    _expect_equal(
+        board_package["error_label"],
+        "duplicate_critical_pin",
+        "board_package.error_label",
+        errors,
+    )
+    _expect_equal(adapter["status"], "fail", "adapter.status", errors)
+    _expect_equal(
+        adapter["error_label"],
+        "capability_ownership_conflict",
+        "adapter.error_label",
+        errors,
+    )
+    _expect_equal(
+        adapter["error_module_label"], "bus", "adapter.error_module_label", errors
+    )
+    _expect_equal(admission["status"], "fail", "admission.status", errors)
+    _expect_equal(
+        admission["error_label"],
+        "missing_startup_node",
+        "admission.error_label",
+        errors,
+    )
+
+    return {
+        "name": "failure_labels_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "board_package_error_label": board_package["error_label"],
+        "adapter_error_label": adapter["error_label"],
+        "adapter_error_module_label": adapter["error_module_label"],
+        "admission_error_label": admission["error_label"],
+    }
 
 def _check_boot_summary_matrix() -> dict[str, object]:
     scenarios = (

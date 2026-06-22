@@ -72,6 +72,7 @@ from nobro_rtos.cli import (
     _check_event_log_matrix,
     _check_project,
     _check_quota_matrix,
+    _check_report_matrix,
     _check_recovery_matrix,
     _check_runtime_drill,
     _check_scheduler_matrix,
@@ -191,6 +192,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("startup_matrix_gate", report["host_simulators"])
         self.assertIn("boot_summary_matrix_gate", report["host_simulators"])
         self.assertIn("bundle_matrix_gate", report["host_simulators"])
+        self.assertIn("report_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -231,6 +233,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["boot_summary_matrix"]["passing"])
         self.assertIn("bundle_matrix", report["checks"])
         self.assertTrue(report["checks"]["bundle_matrix"]["passing"])
+        self.assertIn("report_matrix", report["checks"])
+        self.assertTrue(report["checks"]["report_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -364,6 +368,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Bundle Matrix Gate",
         )
         self.assertIn("check-bundle-matrix", python_tasks["tasks"][13]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][14]["label"],
+            "NobroRTOS: Report Matrix Gate",
+        )
+        self.assertIn("check-report-matrix", python_tasks["tasks"][14]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -594,6 +603,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "summarize-boot"]
                 if task["label"] == "NobroRTOS: Bundle Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "validate-bundle"]
+                if task["label"] == "NobroRTOS: Report Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "decode-report"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -613,6 +624,7 @@ class ContractBuilderTests(unittest.TestCase):
                 before.errors,
             )
             self.assertIn("bundle matrix gate task command mismatch", before.errors)
+            self.assertIn("report matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -661,6 +673,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "bundle matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "report matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -739,6 +755,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Bundle Matrix Gate"
             )
             self.assertIn("check-bundle-matrix", bundle_matrix_gate["args"])
+            report_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Report Matrix Gate"
+            )
+            self.assertIn("check-report-matrix", report_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1096,6 +1118,51 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["passing"])
         self.assertEqual(payload["scenario_count"], 4)
+
+    def test_report_matrix_covers_status_and_domain_paths(self) -> None:
+        report = _check_report_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 3)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["sample_reports_decode_domain_fields"]["decoded"]["runtime"][
+                "next_alarm_due_us"
+            ],
+            0x1234_5678_9ABC,
+        )
+        self.assertEqual(
+            scenarios["sample_reports_decode_domain_fields"]["decoded"]["ai_model"][
+                "route_preference"
+            ],
+            "hybrid_fallback",
+        )
+        self.assertEqual(
+            scenarios["status_classes_are_reported"]["statuses"]["missing"],
+            "missing",
+        )
+        self.assertEqual(
+            scenarios["status_classes_are_reported"]["statuses"]["corrupt_checksum"],
+            "corrupt",
+        )
+        self.assertEqual(
+            scenarios["failure_labels_are_reported"]["adapter_error_module_label"],
+            "bus",
+        )
+
+    def test_report_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-report-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 3)
 
     def test_startup_plan_orders_dependencies_before_dependents(self) -> None:
         modules = (

@@ -178,6 +178,8 @@ status-count paths for boot report summaries.
 The `check-bundle-matrix` CLI validates contract bundle roundtrip, capability
 ownership, module naming, AI/ROS uniqueness, hard-realtime deadline, and startup
 dependency error paths.
+The `check-report-matrix` CLI validates fixed report status classes, checksum
+handling, failure labels, and decoded runtime, AI model, and ROS bridge fields.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
@@ -219,7 +221,9 @@ plan for the reference runtime module set, or `check-startup-matrix` to verify
 startup graph edge cases before adding board-specific adapters.
 `check-boot-summary-matrix` verifies first-diagnostic priority, diagnostic-code
 layout, checksum corruption, failed-adapter labels, in-progress reports, and
-per-status counts for the same host report path.
+per-status counts for the same host report path. `check-report-matrix` keeps the
+individual fixed-report decoders locked to stable status and domain-field
+semantics.
 
 ### Scheduler
 
