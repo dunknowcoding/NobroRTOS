@@ -160,6 +160,12 @@ let planning = runtime.record_error_with_plan::<4>(
 assert!(planning.plan.deadline_us >= now_us);
 ```
 
+Use `apply_recovery_step(step, now_us)` when a firmware loop or host simulator
+wants runtime bookkeeping for a dispatched recovery step. The runtime applies
+quiesce and resume steps to module state, rejects disabled modules, and leaves
+restart, retry, notify, and heartbeat verification work to board-specific
+adapters.
+
 The `check-watchdog-matrix` CLI validates non-mutating liveness prechecks,
 expiry mutation, heartbeat reset, multi-module expiry, and capacity errors.
 The `check-scheduler-matrix` CLI validates on-time ticks, tolerated early/late
@@ -349,6 +355,9 @@ for step in due.iter().take(dispatch.dispatched) {
 The execution cursor owns no heap memory, uses caller-owned output buffers, and
 reports remaining steps, next due time, consumed budget, overdue work, and
 completion status.
+Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` when software
+needs deterministic module-state bookkeeping for quiesce/resume while keeping
+hardware restart and heartbeat operations in adapter code.
 
 ## HAL API
 

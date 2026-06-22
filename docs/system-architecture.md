@@ -152,6 +152,9 @@ Runtime impact-aware recovery entry points require the caller to pass the
 dependency impact explicitly and reject mismatched impact roots, keeping startup
 graph ownership outside the hot runtime state while still preserving misuse
 detection.
+`Runtime::apply_recovery_step` closes the software bookkeeping loop for
+dispatched recovery plans: quiesce and resume steps update module runtime
+state, while restart and heartbeat verification remain adapter responsibilities.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

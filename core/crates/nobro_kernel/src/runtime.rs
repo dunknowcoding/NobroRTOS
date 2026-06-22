@@ -7,9 +7,9 @@ use crate::{
     KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
     ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
-    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RuntimeReport, RuntimeReportInput,
-    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
-    WatchdogEntry, WatchdogError,
+    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
+    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
+    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -509,6 +509,35 @@ impl<
         self.record_ok(module, now_us)?;
         self.modules.complete_recovery(module, now_us)?;
         Ok(())
+    }
+
+    pub fn apply_recovery_step(
+        &mut self,
+        step: RecoveryStep,
+        now_us: u64,
+    ) -> Result<(), RuntimeError> {
+        self.ensure_module_enabled(step.module)?;
+        match step.kind {
+            RecoveryStepKind::Observe
+            | RecoveryStepKind::Notify
+            | RecoveryStepKind::Retry
+            | RecoveryStepKind::RestartModule
+            | RecoveryStepKind::VerifyHeartbeat => Ok(()),
+            RecoveryStepKind::QuiesceModule => match self.module_state(step.module) {
+                Some(ModuleRunState::Suspended) | Some(ModuleRunState::Recovering) => Ok(()),
+                _ => {
+                    self.modules.suspend(step.module, now_us)?;
+                    Ok(())
+                }
+            },
+            RecoveryStepKind::ResumeModule => match self.module_state(step.module) {
+                Some(ModuleRunState::Active) => Ok(()),
+                _ => {
+                    self.modules.resume(step.module, now_us)?;
+                    Ok(())
+                }
+            },
+        }
     }
 
     pub fn suspend_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
@@ -1339,6 +1368,15 @@ mod tests {
                 ModuleId::Sensor
             )))
         );
+        assert_eq!(
+            runtime.apply_recovery_step(
+                RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::ResumeModule, 20, 500),
+                20
+            ),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
         assert_eq!(runtime.mailbox().len(), 0);
         assert_eq!(runtime.alarms().len(), 0);
     }
@@ -1547,6 +1585,45 @@ mod tests {
             runtime.module_state(ModuleId::Bus),
             Some(ModuleRunState::Recovering)
         );
+
+        runtime
+            .apply_recovery_step(planning.plan.steps[0].unwrap(), 50)
+            .unwrap();
+        runtime
+            .apply_recovery_step(planning.plan.steps[1].unwrap(), 60)
+            .unwrap();
+        runtime
+            .apply_recovery_step(planning.plan.steps[2].unwrap(), 70)
+            .unwrap();
+        assert_eq!(
+            runtime.module_state(ModuleId::App(1)),
+            Some(ModuleRunState::Suspended)
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Suspended)
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Bus),
+            Some(ModuleRunState::Recovering)
+        );
+
+        for step in planning.plan.steps[3..8].iter().flatten() {
+            runtime.apply_recovery_step(*step, step.due_us).unwrap();
+        }
+        assert_eq!(
+            runtime.module_state(ModuleId::Bus),
+            Some(ModuleRunState::Active)
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Active)
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::App(1)),
+            Some(ModuleRunState::Active)
+        );
+        assert_eq!(runtime.state(), SystemState::Recovering);
     }
 
     #[test]
