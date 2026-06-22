@@ -166,6 +166,9 @@ release, total-use, strict module identity, limit enforcement, underflow, and
 overflow paths.
 The `check-degrade-matrix` CLI validates flash, RAM, pool, module-limit,
 same-criticality, planner-capacity, and essential-module pressure paths.
+The `check-startup-matrix` CLI validates no-dependency, dependency-chain,
+fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths for
+startup graph construction.
 `RuntimeDrillSimulator` composes the same host-side planning and quota checks
 with fixed-ring event logging and recovery escalation, which makes it useful for
 reviewing a complete control-plane pressure scenario before writing board code.
@@ -198,11 +201,12 @@ stale task cannot keep the right name while calling the wrong host tool.
 Starter templates also include VS Code task metadata for that same project
 check. Python host templates add runtime drill, runtime drill gate, and AI
 route, AI route matrix, recovery matrix, watchdog matrix, scheduler matrix, and
-event log matrix, quota matrix, and degrade matrix gate tasks, and Python board
-bridge templates add an offline bridge smoke task for MicroPython,
+event log matrix, quota matrix, degrade matrix, and startup matrix gate tasks,
+and Python board bridge templates add an offline bridge smoke task for MicroPython,
 CircuitPython, and mPython-style development.
 Host tooling can also run `sample-startup` to print a JSON startup dependency
-plan for the reference runtime module set.
+plan for the reference runtime module set, or `check-startup-matrix` to verify
+startup graph edge cases before adding board-specific adapters.
 
 ### Scheduler
 
@@ -478,8 +482,8 @@ local, remote API, edge sidecar, stale snapshot, degraded fallback, and
 unavailable route outcomes.
 The `check-software-surface` CLI composes host contract, SDK/package metadata,
 public header, starter template, AI route matrix, recovery matrix, watchdog
-matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix, and
-runtime drill validation for pre-package review.
+matrix, scheduler matrix, event log matrix, quota matrix, degrade matrix,
+startup matrix, and runtime drill validation for pre-package review.
 
 ## Host API
 

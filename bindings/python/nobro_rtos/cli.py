@@ -322,6 +322,10 @@ def main() -> int:
         "sample-startup",
         help="print a deterministic startup dependency plan as JSON",
     )
+    subparsers.add_parser(
+        "check-startup-matrix",
+        help="run deterministic startup dependency planner checks",
+    )
     sample_project = subparsers.add_parser(
         "sample-project",
         help="print a starter project template as JSON without writing files",
@@ -625,6 +629,10 @@ def main() -> int:
     if args.command == "sample-startup":
         print(json.dumps(_sample_startup(), indent=2, sort_keys=True))
         return 0
+    if args.command == "check-startup-matrix":
+        report = _check_startup_matrix()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "sample-project":
         print(
             json.dumps(
@@ -802,6 +810,7 @@ def _doctor() -> dict[str, object]:
             "quota_matrix_gate",
             "degrade",
             "degrade_matrix_gate",
+            "startup_matrix_gate",
             "runtime_drill",
             "runtime_drill_gate",
             "ai_route_gate",
@@ -915,6 +924,7 @@ def _check_software_surface() -> dict[str, object]:
     add_check("event_log_matrix", _check_event_log_matrix())
     add_check("quota_matrix", _check_quota_matrix())
     add_check("degrade_matrix", _check_degrade_matrix())
+    add_check("startup_matrix", _check_startup_matrix())
     add_check(
         "ai_route",
         _check_ai_route(
@@ -2815,6 +2825,179 @@ def _sample_startup() -> dict[str, object]:
     return {
         "dependencies": [dependency.to_dict() for dependency in dependencies],
         **plan.to_dict(),
+    }
+
+
+def _check_startup_matrix() -> dict[str, object]:
+    scenarios = (
+        _startup_no_dependencies_scenario(),
+        _startup_chain_scenario(),
+        _startup_fan_in_out_scenario(),
+        _startup_error_scenario(),
+    )
+    errors: list[str] = []
+    for scenario in scenarios:
+        for error in scenario["errors"]:
+            errors.append(f"{scenario['name']}: {error}")
+
+    return {
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "scenario_count": len(scenarios),
+        "scenarios": list(scenarios),
+    }
+
+
+def _startup_scenario(
+    name: str,
+    modules: tuple[ModuleSpec, ...],
+    dependencies: tuple[StartupDependency, ...],
+    expected_order: tuple[str, ...],
+) -> dict[str, object]:
+    plan = plan_startup(modules, dependencies)
+    errors: list[str] = []
+    _expect_equal(plan.order, expected_order, "order", errors)
+    _expect_equal(
+        plan.to_dict()["startup_len"],
+        len(expected_order),
+        "startup_len",
+        errors,
+    )
+    return {
+        "name": name,
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "dependencies": [dependency.to_dict() for dependency in dependencies],
+        **plan.to_dict(),
+    }
+
+
+def _startup_modules(names: tuple[str, ...]) -> tuple[ModuleSpec, ...]:
+    criticalities = {
+        "kernel": Criticality.HARD_REALTIME,
+        "bus": Criticality.SYSTEM,
+        "hal": Criticality.SYSTEM,
+        "sensor": Criticality.DRIVER,
+        "radio": Criticality.DRIVER,
+        "ai": Criticality.USER,
+        "telemetry": Criticality.BEST_EFFORT,
+    }
+    return tuple(
+        _degrade_module(name, criticalities.get(name, Criticality.USER), 16, 4, 1)
+        for name in names
+    )
+
+
+def _startup_no_dependencies_scenario() -> dict[str, object]:
+    return _startup_scenario(
+        "no_dependencies_preserve_manifest_order",
+        _startup_modules(("kernel", "sensor", "radio")),
+        (),
+        ("kernel", "sensor", "radio"),
+    )
+
+
+def _startup_chain_scenario() -> dict[str, object]:
+    return _startup_scenario(
+        "dependency_chain_orders_prerequisites_first",
+        _startup_modules(("kernel", "sensor", "ai", "telemetry")),
+        (
+            StartupDependency("sensor", "kernel"),
+            StartupDependency("ai", "sensor"),
+            StartupDependency("telemetry", "ai"),
+        ),
+        ("kernel", "sensor", "ai", "telemetry"),
+    )
+
+
+def _startup_fan_in_out_scenario() -> dict[str, object]:
+    return _startup_scenario(
+        "fan_in_out_is_deterministic",
+        _startup_modules(("kernel", "bus", "sensor", "radio", "ai", "telemetry")),
+        (
+            StartupDependency("bus", "kernel"),
+            StartupDependency("sensor", "bus"),
+            StartupDependency("radio", "bus"),
+            StartupDependency("ai", "sensor"),
+            StartupDependency("ai", "radio"),
+            StartupDependency("telemetry", "radio"),
+        ),
+        ("kernel", "bus", "sensor", "radio", "ai", "telemetry"),
+    )
+
+
+def _startup_error_scenario() -> dict[str, object]:
+    modules = _startup_modules(("kernel", "sensor"))
+    unknown_dependency_error = None
+    self_cycle_error = None
+    duplicate_dependency_error = None
+    cycle_error = None
+
+    try:
+        plan_startup(modules, (StartupDependency("sensor", "missing"),))
+    except Exception as exc:  # noqa: BLE001 - report planner gate context.
+        unknown_dependency_error = str(exc)
+
+    try:
+        plan_startup(modules, (StartupDependency("sensor", "sensor"),))
+    except Exception as exc:  # noqa: BLE001 - report planner gate context.
+        self_cycle_error = str(exc)
+
+    try:
+        plan_startup(
+            modules,
+            (
+                StartupDependency("sensor", "kernel"),
+                StartupDependency("sensor", "kernel"),
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - report planner gate context.
+        duplicate_dependency_error = str(exc)
+
+    try:
+        plan_startup(
+            modules,
+            (
+                StartupDependency("kernel", "sensor"),
+                StartupDependency("sensor", "kernel"),
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - report planner gate context.
+        cycle_error = str(exc)
+
+    errors: list[str] = []
+    _expect_equal(
+        unknown_dependency_error,
+        "startup dependency references unknown module: missing",
+        "unknown_dependency_error",
+        errors,
+    )
+    _expect_equal(
+        self_cycle_error,
+        "startup dependency self-cycle: sensor",
+        "self_cycle_error",
+        errors,
+    )
+    _expect_equal(
+        duplicate_dependency_error,
+        "duplicate startup dependency: sensor->kernel",
+        "duplicate_dependency_error",
+        errors,
+    )
+    _expect_equal(
+        cycle_error,
+        "startup dependency cycle: kernel, sensor",
+        "cycle_error",
+        errors,
+    )
+    return {
+        "name": "planner_errors_are_reported",
+        "passing": len(errors) == 0,
+        "errors": errors,
+        "unknown_dependency_error": unknown_dependency_error,
+        "self_cycle_error": self_cycle_error,
+        "duplicate_dependency_error": duplicate_dependency_error,
+        "cycle_error": cycle_error,
     }
 
 

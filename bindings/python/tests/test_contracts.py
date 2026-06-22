@@ -74,6 +74,7 @@ from nobro_rtos.cli import (
     _check_runtime_drill,
     _check_scheduler_matrix,
     _check_starter_templates,
+    _check_startup_matrix,
     _check_watchdog_matrix,
     _doctor,
     _sample_actuator,
@@ -185,6 +186,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIn("event_log_matrix_gate", report["host_simulators"])
         self.assertIn("quota_matrix_gate", report["host_simulators"])
         self.assertIn("degrade_matrix_gate", report["host_simulators"])
+        self.assertIn("startup_matrix_gate", report["host_simulators"])
         self.assertIn("recovery_matrix_gate", report["host_simulators"])
         self.assertIn("watchdog_matrix_gate", report["host_simulators"])
         self.assertIn("scheduler_matrix_gate", report["host_simulators"])
@@ -219,6 +221,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(report["checks"]["quota_matrix"]["passing"])
         self.assertIn("degrade_matrix", report["checks"])
         self.assertTrue(report["checks"]["degrade_matrix"]["passing"])
+        self.assertIn("startup_matrix", report["checks"])
+        self.assertTrue(report["checks"]["startup_matrix"]["passing"])
         self.assertTrue(report["checks"]["ai_route"]["passing"])
         self.assertTrue(report["checks"]["runtime_drill"]["passing"])
         self.assertEqual(
@@ -337,6 +341,11 @@ class ContractBuilderTests(unittest.TestCase):
             "NobroRTOS: Degrade Matrix Gate",
         )
         self.assertIn("check-degrade-matrix", python_tasks["tasks"][10]["args"])
+        self.assertEqual(
+            python_tasks["tasks"][11]["label"],
+            "NobroRTOS: Startup Matrix Gate",
+        )
+        self.assertIn("check-startup-matrix", python_tasks["tasks"][11]["args"])
         python_bridge = build_project_template(
             "edge_demo",
             ProjectTarget.PYTHON_BOARD_BRIDGE,
@@ -561,6 +570,8 @@ class ContractBuilderTests(unittest.TestCase):
                     task["args"] = ["-m", "nobro_rtos", "sample-quota"]
                 if task["label"] == "NobroRTOS: Degrade Matrix Gate":
                     task["args"] = ["-m", "nobro_rtos", "sample-degrade"]
+                if task["label"] == "NobroRTOS: Startup Matrix Gate":
+                    task["args"] = ["-m", "nobro_rtos", "sample-startup"]
             tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
             before = validate_project_template(output, expected_target="python_host")
@@ -574,6 +585,7 @@ class ContractBuilderTests(unittest.TestCase):
             self.assertIn("event log matrix gate task command mismatch", before.errors)
             self.assertIn("quota matrix gate task command mismatch", before.errors)
             self.assertIn("degrade matrix gate task command mismatch", before.errors)
+            self.assertIn("startup matrix gate task command mismatch", before.errors)
 
             report = repair_project_template(output, expected_target="python_host")
 
@@ -610,6 +622,10 @@ class ContractBuilderTests(unittest.TestCase):
             )
             self.assertIn(
                 "degrade matrix gate task command mismatch",
+                report.before_errors,
+            )
+            self.assertIn(
+                "startup matrix gate task command mismatch",
                 report.before_errors,
             )
             repaired = json.loads(tasks_path.read_text(encoding="utf-8"))
@@ -667,6 +683,12 @@ class ContractBuilderTests(unittest.TestCase):
                 if task["label"] == "NobroRTOS: Degrade Matrix Gate"
             )
             self.assertIn("check-degrade-matrix", degrade_matrix_gate["args"])
+            startup_matrix_gate = next(
+                task
+                for task in repaired["tasks"]
+                if task["label"] == "NobroRTOS: Startup Matrix Gate"
+            )
+            self.assertIn("check-startup-matrix", startup_matrix_gate["args"])
 
     def test_check_project_cli_reports_missing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1035,6 +1057,55 @@ class ContractBuilderTests(unittest.TestCase):
                     StartupDependency("sensor", "kernel"),
                 ),
             )
+
+    def test_startup_matrix_covers_dependency_paths(self) -> None:
+        report = _check_startup_matrix()
+
+        self.assertTrue(report["passing"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["scenario_count"], 4)
+        scenarios = {entry["name"]: entry for entry in report["scenarios"]}
+        self.assertEqual(
+            scenarios["no_dependencies_preserve_manifest_order"]["order"],
+            ["kernel", "sensor", "radio"],
+        )
+        self.assertEqual(
+            scenarios["dependency_chain_orders_prerequisites_first"]["order"],
+            ["kernel", "sensor", "ai", "telemetry"],
+        )
+        self.assertEqual(
+            scenarios["fan_in_out_is_deterministic"]["order"],
+            ["kernel", "bus", "sensor", "radio", "ai", "telemetry"],
+        )
+        self.assertEqual(
+            scenarios["planner_errors_are_reported"]["unknown_dependency_error"],
+            "startup dependency references unknown module: missing",
+        )
+        self.assertEqual(
+            scenarios["planner_errors_are_reported"]["self_cycle_error"],
+            "startup dependency self-cycle: sensor",
+        )
+        self.assertEqual(
+            scenarios["planner_errors_are_reported"]["duplicate_dependency_error"],
+            "duplicate startup dependency: sensor->kernel",
+        )
+        self.assertEqual(
+            scenarios["planner_errors_are_reported"]["cycle_error"],
+            "startup dependency cycle: kernel, sensor",
+        )
+
+    def test_startup_matrix_command_returns_zero(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            ["python -m nobro_rtos", "check-startup-matrix"],
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                exit_code = main()
+
+        payload = json.loads(stream.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["passing"])
+        self.assertEqual(payload["scenario_count"], 4)
 
     def test_ros_bridge_metadata_exports_stable_hashes(self) -> None:
         bridge = RosBridgeDescriptor(
