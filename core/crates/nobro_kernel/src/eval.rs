@@ -168,8 +168,13 @@ impl SalEvalReport {
 }
 
 pub const IMU_HW_EVAL_MAGIC: u32 = 0x4E42_4E33; // "NB3"
-pub const IMU_HW_EVAL_VERSION: u32 = 1;
+pub const IMU_HW_EVAL_VERSION: u32 = 2; // v2 adds gyro_mag_mdps + temp_centi_c
 pub const MIN_IMU_HW_READS: u32 = 10;
+/// Plausible MPU die-temperature window (centi-degC): 5..60 C. A correct 14-byte
+/// burst yields temperature in this band, so it witnesses that the accel+temp+gyro
+/// read works even when the gyro reads ~0 at rest.
+pub const IMU_TEMP_MIN_CENTI_C: u32 = 500;
+pub const IMU_TEMP_MAX_CENTI_C: u32 = 6000;
 
 /// Hardware IMU bring-up report (GY-9250 / GY-91 over TWIM).
 #[repr(C)]
@@ -187,6 +192,8 @@ pub struct ImuHwEvalReport {
     pub imu_reads: u32,
     pub imu_errors: u32,
     pub accel_mag_mg: u32,
+    pub gyro_mag_mdps: u32,
+    pub temp_centi_c: u32,
     pub checksum: u32,
 }
 
@@ -205,6 +212,8 @@ impl ImuHwEvalReport {
             imu_reads: 0,
             imu_errors: 0,
             accel_mag_mg: 0,
+            gyro_mag_mdps: 0,
+            temp_centi_c: 0,
             checksum: 0,
         }
     }
@@ -218,7 +227,8 @@ impl ImuHwEvalReport {
                 && self.i2c_devices >= 1
                 && self.imu_reads >= MIN_IMU_HW_READS
                 && self.imu_errors * 100 <= self.imu_reads
-                && (800..1200).contains(&self.accel_mag_mg),
+                && (800..1200).contains(&self.accel_mag_mg)
+                && (IMU_TEMP_MIN_CENTI_C..IMU_TEMP_MAX_CENTI_C).contains(&self.temp_centi_c),
         );
         self.completed = 1;
         self.checksum = 0;
@@ -238,6 +248,8 @@ impl ImuHwEvalReport {
             ^ self.imu_reads
             ^ self.imu_errors
             ^ self.accel_mag_mg
+            ^ self.gyro_mag_mdps
+            ^ self.temp_centi_c
     }
 }
 

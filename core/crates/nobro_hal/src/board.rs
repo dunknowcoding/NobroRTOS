@@ -1,7 +1,7 @@
 //! ProMicro / nice!nano nRF52840 board constants.
 //!
-//! `board-promicro-nosd`: app at 0x1000 (board1-board3, J-Link).
-//! `board-nicenano-s140`: app at 0x26000 (board5, UF2 DFU).
+//! `board-promicro-nosd`: no-SoftDevice layout, app at 0x1000.
+//! `board-nicenano-s140`: S140 SoftDevice layout, app at 0x26000.
 
 use crate::board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPins, BootLayout, BootProfile,

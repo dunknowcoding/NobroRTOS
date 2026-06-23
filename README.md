@@ -243,6 +243,10 @@ python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 ```
 
+Board-facing examples are kept as library and contract references. Lab bring-up
+notes, one-off wiring combinations, and board-specific evaluation scripts stay
+outside the public package surface.
+
 ## Documentation
 
 | Guide | Use It For |

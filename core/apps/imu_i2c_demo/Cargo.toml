@@ -10,8 +10,8 @@ path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
 [[bin]]
-name = "imu_i2c_demo_board5"
-path = "src/main_board5.rs"
+name = "imu_i2c_demo_s140"
+path = "src/main_s140.rs"
 required-features = ["board-nicenano-s140"]
 
 [dependencies]

@@ -91,7 +91,7 @@
     "entity_kinds": ["topic", "service", "action", "parameter"]
   },
   "lab": {
-    "default_board": "board1",
+    "default_board": "nrf52840_no_softdevice",
     "bootloader_policy": "do-not-reflash",
     "app_start_no_softdevice": "0x1000",
     "app_start_s140": "0x26000"

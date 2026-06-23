@@ -1,5 +1,5 @@
 //! MVK: GPIOTE -> PPI -> TIMER0 CAPTURE, log timestamps over defmt/RTT.
-//! Target: board1 (ProMicro no-SD @ 0x1000), J-Link + RTT.
+//! Target: ProMicro no-SoftDevice profile, app at 0x1000.
 
 #![no_std]
 #![no_main]

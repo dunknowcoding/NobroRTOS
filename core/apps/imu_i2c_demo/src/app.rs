@@ -21,6 +21,8 @@ use nobro_sal::SensorSal;
 static IMU_READS: AtomicU32 = AtomicU32::new(0);
 static IMU_ERRORS: AtomicU32 = AtomicU32::new(0);
 static LAST_MAG_MG: AtomicU32 = AtomicU32::new(0);
+static LAST_TEMP_CENTI: AtomicU32 = AtomicU32::new(0);
+static LAST_GYRO_MDPS: AtomicU32 = AtomicU32::new(0);
 static EVAL_DONE: AtomicU32 = AtomicU32::new(0);
 
 const OWNER_TWIM: u8 = 3;
@@ -112,6 +114,8 @@ fn main() -> ! {
                 IMU_ERRORS.fetch_add(1, Ordering::AcqRel);
             }
         }
+        LAST_TEMP_CENTI.store(imu.last_temp_centi_c(), Ordering::Release);
+        LAST_GYRO_MDPS.store(imu.last_gyro_mag_mdps(), Ordering::Release);
 
         if now / 1_000_000 >= last_report_ms + 2 {
             last_report_ms = now / 1_000_000;
@@ -144,6 +148,8 @@ fn write_progress_report() {
         NOBRO_IMU_HW_EVAL_REPORT.imu_reads = IMU_READS.load(Ordering::Acquire);
         NOBRO_IMU_HW_EVAL_REPORT.imu_errors = IMU_ERRORS.load(Ordering::Acquire);
         NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = LAST_MAG_MG.load(Ordering::Acquire);
+        NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = LAST_GYRO_MDPS.load(Ordering::Acquire);
+        NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = LAST_TEMP_CENTI.load(Ordering::Acquire);
     }
 }
 
@@ -169,6 +175,8 @@ fn try_finalize_eval() {
         imu_reads: reads,
         imu_errors: errors,
         accel_mag_mg: mag,
+        gyro_mag_mdps: LAST_GYRO_MDPS.load(Ordering::Acquire),
+        temp_centi_c: LAST_TEMP_CENTI.load(Ordering::Acquire),
         ..ImuHwEvalReport::zeroed()
     };
     report.seal();

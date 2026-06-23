@@ -37,6 +37,8 @@ pub struct Mpu9250Imu {
     owner: u8,
     ready: bool,
     bmp280_present: bool,
+    last_temp_centi: u32,
+    last_gyro_mdps: u32,
 }
 
 impl Mpu9250Imu {
@@ -70,7 +72,19 @@ impl Mpu9250Imu {
             owner,
             ready: true,
             bmp280_present,
+            last_temp_centi: 0,
+            last_gyro_mdps: 0,
         })
+    }
+
+    /// Die temperature from the most recent burst, in centi-degrees C.
+    pub fn last_temp_centi_c(&self) -> u32 {
+        self.last_temp_centi
+    }
+
+    /// Gyro magnitude from the most recent burst, in milli-deg/s.
+    pub fn last_gyro_mag_mdps(&self) -> u32 {
+        self.last_gyro_mdps
     }
 
     pub fn addr(&self) -> u8 {
@@ -94,20 +108,23 @@ impl Mpu9250Imu {
         Twim0::scan(|_| {})
     }
 
-    fn read_burst(&self) -> Result<([f32; 3], [f32; 3]), Mpu9250Error> {
+    fn read_burst(&mut self) -> Result<([f32; 3], [f32; 3]), Mpu9250Error> {
         if !self.ready {
             return Err(Mpu9250Error::NotReady);
         }
-        let mut raw = [0u8; 6];
+        // One burst from ACCEL_XOUT_H covers accel (6), temperature (2), gyro (6):
+        // the MPU register map is contiguous, so a 14-byte read gets all three.
+        let mut raw = [0u8; 14];
         Twim0::write_read(self.addr, &[REG_ACCEL_XOUT_H], &mut raw)
             .map_err(|_| Mpu9250Error::Bus)?;
 
         let ax = i16::from_be_bytes([raw[0], raw[1]]);
         let ay = i16::from_be_bytes([raw[2], raw[3]]);
         let az = i16::from_be_bytes([raw[4], raw[5]]);
-        let gx = 0i16;
-        let gy = 0i16;
-        let gz = 0i16;
+        let temp_raw = i16::from_be_bytes([raw[6], raw[7]]);
+        let gx = i16::from_be_bytes([raw[8], raw[9]]);
+        let gy = i16::from_be_bytes([raw[10], raw[11]]);
+        let gz = i16::from_be_bytes([raw[12], raw[13]]);
 
         // +/-2 g and +/-250 dps factory defaults.
         let accel_g = [
@@ -116,6 +133,19 @@ impl Mpu9250Imu {
             az as f32 / 16_384.0,
         ];
         let gyro_dps = [gx as f32 / 131.0, gy as f32 / 131.0, gz as f32 / 131.0];
+
+        // MPU-9250 die temperature: degC = raw / 333.87 + 21.0.
+        let temp_c = temp_raw as f32 / 333.87 + 21.0;
+        self.last_temp_centi = if temp_c > 0.0 {
+            (temp_c * 100.0) as u32
+        } else {
+            0
+        };
+        let gmag = libm::sqrtf(
+            gyro_dps[0] * gyro_dps[0] + gyro_dps[1] * gyro_dps[1] + gyro_dps[2] * gyro_dps[2],
+        );
+        self.last_gyro_mdps = (gmag * 1000.0) as u32;
+
         Ok((accel_g, gyro_dps))
     }
 }

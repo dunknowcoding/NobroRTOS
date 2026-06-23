@@ -1,5 +1,5 @@
-//! Hardware IMU I2C demo for GY-9250 (board1) / GY-91 (board5).
-//! Writes `NOBRO_IMU_HW_EVAL_REPORT` for autonomous J-Link or UF2+RTT eval.
+//! Hardware IMU I2C demo for the supported nRF52840 board profiles.
+//! Writes `NOBRO_IMU_HW_EVAL_REPORT` for board-facing report review.
 
 #![no_std]
 #![no_main]
