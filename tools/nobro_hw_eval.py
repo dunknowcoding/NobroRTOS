@@ -20,6 +20,7 @@ import argparse
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -85,13 +86,28 @@ def tool(binbase, name):
 
 
 def find_jlink(explicit):
+    """Locate the J-Link CLI across OSes. Windows: JLink.exe under Program Files;
+    Linux: JLinkExe under /opt/SEGGER; macOS: JLinkExe under /Applications/SEGGER.
+    Falls back to whatever is on PATH."""
     if explicit:
         return explicit
-    for base in (r"C:\Program Files\SEGGER", r"C:\Program Files (x86)\SEGGER"):
-        hits = sorted(glob.glob(os.path.join(base, "JLink*", "JLink.exe")))
+    patterns = [
+        r"C:\Program Files\SEGGER\JLink*\JLink.exe",
+        r"C:\Program Files (x86)\SEGGER\JLink*\JLink.exe",
+        "/opt/SEGGER/JLink*/JLinkExe",
+        "/opt/SEGGER/JLink/JLinkExe",
+        "/Applications/SEGGER/JLink*/JLinkExe",
+    ]
+    for pat in patterns:
+        hits = sorted(glob.glob(pat))
         if hits:
             return hits[-1]
-    sys.exit("JLink.exe not found - pass --jlink C:\\path\\to\\JLink.exe")
+    for name in ("JLinkExe", "JLink.exe", "JLink"):
+        found = shutil.which(name)
+        if found:
+            return found
+    sys.exit("J-Link CLI not found - pass --jlink <path to JLink.exe / JLinkExe>. "
+             "(probe-rs users: flash/read with probe-rs instead; see docs/HARDWARE_BRINGUP.md.)")
 
 
 def main():
