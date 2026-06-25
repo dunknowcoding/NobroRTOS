@@ -20,10 +20,14 @@ fn main() {
     // nobro_app_init / nobro_app_poll symbols as the Rust module crate - link one.
     #[cfg(feature = "c-source")]
     {
-        let c = "../../../bindings/c/examples/imu_module.c";
+        // Point NOBRO_C_MODULE at your own .c to author a module without editing this
+        // crate; defaults to the reference IMU module.
+        println!("cargo:rerun-if-env-changed=NOBRO_C_MODULE");
+        let c = env::var("NOBRO_C_MODULE")
+            .unwrap_or_else(|_| "../../../bindings/c/examples/imu_module.c".into());
         println!("cargo:rerun-if-changed={c}");
         cc::Build::new()
-            .file(c)
+            .file(&c)
             .include("../../../bindings/c/include")
             .compile("nobro_c_module");
     }
@@ -33,7 +37,11 @@ fn main() {
     // nobro_app_* symbols as the other providers - link exactly one.
     #[cfg(feature = "cpp-source")]
     {
-        let cpp = "../../../bindings/cpp/examples/imu_module.cpp";
+        // Point NOBRO_CPP_MODULE at your own .cpp (e.g. an Arduino-style setup/loop
+        // module); defaults to the reference IMU module.
+        println!("cargo:rerun-if-env-changed=NOBRO_CPP_MODULE");
+        let cpp = env::var("NOBRO_CPP_MODULE")
+            .unwrap_or_else(|_| "../../../bindings/cpp/examples/imu_module.cpp".into());
         println!("cargo:rerun-if-changed={cpp}");
         cc::Build::new()
             .cpp(true)

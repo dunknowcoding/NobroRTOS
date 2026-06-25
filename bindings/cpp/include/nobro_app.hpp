@@ -64,4 +64,17 @@ inline void publish_imu(uint8_t who, uint8_t dev_addr, int16_t ax, int16_t ay,
     extern "C" int32_t nobro_app_init(void) { return Type::init(); }           \
     extern "C" int32_t nobro_app_poll(void) { return Type::poll(); }
 
+/// Arduino-style registration: define `void setup()` and `void loop()`, then place
+/// NOBRO_ARDUINO_MODULE() after them. setup() runs once after admission; loop() runs
+/// every cycle. Familiar to Arduino users, same verified kernel callbacks underneath.
+#define NOBRO_ARDUINO_MODULE()                                                 \
+    extern "C" int32_t nobro_app_init(void) {                                  \
+        setup();                                                               \
+        return 0;                                                              \
+    }                                                                          \
+    extern "C" int32_t nobro_app_poll(void) {                                  \
+        loop();                                                                \
+        return 0;                                                              \
+    }
+
 #endif  // NOBRO_APP_HPP
