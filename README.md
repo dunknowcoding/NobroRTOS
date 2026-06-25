@@ -280,7 +280,7 @@ folders use the `nobro_*` project prefix.
 | On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on board1 &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
 | Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge model | Present | Bounded topic/service/action/parameter contracts, SAL bridge trait, and bridge reports |
+| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on board1 &mdash; 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
 | Hardware bring-up | Present | board1 (nRF52840) verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
