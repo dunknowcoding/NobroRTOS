@@ -95,6 +95,43 @@ ROS preflight checks topic payloads, service/action response capacity, queue
 depth, parameter value size, and timeout budget before a ROS agent or transport
 is contacted.
 
+## Authoring a module in C
+
+`include/nobro_app.h` is a second, separate ABI for writing module **logic** in C
+(not just inspecting reports). A C module implements two callbacks and reaches
+hardware only through bounded host services - it never touches kernel internals:
+
+```c
+#include "nobro_app.h"
+
+int32_t nobro_app_init(void) {                 /* kernel calls once after admission */
+    uint8_t wake[2] = {0x6B, 0x01};
+    return nobro_i2c_write(0x68, wake, 2);
+}
+
+int32_t nobro_app_poll(void) {                 /* kernel calls every cycle */
+    uint8_t reg = 0x3B, raw[14];
+    if (nobro_i2c_write_read(0x68, &reg, 1, raw, 14) < 0) return -1;
+    /* ... parse + nobro_publish_imu(...) ... */
+    return 0;
+}
+```
+
+The NobroRTOS app provides the `extern "C"` host services, admits the module through
+`BootAssembly`, and drives the callbacks. Because the ABI is plain `extern "C"`, the
+module object can come from any toolchain. `core/apps/c_abi_demo` builds it two ways
+from one source of truth:
+
+- `--features rust-module` (default): links the reference module from
+  `core/apps/c_abi_module` (Rust `extern "C"`, byte-identical ABI) - no C compiler
+  needed.
+- `--features c-source`: `build.rs` compiles `examples/imu_module.c` with
+  `arm-none-eabi-gcc` and links it.
+
+Both paths are verified on hardware (nRF52840 + GY-9250): the kernel admits the
+module and it reads the IMU to a passing `NOBRO_IMU_HW_EVAL_REPORT`. See
+`examples/imu_module.c` for the complete reference module.
+
 ## Scope
 
 The C binding focuses on fixed contracts and report inspection. Module builders,
