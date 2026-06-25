@@ -21,6 +21,7 @@ members = [
     "apps/c_abi_demo",
     "apps/ai_imu_demo",
     "apps/ros_imu_demo",
+    "apps/ai_usb_demo",
 ]
 
 [workspace.package]
