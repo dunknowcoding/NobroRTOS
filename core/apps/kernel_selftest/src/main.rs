@@ -11,12 +11,13 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_kernel::{
-    AlarmQueue, EventLog, KvStore, Mailbox, QuotaLedger,
+    AlarmQueue, BootAssembly, DegradePlanner, EventLog, FaultThresholds, KvStore, Mailbox,
+    QuotaLedger, StartupDependency, Watchdog, kernel_module_spec,
     alarm::{Alarm, AlarmId},
     event_log::{EventKind, EventPayload, EventRecord, EventSeverity},
     kv::{KvKey, KvValue},
     mailbox::{Message, MessageKind},
-    manifest::SystemBudget,
+    manifest::{Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile},
     ModuleId,
 };
 
@@ -32,6 +33,9 @@ struct SelftestReport {
     mailbox_pass: u32,
     kv_pass: u32,
     alarm_pass: u32,
+    watchdog_pass: u32,
+    degrade_pass: u32,
+    admission_pass: u32,
     checksum: u32,
 }
 const ST_MAGIC: u32 = 0x4E42_5354; // "NBST"
@@ -48,6 +52,9 @@ static mut NOBRO_SELFTEST_REPORT: SelftestReport = SelftestReport {
     mailbox_pass: 0,
     kv_pass: 0,
     alarm_pass: 0,
+    watchdog_pass: 0,
+    degrade_pass: 0,
+    admission_pass: 0,
     checksum: 0,
 };
 
@@ -131,6 +138,64 @@ fn test_alarm() -> bool {
     q.pop_due(50) == Some(Alarm::once(AlarmId(2), ModuleId::Radio, 50))
 }
 
+fn test_watchdog() -> bool {
+    let mut wd = Watchdog::<2>::new();
+    if wd.register(ModuleId::Sensor, 100, 0).is_err() {
+        return false;
+    }
+    if wd.register(ModuleId::Radio, 500, 0).is_err() {
+        return false;
+    }
+    let mut expired = [ModuleId::Kernel; 2];
+    // At t=150 only Sensor (timeout 100) has expired, not Radio (timeout 500).
+    wd.expired(150, &mut expired) == 1 && expired[0] == ModuleId::Sensor
+}
+
+fn test_degrade() -> bool {
+    let modules = [
+        ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
+            .memory(MemoryBudget::new(20, 4, 0))
+            .deadline(DeadlineContract::new(20_000, 10)),
+        ModuleSpec::new(ModuleId::Sensor, Criticality::Driver).memory(MemoryBudget::new(20, 4, 0)),
+        ModuleSpec::new(ModuleId::App(1), Criticality::BestEffort)
+            .memory(MemoryBudget::new(50, 4, 0)),
+        ModuleSpec::new(ModuleId::App(2), Criticality::User).memory(MemoryBudget::new(20, 4, 0)),
+    ];
+    // Flash budget 70 cannot fit all (20+20+50+20=110): the planner drops the
+    // best-effort App(1) first and keeps the higher-criticality modules.
+    let profile = SystemProfile::new(70, 32, 8, 16);
+    match DegradePlanner::fit::<4>(&modules, profile) {
+        Ok(d) => d.disabled_count == 1 && d.disabled[0] == Some(ModuleId::App(1)),
+        Err(_) => false,
+    }
+}
+
+fn test_admission() -> bool {
+    // Assemble + admit a kernel + Sensor manifest, exactly as a generated app does.
+    type AppBoot = BootAssembly<4, 4, 4, 4, 4, 4, 4, 4, 16>;
+    let specs = [
+        kernel_module_spec(
+            MemoryBudget::new(16 * 1024, 4 * 1024, 4),
+            DeadlineContract::new(20_000, 10),
+        ),
+        ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+            .memory(MemoryBudget::new(8 * 1024, 2 * 1024, 2)),
+    ];
+    let deps = [StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel)];
+    match AppBoot::build(
+        &specs,
+        &deps,
+        SystemProfile::NRF52840_CORE,
+        FaultThresholds::DEFAULT,
+        0,
+    ) {
+        Ok(boot) => {
+            boot.manifest_report.verify_checksum() && boot.admission_report.verify_checksum()
+        }
+        Err(_) => false,
+    }
+}
+
 #[entry]
 fn main() -> ! {
     let quota = test_quota();
@@ -138,15 +203,21 @@ fn main() -> ! {
     let mailbox = test_mailbox();
     let kv = test_kv();
     let alarm = test_alarm();
-    let all = quota && eventlog && mailbox && kv && alarm;
+    let watchdog = test_watchdog();
+    let degrade = test_degrade();
+    let admission = test_admission();
+    let all = quota && eventlog && mailbox && kv && alarm && watchdog && degrade && admission;
 
     let q = u32::from(quota);
     let e = u32::from(eventlog);
     let m = u32::from(mailbox);
     let k = u32::from(kv);
     let a = u32::from(alarm);
+    let w = u32::from(watchdog);
+    let d = u32::from(degrade);
+    let adm = u32::from(admission);
     let ap = u32::from(all);
-    let cs = ST_MAGIC ^ 1 ^ 1 ^ ap ^ q ^ e ^ m ^ k ^ a;
+    let cs = ST_MAGIC ^ 1 ^ 1 ^ ap ^ q ^ e ^ m ^ k ^ a ^ w ^ d ^ adm;
     unsafe {
         NOBRO_SELFTEST_REPORT = SelftestReport {
             magic: ST_MAGIC,
@@ -158,6 +229,9 @@ fn main() -> ! {
             mailbox_pass: m,
             kv_pass: k,
             alarm_pass: a,
+            watchdog_pass: w,
+            degrade_pass: d,
+            admission_pass: adm,
             checksum: cs,
         };
     }
