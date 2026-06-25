@@ -120,6 +120,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "eh-imu-demo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "embedded-hal 1.0.0",
+ "libm",
+ "nobro-eh-i2c",
+ "nobro-hal",
+ "nobro-kernel",
+ "panic-halt",
+]
+
+[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -238,6 +254,14 @@ dependencies = [
  "nobro-hal",
  "nobro-kernel",
  "nobro-sal",
+]
+
+[[package]]
+name = "nobro-eh-i2c"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "nobro-hal",
 ]
 
 [[package]]

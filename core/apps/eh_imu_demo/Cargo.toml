@@ -1,0 +1,36 @@
+[package]
+name = "eh-imu-demo"
+version.workspace = true
+edition.workspace = true
+
+# Reads the IMU using ONLY the `embedded_hal::i2c::I2c` trait (via the nobro-eh-i2c
+# adapter) - the exact surface an off-the-shelf embedded-hal driver uses - and writes
+# the standard NOBRO_IMU_HW_EVAL_REPORT. Proves embedded-hal driver compatibility on
+# real hardware.
+[[bin]]
+name = "eh_imu_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[dependencies]
+nobro-eh-i2c = { path = "../../adapters/embedded-hal-i2c", default-features = false }
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../crates/nobro_kernel" }
+embedded-hal = "1.0"
+libm = "0.2"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = [
+    "nobro-hal/board-promicro-nosd",
+    "nobro-eh-i2c/board-promicro-nosd",
+]
+board-nicenano-s140 = [
+    "nobro-hal/board-nicenano-s140",
+    "nobro-eh-i2c/board-nicenano-s140",
+]

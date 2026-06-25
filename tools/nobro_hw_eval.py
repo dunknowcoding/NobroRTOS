@@ -51,6 +51,15 @@ APPS = {
         "fields": COMMON_HEAD + ["servo_steps", "servo_readback_ok", "imu_samples",
                                  "imu_plausible", "checksum"],
     },
+    "eh": {  # IMU read through the embedded-hal I2c trait (driver-compat proof)
+        "package": "eh-imu-demo",
+        "bin": {"board1": "eh_imu_demo"},
+        "symbol": "NOBRO_IMU_HW_EVAL_REPORT",
+        "magic": 0x4E424E33,
+        "fields": COMMON_HEAD + ["board_id_tag", "who_am_i", "dev_addr", "i2c_devices",
+                                 "bmp280_present", "imu_reads", "imu_errors", "accel_mag_mg",
+                                 "gyro_mag_mdps", "temp_centi_c", "checksum"],
+    },
     "sched": {
         "package": "resource-sched-demo",
         "bin": {"board1": "resource_sched_demo"},

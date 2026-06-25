@@ -143,6 +143,21 @@ impl Twim0 {
         Self::read(addr, rx, true)
     }
 
+    /// Raw bus write of arbitrary bytes (STOP at the end). The general primitive an
+    /// `embedded-hal` I2C adapter needs for `Operation::Write`.
+    pub fn write_bytes(addr: u8, data: &[u8]) -> Result<(), BusError> {
+        Self::write(addr, data, true)
+    }
+
+    /// Raw bus read of `buf.len()` bytes (STOP at the end). The general primitive an
+    /// `embedded-hal` I2C adapter needs for `Operation::Read`.
+    pub fn read_bytes(addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
+        if buf.is_empty() {
+            return Ok(());
+        }
+        Self::read(addr, buf, true)
+    }
+
     fn write(addr: u8, data: &[u8], send_stop: bool) -> Result<(), BusError> {
         let base = TWI0_BASE;
         unsafe {
