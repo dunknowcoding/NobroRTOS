@@ -114,14 +114,22 @@ stateDiagram-v2
 
 ## Current Progress
 
-The strongest completed area is the software control plane. Local Rust tests
-cover manifests, quota accounting, capability grants, runtime disable paths,
-mailbox cleanup, alarm cleanup, watchdog cleanup, degraded-mode reports,
-board-package validation, boot assembly, host-readable diagnostics, and Python
-simulators for quota, degraded-mode, scheduler, event-log, recovery, sensor,
-actuator, combined runtime-drill flows, and safely materialized plus validated
-contract-first project templates with VS Code task metadata and Python board
-bridge onboarding.
+The software control plane is the deepest-tested area. Local Rust tests cover
+manifests, quota accounting, capability grants, runtime disable paths, mailbox
+cleanup, alarm cleanup, watchdog cleanup, degraded-mode reports, board-package
+validation, boot assembly, host-readable diagnostics, and Python simulators for
+quota, degraded-mode, scheduler, event-log, recovery, sensor, actuator, combined
+runtime-drill flows, and safely materialized plus validated contract-first project
+templates with VS Code task metadata and Python board bridge onboarding.
+
+That control plane is now **verified on real hardware** (nRF52840 + GY-9250/GY-91),
+and module **logic can be authored in Rust, C, or C++** over one kernel and one
+`extern "C"` C ABI - all three providers admitted by the kernel and reading a sensor
+end to end on board1 (see [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md) and
+[bindings/c/README.md](bindings/c/README.md)). On-hardware results: the deadline
+scheduler holds **2 us jitter / 0 misses**, the EGU->PPI->CAPTURE path **1 us
+latency**, and `usb_cdc_demo` streams diagnostics over USB serial so probe-less
+boards self-verify by opening a COM port.
 
 ```mermaid
 mindmap
@@ -204,7 +212,10 @@ folders use the `nobro_*` project prefix.
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge model | Present | Bounded topic/service/action/parameter contracts, SAL bridge trait, and bridge reports |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
-| C/C++/Python interfaces | In progress | C/C++ reports, AI/ROS contracts, plus Python builders, decoders, and validators |
+| Hardware bring-up | Present | board1 (nRF52840) verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
+| Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
+| embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
+| C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 
 ## Quick Start
 
