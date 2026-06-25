@@ -76,6 +76,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "closed-loop-demo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-adapter-mpu9250-imu",
+ "nobro-adapter-robo-servo",
+ "nobro-hal",
+ "nobro-kernel",
+ "nobro-sal",
+ "panic-halt",
+]
+
+[[package]]
 name = "cortex-m"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

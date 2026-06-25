@@ -24,6 +24,7 @@ members = [
     "apps/ai_usb_demo",
     "apps/recovery_demo",
     "apps/kernel_selftest",
+    "apps/closed_loop_demo",
 ]
 
 [workspace.package]
