@@ -402,6 +402,21 @@ def main() -> int:
         action="store_true",
         help="allow generated files to overwrite existing files",
     )
+    gen_app = subparsers.add_parser(
+        "gen-app",
+        help="generate a buildable in-tree Rust firmware app from a declarative module spec",
+    )
+    gen_app.add_argument("--name", required=True, help="app name, e.g. my_control_app")
+    gen_app.add_argument("--module", default="control", help="module label")
+    gen_app.add_argument(
+        "--criticality",
+        choices=("best_effort", "user", "driver", "system"),
+        default="driver",
+    )
+    gen_app.add_argument("--flash", type=int, default=8192, help="module flash budget (bytes)")
+    gen_app.add_argument("--ram", type=int, default=2048, help="module RAM budget (bytes)")
+    gen_app.add_argument("--pool", type=int, default=2, help="module sample-pool slots")
+    gen_app.add_argument("--overwrite", action="store_true")
     check_project = subparsers.add_parser(
         "check-project",
         help="validate a generated starter project directory",
@@ -743,6 +758,24 @@ def main() -> int:
             )
         )
         return 0
+    if args.command == "gen-app":
+        from pathlib import Path as _Path
+
+        from .rust_app_gen import generate_rust_app
+
+        repo_root = _Path(__file__).resolve().parents[3]
+        report = generate_rust_app(
+            repo_root,
+            args.name,
+            args.module,
+            args.criticality,
+            args.flash,
+            args.ram,
+            args.pool,
+            args.overwrite,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
     if args.command == "check-project":
         report = _check_project(args.path, args.target)
         print(
