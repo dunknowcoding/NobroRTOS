@@ -10,6 +10,7 @@ members = [
     "adapters/mpu9250-imu",
     "adapters/embedded-hal-i2c",
     "adapters/motion-ai",
+    "adapters/ros-imu-bridge",
     "apps/mvk_ppi_timestamp",
     "apps/resource_sched_demo",
     "apps/sal_adapter_demo",
@@ -19,6 +20,7 @@ members = [
     "apps/c_abi_module",
     "apps/c_abi_demo",
     "apps/ai_imu_demo",
+    "apps/ros_imu_demo",
 ]
 
 [workspace.package]

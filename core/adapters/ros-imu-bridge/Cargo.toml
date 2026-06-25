@@ -1,0 +1,12 @@
+[package]
+name = "nobro-adapter-ros-imu-bridge"
+version.workspace = true
+edition.workspace = true
+
+# A bounded ROS-style topic bridge (RosBridgeSal): publishes IMU messages into a
+# fixed-capacity ring and pumps them to a transport, with no heap and an explicit
+# drop counter. Demonstrates the "ROS bridges stay bounded and off the hard-realtime
+# path" pillar concretely. Portable: depends only on the SAL traits.
+
+[dependencies]
+nobro-sal = { path = "../../crates/nobro_sal" }
