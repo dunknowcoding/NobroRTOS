@@ -263,6 +263,28 @@ NobroRTOS/
 The Rust crate package names use the `nobro-*` API prefix, while repository
 folders use the `nobro_*` project prefix.
 
+## ✅ Verified on hardware (board1: nRF52840 + GY-9250)
+
+Every claim below is checked on a real board and self-certifies through a fixed
+`NOBRO_*` report (read over J-Link `mem32`, or over USB serial for probe-less boards).
+
+| Area | On-board result |
+| --- | --- |
+| **Real-time scheduler** | 2 µs deadline jitter, 0 misses; EGU→PPI→CAPTURE 1 µs latency; 50 Hz PWM |
+| **Kernel control plane** | quota · event log · mailbox · KV · alarms · watchdog · degrade · admission — all pass |
+| **Recovery** | watchdog expiry → Degraded/Notify; repeated errors → Recovering/RebootModule |
+| **Edge AI** | bounded `AiInferenceSal` motion model — IDLE at 99.6% in its 2 ms budget; live over USB-CDC |
+| **ROS bridge** | bounded topic bridge — 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
+| **Robot closed loop** | IMU → servo pulse → PWM → readback, 1373/1373 readbacks exact |
+| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), incl. 9-pulse stuck-bus recovery |
+| **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI |
+| **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter |
+| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port |
+
+Reproduce any of these in one command: `python tools/nobro_hw_eval.py imu`
+(also `sal`, `sched`); the kernel/AI/ROS/recovery/closed-loop demos flash + read their
+report over J-Link. See [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
+
 ## Capability Matrix
 
 | Area | Status | Notes |
