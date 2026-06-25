@@ -23,6 +23,7 @@ members = [
     "apps/ros_imu_demo",
     "apps/ai_usb_demo",
     "apps/recovery_demo",
+    "apps/kernel_selftest",
 ]
 
 [workspace.package]
