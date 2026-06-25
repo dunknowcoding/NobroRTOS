@@ -33,6 +33,38 @@ if (!nobro::rtos::passing(view.status())) {
 }
 ```
 
+## Authoring a module in C++
+
+`include/nobro_app.hpp` is a separate facade for writing module **logic** in C++
+over the C ABI. A module is a plain struct with two static methods, registered in
+one line; it is deliberately bare-metal-safe (no global constructors, vtables,
+exceptions, RTTI, or heap):
+
+```cpp
+#include "nobro_app.hpp"
+
+struct ImuModule {
+    static int32_t init() {
+        const uint8_t wake[2] = {0x6B, 0x01};
+        return nobro::I2c::write(0x68, wake, 2);
+    }
+    static int32_t poll() {
+        uint8_t reg = 0x3B, raw[14];
+        if (nobro::I2c::write_read(0x68, &reg, 1, raw, 14) < 0) return -1;
+        /* ... parse + nobro::publish_imu(...) ... */
+        return 0;
+    }
+};
+NOBRO_REGISTER_MODULE(ImuModule)
+```
+
+The NobroRTOS app (`core/apps/c_abi_demo`) admits the module and drives the
+callbacks. Build with `--features cpp-source`: `build.rs` compiles the `.cpp` with
+`arm-none-eabi-g++` (`-fno-exceptions -fno-rtti`, no libstdc++) and links it - the
+same `extern "C"` `nobro_app_*` symbols as the C and Rust providers. Verified on
+hardware (nRF52840 + GY-9250): the kernel admits the C++ module and it reads the IMU
+to a passing `NOBRO_IMU_HW_EVAL_REPORT`. See `examples/imu_module.cpp`.
+
 ## Scope
 
 The C++ layer currently focuses on type-safe report views plus small helpers for

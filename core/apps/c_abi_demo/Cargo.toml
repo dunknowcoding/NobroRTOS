@@ -33,5 +33,6 @@ cc = { version = "1.0", optional = true }
 default = ["board-promicro-nosd", "rust-module"]
 rust-module = ["dep:nobro-c-abi-module"]
 c-source = ["dep:cc"]
+cpp-source = ["dep:cc"]
 board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
 board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

@@ -27,4 +27,22 @@ fn main() {
             .include("../../../bindings/c/include")
             .compile("nobro_c_module");
     }
+
+    // With feature "cpp-source", compile the reference C++ module (arm-none-eabi-g++).
+    // Embedded-safe C++: no exceptions / RTTI / global constructors. Same extern "C"
+    // nobro_app_* symbols as the other providers - link exactly one.
+    #[cfg(feature = "cpp-source")]
+    {
+        let cpp = "../../../bindings/cpp/examples/imu_module.cpp";
+        println!("cargo:rerun-if-changed={cpp}");
+        cc::Build::new()
+            .cpp(true)
+            .cpp_link_stdlib(None) // bare-metal: no libstdc++ (no exceptions/RTTI/std)
+            .file(cpp)
+            .include("../../../bindings/cpp/include")
+            .flag_if_supported("-fno-exceptions")
+            .flag_if_supported("-fno-rtti")
+            .flag_if_supported("-fno-use-cxa-atexit")
+            .compile("nobro_cpp_module");
+    }
 }
