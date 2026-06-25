@@ -417,6 +417,14 @@ def main() -> int:
     gen_app.add_argument("--ram", type=int, default=2048, help="module RAM budget (bytes)")
     gen_app.add_argument("--pool", type=int, default=2, help="module sample-pool slots")
     gen_app.add_argument("--overwrite", action="store_true")
+    gen_module = subparsers.add_parser(
+        "gen-module",
+        help="generate a starter NobroRTOS module in C or C++ over the C ABI",
+    )
+    gen_module.add_argument("--name", required=True, help="module name, e.g. my_sensor")
+    gen_module.add_argument("--lang", choices=["c", "cpp"], required=True)
+    gen_module.add_argument("--out", required=True, help="output directory")
+    gen_module.add_argument("--overwrite", action="store_true")
     check_project = subparsers.add_parser(
         "check-project",
         help="validate a generated starter project directory",
@@ -774,6 +782,12 @@ def main() -> int:
             args.pool,
             args.overwrite,
         )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["passing"] else 1
+    if args.command == "gen-module":
+        from .module_gen import generate_module
+
+        report = generate_module(args.name, args.lang, args.out, args.overwrite)
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1
     if args.command == "check-project":

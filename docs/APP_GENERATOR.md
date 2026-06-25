@@ -40,6 +40,22 @@ admission.
 
 Edit `nobro-contract.json` (the module's criticality / memory budget) and re-run
 `gen-app --overwrite`, or edit `src/main.rs` directly. Either way the manifest is
-re-validated by the compiler and at admission. Next on the roadmap: a C ABI and a
-C++/Arduino authoring facade so module *logic* (not just the contract) can be written
-outside Rust.
+re-validated by the compiler and at admission.
+
+## Authoring module logic in C or C++
+
+`gen-app` scaffolds a Rust app. To write module *logic* outside Rust, generate a
+C or C++ module skeleton over the [C ABI](../bindings/c/include/nobro_app.h):
+
+```powershell
+python tools/nobro_contract_tool.py gen-module --name my_sensor --lang c   --out my_mod
+python tools/nobro_contract_tool.py gen-module --name my_sensor --lang cpp --out my_mod
+```
+
+This writes an editable module (`nobro_app_init()` once, `nobro_app_poll()` each
+cycle) and prints the build command, which compiles + links your file into the
+`c_abi_demo` firmware via the `c-source` / `cpp-source` path (needs
+`arm-none-eabi-gcc` / `g++`). Both languages are verified end to end on board1 - the
+kernel admits the C or C++ module and it drives a sensor to a passing report. See
+[bindings/c/README.md](../bindings/c/README.md) and
+[bindings/cpp/README.md](../bindings/cpp/README.md).
