@@ -15,6 +15,8 @@ members = [
     "apps/imu_i2c_demo",
     "apps/usb_cdc_demo",
     "apps/eh_imu_demo",
+    "apps/c_abi_module",
+    "apps/c_abi_demo",
 ]
 
 [workspace.package]

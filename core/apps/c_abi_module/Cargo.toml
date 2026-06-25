@@ -1,0 +1,16 @@
+[package]
+name = "nobro-c-abi-module"
+version.workspace = true
+edition.workspace = true
+
+# Reference "C module" for the NobroRTOS C ABI, written against ONLY the extern "C"
+# surface in bindings/c/include/nobro_app.h. It is written in Rust here (extern "C",
+# byte-identical ABI to the C in bindings/c/examples/imu_module.c) so the C-ABI
+# boundary can be linked + run on hardware without a C cross-compiler. With
+# arm-none-eabi-gcc present, c_abi_demo's build.rs compiles the .c instead - same ABI.
+
+[lib]
+name = "nobro_c_abi_module"
+path = "src/lib.rs"
+
+[dependencies]
