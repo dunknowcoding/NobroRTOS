@@ -1,23 +1,32 @@
-# NobroRTOS
-
 <p align="center">
-  <strong>A compact Rust-first RTOS for AI robotics, IoT nodes, deadline-aware control, explicit resource ownership, and host-readable diagnostics.</strong>
+  <img src="docs/images/nobro-logo.svg" alt="NobroRTOS" width="600">
 </p>
 
 <p align="center">
-  <strong>中文名：糙哥RTOS</strong><br>
-  糙哥RTOS 是面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
+  <strong>A tiny, Rust-first real-time OS that makes one board &mdash; or a hundred &mdash; feel teachable.</strong><br>
+  The <strong>AI &middot; Robot &middot; IoT nexus</strong> for microcontrollers: explicit contracts, static memory,
+  deadline discipline, and host-readable diagnostics &mdash; small enough to read in an afternoon.
 </p>
 
 <p align="center">
-  <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/repo-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
-  <img alt="Language" src="https://img.shields.io/badge/Rust-first-b7410e?style=for-the-badge&logo=rust">
-  <img alt="Target" src="https://img.shields.io/badge/target-nRF52840-2563eb?style=for-the-badge">
+  <strong>中文名：糙哥RTOS</strong> &mdash; 面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
+</p>
+
+<p align="center">
+  <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/GitHub-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
+  <img alt="Language" src="https://img.shields.io/badge/core-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white">
+  <img alt="Target" src="https://img.shields.io/badge/MCU-nRF52840-2563eb?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-0f766e?style=for-the-badge">
 </p>
+<p align="center">
+  <img alt="Hardware verified" src="https://img.shields.io/badge/hardware-verified%20on%20board-22c55e?style=for-the-badge">
+  <img alt="Authoring languages" src="https://img.shields.io/badge/author%20in-Rust%20%7C%20C%20%7C%20C%2B%2B-6f42c1?style=for-the-badge">
+  <img alt="embedded-hal" src="https://img.shields.io/badge/embedded--hal-drivers%20run-0f766e?style=for-the-badge">
+  <img alt="no_std" src="https://img.shields.io/badge/no__std-no%20heap-1f2937?style=for-the-badge">
+</p>
 
 <p align="center">
-  <code>no_std</code> | <code>static capacity</code> | <code>AI adapters</code> | <code>ROS bridges</code> | <code>NOBRO_* reports</code>
+  <code>no_std</code> &middot; <code>static capacity</code> &middot; <code>deadline-aware</code> &middot; <code>NOBRO_* reports</code> &middot; <code>AI + ROS bridges</code>
 </p>
 
 ---
@@ -39,6 +48,35 @@ abstraction layer for hardware, communication, and edge intelligence.
 **Author:** dunknowcoding (YouTube NiusRobotLab)
 **License:** Apache-2.0
 
+## 🚀 Start in 60 seconds
+
+You need Rust + the embedded target, and a way to flash an nRF52840 (a SEGGER
+J-Link, or any board with a UF2 bootloader).
+
+```powershell
+rustup target add thumbv7em-none-eabihf
+rustup component add llvm-tools-preview
+git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
+
+# Build + flash + read a real sensor, self-certified, in ONE command:
+python tools/nobro_hw_eval.py imu
+```
+
+It builds the IMU demo, flashes board1, reads the kernel's host-readable report
+straight out of RAM, and prints **PASS/FAIL**. No debug probe? Flash `usb_cdc_demo`
+and just open the board's COM port. Full walkthrough:
+[docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
+
+## 👋 Who it's for
+
+| You are a&hellip; | NobroRTOS gives you |
+| --- | --- |
+| **Beginner / maker** | One-command build-flash-verify, an Arduino-style `setup()/loop()` in C++, and reports that say exactly what failed |
+| **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, capability-scoped resources, and the `embedded-hal` driver ecosystem |
+| **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
+| **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
+| **Porting from another RTOS** | A thin SAL + C ABI so Zephyr/Embassy/bare-metal drivers and C/C++ logic drop in &mdash; see [docs/PORTING_FROM.md](docs/PORTING_FROM.md) |
+
 ## System Map
 
 ```mermaid
@@ -58,6 +96,33 @@ flowchart TB
     class sal,adapters,hal edge;
     class reports,host host;
 ```
+
+## 🧩 Author a module in your language
+
+Module *logic* &mdash; not just config &mdash; can be written in **Rust, C, or C++**
+over one `extern "C"` C ABI. The kernel admits your module and drives `init` /
+`poll`; your code reaches hardware only through bounded host services. All three are
+verified on hardware reading the same IMU.
+
+```cpp
+// C++ (Arduino style) -- bindings/cpp/examples/arduino_imu.cpp
+#include "nobro_app.hpp"
+void setup() { const uint8_t wake[2] = {0x6B, 0x01}; nobro::I2c::write(0x68, wake, 2); }
+void loop()  { /* read the IMU via nobro::I2c, then nobro::publish_imu(...) */ }
+NOBRO_ARDUINO_MODULE()
+```
+
+```c
+/* C -- bindings/c/examples/imu_module.c */
+#include "nobro_app.h"
+int32_t nobro_app_init(void) { uint8_t w[2] = {0x6B, 0x01}; return nobro_i2c_write(0x68, w, 2); }
+int32_t nobro_app_poll(void) { /* nobro_i2c_write_read(...) + nobro_publish_imu(...) */ return 0; }
+```
+
+Prefer pure config? A JSON contract generates a compiling Rust firmware. Prefer
+existing drivers? The `embedded-hal` adapter runs unmodified `embedded-hal` device
+crates as-is. Authoring details: [bindings/c/README.md](bindings/c/README.md) and
+[bindings/cpp/README.md](bindings/cpp/README.md).
 
 ## Why It Exists
 
