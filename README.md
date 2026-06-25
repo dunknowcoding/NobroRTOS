@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/nobro-logo.svg" alt="NobroRTOS" width="600">
+  <img src="docs/images/Nobro_simple.png" alt="NobroRTOS" width="320">
 </p>
 
 <p align="center">
@@ -30,6 +30,10 @@
 </p>
 
 ---
+
+<p align="center">
+  <img src="docs/images/Nobro_full.png" alt="NobroRTOS - the AI, Robot, and IoT nexus for microcontrollers" width="760">
+</p>
 
 ## Signal
 
