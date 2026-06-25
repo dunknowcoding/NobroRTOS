@@ -11,6 +11,13 @@ name = "usb_cdc_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
+# board5: nice!nano-class with the S140 layout (app @ 0x26000). Same source; the
+# SoftDevice sits dormant, so the app owns USBD/POWER/CLOCK directly as on board1.
+[[bin]]
+name = "usb_cdc_demo_board5"
+path = "src/main.rs"
+required-features = ["board-nicenano-s140"]
+
 [dependencies]
 nobro-adapter-mpu9250-imu = { path = "../../adapters/mpu9250-imu", default-features = false }
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
