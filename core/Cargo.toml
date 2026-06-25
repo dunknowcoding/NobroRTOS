@@ -12,6 +12,7 @@ members = [
     "apps/resource_sched_demo",
     "apps/sal_adapter_demo",
     "apps/imu_i2c_demo",
+    "apps/usb_cdc_demo",
 ]
 
 [workspace.package]
