@@ -33,46 +33,115 @@
     {
       "name": "sim_relay",
       "kind": "simulated relay + temperature node",
-      "protocol": "sim", "sim_kind": "temp", "seed": 10,
-      "route": ["collector"]
+      "protocol": "sim",
+      "sim_kind": "temp",
+      "seed": 10,
+      "route": [
+        "collector"
+      ]
     },
     {
       "name": "sim_power_a",
       "kind": "simulated power node (2-hop via relay)",
-      "protocol": "sim", "sim_kind": "power", "seed": 11,
-      "route": ["sim_relay", "collector"]
+      "protocol": "sim",
+      "sim_kind": "power",
+      "seed": 11,
+      "route": [
+        "sim_relay",
+        "collector"
+      ]
     },
     {
       "name": "sim_imu_b",
       "kind": "simulated IMU node (2-hop via relay)",
-      "protocol": "sim", "sim_kind": "imu", "seed": 12,
-      "route": ["sim_relay", "collector"]
+      "protocol": "sim",
+      "sim_kind": "imu",
+      "seed": 12,
+      "route": [
+        "sim_relay",
+        "collector"
+      ]
     },
     {
       "name": "sim_power_c",
       "kind": "simulated power node (lossy 3-hop edge)",
-      "protocol": "sim", "sim_kind": "power", "seed": 13,
-      "route": ["sim_imu_b", "sim_relay", "collector"],
-      "loss": 0.3, "optional": true
+      "protocol": "sim",
+      "sim_kind": "power",
+      "seed": 13,
+      "route": [
+        "sim_imu_b",
+        "sim_relay",
+        "collector"
+      ],
+      "loss": 0.3,
+      "optional": true
+    },
+    {
+      "name": "uno_r4",
+      "kind": "Arduino UNO R4 WiFi",
+      "transport": "serial",
+      "port": "COM23",
+      "baud": 115200,
+      "protocol": "serial_regex",
+      "match": ".+",
+      "reset_on_open": true,
+      "optional": true,
+      "seconds": 2
+    },
+    {
+      "name": "esp32s3_cam",
+      "kind": "ESP32-S3-CAM (OV2640)",
+      "transport": "serial",
+      "port": "COM25",
+      "baud": 115200,
+      "protocol": "serial_regex",
+      "match": "esp32s3|ESP-ROM|camera|JPEG|detect",
+      "reset_on_open": false,
+      "optional": true,
+      "seconds": 3
     }
   ],
   "schemas": {
     "spi_imu": {
       "magic": "0x4E425350",
       "words": 9,
-      "fields": ["magic", "version", "completed", "all_pass", "who_am_i", "accel_mg", "reads", "errors", "checksum"],
+      "fields": [
+        "magic",
+        "version",
+        "completed",
+        "all_pass",
+        "who_am_i",
+        "accel_mg",
+        "reads",
+        "errors",
+        "checksum"
+      ],
       "pass_field": "all_pass"
     },
     "selftest": {
       "magic": "0x4E425354",
       "words": 21,
-      "fields": ["magic", "version", "completed", "all_pass"],
+      "fields": [
+        "magic",
+        "version",
+        "completed",
+        "all_pass"
+      ],
       "pass_field": "all_pass"
     },
     "radio": {
       "magic": "0x4E524144",
       "words": 8,
-      "fields": ["magic", "version", "role", "tx_sent", "rx_received", "last_seq", "all_pass", "checksum"],
+      "fields": [
+        "magic",
+        "version",
+        "role",
+        "tx_sent",
+        "rx_received",
+        "last_seq",
+        "all_pass",
+        "checksum"
+      ],
       "pass_field": "all_pass"
     }
   }
