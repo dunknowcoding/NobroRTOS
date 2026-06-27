@@ -1,0 +1,11 @@
+[package]
+name = "nobro-adapter-ina3221"
+version.workspace = true
+edition.workspace = true
+
+# INA3221 3-channel power monitor driver, generic over embedded-hal I2C (runs over the
+# NobroRTOS NobroI2c adapter, or any embedded-hal bus). Decodes bus voltage + shunt
+# current per channel. Host-tested against the live module's register encoding.
+
+[dependencies]
+embedded-hal = "1.0"
