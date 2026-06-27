@@ -30,7 +30,7 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 usb-device = "0.3"
 usbd-serial = "0.2"
-nrf-usbd = "0.3"
+nrf-usbd = { path = "../../vendor/nrf-usbd" }
 nrf52840-pac = "0.12"
 
 [features]

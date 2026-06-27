@@ -31,7 +31,7 @@ dependencies = [
  "nobro-hal",
  "nobro-kernel",
  "nobro-sal",
- "nrf-usbd",
+ "nrf-usbd 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "nrf52840-pac",
  "panic-halt",
  "usb-device",
@@ -409,6 +409,16 @@ dependencies = [
 [[package]]
 name = "nrf-usbd"
 version = "0.3.0"
+dependencies = [
+ "cortex-m",
+ "critical-section",
+ "usb-device",
+ "vcell",
+]
+
+[[package]]
+name = "nrf-usbd"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedf862f941154442271ae9914777bd1c93f6d2e0dc9db4cafa160e55ffb9085"
 dependencies = [
@@ -634,7 +644,7 @@ dependencies = [
  "nobro-hal",
  "nobro-kernel",
  "nobro-sal",
- "nrf-usbd",
+ "nrf-usbd 0.3.0",
  "nrf52840-pac",
  "panic-halt",
  "usb-device",
