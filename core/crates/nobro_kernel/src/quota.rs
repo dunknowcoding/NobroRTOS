@@ -221,6 +221,48 @@ mod tests {
     }
 
     #[test]
+    fn multi_module_memory_budget_enforced_across_modules() {
+        // Three modules share the system, each with its own budget. In-budget
+        // reservations succeed and aggregate; one module overrunning its RAM limit is
+        // rejected without disturbing the others' usage (M65).
+        let mut ledger = QuotaLedger::<3>::new();
+        ledger
+            .register(ModuleId::Sensor, SystemBudget::new(2048, 512, 4))
+            .unwrap();
+        ledger
+            .register(ModuleId::Radio, SystemBudget::new(2048, 512, 4))
+            .unwrap();
+        ledger
+            .register(ModuleId::Crypto, SystemBudget::new(2048, 512, 4))
+            .unwrap();
+
+        ledger
+            .reserve(ModuleId::Sensor, SystemBudget::new(256, 200, 1))
+            .unwrap();
+        ledger
+            .reserve(ModuleId::Radio, SystemBudget::new(256, 200, 1))
+            .unwrap();
+        ledger
+            .reserve(ModuleId::Crypto, SystemBudget::new(256, 100, 1))
+            .unwrap();
+
+        // aggregate usage across all modules
+        assert_eq!(ledger.total_used(), SystemBudget::new(768, 500, 3));
+
+        // Crypto overrunning its own 512-byte RAM limit (100 + 500) is rejected; the
+        // aggregate is unchanged.
+        assert_eq!(
+            ledger.reserve(ModuleId::Crypto, SystemBudget::new(0, 500, 0)),
+            Err(QuotaError::Exceeded {
+                module: ModuleId::Crypto,
+                used: SystemBudget::new(256, 600, 1),
+                limit: SystemBudget::new(2048, 512, 4),
+            })
+        );
+        assert_eq!(ledger.total_used(), SystemBudget::new(768, 500, 3));
+    }
+
+    #[test]
     fn ledger_rejects_release_underflow() {
         let mut ledger = QuotaLedger::<1>::new();
         ledger

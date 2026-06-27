@@ -23,9 +23,9 @@ committed. ✅ = done/verified.
 - M44 ICM45686 interop (Nano) / native adapter
 - [x] M45 INA3221 native Rust SAL adapter
 - [x] M46 Multi-sensor fusion node (IMU + power + pressure)
-- M47 Sensor health / fault detection
-- M48 Sensor calibration routine
-- M49 Sample-rate management + downsampling
+- [x] M47 Sensor health / fault detection
+- [x] M48 Sensor calibration routine
+- [x] M49 Sample-rate management + downsampling
 - M50 Sensor data logging to flash (NVMC)
 
 ## Multi-board / mesh (M51–M60)
@@ -42,10 +42,10 @@ committed. ✅ = done/verified.
 
 ## Resource management (M61–M68)
 - [x] M61 CryptoSal adapter (software AES) + Capability::Crypto
-- M62 Power / sleep management + low-power modes
+- [x] M62 Power / sleep management + low-power modes
 - M63 More managed resources (PWM / EGU / PPI leases)
 - M64 Resource contention + arbitration test
-- M65 Memory budget enforcement across modules
+- [x] M65 Memory budget enforcement across modules
 - M66 Deadline / quota enforcement under load
 - M67 Capability-gated multi-module admission
 - M68 Dynamic resource reallocation
