@@ -9,6 +9,7 @@ members = [
     "adapters/sensor-stub",
     "adapters/mpu9250-imu",
     "adapters/embedded-hal-i2c",
+    "adapters/embedded-hal-spi",
     "adapters/motion-ai",
     "adapters/ros-imu-bridge",
     "apps/mvk_ppi_timestamp",

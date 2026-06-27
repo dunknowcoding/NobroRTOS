@@ -380,6 +380,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-eh-spi"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "embedded-hal 1.0.0",
+ "nobro-hal",
+]
+
+[[package]]
 name = "nobro-hal"
 version = "0.1.0"
 dependencies = [
@@ -598,6 +607,8 @@ dependencies = [
  "cortex-m-rt",
  "defmt 0.3.100",
  "defmt-rtt",
+ "embedded-hal 1.0.0",
+ "nobro-eh-spi",
  "nobro-hal",
  "panic-halt",
 ]
