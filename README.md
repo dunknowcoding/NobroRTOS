@@ -10,6 +10,7 @@
 
 <p align="center">
   <strong>中文名：糙哥RTOS</strong> &mdash; 面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
+  为什么叫“糙哥”？因为好用到没朋友！
 </p>
 
 <p align="center">
