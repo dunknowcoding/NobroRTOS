@@ -25,6 +25,13 @@ name = "radio_sensor_tx"
 path = "src/sensor_tx.rs"
 required-features = ["board-promicro-nosd"]
 
+# Same radio TX, built for the board5 (S140) layout so a probe-less board can be the
+# over-the-air transmitter (collected by board1 running radio_rx).
+[[bin]]
+name = "radio_tx_s140"
+path = "src/tx.rs"
+required-features = ["board-nicenano-s140"]
+
 [dependencies]
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
 nobro-eh-spi = { path = "../../adapters/embedded-hal-spi", default-features = false }
@@ -38,3 +45,4 @@ panic-halt = "0.2"
 [features]
 default = ["board-promicro-nosd"]
 board-promicro-nosd = ["nobro-hal/board-promicro-nosd", "nobro-eh-spi/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-hal/board-nicenano-s140", "nobro-eh-spi/board-nicenano-s140"]
