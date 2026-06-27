@@ -108,11 +108,58 @@ def read_serial_regex(b):
     return None, "no match"
 
 
+def read_sim(b):
+    """Simulate a sensor node's datastream + mesh route, for hardware not yet present.
+    Reproducible-but-varying (seeded by a coarse time bucket); models occasional mesh
+    packet loss. Lets the sensor-network / mesh collection logic be tested at scale."""
+    import random
+    rng = random.Random(b.get("seed", 0) + int(time.time()) // 5)
+    if rng.random() < b.get("loss", 0.0):
+        return None, "sim packet lost (mesh)"
+    kind = b.get("sim_kind", "power")
+    rec = {"pass": True, "sim": True, "sim_kind": kind,
+           "route": b.get("route", ["collector"]), "hops": len(b.get("route", ["c"]))}
+    if kind == "power":
+        v = 5.0 + rng.uniform(-0.05, 0.05)
+        i = rng.uniform(0.01, 0.2)
+        rec.update({"bus_V": round(v, 3), "current_A": round(i, 4),
+                    "power_W": round(v * i, 4)})
+    elif kind == "imu":
+        rec["accel_mg"] = 1000 + rng.randint(-40, 40)
+    elif kind == "temp":
+        rec["temp_c"] = round(24.0 + rng.uniform(-2, 3), 1)
+    return rec, None
+
+
 PARSERS = {
     "nobro_report": read_nobro_report,
     "jsonl_bridge": lambda b, s: read_jsonl_bridge(b),
     "serial_regex": lambda b, s: read_serial_regex(b),
+    "sim": lambda b, s: read_sim(b),
 }
+
+
+def network_rollup(boards):
+    """Sensor-network view over all collected nodes (real + simulated): node count,
+    aggregate power, and the (simulated) mesh topology + depth."""
+    total_power = 0.0
+    for d in boards.values():
+        if "channels" in d:
+            total_power += sum(c.get("power_W", 0.0) for c in d["channels"])
+        total_power += d.get("power_W", 0.0)
+    edges = []
+    for name, d in boards.items():
+        route = d.get("route")
+        if route:
+            chain = [name] + list(route)
+            edges += [f"{a}->{b}" for a, b in zip(chain, chain[1:])]
+    max_hops = max([d.get("hops", 1) for d in boards.values()] + [1])
+    return {
+        "nodes": len(boards),
+        "total_power_W": round(total_power, 3),
+        "mesh_max_hops": max_hops,
+        "mesh_edges": sorted(set(edges)),
+    }
 
 
 def summary_line(name, proto, rec):
@@ -125,6 +172,15 @@ def summary_line(name, proto, rec):
                 " ".join(f"ch{i}:{c['current_A']*1000:.1f}mA" for i, c in enumerate(ch)))
     if proto == "serial_regex":
         return f"matched '{rec.get('matched')}'  ({rec.get('sample')})"
+    if proto == "sim":
+        via = "->".join(rec.get("route", []))
+        k = rec.get("sim_kind")
+        if k == "power":
+            return f"[sim] {rec['power_W']:.3f} W  via {via}  ({rec['hops']} hops)"
+        if k == "imu":
+            return f"[sim] accel={rec['accel_mg']} mg  via {via}"
+        if k == "temp":
+            return f"[sim] {rec['temp_c']} C  relay"
     return ""
 
 
@@ -158,6 +214,13 @@ def main():
             if not optional:
                 all_ok = False
 
+    net = network_rollup(snapshot["boards"])
+    snapshot["network"] = net
+    print("\n--- sensor-network rollup ---")
+    print(f"  nodes={net['nodes']}  total_power={net['total_power_W']} W  "
+          f"mesh_max_hops={net['mesh_max_hops']}")
+    if net["mesh_edges"]:
+        print(f"  mesh: {'  '.join(net['mesh_edges'])}")
     print("\n--- unified snapshot ---")
     print(json.dumps(snapshot, indent=2, default=str))
     print(f"\nRESULT: {'PASS' if all_ok else 'FAIL'}")
