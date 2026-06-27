@@ -29,6 +29,31 @@
       "match": "ICM45686|ICM456xx",
       "reset_on_open": true,
       "optional": true
+    },
+    {
+      "name": "sim_relay",
+      "kind": "simulated relay + temperature node",
+      "protocol": "sim", "sim_kind": "temp", "seed": 10,
+      "route": ["collector"]
+    },
+    {
+      "name": "sim_power_a",
+      "kind": "simulated power node (2-hop via relay)",
+      "protocol": "sim", "sim_kind": "power", "seed": 11,
+      "route": ["sim_relay", "collector"]
+    },
+    {
+      "name": "sim_imu_b",
+      "kind": "simulated IMU node (2-hop via relay)",
+      "protocol": "sim", "sim_kind": "imu", "seed": 12,
+      "route": ["sim_relay", "collector"]
+    },
+    {
+      "name": "sim_power_c",
+      "kind": "simulated power node (lossy 3-hop edge)",
+      "protocol": "sim", "sim_kind": "power", "seed": 13,
+      "route": ["sim_imu_b", "sim_relay", "collector"],
+      "loss": 0.3, "optional": true
     }
   ],
   "schemas": {
