@@ -51,6 +51,7 @@ struct SelftestReport {
     pool_pass: u32,
     ai_route_pass: u32,
     ai_preflight_pass: u32,
+    ros_service_pass: u32,
     checksum: u32,
 }
 const ST_MAGIC: u32 = 0x4E42_5354; // "NBST"
@@ -77,6 +78,7 @@ static mut NOBRO_SELFTEST_REPORT: SelftestReport = SelftestReport {
     pool_pass: 0,
     ai_route_pass: 0,
     ai_preflight_pass: 0,
+    ros_service_pass: 0,
     checksum: 0,
 };
 
@@ -220,6 +222,29 @@ fn test_admission() -> bool {
 
 fn default_action(_e: &KernelError) -> Action {
     Action::RetryNow
+}
+
+fn test_ros_service() -> bool {
+    // M22: a RosBridgeSal request/response service. Publish two IMU messages, then call
+    // the STATS service over RosBridgeSal::request and decode [published, transmitted,
+    // dropped]; an unknown service hash must be rejected.
+    use nobro_adapter_ros_imu_bridge::{RosImuBridge, SERVICE_STATS, TOPIC_IMU};
+    use nobro_sal::RosBridgeSal;
+    let mut bridge = RosImuBridge::new();
+    if bridge.publish(TOPIC_IMU, &[1, 2, 3], 0).is_err()
+        || bridge.publish(TOPIC_IMU, &[4, 5, 6], 0).is_err()
+    {
+        return false;
+    }
+    let mut resp = [0u8; 12];
+    let n = match bridge.request(SERVICE_STATS, &[], &mut resp, 0) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    let published = u32::from_le_bytes([resp[0], resp[1], resp[2], resp[3]]);
+    let dropped = u32::from_le_bytes([resp[8], resp[9], resp[10], resp[11]]);
+    let unknown_rejected = bridge.request(0xDEAD_BEEF, &[], &mut resp, 0).is_err();
+    n == 12 && published == 2 && dropped == 0 && unknown_rejected
 }
 
 fn test_ai_route() -> bool {
@@ -391,6 +416,7 @@ fn main() -> ! {
     let pool = test_pool();
     let ai_route = test_ai_route();
     let ai_preflight = test_ai_preflight();
+    let ros_service = test_ros_service();
     let all = quota
         && eventlog
         && mailbox
@@ -405,7 +431,8 @@ fn main() -> ! {
         && health
         && pool
         && ai_route
-        && ai_preflight;
+        && ai_preflight
+        && ros_service;
 
     let q = u32::from(quota);
     let e = u32::from(eventlog);
@@ -422,9 +449,10 @@ fn main() -> ! {
     let poo = u32::from(pool);
     let air = u32::from(ai_route);
     let aip = u32::from(ai_preflight);
+    let ros = u32::from(ros_service);
     let ap = u32::from(all);
     let cs = ST_MAGIC
-        ^ 3
+        ^ 4
         ^ 1
         ^ ap
         ^ q
@@ -441,11 +469,12 @@ fn main() -> ! {
         ^ hea
         ^ poo
         ^ air
-        ^ aip;
+        ^ aip
+        ^ ros;
     unsafe {
         NOBRO_SELFTEST_REPORT = SelftestReport {
             magic: ST_MAGIC,
-            version: 3,
+            version: 4,
             completed: 1,
             all_pass: ap,
             quota_pass: q,
@@ -463,6 +492,7 @@ fn main() -> ! {
             pool_pass: poo,
             ai_route_pass: air,
             ai_preflight_pass: aip,
+            ros_service_pass: ros,
             checksum: cs,
         };
     }
