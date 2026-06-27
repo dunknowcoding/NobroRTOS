@@ -16,7 +16,7 @@ use usbd_serial::SerialPort;
 use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
 use nobro_hal::{
     lease::Resource,
-    traits::{HalLease, PlatformHal},
+    traits::{HalClock, HalLease, PlatformHal},
     ActivePlatform as Hal,
 };
 use nobro_kernel::{pool::SamplePool, ImuPayload};
@@ -73,6 +73,29 @@ fn main() -> ! {
     // regulator output is bypassed and OUTPUTRDY never sets, which would hang.
     while periph.POWER.usbregstatus.read().vbusdetect().bit_is_clear() {}
 
+    // A UF2 bootloader (board5 / S140) drives USBD (the mass-storage drive) and hands
+    // off without fully tearing it down, so our re-init would enumerate from a dirty
+    // state and the host rejects it ("unrecognized device"). board1 is J-Link-reset to
+    // a clean state, so it works. Mirror TaichiUSB's clean start: disconnect pullup,
+    // disable USBD, clear leftover events, and zero the device address before nrf-usbd
+    // re-enables. No-op on a board that already starts clean.
+    periph.USBD.usbpullup.write(|w| w.connect().disabled());
+    periph.USBD.enable.write(|w| w.enable().disabled());
+    periph.USBD.events_usbreset.reset();
+    periph.USBD.events_usbevent.reset();
+    periph.USBD.events_ep0setup.reset();
+    periph.USBD.eventcause.write(|w| unsafe { w.bits(0xFFFF_FFFF) }); // W1C: clear all
+    for _ in 0..400_000u32 {
+        cortex_m::asm::nop();
+    }
+    // LED progress indicator so a probe-less board shows how far USB got: it is lit
+    // after this point, then in the loop flickers fast once USB is Configured (working)
+    // or blinks slowly while enumeration is stuck.
+    unsafe {
+        nobro_hal::ppi::led_init_output();
+        nobro_hal::ppi::led_toggle();
+    }
+
     // Bring up the timebase + IMU (TWIM I2C) before starting USB enumeration.
     Hal::acquire(Resource::Timer0, 2).ok();
     unsafe {
@@ -104,9 +127,51 @@ fn main() -> ! {
     let mut accel_mg: u32 = 0;
     let mut spin: u32 = 0;
 
+    let mut blink: u32 = 0;
+    let usb_start = Hal::now_us();
+    let mut ever_configured = false;
+    let mut max_state: u8 = 0; // 0=Default, 1=Addressed, 2=Configured (max reached)
     loop {
         dev.poll(&mut [&mut serial]);
-        if dev.state() != UsbDeviceState::Configured {
+        blink = blink.wrapping_add(1);
+        let s = match dev.state() {
+            UsbDeviceState::Addressed => 1u8,
+            UsbDeviceState::Configured => 2u8,
+            _ => 0u8,
+        };
+        if s > max_state {
+            max_state = s;
+        }
+        let configured = s >= 2;
+        if configured {
+            ever_configured = true;
+        }
+        // Self-recovery: if USB never enumerates, reboot into the UF2 bootloader so the
+        // next firmware can be flashed without a manual double-tap. GPREGRET = 0x57 is
+        // the Adafruit/nice!nano DFU magic. Gated to the S140 build (board5 dev loop).
+        #[cfg(feature = "board-nicenano-s140")]
+        if !ever_configured && Hal::now_us().saturating_sub(usb_start) > 30_000_000 {
+            unsafe {
+                core::ptr::write_volatile(0x4000_051C as *mut u32, 0x57); // POWER.GPREGRET
+            }
+            cortex_m::peripheral::SCB::sys_reset();
+        }
+        // Fast flicker once Configured (USB working); slow blink while enumeration is
+        // stuck. Lets a probe-less board report its USB state on the LED.
+        // LED rate reports how far USB enumeration got: SLOW (~1 Hz) = stuck at Default
+        // (device descriptor / first control transfer fails); MEDIUM (~5 Hz) = reached
+        // Addressed (SET_ADDRESS ok, config stage fails); FAST flicker = Configured.
+        let period = match max_state {
+            2 => 20_000,
+            1 => 150_000,
+            _ => 700_000,
+        };
+        if blink % period == 0 {
+            unsafe {
+                nobro_hal::ppi::led_toggle();
+            }
+        }
+        if !configured {
             continue;
         }
 
