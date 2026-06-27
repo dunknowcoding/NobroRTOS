@@ -1,0 +1,27 @@
+[package]
+name = "radio-comms-demo"
+version.workspace = true
+edition.workspace = true
+
+# Verifies the radio as a MANAGED hardware resource on board1: the Resource::Radio
+# lease (acquire + conflict-rejected + wrong-owner release), Capability::Radio
+# authorization, and StreamSal frame TX via the radio-comms adapter. NOBRO_RADIO_COMMS_REPORT.
+[[bin]]
+name = "radio_comms_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[dependencies]
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
+nobro-adapter-radio-comms = { path = "../../adapters/radio-comms", default-features = false }
+nobro-sal = { path = "../../crates/nobro_sal" }
+nobro-kernel = { path = "../../crates/nobro_kernel" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd", "nobro-adapter-radio-comms/board-promicro-nosd"]
