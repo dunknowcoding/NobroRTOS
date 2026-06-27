@@ -513,6 +513,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "radio-link-demo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-hal",
+ "panic-halt",
+]
+
+[[package]]
 name = "recovery-demo"
 version = "0.1.0"
 dependencies = [
