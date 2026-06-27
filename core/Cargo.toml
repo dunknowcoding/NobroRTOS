@@ -25,6 +25,7 @@ members = [
     "apps/recovery_demo",
     "apps/kernel_selftest",
     "apps/closed_loop_demo",
+    "apps/spi_imu_demo",
 ]
 
 [workspace.package]

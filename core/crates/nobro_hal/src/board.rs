@@ -38,6 +38,15 @@ pub const I2C_SCL_PIN: u8 = 11; // P0.11 / D7
 pub const SERVO_PWM_PIN: u8 = 24;
 pub const SERVO_CENTER_US: u32 = 1500;
 pub const MVK_TRIGGER_PIN: u8 = 17;
+// board1 GY-9250 wired for SPI: SCK=P0.17(D2), MISO=P0.20(D3), MOSI=P0.22(D4),
+// CS=P0.24(D5); INT=P0.11(D7), FSYNC=P1.00(D6) for ISR-based sampling. (CS shares the
+// servo pin; the SPI IMU demo does not drive the servo.)
+pub const SPI_SCK_PIN: u8 = 17;
+pub const SPI_MISO_PIN: u8 = 20;
+pub const SPI_MOSI_PIN: u8 = 22;
+pub const SPI_CS_PIN: u8 = 24;
+pub const IMU_INT_PIN: u8 = 11;
+pub const IMU_FSYNC_PIN: u8 = 32;
 pub const NOBRO_FLASH_BUDGET_BYTES: u32 = 80 * 1024;
 pub const NOBRO_RAM_BUDGET_BYTES: u32 = 32 * 1024;
 pub const NOBRO_SAMPLE_POOL_SLOTS: u16 = 8;
