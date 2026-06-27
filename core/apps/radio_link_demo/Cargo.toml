@@ -18,8 +18,17 @@ name = "radio_rx"
 path = "src/rx.rs"
 required-features = ["board-promicro-nosd"]
 
+# A data-collection source node: read the board1 SPI MPU-9250 and broadcast its accel
+# over the radio for a peer to collect.
+[[bin]]
+name = "radio_sensor_tx"
+path = "src/sensor_tx.rs"
+required-features = ["board-promicro-nosd"]
+
 [dependencies]
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
+nobro-eh-spi = { path = "../../adapters/embedded-hal-spi", default-features = false }
+embedded-hal = "1.0"
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 defmt = "0.3"
@@ -28,4 +37,4 @@ panic-halt = "0.2"
 
 [features]
 default = ["board-promicro-nosd"]
-board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd", "nobro-eh-spi/board-promicro-nosd"]
