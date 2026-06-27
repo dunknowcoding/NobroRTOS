@@ -11,12 +11,18 @@
 //! contract + queue discipline a transport plugs into. Portable: SAL-only deps.
 #![no_std]
 
-use nobro_sal::{RosBridgeContract, RosBridgeSal, RosBridgeTransport, RosTopicContract};
+use nobro_sal::{
+    RosBridgeContract, RosBridgeSal, RosBridgeTransport, RosServiceContract, RosTopicContract,
+};
 
 /// Topic + message-type identity for the IMU stream.
 pub const TOPIC_IMU: u32 = 0x494D_5530; // "IMU0"
 pub const MSG_IMU_TYPE: u32 = 0x494D_5554; // "IMUT"
 pub const BRIDGE_ID: u32 = 0x4E42_524F; // "NBRO"
+/// A request/response service that returns the bridge's [published, transmitted,
+/// dropped] counters (3 little-endian u32 = 12 bytes). No request payload.
+pub const SERVICE_STATS: u32 = 0x5354_4154; // "STAT"
+pub const SERVICE_STATS_RESP_BYTES: u16 = 12;
 
 pub const DEPTH: usize = 8;
 pub const MAX_MSG: usize = 24;
@@ -105,7 +111,12 @@ impl RosBridgeSal for RosImuBridge {
                 DEPTH as u8,
                 MAX_MSG as u16,
             )],
-            &[],
+            &[RosServiceContract::new(
+                SERVICE_STATS,
+                0,
+                SERVICE_STATS_RESP_BYTES,
+                50_000,
+            )],
             &[],
             &[],
         )
@@ -141,11 +152,20 @@ impl RosBridgeSal for RosImuBridge {
 
     fn request(
         &mut self,
-        _service_hash: u32,
+        service_hash: u32,
         _request: &[u8],
-        _response: &mut [u8],
+        response: &mut [u8],
         _deadline_us: u64,
     ) -> Result<usize, Self::Error> {
-        Err(RosError::NoService)
+        if service_hash != SERVICE_STATS {
+            return Err(RosError::NoService);
+        }
+        if response.len() < SERVICE_STATS_RESP_BYTES as usize {
+            return Err(RosError::PayloadTooLarge);
+        }
+        response[0..4].copy_from_slice(&self.published.to_le_bytes());
+        response[4..8].copy_from_slice(&self.transmitted.to_le_bytes());
+        response[8..12].copy_from_slice(&self.dropped.to_le_bytes());
+        Ok(SERVICE_STATS_RESP_BYTES as usize)
     }
 }
