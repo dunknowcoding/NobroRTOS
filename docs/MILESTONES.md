@@ -8,21 +8,21 @@ committed. ✅ = done/verified.
 
 ## AI / ML on embedded (M33–M42)
 - M33 3-class motion NN (idle / walk / shake) on board1
-- M34 Anomaly detection (reconstruction error) on board1
+- [x] M34 Anomaly detection (reconstruction error) on board1
 - M35 AiRoutePolicy hybrid routing verified on hardware
 - M36 Multi-model registry + AiInferenceSal multiplexing
-- M37 int8-vs-float quantization accuracy report
+- [x] M37 int8-vs-float quantization accuracy report
 - M38 ESP32-S3-CAM vision recognition over COM25
 - M39 Multi-board AI fusion (board1 NN + ESP32 vision) in the collector
-- M40 On-device online adaptation (threshold/feature update)
+- [x] M40 On-device online adaptation (threshold/feature update)
 - M41 AI inference latency benchmark + deadline compliance
-- M42 Confidence calibration + reject option
+- [x] M42 Confidence calibration + reject option
 
 ## Sensors (M43–M50)
 - M43 BMP280 pressure/temp adapter (board5 GY-91)
 - M44 ICM45686 interop (Nano) / native adapter
-- M45 INA3221 native Rust SAL adapter
-- M46 Multi-sensor fusion node (IMU + power + pressure)
+- [x] M45 INA3221 native Rust SAL adapter
+- [x] M46 Multi-sensor fusion node (IMU + power + pressure)
 - M47 Sensor health / fault detection
 - M48 Sensor calibration routine
 - M49 Sample-rate management + downsampling
@@ -30,18 +30,18 @@ committed. ✅ = done/verified.
 
 ## Multi-board / mesh (M51–M60)
 - M51 Real over-the-air radio board-to-board
-- M52 Mesh routing protocol (multi-hop, real + sim)
-- M53 Time synchronization across nodes
-- M54 On-device mesh aggregation + rollup
-- M55 Collector ingests UNO R4 + ESP32-S3 + Pico2 W
+- [x] M52 Mesh routing protocol (multi-hop, real + sim)
+- [x] M53 Time synchronization across nodes
+- [x] M54 On-device mesh aggregation + rollup
+- [x] M55 Collector ingests UNO R4 + ESP32-S3 + Pico2 W
 - M56 Heterogeneous board fusion + unified schema
 - M57 Network partition / reconnect handling
-- M58 Broadcast / gossip protocol
-- M59 Mesh QoS / priority queues
+- [x] M58 Broadcast / gossip protocol
+- [x] M59 Mesh QoS / priority queues
 - M60 Distributed inference across the mesh
 
 ## Resource management (M61–M68)
-- M61 CryptoSal adapter (software AES) + Capability::Crypto
+- [x] M61 CryptoSal adapter (software AES) + Capability::Crypto
 - M62 Power / sleep management + low-power modes
 - M63 More managed resources (PWM / EGU / PPI leases)
 - M64 Resource contention + arbitration test
