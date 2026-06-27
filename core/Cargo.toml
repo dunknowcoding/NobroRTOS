@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/nobro_net",
+    "crates/nobro_crypto",
     "crates/nobro_sal",
     "crates/nobro_hal",
     "crates/nobro_kernel",

@@ -411,6 +411,13 @@ name = "nobro-c-abi-module"
 version = "0.1.0"
 
 [[package]]
+name = "nobro-crypto"
+version = "0.1.0"
+dependencies = [
+ "nobro-sal",
+]
+
+[[package]]
 name = "nobro-eh-i2c"
 version = "0.1.0"
 dependencies = [
