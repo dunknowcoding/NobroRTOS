@@ -1,0 +1,54 @@
+{
+  "_comment": "NobroRTOS multi-board collection manifest. Each board declares a transport (how to reach it) and a protocol (how to read it). New boards/apps plug in by adding an entry - no code change. 'optional' boards never fail the run when absent/silent.",
+  "boards": [
+    {
+      "name": "board1",
+      "kind": "nRF52840 / NobroRTOS / MPU-9250 (SPI)",
+      "transport": "jlink",
+      "device": "nRF52840_xxAA",
+      "protocol": "nobro_report",
+      "addr": "0x20000038",
+      "schema": "spi_imu"
+    },
+    {
+      "name": "esp32c3",
+      "kind": "INA3221 power monitor (third-party ina3221 app)",
+      "transport": "serial",
+      "port": "COM20",
+      "baud": 115200,
+      "protocol": "jsonl_bridge",
+      "reset_on_open": false
+    },
+    {
+      "name": "nano",
+      "kind": "Arduino Nano (ICM45686 sketch)",
+      "transport": "serial",
+      "port": "COM24",
+      "baud": 115200,
+      "protocol": "serial_regex",
+      "match": "ICM45686|ICM456xx",
+      "reset_on_open": true,
+      "optional": true
+    }
+  ],
+  "schemas": {
+    "spi_imu": {
+      "magic": "0x4E425350",
+      "words": 9,
+      "fields": ["magic", "version", "completed", "all_pass", "who_am_i", "accel_mg", "reads", "errors", "checksum"],
+      "pass_field": "all_pass"
+    },
+    "selftest": {
+      "magic": "0x4E425354",
+      "words": 21,
+      "fields": ["magic", "version", "completed", "all_pass"],
+      "pass_field": "all_pass"
+    },
+    "radio": {
+      "magic": "0x4E524144",
+      "words": 8,
+      "fields": ["magic", "version", "role", "tx_sent", "rx_received", "last_seq", "all_pass", "checksum"],
+      "pass_field": "all_pass"
+    }
+  }
+}
