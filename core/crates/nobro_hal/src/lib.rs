@@ -39,6 +39,8 @@ pub mod radio_sim;
 #[cfg(feature = "platform-nrf52840")]
 pub mod timer;
 #[cfg(feature = "platform-nrf52840")]
+pub mod radio_hw;
+#[cfg(feature = "platform-nrf52840")]
 pub mod spim_hw;
 #[cfg(feature = "platform-nrf52840")]
 pub mod twim_hw;
@@ -79,6 +81,8 @@ pub use pwm::{PwmServo, SERVO_PIN};
 pub use radio_sim::RadioRxSim;
 #[cfg(feature = "platform-nrf52840")]
 pub use timer::MicroTimer;
+#[cfg(feature = "platform-nrf52840")]
+pub use radio_hw::Radio;
 #[cfg(feature = "platform-nrf52840")]
 pub use spim_hw::Spim0;
 #[cfg(feature = "platform-nrf52840")]

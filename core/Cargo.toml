@@ -27,6 +27,7 @@ members = [
     "apps/kernel_selftest",
     "apps/closed_loop_demo",
     "apps/spi_imu_demo",
+    "apps/radio_link_demo",
 ]
 
 [workspace.package]
