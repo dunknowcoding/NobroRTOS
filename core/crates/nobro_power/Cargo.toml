@@ -1,0 +1,5 @@
+[package]
+name = "nobro-power"
+version.workspace = true
+edition.workspace = true
+# No-heap power/sleep policy: mode selection by activity + duty-cycle budget (M62).

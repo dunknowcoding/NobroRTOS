@@ -464,11 +464,19 @@ name = "nobro-net"
 version = "0.1.0"
 
 [[package]]
+name = "nobro-power"
+version = "0.1.0"
+
+[[package]]
 name = "nobro-sal"
 version = "0.1.0"
 dependencies = [
  "nobro-kernel",
 ]
+
+[[package]]
+name = "nobro-sensor"
+version = "0.1.0"
 
 [[package]]
 name = "nrf-usbd"
