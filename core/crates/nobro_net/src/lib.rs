@@ -168,3 +168,109 @@ mod tests {
         assert_eq!(a.mean(), 48_000);
     }
 }
+
+/// Broadcast/gossip dedup: a bounded set of recently-seen message ids, so a relay
+/// forwards each broadcast at most once (loop suppression). (M58)
+pub struct SeenSet<const N: usize> {
+    ids: [u32; N],
+    head: usize,
+    len: usize,
+}
+
+impl<const N: usize> Default for SeenSet<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> SeenSet<N> {
+    pub const fn new() -> Self {
+        Self { ids: [0; N], head: 0, len: 0 }
+    }
+    /// Record `id`; returns true if it is NEW (should be forwarded), false if a dup.
+    pub fn observe(&mut self, id: u32) -> bool {
+        if self.ids[..self.len].contains(&id) {
+            return false;
+        }
+        self.ids[self.head] = id;
+        self.head = (self.head + 1) % N;
+        if self.len < N {
+            self.len += 1;
+        }
+        true
+    }
+}
+
+/// Bounded priority queue for outgoing frames - higher `prio` leaves first (M59 QoS).
+pub struct PrioQueue<T: Copy, const N: usize> {
+    items: [Option<(u8, T)>; N],
+    len: usize,
+}
+
+impl<T: Copy, const N: usize> Default for PrioQueue<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Copy, const N: usize> PrioQueue<T, N> {
+    pub const fn new() -> Self {
+        Self { items: [None; N], len: 0 }
+    }
+    pub fn push(&mut self, prio: u8, item: T) -> bool {
+        if self.len >= N {
+            return false;
+        }
+        self.items[self.len] = Some((prio, item));
+        self.len += 1;
+        true
+    }
+    /// Pop the highest-priority item.
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            return None;
+        }
+        let mut best = 0usize;
+        for i in 1..self.len {
+            if self.items[i].unwrap().0 > self.items[best].unwrap().0 {
+                best = i;
+            }
+        }
+        let (_, item) = self.items[best].unwrap();
+        self.items[best] = self.items[self.len - 1];
+        self.items[self.len - 1] = None;
+        self.len -= 1;
+        Some(item)
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+#[cfg(test)]
+mod net_extra_tests {
+    use super::*;
+
+    #[test]
+    fn seen_set_dedups_broadcasts() {
+        let mut s = SeenSet::<4>::new();
+        assert!(s.observe(100)); // new -> forward
+        assert!(!s.observe(100)); // dup -> suppress
+        assert!(s.observe(101));
+    }
+
+    #[test]
+    fn prio_queue_serves_highest_first() {
+        let mut q = PrioQueue::<u16, 4>::new();
+        q.push(1, 0xAA);
+        q.push(9, 0xBB); // urgent
+        q.push(5, 0xCC);
+        assert_eq!(q.pop(), Some(0xBB));
+        assert_eq!(q.pop(), Some(0xCC));
+        assert_eq!(q.pop(), Some(0xAA));
+        assert_eq!(q.pop(), None);
+    }
+}
