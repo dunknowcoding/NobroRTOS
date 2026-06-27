@@ -1,0 +1,9 @@
+[package]
+name = "nobro-net"
+version.workspace = true
+edition.workspace = true
+
+# No-heap networking primitives for multi-board NobroRTOS meshes: distance-vector
+# routing (M52), round-trip time synchronization (M53), and bounded data aggregation
+# (M54). Pure logic, fixed capacity, host-tested - portable across transports (radio,
+# serial, sim).
