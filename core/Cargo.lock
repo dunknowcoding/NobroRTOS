@@ -326,6 +326,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-ina3221"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "nobro-adapter-motion-ai"
 version = "0.1.0"
 dependencies = [

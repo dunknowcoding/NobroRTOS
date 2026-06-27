@@ -13,6 +13,7 @@ members = [
     "adapters/motion-ai",
     "adapters/nn-motion-ai",
     "adapters/radio-comms",
+    "adapters/ina3221",
     "adapters/ros-imu-bridge",
     "apps/mvk_ppi_timestamp",
     "apps/resource_sched_demo",
