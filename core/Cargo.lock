@@ -449,6 +449,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-net"
+version = "0.1.0"
+
+[[package]]
 name = "nobro-sal"
 version = "0.1.0"
 dependencies = [
