@@ -1,0 +1,6 @@
+[package]
+name = "nobro-ml"
+version.workspace = true
+edition.workspace = true
+# No-heap embedded ML/DSP primitives: streaming anomaly detection (M34), online
+# adaptation (M40), confidence-reject (M42), and complementary sensor fusion (M46).
