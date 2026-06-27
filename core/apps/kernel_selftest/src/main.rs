@@ -23,6 +23,11 @@ use nobro_kernel::{
     mailbox::{Message, MessageKind},
     manifest::{Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile},
 };
+use nobro_sal::{
+    preflight_ai_invocation, AiBackendKind, AiInferenceRequest, AiInvocationLimits, AiModelContract,
+    AiRoutePolicy, AiRoutePreference, AiRouteTarget, AiRuntimeState, AI_PREFLIGHT_INPUT_TOO_LARGE,
+    AI_PREFLIGHT_MODEL_ID_MISMATCH,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -44,6 +49,8 @@ struct SelftestReport {
     lifecycle_pass: u32,
     health_pass: u32,
     pool_pass: u32,
+    ai_route_pass: u32,
+    ai_preflight_pass: u32,
     checksum: u32,
 }
 const ST_MAGIC: u32 = 0x4E42_5354; // "NBST"
@@ -68,6 +75,8 @@ static mut NOBRO_SELFTEST_REPORT: SelftestReport = SelftestReport {
     lifecycle_pass: 0,
     health_pass: 0,
     pool_pass: 0,
+    ai_route_pass: 0,
+    ai_preflight_pass: 0,
     checksum: 0,
 };
 
@@ -213,6 +222,64 @@ fn default_action(_e: &KernelError) -> Action {
     Action::RetryNow
 }
 
+fn test_ai_route() -> bool {
+    // M21: AiRoutePolicy routes by backend + runtime state, opening the endpoint circuit
+    // after repeated failures and falling back off the budget.
+    let policy = AiRoutePolicy::new(AiRoutePreference::PreferLocal, 50_000, 2);
+    let local = AiModelContract::new(AiBackendKind::OnDevice, 1, 8, 8, 4096, 10_000);
+    let remote = AiModelContract::new(AiBackendKind::RemoteApi, 2, 8, 8, 0, 10_000);
+    let ready = AiRuntimeState::new(true, true, 1_000, 0);
+    // Local backend + local ready + fits budget -> OnDevice.
+    if policy.decide(local, ready, 25_000).target != AiRouteTarget::OnDevice {
+        return false;
+    }
+    // Remote backend + endpoint ready -> RemoteApi.
+    if policy.decide(remote, ready, 25_000).target != AiRouteTarget::RemoteApi {
+        return false;
+    }
+    // Repeated endpoint failures open the circuit -> no longer routes to RemoteApi.
+    let failing = AiRuntimeState::new(true, true, 1_000, 5);
+    let d = policy.decide(remote, failing, 25_000);
+    if d.target == AiRouteTarget::RemoteApi || !d.endpoint_circuit_open {
+        return false;
+    }
+    // Budget too small for the contract timeout -> falls back off OnDevice.
+    policy.decide(local, ready, 1_000).target != AiRouteTarget::OnDevice
+}
+
+fn test_ai_preflight() -> bool {
+    // M24: preflight_ai_invocation admits a bounded local call and rejects a mismatched,
+    // over-sized one with the right error bits.
+    let contract = AiModelContract::new(AiBackendKind::OnDevice, 42, 8, 8, 4096, 20_000);
+    let policy = AiRoutePolicy::new(AiRoutePreference::LocalOnly, 50_000, 2);
+    let state = AiRuntimeState::new(true, false, 1_000, 0);
+    let limits = AiInvocationLimits::new(8, 128, 8 * 1024, 25_000);
+
+    let input = [1u8, 2, 3, 4];
+    let ok = preflight_ai_invocation(
+        contract,
+        policy,
+        state,
+        AiInferenceRequest::new(42, &input, 10_000),
+        limits,
+    );
+    if !ok.passing() || ok.route.target != AiRouteTarget::OnDevice {
+        return false;
+    }
+
+    let big = [0u8; 12];
+    let bad = preflight_ai_invocation(
+        contract,
+        policy,
+        state,
+        AiInferenceRequest::new(7, &big, 10_000),
+        limits,
+    );
+    !bad.passing()
+        && bad.has_error(AI_PREFLIGHT_MODEL_ID_MISMATCH)
+        && bad.has_error(AI_PREFLIGHT_INPUT_TOO_LARGE)
+}
+
 fn test_capability() -> bool {
     // A module is granted a capability set; authorize() must allow what was granted,
     // deny what was not, and report a missing grant for an unregistered module.
@@ -322,6 +389,8 @@ fn main() -> ! {
     let lifecycle = test_lifecycle();
     let health = test_health();
     let pool = test_pool();
+    let ai_route = test_ai_route();
+    let ai_preflight = test_ai_preflight();
     let all = quota
         && eventlog
         && mailbox
@@ -334,7 +403,9 @@ fn main() -> ! {
         && retry
         && lifecycle
         && health
-        && pool;
+        && pool
+        && ai_route
+        && ai_preflight;
 
     let q = u32::from(quota);
     let e = u32::from(eventlog);
@@ -349,9 +420,11 @@ fn main() -> ! {
     let lif = u32::from(lifecycle);
     let hea = u32::from(health);
     let poo = u32::from(pool);
+    let air = u32::from(ai_route);
+    let aip = u32::from(ai_preflight);
     let ap = u32::from(all);
     let cs = ST_MAGIC
-        ^ 2
+        ^ 3
         ^ 1
         ^ ap
         ^ q
@@ -366,11 +439,13 @@ fn main() -> ! {
         ^ ret
         ^ lif
         ^ hea
-        ^ poo;
+        ^ poo
+        ^ air
+        ^ aip;
     unsafe {
         NOBRO_SELFTEST_REPORT = SelftestReport {
             magic: ST_MAGIC,
-            version: 2,
+            version: 3,
             completed: 1,
             all_pass: ap,
             quota_pass: q,
@@ -386,6 +461,8 @@ fn main() -> ! {
             lifecycle_pass: lif,
             health_pass: hea,
             pool_pass: poo,
+            ai_route_pass: air,
+            ai_preflight_pass: aip,
             checksum: cs,
         };
     }
