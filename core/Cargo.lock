@@ -310,6 +310,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nn-inference-demo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "embedded-hal 1.0.0",
+ "nobro-adapter-nn-motion-ai",
+ "nobro-eh-spi",
+ "nobro-hal",
+ "nobro-sal",
+ "panic-halt",
+]
+
+[[package]]
 name = "nobro-adapter-motion-ai"
 version = "0.1.0"
 dependencies = [
@@ -324,6 +340,13 @@ dependencies = [
  "libm",
  "nobro-hal",
  "nobro-kernel",
+ "nobro-sal",
+]
+
+[[package]]
+name = "nobro-adapter-nn-motion-ai"
+version = "0.1.0"
+dependencies = [
  "nobro-sal",
 ]
 

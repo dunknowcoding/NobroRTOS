@@ -11,6 +11,7 @@ members = [
     "adapters/embedded-hal-i2c",
     "adapters/embedded-hal-spi",
     "adapters/motion-ai",
+    "adapters/nn-motion-ai",
     "adapters/ros-imu-bridge",
     "apps/mvk_ppi_timestamp",
     "apps/resource_sched_demo",
@@ -28,6 +29,7 @@ members = [
     "apps/closed_loop_demo",
     "apps/spi_imu_demo",
     "apps/radio_link_demo",
+    "apps/nn_inference_demo",
 ]
 
 [workspace.package]
