@@ -1,7 +1,9 @@
 //! Kernel control-plane self-test on hardware: exercise the quota ledger, event log,
-//! mailbox IPC, key-value store, and alarm queue on the MCU and record a per-subsystem
-//! pass bit in NOBRO_SELFTEST_REPORT. These subsystems are host-tested in CI; this
-//! proves they run identically on real hardware. Pure kernel logic - no HAL.
+//! mailbox IPC, key-value store, alarm queue, watchdog, degrade planner, admission,
+//! capability grants, retry/backoff, lifecycle state machine, health monitor, and the
+//! sample pool on the MCU, recording a per-subsystem pass bit in NOBRO_SELFTEST_REPORT.
+//! These subsystems are host-tested in CI; this proves they run identically on real
+//! hardware. Pure kernel logic - no HAL.
 #![no_std]
 #![no_main]
 
@@ -11,14 +13,15 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_kernel::{
-    AlarmQueue, BootAssembly, DegradePlanner, EventLog, FaultThresholds, KvStore, Mailbox,
-    QuotaLedger, StartupDependency, Watchdog, kernel_module_spec,
+    Action, AlarmQueue, BackoffKind, BootAssembly, Capability, CapabilityGrantTable, CapabilitySet,
+    DegradePlanner, EventLog, FaultThresholds, HealthMonitor, ImuPayload, KernelError, KvStore,
+    Lifecycle, Mailbox, ModuleId, QuotaLedger, RetryPolicy, RetryState, SampleKind, SamplePool,
+    StartupDependency, SystemState, Watchdog, kernel_module_spec,
     alarm::{Alarm, AlarmId},
     event_log::{EventKind, EventPayload, EventRecord, EventSeverity},
     kv::{KvKey, KvValue},
     mailbox::{Message, MessageKind},
     manifest::{Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile},
-    ModuleId,
 };
 
 #[repr(C)]
@@ -36,6 +39,11 @@ struct SelftestReport {
     watchdog_pass: u32,
     degrade_pass: u32,
     admission_pass: u32,
+    capability_pass: u32,
+    retry_pass: u32,
+    lifecycle_pass: u32,
+    health_pass: u32,
+    pool_pass: u32,
     checksum: u32,
 }
 const ST_MAGIC: u32 = 0x4E42_5354; // "NBST"
@@ -55,6 +63,11 @@ static mut NOBRO_SELFTEST_REPORT: SelftestReport = SelftestReport {
     watchdog_pass: 0,
     degrade_pass: 0,
     admission_pass: 0,
+    capability_pass: 0,
+    retry_pass: 0,
+    lifecycle_pass: 0,
+    health_pass: 0,
+    pool_pass: 0,
     checksum: 0,
 };
 
@@ -196,6 +209,104 @@ fn test_admission() -> bool {
     }
 }
 
+fn default_action(_e: &KernelError) -> Action {
+    Action::RetryNow
+}
+
+fn test_capability() -> bool {
+    // A module is granted a capability set; authorize() must allow what was granted,
+    // deny what was not, and report a missing grant for an unregistered module.
+    let mut table = CapabilityGrantTable::<2>::new();
+    let granted = CapabilitySet::empty()
+        .with(Capability::Bus0)
+        .with(Capability::SamplePool);
+    if table.register(ModuleId::Sensor, granted).is_err() {
+        return false;
+    }
+    table.authorize(ModuleId::Sensor, Capability::Bus0).is_ok()
+        && table.authorize(ModuleId::Sensor, Capability::Radio).is_err()
+        && table.authorize(ModuleId::Radio, Capability::Bus0).is_err()
+}
+
+fn test_retry() -> bool {
+    let policy = RetryPolicy::new(3, 1_000, 20_000, BackoffKind::Exponential);
+    // Exponential backoff grows with the attempt number.
+    if policy.delay_for_attempt(2) <= policy.delay_for_attempt(1) {
+        return false;
+    }
+    // The first 3 failures are retried; the 4th exhausts the budget and escalates.
+    let mut state = RetryState::new();
+    let a1 = state.fail(0, policy);
+    let a2 = state.fail(0, policy);
+    let a3 = state.fail(0, policy);
+    let a4 = state.fail(0, policy);
+    matches!(a1, Action::RetryDelay(_) | Action::RetryNow)
+        && matches!(a2, Action::RetryDelay(_) | Action::RetryNow)
+        && matches!(a3, Action::RetryDelay(_) | Action::RetryNow)
+        && a4 == Action::NotifyUserTask
+}
+
+fn test_lifecycle() -> bool {
+    let mut lc = Lifecycle::new();
+    if lc.state() != SystemState::ColdBoot {
+        return false;
+    }
+    // Walk the nominal boot path; each edge is a valid transition.
+    if lc.transition(SystemState::ValidateManifest, 1).is_err()
+        || lc.transition(SystemState::InitDrivers, 2).is_err()
+        || lc.transition(SystemState::Running, 3).is_err()
+    {
+        return false;
+    }
+    // An illegal jump (Running -> ColdBoot) is rejected and the state is preserved.
+    if lc.transition(SystemState::ColdBoot, 4).is_ok() {
+        return false;
+    }
+    lc.state() == SystemState::Running && lc.transitions() == 3
+}
+
+fn test_health() -> bool {
+    // FaultThresholds::DEFAULT = notify_after 3, reboot_after 8. Escalation must step
+    // policy -> NotifyUserTask -> RebootModule as consecutive errors accumulate.
+    let mut hm = HealthMonitor::<2>::new();
+    let th = FaultThresholds::DEFAULT;
+    let mut actions = [Action::Ignore; 8];
+    for (i, slot) in actions.iter_mut().enumerate() {
+        *slot = hm.record_error(
+            ModuleId::Sensor,
+            KernelError::BusTimeout,
+            i as u64,
+            th,
+            default_action,
+        );
+    }
+    actions[2] == Action::NotifyUserTask && actions[7] == Action::RebootModule
+}
+
+fn test_pool() -> bool {
+    // Allocate a pool ticket, round-trip an IMU payload through it, then release.
+    let payload = ImuPayload {
+        accel_g: [0.0, 0.0, 1.0],
+        gyro_dps: [1.0, 2.0, 3.0],
+    };
+    let Some(sample) = SamplePool::alloc(SampleKind::Imu, ImuPayload::LEN, 100, 200) else {
+        return false;
+    };
+    if sample.kind != SampleKind::Imu || !sample.handle.is_valid() {
+        SamplePool::release(sample.handle);
+        return false;
+    }
+    if !ImuPayload::write_to_handle(sample.handle, &payload) {
+        SamplePool::release(sample.handle);
+        return false;
+    }
+    let ok = ImuPayload::read_from_handle(sample.handle)
+        .map(|p| p.accel_g[2] == 1.0 && p.gyro_dps[2] == 3.0)
+        .unwrap_or(false);
+    SamplePool::release(sample.handle);
+    ok
+}
+
 #[entry]
 fn main() -> ! {
     let quota = test_quota();
@@ -206,7 +317,24 @@ fn main() -> ! {
     let watchdog = test_watchdog();
     let degrade = test_degrade();
     let admission = test_admission();
-    let all = quota && eventlog && mailbox && kv && alarm && watchdog && degrade && admission;
+    let capability = test_capability();
+    let retry = test_retry();
+    let lifecycle = test_lifecycle();
+    let health = test_health();
+    let pool = test_pool();
+    let all = quota
+        && eventlog
+        && mailbox
+        && kv
+        && alarm
+        && watchdog
+        && degrade
+        && admission
+        && capability
+        && retry
+        && lifecycle
+        && health
+        && pool;
 
     let q = u32::from(quota);
     let e = u32::from(eventlog);
@@ -216,12 +344,33 @@ fn main() -> ! {
     let w = u32::from(watchdog);
     let d = u32::from(degrade);
     let adm = u32::from(admission);
+    let cap = u32::from(capability);
+    let ret = u32::from(retry);
+    let lif = u32::from(lifecycle);
+    let hea = u32::from(health);
+    let poo = u32::from(pool);
     let ap = u32::from(all);
-    let cs = ST_MAGIC ^ 1 ^ 1 ^ ap ^ q ^ e ^ m ^ k ^ a ^ w ^ d ^ adm;
+    let cs = ST_MAGIC
+        ^ 2
+        ^ 1
+        ^ ap
+        ^ q
+        ^ e
+        ^ m
+        ^ k
+        ^ a
+        ^ w
+        ^ d
+        ^ adm
+        ^ cap
+        ^ ret
+        ^ lif
+        ^ hea
+        ^ poo;
     unsafe {
         NOBRO_SELFTEST_REPORT = SelftestReport {
             magic: ST_MAGIC,
-            version: 1,
+            version: 2,
             completed: 1,
             all_pass: ap,
             quota_pass: q,
@@ -232,6 +381,11 @@ fn main() -> ! {
             watchdog_pass: w,
             degrade_pass: d,
             admission_pass: adm,
+            capability_pass: cap,
+            retry_pass: ret,
+            lifecycle_pass: lif,
+            health_pass: hea,
+            pool_pass: poo,
             checksum: cs,
         };
     }
