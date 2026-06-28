@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ai-imu-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "ai-runtime-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "ai-usb-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -91,7 +91,7 @@ dependencies = [
 
 [[package]]
 name = "closed-loop-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "eh-imu-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -241,7 +241,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "flash-log-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "imu-i2c-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "kernel-selftest"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -307,7 +307,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "mvk-ppi-timestamp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -337,7 +337,7 @@ checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
 name = "nn-inference-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -353,21 +353,21 @@ dependencies = [
 
 [[package]]
 name = "nobro-adapter-ina3221"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
 
 [[package]]
 name = "nobro-adapter-motion-ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-sal",
 ]
 
 [[package]]
 name = "nobro-adapter-mpu9250-imu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "libm",
@@ -378,14 +378,14 @@ dependencies = [
 
 [[package]]
 name = "nobro-adapter-nn-motion-ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-sal",
 ]
 
 [[package]]
 name = "nobro-adapter-radio-comms"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-hal",
  "nobro-sal",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "nobro-adapter-robo-servo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-hal",
  "nobro-kernel",
@@ -402,14 +402,14 @@ dependencies = [
 
 [[package]]
 name = "nobro-adapter-ros-imu-bridge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-sal",
 ]
 
 [[package]]
 name = "nobro-adapter-sensor-stub"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-hal",
  "nobro-kernel",
@@ -418,7 +418,7 @@ dependencies = [
 
 [[package]]
 name = "nobro-c-abi-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cc",
  "cortex-m",
@@ -434,18 +434,18 @@ dependencies = [
 
 [[package]]
 name = "nobro-c-abi-module"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nobro-crypto"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-sal",
 ]
 
 [[package]]
 name = "nobro-eh-i2c"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "nobro-hal",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "nobro-eh-spi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 1.0.0",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "nobro-hal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -472,37 +472,37 @@ dependencies = [
 
 [[package]]
 name = "nobro-host"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nobro-kernel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-hal",
 ]
 
 [[package]]
 name = "nobro-ml"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nobro-net"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nobro-power"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nobro-sal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nobro-kernel",
 ]
 
 [[package]]
 name = "nobro-sensor"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nrf-usbd"
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "radio-comms-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "radio-link-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -630,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "recovery-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "resource-sched-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "ros-imu-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -681,7 +681,7 @@ dependencies = [
 
 [[package]]
 name = "sal-adapter-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -718,7 +718,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "spi-imu-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -775,7 +775,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "usb-cdc-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
