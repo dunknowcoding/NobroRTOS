@@ -38,6 +38,7 @@ members = [
     "apps/radio_link_demo",
     "apps/nn_inference_demo",
     "apps/radio_comms_demo",
+    "apps/ai_runtime_demo",
 ]
 
 [workspace.package]

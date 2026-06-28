@@ -19,6 +19,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-runtime-demo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-adapter-nn-motion-ai",
+ "nobro-hal",
+ "nobro-sal",
+ "panic-halt",
+]
+
+[[package]]
 name = "ai-usb-demo"
 version = "0.1.0"
 dependencies = [

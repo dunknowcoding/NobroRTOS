@@ -1051,6 +1051,117 @@ impl AiRoutePolicy {
     }
 }
 
+/// Errors from the [`ModelRegistry`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiRegistryError {
+    Full,
+    DuplicateModel(u32),
+    UnknownModel(u32),
+}
+
+/// Fixed-capacity registry of AI models keyed by `model_id`. Multiplexes inference
+/// routing: resolve a request's model to its contract, then apply an [`AiRoutePolicy`]
+/// to choose where it runs (on-device / remote / fallback). (M36)
+pub struct ModelRegistry<const N: usize> {
+    contracts: [Option<AiModelContract>; N],
+}
+
+impl<const N: usize> Default for ModelRegistry<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> ModelRegistry<N> {
+    pub const fn new() -> Self {
+        Self { contracts: [None; N] }
+    }
+
+    pub fn register(&mut self, contract: AiModelContract) -> Result<(), AiRegistryError> {
+        if self.resolve(contract.model_id).is_some() {
+            return Err(AiRegistryError::DuplicateModel(contract.model_id));
+        }
+        match self.contracts.iter_mut().find(|c| c.is_none()) {
+            Some(slot) => {
+                *slot = Some(contract);
+                Ok(())
+            }
+            None => Err(AiRegistryError::Full),
+        }
+    }
+
+    pub fn resolve(&self, model_id: u32) -> Option<AiModelContract> {
+        self.contracts
+            .iter()
+            .filter_map(|c| *c)
+            .find(|c| c.model_id == model_id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.contracts.iter().filter(|c| c.is_some()).count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Resolve `request`'s model and route it via `policy`; `UnknownModel` if the model
+    /// id is not registered.
+    pub fn route(
+        &self,
+        request: &AiInferenceRequest<'_>,
+        policy: &AiRoutePolicy,
+        state: AiRuntimeState,
+        budget_us: u32,
+    ) -> Result<AiRouteDecision, AiRegistryError> {
+        let contract = self
+            .resolve(request.model_id)
+            .ok_or(AiRegistryError::UnknownModel(request.model_id))?;
+        Ok(policy.decide(contract, state, budget_us))
+    }
+}
+
+#[cfg(test)]
+mod model_registry_tests {
+    use super::*;
+
+    #[test]
+    fn registry_multiplexes_routes_and_rejects_unknown() {
+        let mut reg = ModelRegistry::<4>::new();
+        let nn = AiModelContract::new(AiBackendKind::OnDevice, 0x4E4E_4D31, 12, 4, 512, 2_000);
+        let llm = AiModelContract::new(AiBackendKind::Hybrid, 0x4C4C_4D31, 256, 256, 0, 50_000);
+        reg.register(nn).unwrap();
+        reg.register(llm).unwrap();
+        assert_eq!(reg.len(), 2);
+        assert_eq!(
+            reg.register(nn),
+            Err(AiRegistryError::DuplicateModel(0x4E4E_4D31))
+        );
+
+        let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 0, 2);
+        // on-device NN with local ready -> runs on device
+        let local = AiRuntimeState::new(true, false, 0, 0);
+        let req = AiInferenceRequest::new(0x4E4E_4D31, &[0u8; 12], 2_000);
+        assert_eq!(
+            reg.route(&req, &policy, local, 4_000).unwrap().target,
+            AiRouteTarget::OnDevice
+        );
+        // hybrid model, local down + endpoint up -> remote
+        let remote = AiRuntimeState::new(false, true, 0, 0);
+        let req2 = AiInferenceRequest::new(0x4C4C_4D31, &[0u8; 8], 50_000);
+        assert_eq!(
+            reg.route(&req2, &policy, remote, 100_000).unwrap().target,
+            AiRouteTarget::RemoteApi
+        );
+        // unknown model id is rejected
+        let req3 = AiInferenceRequest::new(0xDEAD, &[], 1_000);
+        assert_eq!(
+            reg.route(&req3, &policy, local, 4_000),
+            Err(AiRegistryError::UnknownModel(0xDEAD))
+        );
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AiModelContract {
     pub backend: AiBackendKind,
