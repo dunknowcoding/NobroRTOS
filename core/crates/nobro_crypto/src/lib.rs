@@ -151,6 +151,26 @@ mod tests {
     }
 
     #[test]
+    fn aes_throughput_benchmark() {
+        // Host perf gate (M80): measure AES-128 block throughput and assert a floor.
+        use std::time::Instant;
+        let key = [0u8; 16];
+        let aes = Aes128::new(&key);
+        let block = [0u8; 16];
+        let n: u32 = 200_000;
+        let t = Instant::now();
+        let mut acc = 0u8;
+        for _ in 0..n {
+            acc ^= aes.encrypt_block(&block)[0];
+        }
+        std::hint::black_box(acc);
+        let dt = t.elapsed().as_secs_f64();
+        let mbps = f64::from(n) * 16.0 / dt / 1e6;
+        println!("AES-128 throughput: {:.1} MB/s ({} blocks in {:.3}s)", mbps, n, dt);
+        assert!(mbps > 1.0, "AES throughput floor");
+    }
+
+    #[test]
     fn prng_is_deterministic_and_fills() {
         let mut a = PrngCrypto::new(42);
         let mut b = PrngCrypto::new(42);
