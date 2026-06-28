@@ -1,5 +1,8 @@
 # NobroRTOS local-only references and transient artifacts
 technique_route.md
+MILESTONES.md
+roadmap.md
+ROADMAP.md
 _work/
 
 # Rust build outputs

@@ -67,7 +67,7 @@ git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
 python tools/nobro_hw_eval.py imu
 ```
 
-It builds the IMU demo, flashes board1, reads the kernel's host-readable report
+It builds the IMU demo, flashes the development board, reads the kernel's host-readable report
 straight out of RAM, and prints **PASS/FAIL**. No debug probe? Flash `usb_cdc_demo`
 and just open the board's COM port. Full walkthrough:
 [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
@@ -192,10 +192,10 @@ quota, degraded-mode, scheduler, event-log, recovery, sensor, actuator, combined
 runtime-drill flows, and safely materialized plus validated contract-first project
 templates with VS Code task metadata and Python board bridge onboarding.
 
-That control plane is now **verified on real hardware** (nRF52840 + GY-9250/GY-91),
+That control plane is now **verified on real hardware** (nRF52840 + an IMU),
 and module **logic can be authored in Rust, C, or C++** over one kernel and one
 `extern "C"` C ABI - all three providers admitted by the kernel and reading a sensor
-end to end on board1 (see [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md) and
+end to end on the development board (see [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md) and
 [bindings/c/README.md](bindings/c/README.md)). On-hardware results: the deadline
 scheduler holds **2 us jitter / 0 misses**, the EGU->PPI->CAPTURE path **1 us
 latency**, and `usb_cdc_demo` streams diagnostics over USB serial so probe-less
@@ -256,7 +256,7 @@ NobroRTOS/
 |-- packages/               # Arduino and PlatformIO package surfaces
 |-- bindings/               # C, C++, and Python-facing wrappers
 |-- tools/                  # package builders, validators, generators
-|-- docs/                   # user, API, architecture, porting, operations, roadmap
+|-- docs/                   # user, API, architecture, porting, operations
 |-- host/                   # JSON mirror of the host contract
 `-- LICENSE
 ```
@@ -264,7 +264,7 @@ NobroRTOS/
 The Rust crate package names use the `nobro-*` API prefix, while repository
 folders use the `nobro_*` project prefix.
 
-## ✅ Verified on hardware (board1: nRF52840 + GY-9250)
+## ✅ Verified on hardware (the development board: nRF52840 + an IMU)
 
 Every claim below is checked on a real board and self-certifies through a fixed
 `NOBRO_*` report (read over J-Link `mem32`, or over USB serial for probe-less boards).
@@ -281,7 +281,7 @@ Every claim below is checked on a real board and self-certifies through a fixed
 | **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), incl. 9-pulse stuck-bus recovery |
 | **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI |
 | **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter |
-| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port — verified on board1 (genuine nRF52840) **and board5 (a clone nRF52840 with a quirky USBD)**, the latter via a patched `nrf-usbd` + a self-DFU watchdog |
+| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port — verified on the development board (genuine nRF52840) **and a clone-silicon nRF52840 board (with a quirky USBD)**, the latter via a patched `nrf-usbd` + a self-DFU watchdog |
 
 Reproduce any of these in one command: `python tools/nobro_hw_eval.py imu`
 (also `sal`, `sched`); the kernel/AI/ROS/recovery/closed-loop demos flash + read their
@@ -301,12 +301,12 @@ report over J-Link. See [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
-| On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on board1 &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
-| Multi-board expansion | In progress | Board facts are data-first with profile/package fixtures |
+| On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on the development board &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
+| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` (validated by `tools/check_board_profiles.py`) mirror the `BoardDesc`/`BoardPackage` fixtures; the HAL targets the nRF52840 platform today |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on board1 &mdash; 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
+| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on the development board &mdash; 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
 | SDK packaging | Scaffolded | Standalone SDK, Arduino, and PlatformIO metadata are contract-checked |
-| Hardware bring-up | Present | board1 (nRF52840) verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
+| Hardware bring-up | Present | An nRF52840 development board verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
@@ -362,7 +362,6 @@ outside the public package surface.
 | [Porting Guide](docs/porting-guide.md) | Adding boards and preserving board/package contracts |
 | [Host Contract](docs/host-contract.md) | `NOBRO_*` ABI, checksum rules, stage order |
 | [Operations Guide](docs/operations-guide.md) | Maintenance habits and validation gates |
-| [Roadmap](docs/roadmap.md) | Current progress and next technical milestones |
 
 ## Design Influences
 

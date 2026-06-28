@@ -2,7 +2,7 @@
 
 Vendored from upstream `nrf-usbd` 0.3.0 with a **single** behavioral change, needed to
 run USB-CDC on **cloned nRF52840** silicon (some nice!nano-class boards — NobroRTOS
-"board5").
+"the clone-silicon board").
 
 **The fix** — `src/usbd.rs`, `UsbBus::write()`: the EP-IN busy guard reads `EPSTATUS`
 and returns `WouldBlock` if the endpoint's bit is set. On cloned USBD silicon `EPSTATUS`
@@ -14,7 +14,7 @@ serialised by `busy_in_endpoints` + the inline `ENDEPIN` wait, so the check was
 redundant there. Bulk/interrupt endpoints are unchanged. Search the source for
 `Clone-safe` to find it.
 
-Verified on hardware: genuine nRF52840 (board1, `who=0x71`) and clone (board5,
+Verified on hardware: genuine nRF52840 (the development board, `who=0x71`) and clone (the clone-silicon board,
 `who=0x70`) both enumerate a CDC port and stream the IMU eval line (`... PASS`).
 
 ---

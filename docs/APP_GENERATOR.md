@@ -32,7 +32,7 @@ app populates `NOBRO_MANIFEST_REPORT` (magic `NBMF`) and `NOBRO_ADMISSION_REPORT
 (magic `NBAD`); both carry the module count and a sealed checksum, so a host tool
 confirms the manifest assembled and admission passed without a `defmt` decoder.
 
-Verified end to end on board1: a generated `driver`-criticality app compiles for
+Verified end to end on the development board: a generated `driver`-criticality app compiles for
 `thumbv7em`, boots, assembles a 2-module manifest (kernel + your module), and passes
 admission.
 
@@ -55,7 +55,7 @@ python tools/nobro_contract_tool.py gen-module --name my_sensor --lang cpp --out
 This writes an editable module (`nobro_app_init()` once, `nobro_app_poll()` each
 cycle) and prints the build command, which compiles + links your file into the
 `c_abi_demo` firmware via the `c-source` / `cpp-source` path (needs
-`arm-none-eabi-gcc` / `g++`). Both languages are verified end to end on board1 - the
+`arm-none-eabi-gcc` / `g++`). Both languages are verified end to end on the development board - the
 kernel admits the C or C++ module and it drives a sensor to a passing report. See
 [bindings/c/README.md](../bindings/c/README.md) and
 [bindings/cpp/README.md](../bindings/cpp/README.md).

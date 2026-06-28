@@ -128,7 +128,7 @@ from one source of truth:
 - `--features c-source`: `build.rs` compiles `examples/imu_module.c` with
   `arm-none-eabi-gcc` and links it.
 
-Both paths are verified on hardware (nRF52840 + GY-9250): the kernel admits the
+Both paths are verified on hardware (nRF52840 + an IMU): the kernel admits the
 module and it reads the IMU to a passing `NOBRO_IMU_HW_EVAL_REPORT`. See
 `examples/imu_module.c` for the complete reference module.
 
