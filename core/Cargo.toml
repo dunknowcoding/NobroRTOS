@@ -40,6 +40,7 @@ members = [
     "apps/radio_comms_demo",
     "apps/ai_runtime_demo",
     "apps/flash_log_demo",
+    "apps/watchdog_demo",
 ]
 
 [workspace.package]
