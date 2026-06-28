@@ -429,3 +429,25 @@ mod schema_tests {
         assert_eq!(snap.max_motion_mg, 1200);
     }
 }
+
+#[cfg(test)]
+mod fault_injection_tests {
+    use super::*;
+
+    #[test]
+    fn mesh_reroutes_around_injected_node_fault_and_recovers() {
+        // reach dest 5 cheaply via node 2; inject a fault on node 2 (a fresher advert
+        // installs a costlier backup via node 9); then node 2 recovers and is preferred
+        // again. (M69)
+        let mut rt = RoutingTable::<8>::new();
+        rt.update(5, 2, 1, 1);
+        assert_eq!(rt.next_hop(5), Some(2));
+        // fault injected: node 2 path lost, backup via node 9 (newer seq) takes over
+        assert!(rt.update(5, 9, 3, 2));
+        assert_eq!(rt.next_hop(5), Some(9));
+        // node 2 recovers with a fresh cheap route -> preferred again
+        assert!(rt.update(5, 2, 1, 3));
+        assert_eq!(rt.next_hop(5), Some(2));
+        assert_eq!(rt.cost(5), Some(1));
+    }
+}

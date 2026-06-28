@@ -132,3 +132,58 @@ mod tests {
         assert!((complementary(10.0, 20.0, 0.98) - 10.2).abs() < 1e-3);
     }
 }
+
+/// One node's prediction in a distributed inference round (M60).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Vote {
+    pub class: u8,
+    pub confidence_milli: u16,
+}
+
+/// Confidence-weighted majority vote across mesh nodes: each node runs the model locally
+/// and reports (class, confidence); the coordinator fuses them into one decision plus an
+/// overall confidence (winning mass / total mass, in milli). (M60)
+pub fn ensemble_vote(votes: &[Vote], max_classes: usize) -> Option<(u8, u16)> {
+    if votes.is_empty() {
+        return None;
+    }
+    let n = max_classes.min(8);
+    let mut acc = [0u32; 8];
+    for v in votes {
+        let c = v.class as usize;
+        if c < n {
+            acc[c] += u32::from(v.confidence_milli);
+        }
+    }
+    let total: u32 = acc[..n].iter().sum();
+    if total == 0 {
+        return None;
+    }
+    let mut best = 0usize;
+    for c in 1..n {
+        if acc[c] > acc[best] {
+            best = c;
+        }
+    }
+    let conf = (acc[best] * 1000 / total) as u16;
+    Some((best as u8, conf))
+}
+
+#[cfg(test)]
+mod ensemble_tests {
+    use super::*;
+
+    #[test]
+    fn ensemble_fuses_distributed_votes() {
+        // three nodes: two vote class 1, one votes class 0; weighted by confidence.
+        let votes = [
+            Vote { class: 1, confidence_milli: 900 },
+            Vote { class: 0, confidence_milli: 600 },
+            Vote { class: 1, confidence_milli: 800 },
+        ];
+        let (cls, conf) = ensemble_vote(&votes, 3).unwrap();
+        assert_eq!(cls, 1); // 1700 mass vs 600
+        assert_eq!(conf, 739); // 1700*1000/2300
+        assert_eq!(ensemble_vote(&[], 3), None);
+    }
+}
