@@ -11,6 +11,9 @@ pub enum Resource {
     Radio,
     Rtc2,
     Timer3,
+    Pwm0,
+    Egu0,
+    Ppi,
 }
 
 impl Resource {
@@ -23,6 +26,9 @@ impl Resource {
             Self::Radio => "RADIO",
             Self::Rtc2 => "RTC2",
             Self::Timer3 => "TIMER3",
+            Self::Pwm0 => "PWM0",
+            Self::Egu0 => "EGU0",
+            Self::Ppi => "PPI",
         }
     }
 }
@@ -48,7 +54,10 @@ impl LeaseSlot {
     }
 }
 
-static SLOTS: [LeaseSlot; 7] = [
+static SLOTS: [LeaseSlot; 10] = [
+    LeaseSlot::new(),
+    LeaseSlot::new(),
+    LeaseSlot::new(),
     LeaseSlot::new(),
     LeaseSlot::new(),
     LeaseSlot::new(),
@@ -67,6 +76,9 @@ fn idx(r: Resource) -> usize {
         Resource::Radio => 4,
         Resource::Rtc2 => 5,
         Resource::Timer3 => 6,
+        Resource::Pwm0 => 7,
+        Resource::Egu0 => 8,
+        Resource::Ppi => 9,
     }
 }
 

@@ -300,6 +300,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lease-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-hal",
+ "panic-halt",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"

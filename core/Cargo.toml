@@ -41,6 +41,7 @@ members = [
     "apps/ai_runtime_demo",
     "apps/flash_log_demo",
     "apps/watchdog_demo",
+    "apps/lease_demo",
 ]
 
 [workspace.package]
