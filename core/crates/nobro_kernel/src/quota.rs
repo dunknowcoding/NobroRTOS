@@ -263,6 +263,63 @@ mod tests {
     }
 
     #[test]
+    fn quota_holds_under_repeated_reservation_load() {
+        // Many small reservations are admitted until the budget is exactly exhausted; the
+        // next is rejected and usage never exceeds the limit. (M66)
+        let mut ledger = QuotaLedger::<1>::new();
+        ledger
+            .register(ModuleId::Sensor, SystemBudget::new(10_000, 1_000, 0))
+            .unwrap();
+        for _ in 0..10 {
+            ledger
+                .reserve(ModuleId::Sensor, SystemBudget::new(0, 100, 0))
+                .unwrap();
+        }
+        assert_eq!(
+            ledger.usage(ModuleId::Sensor),
+            Some(SystemBudget::new(0, 1_000, 0))
+        );
+        assert!(ledger
+            .reserve(ModuleId::Sensor, SystemBudget::new(0, 100, 0))
+            .is_err());
+        assert_eq!(
+            ledger.usage(ModuleId::Sensor),
+            Some(SystemBudget::new(0, 1_000, 0))
+        );
+    }
+
+    #[test]
+    fn freed_quota_is_reallocated() {
+        // One module reserves heavily then releases; the freed capacity drops from the
+        // aggregate and becomes available again, so another module can claim fresh
+        // capacity - dynamic reallocation over time. (M68)
+        let mut ledger = QuotaLedger::<2>::new();
+        ledger
+            .register(ModuleId::Sensor, SystemBudget::new(4_096, 2_048, 4))
+            .unwrap();
+        ledger
+            .register(ModuleId::Radio, SystemBudget::new(4_096, 2_048, 4))
+            .unwrap();
+
+        ledger
+            .reserve(ModuleId::Sensor, SystemBudget::new(0, 2_000, 0))
+            .unwrap();
+        assert_eq!(ledger.total_used(), SystemBudget::new(0, 2_000, 0));
+        ledger
+            .release(ModuleId::Sensor, SystemBudget::new(0, 1_800, 0))
+            .unwrap();
+        assert_eq!(ledger.total_used(), SystemBudget::new(0, 200, 0));
+        assert_eq!(
+            ledger.available(ModuleId::Sensor),
+            Some(SystemBudget::new(4_096, 1_848, 4))
+        );
+        ledger
+            .reserve(ModuleId::Radio, SystemBudget::new(0, 1_500, 0))
+            .unwrap();
+        assert_eq!(ledger.total_used(), SystemBudget::new(0, 1_700, 0));
+    }
+
+    #[test]
     fn ledger_rejects_release_underflow() {
         let mut ledger = QuotaLedger::<1>::new();
         ledger

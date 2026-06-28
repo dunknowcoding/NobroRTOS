@@ -133,6 +133,28 @@ mod tests {
     }
 
     #[test]
+    fn capability_gated_multi_module_admission() {
+        // Two modules admitted with different grants: each may use what it owns and is
+        // denied what it does not; an unregistered module is denied outright. (M67)
+        let mut table = CapabilityGrantTable::<2>::new();
+        table
+            .register(ModuleId::Sensor, CapabilitySet::empty().with(Capability::Bus0))
+            .unwrap();
+        table
+            .register(ModuleId::Radio, CapabilitySet::empty().with(Capability::Radio))
+            .unwrap();
+
+        assert_eq!(table.authorize(ModuleId::Sensor, Capability::Bus0), Ok(()));
+        assert!(table.authorize(ModuleId::Sensor, Capability::Radio).is_err());
+        assert_eq!(table.authorize(ModuleId::Radio, Capability::Radio), Ok(()));
+        assert!(table.authorize(ModuleId::Radio, Capability::Bus0).is_err());
+        assert_eq!(
+            table.authorize(ModuleId::Actuator, Capability::Bus0),
+            Err(CapabilityGrantError::Missing(ModuleId::Actuator))
+        );
+    }
+
+    #[test]
     fn grant_table_authorizes_declared_capabilities() {
         let manifest = SystemManifest::<2>::from_specs(&[kernel_spec(), sensor_spec()]).unwrap();
         let grants = CapabilityGrantTable::<2>::from_manifest(&manifest).unwrap();
