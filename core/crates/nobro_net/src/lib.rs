@@ -274,3 +274,158 @@ mod net_extra_tests {
         assert_eq!(q.pop(), None);
     }
 }
+
+/// Link-liveness events for mesh partition/reconnect handling (M57).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkEvent {
+    None,
+    Joined,
+    Reconnected,
+}
+
+#[derive(Clone, Copy)]
+struct LinkState {
+    id: u16,
+    last_us: u64,
+    up: bool,
+}
+
+/// Per-neighbor link monitor: a neighbor is up while heard within `timeout_us`; missing
+/// it past the timeout is a partition, and hearing it again is a reconnect. (M57)
+pub struct LinkMonitor<const N: usize> {
+    nodes: [Option<LinkState>; N],
+    timeout_us: u64,
+}
+
+impl<const N: usize> LinkMonitor<N> {
+    pub const fn new(timeout_us: u64) -> Self {
+        Self { nodes: [None; N], timeout_us }
+    }
+
+    fn find(&mut self, id: u16) -> Option<&mut LinkState> {
+        self.nodes
+            .iter_mut()
+            .filter_map(|s| s.as_mut())
+            .find(|s| s.id == id)
+    }
+
+    /// Record a heartbeat from `id`; returns the resulting link event.
+    pub fn heard(&mut self, id: u16, now_us: u64) -> LinkEvent {
+        if let Some(st) = self.find(id) {
+            let ev = if st.up {
+                LinkEvent::None
+            } else {
+                LinkEvent::Reconnected
+            };
+            st.last_us = now_us;
+            st.up = true;
+            return ev;
+        }
+        if let Some(slot) = self.nodes.iter_mut().find(|s| s.is_none()) {
+            *slot = Some(LinkState { id, last_us: now_us, up: true });
+            return LinkEvent::Joined;
+        }
+        LinkEvent::None
+    }
+
+    /// Mark any up node not heard within the timeout as down (partitioned); returns the
+    /// count newly partitioned.
+    pub fn tick(&mut self, now_us: u64) -> u32 {
+        let mut downed = 0;
+        for s in self.nodes.iter_mut().filter_map(|s| s.as_mut()) {
+            if s.up && now_us.saturating_sub(s.last_us) > self.timeout_us {
+                s.up = false;
+                downed += 1;
+            }
+        }
+        downed
+    }
+
+    pub fn is_up(&self, id: u16) -> bool {
+        self.nodes.iter().filter_map(|s| *s).any(|s| s.id == id && s.up)
+    }
+
+    pub fn up_count(&self) -> usize {
+        self.nodes.iter().filter_map(|s| *s).filter(|s| s.up).count()
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+
+    #[test]
+    fn link_monitor_tracks_partition_and_reconnect() {
+        let mut lm = LinkMonitor::<4>::new(1_000); // 1 ms liveness window
+        assert_eq!(lm.heard(7, 0), LinkEvent::Joined);
+        assert_eq!(lm.heard(7, 500), LinkEvent::None); // still up
+        assert!(lm.is_up(7));
+        assert_eq!(lm.tick(2_000), 1); // silent past timeout -> partitioned
+        assert!(!lm.is_up(7));
+        assert_eq!(lm.heard(7, 2_100), LinkEvent::Reconnected);
+        assert!(lm.is_up(7));
+        assert_eq!(lm.up_count(), 1);
+    }
+}
+
+/// A unified reading from any node type, so heterogeneous boards (power, motion,
+/// pressure, temperature) fuse into one schema. (M56)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeReading {
+    Power { milliwatts: u32 },
+    Motion { milli_g: u32 },
+    Pressure { pascals: u32 },
+    Temperature { milli_c: i32 },
+}
+
+/// Fused view of a heterogeneous mesh: a single rollup over mixed node readings. (M56)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MeshSnapshot {
+    pub node_count: u32,
+    pub total_power_mw: u32,
+    pub motion_nodes: u32,
+    pub max_motion_mg: u32,
+}
+
+impl MeshSnapshot {
+    pub fn from_readings(readings: &[(u16, NodeReading)]) -> Self {
+        let mut s = MeshSnapshot::default();
+        for (_, r) in readings {
+            s.node_count += 1;
+            match r {
+                NodeReading::Power { milliwatts } => {
+                    s.total_power_mw = s.total_power_mw.saturating_add(*milliwatts);
+                }
+                NodeReading::Motion { milli_g } => {
+                    s.motion_nodes += 1;
+                    if *milli_g > s.max_motion_mg {
+                        s.max_motion_mg = *milli_g;
+                    }
+                }
+                NodeReading::Pressure { .. } | NodeReading::Temperature { .. } => {}
+            }
+        }
+        s
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+
+    #[test]
+    fn heterogeneous_readings_fuse_into_one_snapshot() {
+        let readings = [
+            (1, NodeReading::Power { milliwatts: 1100 }),
+            (2, NodeReading::Motion { milli_g: 1035 }),
+            (3, NodeReading::Power { milliwatts: 950 }),
+            (4, NodeReading::Pressure { pascals: 101_325 }),
+            (5, NodeReading::Motion { milli_g: 1200 }),
+        ];
+        let snap = MeshSnapshot::from_readings(&readings);
+        assert_eq!(snap.node_count, 5);
+        assert_eq!(snap.total_power_mw, 2050);
+        assert_eq!(snap.motion_nodes, 2);
+        assert_eq!(snap.max_motion_mg, 1200);
+    }
+}
