@@ -69,8 +69,7 @@ python tools/nobro_hw_eval.py imu
 
 It builds the IMU demo, flashes the development board, reads the kernel's host-readable report
 straight out of RAM, and prints **PASS/FAIL**. No debug probe? Flash `usb_cdc_demo`
-and just open the board's COM port. Full walkthrough:
-[docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
+and just open the board's COM port.
 
 ## 👋 Who it's for
 
@@ -195,8 +194,7 @@ templates with VS Code task metadata and Python board bridge onboarding.
 That control plane is now **verified on real hardware** (nRF52840 + an IMU),
 and module **logic can be authored in Rust, C, or C++** over one kernel and one
 `extern "C"` C ABI - all three providers admitted by the kernel and reading a sensor
-end to end on the development board (see [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md) and
-[bindings/c/README.md](bindings/c/README.md)). On-hardware results: the deadline
+end to end on the development board (see [bindings/c/README.md](bindings/c/README.md)). On-hardware results: the deadline
 scheduler holds **2 us jitter / 0 misses**, the EGU->PPI->CAPTURE path **1 us
 latency**, and `usb_cdc_demo` streams diagnostics over USB serial so probe-less
 boards self-verify by opening a COM port.
@@ -285,7 +283,7 @@ Every claim below is checked on a real board and self-certifies through a fixed
 
 Reproduce any of these in one command: `python tools/nobro_hw_eval.py imu`
 (also `sal`, `sched`); the kernel/AI/ROS/recovery/closed-loop demos flash + read their
-report over J-Link. See [docs/HARDWARE_BRINGUP.md](docs/HARDWARE_BRINGUP.md).
+report over J-Link.
 
 ## Capability Matrix
 
