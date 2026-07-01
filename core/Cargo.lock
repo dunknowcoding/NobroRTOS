@@ -364,6 +364,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-bmp280"
+version = "0.2.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
+name = "nobro-adapter-icm45686"
+version = "0.2.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "nobro-adapter-ina3221"
 version = "0.2.0"
 dependencies = [

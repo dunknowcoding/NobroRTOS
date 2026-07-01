@@ -1,0 +1,8 @@
+[package]
+name = "nobro-adapter-bmp280"
+version.workspace = true
+edition.workspace = true
+# BMP280 pressure/temperature driver over embedded-hal I2C. Compensation is the Bosch
+# datasheet fixed-point algorithm, host-verified against the datasheet reference vector.
+[dependencies]
+embedded-hal = "1.0"

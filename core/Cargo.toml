@@ -19,6 +19,8 @@ members = [
     "adapters/nn-motion-ai",
     "adapters/radio-comms",
     "adapters/ina3221",
+    "adapters/bmp280",
+    "adapters/icm45686",
     "adapters/ros-imu-bridge",
     "apps/mvk_ppi_timestamp",
     "apps/resource_sched_demo",
