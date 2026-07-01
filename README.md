@@ -300,7 +300,7 @@ report over J-Link.
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on the development board &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
-| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` (validated by `tools/check_board_profiles.py`) mirror the `BoardDesc`/`BoardPackage` fixtures; the HAL targets the nRF52840 platform today |
+| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` (validated by `tools/check_board_profiles.py`) mirror the `BoardDesc`/`BoardPackage` fixtures; the HAL targets nRF52840, and the portable core (kernel/SAL/net/crypto/ML/sensor + drivers) cross-compiles for 6 MCU families - Cortex-M0+/M3/M4F/M33 and RISC-V rv32imc/imac - via `tools/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on the development board &mdash; 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
 | SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/check_sdk_manifest.py`) |

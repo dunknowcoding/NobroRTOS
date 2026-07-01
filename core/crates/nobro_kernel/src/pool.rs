@@ -1,6 +1,6 @@
 //! Static sample pool for zero-copy tickets between SensorSal and consumers.
 
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use portable_atomic::{AtomicBool, AtomicU8, Ordering};
 
 use crate::sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 

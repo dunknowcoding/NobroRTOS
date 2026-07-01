@@ -5,6 +5,10 @@ edition.workspace = true
 
 [dependencies]
 nobro-hal = { path = "../nobro_hal", default-features = false, features = ["contract-only"], optional = true }
+# Drop-in atomics: native CAS where the ISA has it, critical-section fallback on cores
+# that lack atomic CAS (Cortex-M0+, RISC-V without the 'a' extension) - keeps the kernel
+# portable across MCU families.
+portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
 
 [features]
 default = []

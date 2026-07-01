@@ -1,6 +1,6 @@
 //! Deadline slot scheduler (Phase 1): TIMER1 drives 50 Hz hard-real-time ticks.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use portable_atomic::{AtomicU32, Ordering};
 
 use crate::KernelError;
 
