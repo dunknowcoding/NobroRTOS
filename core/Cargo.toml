@@ -43,6 +43,7 @@ members = [
     "apps/ai_runtime_demo",
     "apps/flash_log_demo",
     "apps/watchdog_demo",
+    "apps/motion3_demo",
     "apps/lease_demo",
 ]
 

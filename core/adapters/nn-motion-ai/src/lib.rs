@@ -126,3 +126,92 @@ impl AiInferenceSal for NnMotionClassifier {
         Ok(AiInferenceResult::new(1, margin.clamp(1, Q15_ONE) as u16, 0))
     }
 }
+
+// ---- 3-class variant: idle / walk / shake (M33) ------------------------------------
+
+mod nn3_weights;
+pub use nn3_weights::TRAIN_ACC_MILLI as TRAIN_ACC_MILLI_3;
+
+/// 3-class model identity ("NNM3").
+pub const MODEL3_ID: u32 = 0x4E4E_4D33;
+pub const CLASS3_IDLE: u8 = 0;
+pub const CLASS3_WALK: u8 = 1;
+pub const CLASS3_SHAKE: u8 = 2;
+
+#[derive(Default)]
+pub struct Nn3MotionClassifier;
+
+impl Nn3MotionClassifier {
+    pub fn new() -> Self {
+        Nn3MotionClassifier
+    }
+}
+
+fn normalize3(f: [i32; nn3_weights::FEAT]) -> [i32; nn3_weights::FEAT] {
+    let mut x = [0i32; nn3_weights::FEAT];
+    for i in 0..nn3_weights::FEAT {
+        x[i] = (f[i] * 127 / nn3_weights::FEAT_MAX[i]).clamp(0, 127);
+    }
+    x
+}
+
+/// Integer MLP forward pass over 3 classes; returns (class, decision margin).
+fn forward3(x: [i32; nn3_weights::FEAT]) -> (u8, i32) {
+    use nn3_weights::{B1, B2, FEAT, HIDDEN, NUM_CLASSES, SHIFT1, W1, W2};
+    let mut h = [0i32; HIDDEN];
+    for j in 0..HIDDEN {
+        let mut acc = B1[j];
+        for i in 0..FEAT {
+            acc += i32::from(W1[j][i]) * x[i];
+        }
+        h[j] = (acc >> SHIFT1).clamp(0, 127);
+    }
+    let mut o = [0i32; NUM_CLASSES];
+    for k in 0..NUM_CLASSES {
+        let mut acc = B2[k];
+        for j in 0..HIDDEN {
+            acc += i32::from(W2[k][j]) * h[j];
+        }
+        o[k] = acc;
+    }
+    let mut best = 0usize;
+    for k in 1..NUM_CLASSES {
+        if o[k] > o[best] {
+            best = k;
+        }
+    }
+    let mut second = i32::MIN;
+    for (k, &v) in o.iter().enumerate() {
+        if k != best && v > second {
+            second = v;
+        }
+    }
+    (best as u8, (o[best] - second).max(1))
+}
+
+impl AiInferenceSal for Nn3MotionClassifier {
+    type Error = NnError;
+
+    fn contract(&self) -> AiModelContract {
+        AiModelContract::new(AiBackendKind::OnDevice, MODEL3_ID, 64, 4, 256, 2_000)
+    }
+
+    fn infer(
+        &mut self,
+        request: AiInferenceRequest<'_>,
+        output: &mut [u8],
+    ) -> Result<AiInferenceResult, Self::Error> {
+        let bytes = request.input;
+        if bytes.len() < 4 || bytes.len() % 2 != 0 || output.is_empty() {
+            return Err(NnError::BadBuffer);
+        }
+        let n = (bytes.len() / 2).min(nn3_weights::WINDOW);
+        let mut samples = [0u16; nn3_weights::WINDOW];
+        for i in 0..n {
+            samples[i] = u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]]);
+        }
+        let (class, margin) = forward3(normalize3(features(&samples[..n])));
+        output[0] = class;
+        Ok(AiInferenceResult::new(1, margin.clamp(1, Q15_ONE) as u16, 0))
+    }
+}
