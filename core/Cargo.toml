@@ -4,6 +4,7 @@ members = [
     "crates/nobro_net",
     "crates/nobro_crypto",
     "crates/nobro_ml",
+    "crates/nobro_control",
     "crates/nobro_power",
     "crates/nobro_sensor",
     "crates/nobro_sal",
