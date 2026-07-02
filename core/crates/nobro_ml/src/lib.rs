@@ -187,3 +187,173 @@ mod ensemble_tests {
         assert_eq!(ensemble_vote(&[], 3), None);
     }
 }
+
+/// Gesture classes recognized by [`GestureDetector`] (M143).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gesture {
+    None,
+    Tap,
+    Shake,
+    Tilt,
+}
+
+/// Streaming IMU gesture recognition over |accel| magnitude samples (milli-g), no heap.
+///
+/// - `Tap`: a short excursion above `spike` mg that returns to baseline within
+///   `tap_max_len` samples.
+/// - `Shake`: at least `shake_swings` alternating above/below-baseline swings of
+///   amplitude > `swing` mg inside one window.
+/// - `Tilt`: the recent mean shifts from the calibrated baseline by more than `tilt` mg
+///   and stays there (sustained, not oscillating).
+pub struct GestureDetector {
+    baseline: Ewma,
+    spike: i32,
+    swing: i32,
+    tilt: i32,
+    tap_max_len: u8,
+    shake_swings: u8,
+    excursion_len: u8,
+    swings: u8,
+    last_sign: i8,
+    sustained: u8,
+}
+
+impl GestureDetector {
+    pub fn new(spike_mg: i32, swing_mg: i32, tilt_mg: i32) -> Self {
+        Self {
+            baseline: Ewma::new(0.02),
+            spike: spike_mg,
+            swing: swing_mg,
+            tilt: tilt_mg,
+            tap_max_len: 6,
+            shake_swings: 6,
+            excursion_len: 0,
+            swings: 0,
+            last_sign: 0,
+            sustained: 0,
+        }
+    }
+
+    /// Calibrate the resting baseline from a quiet sample (call during startup).
+    pub fn calibrate(&mut self, mag_mg: i32) {
+        self.baseline.update(mag_mg as f32);
+    }
+
+    /// Feed one |accel| sample; returns the gesture completed at this sample, if any.
+    pub fn update(&mut self, mag_mg: i32) -> Gesture {
+        let base = self.baseline.value() as i32;
+        let dev = mag_mg - base;
+
+        // Track alternating swings for shake.
+        let sign: i8 = if dev > self.swing {
+            1
+        } else if dev < -self.swing {
+            -1
+        } else {
+            0
+        };
+        if sign != 0 && sign != self.last_sign {
+            if self.last_sign != 0 {
+                self.swings = self.swings.saturating_add(1);
+            }
+            self.last_sign = sign;
+        }
+        if self.swings >= self.shake_swings {
+            self.swings = 0;
+            self.last_sign = 0;
+            self.excursion_len = 0;
+            self.sustained = 0;
+            return Gesture::Shake;
+        }
+
+        // Track a single spike excursion for tap.
+        if dev.abs() > self.spike {
+            self.excursion_len = self.excursion_len.saturating_add(1);
+        } else if self.excursion_len > 0 {
+            let len = self.excursion_len;
+            self.excursion_len = 0;
+            // A short, isolated excursion (not part of an ongoing shake) is a tap.
+            if len <= self.tap_max_len && self.swings <= 1 {
+                self.swings = 0;
+                self.last_sign = 0;
+                return Gesture::Tap;
+            }
+        }
+
+        // Track a sustained baseline shift for tilt (quiet but offset).
+        if dev.abs() > self.tilt && dev.abs() < self.spike && sign == 0 {
+            self.sustained = self.sustained.saturating_add(1);
+            if self.sustained >= 20 {
+                self.sustained = 0;
+                return Gesture::Tilt;
+            }
+        } else if dev.abs() <= self.tilt {
+            self.sustained = 0;
+            // Quiet sample: let the baseline slowly re-adapt.
+            self.baseline.update(mag_mg as f32);
+        }
+
+        Gesture::None
+    }
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::*;
+
+    fn detector() -> GestureDetector {
+        let mut g = GestureDetector::new(400, 250, 80);
+        for _ in 0..50 {
+            g.calibrate(1000);
+        }
+        g
+    }
+
+    fn feed(g: &mut GestureDetector, samples: &[i32]) -> Gesture {
+        let mut got = Gesture::None;
+        for &s in samples {
+            let r = g.update(s);
+            if r != Gesture::None {
+                got = r;
+            }
+        }
+        got
+    }
+
+    #[test]
+    fn tap_is_a_short_isolated_spike() {
+        let mut g = detector();
+        let mut w = [1000i32; 40];
+        w[20] = 1600;
+        w[21] = 1700;
+        w[22] = 1550; // 3-sample spike then back
+        assert_eq!(feed(&mut g, &w), Gesture::Tap);
+    }
+
+    #[test]
+    fn shake_is_alternating_swings() {
+        let mut g = detector();
+        let mut w = [1000i32; 40];
+        for i in 0..16 {
+            w[10 + i] = if i % 2 == 0 { 1400 } else { 600 };
+        }
+        assert_eq!(feed(&mut g, &w), Gesture::Shake);
+    }
+
+    #[test]
+    fn tilt_is_a_sustained_offset() {
+        let mut g = detector();
+        let w = [1150i32; 40]; // +150 mg sustained, quiet
+        assert_eq!(feed(&mut g, &w), Gesture::Tilt);
+    }
+
+    #[test]
+    fn idle_stays_none() {
+        let mut g = detector();
+        let mut w = [1000i32; 60];
+        for (i, v) in w.iter_mut().enumerate() {
+            *v += (i as i32 % 5) - 2; // +/-2 mg noise
+        }
+        assert_eq!(feed(&mut g, &w), Gesture::None);
+    }
+}
