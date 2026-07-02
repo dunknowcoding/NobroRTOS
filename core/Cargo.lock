@@ -751,6 +751,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtc-sleep-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-hal",
+ "nobro-power",
+ "panic-halt",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
