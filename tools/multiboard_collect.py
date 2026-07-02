@@ -177,21 +177,21 @@ def network_rollup(boards):
     max_hops = max([d.get("hops", 1) for d in boards.values()] + [1])
     # AI fusion (M39): combine the camera's activity classification with the IMU
     # nodes' deviation from 1 g into one bench-activity verdict.
-    vision_activity = None
-    vision_scene = None
+    cameras = []
     imu_dev_mg = 0
-    for d in boards.values():
+    for name, d in boards.items():
         if "activity" in d:
-            vision_activity = d["activity"]
-            vision_scene = d.get("scene")
+            cameras.append({"node": name, "scene": d.get("scene"),
+                            "activity": d["activity"]})
         for key in ("accel_mg", "mag_mg"):
             if key in d:
                 imu_dev_mg = max(imu_dev_mg, abs(int(d[key]) - 1000))
     fusion = None
-    if vision_activity is not None or imu_dev_mg:
-        moving = (vision_activity == "motion") or imu_dev_mg > 80
+    if cameras or imu_dev_mg:
+        any_motion = any(c["activity"] == "motion" for c in cameras)
+        moving = any_motion or imu_dev_mg > 80
         fusion = {"verdict": "active" if moving else "quiet",
-                  "vision_scene": vision_scene, "vision_activity": vision_activity,
+                  "cameras": cameras, "cameras_seen": len(cameras),
                   "imu_deviation_mg": imu_dev_mg}
     return {
         "nodes": len(boards),
@@ -263,8 +263,9 @@ def main():
         print(f"  mesh: {'  '.join(net['mesh_edges'])}")
     if net.get("ai_fusion"):
         f = net["ai_fusion"]
-        print(f"  ai-fusion: bench={f['verdict']}  vision={f['vision_scene']}/"
-              f"{f['vision_activity']}  imu_dev={f['imu_deviation_mg']} mg")
+        cams = " ".join(f"{c['node']}:{c['scene']}/{c['activity']}" for c in f["cameras"])
+        print(f"  ai-fusion: bench={f['verdict']}  cameras={f['cameras_seen']} [{cams}]  "
+              f"imu_dev={f['imu_deviation_mg']} mg")
     print("\n--- unified snapshot ---")
     print(json.dumps(snapshot, indent=2, default=str))
     print(f"\nRESULT: {'PASS' if all_ok else 'FAIL'}")

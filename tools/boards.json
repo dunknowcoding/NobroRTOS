@@ -89,18 +89,6 @@
       "seconds": 2
     },
     {
-      "name": "esp32s3_cam",
-      "kind": "ESP32-S3-CAM (OV2640)",
-      "transport": "serial",
-      "port": "COM25",
-      "baud": 115200,
-      "protocol": "serial_regex",
-      "match": "esp32s3|ESP-ROM|camera|JPEG|detect",
-      "reset_on_open": false,
-      "optional": true,
-      "seconds": 3
-    },
-    {
       "name": "xiao_vision",
       "kind": "XIAO ESP32S3 Sense camera (OV3660, NiusCam frame dump)",
       "transport": "serial",
@@ -119,6 +107,35 @@
       "match": "NOBRO-RP2350 arch=\\S+ subsystems=\\d+ all_pass=1",
       "seconds": 3,
       "note": "self-DFU: send 'DFU' on the port and the UF2 drive re-mounts in ~1 s"
+    },
+    {
+      "name": "s3cam_vision",
+      "kind": "ESP32-S3-CAM (new OV5640 66deg, NiusCam frame dump)",
+      "transport": "serial",
+      "port": "COM25",
+      "protocol": "vision",
+      "seconds": 60,
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+    },
+    {
+      "name": "aithinker_vision",
+      "kind": "ESP32-CAM AI-Thinker (OV2640 66deg, NiusCam frame dump)",
+      "transport": "serial",
+      "port": "COM26",
+      "protocol": "vision",
+      "seconds": 60,
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+    },
+    {
+      "name": "audio",
+      "kind": "ESP32-S3 UNO + ES8311 codec (4-class sound events)",
+      "transport": "serial",
+      "port": "COM28",
+      "baud": 115200,
+      "protocol": "serial_regex",
+      "match": "NOBRO-AUDIO node=es8311 classes=\\d+ ready=1",
+      "reset_on_open": false,
+      "seconds": 4
     }
   ],
   "schemas": {

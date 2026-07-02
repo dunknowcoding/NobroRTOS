@@ -27,10 +27,16 @@ from PIL import Image
 def read_frames(port, count, timeout_s=40):
     import serial
     frames = []
-    # NOTE: never toggle DTR/RTS on a native-USB ESP32-S3 CDC port - the boot circuit
-    # interprets it and can drop the chip into the ROM bootloader. The sketch streams
-    # continuously, so plain open + read is enough.
-    sp = serial.Serial(port, 115200, timeout=2)
+    # NOTE: open with DTR/RTS deasserted. Asserting DTR on open resets UART-bridge
+    # boards (AI-Thinker auto-program wiring) and can bootloader-trap native-USB
+    # ESP32-S3 ports. The sketch streams continuously, so no reset is ever needed.
+    sp = serial.Serial()
+    sp.port = port
+    sp.baudrate = 115200
+    sp.timeout = 2
+    sp.dtr = False
+    sp.rts = False
+    sp.open()
     try:
         # 31 KB base64 lines burst over native USB; grow the driver RX buffer so bytes
         # survive host-side processing pauses.
@@ -96,7 +102,10 @@ def main():
 
     scene = "dark" if luma < 40 else ("bright" if luma > 200 else "normal")
     activity = "motion" if diff > 6.0 else "static"
-    live = ent > 3.0 and sharp > 20.0  # a real scene, not a dead/covered sensor
+    # Liveness = information content. A dead/covered sensor yields near-zero entropy;
+    # real scenes measure 4-6 bits. Sharpness varies with optics (soft lenses read low)
+    # so it is reported but does not veto.
+    live = ent > 3.5
 
     with open(args.save, "wb") as f:
         f.write(frames[-1])
