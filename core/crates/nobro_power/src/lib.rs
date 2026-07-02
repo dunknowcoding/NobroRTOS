@@ -145,3 +145,40 @@ mod energy_tests {
         assert_eq!(led.top(), Some((2, 42_000)));
     }
 }
+
+/// Adaptive sampling by battery level (M162): map a state-of-charge (percent) to a
+/// decimation factor for the sensor pipeline - full rate when charged, progressively
+/// heavier downsampling as the battery drains, minimum duty when critical.
+///
+/// Pairs with `nobro-sensor`'s `Decimator`: `Decimator::new(sampling_divisor(soc))`.
+pub fn sampling_divisor(soc_percent: u8) -> u16 {
+    match soc_percent {
+        60..=u8::MAX => 1, // full rate
+        30..=59 => 2,      // half rate
+        15..=29 => 4,      // quarter rate
+        5..=14 => 8,       // eighth rate
+        _ => 16,           // critical: minimum duty
+    }
+}
+
+#[cfg(test)]
+mod adaptive_sampling_tests {
+    use super::*;
+
+    #[test]
+    fn divisor_scales_with_soc_and_is_monotonic() {
+        assert_eq!(sampling_divisor(100), 1);
+        assert_eq!(sampling_divisor(60), 1);
+        assert_eq!(sampling_divisor(45), 2);
+        assert_eq!(sampling_divisor(20), 4);
+        assert_eq!(sampling_divisor(10), 8);
+        assert_eq!(sampling_divisor(2), 16);
+        // monotonic: lower charge never samples faster
+        let mut last = 0u16;
+        for soc in (0..=100u8).rev() {
+            let d = sampling_divisor(soc);
+            assert!(d >= last, "soc {soc}: divisor {d} < {last}");
+            last = d;
+        }
+    }
+}
