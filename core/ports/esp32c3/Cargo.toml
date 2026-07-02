@@ -1,0 +1,27 @@
+[package]
+name = "nobro-port-esp32c3"
+version = "0.1.0"
+edition = "2021"
+
+# NobroRTOS portable-core bring-up on the ESP32-C3 (RISC-V rv32imc) - M84. Runs the
+# kernel control plane + net/ml/crypto/power primitives on a third MCU architecture and
+# prints a NOBRO self-test report over the C3's USB-Serial-JTAG. Standalone workspace:
+# the esp-hal dependency tree is independent of the thumbv7em core workspace.
+
+[dependencies]
+esp-hal = { version = "=0.23.1", features = ["esp32c3"] }
+esp-println = { version = "=0.13.0", default-features = false, features = ["esp32c3", "jtag-serial", "critical-section"] }
+nobro-kernel = { path = "../../crates/nobro_kernel", default-features = false }
+nobro-net = { path = "../../crates/nobro_net" }
+nobro-ml = { path = "../../crates/nobro_ml" }
+nobro-crypto = { path = "../../crates/nobro_crypto", default-features = false }
+nobro-power = { path = "../../crates/nobro_power" }
+nobro-sal = { path = "../../crates/nobro_sal", default-features = false }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[workspace]

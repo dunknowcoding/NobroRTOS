@@ -6,4 +6,8 @@ edition.workspace = true
 # No-heap crypto primitives: AES-128 block encrypt (FIPS-197 verified) and a seedable
 # CryptoSal RNG. Software, portable; the nRF AES/RNG engines can back these later.
 [dependencies]
-nobro-sal = { path = "../nobro_sal" }
+nobro-sal = { path = "../nobro_sal", default-features = false }
+
+[features]
+default = ["portable-atomic-cs"]
+portable-atomic-cs = ["nobro-sal/portable-atomic-cs"]

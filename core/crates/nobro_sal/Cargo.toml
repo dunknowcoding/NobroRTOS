@@ -4,4 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-nobro-kernel = { path = "../nobro_kernel" }
+nobro-kernel = { path = "../nobro_kernel", default-features = false }
+
+[features]
+default = ["portable-atomic-cs"]
+portable-atomic-cs = ["nobro-kernel/portable-atomic-cs"]

@@ -8,8 +8,11 @@ nobro-hal = { path = "../nobro_hal", default-features = false, features = ["cont
 # Drop-in atomics: native CAS where the ISA has it, critical-section fallback on cores
 # that lack atomic CAS (Cortex-M0+, RISC-V without the 'a' extension) - keeps the kernel
 # portable across MCU families.
-portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
+portable-atomic = { version = "1", default-features = false }
 
 [features]
-default = []
+default = ["portable-atomic-cs"]
+# critical-section-backed atomics for cores without CAS; targets whose runtime already
+# provides atomics another way (esp-hal assume-single-core) disable default features.
+portable-atomic-cs = ["portable-atomic/critical-section"]
 hal-profile = ["dep:nobro-hal"]
