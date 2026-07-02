@@ -5,6 +5,7 @@ members = [
     "crates/nobro_crypto",
     "crates/nobro_ml",
     "crates/nobro_control",
+    "crates/nobro_storage",
     "crates/nobro_power",
     "crates/nobro_sensor",
     "crates/nobro_sal",
@@ -46,6 +47,7 @@ members = [
     "apps/watchdog_demo",
     "apps/motion3_demo",
     "apps/control_loop_demo",
+    "apps/kv_store_demo",
     "apps/lease_demo",
 ]
 

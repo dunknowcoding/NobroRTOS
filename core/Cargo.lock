@@ -315,6 +315,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kv-store-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-hal",
+ "nobro-storage",
+ "panic-halt",
+]
+
+[[package]]
 name = "lease-demo"
 version = "0.2.0"
 dependencies = [
@@ -562,6 +575,10 @@ dependencies = [
 
 [[package]]
 name = "nobro-sensor"
+version = "0.2.0"
+
+[[package]]
+name = "nobro-storage"
 version = "0.2.0"
 
 [[package]]
