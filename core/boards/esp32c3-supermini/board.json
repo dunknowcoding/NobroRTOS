@@ -1,0 +1,20 @@
+{
+  "board_id": "esp32c3_supermini",
+  "platform_id": "esp32c3",
+  "feature": "port-esp32c3",
+  "description": "ESP32-C3 Supermini (RISC-V rv32imc), NobroRTOS portable-core port over USB-Serial-JTAG",
+  "boot": {
+    "layout": "Esp32IdfApp",
+    "app_flash_start": "0x10000",
+    "app_flash_len_bytes": 4128768,
+    "ram_start": "0x3FC80000",
+    "ram_len_bytes": 327680
+  },
+  "capacity": {
+    "flash_budget_bytes": 131072,
+    "ram_budget_bytes": 65536,
+    "sample_pool_slots": 8,
+    "max_modules": 16
+  },
+  "pins": { "led": 8, "servo_pwm": -1, "mvk_trigger": -1 }
+}

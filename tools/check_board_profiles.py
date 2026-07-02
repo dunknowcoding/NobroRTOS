@@ -6,7 +6,17 @@ drift from a coherent layout. Pure stdlib; exit 0 = all profiles valid.
 """
 import glob, json, os, sys
 
-LAYOUT_FLASH_START = {"NoSoftDevice": 0x1000, "SoftDeviceS140V6": 0x26000}
+LAYOUT_FLASH_START = {
+    "NoSoftDevice": 0x1000,        # nRF52840, app behind the bootloader
+    "SoftDeviceS140V6": 0x26000,   # nRF52840 + S140 v6
+    "Esp32IdfApp": 0x10000,        # ESP32 IDF app partition (factory slot)
+    "Rp2350ImageDef": 0x10000000,  # RP2350 XIP flash base (IMAGE_DEF block)
+}
+PLATFORM_RAM = {                   # (ram_start, max_end) sanity window per platform
+    "nrf52840": (0x2000_0000, 0x2004_0000),
+    "esp32c3": (0x3FC8_0000, 0x3FCE_0000),
+    "rp2350": (0x2000_0000, 0x2008_2000),
+}
 ROOT = os.path.join(os.path.dirname(__file__), "..", "core", "boards")
 
 def as_int(v):
@@ -29,8 +39,14 @@ def check(path):
         errs.append("flash_budget exceeds app flash region")
     if cap["ram_budget_bytes"] > as_int(boot["ram_len_bytes"]):
         errs.append("ram_budget exceeds ram region")
-    if not (0 <= as_int(boot["ram_start"]) <= 0x2004_0000):
-        errs.append("ram_start out of nRF52840 RAM range")
+    plat = d.get("platform_id")
+    if plat in PLATFORM_RAM:
+        lo, hi = PLATFORM_RAM[plat]
+        start = as_int(boot["ram_start"])
+        if not (lo <= start and start + as_int(boot["ram_len_bytes"]) <= hi):
+            errs.append(f"RAM window out of {plat} range")
+    else:
+        errs.append(f"unknown platform_id '{plat}'")
     return errs
 
 def main():

@@ -1,0 +1,20 @@
+{
+  "board_id": "rp2350_pico2w",
+  "platform_id": "rp2350",
+  "feature": "port-rp2350",
+  "description": "Raspberry Pi Pico 2 W (RP2350, Cortex-M33), NobroRTOS portable-core port over USB-CDC with self-DFU to BOOTSEL",
+  "boot": {
+    "layout": "Rp2350ImageDef",
+    "app_flash_start": "0x10000000",
+    "app_flash_len_bytes": 4194304,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 524288
+  },
+  "capacity": {
+    "flash_budget_bytes": 131072,
+    "ram_budget_bytes": 65536,
+    "sample_pool_slots": 8,
+    "max_modules": 16
+  },
+  "pins": { "led": 25, "servo_pwm": -1, "mvk_trigger": -1 }
+}
