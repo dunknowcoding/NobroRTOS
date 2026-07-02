@@ -21,14 +21,15 @@
     },
     {
       "name": "nano",
-      "kind": "Arduino Nano (ICM45686 sketch)",
+      "kind": "Arduino Nano (stale ICM45686 firmware, NO IMU attached)",
       "transport": "serial",
       "port": "COM24",
       "baud": 115200,
       "protocol": "serial_regex",
       "match": "ICM45686|ICM456xx",
       "reset_on_open": true,
-      "optional": true
+      "optional": true,
+      "note": "Sensor was removed; the sketch remains flashed. Any matched output is firmware banner/error text, not sensor data - do not treat as telemetry."
     },
     {
       "name": "sim_relay",
