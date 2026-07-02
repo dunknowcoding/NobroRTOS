@@ -21,15 +21,14 @@
     },
     {
       "name": "nano",
-      "kind": "Arduino Nano (stale ICM45686 firmware, NO IMU attached)",
+      "kind": "Arduino Nano + MPU6050 SY-104 (ICM-clone die, WHO_AM_I=0x98)",
       "transport": "serial",
       "port": "COM24",
       "baud": 115200,
       "protocol": "serial_regex",
-      "match": "ICM45686|ICM456xx",
+      "match": "MPU6050 who=0x\\S+ .*mag=\\d+mg",
       "reset_on_open": true,
-      "optional": true,
-      "note": "Sensor was removed; the sketch remains flashed. Any matched output is firmware banner/error text, not sensor data - do not treat as telemetry."
+      "note": "Real IMU reconnected 2026-07-02; clone Nano needs the old-bootloader upload (arduino:avr:nano:cpu=atmega328old)."
     },
     {
       "name": "sim_relay",
