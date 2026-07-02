@@ -122,3 +122,29 @@ mod tests {
         assert_eq!(emits, 4); // 16 in / 4 = 4 out
     }
 }
+
+/// Triple-modular-redundancy vote (M165): given three redundant readings, return the
+/// median (tolerates one arbitrary fault) and whether the sources agree within `tol`.
+pub fn tmr_vote(a: i32, b: i32, c: i32, tol: i32) -> (i32, bool) {
+    // median of three
+    let median = a.max(b).min(a.min(b).max(c));
+    let agree = (a - median).abs() <= tol && (b - median).abs() <= tol && (c - median).abs() <= tol;
+    (median, agree)
+}
+
+#[cfg(test)]
+mod tmr_tests {
+    use super::*;
+
+    #[test]
+    fn tmr_masks_a_single_fault() {
+        // one sensor wildly wrong -> median still correct, disagreement flagged
+        let (v, agree) = tmr_vote(1000, 1002, 5000, 10);
+        assert_eq!(v, 1002);
+        assert!(!agree);
+        // all healthy -> agreement
+        let (v, agree) = tmr_vote(1000, 1002, 999, 10);
+        assert_eq!(v, 1000);
+        assert!(agree);
+    }
+}

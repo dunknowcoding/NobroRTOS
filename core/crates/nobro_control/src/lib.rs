@@ -117,3 +117,47 @@ mod tests {
         assert!((a - 5.98).abs() < 1e-3); // 0.98*(5+1) + 0.02*5
     }
 }
+
+/// Differential-drive kinematics (M151): convert body velocities to wheel speeds and
+/// back. `wheel_base` is the distance between wheels; units are consistent (e.g. m, m/s,
+/// rad/s).
+#[derive(Clone, Copy, Debug)]
+pub struct DiffDrive {
+    pub wheel_base: f32,
+}
+
+impl DiffDrive {
+    pub const fn new(wheel_base: f32) -> Self {
+        Self { wheel_base }
+    }
+
+    /// (linear, angular) -> (left, right) wheel linear speeds.
+    pub fn to_wheels(&self, linear: f32, angular: f32) -> (f32, f32) {
+        let half = angular * self.wheel_base / 2.0;
+        (linear - half, linear + half)
+    }
+
+    /// (left, right) wheel speeds -> (linear, angular) body velocities.
+    pub fn to_body(&self, left: f32, right: f32) -> (f32, f32) {
+        ((left + right) / 2.0, (right - left) / self.wheel_base)
+    }
+}
+
+#[cfg(test)]
+mod diff_drive_tests {
+    use super::*;
+
+    #[test]
+    fn wheels_and_body_roundtrip() {
+        let dd = DiffDrive::new(0.2);
+        // pure rotation: wheels equal and opposite
+        let (l, r) = dd.to_wheels(0.0, 1.0);
+        assert!((l + 0.1).abs() < 1e-6 && (r - 0.1).abs() < 1e-6);
+        // straight line: wheels equal
+        let (l, r) = dd.to_wheels(0.5, 0.0);
+        assert_eq!((l, r), (0.5, 0.5));
+        // roundtrip
+        let (lin, ang) = dd.to_body(0.4, 0.6);
+        assert!((lin - 0.5).abs() < 1e-6 && (ang - 1.0).abs() < 1e-6);
+    }
+}
