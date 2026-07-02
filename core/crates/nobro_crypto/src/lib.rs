@@ -3,6 +3,8 @@
 //! hardware AES/RNG can back the same surface later.
 #![cfg_attr(not(test), no_std)]
 
+pub mod ccm;
+
 use nobro_sal::CryptoSal;
 
 const SBOX: [u8; 256] = [
