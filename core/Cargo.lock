@@ -544,6 +544,17 @@ name = "nobro-c-abi-module"
 version = "0.2.0"
 
 [[package]]
+name = "nobro-conformance"
+version = "0.2.0"
+dependencies = [
+ "nobro-crypto",
+ "nobro-kernel",
+ "nobro-ml",
+ "nobro-net",
+ "nobro-power",
+]
+
+[[package]]
 name = "nobro-control"
 version = "0.2.0"
 

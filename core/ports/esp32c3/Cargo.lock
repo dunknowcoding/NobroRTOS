@@ -712,6 +712,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nobro-conformance"
+version = "0.2.0"
+dependencies = [
+ "nobro-crypto",
+ "nobro-kernel",
+ "nobro-ml",
+ "nobro-net",
+ "nobro-power",
+]
+
+[[package]]
 name = "nobro-crypto"
 version = "0.2.0"
 dependencies = [
@@ -739,12 +750,7 @@ version = "0.1.0"
 dependencies = [
  "esp-hal",
  "esp-println",
- "nobro-crypto",
- "nobro-kernel",
- "nobro-ml",
- "nobro-net",
- "nobro-power",
- "nobro-sal",
+ "nobro-conformance",
 ]
 
 [[package]]
