@@ -52,6 +52,7 @@ members = [
     "apps/pwm_bank_demo",
     "apps/gesture_demo",
     "apps/supervision_demo",
+    "apps/mpu_guard_demo",
     "apps/kv_store_demo",
     "apps/lease_demo",
 ]
