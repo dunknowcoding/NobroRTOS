@@ -106,6 +106,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "control-loop-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "embedded-hal 1.0.0",
+ "nobro-control",
+ "nobro-eh-spi",
+ "nobro-hal",
+ "panic-halt",
+]
+
+[[package]]
 name = "cortex-m"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

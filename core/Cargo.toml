@@ -45,6 +45,7 @@ members = [
     "apps/flash_log_demo",
     "apps/watchdog_demo",
     "apps/motion3_demo",
+    "apps/control_loop_demo",
     "apps/lease_demo",
 ]
 
