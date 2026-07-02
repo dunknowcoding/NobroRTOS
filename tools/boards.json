@@ -108,6 +108,17 @@
       "protocol": "vision",
       "seconds": 60,
       "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+    },
+    {
+      "name": "pico2",
+      "kind": "Pico 2 W / RP2350 (NobroRTOS portable-core port)",
+      "transport": "serial",
+      "port": "COM29",
+      "baud": 115200,
+      "protocol": "serial_regex",
+      "match": "NOBRO-RP2350 arch=\\S+ subsystems=\\d+ all_pass=1",
+      "seconds": 3,
+      "note": "self-DFU: send 'DFU' on the port and the UF2 drive re-mounts in ~1 s"
     }
   ],
   "schemas": {
