@@ -17,7 +17,9 @@
       "port": "COM20",
       "baud": 115200,
       "protocol": "jsonl_bridge",
-      "reset_on_open": false
+      "reset_on_open": false,
+      "optional": true,
+      "note": "AWAITING-REPLUG 2026-07-02: C3 USB-Serial-JTAG attaches in ROM/download mode but not in app mode - a latched device state that survived reflash/erase/pullup-toggle/elevated-restart. Physical USB replug required; INA app (CDC build) is resident and will serve JSONL immediately after. Then remove 'optional'."
     },
     {
       "name": "nano",
