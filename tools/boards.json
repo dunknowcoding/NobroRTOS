@@ -99,6 +99,15 @@
       "reset_on_open": false,
       "optional": true,
       "seconds": 3
+    },
+    {
+      "name": "xiao_vision",
+      "kind": "XIAO ESP32S3 Sense camera (OV3660, NiusCam frame dump)",
+      "transport": "serial",
+      "port": "COM27",
+      "protocol": "vision",
+      "seconds": 60,
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
     }
   ],
   "schemas": {

@@ -136,7 +136,28 @@ PARSERS = {
     "jsonl_bridge": lambda b, s: read_jsonl_bridge(b),
     "serial_regex": lambda b, s: read_serial_regex(b),
     "sim": lambda b, s: read_sim(b),
+    "vision": lambda b, s: read_vision(b),
 }
+
+
+def read_vision(b):
+    """Run the vision-recognition tool (tools/vision_node.py) against a camera node and
+    parse its VISION line. `tool_python` selects the interpreter that has PIL/numpy."""
+    tool = os.path.join(HERE, "vision_node.py")
+    py = b.get("tool_python", sys.executable)
+    out = subprocess.run(
+        [py, "-u", tool, "--port", b["port"], "--frames", "2",
+         "--save", os.path.join(HERE, "..", "_work", "vision_last.jpg")],
+        capture_output=True, text=True, timeout=b.get("seconds", 60)).stdout
+    m = re.search(
+        r"VISION \S+ scene=(\S+) activity=(\S+) luma=([\d.]+) entropy=([\d.]+) "
+        r"sharpness=(\d+) diff=([\d.]+) live=(\d)", out)
+    if not m:
+        return None, "no vision line (" + out.strip().splitlines()[-1][:60] + ")" if out.strip() else "no output"
+    rec = {"pass": m.group(7) == "1", "scene": m.group(1), "activity": m.group(2),
+           "luma": float(m.group(3)), "entropy": float(m.group(4)),
+           "sharpness": int(m.group(5)), "diff": float(m.group(6))}
+    return rec, None
 
 
 def network_rollup(boards):
@@ -154,11 +175,30 @@ def network_rollup(boards):
             chain = [name] + list(route)
             edges += [f"{a}->{b}" for a, b in zip(chain, chain[1:])]
     max_hops = max([d.get("hops", 1) for d in boards.values()] + [1])
+    # AI fusion (M39): combine the camera's activity classification with the IMU
+    # nodes' deviation from 1 g into one bench-activity verdict.
+    vision_activity = None
+    vision_scene = None
+    imu_dev_mg = 0
+    for d in boards.values():
+        if "activity" in d:
+            vision_activity = d["activity"]
+            vision_scene = d.get("scene")
+        for key in ("accel_mg", "mag_mg"):
+            if key in d:
+                imu_dev_mg = max(imu_dev_mg, abs(int(d[key]) - 1000))
+    fusion = None
+    if vision_activity is not None or imu_dev_mg:
+        moving = (vision_activity == "motion") or imu_dev_mg > 80
+        fusion = {"verdict": "active" if moving else "quiet",
+                  "vision_scene": vision_scene, "vision_activity": vision_activity,
+                  "imu_deviation_mg": imu_dev_mg}
     return {
         "nodes": len(boards),
         "total_power_W": round(total_power, 3),
         "mesh_max_hops": max_hops,
         "mesh_edges": sorted(set(edges)),
+        "ai_fusion": fusion,
     }
 
 
@@ -221,6 +261,10 @@ def main():
           f"mesh_max_hops={net['mesh_max_hops']}")
     if net["mesh_edges"]:
         print(f"  mesh: {'  '.join(net['mesh_edges'])}")
+    if net.get("ai_fusion"):
+        f = net["ai_fusion"]
+        print(f"  ai-fusion: bench={f['verdict']}  vision={f['vision_scene']}/"
+              f"{f['vision_activity']}  imu_dev={f['imu_deviation_mg']} mg")
     print("\n--- unified snapshot ---")
     print(json.dumps(snapshot, indent=2, default=str))
     print(f"\nRESULT: {'PASS' if all_ok else 'FAIL'}")
