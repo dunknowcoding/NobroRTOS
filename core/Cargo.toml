@@ -53,6 +53,7 @@ members = [
     "apps/gesture_demo",
     "apps/supervision_demo",
     "apps/mpu_guard_demo",
+    "apps/crash_dump_demo",
     "apps/kv_store_demo",
     "apps/lease_demo",
 ]
