@@ -31,6 +31,7 @@ pub mod sample;
 pub mod scheduler;
 pub mod startup;
 pub mod supervisor;
+pub mod task_supervisor;
 pub mod watchdog;
 
 pub use admission::{
@@ -90,4 +91,5 @@ pub use startup::{
     StartupPlan, StartupPlanner,
 };
 pub use supervisor::{Supervisor, SupervisorSnapshot};
+pub use task_supervisor::{SupervisionAction, TaskSupervisor};
 pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};
