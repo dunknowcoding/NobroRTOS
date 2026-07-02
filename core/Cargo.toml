@@ -49,6 +49,7 @@ members = [
     "apps/control_loop_demo",
     "apps/rtc_sleep_demo",
     "apps/stack_guard_demo",
+    "apps/pwm_bank_demo",
     "apps/kv_store_demo",
     "apps/lease_demo",
 ]

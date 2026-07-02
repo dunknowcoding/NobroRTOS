@@ -111,3 +111,63 @@ impl Default for PwmServo {
         }
     }
 }
+
+const PWM_PSEL_OUT: [u32; 4] = [0x560, 0x564, 0x568, 0x56C];
+const PIN_DISCONNECTED: u32 = 0x8000_0000;
+
+static mut PWM_BANK_SEQ: [u16; 4] = [0; 4];
+
+/// Up to four 50 Hz servo/ESC outputs on PWM0's four channels (one shared 20 ms period,
+/// per-channel duty via the individual-load decoder). Callers hold `Resource::Pwm0`.
+pub struct PwmBank {
+    counter_top: u16,
+}
+
+impl PwmBank {
+    /// Bring up PWM0 at 50 Hz with one output pin per channel (`None` = channel unused).
+    pub unsafe fn init_50hz(pins: [Option<u8>; 4], center_us: u32) -> Self {
+        let counter_top: u16 = 19_999; // 20 ms at 1 MHz (prescaler 4)
+        for v in PWM_BANK_SEQ.iter_mut() {
+            *v = pwm_seq_value(center_us as u16, counter_top);
+        }
+        *reg(PWM0_BASE, PWM_ENABLE) = 0;
+        *reg(PWM0_BASE, PWM_MODE) = 0;
+        *reg(PWM0_BASE, PWM_PRESCALER) = 4;
+        *reg(PWM0_BASE, PWM_COUNTERTOP) = counter_top as u32;
+        *reg(PWM0_BASE, PWM_DECODER) = 2; // individual load: SEQ[i] -> channel i
+        *reg(PWM0_BASE, PWM_SEQ0_PTR) = ptr::addr_of!(PWM_BANK_SEQ) as u32;
+        *reg(PWM0_BASE, PWM_SEQ0_CNT) = 4;
+        for (ch, pin) in pins.iter().enumerate() {
+            *reg(PWM0_BASE, PWM_PSEL_OUT[ch]) = match pin {
+                Some(p) => u32::from(*p),
+                None => PIN_DISCONNECTED,
+            };
+        }
+        *reg(PWM0_BASE, PWM_ENABLE) = 1;
+        *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
+        Self { counter_top }
+    }
+
+    pub unsafe fn set_pulse_us(&mut self, channel: usize, pulse_us: u32) {
+        if channel < 4 {
+            PWM_BANK_SEQ[channel] = pwm_seq_value(pulse_us as u16, self.counter_top);
+            *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
+        }
+    }
+
+    /// Decode a channel's live duty back out of the SEQ RAM the hardware is fetching.
+    pub fn read_pulse_us(channel: usize) -> u32 {
+        if channel >= 4 {
+            return 0;
+        }
+        unsafe {
+            let top = *reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
+            let raw = PWM_BANK_SEQ[channel] & 0x7FFF;
+            top.saturating_sub(raw) as u32
+        }
+    }
+
+    pub fn frequency_hz(&self) -> u32 {
+        (PWM_BASE_CLOCK_HZ >> 4) / (u32::from(self.counter_top) + 1)
+    }
+}
