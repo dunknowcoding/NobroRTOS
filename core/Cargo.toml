@@ -46,6 +46,7 @@ members = [
     "apps/radio_comms_demo",
     "apps/ai_runtime_demo",
     "apps/flash_log_demo",
+    "apps/telemetry_ring_demo",
     "apps/watchdog_demo",
     "apps/motion3_demo",
     "apps/control_loop_demo",
