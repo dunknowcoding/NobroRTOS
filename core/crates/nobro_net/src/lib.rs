@@ -721,3 +721,219 @@ mod final_net_tests {
         assert!(teleop::apply(&[0u8; 16], &frame[..n], 4).is_err());
     }
 }
+
+
+// ---- wireless protocol layer (M130/M131/M132/M135) ----
+
+/// RSSI/LQI-aware next-hop selection (M130): among candidate neighbors that can reach the
+/// destination, pick the one with the best link quality, breaking ties by hop cost. Link
+/// quality is a 0..255 score (higher = better); returns the chosen neighbor id.
+pub fn rssi_best_next_hop(candidates: &[(u16, u8, u8)]) -> Option<u16> {
+    // (neighbor_id, link_quality, hop_cost)
+    candidates
+        .iter()
+        .copied()
+        .max_by(|a, b| {
+            a.1.cmp(&b.1) // higher quality first
+                .then(b.2.cmp(&a.2)) // then lower hop cost
+        })
+        .map(|(id, _, _)| id)
+}
+
+/// OTA image chunking for mesh delivery (M131): split by fixed chunk size, track which
+/// chunks a receiver has, and report completion. Fixed capacity, no heap.
+pub struct OtaReassembler<const CHUNKS: usize> {
+    have: [bool; CHUNKS],
+    total: usize,
+    received: usize,
+}
+
+impl<const CHUNKS: usize> OtaReassembler<CHUNKS> {
+    pub fn new(total_chunks: usize) -> Self {
+        Self { have: [false; CHUNKS], total: total_chunks.min(CHUNKS), received: 0 }
+    }
+    /// Number of chunks an image of `image_len` bytes needs at `chunk_size`.
+    pub fn chunk_count(image_len: usize, chunk_size: usize) -> usize {
+        image_len.div_ceil(chunk_size.max(1))
+    }
+    /// Record a received chunk; returns true if it was new.
+    pub fn receive(&mut self, index: usize) -> bool {
+        if index >= self.total || self.have[index] {
+            return false;
+        }
+        self.have[index] = true;
+        self.received += 1;
+        true
+    }
+    pub fn is_complete(&self) -> bool {
+        self.received == self.total && self.total > 0
+    }
+    /// The first missing chunk index (for a NACK-driven retransmit).
+    pub fn first_missing(&self) -> Option<usize> {
+        (0..self.total).find(|&i| !self.have[i])
+    }
+    pub fn progress_percent(&self) -> u8 {
+        ((self.received * 100).checked_div(self.total).unwrap_or(0)) as u8
+    }
+}
+
+/// Store-and-forward buffer for a sleepy child (M132): hold messages destined for a node
+/// that is asleep, deliver them when it polls. Bounded ring; oldest dropped when full.
+pub struct StoreForward<T: Copy, const N: usize> {
+    dst: [u16; N],
+    msg: [Option<T>; N],
+    head: usize,
+    len: usize,
+}
+
+impl<T: Copy, const N: usize> Default for StoreForward<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Copy, const N: usize> StoreForward<T, N> {
+    pub const fn new() -> Self {
+        Self { dst: [0; N], msg: [None; N], head: 0, len: 0 }
+    }
+    /// Buffer `item` for `dst` (dropping the oldest if full).
+    pub fn store(&mut self, dst: u16, item: T) {
+        let slot = (self.head + self.len) % N;
+        if self.len == N {
+            self.head = (self.head + 1) % N; // overwrite oldest
+        } else {
+            self.len += 1;
+        }
+        self.dst[slot] = dst;
+        self.msg[slot] = Some(item);
+    }
+    /// Pop the next buffered message for `dst` (FIFO), or None.
+    pub fn deliver(&mut self, dst: u16) -> Option<T> {
+        for k in 0..self.len {
+            let i = (self.head + k) % N;
+            if self.msg[i].is_some() && self.dst[i] == dst {
+                let m = self.msg[i].take();
+                // compact is unnecessary; the slot is just marked empty
+                return m;
+            }
+        }
+        None
+    }
+    pub fn pending_for(&self, dst: u16) -> usize {
+        (0..self.len)
+            .filter(|&k| {
+                let i = (self.head + k) % N;
+                self.msg[i].is_some() && self.dst[i] == dst
+            })
+            .count()
+    }
+}
+
+/// Network formation (M135): a coordinator assigns the next short address and builds a
+/// parent map from join requests, forming a self-healing tree. Fixed capacity.
+pub struct NetworkFormation<const N: usize> {
+    next_addr: u16,
+    parent: [(u16, u16); N], // (child_addr, parent_addr)
+    len: usize,
+}
+
+impl<const N: usize> Default for NetworkFormation<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> NetworkFormation<N> {
+    pub const fn new() -> Self {
+        Self { next_addr: 1, parent: [(0, 0); N], len: 0 }
+    }
+    /// A node joins via `parent_addr`; returns its assigned short address.
+    pub fn join(&mut self, parent_addr: u16) -> Option<u16> {
+        if self.len >= N {
+            return None;
+        }
+        let addr = self.next_addr;
+        self.next_addr += 1;
+        self.parent[self.len] = (addr, parent_addr);
+        self.len += 1;
+        Some(addr)
+    }
+    pub fn parent_of(&self, addr: u16) -> Option<u16> {
+        self.parent[..self.len]
+            .iter()
+            .find(|(c, _)| *c == addr)
+            .map(|(_, p)| *p)
+    }
+    /// Self-heal: a node re-parents to a new parent when its link drops.
+    pub fn reparent(&mut self, addr: u16, new_parent: u16) -> bool {
+        if let Some(e) = self.parent[..self.len].iter_mut().find(|(c, _)| *c == addr) {
+            e.1 = new_parent;
+            true
+        } else {
+            false
+        }
+    }
+    /// Hops to the coordinator (addr 0) by walking parents; None if a cycle/orphan.
+    pub fn depth(&self, addr: u16) -> Option<u16> {
+        let mut cur = addr;
+        for d in 0..=N as u16 {
+            if cur == 0 {
+                return Some(d);
+            }
+            cur = self.parent_of(cur)?;
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod wireless_tests {
+    use super::*;
+
+    #[test]
+    fn rssi_picks_best_link_then_cheapest() {
+        // (id, quality, cost): id 3 has the best quality
+        let c = [(2u16, 100u8, 1u8), (3, 200, 3), (4, 200, 2)];
+        // best quality 200 shared by 3 and 4; lower cost (4, cost 2) wins the tie
+        assert_eq!(rssi_best_next_hop(&c), Some(4));
+        assert_eq!(rssi_best_next_hop(&[]), None);
+    }
+
+    #[test]
+    fn ota_reassembles_and_reports_missing() {
+        assert_eq!(OtaReassembler::<64>::chunk_count(1000, 256), 4);
+        let mut r = OtaReassembler::<8>::new(4);
+        assert!(r.receive(0) && r.receive(2) && r.receive(3));
+        assert!(!r.receive(0)); // dup
+        assert_eq!(r.first_missing(), Some(1));
+        assert_eq!(r.progress_percent(), 75);
+        assert!(r.receive(1));
+        assert!(r.is_complete());
+        assert_eq!(r.first_missing(), None);
+    }
+
+    #[test]
+    fn store_forward_holds_and_delivers_per_dst() {
+        let mut sf = StoreForward::<u16, 4>::new();
+        sf.store(9, 0xAA);
+        sf.store(7, 0xBB);
+        sf.store(9, 0xCC);
+        assert_eq!(sf.pending_for(9), 2);
+        assert_eq!(sf.deliver(9), Some(0xAA)); // FIFO for that dst
+        assert_eq!(sf.deliver(9), Some(0xCC));
+        assert_eq!(sf.deliver(9), None);
+        assert_eq!(sf.deliver(7), Some(0xBB));
+    }
+
+    #[test]
+    fn network_forms_tree_and_self_heals() {
+        let mut net = NetworkFormation::<8>::new();
+        let a = net.join(0).unwrap(); // joins coordinator
+        let b = net.join(a).unwrap(); // joins via a
+        assert_eq!(net.parent_of(b), Some(a));
+        assert_eq!(net.depth(b), Some(2)); // b -> a -> coord
+        // a's link drops; b re-parents directly to the coordinator
+        assert!(net.reparent(b, 0));
+        assert_eq!(net.depth(b), Some(1));
+    }
+}
