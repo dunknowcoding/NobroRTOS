@@ -357,3 +357,264 @@ mod gesture_tests {
         assert_eq!(feed(&mut g, &w), Gesture::None);
     }
 }
+
+
+// ---- TinyML building blocks (M138/M139/M141/M142/M144/M145) ----
+
+/// Symmetric int8 quantization helper (M139): map a float to int8 with a given scale,
+/// and back. `scale` = max_abs / 127. Round-half-to-even-ish via +0.5 on magnitude.
+pub fn quantize_i8(x: f32, scale: f32) -> i8 {
+    if scale <= 0.0 {
+        return 0;
+    }
+    let q = x / scale;
+    let r = if q >= 0.0 { q + 0.5 } else { q - 0.5 } as i32;
+    r.clamp(-127, 127) as i8
+}
+pub fn dequantize_i8(q: i8, scale: f32) -> f32 {
+    q as f32 * scale
+}
+
+/// Choose a symmetric scale for a tensor so its max magnitude maps to 127 (M139).
+pub fn choose_scale(values: &[f32]) -> f32 {
+    let m = values.iter().fold(0.0f32, |a, &v| a.max(v.abs()));
+    if m <= 0.0 {
+        1.0
+    } else {
+        m / 127.0
+    }
+}
+
+/// Depthwise 3x1 conv over an int8 channel (M138): the core op of a depthwise-separable
+/// block, integer MAC with a requantizing right shift. `pad`-with-zeros at the ends.
+pub fn depthwise_conv3(input: &[i8], kernel: [i8; 3], shift: u32, out: &mut [i8]) {
+    let n = input.len();
+    for i in 0..n.min(out.len()) {
+        let l = if i > 0 { input[i - 1] as i32 } else { 0 };
+        let c = input[i] as i32;
+        let r = if i + 1 < n { input[i + 1] as i32 } else { 0 };
+        let acc =
+            l * kernel[0] as i32 + c * kernel[1] as i32 + r * kernel[2] as i32;
+        out[i] = (acc >> shift).clamp(-127, 127) as i8;
+    }
+}
+
+/// Federated averaging of model weights across nodes (M141): element-wise mean of each
+/// node's weight vector, sample-count weighted (FedAvg).
+pub fn fed_average(node_weights: &[&[f32]], node_samples: &[u32], out: &mut [f32]) -> bool {
+    if node_weights.is_empty() || node_weights.len() != node_samples.len() {
+        return false;
+    }
+    let dim = node_weights[0].len();
+    if out.len() < dim || node_weights.iter().any(|w| w.len() != dim) {
+        return false;
+    }
+    let total: u64 = node_samples.iter().map(|&s| u64::from(s)).sum();
+    if total == 0 {
+        return false;
+    }
+    for (j, o) in out.iter_mut().enumerate().take(dim) {
+        let mut acc = 0.0f64;
+        for (w, &s) in node_weights.iter().zip(node_samples) {
+            acc += f64::from(w[j]) * f64::from(s);
+        }
+        *o = (acc / total as f64) as f32;
+    }
+    true
+}
+
+/// Magnitude pruning (M144): zero the weights whose |value| falls below the `keep`-th
+/// percentile so only the largest survive; returns the count pruned. `sparsity` in [0,1].
+pub fn prune_magnitude(weights: &mut [f32], sparsity: f32) -> usize {
+    let n = weights.len();
+    if n == 0 {
+        return 0;
+    }
+    let k = ((sparsity.clamp(0.0, 1.0)) * n as f32) as usize;
+    if k == 0 {
+        return 0;
+    }
+    // find the k-th smallest magnitude as a threshold (selection via repeated scan; n is
+    // small for embedded models). Bounded, no alloc.
+    let mut threshold = f32::INFINITY;
+    for _ in 0..k {
+        let mut lo = f32::INFINITY;
+        for &w in weights.iter() {
+            let m = w.abs();
+            if m < lo && m > last_below(weights, threshold) {
+                lo = m;
+            }
+        }
+        threshold = lo;
+    }
+    let mut pruned = 0;
+    for w in weights.iter_mut() {
+        if w.abs() <= threshold {
+            *w = 0.0;
+            pruned += 1;
+        }
+    }
+    pruned
+}
+
+fn last_below(_w: &[f32], t: f32) -> f32 {
+    if t.is_infinite() {
+        -1.0
+    } else {
+        t
+    }
+}
+
+/// Minimal GRU cell (M142): single-unit gated recurrent update for sequence features.
+/// Weights packed as (wz, uz, bz, wr, ur, br, wh, uh, bh). f32, FPU-friendly.
+#[derive(Clone, Copy, Debug)]
+pub struct GruCell {
+    pub wz: f32,
+    pub uz: f32,
+    pub bz: f32,
+    pub wr: f32,
+    pub ur: f32,
+    pub br: f32,
+    pub wh: f32,
+    pub uh: f32,
+    pub bh: f32,
+}
+
+fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + exp_approx(-x))
+}
+fn tanh_approx(x: f32) -> f32 {
+    let e = exp_approx(2.0 * x);
+    (e - 1.0) / (e + 1.0)
+}
+fn exp_approx(x: f32) -> f32 {
+    // clamp + limited Taylor/scaling; adequate for gate activations
+    let x = x.clamp(-10.0, 10.0);
+    let mut term = 1.0f32;
+    let mut sum = 1.0f32;
+    for i in 1..16 {
+        term *= x / i as f32;
+        sum += term;
+    }
+    sum
+}
+
+impl GruCell {
+    /// Advance one step given input `x` and previous hidden `h`; returns the new hidden.
+    pub fn step(&self, x: f32, h: f32) -> f32 {
+        let z = sigmoid(self.wz * x + self.uz * h + self.bz);
+        let r = sigmoid(self.wr * x + self.ur * h + self.br);
+        let hh = tanh_approx(self.wh * x + self.uh * (r * h) + self.bh);
+        (1.0 - z) * h + z * hh
+    }
+}
+
+/// Multi-model RAM-budget scheduler (M145): pick which models can be co-resident given a
+/// total arena, choosing greedily by priority then by smallest footprint. Returns a bit
+/// mask of admitted models.
+pub fn schedule_models(footprints: &[u32], priorities: &[u8], arena: u32) -> u32 {
+    let n = footprints.len().min(32).min(priorities.len());
+    // order indices by (priority desc, footprint asc)
+    let mut order = [0usize; 32];
+    for (i, slot) in order.iter_mut().enumerate().take(n) {
+        *slot = i;
+    }
+    for i in 1..n {
+        let mut j = i;
+        while j > 0 {
+            let a = order[j - 1];
+            let b = order[j];
+            let better = priorities[b] > priorities[a]
+                || (priorities[b] == priorities[a] && footprints[b] < footprints[a]);
+            if better {
+                order.swap(j - 1, j);
+                j -= 1;
+            } else {
+                break;
+            }
+        }
+    }
+    let mut used = 0u32;
+    let mut mask = 0u32;
+    for &idx in order.iter().take(n) {
+        if used + footprints[idx] <= arena {
+            used += footprints[idx];
+            mask |= 1 << idx;
+        }
+    }
+    mask
+}
+
+#[cfg(test)]
+mod tinyml_tests {
+    use super::*;
+
+    #[test]
+    fn quantize_roundtrip_is_close() {
+        let vals = [0.0f32, 0.5, -0.9, 1.2, -1.2];
+        let scale = choose_scale(&vals);
+        for &v in &vals {
+            let q = quantize_i8(v, scale);
+            assert!((dequantize_i8(q, scale) - v).abs() <= scale);
+        }
+        assert_eq!(quantize_i8(1.2, scale), 127); // max maps to full scale
+    }
+
+    #[test]
+    fn depthwise_conv_smooths() {
+        let input = [0i8, 0, 100, 0, 0];
+        let mut out = [0i8; 5];
+        depthwise_conv3(&input, [1, 1, 1], 0, &mut out); // box filter, no shift
+        assert_eq!(out, [0, 100, 100, 100, 0]);
+    }
+
+    #[test]
+    fn fed_average_is_sample_weighted() {
+        let a = [0.0f32, 10.0];
+        let b = [2.0f32, 20.0];
+        let mut out = [0.0f32; 2];
+        // 3:1 sample weighting toward node a
+        assert!(fed_average(&[&a, &b], &[3, 1], &mut out));
+        assert!((out[0] - 0.5).abs() < 1e-5); // (0*3 + 2*1)/4
+        assert!((out[1] - 12.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn prune_zeros_smallest_weights() {
+        let mut w = [0.1f32, -5.0, 0.2, 9.0, -0.3];
+        let pruned = prune_magnitude(&mut w, 0.6); // keep top ~2
+        assert_eq!(pruned, 3);
+        assert_eq!(w[0], 0.0);
+        assert_eq!(w[2], 0.0);
+        assert_eq!(w[4], 0.0);
+        assert_eq!(w[1], -5.0);
+        assert_eq!(w[3], 9.0);
+    }
+
+    #[test]
+    fn gru_cell_is_bounded_and_reacts() {
+        let g = GruCell {
+            wz: 1.0, uz: 1.0, bz: 0.0, wr: 1.0, ur: 1.0, br: 0.0,
+            wh: 1.0, uh: 1.0, bh: 0.0,
+        };
+        let mut h = 0.0f32;
+        for _ in 0..10 {
+            h = g.step(1.0, h);
+            assert!(h.abs() <= 1.5, "hidden diverged: {h}");
+        }
+        assert!(h > 0.0); // positive input drives positive hidden
+    }
+
+    #[test]
+    fn schedule_admits_high_priority_within_arena() {
+        // footprints, priorities; arena fits ~2 of these
+        let fp = [40u32, 30, 50, 10];
+        let pr = [1u8, 3, 2, 3];
+        let mask = schedule_models(&fp, &pr, 60);
+        // highest priority (idx1=30, idx3=10) admitted first (both prio 3), total 40<=60,
+        // then idx2 (prio2, 50) does not fit; idx0 (prio1) does not fit.
+        assert_eq!(mask & (1 << 1), 1 << 1);
+        assert_eq!(mask & (1 << 3), 1 << 3);
+        assert_eq!(mask & (1 << 2), 0);
+    }
+}
