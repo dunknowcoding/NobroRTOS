@@ -655,6 +655,16 @@ name = "nobro-storage"
 version = "0.2.0"
 
 [[package]]
+name = "nobro-usb"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "nrf-usbd 0.3.0",
+ "usb-device",
+ "usbd-serial",
+]
+
+[[package]]
 name = "nrf-usbd"
 version = "0.3.0"
 dependencies = [
@@ -1015,6 +1025,18 @@ checksum = "98816b1accafbb09085168b90f27e93d790b4bfa19d883466b5e53315b5f06a6"
 dependencies = [
  "heapless",
  "portable-atomic",
+]
+
+[[package]]
+name = "usb-stack-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-usb",
+ "panic-halt",
 ]
 
 [[package]]

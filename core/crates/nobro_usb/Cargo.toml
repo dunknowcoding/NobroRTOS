@@ -1,0 +1,24 @@
+[package]
+name = "nobro-usb"
+version.workspace = true
+edition.workspace = true
+
+# Modular, mountable USB device stack for NobroRTOS. A board mounts exactly ONE backend
+# (selected by a `backend-*` feature) behind the common `UsbStack` trait, so the same app
+# code runs over the vendored nrf-usbd, TinyUSB, or ArduinoNRF's TaichiUSB depending on
+# the board. This mirrors ArduinoNRF Layer-0's native NrfUsbd while keeping the choice
+# swappable per dev board.
+
+[dependencies]
+usb-device = "0.3"
+usbd-serial = "0.2"
+nrf-usbd = { path = "../../vendor/nrf-usbd", optional = true }
+cortex-m = { version = "0.7", optional = true }
+
+[features]
+# Default backend for the nRF52840 dev boards (matches ArduinoNRF Layer-0 native NrfUsbd).
+default = ["backend-nrf-usbd"]
+backend-nrf-usbd = ["dep:nrf-usbd", "dep:cortex-m"]
+# Alternate mountable backends (scaffolded surfaces; enable one at a time per board).
+backend-tinyusb = []
+backend-taichiusb = []
