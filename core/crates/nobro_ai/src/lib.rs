@@ -246,6 +246,13 @@ mod tests {
     }
 
     #[test]
+    fn fnv1a_parity_with_the_host_exporter() {
+        // bindings/python nn_export pins the same vector - the two sides must agree
+        // or every export would be rejected at ChecksumMismatch.
+        assert_eq!(fnv1a(b"nobro"), 0xA767_00F3);
+    }
+
+    #[test]
     fn dequant_applies_scale() {
         let m = manifest(&[0]);
         let v = m.dequant(100); // 100 * 0.039
