@@ -15,6 +15,9 @@ use hal::usb::UsbBus;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
+use core::sync::atomic::{AtomicU32, Ordering};
+use hal::multicore::{Multicore, Stack};
+
 use nobro_conformance::run_all;
 
 /// RP2350 boot: the bootrom requires this image-definition block.
@@ -23,6 +26,38 @@ use nobro_conformance::run_all;
 pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 const XTAL_FREQ_HZ: u32 = 12_000_000;
+
+// M94: the second core runs an independent task; core0 watches its live tick counter to
+// prove both Cortex-M33 cores execute concurrently.
+static mut CORE1_STACK: Stack<2048> = Stack::new();
+static CORE1_TICKS: AtomicU32 = AtomicU32::new(0);
+
+fn core1_task() {
+    loop {
+        CORE1_TICKS.fetch_add(1, Ordering::Relaxed);
+        cortex_m::asm::delay(2_000_000);
+    }
+}
+
+/// Append a decimal u32 to `buf` at `pos`, advancing `pos`.
+fn put_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
+    let mut tmp = [0u8; 10];
+    let mut n = 0;
+    if v == 0 {
+        tmp[0] = b'0';
+        n = 1;
+    }
+    while v > 0 {
+        tmp[n] = b'0' + (v % 10) as u8;
+        v /= 10;
+        n += 1;
+    }
+    while n > 0 && *pos < buf.len() {
+        n -= 1;
+        buf[*pos] = tmp[n];
+        *pos += 1;
+    }
+}
 
 
 #[hal::entry]
@@ -40,6 +75,14 @@ fn main() -> ! {
     )
     .unwrap();
     let mut timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
+
+    // M94: bring up core1 with its own stack, running an independent counter task.
+    let mut sio = hal::Sio::new(pac.SIO);
+    let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
+    let core1 = &mut mc.cores()[1];
+    #[allow(static_mut_refs)]
+    let stack_alloc = unsafe { CORE1_STACK.take().unwrap() };
+    let _ = core1.spawn(stack_alloc, core1_task);
 
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USB,
@@ -72,14 +115,21 @@ fn main() -> ! {
         let now = timer.get_counter();
         if (now - last_report).to_millis() >= 1000 {
             last_report = now;
-            let mut msg = [0u8; 64];
-            let text = if all {
-                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=1\r\n"[..]
+            let mut msg = [0u8; 80];
+            let head = if all {
+                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=1 cores=2 core1="[..]
             } else {
-                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=0\r\n"[..]
+                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=0 cores=2 core1="[..]
             };
-            msg[..text.len()].copy_from_slice(text);
-            let _ = serial.write(&msg[..text.len()]);
+            let mut pos = head.len();
+            msg[..pos].copy_from_slice(head);
+            put_u32(&mut msg, &mut pos, CORE1_TICKS.load(Ordering::Relaxed));
+            if pos + 2 <= msg.len() {
+                msg[pos] = b'\r';
+                msg[pos + 1] = b'\n';
+                pos += 2;
+            }
+            let _ = serial.write(&msg[..pos]);
         }
 
         // self-DFU: the line "DFU" reboots into the BOOTSEL UF2 bootloader
