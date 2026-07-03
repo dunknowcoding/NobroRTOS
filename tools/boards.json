@@ -8,7 +8,8 @@
       "device": "nRF52840_xxAA",
       "protocol": "nobro_report",
       "addr": "0x20000038",
-      "schema": "spi_imu"
+      "schema": "spi_imu",
+      "arch": "cortex-m4f/nrf52840"
     },
     {
       "name": "esp32c3",
@@ -19,7 +20,8 @@
       "protocol": "jsonl_bridge",
       "reset_on_open": false,
       "optional": true,
-      "note": "AWAITING-REPLUG 2026-07-02: C3 USB-Serial-JTAG attaches in ROM/download mode but not in app mode - a latched device state that survived reflash/erase/pullup-toggle/elevated-restart. Physical USB replug required; INA app (CDC build) is resident and will serve JSONL immediately after. Then remove 'optional'."
+      "note": "AWAITING-REPLUG 2026-07-02: C3 USB-Serial-JTAG attaches in ROM/download mode but not in app mode - a latched device state that survived reflash/erase/pullup-toggle/elevated-restart. Physical USB replug required; INA app (CDC build) is resident and will serve JSONL immediately after. Then remove 'optional'.",
+      "arch": "riscv32imc/esp32c3"
     },
     {
       "name": "nano",
@@ -30,7 +32,8 @@
       "protocol": "serial_regex",
       "match": "MPU6050 who=0x\\S+ .*mag=\\d+mg",
       "reset_on_open": true,
-      "note": "Real IMU reconnected 2026-07-02; clone Nano needs the old-bootloader upload (arduino:avr:nano:cpu=atmega328old)."
+      "note": "Real IMU reconnected 2026-07-02; clone Nano needs the old-bootloader upload (arduino:avr:nano:cpu=atmega328old).",
+      "arch": "avr/atmega328"
     },
     {
       "name": "sim_relay",
@@ -40,7 +43,8 @@
       "seed": 10,
       "route": [
         "collector"
-      ]
+      ],
+      "arch": "sim"
     },
     {
       "name": "sim_power_a",
@@ -51,7 +55,8 @@
       "route": [
         "sim_relay",
         "collector"
-      ]
+      ],
+      "arch": "sim"
     },
     {
       "name": "sim_imu_b",
@@ -62,7 +67,8 @@
       "route": [
         "sim_relay",
         "collector"
-      ]
+      ],
+      "arch": "sim"
     },
     {
       "name": "sim_power_c",
@@ -76,7 +82,8 @@
         "collector"
       ],
       "loss": 0.3,
-      "optional": true
+      "optional": true,
+      "arch": "sim"
     },
     {
       "name": "uno_r4",
@@ -88,7 +95,8 @@
       "match": ".+",
       "reset_on_open": true,
       "optional": true,
-      "seconds": 2
+      "seconds": 2,
+      "arch": "cortex-m4/ra4m1"
     },
     {
       "name": "xiao_vision",
@@ -97,7 +105,8 @@
       "port": "COM27",
       "protocol": "vision",
       "seconds": 60,
-      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe",
+      "arch": "xtensa-lx7/esp32s3"
     },
     {
       "name": "pico2",
@@ -108,7 +117,8 @@
       "protocol": "serial_regex",
       "match": "NOBRO-RP2350 arch=\\S+ subsystems=\\d+ all_pass=1",
       "seconds": 3,
-      "note": "self-DFU: send 'DFU' on the port and the UF2 drive re-mounts in ~1 s"
+      "note": "self-DFU: send 'DFU' on the port and the UF2 drive re-mounts in ~1 s",
+      "arch": "cortex-m33/rp2350"
     },
     {
       "name": "s3cam_vision",
@@ -117,7 +127,8 @@
       "port": "COM25",
       "protocol": "vision",
       "seconds": 60,
-      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe",
+      "arch": "xtensa-lx7/esp32s3"
     },
     {
       "name": "aithinker_vision",
@@ -126,7 +137,8 @@
       "port": "COM26",
       "protocol": "vision",
       "seconds": 60,
-      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe"
+      "tool_python": "H:/miniconda/envs/IronEngineWorld/python.exe",
+      "arch": "xtensa-lx6/esp32"
     },
     {
       "name": "audio",
@@ -137,7 +149,8 @@
       "protocol": "serial_regex",
       "match": "NOBRO-AUDIO node=es8311 classes=\\d+ ready=1",
       "reset_on_open": false,
-      "seconds": 4
+      "seconds": 4,
+      "arch": "xtensa-lx7/esp32s3"
     }
   ],
   "schemas": {

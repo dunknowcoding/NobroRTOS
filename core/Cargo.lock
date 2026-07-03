@@ -611,6 +611,9 @@ version = "0.2.0"
 [[package]]
 name = "nobro-net"
 version = "0.2.0"
+dependencies = [
+ "nobro-crypto",
+]
 
 [[package]]
 name = "nobro-power"

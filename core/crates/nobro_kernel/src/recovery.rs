@@ -326,6 +326,7 @@ impl<const N: usize> RecoveryPlan<N> {
     }
 
     pub fn next_due(&self, now_us: u64) -> Option<RecoveryStep> {
+        #[allow(clippy::manual_find)] // clarity: early-return with side-conditions
         for step in self.steps.iter().copied().take(self.len).flatten() {
             if step.due_us <= now_us {
                 return Some(step);

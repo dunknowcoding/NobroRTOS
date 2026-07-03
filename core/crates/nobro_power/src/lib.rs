@@ -48,11 +48,9 @@ impl PowerManager {
     }
 
     pub fn duty_milli(&self) -> u32 {
-        if self.window_us == 0 {
-            0
-        } else {
-            (self.active_us * 1000 / self.window_us) as u32
-        }
+        (self.active_us * 1000)
+            .checked_div(self.window_us)
+            .unwrap_or(0) as u32
     }
 }
 
@@ -180,5 +178,43 @@ mod adaptive_sampling_tests {
             assert!(d >= last, "soc {soc}: divisor {d} < {last}");
             last = d;
         }
+    }
+}
+
+
+/// Energy-harvest-aware scheduling (M163): decide the work budget for the next window
+/// from harvested income vs. battery reserve. Energy-neutral operation: spend at most
+/// (harvest income + an affordable battery draw that keeps SoC above the reserve floor).
+pub fn harvest_work_budget_uj(
+    harvest_uw: u32,
+    window_ms: u32,
+    soc_percent: u8,
+    reserve_floor_percent: u8,
+    battery_capacity_uj: u64,
+) -> u64 {
+    let income_uj = u64::from(harvest_uw) * u64::from(window_ms) / 1000;
+    if soc_percent <= reserve_floor_percent {
+        // At/below the reserve: strictly energy-neutral (spend only what is harvested).
+        return income_uj;
+    }
+    // Above the reserve: may additionally draw down toward the floor, rate-limited to
+    // 1% of capacity per window so a burst cannot crater the battery.
+    let above = u64::from(soc_percent - reserve_floor_percent);
+    let draw_cap = battery_capacity_uj / 100;
+    let affordable = (battery_capacity_uj * above / 100).min(draw_cap);
+    income_uj + affordable
+}
+
+#[cfg(test)]
+mod harvest_tests {
+    use super::*;
+
+    #[test]
+    fn harvest_budget_is_neutral_at_floor_and_generous_above() {
+        let cap = 10_000_000u64; // 10 J battery
+        assert_eq!(harvest_work_budget_uj(5_000, 1_000, 20, 20, cap), 5_000);
+        let b = harvest_work_budget_uj(5_000, 1_000, 80, 20, cap);
+        assert_eq!(b, 5_000 + cap / 100);
+        assert_eq!(harvest_work_budget_uj(0, 1_000, 15, 20, cap), 0);
     }
 }

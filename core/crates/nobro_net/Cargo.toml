@@ -7,3 +7,6 @@ edition.workspace = true
 # routing (M52), round-trip time synchronization (M53), and bounded data aggregation
 # (M54). Pure logic, fixed capacity, host-tested - portable across transports (radio,
 # serial, sim).
+
+[dependencies]
+nobro-crypto = { path = "../nobro_crypto", default-features = false }

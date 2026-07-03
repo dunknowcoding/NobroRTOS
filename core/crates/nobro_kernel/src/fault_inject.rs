@@ -33,7 +33,7 @@ impl FaultRule {
         self.hits = self.hits.saturating_add(1);
         let fire = match self.mode {
             FaultMode::Once => self.fired == 0,
-            FaultMode::Every(n) => n != 0 && self.hits % u32::from(n) == 0,
+            FaultMode::Every(n) => n != 0 && self.hits.is_multiple_of(u32::from(n)),
             FaultMode::Window { start, end } => self.hits >= start && self.hits <= end,
         };
         if fire {

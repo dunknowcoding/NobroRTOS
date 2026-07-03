@@ -193,12 +193,17 @@ def network_rollup(boards):
         fusion = {"verdict": "active" if moving else "quiet",
                   "cameras": cameras, "cameras_seen": len(cameras),
                   "imu_deviation_mg": imu_dev_mg}
+    # mixed-MCU registry (M97): group the live nodes by CPU architecture
+    arch_registry = {}
+    for name, d in boards.items():
+        arch_registry.setdefault(d.get("arch", "unknown"), []).append(name)
     return {
         "nodes": len(boards),
         "total_power_W": round(total_power, 3),
         "mesh_max_hops": max_hops,
         "mesh_edges": sorted(set(edges)),
         "ai_fusion": fusion,
+        "arch_registry": arch_registry,
     }
 
 
@@ -242,7 +247,7 @@ def main():
         except Exception as e:  # noqa: BLE001
             rec, err = None, str(e)
         if rec:
-            snapshot["boards"][name] = {"kind": b["kind"],
+            snapshot["boards"][name] = {"kind": b["kind"], "arch": b.get("arch", "unknown"),
                                         **{k: v for k, v in rec.items() if k != "pass"}}
             print(f"[{name:8s}] OK   {b['kind']}")
             print(f"           {summary_line(name, proto, rec)}")
@@ -261,6 +266,9 @@ def main():
           f"mesh_max_hops={net['mesh_max_hops']}")
     if net["mesh_edges"]:
         print(f"  mesh: {'  '.join(net['mesh_edges'])}")
+    if net.get("arch_registry"):
+        archs = "  ".join(f"{a}({len(n)})" for a, n in sorted(net["arch_registry"].items()))
+        print(f"  architectures: {archs}")
     if net.get("ai_fusion"):
         f = net["ai_fusion"]
         cams = " ".join(f"{c['node']}:{c['scene']}/{c['activity']}" for c in f["cameras"])

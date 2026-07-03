@@ -570,6 +570,7 @@ pub struct RosBridgeContract {
 }
 
 impl RosBridgeContract {
+    #[allow(clippy::too_many_arguments)] // one-shot const constructor mirroring the ABI struct
     pub const fn new(
         transport: RosBridgeTransport,
         bridge_id_hash: u32,

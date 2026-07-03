@@ -451,3 +451,185 @@ mod fault_injection_tests {
         assert_eq!(rt.cost(5), Some(1));
     }
 }
+
+
+/// Link-key secured mesh frames (M133): AES-CCM authenticated encryption per link, with
+/// a monotonically increasing sequence number folded into the nonce for anti-replay.
+/// Wire layout: [src:2][dst:2][seq:4][ciphertext][tag:8]; src/dst/seq ride as AAD.
+pub mod secure_link {
+    use nobro_crypto::ccm;
+
+    pub const HEADER_LEN: usize = 8;
+    pub const OVERHEAD: usize = HEADER_LEN + ccm::TAG_LEN;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LinkError {
+        BadLength,
+        BadTag,
+        Replay,
+    }
+
+    fn nonce(src: u16, dst: u16, seq: u32) -> [u8; ccm::NONCE_LEN] {
+        let mut n = [0u8; ccm::NONCE_LEN];
+        n[..2].copy_from_slice(&src.to_le_bytes());
+        n[2..4].copy_from_slice(&dst.to_le_bytes());
+        n[4..8].copy_from_slice(&seq.to_le_bytes());
+        n
+    }
+
+    /// Seal `payload` from `src` to `dst` under `key` with sequence `seq`.
+    pub fn seal(
+        key: &[u8; 16],
+        src: u16,
+        dst: u16,
+        seq: u32,
+        payload: &[u8],
+        out: &mut [u8],
+    ) -> Result<usize, LinkError> {
+        if out.len() < payload.len() + OVERHEAD {
+            return Err(LinkError::BadLength);
+        }
+        out[..2].copy_from_slice(&src.to_le_bytes());
+        out[2..4].copy_from_slice(&dst.to_le_bytes());
+        out[4..8].copy_from_slice(&seq.to_le_bytes());
+        let (aad, body) = out.split_at_mut(HEADER_LEN);
+        let n = ccm::encrypt(key, &nonce(src, dst, seq), aad, payload, body)
+            .map_err(|_| LinkError::BadLength)?;
+        Ok(HEADER_LEN + n)
+    }
+
+    /// Open a sealed frame; `last_seq` is the replay floor for this link (frames with
+    /// seq <= last_seq are rejected). Returns (src, seq, plaintext len).
+    pub fn open(
+        key: &[u8; 16],
+        frame: &[u8],
+        last_seq: u32,
+        out: &mut [u8],
+    ) -> Result<(u16, u32, usize), LinkError> {
+        if frame.len() < OVERHEAD {
+            return Err(LinkError::BadLength);
+        }
+        let src = u16::from_le_bytes([frame[0], frame[1]]);
+        let dst = u16::from_le_bytes([frame[2], frame[3]]);
+        let seq = u32::from_le_bytes([frame[4], frame[5], frame[6], frame[7]]);
+        let _ = dst;
+        if seq <= last_seq {
+            return Err(LinkError::Replay);
+        }
+        let n = ccm::decrypt(
+            key,
+            &nonce(src, dst, seq),
+            &frame[..HEADER_LEN],
+            &frame[HEADER_LEN..],
+            out,
+        )
+        .map_err(|e| match e {
+            nobro_crypto::ccm::CcmError::BadTag => LinkError::BadTag,
+            _ => LinkError::BadLength,
+        })?;
+        Ok((src, seq, n))
+    }
+}
+
+/// Telemetry compression (M186): delta + zigzag + LEB128 varint packing for sample
+/// streams - typical slowly-varying sensor series compress 3-5x losslessly.
+pub mod telemetry_pack {
+    fn zigzag(v: i32) -> u32 {
+        ((v << 1) ^ (v >> 31)) as u32
+    }
+    fn unzigzag(v: u32) -> i32 {
+        ((v >> 1) as i32) ^ -((v & 1) as i32)
+    }
+
+    /// Pack samples as first-value + zigzag-varint deltas. Returns bytes written.
+    pub fn pack(samples: &[i32], out: &mut [u8]) -> Option<usize> {
+        let mut w = 0usize;
+        let mut prev = 0i32;
+        for (i, &s) in samples.iter().enumerate() {
+            let mut v = zigzag(if i == 0 { s } else { s.wrapping_sub(prev) });
+            prev = s;
+            loop {
+                let byte = (v & 0x7F) as u8;
+                v >>= 7;
+                if w >= out.len() {
+                    return None;
+                }
+                out[w] = if v != 0 { byte | 0x80 } else { byte };
+                w += 1;
+                if v == 0 {
+                    break;
+                }
+            }
+        }
+        Some(w)
+    }
+
+    /// Unpack into `out`; returns the number of samples recovered.
+    pub fn unpack(data: &[u8], out: &mut [i32]) -> Option<usize> {
+        let mut r = 0usize;
+        let mut n = 0usize;
+        let mut prev = 0i32;
+        while r < data.len() && n < out.len() {
+            let mut v = 0u32;
+            let mut shift = 0;
+            loop {
+                if r >= data.len() {
+                    return None;
+                }
+                let b = data[r];
+                r += 1;
+                v |= u32::from(b & 0x7F) << shift;
+                if b & 0x80 == 0 {
+                    break;
+                }
+                shift += 7;
+            }
+            let d = unzigzag(v);
+            let s = if n == 0 { d } else { prev.wrapping_add(d) };
+            out[n] = s;
+            prev = s;
+            n += 1;
+        }
+        Some(n)
+    }
+}
+
+#[cfg(test)]
+mod secure_and_pack_tests {
+    use super::*;
+
+    #[test]
+    fn secure_link_roundtrip_replay_and_tamper() {
+        let key = [7u8; 16];
+        let mut frame = [0u8; 64];
+        let n = secure_link::seal(&key, 1, 2, 10, b"hello mesh", &mut frame).unwrap();
+        let mut out = [0u8; 32];
+        let (src, seq, len) = secure_link::open(&key, &frame[..n], 9, &mut out).unwrap();
+        assert_eq!((src, seq, &out[..len]), (1, 10, &b"hello mesh"[..]));
+        assert_eq!(
+            secure_link::open(&key, &frame[..n], 10, &mut out),
+            Err(secure_link::LinkError::Replay)
+        );
+        let mut evil = frame;
+        evil[secure_link::HEADER_LEN] ^= 1;
+        assert_eq!(
+            secure_link::open(&key, &evil[..n], 9, &mut out),
+            Err(secure_link::LinkError::BadTag)
+        );
+    }
+
+    #[test]
+    fn telemetry_pack_roundtrip_and_compresses() {
+        let mut series = [0i32; 64];
+        for (i, s) in series.iter_mut().enumerate() {
+            *s = 1000 + ((i as i32) % 7) - 3;
+        }
+        let mut packed = [0u8; 256];
+        let n = telemetry_pack::pack(&series, &mut packed).unwrap();
+        assert!(n < 64 * 4 / 3, "packed {n} bytes - not compressing");
+        let mut out = [0i32; 64];
+        let m = telemetry_pack::unpack(&packed[..n], &mut out).unwrap();
+        assert_eq!(m, 64);
+        assert_eq!(out, series);
+    }
+}

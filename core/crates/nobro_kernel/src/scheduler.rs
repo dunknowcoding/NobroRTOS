@@ -29,6 +29,9 @@ pub struct SchedulerStats {
 pub struct Scheduler;
 
 impl Scheduler {
+    /// # Safety
+    /// Must be set before the scheduler tick starts; the handler runs in interrupt
+    /// context and must be interrupt-safe.
     pub unsafe fn set_deadline_handler(handler: DeadlineHandler) {
         DEADLINE_HANDLER = Some(handler);
     }

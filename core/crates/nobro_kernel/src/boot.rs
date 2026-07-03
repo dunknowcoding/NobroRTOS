@@ -150,6 +150,7 @@ impl<
             .map_err(|failure| failure.error)
     }
 
+    #[allow(clippy::result_large_err)] // the failure carries the full boot report by design
     pub fn build_with_failure(
         specs: &[ModuleSpec],
         dependencies: &[StartupDependency],
