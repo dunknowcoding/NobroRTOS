@@ -12,6 +12,9 @@ edition = "2021"
 esp-hal = { version = "=0.23.1", features = ["esp32c3"] }
 esp-println = { version = "=0.13.0", default-features = false, features = ["esp32c3", "jtag-serial", "critical-section"] }
 nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
+# The mountable USB framework's C3 backend (fixed-function USB-Serial-JTAG data path);
+# exercised on real hardware by src/bin/usb_sj_demo.rs.
+nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-usb-serial-jtag"] }
 
 [profile.release]
 debug = 2

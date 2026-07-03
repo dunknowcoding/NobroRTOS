@@ -754,6 +754,7 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "nobro-conformance",
+ "nobro-usb",
 ]
 
 [[package]]
@@ -765,6 +766,14 @@ name = "nobro-sal"
 version = "0.2.0"
 dependencies = [
  "nobro-kernel",
+]
+
+[[package]]
+name = "nobro-usb"
+version = "0.2.0"
+dependencies = [
+ "usb-device",
+ "usbd-serial",
 ]
 
 [[package]]
@@ -1077,6 +1086,28 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "usb-device"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98816b1accafbb09085168b90f27e93d790b4bfa19d883466b5e53315b5f06a6"
+dependencies = [
+ "heapless",
+ "portable-atomic",
+]
+
+[[package]]
+name = "usbd-serial"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "065e4eaf93db81d5adac82d9cef8f8da314cb640fa7f89534b972383f1cf80fc"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "embedded-io",
+ "nb 1.1.0",
+ "usb-device",
+]
 
 [[package]]
 name = "vcell"

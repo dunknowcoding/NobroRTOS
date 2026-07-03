@@ -22,3 +22,6 @@ backend-nrf-usbd = ["dep:nrf-usbd", "dep:cortex-m"]
 # Alternate mountable backends (scaffolded surfaces; enable one at a time per board).
 backend-tinyusb = []
 backend-taichiusb = []
+# ESP32-C3/S3 fixed-function USB-Serial-JTAG: a real register-level data path (the
+# peripheral enumerates itself in silicon; poll/read/write hit EP1/EP1_CONF directly).
+backend-usb-serial-jtag = []
