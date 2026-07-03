@@ -313,6 +313,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hil-fault-demo"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "nobro-hal",
+ "nobro-kernel",
+ "panic-halt",
+]
+
+[[package]]
 name = "imu-i2c-demo"
 version = "0.2.0"
 dependencies = [
