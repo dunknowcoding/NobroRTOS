@@ -618,3 +618,103 @@ mod tinyml_tests {
         assert_eq!(mask & (1 << 2), 0);
     }
 }
+
+
+/// Object/blob counting on a downscaled binary image (M106): threshold each pixel and
+/// count 4-connected components above it - the tiny-vision "how many things are in view".
+/// `w`*`h` must equal `pixels.len()`; `visited` scratch is caller-provided (no heap).
+pub fn count_blobs(pixels: &[u8], w: usize, h: usize, threshold: u8, visited: &mut [bool]) -> u32 {
+    if pixels.len() != w * h || visited.len() < w * h {
+        return 0;
+    }
+    for v in visited.iter_mut().take(w * h) {
+        *v = false;
+    }
+    let mut blobs = 0u32;
+    // bounded flood fill using an index stack in the visited-sized region is awkward; use
+    // a simple two-pass-free iterative fill with a fixed scan (image is tiny, e.g. 8x8).
+    let idx = |x: usize, y: usize| y * w + x;
+    let mut stack = [0usize; 256];
+    for start in 0..w * h {
+        if visited[start] || pixels[start] <= threshold {
+            continue;
+        }
+        // new component
+        blobs += 1;
+        let mut sp = 0usize;
+        stack[sp] = start;
+        sp += 1;
+        visited[start] = true;
+        while sp > 0 {
+            sp -= 1;
+            let p = stack[sp];
+            let (x, y) = (p % w, p / w);
+            let mut push = |nx: usize, ny: usize, stack: &mut [usize; 256], sp: &mut usize| {
+                let np = idx(nx, ny);
+                if !visited[np] && pixels[np] > threshold && *sp < stack.len() {
+                    visited[np] = true;
+                    stack[*sp] = np;
+                    *sp += 1;
+                }
+            };
+            if x > 0 {
+                push(x - 1, y, &mut stack, &mut sp);
+            }
+            if x + 1 < w {
+                push(x + 1, y, &mut stack, &mut sp);
+            }
+            if y > 0 {
+                push(x, y - 1, &mut stack, &mut sp);
+            }
+            if y + 1 < h {
+                push(x, y + 1, &mut stack, &mut sp);
+            }
+        }
+    }
+    blobs
+}
+
+/// Vision model A/B router (M112): deterministically route each frame id to model A or B
+/// by a rollout percentage, so a new vision model is canaried on a fraction of traffic.
+pub fn ab_route(frame_id: u32, rollout_b_percent: u8) -> u8 {
+    // stable hash of the frame id -> [0,99]; < rollout -> B(1) else A(0)
+    let mut h = frame_id.wrapping_mul(2654435761);
+    h ^= h >> 15;
+    if (h % 100) < u32::from(rollout_b_percent.min(100)) {
+        1
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod vision_ml_tests {
+    use super::*;
+
+    #[test]
+    fn count_blobs_counts_connected_regions() {
+        // 4x4: two separated bright squares -> 2 blobs
+        let img = [
+            200, 200, 0, 0,
+            200, 200, 0, 0,
+            0, 0, 0, 200,
+            0, 0, 200, 200,
+        ];
+        let mut vis = [false; 16];
+        assert_eq!(count_blobs(&img, 4, 4, 100, &mut vis), 2);
+        // all dark -> 0
+        assert_eq!(count_blobs(&[0u8; 16], 4, 4, 100, &mut vis), 0);
+        // all bright + connected -> 1
+        assert_eq!(count_blobs(&[255u8; 16], 4, 4, 100, &mut vis), 1);
+    }
+
+    #[test]
+    fn ab_route_splits_traffic_by_rollout() {
+        // 0% -> everyone on A; 100% -> everyone on B
+        assert!((0..1000).all(|i| ab_route(i, 0) == 0));
+        assert!((0..1000).all(|i| ab_route(i, 100) == 1));
+        // ~25% land on B (allow a band)
+        let b = (0..1000u32).filter(|&i| ab_route(i, 25) == 1).count();
+        assert!((180..320).contains(&b), "rollout landed {b}/1000 on B");
+    }
+}

@@ -381,3 +381,124 @@ mod tests {
         assert!(reg.identify_at(0x76, |_| 0x00).is_none());
     }
 }
+
+
+// ---------------------------------------------------------------- board modules (M190)
+
+/// A dev board as a mountable module: identity + capacity + the platform feature the HAL
+/// needs. Mirrors core/boards/<id>/board.json so third parties extend the board list by a
+/// data drop + a `pub const` here (or their own crate).
+#[derive(Clone, Copy, Debug)]
+pub struct BoardModule {
+    pub board_id: &'static str,
+    pub platform_id: &'static str,
+    pub feature: &'static str,
+    pub flash_budget_bytes: u32,
+    pub ram_budget_bytes: u32,
+    pub has_usb: bool,
+    pub has_radio: bool,
+}
+
+/// Fixed-capacity registry of board modules - `enumerate what this build supports` and
+/// look one up by id. The "supported board list" is data others append to.
+pub struct BoardRegistry<const N: usize> {
+    items: [Option<BoardModule>; N],
+    len: usize,
+}
+
+impl<const N: usize> Default for BoardRegistry<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> BoardRegistry<N> {
+    pub const fn new() -> Self {
+        Self { items: [None; N], len: 0 }
+    }
+    pub fn register(&mut self, b: BoardModule) -> bool {
+        if self.len >= N || self.find(b.board_id).is_some() {
+            return false;
+        }
+        self.items[self.len] = Some(b);
+        self.len += 1;
+        true
+    }
+    pub fn find(&self, board_id: &str) -> Option<BoardModule> {
+        self.items
+            .iter()
+            .flatten()
+            .copied()
+            .find(|b| b.board_id == board_id)
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+/// Built-in board catalog (matches core/boards/*/board.json).
+pub mod board_catalog {
+    use super::BoardModule;
+
+    pub const NRF52840_NOSD: BoardModule = BoardModule {
+        board_id: "promicro_nrf52840_nosd",
+        platform_id: "nrf52840",
+        feature: "board-promicro-nosd",
+        flash_budget_bytes: 81920,
+        ram_budget_bytes: 32768,
+        has_usb: true,
+        has_radio: true,
+    };
+    pub const NRF52840_S140: BoardModule = BoardModule {
+        board_id: "promicro_nrf52840_s140",
+        platform_id: "nrf52840",
+        feature: "board-nicenano-s140",
+        flash_budget_bytes: 81920,
+        ram_budget_bytes: 32768,
+        has_usb: true,
+        has_radio: true,
+    };
+    pub const RP2350_PICO2W: BoardModule = BoardModule {
+        board_id: "rp2350_pico2w",
+        platform_id: "rp2350",
+        feature: "port-rp2350",
+        flash_budget_bytes: 131072,
+        ram_budget_bytes: 65536,
+        has_usb: true,
+        has_radio: false,
+    };
+    pub const ESP32C3: BoardModule = BoardModule {
+        board_id: "esp32c3_supermini",
+        platform_id: "esp32c3",
+        feature: "port-esp32c3",
+        flash_budget_bytes: 131072,
+        ram_budget_bytes: 65536,
+        has_usb: true,
+        has_radio: true,
+    };
+}
+
+#[cfg(test)]
+mod board_tests {
+    use super::*;
+
+    #[test]
+    fn board_registry_enumerates_and_finds() {
+        let mut reg = BoardRegistry::<8>::new();
+        assert!(reg.register(board_catalog::NRF52840_NOSD));
+        assert!(reg.register(board_catalog::RP2350_PICO2W));
+        assert!(reg.register(board_catalog::ESP32C3));
+        assert!(!reg.register(board_catalog::NRF52840_NOSD)); // dup id rejected
+        assert_eq!(reg.len(), 3);
+        assert_eq!(
+            reg.find("rp2350_pico2w").map(|b| b.platform_id),
+            Some("rp2350")
+        );
+        assert!(reg.find("rp2350_pico2w").unwrap().has_usb);
+        assert!(!reg.find("rp2350_pico2w").unwrap().has_radio);
+        assert!(reg.find("unknown").is_none());
+    }
+}
