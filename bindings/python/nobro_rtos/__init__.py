@@ -117,6 +117,12 @@ from .sim import (
     WatchdogSimulator,
     WatchdogSimulatorError,
 )
+from .node import (
+    NobroNode,
+    StatusReport,
+    parse_status_line,
+    parse_telemetry_line,
+)
 
 __all__ = [
     "AiBackendKind",
@@ -224,4 +230,8 @@ __all__ = [
     "WatchdogEntry",
     "WatchdogSimulator",
     "WatchdogSimulatorError",
+    "NobroNode",
+    "StatusReport",
+    "parse_status_line",
+    "parse_telemetry_line",
 ]
