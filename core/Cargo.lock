@@ -570,6 +570,10 @@ name = "nobro-c-abi-module"
 version = "0.2.0"
 
 [[package]]
+name = "nobro-classic"
+version = "0.2.0"
+
+[[package]]
 name = "nobro-conformance"
 version = "0.2.0"
 dependencies = [
