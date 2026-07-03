@@ -633,3 +633,91 @@ mod secure_and_pack_tests {
         assert_eq!(out, series);
     }
 }
+
+
+/// Synchronized capture across time-synced nodes (M129): given a node's clock offset
+/// (from [`TimeSync`]) and a shared capture instant in coordinator time, compute the
+/// local time at which this node should sample so all nodes capture together.
+pub fn synced_capture_local_us(coordinator_capture_us: i64, clock_offset_us: i64) -> i64 {
+    // local = coordinator - offset  (offset = remote_clock - local_clock)
+    coordinator_capture_us - clock_offset_us
+}
+
+/// Multi-hop latency estimate (M134): sum the per-hop one-way delays along a path, plus a
+/// per-hop processing budget. Returns total microseconds (saturating).
+pub fn path_latency_us(per_hop_delay_us: &[u32], hop_processing_us: u32) -> u64 {
+    let mut total = 0u64;
+    for &d in per_hop_delay_us {
+        total = total.saturating_add(u64::from(d));
+        total = total.saturating_add(u64::from(hop_processing_us));
+    }
+    total
+}
+
+/// Tele-operation over the mesh (M157): an authenticated, replay-protected actuator
+/// command sealed exactly like a secure link frame. A tele-op command is (channel, value)
+/// which we pack and seal so only a peer holding the link key can drive the actuator, and
+/// stale commands are rejected by sequence.
+pub mod teleop {
+    use super::secure_link::{self, LinkError};
+
+    pub fn command(
+        key: &[u8; 16],
+        src: u16,
+        dst: u16,
+        seq: u32,
+        channel: u8,
+        value: i16,
+        out: &mut [u8],
+    ) -> Result<usize, LinkError> {
+        let payload = [channel, (value >> 8) as u8, (value & 0xFF) as u8];
+        secure_link::seal(key, src, dst, seq, &payload, out)
+    }
+
+    /// Returns (channel, value) if authentic + fresh.
+    pub fn apply(
+        key: &[u8; 16],
+        frame: &[u8],
+        last_seq: u32,
+    ) -> Result<(u8, i16), LinkError> {
+        let mut buf = [0u8; 8];
+        let (_src, _seq, n) = secure_link::open(key, frame, last_seq, &mut buf)?;
+        if n < 3 {
+            return Err(LinkError::BadLength);
+        }
+        let value = ((buf[1] as i16) << 8) | (buf[2] as i16 & 0xFF);
+        Ok((buf[0], value))
+    }
+}
+
+#[cfg(test)]
+mod final_net_tests {
+    use super::*;
+
+    #[test]
+    fn synced_capture_aligns_nodes() {
+        // coordinator wants a capture at t=1_000_000; a node whose clock is +250 ahead
+        // must fire at local 999_750 so the instants coincide.
+        assert_eq!(synced_capture_local_us(1_000_000, 250), 999_750);
+    }
+
+    #[test]
+    fn path_latency_sums_hops() {
+        // 3 hops of 500 us link + 100 us processing each = 1800 us
+        assert_eq!(path_latency_us(&[500, 500, 500], 100), 1800);
+        assert_eq!(path_latency_us(&[], 100), 0);
+    }
+
+    #[test]
+    fn teleop_command_is_authenticated_and_replay_protected() {
+        let key = [0x33u8; 16];
+        let mut frame = [0u8; 32];
+        let n = teleop::command(&key, 1, 9, 5, 2, -1200, &mut frame).unwrap();
+        // authentic + fresh
+        assert_eq!(teleop::apply(&key, &frame[..n], 4), Ok((2, -1200)));
+        // replay (seq <= floor) rejected
+        assert!(teleop::apply(&key, &frame[..n], 5).is_err());
+        // wrong key rejected
+        assert!(teleop::apply(&[0u8; 16], &frame[..n], 4).is_err());
+    }
+}

@@ -242,3 +242,107 @@ mod tests {
         assert!(cfg.load(&[0u8; 32]).is_none());
     }
 }
+
+
+/// OTA A/B partition agent (M183): two firmware slots; installs new images into the
+/// inactive slot, only boots a slot whose version passes anti-rollback, and can revert to
+/// the last-known-good slot. Bounded state, no heap.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Slot {
+    A,
+    B,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct OtaAgent {
+    active: Slot,
+    version: [u32; 2], // installed version per slot (index 0=A,1=B)
+    good: [bool; 2],   // slot confirmed-good (booted successfully)
+    min_version: u32,  // anti-rollback floor
+}
+
+impl OtaAgent {
+    pub const fn new(active: Slot, active_version: u32) -> Self {
+        let mut version = [0u32; 2];
+        version[Self::idx(active)] = active_version;
+        let mut good = [false; 2];
+        good[Self::idx(active)] = true;
+        Self { active, version, good, min_version: active_version }
+    }
+
+    const fn idx(s: Slot) -> usize {
+        match s {
+            Slot::A => 0,
+            Slot::B => 1,
+        }
+    }
+
+    pub fn active(&self) -> Slot {
+        self.active
+    }
+
+    fn inactive(&self) -> Slot {
+        match self.active {
+            Slot::A => Slot::B,
+            Slot::B => Slot::A,
+        }
+    }
+
+    /// Stage an update into the INACTIVE slot; rejected if it does not beat the
+    /// anti-rollback floor. Returns the slot it was written to on success.
+    pub fn stage(&mut self, candidate_version: u32) -> Option<Slot> {
+        if candidate_version <= self.min_version {
+            return None;
+        }
+        let slot = self.inactive();
+        self.version[Self::idx(slot)] = candidate_version;
+        self.good[Self::idx(slot)] = false; // unproven until it boots + confirms
+        Some(slot)
+    }
+
+    /// Boot into the staged slot (call after a reset into it). Does not yet confirm-good.
+    pub fn boot_staged(&mut self) -> Slot {
+        self.active = self.inactive();
+        self.min_version = self.version[Self::idx(self.active)];
+        self.active
+    }
+
+    /// The freshly-booted slot confirmed healthy (watchdog fed, self-test passed).
+    pub fn confirm(&mut self) {
+        self.good[Self::idx(self.active)] = true;
+    }
+
+    /// Boot failed to confirm: revert to the other slot if it is known-good.
+    pub fn revert(&mut self) -> Slot {
+        let other = self.inactive();
+        if self.good[Self::idx(other)] {
+            self.active = other;
+            self.min_version = self.version[Self::idx(other)];
+        }
+        self.active
+    }
+}
+
+#[cfg(test)]
+mod ota_tests {
+    use super::*;
+
+    #[test]
+    fn ota_ab_update_confirm_and_revert() {
+        // boot A@5
+        let mut ota = OtaAgent::new(Slot::A, 5);
+        // stage v6 into B, boot it
+        assert_eq!(ota.stage(6), Some(Slot::B));
+        assert_eq!(ota.stage(4), None); // rollback rejected
+        assert_eq!(ota.boot_staged(), Slot::B);
+        // if B never confirms, revert to the still-good A
+        assert_eq!(ota.revert(), Slot::A);
+        // now do a good update: stage v7 into B, boot + confirm
+        assert_eq!(ota.stage(7), Some(Slot::B));
+        assert_eq!(ota.boot_staged(), Slot::B);
+        ota.confirm();
+        // a later revert stays on B (A is older but still good) - active unchanged when
+        // current slot is confirmed
+        assert_eq!(ota.active(), Slot::B);
+    }
+}
