@@ -10,7 +10,7 @@
 #include "esp_camera.h"
 
 static const int XCLK = 10, SIOD = 40, SIOC = 39, VSYNC = 38, HREF = 47, PCLK = 13;
-static const int D7 = 48, D6 = 11, D5 = 12, D4 = 14, D3 = 16, D2 = 18, D1 = 17, D0 = 15;
+static const int CD7 = 48, CD6 = 11, CD5 = 12, CD4 = 14, CD3 = 16, CD2 = 18, CD1 = 17, CD0 = 15;
 
 uint8_t thumb[64];
 uint8_t prev[64];
@@ -25,8 +25,8 @@ bool cameraInit() {
   c.ledc_timer = LEDC_TIMER_0;
   c.pin_pwdn = -1; c.pin_reset = -1; c.pin_xclk = XCLK;
   c.pin_sccb_sda = SIOD; c.pin_sccb_scl = SIOC;
-  c.pin_d7 = D7; c.pin_d6 = D6; c.pin_d5 = D5; c.pin_d4 = D4;
-  c.pin_d3 = D3; c.pin_d2 = D2; c.pin_d1 = D1; c.pin_d0 = D0;
+  c.pin_d7 = CD7; c.pin_d6 = CD6; c.pin_d5 = CD5; c.pin_d4 = CD4;
+  c.pin_d3 = CD3; c.pin_d2 = CD2; c.pin_d1 = CD1; c.pin_d0 = CD0;
   c.pin_vsync = VSYNC; c.pin_href = HREF; c.pin_pclk = PCLK;
   c.xclk_freq_hz = 20000000;
   c.pixel_format = PIXFORMAT_GRAYSCALE; // pixels, not JPEG - decode-free on-device
