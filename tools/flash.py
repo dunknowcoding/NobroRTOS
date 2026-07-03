@@ -55,8 +55,17 @@ def cmd_uf2(args):
     if not os.path.exists(dst):
         print(f"UF2 drive {args.drive} not present (put the board in bootloader mode)")
         return False
-    shutil.copy(src, dst)
-    print(f"copied {os.path.basename(src)} -> {args.drive}")
+    # Raw byte copy WITHOUT chmod: UF2 bootloaders consume the file and dismount the
+    # drive mid-write, so shutil.copy's copymode step would raise even on success.
+    data = open(src, "rb").read()
+    try:
+        with open(os.path.join(dst, os.path.basename(src)), "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    except OSError:
+        pass  # dismount during/after the final block = the bootloader accepted it
+    print(f"copied {os.path.basename(src)} -> {args.drive} ({len(data)} bytes)")
     return True
 
 
