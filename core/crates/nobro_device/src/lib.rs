@@ -257,6 +257,14 @@ pub mod sensor_catalog {
         whoami_reg: 0x75,
         whoami_val: 0x68,
     };
+    pub const VL53L0X: SensorDescriptor = SensorDescriptor {
+        name: "VL53L0X time-of-flight ranger",
+        kind: SensorKind::Distance,
+        bus: Bus::I2c,
+        address: 0x29,
+        whoami_reg: 0xC0,
+        whoami_val: 0xEE,
+    };
 }
 
 // ---------------------------------------------------------------- registry
@@ -312,6 +320,213 @@ impl<const N: usize> SensorRegistry<N> {
             .copied()
             .find(|d| d.address == address && d.identify(read_reg))
     }
+}
+
+// ------------------------------------------------------- more device categories (M203)
+
+/// A stepper motor brand as data: geometry + limits; `angle_to_steps` is the shared
+/// generic conversion every stepper driver uses.
+#[derive(Clone, Copy, Debug)]
+pub struct StepperProfile {
+    pub name: &'static str,
+    pub kind: ActuatorKind,
+    /// Full steps for one shaft revolution (e.g. 200 for 1.8 deg, 2048 for a 28BYJ-48
+    /// behind its gearbox).
+    pub steps_per_rev: u32,
+    /// Microstepping divisor the driver is strapped to (1 = full steps).
+    pub microsteps: u32,
+    /// Maximum step rate the motor/driver pair sustains (steps/second).
+    pub max_sps: u32,
+}
+
+impl StepperProfile {
+    /// Signed steps to move by `deg_milli` (millidegrees; 1000 = 1 degree).
+    pub fn angle_to_steps(&self, deg_milli: i32) -> i32 {
+        let steps = i64::from(self.steps_per_rev) * i64::from(self.microsteps);
+        (i64::from(deg_milli) * steps / 360_000) as i32
+    }
+    /// Step rate for a shaft speed in RPM, clamped to the profile's maximum.
+    pub fn rpm_to_sps(&self, rpm: u32) -> u32 {
+        let sps = u64::from(rpm) * u64::from(self.steps_per_rev) * u64::from(self.microsteps) / 60;
+        (sps as u32).min(self.max_sps)
+    }
+}
+
+/// Byte order a smart-LED strip expects for each pixel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColorOrder {
+    Rgb,
+    Grb,
+    Rgbw,
+    Grbw,
+}
+
+/// An addressable-LED strip family as data: wire timing + pixel format. A generic
+/// bit-banger/PWM/SPI encoder reads these numbers instead of hardcoding a chip.
+#[derive(Clone, Copy, Debug)]
+pub struct LedStripProfile {
+    pub name: &'static str,
+    pub color_order: ColorOrder,
+    /// 3 for RGB chips, 4 for RGBW.
+    pub bytes_per_pixel: u8,
+    /// High time of a 0-bit / 1-bit and the total bit period (ns); all 0 for
+    /// clocked (SPI-style) strips that have no timing constraint.
+    pub t0h_ns: u16,
+    pub t1h_ns: u16,
+    pub period_ns: u16,
+    /// Low time that latches the frame (microseconds).
+    pub reset_us: u16,
+}
+
+impl LedStripProfile {
+    /// Bytes one frame of `pixels` occupies on the wire.
+    pub fn frame_bytes(&self, pixels: usize) -> usize {
+        pixels * usize::from(self.bytes_per_pixel)
+    }
+}
+
+/// A relay/switch module as data: drive polarity + contact settle time.
+#[derive(Clone, Copy, Debug)]
+pub struct RelayProfile {
+    pub name: &'static str,
+    /// True if the coil energizes on a HIGH pin (many boards are active-low).
+    pub active_high: bool,
+    /// Contact settle/debounce time before the switched load is trustworthy (ms).
+    pub settle_ms: u16,
+}
+
+impl RelayProfile {
+    /// Pin level that produces the requested contact state.
+    pub fn drive_level(&self, on: bool) -> bool {
+        on == self.active_high
+    }
+}
+
+/// A monochrome OLED/LCD module as data: bus identity + geometry, enough for a generic
+/// page-mode framebuffer driver.
+#[derive(Clone, Copy, Debug)]
+pub struct DisplayProfile {
+    pub name: &'static str,
+    pub bus: Bus,
+    pub address: u8,
+    pub width: u16,
+    pub height: u16,
+    /// Extra column offset some controllers need (SH1106 = 2).
+    pub col_offset: u8,
+}
+
+impl DisplayProfile {
+    /// Bytes a full 1-bpp page-mode framebuffer occupies.
+    pub fn framebuffer_bytes(&self) -> usize {
+        usize::from(self.width) * usize::from(self.height) / 8
+    }
+}
+
+/// A GPS/GNSS module as data: link settings a generic NMEA reader needs.
+#[derive(Clone, Copy, Debug)]
+pub struct GpsProfile {
+    pub name: &'static str,
+    pub baud: u32,
+    pub update_hz: u8,
+}
+
+/// XOR checksum of an NMEA sentence body (the bytes between `$` and `*`).
+pub fn nmea_checksum(body: &[u8]) -> u8 {
+    body.iter().fold(0, |acc, &b| acc ^ b)
+}
+
+/// A pulse-echo ranger (HC-SR04 style) as data: acoustic conversion + valid window.
+#[derive(Clone, Copy, Debug)]
+pub struct RangerProfile {
+    pub name: &'static str,
+    pub min_mm: u16,
+    pub max_mm: u16,
+}
+
+impl RangerProfile {
+    /// Round-trip echo time -> distance in mm (speed of sound 343 m/s), or None when
+    /// outside the sensor's valid window.
+    pub fn echo_us_to_mm(&self, echo_us: u32) -> Option<u16> {
+        let mm = (echo_us * 343 / 2) / 1000;
+        let mm = mm as u16;
+        (mm >= self.min_mm && mm <= self.max_mm).then_some(mm)
+    }
+}
+
+/// Built-in catalog for the M203 categories. Extend by adding a `pub const`.
+pub mod device_catalog {
+    use super::*;
+
+    pub const STEPPER_NEMA17: StepperProfile = StepperProfile {
+        name: "NEMA-17 1.8deg",
+        kind: ActuatorKind::Stepper,
+        steps_per_rev: 200,
+        microsteps: 16,
+        max_sps: 40_000,
+    };
+    pub const STEPPER_28BYJ48: StepperProfile = StepperProfile {
+        name: "28BYJ-48 geared",
+        kind: ActuatorKind::Stepper,
+        steps_per_rev: 2048,
+        microsteps: 1,
+        max_sps: 1000,
+    };
+
+    pub const LED_WS2812B: LedStripProfile = LedStripProfile {
+        name: "WS2812B",
+        color_order: ColorOrder::Grb,
+        bytes_per_pixel: 3,
+        t0h_ns: 400,
+        t1h_ns: 800,
+        period_ns: 1250,
+        reset_us: 300,
+    };
+    pub const LED_SK6812_RGBW: LedStripProfile = LedStripProfile {
+        name: "SK6812 RGBW",
+        color_order: ColorOrder::Grbw,
+        bytes_per_pixel: 4,
+        t0h_ns: 300,
+        t1h_ns: 600,
+        period_ns: 1250,
+        reset_us: 80,
+    };
+    pub const LED_APA102: LedStripProfile = LedStripProfile {
+        name: "APA102 (SPI-clocked)",
+        color_order: ColorOrder::Rgb,
+        bytes_per_pixel: 3,
+        t0h_ns: 0,
+        t1h_ns: 0,
+        period_ns: 0,
+        reset_us: 0,
+    };
+
+    pub const RELAY_ACTIVE_LOW: RelayProfile =
+        RelayProfile { name: "generic active-low relay board", active_high: false, settle_ms: 10 };
+    pub const RELAY_ACTIVE_HIGH: RelayProfile =
+        RelayProfile { name: "generic active-high relay board", active_high: true, settle_ms: 10 };
+
+    pub const OLED_SSD1306_128X64: DisplayProfile = DisplayProfile {
+        name: "SSD1306 128x64",
+        bus: Bus::I2c,
+        address: 0x3C,
+        width: 128,
+        height: 64,
+        col_offset: 0,
+    };
+    pub const OLED_SH1106_128X64: DisplayProfile = DisplayProfile {
+        name: "SH1106 128x64",
+        bus: Bus::I2c,
+        address: 0x3C,
+        width: 128,
+        height: 64,
+        col_offset: 2,
+    };
+
+    pub const GPS_NEO6M: GpsProfile = GpsProfile { name: "u-blox NEO-6M", baud: 9600, update_hz: 5 };
+    pub const GPS_NEO8M: GpsProfile = GpsProfile { name: "u-blox NEO-M8N", baud: 9600, update_hz: 10 };
+
+    pub const RANGER_HCSR04: RangerProfile =
+        RangerProfile { name: "HC-SR04 ultrasonic", min_mm: 20, max_mm: 4000 };
 }
 
 #[cfg(test)]
@@ -500,5 +715,70 @@ mod board_tests {
         assert!(reg.find("rp2350_pico2w").unwrap().has_usb);
         assert!(!reg.find("rp2350_pico2w").unwrap().has_radio);
         assert!(reg.find("unknown").is_none());
+    }
+}
+
+#[cfg(test)]
+mod m203_tests {
+    use super::*;
+
+    #[test]
+    fn stepper_angle_and_speed_convert_per_brand() {
+        let nema = device_catalog::STEPPER_NEMA17; // 200 * 16 = 3200 steps/rev
+        assert_eq!(nema.angle_to_steps(360_000), 3200);
+        assert_eq!(nema.angle_to_steps(90_000), 800);
+        assert_eq!(nema.angle_to_steps(-90_000), -800);
+        assert_eq!(nema.rpm_to_sps(60), 3200); // 1 rev/s
+        assert_eq!(nema.rpm_to_sps(100_000), nema.max_sps); // clamped
+        // the geared 28BYJ-48 needs a different step count for the same angle
+        let byj = device_catalog::STEPPER_28BYJ48;
+        assert_eq!(byj.angle_to_steps(360_000), 2048);
+    }
+
+    #[test]
+    fn led_strip_frames_and_timing_are_data() {
+        let ws = device_catalog::LED_WS2812B;
+        assert_eq!(ws.frame_bytes(60), 180);
+        assert_eq!(ws.color_order, ColorOrder::Grb);
+        assert!(ws.t1h_ns > ws.t0h_ns);
+        let sk = device_catalog::LED_SK6812_RGBW;
+        assert_eq!(sk.frame_bytes(60), 240); // RGBW = 4 bytes/pixel
+        assert_eq!(device_catalog::LED_APA102.period_ns, 0); // clocked strip
+    }
+
+    #[test]
+    fn relay_polarity_is_explicit() {
+        assert!(!device_catalog::RELAY_ACTIVE_LOW.drive_level(true)); // ON = LOW pin
+        assert!(device_catalog::RELAY_ACTIVE_LOW.drive_level(false));
+        assert!(device_catalog::RELAY_ACTIVE_HIGH.drive_level(true));
+    }
+
+    #[test]
+    fn display_geometry_drives_framebuffer_size() {
+        assert_eq!(device_catalog::OLED_SSD1306_128X64.framebuffer_bytes(), 1024);
+        assert_eq!(device_catalog::OLED_SH1106_128X64.col_offset, 2);
+    }
+
+    #[test]
+    fn nmea_checksum_matches_known_sentence() {
+        // $GPGLL,4916.45,N,12311.12,W,225444,A,*1D (classic NMEA reference example)
+        let body = b"GPGLL,4916.45,N,12311.12,W,225444,A,";
+        assert_eq!(nmea_checksum(body), 0x1D);
+    }
+
+    #[test]
+    fn ranger_converts_echo_and_rejects_out_of_window() {
+        let hc = device_catalog::RANGER_HCSR04;
+        // 5830 us round trip ~= 1 m
+        assert_eq!(hc.echo_us_to_mm(5830), Some(999));
+        assert_eq!(hc.echo_us_to_mm(1), None); // below min
+        assert_eq!(hc.echo_us_to_mm(60_000), None); // beyond max
+    }
+
+    #[test]
+    fn tof_ranger_identity_check() {
+        let tof = sensor_catalog::VL53L0X;
+        assert!(tof.identify(|reg| if reg == 0xC0 { 0xEE } else { 0 }));
+        assert!(!tof.identify(|_| 0x00));
     }
 }
