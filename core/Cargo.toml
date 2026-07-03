@@ -57,6 +57,7 @@ members = [
     "apps/rtc_sleep_demo",
     "apps/stack_guard_demo",
     "apps/pwm_bank_demo",
+    "apps/config_actuator_demo",
     "apps/gesture_demo",
     "apps/supervision_demo",
     "apps/mpu_guard_demo",
