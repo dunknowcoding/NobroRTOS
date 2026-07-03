@@ -4,6 +4,7 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod ccm;
+pub mod sha256;
 
 use nobro_sal::CryptoSal;
 

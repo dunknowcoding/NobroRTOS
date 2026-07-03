@@ -627,6 +627,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-secure"
+version = "0.2.0"
+dependencies = [
+ "nobro-crypto",
+]
+
+[[package]]
 name = "nobro-sensor"
 version = "0.2.0"
 

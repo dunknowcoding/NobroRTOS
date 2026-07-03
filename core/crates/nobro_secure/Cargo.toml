@@ -1,0 +1,15 @@
+[package]
+name = "nobro-secure"
+version.workspace = true
+edition.workspace = true
+
+# Security + data-integrity primitives built on nobro-crypto's SHA-256/HMAC/AES:
+# device attestation (M174), a bounded key store (M176), OTA rollback protection (M177),
+# tamper detection (M179), a hash-chained signed audit log (M180), and a versioned config
+# store with an integrity tag (M185). no_std, no heap.
+[dependencies]
+nobro-crypto = { path = "../nobro_crypto", default-features = false }
+
+[features]
+default = ["portable-atomic-cs"]
+portable-atomic-cs = ["nobro-crypto/portable-atomic-cs"]
