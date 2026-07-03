@@ -218,3 +218,80 @@ mod harvest_tests {
         assert_eq!(harvest_work_budget_uj(0, 1_000, 15, 20, cap), 0);
     }
 }
+
+
+/// Duty-cycle scheduler (M159): drive a periodic task toward a target active fraction.
+/// Each tick reports whether to run (active) or sleep, keeping the long-run active time
+/// within the target duty using a leaky accumulator - robust to jittery tick spacing.
+#[derive(Clone, Copy, Debug)]
+pub struct DutyScheduler {
+    target_milli: u32, // target duty in 1/1000
+    credit: i64,       // accumulated "owed" active micros (signed)
+    window_us: u64,
+}
+
+impl DutyScheduler {
+    /// `target_duty_milli` in [0,1000]; `window_us` is the averaging horizon.
+    pub const fn new(target_duty_milli: u32, window_us: u64) -> Self {
+        Self { target_milli: target_duty_milli, credit: 0, window_us }
+    }
+
+    /// Advance by `dt_us`; returns true if the task should be ACTIVE this interval.
+    /// Accrues target active-time as credit, spends it when active, and leaks toward 0
+    /// over the window so transient bursts do not bias the long-run duty.
+    pub fn tick(&mut self, dt_us: u64, was_active: bool) -> bool {
+        // accrue the target share of this interval
+        self.credit += (dt_us as i64) * (self.target_milli as i64) / 1000;
+        if was_active {
+            self.credit -= dt_us as i64;
+        }
+        // leak toward zero across the window
+        if self.window_us > 0 {
+            self.credit -= self.credit * (dt_us as i64) / (self.window_us as i64) / 4;
+        }
+        // run when we owe active time
+        self.credit > 0
+    }
+}
+
+#[cfg(test)]
+mod duty_tests {
+    use super::*;
+
+    #[test]
+    fn duty_scheduler_converges_to_target() {
+        // target 25% duty, 1 s window, 10 ms ticks over 10 s
+        let mut ds = DutyScheduler::new(250, 1_000_000);
+        let mut active_ticks = 0u32;
+        let mut was_active = false;
+        let total = 1000;
+        for _ in 0..total {
+            was_active = ds.tick(10_000, was_active);
+            if was_active {
+                active_ticks += 1;
+            }
+        }
+        let duty = active_ticks * 1000 / total; // in milli
+        assert!((200..=300).contains(&duty), "duty {duty} not near 250");
+    }
+
+    #[test]
+    fn duty_zero_and_full() {
+        let mut off = DutyScheduler::new(0, 1_000_000);
+        let mut a = false;
+        for _ in 0..100 {
+            a = off.tick(10_000, a);
+            assert!(!a);
+        }
+        let mut on = DutyScheduler::new(1000, 1_000_000);
+        let mut a2 = false;
+        let mut hi = 0;
+        for _ in 0..100 {
+            a2 = on.tick(10_000, a2);
+            if a2 {
+                hi += 1;
+            }
+        }
+        assert!(hi > 90, "full-duty scheduler mostly active: {hi}/100");
+    }
+}

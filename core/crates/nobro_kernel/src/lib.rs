@@ -93,3 +93,76 @@ pub use startup::{
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use task_supervisor::{SupervisionAction, TaskSupervisor};
 pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};
+
+
+#[cfg(test)]
+mod property_tests {
+    //! Property-based tests (M171): a deterministic xorshift generator drives thousands
+    //! of random operation sequences against kernel data structures, asserting
+    //! invariants hold for every sequence. No external proptest dependency.
+    use crate::quota::{QuotaError, QuotaLedger};
+    use crate::{ModuleId, SystemBudget};
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+        fn below(&mut self, n: u32) -> u32 {
+            (self.next() % u64::from(n)) as u32
+        }
+    }
+
+    const MODS: [ModuleId; 3] = [ModuleId::Sensor, ModuleId::Radio, ModuleId::Crypto];
+
+    #[test]
+    fn quota_ledger_never_exceeds_limits_under_random_ops() {
+        for seed in 1..=200u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15));
+            let mut ledger = QuotaLedger::<3>::new();
+            let limit = SystemBudget::new(4096, 1024, 8);
+            for &m in &MODS {
+                ledger.register(m, limit).unwrap();
+            }
+            // shadow model of what we believe is reserved per module
+            let mut used = [0i64; 3];
+            for _ in 0..300 {
+                let mi = rng.below(3) as usize;
+                let m = MODS[mi];
+                let ram = rng.below(200);
+                if rng.below(2) == 0 {
+                    // reserve
+                    let amt = SystemBudget::new(0, ram, 0); // RAM-only: sole constraint
+                    match ledger.reserve(m, amt) {
+                        Ok(()) => {
+                            used[mi] += i64::from(ram);
+                            // INVARIANT: accepted reservation stays within the RAM limit
+                            assert!(used[mi] <= 1024, "seed {seed}: over limit {}", used[mi]);
+                        }
+                        Err(QuotaError::Exceeded { .. }) => {
+                            // INVARIANT: rejection only when it WOULD exceed
+                            assert!(used[mi] + i64::from(ram) > 1024);
+                        }
+                        Err(_) => {}
+                    }
+                } else {
+                    // release up to what we've reserved
+                    let rel = rng.below(200).min(used[mi] as u32);
+                    let amt = SystemBudget::new(0, rel, 0);
+                    if ledger.release(m, amt).is_ok() {
+                        used[mi] -= i64::from(rel);
+                        assert!(used[mi] >= 0, "seed {seed}: negative usage");
+                    }
+                }
+                // INVARIANT: reported usage always matches our shadow model
+                let reported = ledger.usage(m).map(|b| i64::from(b.ram_bytes)).unwrap_or(0);
+                assert_eq!(reported, used[mi], "seed {seed}: usage mismatch for {m:?}");
+            }
+        }
+    }
+}
