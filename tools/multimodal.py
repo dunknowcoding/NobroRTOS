@@ -17,6 +17,7 @@ def fuse(nodes):
     """nodes: list of dicts with keys among vision_motion, vision_anomaly, audio_vad,
     audio_anomaly. Returns (alerts, multimodal_events)."""
     alerts = []
+    imu_active = any(n.get("imu_motion") for n in nodes)  # M108: IMU as a modality
     vision_evt = any(n.get("vision_anomaly") for n in nodes)
     vision_motion = any(n.get("vision_motion") for n in nodes)
     audio_anom = any(n.get("audio_anomaly") for n in nodes)
