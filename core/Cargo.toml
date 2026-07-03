@@ -65,6 +65,7 @@ members = [
     "apps/crash_dump_demo",
     "apps/kv_store_demo",
     "apps/lease_demo",
+    "apps/ble_adv_demo",
 ]
 
 [workspace.package]

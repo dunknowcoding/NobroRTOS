@@ -28,6 +28,9 @@ JLINK_EXE = _os.environ.get("JLINK_EXE", r"C:\Program Files\SEGGER\JLink\JLink.e
 
 
 def cmd_jlink(args):
+    if not args.dry_run and not os.path.isfile(args.bin):
+        print(f"error: image not found: {args.bin}")
+        return False
     script = (
         "si SWD\nspeed 4000\nconnect\nhalt\n"
         f"loadbin {os.path.abspath(args.bin)},{args.addr}\nr\ng\nq\n"
