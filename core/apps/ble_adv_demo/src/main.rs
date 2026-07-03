@@ -15,6 +15,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
+use nobro_iot::BleAdvBuilder;
 use panic_halt as _;
 
 const RADIO_BASE: usize = 0x4000_1000;
@@ -91,30 +92,25 @@ fn main() -> ! {
     start_hfxo();
     ble_radio_init();
 
-    // ADV_NONCONN_IND with a random static address (top two bits set) and two AD
-    // structures: complete local name "NOBRO" + manufacturer data (0xFFFF test id)
-    // carrying [beat u32 LE, status u8].
-    let mut pdu = [0u8; 39];
-    pdu[0] = 0x42; // header: ADV_NONCONN_IND, TxAdd = random
-    pdu[1] = 6 + 7 + 10; // AdvA + name AD + manufacturer AD
-    pdu[2..8].copy_from_slice(&[0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3]); // AdvA (LE; MSB 0xC3 = static)
-    pdu[8] = 6; // name AD length
-    pdu[9] = 0x09; // Complete Local Name
-    pdu[10..15].copy_from_slice(b"NOBRO");
-    pdu[15] = 9; // manufacturer AD length
-    pdu[16] = 0xFF; // Manufacturer Specific Data
-    pdu[17] = 0xFF; // company id 0xFFFF (test/prototyping)
-    pdu[18] = 0xFF;
-    // pdu[19..23] = beat, pdu[23] = status, pdu[24] = 0 spare
+    // The PDU layout (name AD + manufacturer AD, test company 0xFFFF) comes from
+    // nobro_iot::BleAdvBuilder - the crate is the single source of the on-air format
+    // (M215); this app only supplies the radio and the telemetry payload.
+    let adv_addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3]; // random static (LE)
+    let builder = BleAdvBuilder { adv_addr: &adv_addr, name: b"NOBRO", company_id: 0xFFFF };
 
+    let mut pdu = [0u8; 39];
     let mut beat: u32 = 0;
     loop {
         beat = beat.wrapping_add(1);
-        pdu[19..23].copy_from_slice(&beat.to_le_bytes());
-        pdu[23] = 1; // status: alive/all_pass
+        let mut payload = [0u8; 6];
+        payload[0..4].copy_from_slice(&beat.to_le_bytes());
+        payload[4] = 1; // status: alive/all_pass
+        let len = builder.build(&payload, &mut pdu).unwrap_or(0);
 
-        for (freq, iv) in ADV_CHANNELS {
-            ble_send(&pdu[..25], freq, iv);
+        if len > 0 {
+            for (freq, iv) in ADV_CHANNELS {
+                ble_send(&pdu[..len], freq, iv);
+            }
         }
 
         // ~100 ms advertising interval
