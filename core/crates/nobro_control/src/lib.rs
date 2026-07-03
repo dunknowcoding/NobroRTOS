@@ -161,3 +161,273 @@ mod diff_drive_tests {
         assert!((lin - 0.5).abs() < 1e-6 && (ang - 1.0).abs() < 1e-6);
     }
 }
+
+
+// ---- Trajectory, actuator mixing, safety envelope (M152-M156) ----
+
+/// A 1-D trapezoidal-velocity trajectory follower (M153): given start, goal, cruise
+/// velocity and acceleration, sample position/velocity along a smooth profile.
+#[derive(Clone, Copy, Debug)]
+pub struct Trajectory {
+    start: f32,
+    goal: f32,
+    vmax: f32,
+    accel: f32,
+}
+
+impl Trajectory {
+    pub fn new(start: f32, goal: f32, vmax: f32, accel: f32) -> Self {
+        Self { start, goal, vmax: vmax.abs().max(1e-3), accel: accel.abs().max(1e-3) }
+    }
+
+    fn dist(&self) -> f32 {
+        (self.goal - self.start).abs()
+    }
+
+    /// Total motion duration (s), accounting for triangular profiles when the move is
+    /// too short to reach cruise velocity.
+    pub fn duration(&self) -> f32 {
+        let d = self.dist();
+        let t_ramp = self.vmax / self.accel;
+        let d_ramp = 0.5 * self.accel * t_ramp * t_ramp;
+        if 2.0 * d_ramp >= d {
+            2.0 * sqrt_approx(d / self.accel) // triangular
+        } else {
+            2.0 * t_ramp + (d - 2.0 * d_ramp) / self.vmax // trapezoidal
+        }
+    }
+
+    /// Sample commanded position at time `t` (s), clamped to [start, goal].
+    pub fn position(&self, t: f32) -> f32 {
+        let dir = if self.goal >= self.start { 1.0 } else { -1.0 };
+        let d = self.dist();
+        let dur = self.duration();
+        if t <= 0.0 {
+            return self.start;
+        }
+        if t >= dur {
+            return self.goal;
+        }
+        let t_ramp = self.vmax / self.accel;
+        let d_ramp = 0.5 * self.accel * t_ramp * t_ramp;
+        let s = if 2.0 * d_ramp >= d {
+            let t_peak = dur / 2.0;
+            if t <= t_peak {
+                0.5 * self.accel * t * t
+            } else {
+                let td = t - t_peak;
+                d - 0.5 * self.accel * (t_peak - td).max(0.0) * (t_peak - td).max(0.0)
+            }
+        } else if t < t_ramp {
+            0.5 * self.accel * t * t
+        } else if t < dur - t_ramp {
+            d_ramp + self.vmax * (t - t_ramp)
+        } else {
+            let td = dur - t;
+            d - 0.5 * self.accel * td * td
+        };
+        self.start + dir * s.clamp(0.0, d)
+    }
+}
+
+/// Differential-drive actuator mixer (M154): map a (linear, angular) command to left and
+/// right wheel efforts, saturating symmetrically so turning authority is preserved when
+/// the linear term already saturates a side.
+pub fn diff_drive_mix(linear: f32, angular: f32, limit: f32) -> (f32, f32) {
+    let mut l = linear - angular;
+    let mut r = linear + angular;
+    let peak = l.abs().max(r.abs());
+    if peak > limit && peak > 0.0 {
+        let k = limit / peak;
+        l *= k;
+        r *= k;
+    }
+    (l, r)
+}
+
+/// Safety envelope / e-stop (M156): latches a fault when any monitored signal leaves its
+/// bound or a heartbeat goes stale, and forces the actuator command to the safe value
+/// until explicitly reset.
+#[derive(Clone, Copy, Debug)]
+pub struct SafetyEnvelope {
+    tripped: bool,
+    tilt_limit: f32,
+    heartbeat_timeout_us: u64,
+    last_heartbeat_us: u64,
+    safe_output: f32,
+}
+
+impl SafetyEnvelope {
+    pub fn new(tilt_limit: f32, heartbeat_timeout_us: u64, safe_output: f32) -> Self {
+        Self {
+            tripped: false,
+            tilt_limit: tilt_limit.abs(),
+            heartbeat_timeout_us,
+            last_heartbeat_us: 0,
+            safe_output,
+        }
+    }
+
+    pub fn heartbeat(&mut self, now_us: u64) {
+        self.last_heartbeat_us = now_us;
+    }
+
+    /// Evaluate the guards; returns the command to actually apply (`safe_output` once
+    /// tripped). Trips permanently until [`reset`] is called.
+    pub fn guard(&mut self, tilt: f32, now_us: u64, desired: f32) -> f32 {
+        if tilt.abs() > self.tilt_limit
+            || now_us.saturating_sub(self.last_heartbeat_us) > self.heartbeat_timeout_us
+        {
+            self.tripped = true;
+        }
+        if self.tripped {
+            self.safe_output
+        } else {
+            desired
+        }
+    }
+
+    pub fn tripped(&self) -> bool {
+        self.tripped
+    }
+
+    pub fn reset(&mut self, now_us: u64) {
+        self.tripped = false;
+        self.last_heartbeat_us = now_us;
+    }
+}
+
+/// Wheel odometry integrator (M155): accumulate pose (x, y, heading) from left/right
+/// wheel travel over a differential-drive base of track width `w`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Odometry {
+    pub x: f32,
+    pub y: f32,
+    pub heading: f32,
+}
+
+impl Odometry {
+    pub fn update(&mut self, dl: f32, dr: f32, track_w: f32) {
+        let dc = 0.5 * (dl + dr);
+        let dtheta = (dr - dl) / track_w.max(1e-3);
+        let mid = self.heading + 0.5 * dtheta;
+        self.x += dc * cos_approx(mid);
+        self.y += dc * sin_approx(mid);
+        self.heading = wrap_pi(self.heading + dtheta);
+    }
+}
+
+// libm-free helpers (no_std, adequate precision for control)
+fn sqrt_approx(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let mut g = x;
+    for _ in 0..12 {
+        g = 0.5 * (g + x / g);
+    }
+    g
+}
+
+// small libm-free trig (adequate for odometry heading integration)
+fn wrap_pi(a: f32) -> f32 {
+    let two_pi = core::f32::consts::PI * 2.0;
+    let mut x = a % two_pi;
+    if x > core::f32::consts::PI {
+        x -= two_pi;
+    } else if x < -core::f32::consts::PI {
+        x += two_pi;
+    }
+    x
+}
+fn sin_approx(x: f32) -> f32 {
+    // Bhaskara-style minimax on [-pi, pi]
+    let x = wrap_pi(x);
+    let b = 4.0 / core::f32::consts::PI;
+    let c = -4.0 / (core::f32::consts::PI * core::f32::consts::PI);
+    let y = b * x + c * x * x.abs();
+    0.775 * y + 0.225 * (y * y.abs())
+}
+fn cos_approx(x: f32) -> f32 {
+    sin_approx(x + core::f32::consts::FRAC_PI_2)
+}
+
+/// Balance/inverted-pendulum controller (M152): a PD law on tilt error that outputs a
+/// wheel effort to keep the body upright. Thin wrapper over [`Pid`] with the derivative
+/// term fed by the measured angular rate (cleaner than differencing angle).
+#[derive(Clone, Copy, Debug)]
+pub struct BalanceController {
+    kp: f32,
+    kd: f32,
+    limit: f32,
+}
+
+impl BalanceController {
+    pub fn new(kp: f32, kd: f32, limit: f32) -> Self {
+        Self { kp, kd, limit }
+    }
+    /// `tilt` (rad from upright), `rate` (rad/s). Returns wheel effort in [-limit, limit].
+    pub fn effort(&self, tilt: f32, rate: f32) -> f32 {
+        (self.kp * tilt + self.kd * rate).clamp(-self.limit, self.limit)
+    }
+}
+
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+
+    #[test]
+    fn trajectory_starts_at_start_reaches_goal_and_is_monotonic() {
+        let tr = Trajectory::new(0.0, 100.0, 50.0, 25.0);
+        let dur = tr.duration();
+        assert!(dur > 0.0);
+        assert!((tr.position(0.0) - 0.0).abs() < 1e-3);
+        assert!((tr.position(dur * 2.0) - 100.0).abs() < 1e-2);
+        let mut prev = -1.0;
+        for i in 0..=20 {
+            let p = tr.position(dur * i as f32 / 20.0);
+            assert!(p >= prev - 1e-3, "not monotonic at {i}: {p} < {prev}");
+            prev = p;
+        }
+    }
+
+    #[test]
+    fn diff_drive_mix_preserves_turn_under_saturation() {
+        assert_eq!(diff_drive_mix(0.5, 0.2, 1.0), (0.3, 0.7));
+        // linear already saturates; symmetric scale keeps the turn ratio
+        let (l, r) = diff_drive_mix(1.0, 0.5, 1.0);
+        assert!((r - 1.0).abs() < 1e-6 && (l - 1.0 / 3.0).abs() < 1e-6);
+        assert!(l <= 1.0 && r <= 1.0);
+    }
+
+    #[test]
+    fn safety_envelope_trips_on_tilt_and_stale_heartbeat() {
+        let mut env = SafetyEnvelope::new(0.5, 100_000, 0.0);
+        env.heartbeat(0);
+        assert_eq!(env.guard(0.1, 1_000, 0.8), 0.8); // nominal
+        assert_eq!(env.guard(0.9, 2_000, 0.8), 0.0); // tilt over limit -> safe
+        assert!(env.tripped());
+        env.reset(3_000);
+        assert_eq!(env.guard(0.1, 3_500, 0.8), 0.8);
+        // stale heartbeat trips too
+        assert_eq!(env.guard(0.1, 3_500 + 200_000, 0.8), 0.0);
+    }
+
+    #[test]
+    fn odometry_straight_line_and_turn() {
+        let mut od = Odometry::default();
+        od.update(1.0, 1.0, 0.2); // straight ahead 1 m
+        assert!((od.x - 1.0).abs() < 1e-3 && od.y.abs() < 1e-3);
+        let mut od2 = Odometry::default();
+        od2.update(-0.1, 0.1, 0.2); // spin in place: +1 rad
+        assert!(od2.x.abs() < 1e-3 && (od2.heading - 1.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn balance_controller_pushes_against_tilt() {
+        let bc = BalanceController::new(20.0, 2.0, 100.0);
+        assert!(bc.effort(0.1, 0.0) > 0.0); // tilt forward -> forward effort
+        assert!(bc.effort(-0.1, 0.0) < 0.0);
+        assert_eq!(bc.effort(10.0, 0.0), 100.0); // saturates
+    }
+}
