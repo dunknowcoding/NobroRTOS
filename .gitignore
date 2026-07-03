@@ -50,3 +50,7 @@ Thumbs.db
 
 # Private bench manifest (users copy boards.example.json)
 tools/boards.json
+
+# Internal-only docs (competitive/strategy analysis - not public)
+docs/VS_*.md
+docs/*_INTERNAL.md
