@@ -68,21 +68,21 @@ impl Sha256 {
         let block = self.buf;
         self.compress(&block);
         let mut out = [0u8; 32];
-        for (i, word) in self.h.iter().enumerate() {
-            out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
+        for (chunk, word) in out.chunks_exact_mut(4).zip(self.h.iter()) {
+            chunk.copy_from_slice(&word.to_be_bytes());
         }
         out
     }
 
     fn compress(&mut self, block: &[u8; 64]) {
         let mut w = [0u32; 64];
-        for i in 0..16 {
-            w[i] = u32::from_be_bytes([
+        for (i, wi) in w.iter_mut().enumerate().take(16) {
+            wi.clone_from(&u32::from_be_bytes([
                 block[i * 4],
                 block[i * 4 + 1],
                 block[i * 4 + 2],
                 block[i * 4 + 3],
-            ]);
+            ]));
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
@@ -113,8 +113,8 @@ impl Sha256 {
             v[1] = v[0];
             v[0] = t1.wrapping_add(t2);
         }
-        for i in 0..8 {
-            self.h[i] = self.h[i].wrapping_add(v[i]);
+        for (h, vi) in self.h.iter_mut().zip(v.iter()) {
+            *h = h.wrapping_add(*vi);
         }
     }
 }
@@ -136,9 +136,9 @@ pub fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
     }
     let mut ipad = [0x36u8; 64];
     let mut opad = [0x5cu8; 64];
-    for i in 0..64 {
-        ipad[i] ^= k0[i];
-        opad[i] ^= k0[i];
+    for (i, &k) in k0.iter().enumerate() {
+        ipad[i] ^= k;
+        opad[i] ^= k;
     }
     let mut inner = Sha256::new();
     inner.update(&ipad);
