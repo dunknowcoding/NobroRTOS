@@ -7,7 +7,7 @@ Runs a curve self-test (known OCV -> SoC vectors), then reads live samples from 
 third-party INA3221 JSONL bridge (START/STOP protocol) and prints a gauge per channel.
 A USB-powered rail (>4.25 V) is reported as EXTERNAL rather than a fake percentage.
 
-Usage: python tools/battery_gauge.py [--port COM20] [--seconds 3] [--selftest-only]
+Usage: python3 tools/battery_gauge.py [--port <PORT>] [--seconds 3] [--selftest-only]
 """
 import argparse
 import json
@@ -80,7 +80,7 @@ def read_live(port, seconds):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="COM20")
+    ap.add_argument("--port", required=True, help="serial port of the INA JSONL bridge")
     ap.add_argument("--seconds", type=float, default=3.0)
     ap.add_argument("--selftest-only", action="store_true")
     args = ap.parse_args()

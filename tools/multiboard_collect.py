@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """NobroRTOS multi-board data collector (manifest-driven, autonomous).
 
-Reads tools/boards.json: each board declares a *transport* (how to reach it) and a
+Reads a board manifest (boards.json, or boards.example.json): each board declares a *transport* (how to reach it) and a
 *protocol* (how to read it). New boards/apps plug in by editing the manifest - no code
 change. Everything is non-destructive (J-Link halt/resume + serial read); no DFU, no
 flashing, no manual steps. Exit 0 = every non-optional board delivered valid data.
@@ -11,7 +11,7 @@ Protocols:
   jsonl_bridge  - drive the INA "JSONL bridge" (START/STOP), return the last sample
   serial_regex  - read a COM port and match a regex (presence/health of any app)
 
-Usage:  python tools/multiboard_collect.py [--manifest tools/boards.json]
+Usage:  python3 tools/multiboard_collect.py [--manifest <file>]
 """
 import argparse
 import json
@@ -231,9 +231,16 @@ def summary_line(name, proto, rec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--manifest", default=os.path.join(HERE, "boards.json"))
+    ap.add_argument("--manifest", default=None,
+                    help="board manifest (default: boards.json if present, else "
+                         "boards.example.json)")
     args = ap.parse_args()
-    cfg = json.load(open(args.manifest))
+    manifest = args.manifest
+    if manifest is None:
+        private = os.path.join(HERE, "boards.json")
+        manifest = private if os.path.exists(private) else os.path.join(
+            HERE, "boards.example.json")
+    cfg = json.load(open(manifest))
     schemas = cfg.get("schemas", {})
 
     print("=== NobroRTOS multi-board collection (manifest-driven, autonomous) ===")

@@ -11,7 +11,7 @@ camera node's COM port), decodes them, and runs scene recognition:
 Prints one parseable VISION line (the collector ingests it) and saves the last frame.
 Exit 0 = a live, real scene was recognized.
 
-Usage: python tools/vision_node.py [--port COM27] [--frames 2] [--save _work/vision.jpg]
+Usage: python3 tools/vision_node.py [--port <PORT>] [--frames 2] [--save _work/vision.jpg]
 """
 import argparse
 import base64
@@ -85,7 +85,7 @@ def entropy(g):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="COM27")
+    ap.add_argument("--port", required=True, help="serial port of the camera node")
     ap.add_argument("--frames", type=int, default=2)
     ap.add_argument("--save", default="_work/vision.jpg")
     args = ap.parse_args()

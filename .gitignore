@@ -47,3 +47,6 @@ tools/.nobro-work/
 Thumbs.db
 *.swp
 .agents/
+
+# Private bench manifest (users copy boards.example.json)
+tools/boards.json

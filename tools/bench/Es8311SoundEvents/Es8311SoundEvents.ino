@@ -5,7 +5,7 @@
 // the embedded stand-in for log-mel), classifies with a nearest-centroid rule, and
 // checks every played event is recognized and silence stays "quiet". No human needed.
 //
-// Wiring: same as Es8311AudioLoopback (ESP32-S3 UNO + WeAct ES8311/NS4150B, COM28).
+// Wiring: same as Es8311AudioLoopback (ESP32-S3 UNO + WeAct ES8311/NS4150B, the node serial port).
 #include <Wire.h>
 #include <ESP_I2S.h>
 #include <math.h>

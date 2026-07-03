@@ -80,10 +80,10 @@ lifecycle recovery completion without contacting external hardware.
 
 ## Python Environment
 
-If Python tooling is needed, use the `IronEngineWorld` conda environment:
+If Python tooling is needed, use any Python 3 environment (a venv is fine):
 
 ```powershell
-conda activate IronEngineWorld
+python3 -m venv .venv && . .venv/bin/activate
 ```
 
 Python tools should write outputs under `_work/`.

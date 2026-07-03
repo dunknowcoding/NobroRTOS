@@ -5,7 +5,7 @@
 //   M120 - acoustic anomaly: running mean/var of quiet-baseline energy; flag z-score > k
 // Self-test: (a) silence -> VAD idle; (b) a played tone -> VAD active; (c) after a quiet
 // baseline, a sudden loud burst -> anomaly. No human needed.
-// Wiring identical to Es8311SoundEvents (ESP32-S3 UNO + WeAct ES8311/NS4150B, COM28).
+// Wiring identical to Es8311SoundEvents (ESP32-S3 UNO + WeAct ES8311/NS4150B, the node serial port).
 #include <Wire.h>
 #include <ESP_I2S.h>
 #include <math.h>

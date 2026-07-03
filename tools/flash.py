@@ -10,10 +10,10 @@ Each backend builds the exact external command; --dry-run prints it without touc
 hardware, so the abstraction is testable everywhere and scriptable in CI.
 
 Examples:
-  python tools/flash.py jlink --bin _work/kernel_selftest.bin --addr 0x1000
-  python tools/flash.py uf2 --file firmware.uf2 --drive J:
-  python tools/flash.py arduino --port COM20 --fqbn esp32:esp32:esp32c3 --build-dir .build/x
-  python tools/flash.py all --dry-run   (smoke: show every backend's command)
+  python3 tools/flash.py jlink --bin _work/kernel_selftest.bin --addr 0x1000
+  python3 tools/flash.py uf2 --file firmware.uf2 --drive J:
+  python3 tools/flash.py arduino --port <PORT> --fqbn esp32:esp32:esp32c3 --build-dir .build/x
+  python3 tools/flash.py all --dry-run   (smoke: show every backend's command)
 """
 import argparse
 import os
@@ -22,7 +22,9 @@ import subprocess
 import sys
 import tempfile
 
-JLINK_EXE = r"C:\Program Files\SEGGER\JLink_V924a\JLink.exe"
+import os as _os
+# Override with the JLINK_EXE env var; the default is the common Windows install path.
+JLINK_EXE = _os.environ.get("JLINK_EXE", r"C:\Program Files\SEGGER\JLink\JLink.exe")
 
 
 def cmd_jlink(args):
@@ -89,8 +91,8 @@ def main():
     ap.add_argument("--addr", default="0x1000")
     ap.add_argument("--device", default="nRF52840_xxAA")
     ap.add_argument("--file", default="firmware.uf2")
-    ap.add_argument("--drive", default="J:")
-    ap.add_argument("--port", default="COM20")
+    ap.add_argument("--drive", default="J:", help="UF2 bootloader drive letter (yours may differ)")
+    ap.add_argument("--port", default=None, help="serial port for arduino uploads")
     ap.add_argument("--fqbn", default="esp32:esp32:esp32c3")
     ap.add_argument("--build-dir", default=".build/app")
     args = ap.parse_args()
