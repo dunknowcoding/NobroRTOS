@@ -1,0 +1,15 @@
+[package]
+name = "nobro-nn"
+version.workspace = true
+edition.workspace = true
+
+# Neural-network building blocks designed from scratch for MCUs: dense/conv/recurrent
+# (RNN/LSTM/GRU-style) layers, activations, and a scaled-dot-product attention head -
+# inference-side, no_std, no heap, shapes fixed at compile time. Training, embedding
+# preparation, and evaluation live host-side (bindings/python) and export weights these
+# blocks execute; nobro_ml keeps the quantization/TinyML utilities.
+
+[dependencies]
+
+[features]
+default = []

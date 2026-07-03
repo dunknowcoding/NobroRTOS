@@ -1,0 +1,14 @@
+[package]
+name = "nobro-database"
+version.workspace = true
+edition.workspace = true
+
+# Fixed-capacity structured data store for NobroRTOS: typed tables with CRUD, predicate
+# queries, and a persistence image format - a "database" scoped for MCUs. No heap, no
+# allocator, capacity fixed at compile time; the flash side plugs in through the same
+# byte-image contract nobro_storage uses.
+
+[dependencies]
+
+[features]
+default = []

@@ -1,0 +1,16 @@
+[package]
+name = "nobro-ai"
+version.workspace = true
+edition.workspace = true
+
+# AI deployment + cloud management for NobroRTOS. Two halves: (1) deploy already-trained,
+# quantized models exported from host tools (torch/tensorflow -> flat int8 weights) with
+# a validated manifest the device can trust before binding a runtime; (2) cloud-API
+# session management - API-key handles (never raw keys), connect/reconnect state machine
+# with bounded exponential backoff, request budgeting. No heap; transports plug in via
+# nobro_net/nobro_iot and secrets stay in nobro_secure's KeyStore.
+
+[dependencies]
+
+[features]
+default = []
