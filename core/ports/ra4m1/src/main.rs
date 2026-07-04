@@ -125,8 +125,21 @@ fn drive_loopback() {
     }
 }
 
+/// Blink the LED `count` times (short pulses), then a gap - a probe-less status code.
+fn led_blink(count: u8) {
+    for _ in 0..count {
+        unsafe { PORT1_PCNTR1.write_volatile(PORT1_PCNTR1.read_volatile() | (LED_BIT << 16)) };
+        cortex_m::asm::delay(1_200_000);
+        unsafe { PORT1_PCNTR1.write_volatile(PORT1_PCNTR1.read_volatile() & !(LED_BIT << 16)) };
+        cortex_m::asm::delay(1_200_000);
+    }
+    cortex_m::asm::delay(6_000_000); // gap between codes
+}
+
 #[entry]
 fn main() -> ! {
+    use nobro_usb::{RaUsbfsCdc, UsbConfig, UsbStack};
+
     system_init();
     pins_init();
     SCI2.init();
@@ -141,10 +154,26 @@ fn main() -> ! {
         "NOBRO-RA4M1 arch=thumbv7em subsystems=7 all_pass=0\r\n"
     };
 
+    // Mount our own RA4M1 USBFS CDC backend (M86) - the app reports over native USB.
+    let cfg = UsbConfig::new(0x1209, 0x0004, "NiusRobotLab", "NobroRTOS RA4M1", "NBROR4");
+    let mut usb = RaUsbfsCdc::mount(&cfg); // concrete type: exposes stage() for LED debug
+
+    let mut ticks: u32 = 0;
     loop {
-        SCI9.print(line); // out the ESP32-S3 bridge candidate
-        SCI2.print(line); // and the D0/D1 header
-        led_toggle(); // ~1 Hz heartbeat on the built-in LED = eyes-on evidence
-        cortex_m::asm::delay(8_000_000); // ~1 s at 8 MHz
+        // service USB frequently so enumeration/control transfers complete
+        for _ in 0..2000 {
+            let _ = usb.poll();
+            cortex_m::asm::delay(400);
+        }
+        ticks += 1;
+        if usb.configured() {
+            let _ = usb.write(line.as_bytes()); // report over native USB
+        }
+        // also out the SCI header (for a dongle) and blink the USB enumeration stage:
+        // 1=attached 2=reset 3=addressed 4=configured - tells us where it stalls.
+        SCI2.print(line);
+        if ticks % 2 == 0 {
+            led_blink(usb.stage() as u8 + 1);
+        }
     }
 }

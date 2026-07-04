@@ -25,3 +25,6 @@ backend-taichiusb = []
 # ESP32-C3/S3 fixed-function USB-Serial-JTAG: a real register-level data path (the
 # peripheral enumerates itself in silicon; poll/read/write hit EP1/EP1_CONF directly).
 backend-usb-serial-jtag = []
+# RA4M1 (Arduino UNO R4) USBFS: our own raw-register CDC-ACM device stack (pipe-based
+# enumeration + bulk data), ported from the RA manual / cross-checked vs TinyUSB rusb2.
+backend-ra-usbfs = []

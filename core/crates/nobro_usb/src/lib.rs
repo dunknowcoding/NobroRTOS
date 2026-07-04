@@ -60,6 +60,7 @@ pub mod backend_id {
     pub const TINYUSB: u32 = 0x4E55_5449; // "NUTI"
     pub const TAICHIUSB: u32 = 0x4E55_5443; // "NUTC"
     pub const USB_SERIAL_JTAG: u32 = 0x4E55_534A; // "NUSJ" (ESP32-C3/S3 fixed-function)
+    pub const RA_USBFS: u32 = 0x4E55_5241; // "NURA" (RA4M1 / UNO R4 USBFS)
 }
 
 /// The mountable USB device surface. One backend implements this per board.
@@ -96,6 +97,11 @@ mod usb_serial_jtag_backend;
 #[cfg(feature = "backend-usb-serial-jtag")]
 pub use usb_serial_jtag_backend::UsbSerialJtagCdc;
 
+#[cfg(feature = "backend-ra-usbfs")]
+mod ra_usbfs_backend;
+#[cfg(feature = "backend-ra-usbfs")]
+pub use ra_usbfs_backend::{RaUsbfsCdc, Stage};
+
 /// Mount the USB stack backend selected for this board and return it as a `UsbStack`.
 /// Exactly one `backend-*` feature must be enabled.
 #[cfg(feature = "backend-nrf-usbd")]
@@ -125,4 +131,15 @@ pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
 ))]
 pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
     UsbSerialJtagCdc::mount(cfg)
+}
+
+#[cfg(all(
+    feature = "backend-ra-usbfs",
+    not(feature = "backend-nrf-usbd"),
+    not(feature = "backend-tinyusb"),
+    not(feature = "backend-taichiusb"),
+    not(feature = "backend-usb-serial-jtag")
+))]
+pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
+    RaUsbfsCdc::mount(cfg)
 }

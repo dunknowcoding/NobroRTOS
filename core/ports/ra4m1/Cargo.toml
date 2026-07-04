@@ -13,6 +13,8 @@ cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
+# our own RA4M1 USBFS CDC backend (M86) - reports over the board's native USB
+nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-ra-usbfs"] }
 
 [profile.release]
 debug = 2
