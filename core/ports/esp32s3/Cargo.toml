@@ -12,6 +12,7 @@ edition = "2021"
 esp-hal = { version = "=0.23.1", features = ["esp32s3"] }
 esp-println = { version = "=0.13.0", default-features = false, features = ["esp32s3", "uart", "critical-section"] }
 nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
+nobro-nn = { path = "../../crates/nobro_nn" }
 
 [profile.release]
 debug = 2
