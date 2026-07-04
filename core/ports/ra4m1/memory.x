@@ -1,0 +1,6 @@
+/* RA4M1 (UNO R4): app behind the 16 KB DFU bootloader */
+MEMORY
+{
+  FLASH : ORIGIN = 0x00004000, LENGTH = 240K
+  RAM   : ORIGIN = 0x20000000, LENGTH = 32K
+}

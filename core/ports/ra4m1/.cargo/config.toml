@@ -1,0 +1,4 @@
+# Target + link flags (-Tlink.x, -Tdefmt.x, --nmagic) inherit from core/.cargo/config.toml;
+# build.rs supplies memory.x and a stub defmt.x for this port.
+[build]
+target = "thumbv7em-none-eabihf"
