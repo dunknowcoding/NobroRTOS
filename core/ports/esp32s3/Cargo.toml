@@ -1,0 +1,22 @@
+[package]
+name = "nobro-port-esp32s3"
+version = "0.1.0"
+edition = "2021"
+
+# NobroRTOS portable-core bring-up on the ESP32-S3 (Xtensa LX7) - M85. The same shared
+# conformance suite that runs on Cortex-M and RISC-V executes here on a third CPU
+# architecture family, self-certifying over the S3's USB-Serial-JTAG. Standalone
+# workspace; requires the espup Xtensa Rust toolchain (`cargo +esp build`).
+
+[dependencies]
+esp-hal = { version = "=0.23.1", features = ["esp32s3"] }
+esp-println = { version = "=0.13.0", default-features = false, features = ["esp32s3", "uart", "critical-section"] }
+nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[workspace]
