@@ -72,6 +72,7 @@ members = [
     "apps/ble_adv_demo",
     "apps/db_persist_demo",
     "apps/cc2530_link",
+    "apps/tri_radio",
 ]
 
 [workspace.package]
