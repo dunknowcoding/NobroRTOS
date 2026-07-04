@@ -170,6 +170,183 @@ pub mod rfid {
     }
 }
 
+// ---------------------------------------------------------------- CC2530 802.15.4
+
+/// Byte-level UART access a board provides so the hardware-agnostic CC2530 backend can
+/// run on any MCU (the nRF app, an ESP32, etc. each supply their own UART).
+pub trait ByteIo {
+    /// Transmit one byte (blocking until accepted).
+    fn write(&mut self, b: u8);
+    /// Poll one received byte, or None if none is pending.
+    fn read(&mut self) -> Option<u8>;
+}
+
+/// 802.15.4 MAC frame types (low 3 bits of the frame-control field).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacFrameType {
+    Beacon,
+    Data,
+    Ack,
+    MacCommand,
+    Reserved,
+}
+
+/// Classify a raw PSDU by its frame-control field - the same rule the gateway and the
+/// host `nobro_rtos.zigbee` contract use, so on-device and host agree.
+pub fn mac_frame_type(psdu: &[u8]) -> Option<MacFrameType> {
+    let fcf_lo = *psdu.first()?;
+    Some(match fcf_lo & 0x7 {
+        0 => MacFrameType::Beacon,
+        1 => MacFrameType::Data,
+        2 => MacFrameType::Ack,
+        3 => MacFrameType::MacCommand,
+        _ => MacFrameType::Reserved,
+    })
+}
+
+/// Modular CC2530 802.15.4 backend (M199): drives the NiusZigbee SDCC firmware protocol
+/// (`FE LEN CMD DATA FCS`, LEN counts CMD, FCS = XOR of LEN..DATA) over any [`ByteIo`],
+/// and presents the common [`IotTransport`] surface - so 802.15.4 is a mountable radio
+/// like BLE or WiFi. Verified against the live firmware in the cc2530_gateway app (M122).
+pub struct Cc2530<U: ByteIo> {
+    io: U,
+    joined: bool,
+    dec: Cc2530Decoder,
+}
+
+/// Streaming frame decoder for the CC2530 UART protocol (mirrors the C++ host driver).
+struct Cc2530Decoder {
+    state: u8,
+    len: u8,
+    idx: u8,
+    fcs: u8,
+    buf: [u8; 160],
+}
+
+impl Cc2530Decoder {
+    const fn new() -> Self {
+        Cc2530Decoder { state: 0, len: 0, idx: 0, fcs: 0, buf: [0; 160] }
+    }
+    /// Feed one byte; returns the frame length (in `buf`) when a valid frame completes.
+    fn feed(&mut self, b: u8) -> Option<u8> {
+        match self.state {
+            0 => {
+                if b == 0xFE {
+                    self.state = 1;
+                }
+            }
+            1 => {
+                self.len = b;
+                self.idx = 0;
+                self.fcs = b;
+                self.state = if b == 0 || b as usize > self.buf.len() { 0 } else { 2 };
+            }
+            2 => {
+                self.buf[self.idx as usize] = b;
+                self.idx += 1;
+                self.fcs ^= b;
+                if self.idx >= self.len {
+                    self.state = 3;
+                }
+            }
+            _ => {
+                self.state = 0;
+                if b == self.fcs {
+                    return Some(self.len);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl<U: ByteIo> Cc2530<U> {
+    pub fn new(io: U) -> Self {
+        Cc2530 { io, joined: false, dec: Cc2530Decoder::new() }
+    }
+
+    /// Send a raw command frame (`FE LEN CMD DATA FCS`).
+    fn send_cmd(&mut self, cmd: u8, data: &[u8]) {
+        let len = (data.len() + 1) as u8;
+        let mut fcs = len ^ cmd;
+        self.io.write(0xFE);
+        self.io.write(len);
+        self.io.write(cmd);
+        for &b in data {
+            self.io.write(b);
+            fcs ^= b;
+        }
+        self.io.write(fcs);
+    }
+
+    /// Bring the module up: flush its parser, PING, then set channel + promiscuous RX.
+    /// Returns true once a PONG is seen. `poll_budget` bounds the byte-poll wait.
+    pub fn join(&mut self, channel: u8, poll_budget: u32) -> bool {
+        for _ in 0..140 {
+            self.io.write(0x00); // flush any partial frame in the firmware parser
+        }
+        self.send_cmd(0x01, &[]); // PING
+        for _ in 0..poll_budget {
+            if let Some(b) = self.io.read() {
+                if let Some(_len) = self.dec.feed(b) {
+                    if self.dec.buf[0] == 0x81 {
+                        // PONG
+                        self.send_cmd(0x02, &[channel]); // SET_CHANNEL
+                        self.send_cmd(0x04, &[0]); // SET_PROMISC (filter off)
+                        self.joined = true;
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Poll for one captured 802.15.4 PSDU into `out`; returns (len, frame_type) once a
+    /// full RX_FRAME arrives, or None when no complete frame is pending (non-blocking:
+    /// drains available bytes, then yields). Non-RX frames are consumed and skipped.
+    pub fn poll_frame(&mut self, out: &mut [u8]) -> Option<(usize, MacFrameType)> {
+        while let Some(b) = self.io.read() {
+            if let Some(flen) = self.dec.feed(b) {
+                let flen = flen as usize;
+                if self.dec.buf[0] == 0x84 && flen >= 4 {
+                    // buf = [0x84, rssi, lqi, psdu..]
+                    let psdu = &self.dec.buf[3..flen];
+                    let n = psdu.len().min(out.len());
+                    out[..n].copy_from_slice(&psdu[..n]);
+                    if let Some(ft) = mac_frame_type(psdu) {
+                        return Some((n, ft));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+impl<U: ByteIo> IotTransport for Cc2530<U> {
+    fn descriptor(&self) -> LinkDescriptor {
+        link_catalog::ZIGBEE_APS
+    }
+    fn link_state(&mut self) -> IotLinkState {
+        if self.joined {
+            IotLinkState::Up
+        } else {
+            IotLinkState::Down
+        }
+    }
+    fn send(&mut self, payload: &[u8]) -> bool {
+        if !self.joined {
+            return false;
+        }
+        self.send_cmd(0x03, payload); // TX raw PSDU
+        true
+    }
+    fn recv(&mut self, buf: &mut [u8]) -> usize {
+        self.poll_frame(buf).map(|(n, _)| n).unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +387,122 @@ mod tests {
         let b = BleAdvBuilder { adv_addr: &addr, name: b"WAY-TOO-LONG-DEVICE-NAME", company_id: 0 };
         let mut pdu = [0u8; 39];
         assert!(b.build(&[0u8; 8], &mut pdu).is_none());
+    }
+
+    #[test]
+    fn mac_frame_type_matches_the_host_contract() {
+        assert_eq!(mac_frame_type(&[0x02, 0x00]), Some(MacFrameType::Ack));
+        assert_eq!(mac_frame_type(&[0x03, 0x08]), Some(MacFrameType::MacCommand));
+        assert_eq!(mac_frame_type(&[0x61, 0x88]), Some(MacFrameType::Data));
+        assert_eq!(mac_frame_type(&[0x00, 0x80]), Some(MacFrameType::Beacon));
+        assert_eq!(mac_frame_type(&[]), None);
+    }
+
+    // Scripted UART: replays firmware bytes and captures what the backend transmits.
+    struct FakeUart {
+        rx: heapless_vec,
+        rx_pos: usize,
+        tx: heapless_vec,
+    }
+    // A tiny fixed-capacity byte vec so the test stays no_std/no-heap like the crate.
+    struct heapless_vec {
+        data: [u8; 256],
+        len: usize,
+    }
+    impl Default for heapless_vec {
+        fn default() -> Self {
+            heapless_vec { data: [0; 256], len: 0 }
+        }
+    }
+    impl heapless_vec {
+        fn push(&mut self, b: u8) {
+            if self.len < self.data.len() {
+                self.data[self.len] = b;
+                self.len += 1;
+            }
+        }
+        fn extend(&mut self, bs: &[u8]) {
+            for &b in bs {
+                self.push(b);
+            }
+        }
+    }
+    impl ByteIo for FakeUart {
+        fn write(&mut self, b: u8) {
+            self.tx.push(b);
+        }
+        fn read(&mut self) -> Option<u8> {
+            if self.rx_pos < self.rx.len {
+                let b = self.rx.data[self.rx_pos];
+                self.rx_pos += 1;
+                Some(b)
+            } else {
+                None
+            }
+        }
+    }
+
+    fn frame(cmd: u8, data: &[u8]) -> ([u8; 8], usize) {
+        // build FE LEN CMD DATA FCS for short frames (test helper)
+        let len = (data.len() + 1) as u8;
+        let mut fcs = len ^ cmd;
+        let mut out = [0u8; 8];
+        out[0] = 0xFE;
+        out[1] = len;
+        out[2] = cmd;
+        let mut n = 3;
+        for &b in data {
+            out[n] = b;
+            fcs ^= b;
+            n += 1;
+        }
+        out[n] = fcs;
+        n += 1;
+        (out, n)
+    }
+
+    #[test]
+    fn cc2530_backend_joins_and_captures_a_frame() {
+        let mut rx = heapless_vec::default();
+        // firmware replies PONG [ver_hi ver_lo], then an RX_FRAME with a beacon-request PSDU
+        let (pong, pn) = frame(0x81, &[0, 8]);
+        rx.extend(&pong[..pn]);
+        // RX_FRAME 0x84 [rssi lqi psdu(03 08 EA FF FF FF FF 07)]
+        let (rxf, rn) = {
+            let psdu = [0x03u8, 0x08, 0xEA, 0xFF, 0xFF, 0xFF, 0xFF, 0x07];
+            let mut data = [0u8; 10];
+            data[0] = 200; // rssi
+            data[1] = 255; // lqi
+            data[2..10].copy_from_slice(&psdu);
+            // reuse a bigger frame builder inline
+            let len = (data.len() + 1) as u8;
+            let mut fcs = len ^ 0x84;
+            let mut out = [0u8; 16];
+            out[0] = 0xFE;
+            out[1] = len;
+            out[2] = 0x84;
+            for (i, &b) in data.iter().enumerate() {
+                out[3 + i] = b;
+                fcs ^= b;
+            }
+            out[3 + data.len()] = fcs;
+            (out, 3 + data.len() + 1)
+        };
+        rx.extend(&rxf[..rn]);
+
+        let uart = FakeUart { rx, rx_pos: 0, tx: heapless_vec::default() };
+        let mut radio = Cc2530::new(uart);
+        assert!(radio.join(11, 10_000));
+        assert_eq!(radio.link_state(), IotLinkState::Up);
+        assert_eq!(radio.descriptor().protocol, Protocol::Zigbee);
+
+        // the join should have transmitted PING, SET_CHANNEL(11), SET_PROMISC(0)
+        assert!(radio.io.tx.data[..radio.io.tx.len].contains(&11));
+
+        let mut buf = [0u8; 32];
+        let (n, ft) = radio.poll_frame(&mut buf).expect("captured frame");
+        assert_eq!(ft, MacFrameType::MacCommand);
+        assert_eq!(&buf[..n], &[0x03, 0x08, 0xEA, 0xFF, 0xFF, 0xFF, 0xFF, 0x07]);
     }
 
     #[test]

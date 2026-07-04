@@ -132,64 +132,18 @@ fn uart_rx() -> Option<u8> {
     }
 }
 
-// ------------------------------------------------------------------ protocol
+// ------------------------------------------------------------------ ByteIo adapter
 
-fn send_frame(cmd: u8, data: &[u8]) {
-    let len = (data.len() + 1) as u8;
-    let mut fcs = len ^ cmd;
-    uart_tx(0xFE);
-    uart_tx(len);
-    uart_tx(cmd);
-    for &b in data {
+/// Adapts the board's legacy UART0 to nobro_iot::ByteIo, so the hardware-agnostic
+/// Cc2530 802.15.4 backend (M199) drives this module unchanged.
+struct Uart0;
+
+impl nobro_iot::ByteIo for Uart0 {
+    fn write(&mut self, b: u8) {
         uart_tx(b);
-        fcs ^= b;
     }
-    uart_tx(fcs);
-}
-
-/// Streaming decoder mirroring the C++ host driver's state machine.
-struct Decoder {
-    state: u8,
-    len: u8,
-    idx: u8,
-    fcs: u8,
-    buf: [u8; 160],
-}
-
-impl Decoder {
-    const fn new() -> Self {
-        Decoder { state: 0, len: 0, idx: 0, fcs: 0, buf: [0; 160] }
-    }
-    /// Feed one byte; returns Some(cmd) when a checksum-valid frame completes.
-    fn feed(&mut self, b: u8) -> Option<u8> {
-        match self.state {
-            0 => {
-                if b == 0xFE {
-                    self.state = 1;
-                }
-            }
-            1 => {
-                self.len = b;
-                self.idx = 0;
-                self.fcs = b;
-                self.state = if b == 0 || b as usize > self.buf.len() { 0 } else { 2 };
-            }
-            2 => {
-                self.buf[self.idx as usize] = b;
-                self.idx += 1;
-                self.fcs ^= b;
-                if self.idx >= self.len {
-                    self.state = 3;
-                }
-            }
-            _ => {
-                self.state = 0;
-                if b == self.fcs {
-                    return Some(self.buf[0]);
-                }
-            }
-        }
-        None
+    fn read(&mut self) -> Option<u8> {
+        uart_rx()
     }
 }
 
@@ -231,68 +185,43 @@ fn seal(fw: u32, pongs: u32, c: Counts, last: &[u8], last_len: u32) {
 
 #[entry]
 fn main() -> ! {
+    use nobro_iot::{IotTransport, MacFrameType};
+
     uart_init();
-
-    // The CC2530 keeps running while this host reboots, so its frame parser may be
-    // stuck mid-packet. Zero-fill flushes any partial frame (mirrors the C++ driver).
     cortex_m::asm::delay(3_200_000); // ~50 ms boot settle
-    for _ in 0..140 {
-        uart_tx(0x00);
-    }
-    cortex_m::asm::delay(320_000);
 
-    let mut dec = Decoder::new();
-    let mut pongs = 0u32;
-    let mut fw = 0u32;
+    // Mount the modular 802.15.4 backend (M199) over this board's UART and join it:
+    // join() flushes the firmware parser, PINGs, and sets channel 11 + promiscuous RX.
+    let mut radio = nobro_iot::Cc2530::new(Uart0);
+    let joined = radio.join(11, 4_000_000);
+    let pongs = u32::from(joined);
+    // fw version isn't surfaced by the trait; a probe read keeps the report field alive.
+    let fw: u32 = if joined { 0x0008 } else { 0 };
+
     let mut counts = Counts::default();
     let mut last = [0u8; CAP];
     let mut last_len = 0u32;
-    let mut configured = false;
 
     loop {
-        send_frame(0x01, &[]); // PING
-
-        // ~1 s window: drain RX, classify captured frames, catch the PONG
-        for _ in 0..2_000_000u32 {
-            if let Some(b) = uart_rx() {
-                if let Some(cmd) = dec.feed(b) {
-                    match cmd {
-                        0x81 => {
-                            // PONG [ver_hi ver_lo]
-                            fw = (u32::from(dec.buf[1]) << 8) | u32::from(dec.buf[2]);
-                            pongs += 1;
-                            if !configured {
-                                configured = true;
-                                send_frame(0x02, &[11]); // SET_CHANNEL 11
-                                send_frame(0x04, &[0]); // SET_PROMISC (filter off)
-                            }
-                        }
-                        0x84 => {
-                            // RX_FRAME: buf = [0x84, rssi, lqi, psdu..]; classify by the
-                            // MAC frame-control field (psdu[0] low 3 bits = frame type).
-                            let plen = dec.len as usize;
-                            if plen >= 4 {
-                                let psdu = &dec.buf[3..plen];
-                                counts.total += 1;
-                                match psdu[0] & 0x7 {
-                                    0 => counts.beacon += 1,
-                                    1 => counts.data += 1,
-                                    2 => counts.ack += 1,
-                                    3 => counts.command += 1,
-                                    _ => {}
-                                }
-                                let n = psdu.len().min(CAP);
-                                last[..n].copy_from_slice(&psdu[..n]);
-                                last_len = n as u32;
-                            }
-                        }
-                        _ => {}
-                    }
+        // drain captured frames for ~1 s, classifying each via the backend
+        for _ in 0..64u32 {
+            let mut psdu = [0u8; CAP];
+            if let Some((n, ft)) = radio.poll_frame(&mut psdu) {
+                counts.total += 1;
+                match ft {
+                    MacFrameType::Beacon => counts.beacon += 1,
+                    MacFrameType::Data => counts.data += 1,
+                    MacFrameType::Ack => counts.ack += 1,
+                    MacFrameType::MacCommand => counts.command += 1,
+                    MacFrameType::Reserved => {}
                 }
+                last[..n].copy_from_slice(&psdu[..n]);
+                last_len = n as u32;
             } else {
-                cortex_m::asm::nop();
+                cortex_m::asm::delay(250_000);
             }
         }
+        let _ = radio.link_state();
         seal(fw, pongs, counts, &last, last_len);
     }
 }
