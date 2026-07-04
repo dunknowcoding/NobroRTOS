@@ -104,6 +104,53 @@ pub fn dense(input: &[f32], weights: &[f32], bias: &[f32], out: &mut [f32]) {
     }
 }
 
+/// One online SGD step for a dense + softmax classifier on a single labelled example -
+/// the primitive for **on-device incremental learning** (M140). Runs a forward pass,
+/// then applies the cross-entropy gradient `(p - onehot(label))` to `weights`/`bias`
+/// in place. `scratch` is caller-owned output space of length = number of classes.
+/// Returns the cross-entropy loss on this example *before* the update (so a caller can
+/// watch it fall). All f32, no heap - it runs on the MCU, not just the host trainer.
+pub fn sgd_update(
+    input: &[f32],
+    weights: &mut [f32],
+    bias: &mut [f32],
+    label: usize,
+    lr: f32,
+    scratch: &mut [f32],
+) -> f32 {
+    let n_in = input.len();
+    let n_out = bias.len();
+    dense(input, weights, bias, scratch);
+    softmax(scratch);
+    let p_label = scratch[label].max(1e-7);
+    let loss = -log_approx(p_label);
+    for j in 0..n_out {
+        let grad = scratch[j] - if j == label { 1.0 } else { 0.0 };
+        bias[j] -= lr * grad;
+        let row = &mut weights[j * n_in..(j + 1) * n_in];
+        for (w, &x) in row.iter_mut().zip(input) {
+            *w -= lr * grad * x;
+        }
+    }
+    loss
+}
+
+/// ln(x) for x in (0, 1] via range reduction to the mantissa - enough for a loss readout.
+pub fn log_approx(x: f32) -> f32 {
+    if x <= 0.0 {
+        return f32::MIN;
+    }
+    // x = m * 2^e, m in [1,2): ln(x) = ln(m) + e*ln2
+    let bits = x.to_bits();
+    let e = ((bits >> 23) & 0xFF) as i32 - 127;
+    let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000); // mantissa in [1,2)
+    // ln(m) for m in [1,2] via a 3-term atanh series around 1
+    let t = (m - 1.0) / (m + 1.0);
+    let t2 = t * t;
+    let ln_m = 2.0 * t * (1.0 + t2 * (1.0 / 3.0 + t2 * (1.0 / 5.0)));
+    ln_m + e as f32 * core::f32::consts::LN_2
+}
+
 /// 1-D valid convolution: `out[t] = sum_k kernel[k] * input[t+k] + bias`.
 /// `out` must hold `input.len() - kernel.len() + 1` values.
 pub fn conv1d_valid(input: &[f32], kernel: &[f32], bias: f32, out: &mut [f32]) {
@@ -282,6 +329,50 @@ mod tests {
         lstm.step(&[1.0], &wx, &wh, &b);
         assert!(lstm.c[0] > 1.5); // ~1 accumulated twice
         assert!(lstm.h[0] >= h1); // saturating but non-decreasing
+    }
+
+    #[test]
+    fn log_approx_is_accurate() {
+        assert!(close(log_approx(1.0), 0.0, 1e-5));
+        assert!(close(log_approx(core::f32::consts::E), 1.0, 1e-3));
+        assert!(close(log_approx(0.5), -0.693_147, 1e-3));
+    }
+
+    #[test]
+    fn sgd_learns_a_linear_boundary_on_device_style() {
+        // 2-in, 2-out classifier learns sign(x0 - x1) by online SGD - the exact loop an
+        // MCU would run over a labelled stream (M140). Start from zero weights.
+        let mut w = [0.0f32; 4];
+        let mut b = [0.0f32; 2];
+        let mut scratch = [0.0f32; 2];
+        // a small deterministic training stream
+        let stream = [
+            ([2.0f32, -1.0], 0usize),
+            ([-1.0, 2.0], 1),
+            ([3.0, 0.0], 0),
+            ([0.0, 3.0], 1),
+            ([1.0, -2.0], 0),
+            ([-2.0, 1.0], 1),
+        ];
+        let mut first_loss = 0.0;
+        let mut last_loss = 0.0;
+        for epoch in 0..200 {
+            for (x, y) in stream.iter() {
+                let l = sgd_update(x, &mut w, &mut b, *y, 0.05, &mut scratch);
+                if epoch == 0 {
+                    first_loss = l;
+                }
+                last_loss = l;
+            }
+        }
+        // loss fell as the device learned
+        assert!(last_loss < first_loss * 0.2);
+        // and it now classifies held-out points correctly
+        let mut out = [0.0f32; 2];
+        dense(&[5.0, 1.0], &w, &b, &mut out);
+        assert_eq!(argmax(&out), 0); // x0 > x1
+        dense(&[1.0, 5.0], &w, &b, &mut out);
+        assert_eq!(argmax(&out), 1); // x1 > x0
     }
 
     #[test]
