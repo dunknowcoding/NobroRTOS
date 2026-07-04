@@ -59,11 +59,11 @@ const TXD: *mut u32 = (UART0 + 0x51C) as *mut u32;
 const BAUDRATE: *mut u32 = (UART0 + 0x524) as *mut u32;
 const CONFIG: *mut u32 = (UART0 + 0x56C) as *mut u32;
 
-/// Board pins (identity-mapped GPIO). The wiring doc labels D0 as the host-TX line
-/// (CC2530 RX), so TX=0/RX=1; the variant's Serial1 constants are the other way -
-/// if PONG stays silent on one assignment, flip these two.
-const TX_PIN: u32 = 0;
-const RX_PIN: u32 = 1;
+/// Board pins. The ProMicro/nice!nano edge order maps D0=P0.06, D1=P0.08 (bench-
+/// verified against the same board's D2=P0.17/D3=P0.20 SPI map); the wiring doc has
+/// D0 as the host-TX line (CC2530 RX) and D1 as host-RX.
+const TX_PIN: u32 = 6;
+const RX_PIN: u32 = 8;
 
 const GPIO_BASE: u32 = 0x5000_0000;
 
