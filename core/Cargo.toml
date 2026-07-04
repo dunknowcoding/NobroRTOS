@@ -71,6 +71,7 @@ members = [
     "apps/lease_demo",
     "apps/ble_adv_demo",
     "apps/db_persist_demo",
+    "apps/cc2530_link",
 ]
 
 [workspace.package]
