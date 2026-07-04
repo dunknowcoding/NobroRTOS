@@ -104,6 +104,38 @@ pub fn dense(input: &[f32], weights: &[f32], bias: &[f32], out: &mut [f32]) {
     }
 }
 
+/// Integer dense layer - our own CMSIS-NN-style int8 kernel (M137), no vendor lib.
+/// `input` and `weights` (`[OUT][IN]` row-major) are int8; accumulation is int32 and
+/// `bias` is already in accumulator units (`bias_real / (scale_in * scale_w)`).
+///
+/// For a softmax classifier the per-output scale is shared, so `argmax` over these int32
+/// accumulators equals `argmax` over the dequantized f32 logits - exact classification
+/// with no floating point in the hot loop (the point of an int8 kernel). Outputs are the
+/// raw accumulators; requantize downstream only if you need the actual logit values.
+pub fn dense_int8(input: &[i8], weights: &[i8], bias: &[i32], out: &mut [i32]) {
+    let n_in = input.len();
+    for (j, o) in out.iter_mut().enumerate() {
+        let row = &weights[j * n_in..(j + 1) * n_in];
+        let mut acc = bias[j];
+        for (w, x) in row.iter().zip(input) {
+            acc += i32::from(*w) * i32::from(*x);
+        }
+        *o = acc;
+    }
+}
+
+/// Symmetric int8 quantization of an f32 slice into `out`; returns the scale (real =
+/// q * scale). Mirrors the host nn_export quantizer so on-device and host agree.
+pub fn quantize_i8(values: &[f32], out: &mut [i8]) -> f32 {
+    let peak = values.iter().fold(0.0f32, |m, &v| m.max(if v < 0.0 { -v } else { v }));
+    let scale = if peak > 0.0 { peak / 127.0 } else { 1.0 };
+    for (o, &v) in out.iter_mut().zip(values) {
+        let q = (v / scale + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
+        *o = q.clamp(-127, 127) as i8;
+    }
+    scale
+}
+
 /// One online SGD step for a dense + softmax classifier on a single labelled example -
 /// the primitive for **on-device incremental learning** (M140). Runs a forward pass,
 /// then applies the cross-entropy gradient `(p - onehot(label))` to `weights`/`bias`
@@ -329,6 +361,47 @@ mod tests {
         lstm.step(&[1.0], &wx, &wh, &b);
         assert!(lstm.c[0] > 1.5); // ~1 accumulated twice
         assert!(lstm.h[0] >= h1); // saturating but non-decreasing
+    }
+
+    #[test]
+    fn int8_kernel_matches_the_float_path_argmax() {
+        // A 3-class classifier over 8 inputs: run f32 dense and our int8 kernel on the
+        // same quantized data, and confirm they pick the same class (the int8 kernel is
+        // exact for argmax). Weights chosen so class 2 wins for this input.
+        let w_f = [
+            0.1, -0.2, 0.3, 0.0, 0.1, -0.1, 0.2, 0.0, // class 0
+            -0.3, 0.1, 0.0, 0.2, -0.1, 0.1, 0.0, 0.1, // class 1
+            0.4, 0.3, -0.1, 0.2, 0.3, 0.2, 0.1, 0.3, // class 2 (strong)
+        ];
+        let x_f = [0.9, 0.8, 0.1, 0.7, 0.6, 0.5, 0.2, 0.9];
+
+        // float reference
+        let mut out_f = [0.0f32; 3];
+        dense(&x_f, &w_f, &[0.0; 3], &mut out_f);
+        let want = argmax(&out_f);
+
+        // quantize + int8 kernel (bias 0)
+        let mut w_q = [0i8; 24];
+        let mut x_q = [0i8; 8];
+        quantize_i8(&w_f, &mut w_q);
+        quantize_i8(&x_f, &mut x_q);
+        let mut acc = [0i32; 3];
+        dense_int8(&x_q, &w_q, &[0; 3], &mut acc);
+        let got = acc.iter().enumerate().max_by_key(|(_, &v)| v).unwrap().0;
+
+        assert_eq!(want, 2);
+        assert_eq!(got, want); // int8 kernel agrees with the float path
+    }
+
+    #[test]
+    fn quantize_i8_is_symmetric_and_bounded() {
+        let vals = [0.0f32, 1.0, -1.0, 0.5, -0.5];
+        let mut q = [0i8; 5];
+        let scale = quantize_i8(&vals, &mut q);
+        assert_eq!(q[0], 0);
+        assert_eq!(q[1], 127); // peak maps to full scale
+        assert_eq!(q[2], -127);
+        assert!((q[3] as f32 * scale - 0.5).abs() <= scale);
     }
 
     #[test]
