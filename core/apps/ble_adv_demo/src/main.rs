@@ -15,7 +15,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_iot::BleAdvBuilder;
+use nobro_iot::{link_catalog, BleAdvBuilder, IotLinkState, IotTransport, LinkDescriptor};
 use panic_halt as _;
 
 const RADIO_BASE: usize = 0x4000_1000;
@@ -87,30 +87,58 @@ fn ble_send(pdu: &[u8], freq: u32, white_iv: u32) {
     }
 }
 
-#[entry]
-fn main() -> ! {
-    start_hfxo();
-    ble_radio_init();
+/// The nRF52840 BLE-advertising backend of `nobro_iot::IotTransport` (M219): mounting
+/// it owns the RADIO; `send` broadcasts one manufacturer-data payload on all three
+/// advertising channels through the crate's PDU builder. Broadcast-only, so `recv`
+/// never delivers.
+struct BleAdvRadio {
+    adv_addr: [u8; 6],
+}
 
-    // The PDU layout (name AD + manufacturer AD, test company 0xFFFF) comes from
-    // nobro_iot::BleAdvBuilder - the crate is the single source of the on-air format
-    // (M215); this app only supplies the radio and the telemetry payload.
-    let adv_addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3]; // random static (LE)
-    let builder = BleAdvBuilder { adv_addr: &adv_addr, name: b"NOBRO", company_id: 0xFFFF };
+impl BleAdvRadio {
+    fn mount(adv_addr: [u8; 6]) -> Self {
+        start_hfxo();
+        ble_radio_init();
+        BleAdvRadio { adv_addr }
+    }
+}
 
-    let mut pdu = [0u8; 39];
+impl IotTransport for BleAdvRadio {
+    fn descriptor(&self) -> LinkDescriptor {
+        link_catalog::BLE_ADV
+    }
+    fn link_state(&mut self) -> IotLinkState {
+        IotLinkState::Up // advertising needs no join
+    }
+    fn send(&mut self, payload: &[u8]) -> bool {
+        let builder =
+            BleAdvBuilder { adv_addr: &self.adv_addr, name: b"NOBRO", company_id: 0xFFFF };
+        let mut pdu = [0u8; 39];
+        let Some(len) = builder.build(payload, &mut pdu) else {
+            return false;
+        };
+        for (freq, iv) in ADV_CHANNELS {
+            ble_send(&pdu[..len], freq, iv);
+        }
+        true
+    }
+    fn recv(&mut self, _buf: &mut [u8]) -> usize {
+        0
+    }
+}
+
+/// The app side is radio-agnostic: it talks to any `IotTransport`, so swapping BLE
+/// advertising for WiFi TCP or the proprietary radio is a different `mount`, not a
+/// different app.
+fn telemetry_loop(radio: &mut impl IotTransport) -> ! {
     let mut beat: u32 = 0;
     loop {
         beat = beat.wrapping_add(1);
         let mut payload = [0u8; 6];
         payload[0..4].copy_from_slice(&beat.to_le_bytes());
         payload[4] = 1; // status: alive/all_pass
-        let len = builder.build(&payload, &mut pdu).unwrap_or(0);
-
-        if len > 0 {
-            for (freq, iv) in ADV_CHANNELS {
-                ble_send(&pdu[..len], freq, iv);
-            }
+        if radio.link_state() == IotLinkState::Up {
+            let _ = radio.send(&payload);
         }
 
         // ~100 ms advertising interval
@@ -118,4 +146,10 @@ fn main() -> ! {
             cortex_m::asm::nop();
         }
     }
+}
+
+#[entry]
+fn main() -> ! {
+    let mut radio = BleAdvRadio::mount([0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3]);
+    telemetry_loop(&mut radio)
 }
