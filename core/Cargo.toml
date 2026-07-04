@@ -70,6 +70,7 @@ members = [
     "apps/kv_store_demo",
     "apps/lease_demo",
     "apps/ble_adv_demo",
+    "apps/db_persist_demo",
 ]
 
 [workspace.package]
