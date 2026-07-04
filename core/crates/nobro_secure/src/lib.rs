@@ -323,6 +323,160 @@ impl OtaAgent {
     }
 }
 
+// ---------------------------------------------------------------- secure boot (M173)
+
+/// The verdict from checking a firmware image before it is allowed to run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BootVerdict {
+    /// Measurement, signature, and version all check out - safe to boot.
+    Accept,
+    /// The image bytes do not match the signed measurement (tampered).
+    RejectTampered,
+    /// The signature does not verify under the boot key (forged / wrong key).
+    RejectSignature,
+    /// The image version is below the anti-rollback floor.
+    RejectRollback,
+}
+
+/// Secure-boot verification (M173): gate a firmware image on a signature over its
+/// SHA-256 measurement plus a monotonic version, using our own HMAC-SHA256 - no vendor
+/// secure-boot infra. The signing authority holds the boot key and emits
+/// `sig = HMAC(boot_key, sha256(image) || version_le)`; the device (sharing the key via
+/// [`KeyStore`]) recomputes and refuses to run an image that is tampered, forged, or
+/// rolled back. This is the verification core; the jump-to-image step is a bootloader's
+/// job (out of scope for a probe-less bench, but the security decision lives here).
+pub struct SecureBoot {
+    min_version: u32,
+}
+
+impl SecureBoot {
+    pub const fn new(min_version: u32) -> Self {
+        SecureBoot { min_version }
+    }
+
+    /// The measurement (SHA-256) an authority signs and a device recomputes.
+    pub fn measure(image: &[u8]) -> [u8; 32] {
+        sha256(image)
+    }
+
+    /// Authority-side: sign `measurement || version` with the boot key.
+    pub fn sign(boot_key: &[u8; 32], measurement: &[u8; 32], version: u32) -> [u8; 32] {
+        let mut msg = [0u8; 36];
+        msg[..32].copy_from_slice(measurement);
+        msg[32..36].copy_from_slice(&version.to_le_bytes());
+        hmac_sha256(boot_key, &msg)
+    }
+
+    /// Device-side: fully verify an image before boot. Checks the measurement matches
+    /// (implicit in re-signing over the recomputed hash), the signature, and rollback.
+    pub fn verify(
+        &self,
+        boot_key: &[u8; 32],
+        image: &[u8],
+        version: u32,
+        signed_measurement: &[u8; 32],
+        sig: &[u8; 32],
+    ) -> BootVerdict {
+        // 1. the image must hash to the measurement the signature covers
+        let actual = Self::measure(image);
+        if !verify_tag(&actual, signed_measurement) {
+            return BootVerdict::RejectTampered;
+        }
+        // 2. the signature must verify under the boot key
+        let expect = Self::sign(boot_key, signed_measurement, version);
+        if !verify_tag(&expect, sig) {
+            return BootVerdict::RejectSignature;
+        }
+        // 3. anti-rollback: version must be at or above the floor
+        if version < self.min_version {
+            return BootVerdict::RejectRollback;
+        }
+        BootVerdict::Accept
+    }
+
+    /// Advance the rollback floor after a verified image is committed as the new active
+    /// firmware (so an older signed image can no longer be booted).
+    pub fn commit(&mut self, version: u32) {
+        if version > self.min_version {
+            self.min_version = version;
+        }
+    }
+
+    pub fn min_version(&self) -> u32 {
+        self.min_version
+    }
+}
+
+#[cfg(test)]
+mod secure_boot_tests {
+    use super::*;
+
+    const BOOT_KEY: [u8; 32] = [0x5A; 32];
+    // pinned + mirrored in tools/sign_firmware.py so host and device signers agree
+    const PINNED_SIG4: [u8; 4] = [0xBB, 0x49, 0x2F, 0x39];
+
+    #[test]
+    fn accepts_a_correctly_signed_image() {
+        let image = b"NOBRO firmware v2 payload bytes....";
+        let m = SecureBoot::measure(image);
+        let sig = SecureBoot::sign(&BOOT_KEY, &m, 2);
+        let sb = SecureBoot::new(1);
+        assert_eq!(sb.verify(&BOOT_KEY, image, 2, &m, &sig), BootVerdict::Accept);
+    }
+
+    #[test]
+    fn rejects_a_tampered_image() {
+        let image = b"NOBRO firmware v2 payload bytes....";
+        let m = SecureBoot::measure(image);
+        let sig = SecureBoot::sign(&BOOT_KEY, &m, 2);
+        let sb = SecureBoot::new(1);
+        let tampered = b"NOBRO firmware v2 payload byteXX...."; // one byte changed
+        assert_eq!(
+            sb.verify(&BOOT_KEY, tampered, 2, &m, &sig),
+            BootVerdict::RejectTampered
+        );
+    }
+
+    #[test]
+    fn rejects_a_forged_signature_or_wrong_key() {
+        let image = b"payload";
+        let m = SecureBoot::measure(image);
+        let sig = SecureBoot::sign(&BOOT_KEY, &m, 3);
+        let sb = SecureBoot::new(1);
+        let attacker_key = [0x11u8; 32];
+        assert_eq!(
+            sb.verify(&attacker_key, image, 3, &m, &sig),
+            BootVerdict::RejectSignature
+        );
+        let mut bad_sig = sig;
+        bad_sig[0] ^= 1;
+        assert_eq!(
+            sb.verify(&BOOT_KEY, image, 3, &m, &bad_sig),
+            BootVerdict::RejectSignature
+        );
+    }
+
+    #[test]
+    fn enforces_anti_rollback() {
+        let image = b"old firmware";
+        let m = SecureBoot::measure(image);
+        let sig = SecureBoot::sign(&BOOT_KEY, &m, 2); // validly signed, but old
+        let mut sb = SecureBoot::new(1);
+        sb.commit(5); // we are now running v5
+        assert_eq!(sb.min_version(), 5);
+        assert_eq!(sb.verify(&BOOT_KEY, image, 2, &m, &sig), BootVerdict::RejectRollback);
+    }
+
+    #[test]
+    fn sign_matches_a_pinned_vector_for_host_parity() {
+        // The host signer (tools/sign_firmware.py) pins the same vector so the two sides
+        // agree byte-for-byte; a divergence breaks a build, not a deployment.
+        let m = SecureBoot::measure(b"nobro");
+        let sig = SecureBoot::sign(&[0x5A; 32], &m, 1);
+        assert_eq!(&sig[..4], &PINNED_SIG4);
+    }
+}
+
 #[cfg(test)]
 mod ota_tests {
     use super::*;
