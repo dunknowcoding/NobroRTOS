@@ -1,0 +1,17 @@
+[package]
+name = "nobro-port-avr-nano"
+version = "0.1.0"
+edition = "2021"
+
+# NobroRTOS kernel-lite on a classic AVR Nano (ATmega328P, 8-bit, 2 KB RAM) - M88.
+# Everything is our own: the UART driver is raw UBRR/UCSR/UDR registers, the runtime is
+# avr-gcc's crt, and the checks are a reduced kernel-lite subset sized for 2 KB. Build
+# with nightly (build-std): see .cargo/config.toml. Fifth CPU architecture family.
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[workspace]
