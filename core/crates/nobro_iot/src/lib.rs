@@ -118,10 +118,38 @@ pub struct BleAdvBuilder<'a> {
     pub company_id: u16,
 }
 
+/// Legacy advertising PDU kind, selecting the on-air header (Bluetooth Core, LE 1M).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdvKind {
+    /// ADV_IND: connectable + scannable undirected (a central may connect).
+    Connectable,
+    /// ADV_SCAN_IND: scannable undirected (scan-response allowed, no connect).
+    Scannable,
+    /// ADV_NONCONN_IND: broadcast only (the beacon shape ble_adv_demo shipped).
+    NonConnectable,
+}
+
+impl AdvKind {
+    /// PDU header byte (PDU type in bits 0-3) with TxAdd = random.
+    const fn header(self) -> u8 {
+        match self {
+            AdvKind::Connectable => 0x40,    // ADV_IND
+            AdvKind::Scannable => 0x46,      // ADV_SCAN_IND
+            AdvKind::NonConnectable => 0x42, // ADV_NONCONN_IND
+        }
+    }
+}
+
 impl<'a> BleAdvBuilder<'a> {
-    /// Assemble the PDU into `out` with `payload` as the manufacturer data body.
-    /// Returns the total PDU length, or None when it would exceed the legacy budget.
+    /// Assemble a non-connectable (beacon) PDU - the shape verified on air in M123.
     pub fn build(&self, payload: &[u8], out: &mut [u8]) -> Option<usize> {
+        self.build_as(AdvKind::NonConnectable, payload, out)
+    }
+
+    /// Assemble an advertising PDU of the chosen [`AdvKind`] with `payload` as the
+    /// manufacturer-data body. Returns the total PDU length, or None if it would exceed
+    /// the 31-byte legacy AdvData budget or `out`.
+    pub fn build_as(&self, kind: AdvKind, payload: &[u8], out: &mut [u8]) -> Option<usize> {
         let name_ad = 2 + self.name.len(); // len byte counts type + body
         let mfr_ad = 2 + 2 + payload.len();
         let adv_data = name_ad + mfr_ad;
@@ -132,7 +160,7 @@ impl<'a> BleAdvBuilder<'a> {
         if out.len() < total {
             return None;
         }
-        out[0] = 0x42; // ADV_NONCONN_IND, TxAdd = random
+        out[0] = kind.header();
         out[1] = (6 + adv_data) as u8;
         out[2..8].copy_from_slice(self.adv_addr);
         let mut pos = 8;
@@ -144,6 +172,24 @@ impl<'a> BleAdvBuilder<'a> {
         out[pos + 1] = 0xFF; // Manufacturer Specific Data
         out[pos + 2..pos + 4].copy_from_slice(&self.company_id.to_le_bytes());
         out[pos + 4..pos + 4 + payload.len()].copy_from_slice(payload);
+        Some(total)
+    }
+
+    /// Assemble a SCAN_RSP PDU (header 0x44) carrying extra AD data a central fetches
+    /// after a scan request - lets a scannable advertiser expose more than 31 bytes
+    /// total across ADV + SCAN_RSP. `ad` is raw AD structures (each: len, type, body).
+    pub fn build_scan_response(&self, ad: &[u8], out: &mut [u8]) -> Option<usize> {
+        if ad.len() > 31 {
+            return None;
+        }
+        let total = 2 + 6 + ad.len();
+        if out.len() < total {
+            return None;
+        }
+        out[0] = 0x44; // SCAN_RSP, TxAdd = random
+        out[1] = (6 + ad.len()) as u8;
+        out[2..8].copy_from_slice(self.adv_addr);
+        out[8..8 + ad.len()].copy_from_slice(ad);
         Some(total)
     }
 }
@@ -379,6 +425,39 @@ mod tests {
         assert_eq!(pdu[16], 0xFF);
         assert_eq!(&pdu[17..19], &[0xFF, 0xFF]);
         assert_eq!(&pdu[19..24], &payload);
+    }
+
+    #[test]
+    fn adv_kind_selects_the_on_air_header() {
+        let addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3];
+        let b = BleAdvBuilder { adv_addr: &addr, name: b"NOBRO", company_id: 0xFFFF };
+        let mut pdu = [0u8; 39];
+        let payload = [1u8, 0, 0, 0, 1];
+        // non-connectable (default) keeps the M123-verified 0x42 header
+        assert_eq!(b.build(&payload, &mut pdu).unwrap(), 24);
+        assert_eq!(pdu[0], 0x42);
+        // connectable ADV_IND
+        b.build_as(AdvKind::Connectable, &payload, &mut pdu).unwrap();
+        assert_eq!(pdu[0], 0x40);
+        // scannable ADV_SCAN_IND
+        b.build_as(AdvKind::Scannable, &payload, &mut pdu).unwrap();
+        assert_eq!(pdu[0], 0x46);
+        // payload + addressing are identical regardless of kind
+        assert_eq!(&pdu[2..8], &addr);
+        assert_eq!(&pdu[19..24], &payload);
+    }
+
+    #[test]
+    fn scan_response_carries_extra_ad() {
+        let addr = [1u8, 2, 3, 4, 5, 0xC3];
+        let b = BleAdvBuilder { adv_addr: &addr, name: b"N", company_id: 0 };
+        let mut rsp = [0u8; 39];
+        // one AD: Tx Power Level (type 0x0A) = -4 dBm
+        let ad = [0x02, 0x0A, 0xFC];
+        let n = b.build_scan_response(&ad, &mut rsp).unwrap();
+        assert_eq!(rsp[0], 0x44); // SCAN_RSP
+        assert_eq!(n, 2 + 6 + 3);
+        assert_eq!(&rsp[8..11], &ad);
     }
 
     #[test]
