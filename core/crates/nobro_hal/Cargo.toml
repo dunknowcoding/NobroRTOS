@@ -22,3 +22,7 @@ contract-only = []
 # Board packages are mutually exclusive and depend on platform-nrf52840.
 board-promicro-nosd = ["platform-nrf52840"]
 board-nicenano-s140 = ["platform-nrf52840"]
+
+[dev-dependencies]
+# host-side critical_section impl so lease invariant tests link + run on x86
+critical-section = { version = "1.2", features = ["std"] }

@@ -111,6 +111,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
+ "nobro-iot",
  "panic-halt",
 ]
 
