@@ -54,13 +54,16 @@ const SYSCFG_DCFM: u16 = 1 << 6;
 const SYSCFG_DPRPU: u16 = 1 << 4;
 const SYSCFG_USBE: u16 = 1 << 0;
 const SYSCFG_DRPD: u16 = 1 << 5;
+// INTENB0 bits
+const IE_DVSE: u16 = 1 << 12;
+const IE_CTRE: u16 = 1 << 11;
+const IE_BEMPE: u16 = 1 << 10;
+const IE_BRDYE: u16 = 1 << 8;
 // INTSTS0 bits
 const IS_VBSTS: u16 = 1 << 7;
 const IS_DVST: u16 = 1 << 12;
 const IS_CTRT: u16 = 1 << 11;
 const IS_VALID: u16 = 1 << 3;
-const CTSQ_MASK: u16 = 0x7;
-const CTSQ_CONTROL_READ_DATA: u16 = 1;
 const DVSQ_MASK: u16 = 0x70;
 const DVSQ_DEFAULT: u16 = 0x10;
 const DVSQ_ADDRESSED: u16 = 0x20;
@@ -167,9 +170,12 @@ impl RaUsbfsCdc {
                 DCPMAXP.write_volatile(64); // EP0 max packet
                 PHYSLEW.write_volatile(0x5);
                 DPUSR0R_FS.write_volatile(DPUSR0R_FS.read_volatile() & !(1 << 4));
-                INTENB0.write_volatile(0);
+                INTSTS0.write_volatile(0);
+                BRDYSTS.write_volatile(0);
+                BEMPSTS.write_volatile(0);
                 BEMPENB.write_volatile(1); // PIPE0 empty status drives long descriptors
-                                           // Assert the D+ pull-up so the host begins enumeration.
+                INTENB0.write_volatile(IE_DVSE | IE_CTRE | IE_BEMPE | IE_BRDYE);
+                // Assert the D+ pull-up so the host begins enumeration.
                 SYSCFG.write_volatile(SYSCFG.read_volatile() | SYSCFG_DPRPU);
             }
         }
@@ -240,6 +246,9 @@ impl RaUsbfsCdc {
         self.ctrl_len = len.min(data.len());
         self.ctrl_pos = 0;
         self.ctrl_continue();
+        unsafe {
+            DCPCTR.write_volatile(PID_BUF);
+        }
     }
 
     fn ctrl_continue(&mut self) {
@@ -379,11 +388,12 @@ impl UsbStack for RaUsbfsCdc {
                     _ => {}
                 }
             }
-            // A setup packet is valid during the control-read data stage.
-            if (is & IS_CTRT != 0)
-                && (is & IS_VALID != 0)
-                && (is & CTSQ_MASK) == CTSQ_CONTROL_READ_DATA
-            {
+            // VALID marks a received setup packet. Do not filter by CTSQ here:
+            // Windows may issue descriptor/status requests while the controller reports
+            // a different control-transfer phase, and the request registers still hold
+            // the authoritative setup packet.
+            if (is & IS_CTRT != 0) && (is & IS_VALID != 0) {
+                INTSTS0.write_volatile(!IS_CTRT);
                 self.handle_setup();
             }
             // EP0 can hold one 64-byte packet. Continue long descriptors when the
