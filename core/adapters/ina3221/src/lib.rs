@@ -26,7 +26,11 @@ pub struct Ina3221<I> {
 
 impl<I: I2c> Ina3221<I> {
     pub fn new(i2c: I, addr: u8, shunt_mohm: u32) -> Self {
-        Self { i2c, addr, shunt_mohm }
+        Self {
+            i2c,
+            addr,
+            shunt_mohm,
+        }
     }
 
     fn read_reg(&mut self, reg: u8) -> Result<u16, I::Error> {
@@ -54,7 +58,11 @@ impl<I: I2c> Ina3221<I> {
     }
 
     pub fn read_all(&mut self) -> Result<[InaChannel; 3], I::Error> {
-        Ok([self.read_channel(0)?, self.read_channel(1)?, self.read_channel(2)?])
+        Ok([
+            self.read_channel(0)?,
+            self.read_channel(1)?,
+            self.read_channel(2)?,
+        ])
     }
 }
 

@@ -28,7 +28,12 @@ pub struct Icm45686<I> {
 
 impl<I: I2c> Icm45686<I> {
     pub fn new(i2c: I, addr: u8, accel_fs_g: i32, gyro_fs_dps: i32) -> Self {
-        Self { i2c, addr, accel_fs_g, gyro_fs_dps }
+        Self {
+            i2c,
+            addr,
+            accel_fs_g,
+            gyro_fs_dps,
+        }
     }
     fn read(&mut self, reg: u8, buf: &mut [u8]) -> Result<(), I::Error> {
         self.i2c.write_read(self.addr, &[reg], buf)

@@ -94,9 +94,9 @@ impl ServoProfile {
 pub struct MotorProfile {
     pub name: &'static str,
     pub kind: ActuatorKind,
-    pub min_us: u16,  // full reverse (bidir ESC) or idle (unidir)
-    pub max_us: u16,  // full forward
-    pub arm_us: u16,  // pulse to hold during the ESC arm delay
+    pub min_us: u16, // full reverse (bidir ESC) or idle (unidir)
+    pub max_us: u16, // full forward
+    pub arm_us: u16, // pulse to hold during the ESC arm delay
     pub bidirectional: bool,
     pub reversed: bool,
 }
@@ -284,7 +284,10 @@ impl<const N: usize> Default for SensorRegistry<N> {
 
 impl<const N: usize> SensorRegistry<N> {
     pub const fn new() -> Self {
-        Self { items: [None; N], len: 0 }
+        Self {
+            items: [None; N],
+            len: 0,
+        }
     }
     pub fn register(&mut self, d: SensorDescriptor) -> bool {
         if self.len >= N {
@@ -500,10 +503,16 @@ pub mod device_catalog {
         reset_us: 0,
     };
 
-    pub const RELAY_ACTIVE_LOW: RelayProfile =
-        RelayProfile { name: "generic active-low relay board", active_high: false, settle_ms: 10 };
-    pub const RELAY_ACTIVE_HIGH: RelayProfile =
-        RelayProfile { name: "generic active-high relay board", active_high: true, settle_ms: 10 };
+    pub const RELAY_ACTIVE_LOW: RelayProfile = RelayProfile {
+        name: "generic active-low relay board",
+        active_high: false,
+        settle_ms: 10,
+    };
+    pub const RELAY_ACTIVE_HIGH: RelayProfile = RelayProfile {
+        name: "generic active-high relay board",
+        active_high: true,
+        settle_ms: 10,
+    };
 
     pub const OLED_SSD1306_128X64: DisplayProfile = DisplayProfile {
         name: "SSD1306 128x64",
@@ -522,11 +531,22 @@ pub mod device_catalog {
         col_offset: 2,
     };
 
-    pub const GPS_NEO6M: GpsProfile = GpsProfile { name: "u-blox NEO-6M", baud: 9600, update_hz: 5 };
-    pub const GPS_NEO8M: GpsProfile = GpsProfile { name: "u-blox NEO-M8N", baud: 9600, update_hz: 10 };
+    pub const GPS_NEO6M: GpsProfile = GpsProfile {
+        name: "u-blox NEO-6M",
+        baud: 9600,
+        update_hz: 5,
+    };
+    pub const GPS_NEO8M: GpsProfile = GpsProfile {
+        name: "u-blox NEO-M8N",
+        baud: 9600,
+        update_hz: 10,
+    };
 
-    pub const RANGER_HCSR04: RangerProfile =
-        RangerProfile { name: "HC-SR04 ultrasonic", min_mm: 20, max_mm: 4000 };
+    pub const RANGER_HCSR04: RangerProfile = RangerProfile {
+        name: "HC-SR04 ultrasonic",
+        min_mm: 20,
+        max_mm: 4000,
+    };
 }
 
 #[cfg(test)]
@@ -540,7 +560,7 @@ mod tests {
         assert_eq!(sg.angle_to_pulse(180), 2400);
         assert_eq!(sg.angle_to_pulse(90), 1450); // midpoint
         assert_eq!(sg.angle_to_pulse(999), 2400); // clamp high
-        // a different brand yields different pulses from the SAME angle - data-driven
+                                                  // a different brand yields different pulses from the SAME angle - data-driven
         let mg = catalog::SERVO_MG996R;
         assert_eq!(mg.angle_to_pulse(0), 1000);
         assert_eq!(mg.angle_to_pulse(120), 2000);
@@ -597,7 +617,6 @@ mod tests {
     }
 }
 
-
 // ---------------------------------------------------------------- board modules (M190)
 
 /// A dev board as a mountable module: identity + capacity + the platform feature the HAL
@@ -629,7 +648,10 @@ impl<const N: usize> Default for BoardRegistry<N> {
 
 impl<const N: usize> BoardRegistry<N> {
     pub const fn new() -> Self {
-        Self { items: [None; N], len: 0 }
+        Self {
+            items: [None; N],
+            len: 0,
+        }
     }
     pub fn register(&mut self, b: BoardModule) -> bool {
         if self.len >= N || self.find(b.board_id).is_some() {
@@ -730,7 +752,7 @@ mod m203_tests {
         assert_eq!(nema.angle_to_steps(-90_000), -800);
         assert_eq!(nema.rpm_to_sps(60), 3200); // 1 rev/s
         assert_eq!(nema.rpm_to_sps(100_000), nema.max_sps); // clamped
-        // the geared 28BYJ-48 needs a different step count for the same angle
+                                                            // the geared 28BYJ-48 needs a different step count for the same angle
         let byj = device_catalog::STEPPER_28BYJ48;
         assert_eq!(byj.angle_to_steps(360_000), 2048);
     }
@@ -755,7 +777,10 @@ mod m203_tests {
 
     #[test]
     fn display_geometry_drives_framebuffer_size() {
-        assert_eq!(device_catalog::OLED_SSD1306_128X64.framebuffer_bytes(), 1024);
+        assert_eq!(
+            device_catalog::OLED_SSD1306_128X64.framebuffer_bytes(),
+            1024
+        );
         assert_eq!(device_catalog::OLED_SH1106_128X64.col_offset, 2);
     }
 

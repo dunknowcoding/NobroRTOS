@@ -3,10 +3,10 @@
 //! the register sequences are ported from the RA hardware manual and cross-checked
 //! against TinyUSB's proven `dcd_rusb2` driver. Like every nobro_usb backend it presents
 //! the common [`UsbStack`] trait, so the RA4M1 port reports over its own native USB
-//! exactly the way board5 does over nrf-usbd or the C3 over USB-Serial-JTAG.
+//! consistently with the nRF USBD and ESP32 USB-Serial-JTAG backends.
 //!
 //! The peripheral is pipe-based: PIPE0 is the default control pipe (enumeration), and we
-//! use PIPE1 (bulk IN) + PIPE2 (bulk OUT) for the CDC data endpoints. Enumeration is a
+//! use PIPE1 (bulk OUT) + PIPE2 (bulk IN) for the CDC data endpoints. Enumeration is a
 //! small state machine driven from `poll()`; `stage()` exposes how far it has progressed
 //! so a probe-less board can blink the stage on its LED when USB is silent.
 
@@ -19,7 +19,6 @@ macro_rules! r16 {
     };
 }
 r16!(SYSCFG, 0x00);
-r16!(DVSTCTR0, 0x08);
 const CFIFO: *mut u16 = (BASE + 0x14) as *mut u16;
 const CFIFO8: *mut u8 = (BASE + 0x14) as *mut u8;
 r16!(CFIFOSEL, 0x20);
@@ -29,7 +28,6 @@ r16!(BEMPENB, 0x3A);
 r16!(INTSTS0, 0x40);
 r16!(BRDYSTS, 0x46);
 r16!(BEMPSTS, 0x4A);
-r16!(USBADDR, 0x50);
 r16!(USBREQ, 0x54);
 r16!(USBVAL, 0x56);
 r16!(USBINDX, 0x58);
@@ -39,10 +37,16 @@ r16!(DCPCTR, 0x60);
 r16!(PIPESEL, 0x64);
 r16!(PIPECFG, 0x68);
 r16!(PIPEMAXP, 0x6C);
+r16!(PIPEPERI, 0x6E);
 const PIPE1CTR: *mut u16 = (BASE + 0x70) as *mut u16;
 const PIPE2CTR: *mut u16 = (BASE + 0x72) as *mut u16;
+const PIPE3CTR: *mut u16 = (BASE + 0x74) as *mut u16;
+const USBMC: *mut u16 = (BASE + 0xCC) as *mut u16;
+const PHYSLEW: *mut u32 = (BASE + 0xF0) as *mut u32;
+const DPUSR0R_FS: *mut u32 = (BASE + 0x400) as *mut u32;
 
 const MSTPCRB: *mut u32 = 0x4004_7000 as *mut u32;
+const PRCR: *mut u16 = 0x4001_E3FE as *mut u16;
 
 // SYSCFG bits
 const SYSCFG_SCKE: u16 = 1 << 10;
@@ -52,12 +56,14 @@ const SYSCFG_USBE: u16 = 1 << 0;
 const SYSCFG_DRPD: u16 = 1 << 5;
 // INTSTS0 bits
 const IS_VBSTS: u16 = 1 << 7;
-const IS_DVST: u16 = 1 << 6;
-const IS_CTRT: u16 = 1 << 15;
+const IS_DVST: u16 = 1 << 12;
+const IS_CTRT: u16 = 1 << 11;
 const IS_VALID: u16 = 1 << 3;
 const CTSQ_MASK: u16 = 0x7;
-// DVSTCTR0
-const RHST_MASK: u16 = 0x7;
+const CTSQ_CONTROL_READ_DATA: u16 = 1;
+const DVSQ_MASK: u16 = 0x70;
+const DVSQ_DEFAULT: u16 = 0x10;
+const DVSQ_ADDRESSED: u16 = 0x20;
 // CFIFOSEL / CFIFOCTR
 const CF_RCNT: u16 = 1 << 15;
 const CF_REW: u16 = 1 << 14;
@@ -117,13 +123,20 @@ pub struct RaUsbfsCdc {
     rx: [u8; 64],
     rx_len: usize,
     rx_pos: usize,
+    ctrl_data: &'static [u8],
+    ctrl_len: usize,
+    ctrl_pos: usize,
 }
 
 impl RaUsbfsCdc {
     pub fn mount(cfg: &UsbConfig) -> Self {
+        let mut controller_ready = false;
         unsafe {
-            // release USBFS from module-stop (MSTPCRB bit 11)
-            MSTPCRB.write_volatile(MSTPCRB.read_volatile() & !(1 << 11));
+            // MSTPCRB is protected by PRCR.PRC1. Writes made while it is locked are
+            // silently ignored, leaving USBFS stopped and SCKE permanently clear.
+            PRCR.write_volatile(0xA502);
+            MSTPCRB.write_volatile(MSTPCRB.read_volatile() & !((1 << 11) | (1 << 12)));
+            PRCR.write_volatile(0xA500);
             // Force a disconnect edge first: the bootloader may have left its own CDC
             // enumerated, so drop the D+ pull-up and hold long enough for the host to
             // notice the unplug before we re-enumerate as our device. (This drop is also
@@ -136,22 +149,44 @@ impl RaUsbfsCdc {
                 spin += 1;
             }
             // device controller bring-up (dcd_init, full-speed path)
+            USBMC.write_volatile((1 << 7) | 1); // VDCEN + VDDUSBE: power the full-speed PHY
+            for _ in 0..50_000 {
+                core::hint::spin_loop();
+            }
             SYSCFG.write_volatile(SYSCFG_SCKE);
-            while SYSCFG.read_volatile() & SYSCFG_SCKE == 0 {}
-            SYSCFG.write_volatile((SYSCFG.read_volatile() & !SYSCFG_DRPD & !SYSCFG_DCFM) | SYSCFG_USBE);
-            DCPMAXP.write_volatile(64); // EP0 max packet
-            INTENB0.write_volatile(0);
-            BEMPENB.write_volatile(0);
-            // assert the D+ pull-up so the host begins enumeration (dcd_connect)
-            SYSCFG.write_volatile(SYSCFG.read_volatile() | SYSCFG_DPRPU);
+            for _ in 0..100_000 {
+                if SYSCFG.read_volatile() & SYSCFG_SCKE != 0 {
+                    controller_ready = true;
+                    break;
+                }
+            }
+            if controller_ready {
+                SYSCFG.write_volatile(
+                    (SYSCFG.read_volatile() & !SYSCFG_DRPD & !SYSCFG_DCFM) | SYSCFG_USBE,
+                );
+                DCPMAXP.write_volatile(64); // EP0 max packet
+                PHYSLEW.write_volatile(0x5);
+                DPUSR0R_FS.write_volatile(DPUSR0R_FS.read_volatile() & !(1 << 4));
+                INTENB0.write_volatile(0);
+                BEMPENB.write_volatile(1); // PIPE0 empty status drives long descriptors
+                                           // Assert the D+ pull-up so the host begins enumeration.
+                SYSCFG.write_volatile(SYSCFG.read_volatile() | SYSCFG_DPRPU);
+            }
         }
         RaUsbfsCdc {
             _cfg: *cfg,
-            stage: Stage::Attached,
+            stage: if controller_ready {
+                Stage::Attached
+            } else {
+                Stage::PoweredOff
+            },
             pending_addr: 0,
             rx: [0; 64],
             rx_len: 0,
             rx_pos: 0,
+            ctrl_data: &[],
+            ctrl_len: 0,
+            ctrl_pos: 0,
         }
     }
 
@@ -162,19 +197,30 @@ impl RaUsbfsCdc {
 
     // ---- control pipe (PIPE0) helpers via CFIFO ----
 
-    fn ctrl_select_read(&self) {
-        unsafe {
-            CFIFOSEL.write_volatile(CF_RCNT | 0); // CURPIPE=0 (DCP), read direction
-            while CFIFOSEL.read_volatile() & CF_ISEL != 0 {}
-        }
-    }
-
-    fn ctrl_write_data(&self, data: &[u8]) {
+    fn ctrl_write_packet(&self, data: &[u8]) -> bool {
         unsafe {
             CFIFOSEL.write_volatile(CF_ISEL | 0); // DCP, write direction
-            while CFIFOSEL.read_volatile() & CF_ISEL == 0 {}
+            let mut selected = false;
+            for _ in 0..10_000 {
+                if CFIFOSEL.read_volatile() & CF_ISEL != 0 {
+                    selected = true;
+                    break;
+                }
+            }
+            if !selected {
+                return false;
+            }
             CFIFOCTR.write_volatile(CF_BCLR); // clear buffer
-            while CFIFOCTR.read_volatile() & CF_FRDY == 0 {}
+            let mut ready = false;
+            for _ in 0..10_000 {
+                if CFIFOCTR.read_volatile() & CF_FRDY != 0 {
+                    ready = true;
+                    break;
+                }
+            }
+            if !ready {
+                return false;
+            }
             let mut i = 0;
             while i + 1 < data.len() {
                 CFIFO.write_volatile(u16::from(data[i]) | (u16::from(data[i + 1]) << 8));
@@ -184,6 +230,25 @@ impl RaUsbfsCdc {
                 CFIFO8.write_volatile(data[i]);
             }
             CFIFOCTR.write_volatile(CF_BVAL); // mark buffer valid to send
+            true
+        }
+    }
+
+    fn ctrl_start(&mut self, data: &'static [u8], len: usize) {
+        unsafe { BEMPSTS.write_volatile(!1) };
+        self.ctrl_data = data;
+        self.ctrl_len = len.min(data.len());
+        self.ctrl_pos = 0;
+        self.ctrl_continue();
+    }
+
+    fn ctrl_continue(&mut self) {
+        if self.ctrl_pos >= self.ctrl_len {
+            return;
+        }
+        let end = (self.ctrl_pos + 64).min(self.ctrl_len);
+        if self.ctrl_write_packet(&self.ctrl_data[self.ctrl_pos..end]) {
+            self.ctrl_pos = end;
         }
     }
 
@@ -195,7 +260,7 @@ impl RaUsbfsCdc {
     }
 
     fn handle_setup(&mut self) {
-        let (req, val, idx, len) = unsafe {
+        let (req, val, _idx, len) = unsafe {
             (
                 USBREQ.read_volatile(),
                 USBVAL.read_volatile(),
@@ -203,9 +268,9 @@ impl RaUsbfsCdc {
                 USBLENG.read_volatile(),
             )
         };
-        let _ = idx;
         let bm = (req & 0xFF) as u8;
         let brequest = (req >> 8) as u8;
+        unsafe { CFIFOCTR.write_volatile(CF_BCLR) };
         unsafe { INTSTS0.write_volatile(!IS_VALID) }; // clear VALID
 
         match (bm, brequest) {
@@ -221,10 +286,22 @@ impl RaUsbfsCdc {
                 if resp.is_empty() {
                     self.ctrl_status_done();
                 } else {
-                    let n = (len as usize).min(resp.len());
-                    self.ctrl_write_data(&resp[..n]);
+                    self.ctrl_start(resp, len as usize);
                 }
             }
+            // Standard device status/configuration queries used during enumeration.
+            (0x80, 0x00) => self.ctrl_start(&[0, 0], len as usize),
+            (0x80, 0x08) => {
+                let configured: &'static [u8] = if self.stage == Stage::Configured {
+                    &[1]
+                } else {
+                    &[0]
+                };
+                self.ctrl_start(configured, len as usize);
+            }
+            (0x81, 0x0A) => self.ctrl_start(&[0], len as usize),
+            // CDC GET_LINE_CODING: 115200, 8 data bits, no parity, one stop bit.
+            (0xA1, 0x21) => self.ctrl_start(&[0x00, 0xC2, 0x01, 0x00, 0, 0, 8], len as usize),
             // SET_ADDRESS: RUSB2 latches the address itself; record for stage tracking
             (0x00, 0x05) => {
                 self.pending_addr = (val & 0x7F) as u8;
@@ -271,6 +348,13 @@ impl RaUsbfsCdc {
             PIPECFG.write_volatile((0b01 << 14) | (1 << 4) | 2); // BULK, DIR=IN, EPNUM=2
             PIPEMAXP.write_volatile(64);
             PIPE2CTR.write_volatile(PID_NAK);
+            // PIPE3 = interrupt IN, EP3 (CDC notifications). It remains NAK until a
+            // notification is queued, but must exist because the descriptor advertises it.
+            PIPESEL.write_volatile(3);
+            PIPECFG.write_volatile((0b10 << 14) | (1 << 4) | 3);
+            PIPEMAXP.write_volatile(8);
+            PIPEPERI.write_volatile(16);
+            PIPE3CTR.write_volatile(PID_NAK);
             PIPESEL.write_volatile(0);
         }
     }
@@ -280,22 +364,33 @@ impl UsbStack for RaUsbfsCdc {
     fn poll(&mut self) -> CdcState {
         unsafe {
             let is = INTSTS0.read_volatile();
-            // bus reset / device-state change
+            // Device-state transitions carry the authoritative reset/address state in
+            // INTSTS0.DVSQ. DVSTCTR0.RHST is a host-controller field.
             if is & IS_DVST != 0 {
                 INTSTS0.write_volatile(!IS_DVST);
-                let rhst = DVSTCTR0.read_volatile() & RHST_MASK;
-                if rhst == 2 || rhst == 4 {
-                    // reset detected
-                    if self.stage != Stage::Configured {
+                match is & DVSQ_MASK {
+                    DVSQ_DEFAULT => {
                         self.stage = Stage::Reset;
+                        self.ctrl_data = &[];
+                        self.ctrl_len = 0;
+                        self.ctrl_pos = 0;
                     }
-                    USBADDR.write_volatile(0);
+                    DVSQ_ADDRESSED => self.stage = Stage::Addressed,
+                    _ => {}
                 }
             }
-            // control transfer: a SETUP packet is valid
-            if (is & IS_CTRT != 0) && (is & IS_VALID != 0) {
-                let _stage = is & CTSQ_MASK;
+            // A setup packet is valid during the control-read data stage.
+            if (is & IS_CTRT != 0)
+                && (is & IS_VALID != 0)
+                && (is & CTSQ_MASK) == CTSQ_CONTROL_READ_DATA
+            {
                 self.handle_setup();
+            }
+            // EP0 can hold one 64-byte packet. Continue long descriptors when the
+            // previous packet leaves the control FIFO.
+            if BEMPSTS.read_volatile() & 1 != 0 {
+                BEMPSTS.write_volatile(!1);
+                self.ctrl_continue();
             }
         }
         match self.stage {
@@ -313,7 +408,16 @@ impl UsbStack for RaUsbfsCdc {
         unsafe {
             // select PIPE2 (bulk IN) on CFIFO, write direction
             CFIFOSEL.write_volatile(CF_ISEL | 2);
-            while (CFIFOSEL.read_volatile() & 0xF) != 2 {}
+            let mut selected = false;
+            for _ in 0..10_000 {
+                if (CFIFOSEL.read_volatile() & 0xF) == 2 {
+                    selected = true;
+                    break;
+                }
+            }
+            if !selected {
+                return 0;
+            }
             if CFIFOCTR.read_volatile() & CF_FRDY == 0 {
                 return 0; // FIFO busy
             }
@@ -348,7 +452,16 @@ impl UsbStack for RaUsbfsCdc {
                 return 0; // no OUT data on PIPE1
             }
             CFIFOSEL.write_volatile(CF_RCNT | 1);
-            while (CFIFOSEL.read_volatile() & 0xF) != 1 {}
+            let mut selected = false;
+            for _ in 0..10_000 {
+                if (CFIFOSEL.read_volatile() & 0xF) == 1 {
+                    selected = true;
+                    break;
+                }
+            }
+            if !selected {
+                return 0;
+            }
             if CFIFOCTR.read_volatile() & CF_FRDY == 0 {
                 return 0;
             }

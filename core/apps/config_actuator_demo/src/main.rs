@@ -55,7 +55,8 @@ fn main() -> ! {
 
     // Drive channel 0 of the leased PWM bank at each angle and read the live pulse back.
     let _ = Hal::acquire(Resource::Pwm0, OWNER);
-    let mut bank = unsafe { PwmBank::init_50hz([Some(24), None, None, None], u32::from(servo.center_us)) };
+    let mut bank =
+        unsafe { PwmBank::init_50hz([Some(24), None, None, None], u32::from(servo.center_us)) };
 
     let mut readback_ok = 1u32;
     for &a in &angles {

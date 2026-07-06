@@ -15,7 +15,13 @@ pub struct SensorHealth {
 
 impl SensorHealth {
     pub const fn new(min: i32, max: i32) -> Self {
-        Self { last: 0, same_count: 0, min, max, primed: false }
+        Self {
+            last: 0,
+            same_count: 0,
+            min,
+            max,
+            primed: false,
+        }
     }
     pub fn update(&mut self, value: i32) {
         if self.primed && value == self.last {
@@ -45,7 +51,11 @@ pub struct Calibration {
 
 impl Calibration {
     pub const fn new() -> Self {
-        Self { acc: 0, n: 0, bias: 0 }
+        Self {
+            acc: 0,
+            n: 0,
+            bias: 0,
+        }
     }
     pub fn observe(&mut self, raw: i32) {
         self.acc += i64::from(raw);
@@ -73,7 +83,10 @@ pub struct Decimator {
 
 impl Decimator {
     pub const fn new(factor: u16) -> Self {
-        Self { factor: if factor == 0 { 1 } else { factor }, count: 0 }
+        Self {
+            factor: if factor == 0 { 1 } else { factor },
+            count: 0,
+        }
     }
     /// Call per input sample; returns true when an output should be emitted.
     pub fn tick(&mut self) -> bool {

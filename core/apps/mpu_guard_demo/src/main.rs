@@ -83,7 +83,10 @@ fn MemoryManagement() {
         core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.faults_caught), n);
         if n > 3 {
             // fault storm: park with diagnostics instead of looping forever
-            core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum), 0xDEAD_0001);
+            core::ptr::write_volatile(
+                core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+                0xDEAD_0001,
+            );
             loop {}
         }
     }
@@ -92,9 +95,18 @@ fn MemoryManagement() {
 #[exception]
 unsafe fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
     // escalation diagnostics: record the stacked PC + CFSR so the report shows why
-    core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.faults_caught), 0xFFFF);
-    core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.write_after_ok), ef.pc());
-    core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum), rd(0xE000_ED28));
+    core::ptr::write_volatile(
+        core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.faults_caught),
+        0xFFFF,
+    );
+    core::ptr::write_volatile(
+        core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.write_after_ok),
+        ef.pc(),
+    );
+    core::ptr::write_volatile(
+        core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+        rd(0xE000_ED28),
+    );
     loop {}
 }
 
@@ -135,9 +147,15 @@ fn main() -> ! {
     // handler drops the region.
     unsafe {
         mpu_protect(base);
-        core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum), 0xAAAA_0002); // MPU armed
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+            0xAAAA_0002,
+        ); // MPU armed
         core::ptr::write_volatile(&mut GUARDED.0[1], 0x3333_4444);
-        core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum), 0xAAAA_0003); // survived
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+            0xAAAA_0003,
+        ); // survived
     }
     let faults_caught = FAULTS.load(Ordering::Acquire);
     let write_after_ok =

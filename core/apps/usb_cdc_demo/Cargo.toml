@@ -3,18 +3,18 @@ name = "usb-cdc-demo"
 version.workspace = true
 edition.workspace = true
 
-# USB-CDC diagnostics: print the IMU eval report over USB serial so boards WITHOUT a
-# J-Link (board2-board5) can be verified by reading a COM port. Isolated app - the
+# USB-CDC diagnostics: print the IMU eval report over USB serial so boards without a
+# debug probe can be verified by reading a COM port. Isolated app - the
 # kernel and its no-heap principles are untouched; the USB stack is no_std/no-alloc.
 [[bin]]
 name = "usb_cdc_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
-# board5: nice!nano-class with the S140 layout (app @ 0x26000). Same source; the
-# SoftDevice sits dormant, so the app owns USBD/POWER/CLOCK directly as on board1.
+# S140-compatible profile (app @ 0x26000). Same source; the SoftDevice sits dormant,
+# so the app owns USBD/POWER/CLOCK directly.
 [[bin]]
-name = "usb_cdc_demo_board5"
+name = "usb_cdc_demo_s140"
 path = "src/main.rs"
 required-features = ["board-nicenano-s140"]
 

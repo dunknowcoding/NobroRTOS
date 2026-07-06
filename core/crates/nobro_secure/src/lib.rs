@@ -39,7 +39,11 @@ impl<const N: usize> Default for KeyStore<N> {
 
 impl<const N: usize> KeyStore<N> {
     pub const fn new() -> Self {
-        Self { ids: [0; N], keys: [[0; 32]; N], used: [false; N] }
+        Self {
+            ids: [0; N],
+            keys: [[0; 32]; N],
+            used: [false; N],
+        }
     }
     pub fn provision(&mut self, id: u32, key: [u8; 32]) -> bool {
         if self.get(id).is_some() {
@@ -55,7 +59,9 @@ impl<const N: usize> KeyStore<N> {
         }
     }
     pub fn get(&self, id: u32) -> Option<&[u8; 32]> {
-        (0..N).find(|&i| self.used[i] && self.ids[i] == id).map(|i| &self.keys[i])
+        (0..N)
+            .find(|&i| self.used[i] && self.ids[i] == id)
+            .map(|i| &self.keys[i])
     }
 }
 
@@ -67,7 +73,9 @@ pub struct RollbackGuard {
 
 impl RollbackGuard {
     pub const fn new(current_version: u32) -> Self {
-        Self { min_version: current_version }
+        Self {
+            min_version: current_version,
+        }
     }
     pub fn accept(&mut self, candidate_version: u32) -> bool {
         if candidate_version > self.min_version {
@@ -90,7 +98,9 @@ pub struct TamperSeal {
 
 impl TamperSeal {
     pub fn seal(region: &[u8]) -> Self {
-        Self { baseline: sha256(region) }
+        Self {
+            baseline: sha256(region),
+        }
     }
     pub fn intact(&self, region: &[u8]) -> bool {
         verify_tag(&self.baseline, &sha256(region))
@@ -107,7 +117,10 @@ pub struct AuditLog {
 impl AuditLog {
     /// Genesis tag = HMAC(key, "genesis").
     pub fn new(key: &[u8; 32]) -> Self {
-        Self { prev_tag: hmac_sha256(key, b"genesis"), count: 0 }
+        Self {
+            prev_tag: hmac_sha256(key, b"genesis"),
+            count: 0,
+        }
     }
     /// Append `event`; returns the new chain tag. tag = HMAC(key, prev_tag || seq || event).
     pub fn append(&mut self, key: &[u8; 32], event: &[u8]) -> [u8; 32] {
@@ -140,7 +153,12 @@ pub struct ConfigStore<const N: usize> {
 
 impl<const N: usize> ConfigStore<N> {
     pub const fn empty() -> Self {
-        Self { version: 0, len: 0, bytes: [0; N], tag: [0; 32] }
+        Self {
+            version: 0,
+            len: 0,
+            bytes: [0; N],
+            tag: [0; 32],
+        }
     }
     pub fn store(&mut self, key: &[u8; 32], version: u32, data: &[u8]) -> bool {
         if data.len() > N {
@@ -243,7 +261,6 @@ mod tests {
     }
 }
 
-
 /// OTA A/B partition agent (M183): two firmware slots; installs new images into the
 /// inactive slot, only boots a slot whose version passes anti-rollback, and can revert to
 /// the last-known-good slot. Bounded state, no heap.
@@ -267,7 +284,12 @@ impl OtaAgent {
         version[Self::idx(active)] = active_version;
         let mut good = [false; 2];
         good[Self::idx(active)] = true;
-        Self { active, version, good, min_version: active_version }
+        Self {
+            active,
+            version,
+            good,
+            min_version: active_version,
+        }
     }
 
     const fn idx(s: Slot) -> usize {
@@ -421,7 +443,10 @@ mod secure_boot_tests {
         let m = SecureBoot::measure(image);
         let sig = SecureBoot::sign(&BOOT_KEY, &m, 2);
         let sb = SecureBoot::new(1);
-        assert_eq!(sb.verify(&BOOT_KEY, image, 2, &m, &sig), BootVerdict::Accept);
+        assert_eq!(
+            sb.verify(&BOOT_KEY, image, 2, &m, &sig),
+            BootVerdict::Accept
+        );
     }
 
     #[test]
@@ -464,7 +489,10 @@ mod secure_boot_tests {
         let mut sb = SecureBoot::new(1);
         sb.commit(5); // we are now running v5
         assert_eq!(sb.min_version(), 5);
-        assert_eq!(sb.verify(&BOOT_KEY, image, 2, &m, &sig), BootVerdict::RejectRollback);
+        assert_eq!(
+            sb.verify(&BOOT_KEY, image, 2, &m, &sig),
+            BootVerdict::RejectRollback
+        );
     }
 
     #[test]

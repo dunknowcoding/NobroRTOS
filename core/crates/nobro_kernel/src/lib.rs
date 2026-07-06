@@ -94,7 +94,6 @@ pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use task_supervisor::{SupervisionAction, TaskSupervisor};
 pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};
 
-
 #[cfg(test)]
 mod property_tests {
     //! Property-based tests (M171): a deterministic xorshift generator drives thousands

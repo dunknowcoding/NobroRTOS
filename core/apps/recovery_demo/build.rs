@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    // board1-class no-SoftDevice layout (app @ 0x1000).
+    // No-SoftDevice layout (app @ 0x1000).
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::copy("../../memory-nosd.x", out.join("memory.x")).expect("copy memory.x");
     println!("cargo:rerun-if-changed=../../memory-nosd.x");

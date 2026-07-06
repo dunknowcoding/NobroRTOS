@@ -52,5 +52,9 @@ Thumbs.db
 tools/boards.json
 
 # Internal-only docs (competitive/strategy analysis - not public)
+docs/DEVELOPER_EXPERIENCE.md
+docs/HARDWARE_BRINGUP.md
+docs/MILESTONES.md
+docs/roadmap.md
 docs/VS_*.md
 docs/*_INTERNAL.md

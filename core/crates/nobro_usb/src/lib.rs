@@ -50,7 +50,13 @@ impl UsbConfig {
         product: &'static str,
         serial: &'static str,
     ) -> Self {
-        Self { vid, pid, manufacturer, product, serial }
+        Self {
+            vid,
+            pid,
+            manufacturer,
+            product,
+            serial,
+        }
     }
 }
 

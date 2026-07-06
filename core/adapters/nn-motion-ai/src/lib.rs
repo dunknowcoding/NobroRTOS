@@ -12,8 +12,8 @@ use nobro_sal::{
 };
 
 mod nn_weights;
-use nn_weights::{B1, B2, FEAT, FEAT_MAX, HIDDEN, SHIFT1, W1, W2, WINDOW};
 pub use nn_weights::TRAIN_ACC_MILLI;
+use nn_weights::{B1, B2, FEAT, FEAT_MAX, HIDDEN, SHIFT1, W1, W2, WINDOW};
 
 /// Model identity ("NNM1").
 pub const MODEL_ID: u32 = 0x4E4E_4D31;
@@ -93,7 +93,11 @@ fn forward(x: [i32; FEAT]) -> (u8, i32) {
         }
         o[k] = acc;
     }
-    let class = if o[1] > o[0] { CLASS_ACTIVE } else { CLASS_IDLE };
+    let class = if o[1] > o[0] {
+        CLASS_ACTIVE
+    } else {
+        CLASS_IDLE
+    };
     let margin = (o[usize::from(class)] - o[1 - usize::from(class)]).max(1);
     (class, margin)
 }
@@ -123,7 +127,11 @@ impl AiInferenceSal for NnMotionClassifier {
         }
         let (class, margin) = forward(normalize(features(&samples[..n])));
         output[0] = class;
-        Ok(AiInferenceResult::new(1, margin.clamp(1, Q15_ONE) as u16, 0))
+        Ok(AiInferenceResult::new(
+            1,
+            margin.clamp(1, Q15_ONE) as u16,
+            0,
+        ))
     }
 }
 
@@ -212,6 +220,10 @@ impl AiInferenceSal for Nn3MotionClassifier {
         }
         let (class, margin) = forward3(normalize3(features(&samples[..n])));
         output[0] = class;
-        Ok(AiInferenceResult::new(1, margin.clamp(1, Q15_ONE) as u16, 0))
+        Ok(AiInferenceResult::new(
+            1,
+            margin.clamp(1, Q15_ONE) as u16,
+            0,
+        ))
     }
 }

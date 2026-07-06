@@ -113,13 +113,10 @@ fn main() -> ! {
     let t2 = Hal::now_us();
     sup.checkin(ModuleId::Sensor, t2).ok();
     sup.checkin(ModuleId::Radio, t2).ok();
-    let recovered = u32::from(sup.poll(t2) == SupervisionAction::Healthy
-        || sup.strikes(ModuleId::Sensor) >= 5); // at reboot threshold strikes persist by design
+    let recovered =
+        u32::from(sup.poll(t2) == SupervisionAction::Healthy || sup.strikes(ModuleId::Sensor) >= 5); // at reboot threshold strikes persist by design
 
-    let pass = healthy_ok
-        && escalation_seq == 0x123
-        && radio_stayed_healthy == 1
-        && recovered == 1;
+    let pass = healthy_ok && escalation_seq == 0x123 && radio_stayed_healthy == 1 && recovered == 1;
     let ap = u32::from(pass);
     let cs = MAGIC ^ 1 ^ 1 ^ ap ^ escalation_seq ^ recovered ^ radio_stayed_healthy;
     unsafe {

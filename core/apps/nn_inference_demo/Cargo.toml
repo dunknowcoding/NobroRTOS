@@ -3,7 +3,7 @@ name = "nn-inference-demo"
 version.workspace = true
 edition.workspace = true
 
-# AI + hardware + resource management on board1: bring up the SPI MPU-9250, run the
+# AI + hardware + resource management: bring up the SPI MPU-9250, run the
 # trained int8 MLP (nn-motion-ai) on synthetic idle/active windows AND the live IMU,
 # and admit the model through the kernel's preflight_ai_invocation (which enforces the
 # AI's arena/timeout/RAM budget). Self-certifies via NOBRO_NN_REPORT (J-Link mem32).

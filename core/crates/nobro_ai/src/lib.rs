@@ -123,7 +123,11 @@ pub struct CloudPolicy {
 
 impl Default for CloudPolicy {
     fn default() -> Self {
-        CloudPolicy { backoff_base_ms: 500, backoff_max_ms: 60_000, budget_per_window: 30 }
+        CloudPolicy {
+            backoff_base_ms: 500,
+            backoff_max_ms: 60_000,
+            budget_per_window: 30,
+        }
     }
 }
 
@@ -263,7 +267,11 @@ mod tests {
     fn session_backoff_doubles_and_caps() {
         let mut s = CloudSession::new(
             ApiKeyRef { store_slot: 2 },
-            CloudPolicy { backoff_base_ms: 100, backoff_max_ms: 800, budget_per_window: 5 },
+            CloudPolicy {
+                backoff_base_ms: 100,
+                backoff_max_ms: 800,
+                budget_per_window: 5,
+            },
         );
         assert_eq!(s.on_event(LinkEvent::ConnectFailed), LinkState::Backoff);
         assert_eq!(s.backoff_ms(), 100);
@@ -273,7 +281,7 @@ mod tests {
         s.on_event(LinkEvent::ConnectFailed);
         s.on_event(LinkEvent::ConnectFailed);
         assert_eq!(s.backoff_ms(), 800); // capped
-        // success resets the failure streak
+                                         // success resets the failure streak
         s.on_event(LinkEvent::ConnectOk);
         assert_eq!(s.state(), LinkState::Ready);
         assert_eq!(s.backoff_ms(), 0);
@@ -293,7 +301,11 @@ mod tests {
     fn request_budget_throttles_until_reset() {
         let mut s = CloudSession::new(
             ApiKeyRef { store_slot: 1 },
-            CloudPolicy { backoff_base_ms: 1, backoff_max_ms: 1, budget_per_window: 2 },
+            CloudPolicy {
+                backoff_base_ms: 1,
+                backoff_max_ms: 1,
+                budget_per_window: 2,
+            },
         );
         assert!(!s.take_request()); // not Ready yet
         s.on_event(LinkEvent::ConnectOk);

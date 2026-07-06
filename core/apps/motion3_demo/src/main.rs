@@ -80,9 +80,8 @@ fn main() -> ! {
     let walk_class = classify(&mut clf, &walk);
     let shake_class = classify(&mut clf, &shake);
 
-    let pass = idle_class == CLASS3_IDLE
-        && walk_class == CLASS3_WALK
-        && shake_class == CLASS3_SHAKE;
+    let pass =
+        idle_class == CLASS3_IDLE && walk_class == CLASS3_WALK && shake_class == CLASS3_SHAKE;
     let ap = u32::from(pass);
     let (ic, wc, sc) = (
         u32::from(idle_class),

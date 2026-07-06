@@ -138,14 +138,22 @@ mod tests {
         // denied what it does not; an unregistered module is denied outright. (M67)
         let mut table = CapabilityGrantTable::<2>::new();
         table
-            .register(ModuleId::Sensor, CapabilitySet::empty().with(Capability::Bus0))
+            .register(
+                ModuleId::Sensor,
+                CapabilitySet::empty().with(Capability::Bus0),
+            )
             .unwrap();
         table
-            .register(ModuleId::Radio, CapabilitySet::empty().with(Capability::Radio))
+            .register(
+                ModuleId::Radio,
+                CapabilitySet::empty().with(Capability::Radio),
+            )
             .unwrap();
 
         assert_eq!(table.authorize(ModuleId::Sensor, Capability::Bus0), Ok(()));
-        assert!(table.authorize(ModuleId::Sensor, Capability::Radio).is_err());
+        assert!(table
+            .authorize(ModuleId::Sensor, Capability::Radio)
+            .is_err());
         assert_eq!(table.authorize(ModuleId::Radio, Capability::Radio), Ok(()));
         assert!(table.authorize(ModuleId::Radio, Capability::Bus0).is_err());
         assert_eq!(

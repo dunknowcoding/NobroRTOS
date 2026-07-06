@@ -115,7 +115,8 @@ fn main() -> ! {
             }
             let mut out = [0u8; 4];
             let t0 = Hal::now_us();
-            let req = AiInferenceRequest::new(MODEL_ID, &input, t0 + u64::from(contract.timeout_us));
+            let req =
+                AiInferenceRequest::new(MODEL_ID, &input, t0 + u64::from(contract.timeout_us));
             if let Ok(res) = clf.infer(req, &mut out) {
                 let latency = (Hal::now_us() - t0) as u32;
                 inferences += 1;

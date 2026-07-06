@@ -54,11 +54,10 @@ impl Radio {
         *reg(MODE) = MODE_NRF_1MBIT;
         *reg(FREQUENCY) = CHANNEL_FREQ;
         *reg(TXPOWER) = 0; // 0 dBm
-        // PCNF0: LFLEN = 8 (1-byte LENGTH field), S0LEN = 0, S1LEN = 0.
+                           // PCNF0: LFLEN = 8 (1-byte LENGTH field), S0LEN = 0, S1LEN = 0.
         *reg(PCNF0) = 8;
         // PCNF1: MAXLEN, STATLEN=0, BALEN=4 (4-byte base addr), little-endian, whiten.
-        *reg(PCNF1) =
-            (RADIO_MAX_PAYLOAD as u32) | (4 << 16) | (1 << 25);
+        *reg(PCNF1) = (RADIO_MAX_PAYLOAD as u32) | (4 << 16) | (1 << 25);
         *reg(BASE0) = ADDR_BASE0;
         *reg(PREFIX0) = ADDR_PREFIX0;
         *reg(TXADDRESS) = 0;

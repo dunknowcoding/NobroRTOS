@@ -1,4 +1,4 @@
-//! Hardware-in-the-loop fault-injection campaign on board1 (M169). The kernel's
+//! Hardware-in-the-loop fault-injection campaign (M169). The kernel's
 //! FaultInjector generates a scripted sequence of module faults; each injected error is
 //! fed to a RecoveryCoordinator running on real silicon, and we assert the recovery state
 //! machine escalates exactly as specified: nominal Running, then repeated sensor errors
@@ -12,8 +12,8 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_hal::{
-    traits::{HalClock, HalLease, PlatformHal},
     lease::Resource,
+    traits::{HalClock, HalLease, PlatformHal},
     ActivePlatform as Hal,
 };
 use nobro_kernel::fault_inject::{FaultInjector, FaultMode, FaultRule};
@@ -61,7 +61,8 @@ fn main() -> ! {
         reboot_after: 4,
     };
     let mut rc = RecoveryCoordinator::<4, 16>::new(thresholds);
-    rc.transition(SystemState::ValidateManifest, Hal::now_us()).ok();
+    rc.transition(SystemState::ValidateManifest, Hal::now_us())
+        .ok();
     rc.transition(SystemState::InitDrivers, Hal::now_us()).ok();
     rc.transition(SystemState::Running, Hal::now_us()).ok();
 

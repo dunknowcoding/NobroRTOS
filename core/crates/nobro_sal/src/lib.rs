@@ -1075,7 +1075,9 @@ impl<const N: usize> Default for ModelRegistry<N> {
 
 impl<const N: usize> ModelRegistry<N> {
     pub const fn new() -> Self {
-        Self { contracts: [None; N] }
+        Self {
+            contracts: [None; N],
+        }
     }
 
     pub fn register(&mut self, contract: AiModelContract) -> Result<(), AiRegistryError> {

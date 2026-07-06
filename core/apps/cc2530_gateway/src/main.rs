@@ -153,16 +153,7 @@ fn seal(fw: u32, pongs: u32, c: Counts, last: &[u8], last_len: u32) {
     let mut last_frame = [0u8; CAP];
     let n = (last.len()).min(CAP);
     last_frame[..n].copy_from_slice(&last[..n]);
-    let cs = MAGIC
-        ^ ap
-        ^ fw
-        ^ pongs
-        ^ c.total
-        ^ c.beacon
-        ^ c.data
-        ^ c.ack
-        ^ c.command
-        ^ last_len;
+    let cs = MAGIC ^ ap ^ fw ^ pongs ^ c.total ^ c.beacon ^ c.data ^ c.ack ^ c.command ^ last_len;
     unsafe {
         NOBRO_CC2530_GATEWAY_REPORT = Report {
             magic: MAGIC,

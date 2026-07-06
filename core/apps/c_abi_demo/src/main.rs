@@ -153,16 +153,11 @@ fn admit() {
     // System budget the admitted modules must fit within (flash, RAM, pool slots,
     // max modules). Generous for the kernel + one sensor module.
     let profile = SystemProfile::new(192 * 1024, 64 * 1024, 8, 4);
-    let reports = match CDemoBoot::build_with_failure(
-        &specs,
-        &deps,
-        profile,
-        FaultThresholds::DEFAULT,
-        0,
-    ) {
-        Ok(boot) => boot.reports(),
-        Err(failure) => failure.reports(),
-    };
+    let reports =
+        match CDemoBoot::build_with_failure(&specs, &deps, profile, FaultThresholds::DEFAULT, 0) {
+            Ok(boot) => boot.reports(),
+            Err(failure) => failure.reports(),
+        };
     unsafe {
         NOBRO_MANIFEST_REPORT = reports.manifest;
         NOBRO_ADMISSION_REPORT = reports.admission;

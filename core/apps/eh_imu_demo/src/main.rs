@@ -19,7 +19,9 @@ use nobro_hal::{
     traits::{HalLease, PlatformHal},
     ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
 };
-use nobro_kernel::eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS};
+use nobro_kernel::eval::{
+    ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS,
+};
 
 #[no_mangle]
 #[used]

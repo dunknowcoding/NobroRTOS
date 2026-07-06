@@ -57,7 +57,11 @@ impl<F: Flash> KvStore<F> {
             }
         };
         let next_word = Self::find_append(&flash, active);
-        Self { flash, active, next_word }
+        Self {
+            flash,
+            active,
+            next_word,
+        }
     }
 
     fn epoch(flash: &F, page: usize) -> Option<u32> {
@@ -122,7 +126,8 @@ impl<F: Flash> KvStore<F> {
         let new = 1 - old;
         let epoch = Self::epoch(&self.flash, old).unwrap_or(0);
         self.flash.erase(new);
-        self.flash.write_word(new, 0, HDR_TAG | ((epoch + 1) & 0xFF));
+        self.flash
+            .write_word(new, 0, HDR_TAG | ((epoch + 1) & 0xFF));
 
         let mut dst = 1;
         let mut w = 1;
@@ -186,7 +191,10 @@ mod tests {
 
     impl MockFlash {
         fn new() -> Self {
-            Self { pages: [[BLANK; 32]; 2], erases: [0; 2] }
+            Self {
+                pages: [[BLANK; 32]; 2],
+                erases: [0; 2],
+            }
         }
     }
 
@@ -197,7 +205,10 @@ mod tests {
             self.erases[page] += 1;
         }
         fn write_word(&mut self, page: usize, word: usize, val: u32) {
-            assert_eq!(self.pages[page][word], BLANK, "program over non-blank flash");
+            assert_eq!(
+                self.pages[page][word], BLANK,
+                "program over non-blank flash"
+            );
             self.pages[page][word] = val;
         }
         fn read_word(&self, page: usize, word: usize) -> u32 {
@@ -232,7 +243,11 @@ mod tests {
         assert_eq!(kv.get(2), Some(1038));
         // wear leveling: compaction erased BOTH pages at least once
         let f = kv.into_flash();
-        assert!(f.erases[0] >= 1 && f.erases[1] >= 1, "erases {:?}", f.erases);
+        assert!(
+            f.erases[0] >= 1 && f.erases[1] >= 1,
+            "erases {:?}",
+            f.erases
+        );
     }
 
     #[test]

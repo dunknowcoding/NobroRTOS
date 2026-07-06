@@ -35,7 +35,10 @@ impl UsbSerialJtagCdc {
     /// The peripheral needs no bring-up: it enumerates by itself as soon as VBUS is
     /// present. `cfg` identity strings are advisory only (silicon owns the descriptors).
     pub fn mount(cfg: &UsbConfig) -> Self {
-        UsbSerialJtagCdc { _cfg: *cfg, seen_sof: false }
+        UsbSerialJtagCdc {
+            _cfg: *cfg,
+            seen_sof: false,
+        }
     }
 }
 

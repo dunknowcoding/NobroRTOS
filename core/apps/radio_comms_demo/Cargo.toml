@@ -3,7 +3,7 @@ name = "radio-comms-demo"
 version.workspace = true
 edition.workspace = true
 
-# Verifies the radio as a MANAGED hardware resource on board1: the Resource::Radio
+# Verifies the radio as a managed hardware resource: the Resource::Radio
 # lease (acquire + conflict-rejected + wrong-owner release), Capability::Radio
 # authorization, and StreamSal frame TX via the radio-comms adapter. NOBRO_RADIO_COMMS_REPORT.
 [[bin]]

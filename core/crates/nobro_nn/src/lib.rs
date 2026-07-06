@@ -26,7 +26,11 @@ pub fn exp_approx(x: f32) -> f32 {
     let r = x - k as f32 * LN2;
     // exp(r) for |r| <= ~0.35: 1 + r + r^2/2 + r^3/6 + r^4/24 + r^5/120
     let r2 = r * r;
-    let er = 1.0 + r + r2 * 0.5 + r2 * r * (1.0 / 6.0) + r2 * r2 * (1.0 / 24.0)
+    let er = 1.0
+        + r
+        + r2 * 0.5
+        + r2 * r * (1.0 / 6.0)
+        + r2 * r2 * (1.0 / 24.0)
         + r2 * r2 * r * (1.0 / 120.0);
     // scale by 2^k through the exponent bits
     let bits = ((k + 127) as u32) << 23;
@@ -48,11 +52,19 @@ pub fn sqrt_approx(x: f32) -> f32 {
 // ------------------------------------------------------------------ activations
 
 pub fn relu(x: f32) -> f32 {
-    if x > 0.0 { x } else { 0.0 }
+    if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
 }
 
 pub fn leaky_relu(x: f32, slope: f32) -> f32 {
-    if x > 0.0 { x } else { slope * x }
+    if x > 0.0 {
+        x
+    } else {
+        slope * x
+    }
 }
 
 pub fn sigmoid(x: f32) -> f32 {
@@ -127,7 +139,9 @@ pub fn dense_int8(input: &[i8], weights: &[i8], bias: &[i32], out: &mut [i32]) {
 /// Symmetric int8 quantization of an f32 slice into `out`; returns the scale (real =
 /// q * scale). Mirrors the host nn_export quantizer so on-device and host agree.
 pub fn quantize_i8(values: &[f32], out: &mut [i8]) -> f32 {
-    let peak = values.iter().fold(0.0f32, |m, &v| m.max(if v < 0.0 { -v } else { v }));
+    let peak = values
+        .iter()
+        .fold(0.0f32, |m, &v| m.max(if v < 0.0 { -v } else { v }));
     let scale = if peak > 0.0 { peak / 127.0 } else { 1.0 };
     for (o, &v) in out.iter_mut().zip(values) {
         let q = (v / scale + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
@@ -176,7 +190,7 @@ pub fn log_approx(x: f32) -> f32 {
     let bits = x.to_bits();
     let e = ((bits >> 23) & 0xFF) as i32 - 127;
     let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000); // mantissa in [1,2)
-    // ln(m) for m in [1,2] via a 3-term atanh series around 1
+                                                                // ln(m) for m in [1,2] via a 3-term atanh series around 1
     let t = (m - 1.0) / (m + 1.0);
     let t2 = t * t;
     let ln_m = 2.0 * t * (1.0 + t2 * (1.0 / 3.0 + t2 * (1.0 / 5.0)));
@@ -223,7 +237,10 @@ pub struct LstmState<const H: usize> {
 
 impl<const H: usize> Default for LstmState<H> {
     fn default() -> Self {
-        LstmState { h: [0.0; H], c: [0.0; H] }
+        LstmState {
+            h: [0.0; H],
+            c: [0.0; H],
+        }
     }
 }
 
@@ -259,13 +276,7 @@ impl<const H: usize> LstmState<H> {
 /// primitive). `q` is one query `[D]`; `keys`/`values` are `[S][D]` row-major; the
 /// attended output (weighted sum of values) lands in `out[D]`. `scores` is caller
 /// scratch of length >= S.
-pub fn attention(
-    q: &[f32],
-    keys: &[f32],
-    values: &[f32],
-    scores: &mut [f32],
-    out: &mut [f32],
-) {
+pub fn attention(q: &[f32], keys: &[f32], values: &[f32], scores: &mut [f32], out: &mut [f32]) {
     let d = q.len();
     let s = scores.len();
     let scale = 1.0 / sqrt_approx(d as f32);

@@ -168,9 +168,16 @@ mod invariant_tests {
     use super::*;
 
     const RESOURCES: [Resource; 10] = [
-        Resource::Timer0, Resource::Twim0, Resource::Twim1, Resource::Spim0,
-        Resource::Radio, Resource::Rtc2, Resource::Timer3, Resource::Pwm0,
-        Resource::Egu0, Resource::Ppi,
+        Resource::Timer0,
+        Resource::Twim0,
+        Resource::Twim1,
+        Resource::Spim0,
+        Resource::Radio,
+        Resource::Rtc2,
+        Resource::Timer3,
+        Resource::Pwm0,
+        Resource::Egu0,
+        Resource::Ppi,
     ];
 
     fn reset_all() {
@@ -205,7 +212,8 @@ mod invariant_tests {
                         model[ri] = Some(owner);
                     }
                     Some(_) => assert_eq!(
-                        got, Err(LeaseError::AlreadyHeld),
+                        got,
+                        Err(LeaseError::AlreadyHeld),
                         "acquire of a held resource must be rejected (mutual exclusion)"
                     ),
                 }
@@ -218,7 +226,8 @@ mod invariant_tests {
                         model[ri] = None;
                     }
                     Some(_) => assert_eq!(
-                        got, Err(LeaseError::WrongOwner),
+                        got,
+                        Err(LeaseError::WrongOwner),
                         "only the current owner may release"
                     ),
                 }

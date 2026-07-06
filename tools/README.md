@@ -130,3 +130,18 @@ matrix, bundle matrix, and runtime drill checks into one JSON report.
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
 project remains invalid, so generated VS Code tasks can fail clearly.
+
+## Boot Entry
+
+`nobro_boot.py` provides host-side bootloader entry helpers for development and
+recovery workflows:
+
+```powershell
+python tools/nobro_boot.py list
+python tools/nobro_boot.py touch1200 --port <PORT>
+python tools/nobro_boot.py command --port <PORT> --baud 115200 --command DFU --newline
+```
+
+Use `touch1200` for Arduino-compatible bridges and bootloaders that enter
+upload mode after a 1200-baud port touch. Use `command` when firmware exposes a
+NobroRTOS runtime boot command over CDC or UART.

@@ -15,7 +15,11 @@ pub struct RunningStats {
 
 impl RunningStats {
     pub const fn new() -> Self {
-        Self { n: 0, mean: 0.0, m2: 0.0 }
+        Self {
+            n: 0,
+            mean: 0.0,
+            m2: 0.0,
+        }
     }
     pub fn update(&mut self, x: f32) {
         self.n += 1;
@@ -59,7 +63,11 @@ pub struct Ewma {
 
 impl Ewma {
     pub const fn new(alpha: f32) -> Self {
-        Self { value: 0.0, alpha, primed: false }
+        Self {
+            value: 0.0,
+            alpha,
+            primed: false,
+        }
     }
     pub fn update(&mut self, x: f32) -> f32 {
         if self.primed {
@@ -177,9 +185,18 @@ mod ensemble_tests {
     fn ensemble_fuses_distributed_votes() {
         // three nodes: two vote class 1, one votes class 0; weighted by confidence.
         let votes = [
-            Vote { class: 1, confidence_milli: 900 },
-            Vote { class: 0, confidence_milli: 600 },
-            Vote { class: 1, confidence_milli: 800 },
+            Vote {
+                class: 1,
+                confidence_milli: 900,
+            },
+            Vote {
+                class: 0,
+                confidence_milli: 600,
+            },
+            Vote {
+                class: 1,
+                confidence_milli: 800,
+            },
         ];
         let (cls, conf) = ensemble_vote(&votes, 3).unwrap();
         assert_eq!(cls, 1); // 1700 mass vs 600
@@ -358,7 +375,6 @@ mod gesture_tests {
     }
 }
 
-
 // ---- TinyML building blocks (M138/M139/M141/M142/M144/M145) ----
 
 /// Symmetric int8 quantization helper (M139): map a float to int8 with a given scale,
@@ -393,8 +409,7 @@ pub fn depthwise_conv3(input: &[i8], kernel: [i8; 3], shift: u32, out: &mut [i8]
         let l = if i > 0 { input[i - 1] as i32 } else { 0 };
         let c = input[i] as i32;
         let r = if i + 1 < n { input[i + 1] as i32 } else { 0 };
-        let acc =
-            l * kernel[0] as i32 + c * kernel[1] as i32 + r * kernel[2] as i32;
+        let acc = l * kernel[0] as i32 + c * kernel[1] as i32 + r * kernel[2] as i32;
         out[i] = (acc >> shift).clamp(-127, 127) as i8;
     }
 }
@@ -594,8 +609,15 @@ mod tinyml_tests {
     #[test]
     fn gru_cell_is_bounded_and_reacts() {
         let g = GruCell {
-            wz: 1.0, uz: 1.0, bz: 0.0, wr: 1.0, ur: 1.0, br: 0.0,
-            wh: 1.0, uh: 1.0, bh: 0.0,
+            wz: 1.0,
+            uz: 1.0,
+            bz: 0.0,
+            wr: 1.0,
+            ur: 1.0,
+            br: 0.0,
+            wh: 1.0,
+            uh: 1.0,
+            bh: 0.0,
         };
         let mut h = 0.0f32;
         for _ in 0..10 {
@@ -618,7 +640,6 @@ mod tinyml_tests {
         assert_eq!(mask & (1 << 2), 0);
     }
 }
-
 
 /// Object/blob counting on a downscaled binary image (M106): threshold each pixel and
 /// count 4-connected components above it - the tiny-vision "how many things are in view".
@@ -694,12 +715,7 @@ mod vision_ml_tests {
     #[test]
     fn count_blobs_counts_connected_regions() {
         // 4x4: two separated bright squares -> 2 blobs
-        let img = [
-            200, 200, 0, 0,
-            200, 200, 0, 0,
-            0, 0, 0, 200,
-            0, 0, 200, 200,
-        ];
+        let img = [200, 200, 0, 0, 200, 200, 0, 0, 0, 0, 0, 200, 0, 0, 200, 200];
         let mut vis = [false; 16];
         assert_eq!(count_blobs(&img, 4, 4, 100, &mut vis), 2);
         // all dark -> 0

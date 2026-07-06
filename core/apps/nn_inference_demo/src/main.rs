@@ -1,4 +1,4 @@
-//! AI + hardware + resource management on board1: run the trained int8 MLP
+//! AI + hardware + resource management: run the trained int8 MLP
 //! (nn-motion-ai) on synthetic idle/active windows and on the LIVE SPI MPU-9250, and
 //! admit the model through the kernel's preflight_ai_invocation (enforcing its
 //! arena/timeout/RAM budget). Proves NobroRTOS runs a real on-device neural network
@@ -130,8 +130,7 @@ fn main() -> ! {
     let mut active = [0u8; 64];
     for i in 0..32usize {
         let iv = (1000i32 + (i as i32 * 7) % 17 - 8) as u16;
-        let av =
-            (1000i32 + if i % 2 == 0 { -150 } else { 150 } + (i as i32 * 13) % 40 - 20) as u16;
+        let av = (1000i32 + if i % 2 == 0 { -150 } else { 150 } + (i as i32 * 13) % 40 - 20) as u16;
         idle[2 * i..2 * i + 2].copy_from_slice(&iv.to_le_bytes());
         active[2 * i..2 * i + 2].copy_from_slice(&av.to_le_bytes());
     }

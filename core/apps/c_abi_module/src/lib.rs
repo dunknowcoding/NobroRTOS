@@ -9,13 +9,7 @@
 // Host services provided by the NobroRTOS app (resolved at link time, C ABI).
 extern "C" {
     fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i32;
-    fn nobro_i2c_write_read(
-        addr: u8,
-        tx: *const u8,
-        tx_len: u32,
-        rx: *mut u8,
-        rx_len: u32,
-    ) -> i32;
+    fn nobro_i2c_write_read(addr: u8, tx: *const u8, tx_len: u32, rx: *mut u8, rx_len: u32) -> i32;
     fn nobro_publish_imu(
         who: u8,
         dev_addr: u8,

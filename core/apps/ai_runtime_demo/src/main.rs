@@ -150,7 +150,7 @@ fn main() -> ! {
         i += 1;
     }
     let nn_class = classify(&mut clf, &active); // warm + result
-    // Cycle-accurate timing via the DWT counter (64 MHz core -> 64 cycles/us).
+                                                // Cycle-accurate timing via the DWT counter (64 MHz core -> 64 cycles/us).
     let mut cp = unsafe { cortex_m::Peripherals::steal() };
     cp.DCB.enable_trace();
     cp.DWT.enable_cycle_counter();

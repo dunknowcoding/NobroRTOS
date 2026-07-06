@@ -40,10 +40,7 @@ fn reg(base: u32, off: u32) -> *mut u32 {
 }
 
 fn gpio(pin: u32) -> (u32, u32) {
-    (
-        GPIO_PORT0_BASE + (pin >> 5) * GPIO_PORT_STRIDE,
-        pin & 0x1F,
-    )
+    (GPIO_PORT0_BASE + (pin >> 5) * GPIO_PORT_STRIDE, pin & 0x1F)
 }
 
 fn spin(cycles: u32) {

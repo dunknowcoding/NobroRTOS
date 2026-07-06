@@ -1,5 +1,5 @@
 //! Radio TX node: stream a sequence counter over the nRF RADIO for a peer running
-//! radio_rx to collect. Seals NOBRO_RADIO_REPORT (role=TX); on board1 alone, a growing
+//! radio_rx to collect. Seals NOBRO_RADIO_REPORT (role=TX); on one node, a growing
 //! tx_sent confirms the RADIO transmit path drives end-to-end.
 #![no_std]
 #![no_main]

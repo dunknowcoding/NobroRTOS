@@ -6,7 +6,7 @@ edition.workspace = true
 # Board-to-board 2.4 GHz link over the nRF RADIO (no SoftDevice, no CC2530), for
 # multi-board data collection. Two binaries: radio_tx streams a sequence counter; a
 # peer running radio_rx receives + counts it. Each seals a NOBRO_RADIO_REPORT
-# (J-Link mem32). board1 alone verifies the TX state machine; a second board running
+# (J-Link mem32). A single transmitter verifies the TX state machine; a peer running
 # radio_rx verifies over-the-air delivery.
 [[bin]]
 name = "radio_tx"
@@ -18,15 +18,15 @@ name = "radio_rx"
 path = "src/rx.rs"
 required-features = ["board-promicro-nosd"]
 
-# A data-collection source node: read the board1 SPI MPU-9250 and broadcast its accel
+# A data-collection source node: read the reference SPI MPU-9250 and broadcast its accel
 # over the radio for a peer to collect.
 [[bin]]
 name = "radio_sensor_tx"
 path = "src/sensor_tx.rs"
 required-features = ["board-promicro-nosd"]
 
-# Same radio TX, built for the board5 (S140) layout so a probe-less board can be the
-# over-the-air transmitter (collected by board1 running radio_rx).
+# Same radio TX, built for the S140 layout so a probe-less board can be the
+# over-the-air transmitter.
 [[bin]]
 name = "radio_tx_s140"
 path = "src/tx.rs"

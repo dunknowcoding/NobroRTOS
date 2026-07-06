@@ -271,7 +271,13 @@ struct Cc2530Decoder {
 
 impl Cc2530Decoder {
     const fn new() -> Self {
-        Cc2530Decoder { state: 0, len: 0, idx: 0, fcs: 0, buf: [0; 160] }
+        Cc2530Decoder {
+            state: 0,
+            len: 0,
+            idx: 0,
+            fcs: 0,
+            buf: [0; 160],
+        }
     }
     /// Feed one byte; returns the frame length (in `buf`) when a valid frame completes.
     fn feed(&mut self, b: u8) -> Option<u8> {
@@ -285,7 +291,11 @@ impl Cc2530Decoder {
                 self.len = b;
                 self.idx = 0;
                 self.fcs = b;
-                self.state = if b == 0 || b as usize > self.buf.len() { 0 } else { 2 };
+                self.state = if b == 0 || b as usize > self.buf.len() {
+                    0
+                } else {
+                    2
+                };
             }
             2 => {
                 self.buf[self.idx as usize] = b;
@@ -308,7 +318,11 @@ impl Cc2530Decoder {
 
 impl<U: ByteIo> Cc2530<U> {
     pub fn new(io: U) -> Self {
-        Cc2530 { io, joined: false, dec: Cc2530Decoder::new() }
+        Cc2530 {
+            io,
+            joined: false,
+            dec: Cc2530Decoder::new(),
+        }
     }
 
     /// Send a raw command frame (`FE LEN CMD DATA FCS`).
@@ -410,7 +424,11 @@ mod tests {
     fn adv_builder_reproduces_the_on_air_format() {
         // Same identity ble_adv_demo used on air (M123).
         let addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3];
-        let b = BleAdvBuilder { adv_addr: &addr, name: b"NOBRO", company_id: 0xFFFF };
+        let b = BleAdvBuilder {
+            adv_addr: &addr,
+            name: b"NOBRO",
+            company_id: 0xFFFF,
+        };
         let mut pdu = [0u8; 39];
         let payload = [1u8, 0, 0, 0, 1]; // beat=1, status=1
         let n = b.build(&payload, &mut pdu).unwrap();
@@ -430,14 +448,19 @@ mod tests {
     #[test]
     fn adv_kind_selects_the_on_air_header() {
         let addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3];
-        let b = BleAdvBuilder { adv_addr: &addr, name: b"NOBRO", company_id: 0xFFFF };
+        let b = BleAdvBuilder {
+            adv_addr: &addr,
+            name: b"NOBRO",
+            company_id: 0xFFFF,
+        };
         let mut pdu = [0u8; 39];
         let payload = [1u8, 0, 0, 0, 1];
         // non-connectable (default) keeps the M123-verified 0x42 header
         assert_eq!(b.build(&payload, &mut pdu).unwrap(), 24);
         assert_eq!(pdu[0], 0x42);
         // connectable ADV_IND
-        b.build_as(AdvKind::Connectable, &payload, &mut pdu).unwrap();
+        b.build_as(AdvKind::Connectable, &payload, &mut pdu)
+            .unwrap();
         assert_eq!(pdu[0], 0x40);
         // scannable ADV_SCAN_IND
         b.build_as(AdvKind::Scannable, &payload, &mut pdu).unwrap();
@@ -450,7 +473,11 @@ mod tests {
     #[test]
     fn scan_response_carries_extra_ad() {
         let addr = [1u8, 2, 3, 4, 5, 0xC3];
-        let b = BleAdvBuilder { adv_addr: &addr, name: b"N", company_id: 0 };
+        let b = BleAdvBuilder {
+            adv_addr: &addr,
+            name: b"N",
+            company_id: 0,
+        };
         let mut rsp = [0u8; 39];
         // one AD: Tx Power Level (type 0x0A) = -4 dBm
         let ad = [0x02, 0x0A, 0xFC];
@@ -463,7 +490,11 @@ mod tests {
     #[test]
     fn adv_builder_enforces_the_31_byte_budget() {
         let addr = [0u8; 6];
-        let b = BleAdvBuilder { adv_addr: &addr, name: b"WAY-TOO-LONG-DEVICE-NAME", company_id: 0 };
+        let b = BleAdvBuilder {
+            adv_addr: &addr,
+            name: b"WAY-TOO-LONG-DEVICE-NAME",
+            company_id: 0,
+        };
         let mut pdu = [0u8; 39];
         assert!(b.build(&[0u8; 8], &mut pdu).is_none());
     }
@@ -471,7 +502,10 @@ mod tests {
     #[test]
     fn mac_frame_type_matches_the_host_contract() {
         assert_eq!(mac_frame_type(&[0x02, 0x00]), Some(MacFrameType::Ack));
-        assert_eq!(mac_frame_type(&[0x03, 0x08]), Some(MacFrameType::MacCommand));
+        assert_eq!(
+            mac_frame_type(&[0x03, 0x08]),
+            Some(MacFrameType::MacCommand)
+        );
         assert_eq!(mac_frame_type(&[0x61, 0x88]), Some(MacFrameType::Data));
         assert_eq!(mac_frame_type(&[0x00, 0x80]), Some(MacFrameType::Beacon));
         assert_eq!(mac_frame_type(&[]), None);
@@ -490,7 +524,10 @@ mod tests {
     }
     impl Default for heapless_vec {
         fn default() -> Self {
-            heapless_vec { data: [0; 256], len: 0 }
+            heapless_vec {
+                data: [0; 256],
+                len: 0,
+            }
         }
     }
     impl heapless_vec {
@@ -569,7 +606,11 @@ mod tests {
         };
         rx.extend(&rxf[..rn]);
 
-        let uart = FakeUart { rx, rx_pos: 0, tx: heapless_vec::default() };
+        let uart = FakeUart {
+            rx,
+            rx_pos: 0,
+            tx: heapless_vec::default(),
+        };
         let mut radio = Cc2530::new(uart);
         assert!(radio.join(11, 10_000));
         assert_eq!(radio.link_state(), IotLinkState::Up);
@@ -589,8 +630,20 @@ mod tests {
         let uid = [0xDE, 0xAD, 0xBE, 0xEF];
         let bcc = rfid::iso14443a_bcc(&uid);
         assert!(rfid::validate_anticollision(&[0xDE, 0xAD, 0xBE, 0xEF, bcc]));
-        assert!(!rfid::validate_anticollision(&[0xDE, 0xAD, 0xBE, 0xEF, bcc ^ 1]));
-        assert!(rfid::has_next_cascade(&[rfid::CASCADE_TAG, 1, 2, 3, 0x88 ^ 1 ^ 2 ^ 3]));
+        assert!(!rfid::validate_anticollision(&[
+            0xDE,
+            0xAD,
+            0xBE,
+            0xEF,
+            bcc ^ 1
+        ]));
+        assert!(rfid::has_next_cascade(&[
+            rfid::CASCADE_TAG,
+            1,
+            2,
+            3,
+            0x88 ^ 1 ^ 2 ^ 3
+        ]));
     }
 
     // A tiny in-memory transport proves the trait surface composes.
@@ -623,7 +676,10 @@ mod tests {
 
     #[test]
     fn transport_trait_round_trips() {
-        let mut radio = LoopbackRadio { buf: [0; 64], len: 0 };
+        let mut radio = LoopbackRadio {
+            buf: [0; 64],
+            len: 0,
+        };
         assert_eq!(radio.link_state(), IotLinkState::Up);
         assert!(radio.send(b"nobro-iot"));
         assert!(!radio.send(&[0u8; 61])); // over the proprietary MTU

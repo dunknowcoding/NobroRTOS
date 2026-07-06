@@ -25,4 +25,4 @@ fi
 echo ""
 echo "Toolchain ready. Next:"
 echo "  cd core && cargo build -p imu-i2c-demo --release"
-echo "  python3 ../tools/nobro_hw_eval.py imu        # build + flash + verify on board1"
+echo "  python3 ../tools/nobro_hw_eval.py imu --profile nosd"

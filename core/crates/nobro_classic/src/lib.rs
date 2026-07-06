@@ -29,7 +29,12 @@ impl<T: Copy, const N: usize> Default for Queue<T, N> {
 
 impl<T: Copy, const N: usize> Queue<T, N> {
     pub const fn new() -> Self {
-        Self { buf: [None; N], head: 0, tail: 0, count: 0 }
+        Self {
+            buf: [None; N],
+            head: 0,
+            tail: 0,
+            count: 0,
+        }
     }
     /// `xQueueSend` (to back). Returns false if full (pdFALSE).
     pub fn send(&mut self, item: T) -> bool {
@@ -89,11 +94,17 @@ pub struct Semaphore {
 impl Semaphore {
     /// `xSemaphoreCreateBinary` (+ optionally pre-given).
     pub const fn binary(available: bool) -> Self {
-        Self { count: available as u32, max: 1 }
+        Self {
+            count: available as u32,
+            max: 1,
+        }
     }
     /// `xSemaphoreCreateCounting(max, initial)`.
     pub const fn counting(max: u32, initial: u32) -> Self {
-        Self { count: if initial > max { max } else { initial }, max }
+        Self {
+            count: if initial > max { max } else { initial },
+            max,
+        }
     }
     /// `xSemaphoreGive`. Returns false if already at max.
     pub fn give(&mut self) -> bool {
@@ -164,7 +175,12 @@ pub struct SoftwareTimer {
 impl SoftwareTimer {
     /// `xTimerCreate(period, auto_reload)`.
     pub const fn new(period: u64, auto_reload: bool) -> Self {
-        Self { period, remaining: period, auto_reload, active: false }
+        Self {
+            period,
+            remaining: period,
+            auto_reload,
+            active: false,
+        }
     }
     /// `xTimerStart`.
     pub fn start(&mut self) {

@@ -136,7 +136,13 @@ struct Decoder {
 
 impl Decoder {
     const fn new() -> Self {
-        Decoder { state: 0, len: 0, idx: 0, fcs: 0, buf: [0; 160] }
+        Decoder {
+            state: 0,
+            len: 0,
+            idx: 0,
+            fcs: 0,
+            buf: [0; 160],
+        }
     }
     /// Feed one byte; returns Some(cmd) when a checksum-valid frame completes.
     fn feed(&mut self, b: u8) -> Option<u8> {
@@ -150,7 +156,11 @@ impl Decoder {
                 self.len = b;
                 self.idx = 0;
                 self.fcs = b;
-                self.state = if b == 0 || b as usize > self.buf.len() { 0 } else { 2 };
+                self.state = if b == 0 || b as usize > self.buf.len() {
+                    0
+                } else {
+                    2
+                };
             }
             2 => {
                 self.buf[self.idx as usize] = b;

@@ -1,8 +1,8 @@
-//! SPI IMU bring-up on board1: read the GY-9250 (MPU-9250) through the **embedded-hal
+//! SPI IMU bring-up: read the GY-9250 (MPU-9250) through the **embedded-hal
 //! SPI adapter** (`NobroSpiDevice` -> SPIM0) and self-certify via NOBRO_SPI_IMU_REPORT
-//! (read over J-Link `mem32`). board1's sensor is wired for SPI (SCK=P0.17, MISO=P0.20,
+//! (read over J-Link `mem32`). The reference sensor is wired for SPI (SCK=P0.17, MISO=P0.20,
 //! MOSI=P0.22, CS=P0.24); this proves the SPIM driver, the embedded-hal SPI adapter,
-//! and the SPI signal path on real hardware, alongside the I2C path on board5.
+//! and the SPI signal path on real hardware.
 #![no_std]
 #![no_main]
 

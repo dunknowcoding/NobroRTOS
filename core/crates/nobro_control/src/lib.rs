@@ -67,7 +67,11 @@ pub struct ComplementaryFilter {
 
 impl ComplementaryFilter {
     pub const fn new(alpha: f32) -> Self {
-        Self { angle: 0.0, alpha, primed: false }
+        Self {
+            angle: 0.0,
+            alpha,
+            primed: false,
+        }
     }
 
     /// `accel_angle` from the accelerometer, `gyro_rate` in same angle units per second.
@@ -112,7 +116,7 @@ mod tests {
     fn complementary_primes_then_fuses() {
         let mut cf = ComplementaryFilter::new(0.98);
         assert_eq!(cf.update(5.0, 0.0, 0.01), 5.0); // primes to the accel angle
-        // gyro +100 deg/s over 0.01 s = +1 deg; accel says 5 deg
+                                                    // gyro +100 deg/s over 0.01 s = +1 deg; accel says 5 deg
         let a = cf.update(5.0, 100.0, 0.01);
         assert!((a - 5.98).abs() < 1e-3); // 0.98*(5+1) + 0.02*5
     }
@@ -162,7 +166,6 @@ mod diff_drive_tests {
     }
 }
 
-
 // ---- Trajectory, actuator mixing, safety envelope (M152-M156) ----
 
 /// A 1-D trapezoidal-velocity trajectory follower (M153): given start, goal, cruise
@@ -177,7 +180,12 @@ pub struct Trajectory {
 
 impl Trajectory {
     pub fn new(start: f32, goal: f32, vmax: f32, accel: f32) -> Self {
-        Self { start, goal, vmax: vmax.abs().max(1e-3), accel: accel.abs().max(1e-3) }
+        Self {
+            start,
+            goal,
+            vmax: vmax.abs().max(1e-3),
+            accel: accel.abs().max(1e-3),
+        }
     }
 
     fn dist(&self) -> f32 {

@@ -49,8 +49,11 @@ unsafe fn crash_now() -> ! {
     let base = core::ptr::addr_of_mut!(GUARDED) as u32;
     wr32(0xE000_ED98, 0); // MPU_RNR = 0
     wr32(0xE000_ED9C, base); // MPU_RBAR
-    // XN | AP=RO | S,C,B | SIZE=256B | ENABLE  (MEMFAULTENA deliberately NOT set)
-    wr32(0xE000_EDA0, (1 << 28) | (0b110 << 24) | (0b111 << 16) | (7 << 1) | 1);
+                             // XN | AP=RO | S,C,B | SIZE=256B | ENABLE  (MEMFAULTENA deliberately NOT set)
+    wr32(
+        0xE000_EDA0,
+        (1 << 28) | (0b110 << 24) | (0b111 << 16) | (7 << 1) | 1,
+    );
     wr32(0xE000_ED94, 0b101); // MPU ENABLE | PRIVDEFENA
     cortex_m::asm::dsb();
     cortex_m::asm::isb();
@@ -89,7 +92,7 @@ unsafe fn flash_word(addr: u32, val: u32) {
 #[exception]
 unsafe fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
     wr32(0xE000_ED94, 0); // MPU off: the dump path must not fault again
-    // Persist the crash record: magic, PC, LR, xPSR, CFSR, HFSR, checksum.
+                          // Persist the crash record: magic, PC, LR, xPSR, CFSR, HFSR, checksum.
     let pc = ef.pc();
     let lr = ef.lr();
     let xpsr = ef.xpsr();
@@ -152,8 +155,7 @@ fn main() -> ! {
     let checksum_ok = cs == DUMP_MAGIC ^ pc ^ lr ^ xpsr ^ cfsr ^ hfsr;
     let pc_in_app = (0x1000..0x10_0000).contains(&pc);
     // Accept a bus fault, a MemManage access violation, or forced-HardFault escalation.
-    let bus_fault_seen =
-        cfsr & (1 << 9 | 1 << 10) != 0 || cfsr & 0x3 != 0 || hfsr & (1 << 30) != 0;
+    let bus_fault_seen = cfsr & (1 << 9 | 1 << 10) != 0 || cfsr & 0x3 != 0 || hfsr & (1 << 30) != 0;
     let dump_valid = u32::from(checksum_ok && pc_in_app && bus_fault_seen);
 
     // Erase the page so the demo is repeatable on the next flash.

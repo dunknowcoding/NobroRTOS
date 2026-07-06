@@ -116,7 +116,13 @@ fn main() -> ! {
     // once the fixed capacity would overflow - deleting the oldest is a query).
     let boot_count = table.get(COUNTER_KEY).map(|r| r.value).unwrap_or(0) + 1;
     ok &= table
-        .upsert(COUNTER_KEY, BootRecord { value: boot_count, marker: MARKER })
+        .upsert(
+            COUNTER_KEY,
+            BootRecord {
+                value: boot_count,
+                marker: MARKER,
+            },
+        )
         .is_ok();
     if table.len() == table.capacity() {
         if let Some(oldest) = table.next_key(BOOT_ROW_BASE) {
@@ -124,7 +130,13 @@ fn main() -> ! {
         }
     }
     ok &= table
-        .insert(BOOT_ROW_BASE + boot_count, BootRecord { value: boot_count, marker: MARKER })
+        .insert(
+            BOOT_ROW_BASE + boot_count,
+            BootRecord {
+                value: boot_count,
+                marker: MARKER,
+            },
+        )
         .is_ok();
 
     // Persist the image and verify it reads back as the same table.

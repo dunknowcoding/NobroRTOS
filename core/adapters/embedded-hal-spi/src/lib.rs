@@ -5,7 +5,7 @@
 //! displays, ADCs, ...) run under NobroRTOS without change. The whole transaction is
 //! framed by one software chip-select (with the setup/recovery delays `Spim0` needs),
 //! and every operation is a bounded, no-heap EasyDMA transfer. The caller owns the
-//! `Resource::Spim0` lease. Verified on board1 against an MPU-9250 over SPI.
+//! `Resource::Spim0` lease. Verified against an MPU-9250 over SPI.
 #![no_std]
 
 use embedded_hal::spi::{Error, ErrorKind, ErrorType, Operation, SpiDevice};
@@ -97,7 +97,9 @@ impl SpiDevice<u8> for NobroSpiDevice {
                         let mut tx = [0u8; SPIM_XFER_MAX];
                         let mut rx = [0u8; SPIM_XFER_MAX];
                         tx[..buf.len()].copy_from_slice(buf);
-                        let res = self.spim.transfer_held(&tx[..buf.len()], &mut rx[..buf.len()]);
+                        let res = self
+                            .spim
+                            .transfer_held(&tx[..buf.len()], &mut rx[..buf.len()]);
                         if res.is_ok() {
                             buf.copy_from_slice(&rx[..buf.len()]);
                         }

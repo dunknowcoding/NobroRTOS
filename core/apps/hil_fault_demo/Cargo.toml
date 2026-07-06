@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 # Hardware-in-the-loop fault-injection campaign (M169): kernel FaultInjector -> real
-# RecoveryCoordinator on board1, asserting the escalation state machine.
+# RecoveryCoordinator, asserting the escalation state machine.
 [[bin]]
 name = "hil_fault_demo"
 path = "src/main.rs"

@@ -153,10 +153,22 @@ mod tests {
         let mut s = TaskSupervisor::<2>::new(1, 3, 5);
         s.register(ModuleId::Sensor, 10 * MS, 0).unwrap();
         // The sensor goes silent: each poll past its deadline escalates.
-        assert_eq!(s.poll(11 * MS), SupervisionAction::Restart(ModuleId::Sensor));
-        assert_eq!(s.poll(12 * MS), SupervisionAction::Restart(ModuleId::Sensor));
-        assert_eq!(s.poll(13 * MS), SupervisionAction::Degrade(ModuleId::Sensor));
-        assert_eq!(s.poll(14 * MS), SupervisionAction::Degrade(ModuleId::Sensor));
+        assert_eq!(
+            s.poll(11 * MS),
+            SupervisionAction::Restart(ModuleId::Sensor)
+        );
+        assert_eq!(
+            s.poll(12 * MS),
+            SupervisionAction::Restart(ModuleId::Sensor)
+        );
+        assert_eq!(
+            s.poll(13 * MS),
+            SupervisionAction::Degrade(ModuleId::Sensor)
+        );
+        assert_eq!(
+            s.poll(14 * MS),
+            SupervisionAction::Degrade(ModuleId::Sensor)
+        );
         assert_eq!(s.poll(15 * MS), SupervisionAction::Reboot(ModuleId::Sensor));
         assert_eq!(s.strikes(ModuleId::Sensor), 5);
     }
@@ -165,7 +177,10 @@ mod tests {
     fn checkin_recovers_strikes() {
         let mut s = TaskSupervisor::<2>::new(1, 3, 5);
         s.register(ModuleId::Sensor, 10 * MS, 0).unwrap();
-        assert_eq!(s.poll(11 * MS), SupervisionAction::Restart(ModuleId::Sensor));
+        assert_eq!(
+            s.poll(11 * MS),
+            SupervisionAction::Restart(ModuleId::Sensor)
+        );
         assert_eq!(s.strikes(ModuleId::Sensor), 1);
         s.checkin(ModuleId::Sensor, 12 * MS).unwrap(); // it comes back
         assert_eq!(s.strikes(ModuleId::Sensor), 0);
@@ -182,9 +197,12 @@ mod tests {
         s.checkin(ModuleId::Radio, 12 * MS).unwrap();
         let _ = s.poll(13 * MS); // sensor strike 2
         let _ = s.poll(14 * MS); // sensor strike 3 -> Degrade territory
-        // At 23 ms the radio (silent since 12 ms) has expired again with 1 strike
-        // (Restart) while the sensor is at 4 strikes (Degrade): Degrade must win.
-        assert_eq!(s.poll(23 * MS), SupervisionAction::Degrade(ModuleId::Sensor));
+                                 // At 23 ms the radio (silent since 12 ms) has expired again with 1 strike
+                                 // (Restart) while the sensor is at 4 strikes (Degrade): Degrade must win.
+        assert_eq!(
+            s.poll(23 * MS),
+            SupervisionAction::Degrade(ModuleId::Sensor)
+        );
         assert_eq!(s.strikes(ModuleId::Radio), 1);
     }
 }

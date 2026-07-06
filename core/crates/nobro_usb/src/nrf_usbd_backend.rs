@@ -2,7 +2,7 @@
 //! the nRF dev boards, matching ArduinoNRF Layer-0's native `NrfUsbd`). Owns a `'static`
 //! bus allocator so the `UsbDevice`/`SerialPort` can live inside the backend struct.
 
-use nrf_usbd::{Usbd, UsbPeripheral};
+use nrf_usbd::{UsbPeripheral, Usbd};
 use usb_device::device::{UsbDevice, UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
 use usb_device::{bus::UsbBusAllocator, device::StringDescriptors};
 use usbd_serial::SerialPort;
@@ -33,15 +33,15 @@ unsafe fn wr(a: u32, v: u32) {
 }
 
 /// Bring up the clock/VBUS/USBD from a clean state (raw registers, so this does not need
-/// to own the PAC `Peripherals`). Mirrors the sequence proven on board1 + board5.
+/// to own the PAC `Peripherals`). The sequence supports both direct and UF2 handoff.
 unsafe fn peripheral_clean_start() {
     // HFXO (USB needs the external 32 MHz crystal).
     wr(CLOCK + 0x000, 1); // TASKS_HFCLKSTART
     while rd(CLOCK + 0x100) == 0 {} // EVENTS_HFCLKSTARTED
-    // Gate on VBUS present (do NOT wait on OUTPUTRDY - it never sets on VDD-powered boards).
+                                    // Gate on VBUS present (do NOT wait on OUTPUTRDY - it never sets on VDD-powered boards).
     while rd(POWER + 0x438) & 1 == 0 {} // POWER.USBREGSTATUS.VBUSDETECT
-    // Clean start: disconnect pullup, disable USBD, clear leftover events (a UF2
-    // bootloader can hand USBD off dirty). No-op on an already-clean board.
+                                        // Clean start: disconnect pullup, disable USBD, clear leftover events (a UF2
+                                        // bootloader can hand USBD off dirty). No-op on an already-clean board.
     wr(USBD + 0x504, 0); // USBPULLUP.connect = disabled
     wr(USBD + 0x500, 0); // ENABLE = disabled
     wr(USBD + 0x10C, 0); // EVENTS_USBRESET
@@ -77,7 +77,11 @@ impl NrfUsbdCdc {
                 .unwrap()
                 .device_class(usbd_serial::USB_CLASS_CDC)
                 .build();
-            NrfUsbdCdc { serial, dev, ever_configured: false }
+            NrfUsbdCdc {
+                serial,
+                dev,
+                ever_configured: false,
+            }
         }
     }
 }

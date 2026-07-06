@@ -24,4 +24,4 @@ if (Have JLink) {
 Write-Host ""
 Write-Host "Toolchain ready. Next:" -ForegroundColor Green
 Write-Host "  cd core; cargo build -p imu-i2c-demo --release"
-Write-Host "  python ..\tools\nobro_hw_eval.py imu        # build + flash + verify on board1"
+Write-Host "  python ..\tools\nobro_hw_eval.py imu --profile nosd"

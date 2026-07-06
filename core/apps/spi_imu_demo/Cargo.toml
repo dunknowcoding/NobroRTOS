@@ -3,9 +3,8 @@ name = "spi-imu-demo"
 version.workspace = true
 edition.workspace = true
 
-# Reads the board1 GY-9250 (MPU-9250) over the SPIM HAL driver and self-certifies via
-# NOBRO_SPI_IMU_REPORT (J-Link mem32). board1-only: the sensor is wired for SPI there
-# (board5's GY-91 stays on I2C).
+# Reads a reference SPI IMU over the SPIM HAL driver and self-certifies via
+# NOBRO_SPI_IMU_REPORT (J-Link mem32). This demo targets the no-SoftDevice profile.
 [[bin]]
 name = "spi_imu_demo"
 path = "src/main.rs"

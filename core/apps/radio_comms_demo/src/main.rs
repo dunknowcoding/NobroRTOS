@@ -1,4 +1,4 @@
-//! Radio as a MANAGED hardware resource on board1: verify the Resource::Radio exclusive
+//! Radio as a managed hardware resource: verify the Resource::Radio exclusive
 //! lease (acquire, conflict rejected, wrong-owner release), Capability::Radio
 //! authorization, and StreamSal frame TX via the radio-comms adapter. Self-certifies via
 //! NOBRO_RADIO_COMMS_REPORT (J-Link mem32) - proof NobroRTOS distributes/manages the

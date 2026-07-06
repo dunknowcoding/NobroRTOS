@@ -35,7 +35,12 @@ impl<V: Copy + Default, const N: usize> Default for Table<V, N> {
 
 impl<V: Copy + Default, const N: usize> Table<V, N> {
     pub fn new() -> Self {
-        Table { keys: [0; N], vals: [V::default(); N], used: [false; N], len: 0 }
+        Table {
+            keys: [0; N],
+            vals: [V::default(); N],
+            used: [false; N],
+            len: 0,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -93,7 +98,9 @@ impl<V: Copy + Default, const N: usize> Table<V, N> {
 
     /// Iterate live rows in slot order.
     pub fn iter(&self) -> impl Iterator<Item = (u32, V)> + '_ {
-        (0..N).filter(|&i| self.used[i]).map(move |i| (self.keys[i], self.vals[i]))
+        (0..N)
+            .filter(|&i| self.used[i])
+            .map(move |i| (self.keys[i], self.vals[i]))
     }
 
     /// Query: rows whose record satisfies `pred` (a WHERE clause).
@@ -146,9 +153,8 @@ impl<V: Copy + Default, const N: usize> Table<V, N> {
         for (k, v) in self.iter() {
             out[pos..pos + 4].copy_from_slice(&k.to_le_bytes());
             pos += 4;
-            let vbytes = unsafe {
-                core::slice::from_raw_parts((&v as *const V).cast::<u8>(), vsize)
-            };
+            let vbytes =
+                unsafe { core::slice::from_raw_parts((&v as *const V).cast::<u8>(), vsize) };
             out[pos..pos + vsize].copy_from_slice(vbytes);
             pos += vsize;
         }
@@ -202,12 +208,36 @@ mod tests {
     #[test]
     fn crud_and_capacity() {
         let mut t: Table<Reading, 4> = Table::new();
-        assert!(t.insert(7, Reading { celsius_milli: 21_500, ok: true }).is_ok());
+        assert!(t
+            .insert(
+                7,
+                Reading {
+                    celsius_milli: 21_500,
+                    ok: true
+                }
+            )
+            .is_ok());
         assert_eq!(t.insert(7, Reading::default()), Err(DbError::Key)); // dup
         assert_eq!(t.get(7).unwrap().celsius_milli, 21_500);
-        assert!(t.update(7, Reading { celsius_milli: 22_000, ok: true }).is_ok());
+        assert!(t
+            .update(
+                7,
+                Reading {
+                    celsius_milli: 22_000,
+                    ok: true
+                }
+            )
+            .is_ok());
         assert_eq!(t.get(7).unwrap().celsius_milli, 22_000);
-        assert!(t.upsert(9, Reading { celsius_milli: 5_000, ok: false }).is_ok());
+        assert!(t
+            .upsert(
+                9,
+                Reading {
+                    celsius_milli: 5_000,
+                    ok: false
+                }
+            )
+            .is_ok());
         assert_eq!(t.len(), 2);
         assert!(t.delete(9).is_ok());
         assert_eq!(t.delete(9), Err(DbError::Key));
@@ -221,10 +251,20 @@ mod tests {
     fn queries_and_ordered_scan() {
         let mut t: Table<Reading, 8> = Table::new();
         for (k, c) in [(3u32, 10_000i32), (1, 30_000), (5, 20_000)] {
-            t.insert(k, Reading { celsius_milli: c, ok: c < 25_000 }).unwrap();
+            t.insert(
+                k,
+                Reading {
+                    celsius_milli: c,
+                    ok: c < 25_000,
+                },
+            )
+            .unwrap();
         }
         assert_eq!(t.count(|r| r.ok), 2);
-        let hot: Vec<u32> = t.select(|r| r.celsius_milli >= 20_000).map(|(k, _)| k).collect();
+        let hot: Vec<u32> = t
+            .select(|r| r.celsius_milli >= 20_000)
+            .map(|(k, _)| k)
+            .collect();
         assert_eq!(hot.len(), 2);
         // ordered walk: 1 -> 3 -> 5
         assert_eq!(t.next_key(0), Some(1));
@@ -236,8 +276,22 @@ mod tests {
     #[test]
     fn image_roundtrip_and_corruption_detected() {
         let mut t: Table<Reading, 4> = Table::new();
-        t.insert(1, Reading { celsius_milli: 1000, ok: true }).unwrap();
-        t.insert(2, Reading { celsius_milli: 2000, ok: false }).unwrap();
+        t.insert(
+            1,
+            Reading {
+                celsius_milli: 1000,
+                ok: true,
+            },
+        )
+        .unwrap();
+        t.insert(
+            2,
+            Reading {
+                celsius_milli: 2000,
+                ok: false,
+            },
+        )
+        .unwrap();
         let mut buf = [0u8; 128];
         let n = t.to_image(&mut buf).unwrap();
         let back: Table<Reading, 4> = Table::from_image(&buf[..n]).unwrap();

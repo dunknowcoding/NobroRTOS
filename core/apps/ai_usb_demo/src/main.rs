@@ -13,7 +13,7 @@ use cortex_m_rt::entry;
 use defmt_rtt as _;
 use panic_halt as _;
 
-use nrf_usbd::{Usbd, UsbPeripheral};
+use nrf_usbd::{UsbPeripheral, Usbd};
 use usb_device::prelude::*;
 use usbd_serial::SerialPort;
 
@@ -98,7 +98,10 @@ fn push_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
 #[entry]
 fn main() -> ! {
     let periph = nrf52840_pac::Peripherals::take().unwrap();
-    periph.CLOCK.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
+    periph
+        .CLOCK
+        .tasks_hfclkstart
+        .write(|w| unsafe { w.bits(1) });
     while periph.CLOCK.events_hfclkstarted.read().bits() == 0 {}
     while periph.POWER.usbregstatus.read().vbusdetect().bit_is_clear() {}
 
@@ -140,8 +143,7 @@ fn main() -> ! {
                             widx = 0;
                             let mut input = [0u8; WINDOW * 2];
                             for i in 0..WINDOW {
-                                input[2 * i..2 * i + 2]
-                                    .copy_from_slice(&window[i].to_le_bytes());
+                                input[2 * i..2 * i + 2].copy_from_slice(&window[i].to_le_bytes());
                             }
                             let mut out = [0u8; 4];
                             let req = AiInferenceRequest::new(model_id, &input, 0);
@@ -169,8 +171,7 @@ fn main() -> ! {
                                     NOBRO_AI_USB_REPORT.all_pass = all_pass;
                                     NOBRO_AI_USB_REPORT.inferences = inferences;
                                     NOBRO_AI_USB_REPORT.last_class = u32::from(last_class);
-                                    NOBRO_AI_USB_REPORT.confidence_q15 =
-                                        u32::from(last_conf_q15);
+                                    NOBRO_AI_USB_REPORT.confidence_q15 = u32::from(last_conf_q15);
                                     NOBRO_AI_USB_REPORT.accel_mg = u32::from(accel_mg);
                                     NOBRO_AI_USB_REPORT.checksum = cs;
                                 }
@@ -223,7 +224,11 @@ fn main() -> ! {
             push(
                 &mut buf,
                 &mut n,
-                if last_class == CLASS_ACTIVE { b"active" } else { b"idle" },
+                if last_class == CLASS_ACTIVE {
+                    b"active"
+                } else {
+                    b"idle"
+                },
             );
             push(&mut buf, &mut n, b" conf=");
             push_u32(&mut buf, &mut n, u32::from(last_conf_q15) * 1000 / 32767);

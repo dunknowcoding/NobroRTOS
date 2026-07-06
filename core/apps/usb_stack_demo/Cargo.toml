@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 # Modular USB stack demo (M-USB): the app uses only nobro_usb::mount() + UsbStack, so a
-# board swaps the whole USB backend by feature. Default mounts nrf-usbd; S140 layout for
-# board5. Prove-out target for the mountable USB architecture.
+# board swaps the whole USB backend by feature. Default mounts nrf-usbd; S140-compatible
+# layouts use the same app-level USB contract. Prove-out target for the mountable USB architecture.
 [[bin]]
 name = "usb_stack_demo"
 path = "src/main.rs"

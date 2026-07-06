@@ -13,20 +13,23 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_kernel::{
+    alarm::{Alarm, AlarmId},
+    event_log::{EventKind, EventPayload, EventRecord, EventSeverity},
+    kernel_module_spec,
+    kv::{KvKey, KvValue},
+    mailbox::{Message, MessageKind},
+    manifest::{
+        Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile,
+    },
     Action, AlarmQueue, BackoffKind, BootAssembly, Capability, CapabilityGrantTable, CapabilitySet,
     DegradePlanner, EventLog, FaultThresholds, HealthMonitor, ImuPayload, KernelError, KvStore,
     Lifecycle, Mailbox, ModuleId, QuotaLedger, RetryPolicy, RetryState, SampleKind, SamplePool,
-    StartupDependency, SystemState, Watchdog, kernel_module_spec,
-    alarm::{Alarm, AlarmId},
-    event_log::{EventKind, EventPayload, EventRecord, EventSeverity},
-    kv::{KvKey, KvValue},
-    mailbox::{Message, MessageKind},
-    manifest::{Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile},
+    StartupDependency, SystemState, Watchdog,
 };
 use nobro_sal::{
-    preflight_ai_invocation, AiBackendKind, AiInferenceRequest, AiInvocationLimits, AiModelContract,
-    AiRoutePolicy, AiRoutePreference, AiRouteTarget, AiRuntimeState, AI_PREFLIGHT_INPUT_TOO_LARGE,
-    AI_PREFLIGHT_MODEL_ID_MISMATCH,
+    preflight_ai_invocation, AiBackendKind, AiInferenceRequest, AiInvocationLimits,
+    AiModelContract, AiRoutePolicy, AiRoutePreference, AiRouteTarget, AiRuntimeState,
+    AI_PREFLIGHT_INPUT_TOO_LARGE, AI_PREFLIGHT_MODEL_ID_MISMATCH,
 };
 
 #[repr(C)]
@@ -129,8 +132,20 @@ fn test_eventlog() -> bool {
 
 fn test_mailbox() -> bool {
     let mut mb = Mailbox::<3>::new();
-    let a = Message::new(ModuleId::Kernel, ModuleId::Sensor, MessageKind::Command, 1, 0);
-    let b = Message::new(ModuleId::Sensor, ModuleId::Kernel, MessageKind::Command, 2, 0);
+    let a = Message::new(
+        ModuleId::Kernel,
+        ModuleId::Sensor,
+        MessageKind::Command,
+        1,
+        0,
+    );
+    let b = Message::new(
+        ModuleId::Sensor,
+        ModuleId::Kernel,
+        MessageKind::Command,
+        2,
+        0,
+    );
     if mb.push(a).is_err() || mb.push(b).is_err() {
         return false;
     }
@@ -150,7 +165,9 @@ fn test_kv() -> bool {
 
 fn test_alarm() -> bool {
     let mut q = AlarmQueue::<3>::new();
-    if q.schedule_once(AlarmId(1), ModuleId::Sensor, 100, 0).is_err() {
+    if q.schedule_once(AlarmId(1), ModuleId::Sensor, 100, 0)
+        .is_err()
+    {
         return false;
     }
     if q.schedule_once(AlarmId(2), ModuleId::Radio, 50, 0).is_err() {
@@ -202,8 +219,11 @@ fn test_admission() -> bool {
             MemoryBudget::new(16 * 1024, 4 * 1024, 4),
             DeadlineContract::new(20_000, 10),
         ),
-        ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
-            .memory(MemoryBudget::new(8 * 1024, 2 * 1024, 2)),
+        ModuleSpec::new(ModuleId::Sensor, Criticality::Driver).memory(MemoryBudget::new(
+            8 * 1024,
+            2 * 1024,
+            2,
+        )),
     ];
     let deps = [StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel)];
     match AppBoot::build(
@@ -316,7 +336,9 @@ fn test_capability() -> bool {
         return false;
     }
     table.authorize(ModuleId::Sensor, Capability::Bus0).is_ok()
-        && table.authorize(ModuleId::Sensor, Capability::Radio).is_err()
+        && table
+            .authorize(ModuleId::Sensor, Capability::Radio)
+            .is_err()
         && table.authorize(ModuleId::Radio, Capability::Bus0).is_err()
 }
 

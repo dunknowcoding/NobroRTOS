@@ -79,11 +79,11 @@ def selftest():
         os.remove(tmp)
     snaps = [
         {"t": 1, "boards": {
-            "board1": {"arch": "cortex-m4f/nrf52840", "all_pass": 1, "power_W": 0.1},
+            "imu_node": {"arch": "cortex-m4f/nrf52840", "all_pass": 1, "power_W": 0.1},
             "pico2": {"arch": "cortex-m33/rp2350", "all_pass": 1},
             "esp32c3": {"arch": "riscv32imc/esp32c3", "all_pass": 1}}},
         {"t": 2, "boards": {
-            "board1": {"arch": "cortex-m4f/nrf52840", "all_pass": 1, "power_W": 0.1},
+            "imu_node": {"arch": "cortex-m4f/nrf52840", "all_pass": 1, "power_W": 0.1},
             "pico2": {"arch": "cortex-m33/rp2350", "all_pass": 1},
             "esp32c3": {"arch": "riscv32imc/esp32c3", "all_pass": 0}}},  # a degrade
     ]
@@ -94,7 +94,7 @@ def selftest():
     per = {}
     for r in rows:
         per.setdefault(r["node"], []).append(r["pass"])
-    ok = ok and per["esp32c3"] == [True, False] and per["board1"] == [True, True]
+    ok = ok and per["esp32c3"] == [True, False] and per["imu_node"] == [True, True]
     print("time-series rows:", n)
     view(tmp)
     print(f"RESULT: {'PASS' if ok else 'FAIL'}")

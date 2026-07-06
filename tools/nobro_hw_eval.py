@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""One-command hardware bring-up + eval for NobroRTOS (J-Link boards).
+"""One-command hardware bring-up + eval for NobroRTOS (J-Link profiles).
 
 Builds a hardware demo app, flashes it to an nRF52840 over SEGGER J-Link, lets it
 run, reads the app's fixed `NOBRO_*` eval report struct out of RAM with `mem32`,
 decodes it, and prints PASS/FAIL with every field. This automates the manual flow
 in docs/HARDWARE_BRINGUP.md so a newcomer runs a single command:
 
-    python tools/nobro_hw_eval.py imu        # GY-9250 IMU on board1
+    python tools/nobro_hw_eval.py imu --profile nosd
     python tools/nobro_hw_eval.py sal        # kernel + servo PWM + sensor SAL
     python tools/nobro_hw_eval.py sched      # deadline jitter / PPI latency / PWM
-    python tools/nobro_hw_eval.py imu --board board5   # GY-91, S140 layout
+    python tools/nobro_hw_eval.py imu --profile s140
 
 Requirements: rustup target thumbv7em-none-eabihf, llvm-tools-preview, and a SEGGER
 J-Link with JLink.exe installed (the default Windows driver - no Zadig/WinUSB swap).
@@ -36,7 +36,7 @@ COMMON_HEAD = ["magic", "version", "completed", "all_pass"]
 APPS = {
     "imu": {
         "package": "imu-i2c-demo",
-        "bin": {"board1": "imu_i2c_demo", "board5": "imu_i2c_demo_board5"},
+        "bin": {"nosd": "imu_i2c_demo", "s140": "imu_i2c_demo_s140"},
         "symbol": "NOBRO_IMU_HW_EVAL_REPORT",
         "magic": 0x4E424E33,
         "fields": COMMON_HEAD + ["board_id_tag", "who_am_i", "dev_addr", "i2c_devices",
@@ -45,7 +45,7 @@ APPS = {
     },
     "sal": {
         "package": "sal-adapter-demo",
-        "bin": {"board1": "sal_adapter_demo"},
+        "bin": {"nosd": "sal_adapter_demo"},
         "symbol": "NOBRO_SAL_EVAL_REPORT",
         "magic": 0x4E424E32,
         "fields": COMMON_HEAD + ["servo_steps", "servo_readback_ok", "imu_samples",
@@ -53,7 +53,7 @@ APPS = {
     },
     "eh": {  # IMU read through the embedded-hal I2c trait (driver-compat proof)
         "package": "eh-imu-demo",
-        "bin": {"board1": "eh_imu_demo"},
+        "bin": {"nosd": "eh_imu_demo"},
         "symbol": "NOBRO_IMU_HW_EVAL_REPORT",
         "magic": 0x4E424E33,
         "fields": COMMON_HEAD + ["board_id_tag", "who_am_i", "dev_addr", "i2c_devices",
@@ -62,7 +62,7 @@ APPS = {
     },
     "sched": {
         "package": "resource-sched-demo",
-        "bin": {"board1": "resource_sched_demo"},
+        "bin": {"nosd": "resource_sched_demo"},
         "symbol": "NOBRO_EVAL_REPORT",
         "magic": 0x4E424E31,
         "fields": COMMON_HEAD + ["scene_a_pass", "scene_a_max_jitter_us", "scene_a_ticks",
@@ -72,8 +72,8 @@ APPS = {
                                  "scene_d_flash_start", "checksum"],
     },
 }
-BOARD_FLASH = {"board1": 0x1000, "board5": 0x26000}
-BOARD_FEATURES = {"board1": [], "board5": ["board-nicenano-s140"]}
+PROFILE_FLASH = {"nosd": 0x1000, "s140": 0x26000}
+PROFILE_FEATURES = {"nosd": [], "s140": ["board-nicenano-s140"]}
 EXE = ".exe" if os.name == "nt" else ""
 
 
@@ -122,21 +122,21 @@ def find_jlink(explicit):
 def main():
     ap = argparse.ArgumentParser(description="Flash + read a NobroRTOS hardware eval report.")
     ap.add_argument("app", choices=APPS.keys())
-    ap.add_argument("--board", choices=BOARD_FLASH.keys(), default="board1")
+    ap.add_argument("--profile", choices=PROFILE_FLASH.keys(), default="nosd")
     ap.add_argument("--run-secs", type=int, default=14)
     ap.add_argument("--jlink", default=None)
     ap.add_argument("--no-build", action="store_true")
     args = ap.parse_args()
 
     meta = APPS[args.app]
-    if args.board not in meta["bin"]:
-        sys.exit(f"app '{args.app}' has no {args.board} binary")
-    binname = meta["bin"][args.board]
-    flash_at = BOARD_FLASH[args.board]
+    if args.profile not in meta["bin"]:
+        sys.exit(f"app '{args.app}' has no {args.profile} binary")
+    binname = meta["bin"][args.profile]
+    flash_at = PROFILE_FLASH[args.profile]
     env = dict(os.environ, CARGO_TARGET_DIR=TARGET_DIR)
 
     if not args.no_build:
-        feats = BOARD_FEATURES[args.board]
+        feats = PROFILE_FEATURES[args.profile]
         cmd = ["cargo", "build", "-p", meta["package"], "--bin", binname, "--release"]
         if feats:
             cmd += ["--no-default-features", "--features", ",".join(feats)]

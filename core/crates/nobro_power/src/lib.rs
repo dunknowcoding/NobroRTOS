@@ -4,10 +4,10 @@
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PowerMode {
-    Active,    // CPU running
-    Idle,      // WFE/WFI, peripherals on
-    LowPower,  // peripherals gated, RTC wake
-    Off,       // deepest sleep until external wake
+    Active,   // CPU running
+    Idle,     // WFE/WFI, peripherals on
+    LowPower, // peripherals gated, RTC wake
+    Off,      // deepest sleep until external wake
 }
 
 /// Chooses a power mode and enforces an active-time duty budget over a window.
@@ -20,7 +20,11 @@ pub struct PowerManager {
 impl PowerManager {
     /// `budget_us` of active time allowed per `window_us`.
     pub const fn new(window_us: u64, budget_us: u64) -> Self {
-        Self { active_us: 0, window_us, budget_us }
+        Self {
+            active_us: 0,
+            window_us,
+            budget_us,
+        }
     }
 
     /// Pick a mode: if work is pending choose Active; else sleep as deeply as the next
@@ -91,7 +95,10 @@ impl<const N: usize> Default for EnergyLedger<N> {
 
 impl<const N: usize> EnergyLedger<N> {
     pub const fn new() -> Self {
-        Self { entries: [(0, 0); N], len: 0 }
+        Self {
+            entries: [(0, 0); N],
+            len: 0,
+        }
     }
 
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
@@ -112,7 +119,10 @@ impl<const N: usize> EnergyLedger<N> {
     }
 
     pub fn energy_uj(&self, task: u8) -> Option<u64> {
-        self.entries[..self.len].iter().find(|e| e.0 == task).map(|e| e.1)
+        self.entries[..self.len]
+            .iter()
+            .find(|e| e.0 == task)
+            .map(|e| e.1)
     }
 
     pub fn total_uj(&self) -> u64 {
@@ -181,7 +191,6 @@ mod adaptive_sampling_tests {
     }
 }
 
-
 /// Energy-harvest-aware scheduling (M163): decide the work budget for the next window
 /// from harvested income vs. battery reserve. Energy-neutral operation: spend at most
 /// (harvest income + an affordable battery draw that keeps SoC above the reserve floor).
@@ -219,7 +228,6 @@ mod harvest_tests {
     }
 }
 
-
 /// Duty-cycle scheduler (M159): drive a periodic task toward a target active fraction.
 /// Each tick reports whether to run (active) or sleep, keeping the long-run active time
 /// within the target duty using a leaky accumulator - robust to jittery tick spacing.
@@ -233,7 +241,11 @@ pub struct DutyScheduler {
 impl DutyScheduler {
     /// `target_duty_milli` in [0,1000]; `window_us` is the averaging horizon.
     pub const fn new(target_duty_milli: u32, window_us: u64) -> Self {
-        Self { target_milli: target_duty_milli, credit: 0, window_us }
+        Self {
+            target_milli: target_duty_milli,
+            credit: 0,
+            window_us,
+        }
     }
 
     /// Advance by `dt_us`; returns true if the task should be ACTIVE this interval.

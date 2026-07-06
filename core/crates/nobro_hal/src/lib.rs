@@ -35,13 +35,13 @@ pub mod ppi;
 #[cfg(feature = "platform-nrf52840")]
 pub mod pwm;
 #[cfg(feature = "platform-nrf52840")]
-pub mod radio_sim;
-#[cfg(feature = "platform-nrf52840")]
-pub mod timer;
-#[cfg(feature = "platform-nrf52840")]
 pub mod radio_hw;
 #[cfg(feature = "platform-nrf52840")]
+pub mod radio_sim;
+#[cfg(feature = "platform-nrf52840")]
 pub mod spim_hw;
+#[cfg(feature = "platform-nrf52840")]
+pub mod timer;
 #[cfg(feature = "platform-nrf52840")]
 pub mod twim_hw;
 
@@ -78,13 +78,13 @@ pub use inspect::scene_d_pass;
 #[cfg(feature = "platform-nrf52840")]
 pub use pwm::{PwmBank, PwmServo, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]
-pub use radio_sim::RadioRxSim;
-#[cfg(feature = "platform-nrf52840")]
-pub use timer::MicroTimer;
-#[cfg(feature = "platform-nrf52840")]
 pub use radio_hw::Radio;
 #[cfg(feature = "platform-nrf52840")]
+pub use radio_sim::RadioRxSim;
+#[cfg(feature = "platform-nrf52840")]
 pub use spim_hw::Spim0;
+#[cfg(feature = "platform-nrf52840")]
+pub use timer::MicroTimer;
 #[cfg(feature = "platform-nrf52840")]
 pub use twim_hw::Twim0;
 

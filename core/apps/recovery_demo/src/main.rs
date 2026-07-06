@@ -100,11 +100,8 @@ fn main() -> ! {
 
     // Pass = watchdog -> (NotifyUserTask=2, Degraded=4); 3rd error -> (RebootModule=3,
     // Recovering=5); coordinator ends in Recovering(5).
-    let pass = wd_action == 2
-        && wd_state == 4
-        && err_action == 3
-        && err_state == 5
-        && final_state == 5;
+    let pass =
+        wd_action == 2 && wd_state == 4 && err_action == 3 && err_state == 5 && final_state == 5;
     let all_pass = u32::from(pass);
     let completed = 1u32;
     let cs = REC_MAGIC

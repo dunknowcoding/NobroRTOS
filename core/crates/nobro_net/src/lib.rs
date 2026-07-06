@@ -38,7 +38,12 @@ impl<const N: usize> RoutingTable<N> {
 
     /// Offer a route; accept it if new, strictly cheaper, or fresher (higher seq).
     pub fn update(&mut self, dest: u16, next_hop: u16, cost: u8, seq: u8) -> bool {
-        let cand = Route { dest, next_hop, cost, seq };
+        let cand = Route {
+            dest,
+            next_hop,
+            cost,
+            seq,
+        };
         if let Some(i) = self.find(dest) {
             let cur = self.routes[i].unwrap();
             let better = seq > cur.seq || (seq == cur.seq && cost < cur.cost);
@@ -107,7 +112,12 @@ pub struct Aggregator {
 
 impl Aggregator {
     pub const fn new() -> Self {
-        Self { count: 0, sum: 0, min: i64::MAX, max: i64::MIN }
+        Self {
+            count: 0,
+            sum: 0,
+            min: i64::MAX,
+            max: i64::MIN,
+        }
     }
     pub fn add(&mut self, v: i64) {
         self.count += 1;
@@ -136,10 +146,18 @@ mod tests {
     fn routing_converges_multihop_and_prefers_cheaper() {
         // collector=0; node2 advertises dest 5 at cost 0 (itself); we reach via node2.
         let mut t = RoutingTable::<8>::new();
-        t.integrate_from(2, &[Route { dest: 5, next_hop: 5, cost: 0, seq: 1 }]);
+        t.integrate_from(
+            2,
+            &[Route {
+                dest: 5,
+                next_hop: 5,
+                cost: 0,
+                seq: 1,
+            }],
+        );
         assert_eq!(t.next_hop(5), Some(2));
         assert_eq!(t.cost(5), Some(1)); // +1 hop via node2
-        // a cheaper direct route (cost 0 via node5) wins.
+                                        // a cheaper direct route (cost 0 via node5) wins.
         assert!(t.update(5, 5, 0, 1));
         assert_eq!(t.next_hop(5), Some(5));
         // a stale, cheaper route is rejected; a fresher one is accepted.
@@ -185,7 +203,11 @@ impl<const N: usize> Default for SeenSet<N> {
 
 impl<const N: usize> SeenSet<N> {
     pub const fn new() -> Self {
-        Self { ids: [0; N], head: 0, len: 0 }
+        Self {
+            ids: [0; N],
+            head: 0,
+            len: 0,
+        }
     }
     /// Record `id`; returns true if it is NEW (should be forwarded), false if a dup.
     pub fn observe(&mut self, id: u32) -> bool {
@@ -215,7 +237,10 @@ impl<T: Copy, const N: usize> Default for PrioQueue<T, N> {
 
 impl<T: Copy, const N: usize> PrioQueue<T, N> {
     pub const fn new() -> Self {
-        Self { items: [None; N], len: 0 }
+        Self {
+            items: [None; N],
+            len: 0,
+        }
     }
     pub fn push(&mut self, prio: u8, item: T) -> bool {
         if self.len >= N {
@@ -299,7 +324,10 @@ pub struct LinkMonitor<const N: usize> {
 
 impl<const N: usize> LinkMonitor<N> {
     pub const fn new(timeout_us: u64) -> Self {
-        Self { nodes: [None; N], timeout_us }
+        Self {
+            nodes: [None; N],
+            timeout_us,
+        }
     }
 
     fn find(&mut self, id: u16) -> Option<&mut LinkState> {
@@ -322,7 +350,11 @@ impl<const N: usize> LinkMonitor<N> {
             return ev;
         }
         if let Some(slot) = self.nodes.iter_mut().find(|s| s.is_none()) {
-            *slot = Some(LinkState { id, last_us: now_us, up: true });
+            *slot = Some(LinkState {
+                id,
+                last_us: now_us,
+                up: true,
+            });
             return LinkEvent::Joined;
         }
         LinkEvent::None
@@ -342,11 +374,18 @@ impl<const N: usize> LinkMonitor<N> {
     }
 
     pub fn is_up(&self, id: u16) -> bool {
-        self.nodes.iter().filter_map(|s| *s).any(|s| s.id == id && s.up)
+        self.nodes
+            .iter()
+            .filter_map(|s| *s)
+            .any(|s| s.id == id && s.up)
     }
 
     pub fn up_count(&self) -> usize {
-        self.nodes.iter().filter_map(|s| *s).filter(|s| s.up).count()
+        self.nodes
+            .iter()
+            .filter_map(|s| *s)
+            .filter(|s| s.up)
+            .count()
     }
 }
 
@@ -451,7 +490,6 @@ mod fault_injection_tests {
         assert_eq!(rt.cost(5), Some(1));
     }
 }
-
 
 /// Link-key secured mesh frames (M133): AES-CCM authenticated encryption per link, with
 /// a monotonically increasing sequence number folded into the nonce for anti-replay.
@@ -634,7 +672,6 @@ mod secure_and_pack_tests {
     }
 }
 
-
 /// Synchronized capture across time-synced nodes (M129): given a node's clock offset
 /// (from [`TimeSync`]) and a shared capture instant in coordinator time, compute the
 /// local time at which this node should sample so all nodes capture together.
@@ -675,11 +712,7 @@ pub mod teleop {
     }
 
     /// Returns (channel, value) if authentic + fresh.
-    pub fn apply(
-        key: &[u8; 16],
-        frame: &[u8],
-        last_seq: u32,
-    ) -> Result<(u8, i16), LinkError> {
+    pub fn apply(key: &[u8; 16], frame: &[u8], last_seq: u32) -> Result<(u8, i16), LinkError> {
         let mut buf = [0u8; 8];
         let (_src, _seq, n) = secure_link::open(key, frame, last_seq, &mut buf)?;
         if n < 3 {
@@ -722,7 +755,6 @@ mod final_net_tests {
     }
 }
 
-
 // ---- wireless protocol layer (M130/M131/M132/M135) ----
 
 /// RSSI/LQI-aware next-hop selection (M130): among candidate neighbors that can reach the
@@ -750,7 +782,11 @@ pub struct OtaReassembler<const CHUNKS: usize> {
 
 impl<const CHUNKS: usize> OtaReassembler<CHUNKS> {
     pub fn new(total_chunks: usize) -> Self {
-        Self { have: [false; CHUNKS], total: total_chunks.min(CHUNKS), received: 0 }
+        Self {
+            have: [false; CHUNKS],
+            total: total_chunks.min(CHUNKS),
+            received: 0,
+        }
     }
     /// Number of chunks an image of `image_len` bytes needs at `chunk_size`.
     pub fn chunk_count(image_len: usize, chunk_size: usize) -> usize {
@@ -794,7 +830,12 @@ impl<T: Copy, const N: usize> Default for StoreForward<T, N> {
 
 impl<T: Copy, const N: usize> StoreForward<T, N> {
     pub const fn new() -> Self {
-        Self { dst: [0; N], msg: [None; N], head: 0, len: 0 }
+        Self {
+            dst: [0; N],
+            msg: [None; N],
+            head: 0,
+            len: 0,
+        }
     }
     /// Buffer `item` for `dst` (dropping the oldest if full).
     pub fn store(&mut self, dst: u16, item: T) {
@@ -845,7 +886,11 @@ impl<const N: usize> Default for NetworkFormation<N> {
 
 impl<const N: usize> NetworkFormation<N> {
     pub const fn new() -> Self {
-        Self { next_addr: 1, parent: [(0, 0); N], len: 0 }
+        Self {
+            next_addr: 1,
+            parent: [(0, 0); N],
+            len: 0,
+        }
     }
     /// A node joins via `parent_addr`; returns its assigned short address.
     pub fn join(&mut self, parent_addr: u16) -> Option<u16> {
@@ -932,7 +977,7 @@ mod wireless_tests {
         let b = net.join(a).unwrap(); // joins via a
         assert_eq!(net.parent_of(b), Some(a));
         assert_eq!(net.depth(b), Some(2)); // b -> a -> coord
-        // a's link drops; b re-parents directly to the coordinator
+                                           // a's link drops; b re-parents directly to the coordinator
         assert!(net.reparent(b, 0));
         assert_eq!(net.depth(b), Some(1));
     }

@@ -60,7 +60,7 @@ fn ble_radio_init() {
     unsafe {
         MODE.write_volatile(3); // Ble1Mbit
         TXPOWER.write_volatile(0); // 0 dBm
-        // On-air PDU framing: S0 = 1 byte (header), LENGTH = 8 bits, S1 = none.
+                                   // On-air PDU framing: S0 = 1 byte (header), LENGTH = 8 bits, S1 = none.
         PCNF0.write_volatile(8 | (1 << 8));
         // Max 39-byte PDU, 3-byte base address, little-endian, whitening on.
         PCNF1.write_volatile(39 | (3 << 16) | (1 << 25));
@@ -111,8 +111,11 @@ impl IotTransport for BleAdvRadio {
         IotLinkState::Up // advertising needs no join
     }
     fn send(&mut self, payload: &[u8]) -> bool {
-        let builder =
-            BleAdvBuilder { adv_addr: &self.adv_addr, name: b"NOBRO", company_id: 0xFFFF };
+        let builder = BleAdvBuilder {
+            adv_addr: &self.adv_addr,
+            name: b"NOBRO",
+            company_id: 0xFFFF,
+        };
         let mut pdu = [0u8; 39];
         let Some(len) = builder.build(payload, &mut pdu) else {
             return false;

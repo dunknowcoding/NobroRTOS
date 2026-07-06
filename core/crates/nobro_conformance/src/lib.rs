@@ -13,7 +13,13 @@ use nobro_net::{RoutingTable, SeenSet};
 use nobro_power::{sampling_divisor, PowerManager, PowerMode};
 
 pub const SUBSYSTEMS: [&str; 7] = [
-    "quota", "capability", "supervision", "mesh", "ml", "crypto", "power",
+    "quota",
+    "capability",
+    "supervision",
+    "mesh",
+    "ml",
+    "crypto",
+    "power",
 ];
 
 pub fn test_quota() -> bool {
@@ -40,8 +46,10 @@ pub fn test_capability() -> bool {
 pub fn test_supervision() -> bool {
     let mut sup = TaskSupervisor::<2>::new(1, 3, 5);
     sup.register(ModuleId::Sensor, 10_000, 0).ok();
-    matches!(sup.poll(11_000), SupervisionAction::Restart(ModuleId::Sensor))
-        && sup.checkin(ModuleId::Sensor, 12_000).is_ok()
+    matches!(
+        sup.poll(11_000),
+        SupervisionAction::Restart(ModuleId::Sensor)
+    ) && sup.checkin(ModuleId::Sensor, 12_000).is_ok()
         && matches!(sup.poll(13_000), SupervisionAction::Healthy)
 }
 
@@ -59,9 +67,18 @@ pub fn test_ml() -> bool {
         s.update(x);
     }
     let votes = [
-        Vote { class: 1, confidence_milli: 900 },
-        Vote { class: 0, confidence_milli: 600 },
-        Vote { class: 1, confidence_milli: 800 },
+        Vote {
+            class: 1,
+            confidence_milli: 900,
+        },
+        Vote {
+            class: 0,
+            confidence_milli: 600,
+        },
+        Vote {
+            class: 1,
+            confidence_milli: 800,
+        },
     ];
     s.is_anomaly(1200.0, 3.0)
         && !s.is_anomaly(1001.0, 3.0)
@@ -71,16 +88,16 @@ pub fn test_ml() -> bool {
 pub fn test_crypto() -> bool {
     // FIPS-197 Appendix C.1 AES-128 vector.
     let key = [
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-        0x0e, 0x0f,
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f,
     ];
     let pt = [
-        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
-        0xee, 0xff,
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
+        0xff,
     ];
     let ct = [
-        0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4,
-        0xc5, 0x5a,
+        0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5,
+        0x5a,
     ];
     Aes128::new(&key).encrypt_block(&pt) == ct
 }

@@ -65,7 +65,11 @@ pub struct Bmp280<I> {
 
 impl<I: I2c> Bmp280<I> {
     pub fn new(i2c: I, addr: u8) -> Self {
-        Self { i2c, addr, calib: Bmp280Calib::default() }
+        Self {
+            i2c,
+            addr,
+            calib: Bmp280Calib::default(),
+        }
     }
     fn read(&mut self, reg: u8, buf: &mut [u8]) -> Result<(), I::Error> {
         self.i2c.write_read(self.addr, &[reg], buf)
@@ -133,6 +137,9 @@ mod tests {
     #[test]
     fn pressure_is_plausible_sea_level() {
         let p = compensate_pressure(&datasheet_calib(), 415_148, 128_422);
-        assert!((99_000..=101_500).contains(&p), "pressure {p} Pa out of range");
+        assert!(
+            (99_000..=101_500).contains(&p),
+            "pressure {p} Pa out of range"
+        );
     }
 }
