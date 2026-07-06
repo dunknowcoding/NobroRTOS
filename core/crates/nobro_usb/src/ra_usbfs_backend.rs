@@ -24,6 +24,7 @@ const CFIFO8: *mut u8 = (BASE + 0x14) as *mut u8;
 r16!(CFIFOSEL, 0x20);
 r16!(CFIFOCTR, 0x22);
 r16!(INTENB0, 0x30);
+r16!(BRDYENB, 0x36);
 r16!(BEMPENB, 0x3A);
 r16!(INTSTS0, 0x40);
 r16!(BRDYSTS, 0x46);
@@ -71,6 +72,7 @@ const DVSQ_ADDRESSED: u16 = 0x20;
 const CF_RCNT: u16 = 1 << 15;
 const CF_REW: u16 = 1 << 14;
 const CF_ISEL: u16 = 1 << 5;
+const CF_MBW_16: u16 = 1 << 10;
 const CF_BVAL: u16 = 1 << 15;
 const CF_BCLR: u16 = 1 << 14;
 const CF_FRDY: u16 = 1 << 13;
@@ -93,12 +95,12 @@ pub enum Stage {
 }
 
 // ---- USB descriptors (a minimal single-CDC-ACM device) ----
-const VID: u16 = 0x1209; // pid.codes open VID
+const VID: u16 = 0x1209;
 const PID: u16 = 0x0004;
 
 #[rustfmt::skip]
 const DEV_DESC: [u8; 18] = [
-    18, 1, 0x00, 0x02, 0xEF, 0x02, 0x01, 64, // USB2.0, misc/IAD class, EP0 = 64
+    18, 1, 0x00, 0x02, 0, 0, 0, 64, // USB2.0, interface-owned classes, EP0 = 64
     (VID & 0xFF) as u8, (VID >> 8) as u8,
     (PID & 0xFF) as u8, (PID >> 8) as u8,
     0x00, 0x01, 1, 2, 0, 1, // bcdDevice, iMfr, iProduct, iSerial, numConfigs
@@ -152,7 +154,9 @@ impl RaUsbfsCdc {
                 spin += 1;
             }
             // device controller bring-up (dcd_init, full-speed path)
-            USBMC.write_volatile((1 << 7) | 1); // VDCEN + VDDUSBE: power the full-speed PHY
+            // USBMC bit 1 is reserved but must be written as one. Match Arduino's
+            // post-init hook by setting VDCEN while preserving the register image.
+            USBMC.write_volatile(USBMC.read_volatile() | (1 << 7));
             for _ in 0..50_000 {
                 core::hint::spin_loop();
             }
@@ -174,7 +178,9 @@ impl RaUsbfsCdc {
                 BRDYSTS.write_volatile(0);
                 BEMPSTS.write_volatile(0);
                 BEMPENB.write_volatile(1); // PIPE0 empty status drives long descriptors
+                BRDYENB.write_volatile(1); // PIPE0 ready status drives setup/data transitions
                 INTENB0.write_volatile(IE_DVSE | IE_CTRE | IE_BEMPE | IE_BRDYE);
+                DCPCTR.write_volatile(PID_BUF);
                 // Assert the D+ pull-up so the host begins enumeration.
                 SYSCFG.write_volatile(SYSCFG.read_volatile() | SYSCFG_DPRPU);
             }
@@ -205,10 +211,11 @@ impl RaUsbfsCdc {
 
     fn ctrl_write_packet(&self, data: &[u8]) -> bool {
         unsafe {
-            CFIFOSEL.write_volatile(CF_ISEL | 0); // DCP, write direction
+            CFIFOSEL.write_volatile(CF_ISEL | CF_MBW_16); // DCP, write direction, 16-bit FIFO
             let mut selected = false;
             for _ in 0..10_000 {
-                if CFIFOSEL.read_volatile() & CF_ISEL != 0 {
+                let sel = CFIFOSEL.read_volatile();
+                if (sel & CF_ISEL != 0) && (sel & CF_MBW_16 != 0) {
                     selected = true;
                     break;
                 }
@@ -235,7 +242,9 @@ impl RaUsbfsCdc {
             if i < data.len() {
                 CFIFO8.write_volatile(data[i]);
             }
-            CFIFOCTR.write_volatile(CF_BVAL); // mark buffer valid to send
+            if data.len() < 64 {
+                CFIFOCTR.write_volatile(CF_BVAL); // short packet terminates the control data stage
+            }
             true
         }
     }
@@ -383,6 +392,7 @@ impl UsbStack for RaUsbfsCdc {
                         self.ctrl_data = &[];
                         self.ctrl_len = 0;
                         self.ctrl_pos = 0;
+                        DCPCTR.write_volatile(PID_BUF);
                     }
                     DVSQ_ADDRESSED => self.stage = Stage::Addressed,
                     _ => {}

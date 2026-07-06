@@ -4,16 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 # NobroRTOS portable core on the UNO R4 WiFi's RA4M1 (Cortex-M4) - M86. No vendor HAL:
-# our own clock bring-up (MOCO 8 MHz, dividers /1), PFS pin muxing, SCI2 UART on D0/D1,
-# and PORT1 LED heartbeat, all from the RA4M1 hardware manual. App links at 0x4000
-# behind the stock DFU bootloader (double-tap RESET always recovers the board).
+# our own HOCO clock bring-up, PFS pin muxing, bridge/header/WiFi SCI UARTs, native
+# USBFS escape path, and PORT1 LED heartbeat. App links at 0x4000 behind the stock
+# DFU bootloader.
 
 [dependencies]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
-# our own RA4M1 USBFS CDC backend (M86) - reports over the board's native USB
+# our own RA4M1 USBFS CDC backend (M86), available as an explicit native USB path
 nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-ra-usbfs"] }
 
 [profile.release]
