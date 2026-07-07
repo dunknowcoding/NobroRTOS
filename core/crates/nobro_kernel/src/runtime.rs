@@ -3,13 +3,14 @@
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
-    DependencyImpact, EventLogReport, EventSeverity, FaultThresholds, HealthReport, KernelError,
-    KvError, KvKey, KvStore, KvValue, Mailbox, MailboxError, Message, MessageKind, ModuleId,
-    ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
-    ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
-    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
-    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
-    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    DependencyImpact, EventLogReport, EventSeverity, FaultThresholds, HealthReport, HotReloadError,
+    HotReloadOutcome, HotReloadPlan, HotReloadPolicy, KernelError, KvError, KvKey, KvStore,
+    KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState,
+    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
+    RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport, RuntimeReportInput,
+    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
+    WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +21,7 @@ pub enum RuntimeError {
     Kv(KvError),
     Mailbox(MailboxError),
     Module(ModuleRuntimeError),
+    HotReload(HotReloadError),
     Quota(QuotaError),
     Recovery(RecoveryError),
     RecoveryPlan(RecoveryPlanError),
@@ -59,6 +61,12 @@ impl From<MailboxError> for RuntimeError {
 impl From<ModuleRuntimeError> for RuntimeError {
     fn from(error: ModuleRuntimeError) -> Self {
         Self::Module(error)
+    }
+}
+
+impl From<HotReloadError> for RuntimeError {
+    fn from(error: HotReloadError) -> Self {
+        Self::HotReload(error)
     }
 }
 
@@ -555,12 +563,43 @@ impl<
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
         self.ensure_module_admitted(module)?;
         if self.module_state(module) == Some(ModuleRunState::Disabled) {
-            self.cleanup_disabled_module(module);
+            self.cleanup_module_resources(module);
             return Ok(());
         }
         self.modules.disable(module, now_us)?;
-        self.cleanup_disabled_module(module);
+        self.cleanup_module_resources(module);
         Ok(())
+    }
+
+    pub fn hot_reload_module<const STEPS: usize, L: LeaseReleaser>(
+        &mut self,
+        module: ModuleId,
+        lease_owner: u8,
+        new_revision: u32,
+        now_us: u64,
+        policy: HotReloadPolicy,
+        leases: &mut L,
+    ) -> Result<HotReloadOutcome<STEPS>, RuntimeError> {
+        self.ensure_module_enabled(module)?;
+        let plan = HotReloadPlan::build(module, new_revision, now_us, policy)?;
+
+        match self.module_state(module) {
+            Some(ModuleRunState::Suspended) | Some(ModuleRunState::Recovering) => {}
+            _ => self.modules.suspend(module, now_us)?,
+        }
+
+        let released_leases = leases.release_all_for_owner(lease_owner);
+        let released_quota = self.cleanup_module_resources(module);
+        self.modules.resume(module, plan.deadline_us)?;
+
+        Ok(HotReloadOutcome {
+            module,
+            lease_owner,
+            released_leases,
+            released_quota,
+            new_revision,
+            plan,
+        })
     }
 
     pub fn apply_degrade_decision<const N: usize>(
@@ -601,7 +640,7 @@ impl<
                 continue;
             }
             self.modules.disable(module, now_us)?;
-            self.cleanup_disabled_module(module);
+            self.cleanup_module_resources(module);
             application.disabled += 1;
         }
 
@@ -724,11 +763,14 @@ impl<
         Ok(())
     }
 
-    fn cleanup_disabled_module(&mut self, module: ModuleId) {
+    fn cleanup_module_resources(&mut self, module: ModuleId) -> SystemBudget {
         self.alarms.remove_for(module);
         self.mailbox.remove_for(module);
         self.watchdog.remove(module);
-        let _ = self.plan.quotas.reset_usage(module);
+        self.plan
+            .quotas
+            .reset_usage(module)
+            .unwrap_or(SystemBudget::ZERO)
     }
 }
 
@@ -752,6 +794,23 @@ mod tests {
     };
 
     type TestRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
+
+    struct FakeLeases {
+        owner: u8,
+        released: usize,
+        calls: usize,
+    }
+
+    impl LeaseReleaser for FakeLeases {
+        fn release_all_for_owner(&mut self, owner: u8) -> usize {
+            self.calls += 1;
+            if owner == self.owner {
+                self.released
+            } else {
+                0
+            }
+        }
+    }
 
     fn profile() -> SystemProfile {
         SystemProfile {
@@ -1379,6 +1438,104 @@ mod tests {
         );
         assert_eq!(runtime.mailbox().len(), 0);
         assert_eq!(runtime.alarms().len(), 0);
+    }
+
+    #[test]
+    fn runtime_hot_reload_quiesces_cleans_and_resumes_module() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .send(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Sensor,
+                MessageKind::Command,
+                1,
+                0,
+            ))
+            .unwrap();
+        runtime
+            .schedule_once(AlarmId(8), ModuleId::Sensor, 100, 10)
+            .unwrap();
+        runtime
+            .register_watchdog(ModuleId::Sensor, 1_000, 10)
+            .unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(256, 128, 1))
+            .unwrap();
+        let mut leases = FakeLeases {
+            owner: 7,
+            released: 2,
+            calls: 0,
+        };
+
+        let outcome = runtime
+            .hot_reload_module::<5, _>(
+                ModuleId::Sensor,
+                7,
+                3,
+                20,
+                HotReloadPolicy::DEFAULT,
+                &mut leases,
+            )
+            .unwrap();
+
+        assert_eq!(outcome.module, ModuleId::Sensor);
+        assert_eq!(outcome.released_leases, 2);
+        assert_eq!(outcome.released_quota, SystemBudget::new(256, 128, 1));
+        assert_eq!(outcome.plan.len, 5);
+        assert_eq!(outcome.plan.new_revision, 3);
+        assert_eq!(leases.calls, 1);
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Active)
+        );
+        assert_eq!(runtime.mailbox().len(), 0);
+        assert_eq!(runtime.alarms().len(), 0);
+        assert_eq!(runtime.watchdog_entry(ModuleId::Sensor), None);
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
+    }
+
+    #[test]
+    fn runtime_hot_reload_rejects_disabled_and_kernel_modules() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let mut leases = FakeLeases {
+            owner: 1,
+            released: 1,
+            calls: 0,
+        };
+
+        assert_eq!(
+            runtime.hot_reload_module::<5, _>(
+                ModuleId::Kernel,
+                1,
+                2,
+                20,
+                HotReloadPolicy::DEFAULT,
+                &mut leases,
+            ),
+            Err(RuntimeError::HotReload(HotReloadError::CannotReloadKernel))
+        );
+        assert_eq!(leases.calls, 0);
+
+        runtime.disable_module(ModuleId::Sensor, 30).unwrap();
+        assert_eq!(
+            runtime.hot_reload_module::<5, _>(
+                ModuleId::Sensor,
+                1,
+                2,
+                40,
+                HotReloadPolicy::DEFAULT,
+                &mut leases,
+            ),
+            Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
+                ModuleId::Sensor
+            )))
+        );
+        assert_eq!(leases.calls, 0);
     }
 
     #[test]

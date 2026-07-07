@@ -416,6 +416,37 @@ Use `Runtime::record_error_with_plan_and_impact` or
 has startup impact data for a shared dependency. The planner validates that the
 impact root matches the recovery outcome module before emitting dependent-module
 steps.
+Use `HotReloadPlan` and `Runtime::hot_reload_module` when a driver module needs
+to be replaced while the system remains alive. The runtime creates a fixed
+quiesce, lease-release, unmount, mount, and resume plan, rejects kernel or
+disabled-module reloads, purges stale alarms, mailbox records, watchdog entries,
+and transient quota usage, then resumes the module after the plan deadline. HAL
+or adapter code supplies a `LeaseReleaser`, so board-specific resource cleanup
+stays outside the kernel:
+
+```rust
+struct HalLeaseReleaser;
+
+impl nobro_kernel::LeaseReleaser for HalLeaseReleaser {
+    fn release_all_for_owner(&mut self, owner: u8) -> usize {
+        // Bridge to the selected HAL lease backend.
+        let _ = owner;
+        0
+    }
+}
+
+let mut leases = HalLeaseReleaser;
+let outcome = runtime.hot_reload_module::<5, _>(
+    nobro_kernel::ModuleId::Sensor,
+    7,
+    3,
+    now_us,
+    nobro_kernel::HotReloadPolicy::DEFAULT,
+    &mut leases,
+)?;
+assert_eq!(outcome.plan.len, 5);
+```
+
 Use `next_due`, `due_count`, `remaining_count`, and `copy_due` to inspect
 time-ready recovery steps from a firmware loop or host simulator without
 mutating the plan or executing board-specific actions.
