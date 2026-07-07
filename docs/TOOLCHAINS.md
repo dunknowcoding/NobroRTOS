@@ -1,4 +1,4 @@
-# NobroRTOS toolchains — IDE-optional, OS-agnostic
+# NobroRTOS toolchains - IDE-optional, OS-agnostic
 
 NobroRTOS is not tied to the Arduino IDE or VS Code. The core is plain Rust + Cargo, so it
 builds and flashes from a terminal on Linux, macOS, or Windows with only `rustup`.
@@ -30,7 +30,7 @@ bash tools/lint_gate.sh           # clippy -D warnings gate
 - **Any editor + rust-analyzer** (Neovim, Helix, Zed, Emacs, IntelliJ-Rust, VS Code).
 - **No editor at all**: the CLI above is complete.
 - **Arduino IDE / PlatformIO**: only needed for the ESP32/AVR *bench nodes* (which run
-  vendor firmware), via `arduino-cli` — not for the NobroRTOS Rust core.
+  vendor firmware), via `arduino-cli` - not for the NobroRTOS Rust core.
 
 ## Config-driven, no Rust knowledge
 

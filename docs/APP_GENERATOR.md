@@ -4,7 +4,7 @@
 You describe the module (criticality + memory budget); the generator emits a workspace
 crate whose `main.rs` assembles the manifest via `BootAssembly`, admits it, and exports
 the host-readable `NOBRO_MANIFEST_REPORT` / `NOBRO_ADMISSION_REPORT`. The generated Rust
-is compiler-checked, so your contract is preserved — you never hand-write Rust.
+is compiler-checked, so your contract is preserved - you never hand-write Rust.
 
 This is developer-experience Track 1A (see [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md)).
 

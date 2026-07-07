@@ -1,10 +1,10 @@
 # nrf-usbd (vendored fork for NobroRTOS)
 
 Vendored from upstream `nrf-usbd` 0.3.0 with a **single** behavioral change, needed to
-run USB-CDC on **cloned nRF52840** silicon (some nice!nano-class boards — NobroRTOS
+run USB-CDC on **cloned nRF52840** silicon (some nice!nano-class boards - NobroRTOS
 "the clone-silicon board").
 
-**The fix** — `src/usbd.rs`, `UsbBus::write()`: the EP-IN busy guard reads `EPSTATUS`
+**The fix** - `src/usbd.rs`, `UsbBus::write()`: the EP-IN busy guard reads `EPSTATUS`
 and returns `WouldBlock` if the endpoint's bit is set. On cloned USBD silicon `EPSTATUS`
 reads a **constant `0x00010001`** (the `EPIN0`/`EPOUT0` bits are permanently stuck set),
 so for **EP0** the guard always tripped: the device descriptor was never written and

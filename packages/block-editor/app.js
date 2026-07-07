@@ -109,12 +109,12 @@ function renderBlocks() {
     content.addEventListener("click", () => editBlock(index));
     const up = document.createElement("button");
     up.type = "button";
-    up.textContent = "↑";
+    up.textContent = "\u2191";
     up.setAttribute("aria-label", "Move block up");
     up.addEventListener("click", () => move(index, -1));
     const del = document.createElement("button");
     del.type = "button";
-    del.textContent = "×";
+    del.textContent = "\u00d7";
     del.setAttribute("aria-label", "Remove block");
     del.addEventListener("click", () => remove(index));
     li.append(content, up, del);
@@ -177,7 +177,7 @@ function renderJson() {
   const app = appJson();
   const errors = validate(app);
   els.jsonOut.textContent = JSON.stringify(app, null, 2);
-  els.status.textContent = errors.length ? errors.join(" · ") : "Valid app.json";
+  els.status.textContent = errors.length ? errors.join(" | ") : "Valid app.json";
   els.status.className = errors.length ? "status error" : "status";
 }
 

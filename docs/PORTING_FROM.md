@@ -1,6 +1,6 @@
 # Porting to NobroRTOS (from Embassy, ROS 2, Zephyr, Arduino)
 
-**Short answer:** there is no adapter-free, drop-in port — *by design*. NobroRTOS is
+**Short answer:** there is no adapter-free, drop-in port - *by design*. NobroRTOS is
 a contract + thin-adapter RTOS whose whole point is to bound memory, timing, and
 resource ownership. Importing another stack's executor, DDS transport, devicetree
 glue, or heap behavior unmodified would import exactly the unbounded behavior
@@ -34,7 +34,7 @@ Both are Rust + `embedded-hal`, so this is the smoothest path.
 - **Drivers:** an `embedded-hal` I2C/SPI **bus adapter** exposes NobroRTOS's `BusSal`
   as the `embedded-hal` traits a driver expects, so the large universe of
   `embedded-hal` drivers runs unchanged.
-- **Tasks → modules:** each Embassy `#[embassy_executor::task]` becomes a NobroRTOS
+- **Tasks to modules:** each Embassy `#[embassy_executor::task]` becomes a NobroRTOS
   module. An `async fn` that `await`s a timer becomes a `poll()` that checks a
   deadline alarm and returns; cooperative `select!` over events becomes draining a
   bounded mailbox. If a driver is fundamentally async, an Embassy executor may be
