@@ -9,8 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>中文名：糙哥RTOS</strong> &mdash; 面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
-  为什么叫“糙哥”？因为好用到没朋友！
+  <strong>Chinese name: 糙哥RTOS</strong> &mdash; a lightweight embedded RTOS for AI, robotics, IoT, and intelligent control.
 </p>
 
 <p align="center">
@@ -53,7 +52,7 @@ abstraction layer for hardware, communication, and edge intelligence.
 **Author:** dunknowcoding (YouTube NiusRobotLab)
 **License:** Apache-2.0
 
-## 🚀 Start in 60 seconds
+## Start In 60 Seconds
 
 You need Rust + the embedded target, and a way to flash an nRF52840 (a SEGGER
 J-Link, or any board with a UF2 bootloader).
@@ -71,7 +70,7 @@ It builds the IMU demo, flashes the development board, reads the kernel's host-r
 straight out of RAM, and prints **PASS/FAIL**. No debug probe? Flash `usb_cdc_demo`
 and just open the board's COM port.
 
-## 👋 Who it's for
+## Who It's For
 
 | You are a&hellip; | NobroRTOS gives you |
 | --- | --- |
@@ -101,7 +100,7 @@ flowchart TB
     class reports,host host;
 ```
 
-## 🧩 Author a module in your language
+## Author A Module In Your Language
 
 Module *logic* &mdash; not just config &mdash; can be written in **Rust, C, or C++**
 over one `extern "C"` C ABI. The kernel admits your module and drives `init` /
@@ -262,24 +261,24 @@ NobroRTOS/
 The Rust crate package names use the `nobro-*` API prefix, while repository
 folders use the `nobro_*` project prefix.
 
-## ✅ Verified on hardware (the development board: nRF52840 + an IMU)
+## Verified On Hardware
 
 Every claim below is checked on a real board and self-certifies through a fixed
 `NOBRO_*` report (read over J-Link `mem32`, or over USB serial for probe-less boards).
 
 | Area | On-board result |
 | --- | --- |
-| **Real-time scheduler** | 2 µs deadline jitter, 0 misses; EGU→PPI→CAPTURE 1 µs latency; 50 Hz PWM |
-| **Kernel control plane** | 13 subsystems — quota · event log · mailbox · KV · alarms · watchdog · degrade · admission · capability · retry · lifecycle · health · sample-pool — all pass |
-| **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) · AI invocation preflight — all pass |
-| **Recovery** | watchdog expiry → Degraded/Notify; repeated errors → Recovering/RebootModule |
-| **Edge AI** | bounded `AiInferenceSal` motion model — IDLE at 99.6% in its 2 ms budget; live over USB-CDC |
-| **ROS bridge** | bounded topic bridge — 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
-| **Robot closed loop** | IMU → servo pulse → PWM → readback, 1373/1373 readbacks exact |
-| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), incl. 9-pulse stuck-bus recovery |
+| **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM |
+| **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass |
+| **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass |
+| **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule |
+| **Edge AI** | bounded `AiInferenceSal` motion model: IDLE at 99.6% in its 2 ms budget; live over USB-CDC |
+| **ROS bridge** | bounded topic bridge: 2148 messages published and transmitted, 0 dropped, peak depth 1/8 |
+| **Robot closed loop** | IMU to servo pulse to PWM to readback, 1373/1373 readbacks exact |
+| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), including 9-pulse stuck-bus recovery |
 | **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI |
 | **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter |
-| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port — verified on the development board (genuine nRF52840) **and a clone-silicon nRF52840 board (with a quirky USBD)**, the latter via a patched `nrf-usbd` + a self-DFU watchdog |
+| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port; verified on an nRF52840 development board and a clone-silicon nRF52840 board with a patched `nrf-usbd` plus a self-DFU watchdog |
 
 Reproduce any of these in one command: `python tools/nobro_hw_eval.py imu`
 (also `sal`, `sched`); the kernel/AI/ROS/recovery/closed-loop demos flash + read their
@@ -302,7 +301,7 @@ report over J-Link.
 | On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on the development board &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
 | Multi-board expansion | In progress | Data-first board profiles in `core/boards/` (validated by `tools/check_board_profiles.py`) mirror the `BoardDesc`/`BoardPackage` fixtures; the HAL targets nRF52840, and the portable core (kernel/SAL/net/crypto/ML/sensor + drivers) cross-compiles for 6 MCU families - Cortex-M0+/M3/M4F/M33 and RISC-V rv32imc/imac - via `tools/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on the development board &mdash; 2148 messages published + transmitted, 0 dropped, peak depth 1/8 |
+| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on the development board &mdash; 2148 messages published and transmitted, 0 dropped, peak depth 1/8 |
 | SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/check_sdk_manifest.py`) |
 | Hardware bring-up | Present | An nRF52840 development board verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
@@ -354,6 +353,7 @@ outside the public package surface.
 
 | Guide | Use It For |
 | --- | --- |
+| [NobroRTOS Book](docs/book/README.md) | Guided path from contracts to tutorials |
 | [User Manual](docs/user-manual.md) | Setup, app assembly, diagnostics, common workflows |
 | [API Manual](docs/api-manual.md) | Public crate contracts and examples |
 | [System Architecture](docs/system-architecture.md) | Layering, memory discipline, recovery model |

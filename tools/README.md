@@ -48,6 +48,7 @@ python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
 python tools/nobro_contract_tool.py sample-report health
 python tools/verify_timing_lease.py
+python tools/tutorial_runner.py
 ```
 
 ## Host Simulation Commands
@@ -131,6 +132,16 @@ matrix, bundle matrix, and runtime drill checks into one JSON report.
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
 project remains invalid, so generated VS Code tasks can fail clearly.
+
+## Tutorials
+
+`tutorial_runner.py` validates the public book/tutorial path without creating
+build outputs:
+
+```powershell
+python tools/tutorial_runner.py
+python tools/tutorial_runner.py --json
+```
 
 ## Timing And Lease Verification
 

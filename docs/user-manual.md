@@ -269,6 +269,7 @@ python tools/nobro_contract_tool.py write-project platformio --output _work\edge
 python tools/nobro_contract_tool.py check-project _work\edge_demo --target platformio
 python tools/nobro_contract_tool.py repair-project _work\edge_demo --target platformio
 python tools/verify_timing_lease.py
+python tools/tutorial_runner.py
 ```
 
 Generated starter projects include VS Code task metadata for the same project
@@ -319,6 +320,8 @@ degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, report matrix, and runtime drill validation before packaging.
 The timing and lease verifier exhaustively checks a bounded lease state space
 and scheduler-jitter model without external model-checker dependencies.
+The tutorial runner validates the public NobroRTOS book, tutorial app contract,
+generated skeleton path, and bounded verifier in one beginner-friendly gate.
 Fleet OTA rollout logic lives in `nobro-net`: use `FleetOtaOrchestrator` to
 stage canary-first update waves, enforce maximum parallel updates, block rollout
 when fleet health is low, and roll failed nodes back before a transport-specific
