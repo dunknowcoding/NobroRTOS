@@ -172,6 +172,39 @@ let plan = nobro_kernel::AdmissionController::admit::<8, 8, 8>(
 Admission failures are reported through `AdmissionReport`, using stable error
 codes mirrored in `nobro-host` and `host/nobro-host-contract.json`.
 
+### Capability Trace
+
+`CapabilityTrace<N>` records privileged operations only after the module passes
+the same `CapabilityGrantTable` authorization used by the runtime. The trace is
+a fixed-size ring buffer: it preserves deterministic replay order for retained
+records, counts overwritten records, and never allocates.
+
+```rust
+let mut trace = nobro_kernel::CapabilityTrace::<8>::new();
+trace.record_authorized(
+    &grants,
+    nobro_kernel::CapabilityTraceInput::new(
+        nobro_kernel::ModuleId::Sensor,
+        nobro_kernel::Capability::Bus0,
+        nobro_kernel::CapabilityTraceOp::Read,
+        now_us,
+    )
+    .args(0x68, 6),
+)?;
+
+let mut replay = [nobro_kernel::CapabilityTraceRecord::EMPTY; 4];
+let copied = trace.copy_replay(
+    nobro_kernel::CapabilityReplayScope::exact(
+        nobro_kernel::ModuleId::Sensor,
+        nobro_kernel::Capability::Bus0,
+    ),
+    &mut replay,
+);
+```
+
+Use this path for debug replay, CI host simulations, and fault reviews where the
+debug data must obey the same capability boundaries as production code.
+
 ### Runtime
 
 `Runtime` is the fixed-capacity control plane for admitted applications. It

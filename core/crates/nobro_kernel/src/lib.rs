@@ -42,7 +42,11 @@ pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,
 };
-pub use capability::{CapabilityGrant, CapabilityGrantError, CapabilityGrantTable};
+pub use capability::{
+    CapabilityGrant, CapabilityGrantError, CapabilityGrantTable, CapabilityReplayScope,
+    CapabilityTrace, CapabilityTraceError, CapabilityTraceInput, CapabilityTraceOp,
+    CapabilityTraceRecord,
+};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, KernelError};
 pub use eval::{
