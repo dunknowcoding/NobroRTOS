@@ -209,6 +209,137 @@ pub fn conv1d_valid(input: &[f32], kernel: &[f32], bias: f32, out: &mut [f32]) {
     }
 }
 
+/// Channel-aware 2-D valid convolution for tiny CNNs.
+///
+/// Layouts are NHWC without a batch dimension:
+/// - `input`: `[H][W][C]`
+/// - `kernel`: `[OUT][KH][KW][C]`
+/// - `bias`: `[OUT]`
+/// - `out`: `[H - KH + 1][W - KW + 1][OUT]`
+///
+/// The caller owns every buffer; there is no heap use and no hidden scratch space.
+pub fn conv2d_valid(
+    input: &[f32],
+    in_h: usize,
+    in_w: usize,
+    in_ch: usize,
+    kernel: &[f32],
+    k_h: usize,
+    k_w: usize,
+    out_ch: usize,
+    bias: &[f32],
+    out: &mut [f32],
+) {
+    assert!(k_h > 0 && k_w > 0);
+    assert!(in_h >= k_h && in_w >= k_w);
+    assert_eq!(input.len(), in_h * in_w * in_ch);
+    assert_eq!(kernel.len(), out_ch * k_h * k_w * in_ch);
+    assert_eq!(bias.len(), out_ch);
+    let out_h = in_h - k_h + 1;
+    let out_w = in_w - k_w + 1;
+    assert_eq!(out.len(), out_h * out_w * out_ch);
+
+    for oy in 0..out_h {
+        for ox in 0..out_w {
+            for oc in 0..out_ch {
+                let mut acc = bias[oc];
+                for ky in 0..k_h {
+                    for kx in 0..k_w {
+                        for ic in 0..in_ch {
+                            let x_i = ((oy + ky) * in_w + (ox + kx)) * in_ch + ic;
+                            let k_i = (((oc * k_h + ky) * k_w + kx) * in_ch) + ic;
+                            acc += input[x_i] * kernel[k_i];
+                        }
+                    }
+                }
+                out[(oy * out_w + ox) * out_ch + oc] = acc;
+            }
+        }
+    }
+}
+
+/// Int8 2-D valid convolution with int32 accumulation.
+///
+/// Shapes and layouts match [`conv2d_valid`]. `bias` is already in accumulator units,
+/// typically `bias_real / (scale_input * scale_kernel)`. The output is intentionally
+/// left as raw int32 accumulators so the caller can fuse activation or requantization.
+pub fn conv2d_valid_i8(
+    input: &[i8],
+    in_h: usize,
+    in_w: usize,
+    in_ch: usize,
+    kernel: &[i8],
+    k_h: usize,
+    k_w: usize,
+    out_ch: usize,
+    bias: &[i32],
+    out: &mut [i32],
+) {
+    assert!(k_h > 0 && k_w > 0);
+    assert!(in_h >= k_h && in_w >= k_w);
+    assert_eq!(input.len(), in_h * in_w * in_ch);
+    assert_eq!(kernel.len(), out_ch * k_h * k_w * in_ch);
+    assert_eq!(bias.len(), out_ch);
+    let out_h = in_h - k_h + 1;
+    let out_w = in_w - k_w + 1;
+    assert_eq!(out.len(), out_h * out_w * out_ch);
+
+    for oy in 0..out_h {
+        for ox in 0..out_w {
+            for oc in 0..out_ch {
+                let mut acc = bias[oc];
+                for ky in 0..k_h {
+                    for kx in 0..k_w {
+                        for ic in 0..in_ch {
+                            let x_i = ((oy + ky) * in_w + (ox + kx)) * in_ch + ic;
+                            let k_i = (((oc * k_h + ky) * k_w + kx) * in_ch) + ic;
+                            acc += i32::from(input[x_i]) * i32::from(kernel[k_i]);
+                        }
+                    }
+                }
+                out[(oy * out_w + ox) * out_ch + oc] = acc;
+            }
+        }
+    }
+}
+
+/// Average-pool an NHWC tensor. Useful for camera thumbnails and tiny CNN downsampling.
+pub fn avg_pool2d(
+    input: &[f32],
+    in_h: usize,
+    in_w: usize,
+    in_ch: usize,
+    pool_h: usize,
+    pool_w: usize,
+    stride_h: usize,
+    stride_w: usize,
+    out: &mut [f32],
+) {
+    assert!(pool_h > 0 && pool_w > 0 && stride_h > 0 && stride_w > 0);
+    assert!(in_h >= pool_h && in_w >= pool_w);
+    assert_eq!(input.len(), in_h * in_w * in_ch);
+    let out_h = (in_h - pool_h) / stride_h + 1;
+    let out_w = (in_w - pool_w) / stride_w + 1;
+    assert_eq!(out.len(), out_h * out_w * in_ch);
+
+    let denom = (pool_h * pool_w) as f32;
+    for oy in 0..out_h {
+        for ox in 0..out_w {
+            for ic in 0..in_ch {
+                let mut acc = 0.0;
+                for ky in 0..pool_h {
+                    for kx in 0..pool_w {
+                        let y = oy * stride_h + ky;
+                        let x = ox * stride_w + kx;
+                        acc += input[(y * in_w + x) * in_ch + ic];
+                    }
+                }
+                out[(oy * out_w + ox) * in_ch + ic] = acc / denom;
+            }
+        }
+    }
+}
+
 /// Vanilla RNN step: `h' = tanh(Wx.x + Wh.h + b)`, written back into `h`.
 /// `wx` is `[H][IN]`, `wh` is `[H][H]`.
 pub fn rnn_step(x: &[f32], wx: &[f32], wh: &[f32], b: &[f32], h: &mut [f32]) {
@@ -334,6 +465,40 @@ mod tests {
         let mut out = [0.0; 3];
         conv1d_valid(&[1.0, 2.0, 3.0, 4.0], &[1.0, -1.0], 0.0, &mut out);
         assert_eq!(out, [-1.0, -1.0, -1.0]); // x[t]-x[t+1]
+    }
+
+    #[test]
+    fn conv2d_valid_filters_nhwc_images() {
+        // A 3x3 single-channel image with a 2x2 edge-like kernel.
+        let input = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let kernel = [1.0, 0.0, 0.0, -1.0];
+        let mut out = [0.0; 4];
+        conv2d_valid(&input, 3, 3, 1, &kernel, 2, 2, 1, &[0.5], &mut out);
+        assert_eq!(out, [-3.5, -3.5, -3.5, -3.5]);
+    }
+
+    #[test]
+    fn conv2d_valid_i8_accumulates_like_the_float_path() {
+        let input_f = [1.0, -1.0, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0]; // 2x2x2 NHWC
+        let kernel_f = [2.0, -1.0, 1.0, 0.0, -1.0, 2.0, 0.0, 1.0]; // 1x2x2x2
+        let mut out_f = [0.0; 1];
+        conv2d_valid(&input_f, 2, 2, 2, &kernel_f, 2, 2, 1, &[0.0], &mut out_f);
+
+        let input_i = [1i8, -1, 2, -2, 3, -3, 4, -4];
+        let kernel_i = [2i8, -1, 1, 0, -1, 2, 0, 1];
+        let mut out_i = [0i32; 1];
+        conv2d_valid_i8(&input_i, 2, 2, 2, &kernel_i, 2, 2, 1, &[0], &mut out_i);
+        assert_eq!(out_f[0] as i32, out_i[0]);
+        assert_eq!(out_i[0], -8);
+    }
+
+    #[test]
+    fn avg_pool2d_downsamples_each_channel() {
+        let input = [1.0, 10.0, 2.0, 20.0, 3.0, 30.0, 4.0, 40.0]; // 2x2x2 NHWC
+        let mut out = [0.0; 2];
+        avg_pool2d(&input, 2, 2, 2, 2, 2, 2, 2, &mut out);
+        assert!(close(out[0], 2.5, 1e-6));
+        assert!(close(out[1], 25.0, 1e-6));
     }
 
     #[test]

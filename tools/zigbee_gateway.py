@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[0].parent / "bindings" / "python"))
+from nobro_rtos.thread import ThreadRollup, decode_thread_record  # noqa: E402
 from nobro_rtos.zigbee import GatewayRollup, decode_mac_frame  # noqa: E402
 
 FrameType = __import__("nobro_rtos.zigbee", fromlist=["FrameType"]).FrameType
@@ -51,6 +52,12 @@ def report_to_records(words: list[int]) -> dict:
     }
     if last_len:
         out["last_frame"] = decode_mac_frame(frame_bytes).to_record()
+        thread = decode_thread_record(frame_bytes)
+        if thread:
+            roll_thread = ThreadRollup()
+            roll_thread.ingest(frame_bytes)
+            out["thread_rollup"] = roll_thread.to_record()
+            out["last_thread_frame"] = thread
     return out
 
 
@@ -65,12 +72,36 @@ def selftest() -> int:
         0,  # checksum
     ]
     rec = report_to_records(words)
-    print(json.dumps(rec, indent=2))
-    ok = (
+    ok_zigbee = (
         rec["rollup"]["frames"] == 5
         and rec["last_frame"]["command"] == "beacon_request"
         and rec["last_frame"]["dest_pan"] == "0xFFFF"
     )
+
+    thread_psdu = bytes([
+        0x61, 0x88, 0x3D,
+        0x34, 0x12, 0x02, 0x00,
+        0x01, 0x00,
+        0x7A, 0x33, 0x3A, 0x05,
+    ])
+    thread_words = [
+        0x4E5A4757, 1, 1, 1,
+        0x0008, 0x000F, 1, 0, 1, 0, 0,
+        len(thread_psdu),
+    ]
+    thread_words += [
+        int.from_bytes(thread_psdu[i:i + 4].ljust(4, b"\0"), "little")
+        for i in range(0, 32, 4)
+    ]
+    thread_words += [0]
+    thread_rec = report_to_records(thread_words)
+    print(json.dumps({"zigbee": rec, "thread": thread_rec}, indent=2))
+    ok_thread = (
+        thread_rec["last_thread_frame"]["proto"] == "thread"
+        and thread_rec["thread_rollup"]["thread_frames"] == 1
+        and "iphc" in thread_rec["thread_rollup"]["headers"]
+    )
+    ok = ok_zigbee and ok_thread
     print(f"RESULT: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 

@@ -2,8 +2,10 @@ import unittest
 
 from nobro_rtos.thread import (
     LowpanKind,
+    ThreadRollup,
     classify_dispatch,
     decode_lowpan,
+    decode_thread_record,
     decode_thread_frame,
 )
 
@@ -64,6 +66,37 @@ class ThreadFrameTests(unittest.TestCase):
         self.assertEqual(rec["l3"], "6lowpan")
         self.assertIn("iphc", rec["headers"])
         self.assertTrue(rec["thread"])
+
+    def test_thread_record_returns_none_for_non_lowpan(self):
+        psdu = bytes([
+            0x61, 0x88, 0x3D,
+            0x34, 0x12, 0x02, 0x00,
+            0x01, 0x00,
+            0x00, 0x11, 0x22,
+        ])
+        self.assertIsNone(decode_thread_record(psdu))
+
+    def test_thread_rollup_counts_headers(self):
+        iphc_psdu = bytes([
+            0x61, 0x88, 0x3D,
+            0x34, 0x12, 0x02, 0x00,
+            0x01, 0x00,
+            0x7A, 0x33, 0x3A, 0x05,
+        ])
+        mesh_psdu = bytes([
+            0x61, 0x88, 0x3E,
+            0x34, 0x12, 0x02, 0x00,
+            0x01, 0x00,
+            0xB2, 0x00, 0x02, 0x00, 0x03, 0x7A, 0x33,
+        ])
+        roll = ThreadRollup()
+        roll.ingest(iphc_psdu)
+        roll.ingest(mesh_psdu)
+        rec = roll.to_record()
+        self.assertEqual(rec["frames"], 2)
+        self.assertEqual(rec["thread_frames"], 2)
+        self.assertEqual(rec["headers"]["iphc"], 2)
+        self.assertEqual(rec["headers"]["mesh"], 1)
 
 
 if __name__ == "__main__":

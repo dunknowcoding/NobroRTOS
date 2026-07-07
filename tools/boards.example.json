@@ -5,7 +5,8 @@
     "jsonl_bridge (START/STOP JSONL app), serial_regex (match any app's output), vision",
     "(camera frame analytics), or sim (synthetic node). Replace the placeholder ports with",
     "your own serial ports (e.g. COM3 on Windows, /dev/ttyUSB0 on Linux). `tool_python`",
-    "defaults to `python3`; set it only if a node needs a specific interpreter."
+    "defaults to `python3`; set it only if a node needs a specific interpreter. Camera",
+    "nodes may also set `person_model` to a JSON model generated under _work."
   ],
   "boards": [
     {
@@ -44,7 +45,8 @@
       "port": "<YOUR_SERIAL_PORT>",
       "protocol": "vision",
       "seconds": 30,
-      "tool_python": "python3"
+      "tool_python": "python3",
+      "person_model": "_work/person_model.json"
     },
     {
       "name": "sim_relay",

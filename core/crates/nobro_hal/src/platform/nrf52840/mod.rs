@@ -74,6 +74,14 @@ impl HalLease for Nrf52840 {
         ResourceLease::is_held(resource)
     }
 
+    fn owner(resource: Resource) -> Option<u8> {
+        ResourceLease::owner(resource)
+    }
+
+    fn release_all_for_owner(owner: u8) -> usize {
+        ResourceLease::release_all_for_owner(owner)
+    }
+
     fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
         ResourceLease::acquire_guard(resource, owner)
     }

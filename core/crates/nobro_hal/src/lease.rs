@@ -17,6 +17,21 @@ pub enum Resource {
 }
 
 impl Resource {
+    pub const ALL: [Self; 10] = [
+        Self::Timer0,
+        Self::Twim0,
+        Self::Twim1,
+        Self::Spim0,
+        Self::Radio,
+        Self::Rtc2,
+        Self::Timer3,
+        Self::Pwm0,
+        Self::Egu0,
+        Self::Ppi,
+    ];
+
+    pub const COUNT: usize = Self::ALL.len();
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Timer0 => "TIMER0",
@@ -116,6 +131,36 @@ impl ResourceLease {
         SLOTS[idx(resource)].taken.load(Ordering::Acquire)
     }
 
+    pub fn owner(resource: Resource) -> Option<u8> {
+        critical_section::with(|_| {
+            let slot = &SLOTS[idx(resource)];
+            if slot.taken.load(Ordering::Acquire) {
+                Some(slot.owner.load(Ordering::Acquire))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Recovery hook: release every resource owned by a faulted module.
+    ///
+    /// This is intentionally owner-scoped, not a global reset. A supervisor can quiesce
+    /// one module and clean up its leaked leases without disturbing healthy modules.
+    pub fn release_all_for_owner(owner: u8) -> usize {
+        critical_section::with(|_| {
+            let mut released = 0;
+            for slot in &SLOTS {
+                if slot.taken.load(Ordering::Acquire) && slot.owner.load(Ordering::Acquire) == owner
+                {
+                    slot.taken.store(false, Ordering::Release);
+                    slot.owner.store(0, Ordering::Release);
+                    released += 1;
+                }
+            }
+            released
+        })
+    }
+
     pub fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
         Self::acquire(resource, owner)?;
         Ok(LeaseGuard {
@@ -166,19 +211,28 @@ mod invariant_tests {
     //! critical_section (interrupt masking, not threads) is a poor fit for loom; this
     //! exhaustive-ish randomized check is the practical formal-invariant coverage.
     use super::*;
+    use core::hint::spin_loop;
+    use core::sync::atomic::AtomicBool;
 
-    const RESOURCES: [Resource; 10] = [
-        Resource::Timer0,
-        Resource::Twim0,
-        Resource::Twim1,
-        Resource::Spim0,
-        Resource::Radio,
-        Resource::Rtc2,
-        Resource::Timer3,
-        Resource::Pwm0,
-        Resource::Egu0,
-        Resource::Ppi,
-    ];
+    static TEST_LOCK: AtomicBool = AtomicBool::new(false);
+
+    struct TestLock;
+
+    impl Drop for TestLock {
+        fn drop(&mut self) {
+            TEST_LOCK.store(false, Ordering::Release);
+        }
+    }
+
+    fn test_lock() -> TestLock {
+        while TEST_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            spin_loop();
+        }
+        TestLock
+    }
 
     fn reset_all() {
         for s in &SLOTS {
@@ -189,22 +243,23 @@ mod invariant_tests {
 
     #[test]
     fn lease_invariants_hold_over_random_op_sequences() {
+        let _lock = test_lock();
         reset_all();
         // reference model: which owner (if any) holds each resource
-        let mut model: [Option<u8>; 10] = [None; 10];
+        let mut model: [Option<u8>; Resource::COUNT] = [None; Resource::COUNT];
         let mut rng: u32 = 0x1357_9BDF;
-        let mut next = |r: &mut u32| {
+        let next = |r: &mut u32| {
             *r = r.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             *r
         };
 
         for _ in 0..30_000 {
-            let ri = (next(&mut rng) % 10) as usize;
-            let res = RESOURCES[ri];
+            let ri = (next(&mut rng) % Resource::COUNT as u32) as usize;
+            let res = Resource::ALL[ri];
             let owner = 1 + (next(&mut rng) % 4) as u8; // owners 1..=4 exercise WrongOwner
-            let acquire = next(&mut rng) & 1 == 0;
+            let op = next(&mut rng) % 6;
 
-            if acquire {
+            if op <= 2 {
                 let got = ResourceLease::acquire(res, owner);
                 match model[ri] {
                     None => {
@@ -217,7 +272,7 @@ mod invariant_tests {
                         "acquire of a held resource must be rejected (mutual exclusion)"
                     ),
                 }
-            } else {
+            } else if op <= 4 {
                 let got = ResourceLease::release(res, owner);
                 match model[ri] {
                     None => assert_eq!(got, Err(LeaseError::NotHeld)),
@@ -231,15 +286,56 @@ mod invariant_tests {
                         "only the current owner may release"
                     ),
                 }
+            } else {
+                let expected = model.iter().filter(|&&o| o == Some(owner)).count();
+                let released = ResourceLease::release_all_for_owner(owner);
+                assert_eq!(released, expected);
+                for slot in &mut model {
+                    if *slot == Some(owner) {
+                        *slot = None;
+                    }
+                }
             }
             // invariant: the peripheral's held-state always matches the model
             assert_eq!(ResourceLease::is_held(res), model[ri].is_some());
+            assert_eq!(ResourceLease::owner(res), model[ri]);
         }
 
         // full sweep: every slot agrees with the model after the whole sequence
-        for (j, res) in RESOURCES.iter().enumerate() {
+        for (j, res) in Resource::ALL.iter().enumerate() {
             assert_eq!(ResourceLease::is_held(*res), model[j].is_some());
+            assert_eq!(ResourceLease::owner(*res), model[j]);
         }
+        reset_all();
+    }
+
+    #[test]
+    fn recovery_can_release_all_leases_for_one_owner() {
+        let _lock = test_lock();
+        reset_all();
+        assert_eq!(ResourceLease::acquire(Resource::Twim0, 7), Ok(()));
+        assert_eq!(ResourceLease::acquire(Resource::Spim0, 7), Ok(()));
+        assert_eq!(ResourceLease::acquire(Resource::Radio, 8), Ok(()));
+        assert_eq!(ResourceLease::owner(Resource::Twim0), Some(7));
+
+        assert_eq!(ResourceLease::release_all_for_owner(7), 2);
+        assert!(!ResourceLease::is_held(Resource::Twim0));
+        assert!(!ResourceLease::is_held(Resource::Spim0));
+        assert_eq!(ResourceLease::owner(Resource::Radio), Some(8));
+        assert_eq!(ResourceLease::release(Resource::Radio, 8), Ok(()));
+        reset_all();
+    }
+
+    #[test]
+    fn guard_drop_auto_releases_the_resource() {
+        let _lock = test_lock();
+        reset_all();
+        {
+            let guard = ResourceLease::acquire_guard(Resource::Pwm0, 3).unwrap();
+            assert_eq!(guard.resource(), Resource::Pwm0);
+            assert_eq!(ResourceLease::owner(Resource::Pwm0), Some(3));
+        }
+        assert_eq!(ResourceLease::owner(Resource::Pwm0), None);
         reset_all();
     }
 }

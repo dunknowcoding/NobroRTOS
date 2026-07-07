@@ -3,6 +3,7 @@
 //! - [`Ewma`] online adaptive baseline (M40)
 //! - [`reject`] confidence-threshold reject option (M42)
 //! - [`complementary`] two-source sensor fusion (M46)
+//! - [`kws_log_energy_features`] fixed-size keyword-spotting audio features (M115)
 #![cfg_attr(not(test), no_std)]
 
 /// Welford streaming mean/variance (no stored window).
@@ -107,6 +108,160 @@ pub fn complementary(a: f32, b: f32, alpha: f32) -> f32 {
     alpha * a + (1.0 - alpha) * b
 }
 
+/// Number of frames in the built-in yes/no keyword-spotting feature contract.
+pub const KWS_FRAMES: usize = 15;
+/// Number of log-spaced energy bands per keyword-spotting frame.
+pub const KWS_BANDS: usize = 8;
+/// Total feature count produced by [`kws_log_energy_features`].
+pub const KWS_FEATURES: usize = KWS_FRAMES * KWS_BANDS;
+/// PCM window per feature frame, matching the host training pipeline.
+pub const KWS_FRAME_SAMPLES: usize = 1024;
+/// Nominal keyword-spotting sample rate.
+pub const KWS_SAMPLE_RATE_HZ: usize = 16_000;
+/// One-second keyword window used by the host trainer.
+pub const KWS_WINDOW_SAMPLES: usize = 16_000;
+
+const KWS_BAND_BINS: [usize; KWS_BANDS] = [5, 10, 18, 33, 61, 112, 206, 378];
+
+/// Compute one frame of low-cost log-energy features for keyword spotting.
+///
+/// `frame` is 16-bit mono PCM. `out` must hold [`KWS_BANDS`] values. The bands are
+/// log-spaced Goertzel probes over a Hann window, intentionally mirroring the shape
+/// of the host-trained 15x8 KWS contract while staying bounded enough for small MCUs.
+pub fn kws_frame_log_energy_features(frame: &[i16], out: &mut [f32]) -> bool {
+    if out.len() < KWS_BANDS {
+        return false;
+    }
+    for (b, o) in out.iter_mut().enumerate().take(KWS_BANDS) {
+        let power = goertzel_power_bin(frame, KWS_BAND_BINS[b], KWS_FRAME_SAMPLES);
+        *o = log10_approx(power + 1.0);
+    }
+    true
+}
+
+/// Compute normalized 15x8 keyword-spotting features from up to one second of PCM.
+///
+/// Short inputs are zero-padded by simply reading missing samples as silence. `out`
+/// must hold [`KWS_FEATURES`] values. Returns `false` only for a too-small output
+/// buffer; silence is a valid input and produces finite normalized features.
+pub fn kws_log_energy_features(pcm: &[i16], out: &mut [f32]) -> bool {
+    if out.len() < KWS_FEATURES {
+        return false;
+    }
+    let hop = KWS_WINDOW_SAMPLES / KWS_FRAMES;
+    for t in 0..KWS_FRAMES {
+        let start = t * hop;
+        for b in 0..KWS_BANDS {
+            let power = goertzel_power_window(pcm, start, KWS_BAND_BINS[b]);
+            out[t * KWS_BANDS + b] = log10_approx(power + 1.0);
+        }
+    }
+    normalize_in_place(&mut out[..KWS_FEATURES]);
+    true
+}
+
+fn normalize_in_place(values: &mut [f32]) {
+    let mut mean = 0.0;
+    for &v in values.iter() {
+        mean += v;
+    }
+    mean /= values.len() as f32;
+    let mut var = 0.0;
+    for &v in values.iter() {
+        let d = v - mean;
+        var += d * d;
+    }
+    var /= values.len() as f32;
+    let inv_std = 1.0 / (sqrt_approx(var) + 1e-6);
+    for v in values.iter_mut() {
+        *v = (*v - mean) * inv_std;
+    }
+}
+
+fn goertzel_power_window(pcm: &[i16], start: usize, bin: usize) -> f32 {
+    let w = 2.0 * core::f32::consts::PI * bin as f32 / KWS_FRAME_SAMPLES as f32;
+    let coeff = 2.0 * cos_approx(w);
+    let mut s1 = 0.0f32;
+    let mut s2 = 0.0f32;
+    for i in 0..KWS_FRAME_SAMPLES {
+        let idx = start + i;
+        let x = if idx < pcm.len() {
+            pcm[idx] as f32 / 32768.0
+        } else {
+            0.0
+        };
+        let hann = 0.5
+            - 0.5
+                * cos_approx(
+                    2.0 * core::f32::consts::PI * i as f32 / (KWS_FRAME_SAMPLES - 1) as f32,
+                );
+        let s0 = x * hann + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    (s1 * s1 + s2 * s2 - coeff * s1 * s2).abs() / KWS_FRAME_SAMPLES as f32
+}
+
+fn goertzel_power_bin(frame: &[i16], bin: usize, fft_len: usize) -> f32 {
+    let w = 2.0 * core::f32::consts::PI * bin as f32 / fft_len as f32;
+    let coeff = 2.0 * cos_approx(w);
+    let mut s1 = 0.0f32;
+    let mut s2 = 0.0f32;
+    for i in 0..fft_len {
+        let x = if i < frame.len() {
+            frame[i] as f32 / 32768.0
+        } else {
+            0.0
+        };
+        let hann =
+            0.5 - 0.5 * cos_approx(2.0 * core::f32::consts::PI * i as f32 / (fft_len - 1) as f32);
+        let s0 = x * hann + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    (s1 * s1 + s2 * s2 - coeff * s1 * s2).abs() / fft_len as f32
+}
+
+fn sqrt_approx(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let mut y = f32::from_bits((x.to_bits() >> 1) + 0x1FC0_0000);
+    for _ in 0..3 {
+        y = 0.5 * (y + x / y);
+    }
+    y
+}
+
+fn log10_approx(x: f32) -> f32 {
+    ln_approx(x) / core::f32::consts::LN_10
+}
+
+fn ln_approx(x: f32) -> f32 {
+    if x <= 0.0 {
+        return f32::MIN;
+    }
+    let bits = x.to_bits();
+    let e = ((bits >> 23) & 0xFF) as i32 - 127;
+    let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000);
+    let t = (m - 1.0) / (m + 1.0);
+    let t2 = t * t;
+    let ln_m = 2.0 * t * (1.0 + t2 * (1.0 / 3.0 + t2 * (1.0 / 5.0)));
+    ln_m + e as f32 * core::f32::consts::LN_2
+}
+
+fn cos_approx(mut x: f32) -> f32 {
+    let two_pi = 2.0 * core::f32::consts::PI;
+    while x > core::f32::consts::PI {
+        x -= two_pi;
+    }
+    while x < -core::f32::consts::PI {
+        x += two_pi;
+    }
+    let x2 = x * x;
+    1.0 - x2 * 0.5 + x2 * x2 * (1.0 / 24.0) - x2 * x2 * x2 * (1.0 / 720.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +293,39 @@ mod tests {
     #[test]
     fn complementary_fuses() {
         assert!((complementary(10.0, 20.0, 0.98) - 10.2).abs() < 1e-3);
+    }
+
+    #[test]
+    fn kws_frame_features_find_the_dominant_band() {
+        let mut frame = [0i16; KWS_FRAME_SAMPLES];
+        let w = 2.0 * core::f32::consts::PI * 61.0 / KWS_FRAME_SAMPLES as f32;
+        for (i, sample) in frame.iter_mut().enumerate() {
+            *sample = (12_000.0 * cos_approx(w * i as f32)) as i16;
+        }
+        let mut out = [0.0f32; KWS_BANDS];
+        assert!(kws_frame_log_energy_features(&frame, &mut out));
+        assert!(
+            out[4] > out[3],
+            "band 4 should beat lower neighbor: {out:?}"
+        );
+        assert!(
+            out[4] > out[5],
+            "band 4 should beat upper neighbor: {out:?}"
+        );
+    }
+
+    #[test]
+    fn kws_window_features_are_fixed_size_and_finite() {
+        let pcm = [0i16; 2048];
+        let mut out = [0.0f32; KWS_FEATURES];
+        assert!(kws_log_energy_features(&pcm, &mut out));
+        assert!(out.iter().all(|v| v.is_finite()));
+        let mean = out.iter().sum::<f32>() / out.len() as f32;
+        assert!(mean.abs() < 1e-3);
+        assert!(!kws_log_energy_features(
+            &pcm,
+            &mut [0.0f32; KWS_FEATURES - 1]
+        ));
     }
 }
 

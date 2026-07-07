@@ -13,6 +13,7 @@ both sides). Stdlib only.
 import argparse
 import hashlib
 import hmac
+import json
 import struct
 import sys
 
@@ -43,6 +44,13 @@ def main() -> int:
     ap.add_argument("image", nargs="?")
     ap.add_argument("--version", type=int, default=1)
     ap.add_argument("--key-hex", help="32-byte boot key as 64 hex chars")
+    ap.add_argument("--load-addr", type=lambda s: int(s, 0), default=0,
+                    help="optional image load address for manifest output")
+    ap.add_argument("--entry-addr", type=lambda s: int(s, 0), default=0,
+                    help="optional reset/entry address for manifest output")
+    ap.add_argument("--stack-top", type=lambda s: int(s, 0), default=0,
+                    help="optional initial stack pointer for manifest output")
+    ap.add_argument("--manifest-out", help="write signed image manifest JSON")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest or not args.image:
@@ -57,6 +65,19 @@ def main() -> int:
     print(f"version      : {args.version}")
     print(f"measurement  : {m.hex()}")
     print(f"signature    : {sig.hex()}")
+    if args.manifest_out:
+        manifest = {
+            "version": args.version,
+            "image_len": len(image),
+            "load_addr": args.load_addr,
+            "entry_addr": args.entry_addr,
+            "stack_top": args.stack_top,
+            "measurement": m.hex(),
+            "signature": sig.hex(),
+        }
+        with open(args.manifest_out, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+        print(f"manifest     : {args.manifest_out}")
     return 0
 
 

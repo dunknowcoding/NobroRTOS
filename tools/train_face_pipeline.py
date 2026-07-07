@@ -11,6 +11,7 @@ binary that classifies held-out samples on-device with nobro-nn, reporting
   python3 tools/train_face_pipeline.py [--out core/ports/esp32s3/src/bin/face_infer.rs]
 """
 import argparse
+import json
 import random
 import sys
 from pathlib import Path
@@ -58,6 +59,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--max-faces", type=int, default=1200)
     ap.add_argument("--test-samples", type=int, default=16)
+    ap.add_argument("--json-out", default=None,
+                    help="optional host/live-camera JSON model path, usually under _work")
     args = ap.parse_args()
 
     from sklearn.datasets import fetch_lfw_people
@@ -82,6 +85,23 @@ def main():
 
     model = export_model("face-16x16", 1, w, b, input_len=N_IN)
     print(f"int8 export: {len(model.weights)} bytes, scale_milli={model.scale_milli}")
+
+    if args.json_out:
+        json_path = Path(args.json_out)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps({
+            "name": "face-16x16",
+            "kind": "person-presence-dense",
+            "side": SIDE,
+            "input_len": N_IN,
+            "output_len": 2,
+            "weights": w,
+            "bias": b,
+            "threshold": 0.0,
+            "train_accuracy": acc_tr,
+            "test_accuracy": acc_te,
+        }, indent=2), encoding="utf-8")
+        print(f"wrote {json_path}")
 
     dev_x, dev_y = xte[: args.test_samples], yte[: args.test_samples]
     host_pred = [max(range(2), key=lambda j: dense(s, w, b)[j]) for s in dev_x]

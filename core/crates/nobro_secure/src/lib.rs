@@ -360,6 +360,57 @@ pub enum BootVerdict {
     RejectRollback,
 }
 
+/// Static image metadata a bootloader validates before jumping to an app image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootImageManifest {
+    pub version: u32,
+    pub image_len: u32,
+    pub load_addr: u32,
+    pub entry_addr: u32,
+    pub stack_top: u32,
+    pub measurement: [u8; 32],
+    pub signature: [u8; 32],
+}
+
+/// Address policy for a board bootloader.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootVectorPolicy {
+    pub min_load_addr: u32,
+    pub max_end_addr: u32,
+    pub stack_alignment: u32,
+    pub require_thumb_entry: bool,
+}
+
+impl BootVectorPolicy {
+    pub const fn cortex_m(min_load_addr: u32, max_end_addr: u32) -> Self {
+        Self {
+            min_load_addr,
+            max_end_addr,
+            stack_alignment: 8,
+            require_thumb_entry: true,
+        }
+    }
+}
+
+/// A verified target that a board-specific bootloader may jump to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerifiedBootPlan {
+    pub version: u32,
+    pub image_len: u32,
+    pub load_addr: u32,
+    pub entry_addr: u32,
+    pub stack_top: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BootPlanError {
+    Verification(BootVerdict),
+    SizeMismatch,
+    AddressRange,
+    InvalidEntry,
+    InvalidStack,
+}
+
 /// Secure-boot verification (M173): gate a firmware image on a signature over its
 /// SHA-256 measurement plus a monotonic version, using our own HMAC-SHA256 - no vendor
 /// secure-boot infra. The signing authority holds the boot key and emits
@@ -426,6 +477,56 @@ impl SecureBoot {
 
     pub fn min_version(&self) -> u32 {
         self.min_version
+    }
+
+    /// Verify a signed image manifest and return the exact target a bootloader may run.
+    ///
+    /// This keeps policy, anti-rollback, measurement, and vector sanity checks in one
+    /// testable contract. The final CPU-specific jump remains outside this safe API.
+    pub fn boot_plan(
+        &self,
+        boot_key: &[u8; 32],
+        image: &[u8],
+        manifest: &BootImageManifest,
+        policy: BootVectorPolicy,
+    ) -> Result<VerifiedBootPlan, BootPlanError> {
+        if image.len() != manifest.image_len as usize {
+            return Err(BootPlanError::SizeMismatch);
+        }
+        let end = manifest
+            .load_addr
+            .checked_add(manifest.image_len)
+            .ok_or(BootPlanError::AddressRange)?;
+        if manifest.load_addr < policy.min_load_addr || end > policy.max_end_addr {
+            return Err(BootPlanError::AddressRange);
+        }
+        if manifest.entry_addr == 0 || (policy.require_thumb_entry && manifest.entry_addr & 1 == 0)
+        {
+            return Err(BootPlanError::InvalidEntry);
+        }
+        if manifest.stack_top == 0
+            || policy.stack_alignment == 0
+            || manifest.stack_top % policy.stack_alignment != 0
+        {
+            return Err(BootPlanError::InvalidStack);
+        }
+        let verdict = self.verify(
+            boot_key,
+            image,
+            manifest.version,
+            &manifest.measurement,
+            &manifest.signature,
+        );
+        if verdict != BootVerdict::Accept {
+            return Err(BootPlanError::Verification(verdict));
+        }
+        Ok(VerifiedBootPlan {
+            version: manifest.version,
+            image_len: manifest.image_len,
+            load_addr: manifest.load_addr,
+            entry_addr: manifest.entry_addr,
+            stack_top: manifest.stack_top,
+        })
     }
 }
 
@@ -502,6 +603,68 @@ mod secure_boot_tests {
         let m = SecureBoot::measure(b"nobro");
         let sig = SecureBoot::sign(&[0x5A; 32], &m, 1);
         assert_eq!(&sig[..4], &PINNED_SIG4);
+    }
+
+    #[test]
+    fn verified_manifest_produces_a_boot_plan() {
+        let image = b"NOBRO signed app image";
+        let measurement = SecureBoot::measure(image);
+        let signature = SecureBoot::sign(&BOOT_KEY, &measurement, 8);
+        let manifest = BootImageManifest {
+            version: 8,
+            image_len: image.len() as u32,
+            load_addr: 0x1000,
+            entry_addr: 0x1101,
+            stack_top: 0x2001_0000,
+            measurement,
+            signature,
+        };
+        let plan = SecureBoot::new(7)
+            .boot_plan(
+                &BOOT_KEY,
+                image,
+                &manifest,
+                BootVectorPolicy::cortex_m(0x1000, 0x80000),
+            )
+            .unwrap();
+        assert_eq!(plan.entry_addr, 0x1101);
+        assert_eq!(plan.version, 8);
+    }
+
+    #[test]
+    fn boot_plan_rejects_bad_size_vector_or_signature() {
+        let image = b"NOBRO signed app image";
+        let measurement = SecureBoot::measure(image);
+        let signature = SecureBoot::sign(&BOOT_KEY, &measurement, 8);
+        let mut manifest = BootImageManifest {
+            version: 8,
+            image_len: image.len() as u32,
+            load_addr: 0x1000,
+            entry_addr: 0x1101,
+            stack_top: 0x2001_0000,
+            measurement,
+            signature,
+        };
+        let sb = SecureBoot::new(7);
+        let policy = BootVectorPolicy::cortex_m(0x1000, 0x80000);
+
+        manifest.image_len += 1;
+        assert_eq!(
+            sb.boot_plan(&BOOT_KEY, image, &manifest, policy),
+            Err(BootPlanError::SizeMismatch)
+        );
+        manifest.image_len = image.len() as u32;
+        manifest.entry_addr = 0x1100;
+        assert_eq!(
+            sb.boot_plan(&BOOT_KEY, image, &manifest, policy),
+            Err(BootPlanError::InvalidEntry)
+        );
+        manifest.entry_addr = 0x1101;
+        manifest.signature[0] ^= 1;
+        assert_eq!(
+            sb.boot_plan(&BOOT_KEY, image, &manifest, policy),
+            Err(BootPlanError::Verification(BootVerdict::RejectSignature))
+        );
     }
 }
 

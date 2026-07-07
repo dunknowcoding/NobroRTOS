@@ -147,3 +147,39 @@ def decode_thread_frame(psdu: bytes, has_fcs: bool = False) -> ThreadFrame:
     payload = psdu[len(psdu) - mac.payload_len:] if mac.payload_len else b""
     lowpan = decode_lowpan(payload)
     return ThreadFrame(mac=mac, lowpan=lowpan)
+
+
+def decode_thread_record(psdu: bytes, has_fcs: bool = False) -> dict | None:
+    """Return a collector-ready Thread record, or `None` when the PSDU is not 6LoWPAN."""
+    frame = decode_thread_frame(psdu, has_fcs=has_fcs)
+    if not frame.lowpan.is_thread_lowpan:
+        return None
+    return frame.to_record()
+
+
+@dataclass
+class ThreadRollup:
+    """Aggregate Thread/6LoWPAN observations from captured 802.15.4 PSDUs."""
+
+    frames: int = 0
+    thread_frames: int = 0
+    headers: dict[str, int] = field(default_factory=dict)
+
+    def ingest(self, psdu: bytes, has_fcs: bool = False) -> ThreadFrame:
+        self.frames += 1
+        frame = decode_thread_frame(psdu, has_fcs=has_fcs)
+        if frame.lowpan.is_thread_lowpan:
+            self.thread_frames += 1
+            for kind in frame.lowpan.kinds:
+                self.headers[kind.value] = self.headers.get(kind.value, 0) + 1
+        return frame
+
+    def to_record(self) -> dict:
+        return {
+            "proto": "thread",
+            "l2": "802.15.4",
+            "l3": "6lowpan",
+            "frames": self.frames,
+            "thread_frames": self.thread_frames,
+            "headers": dict(self.headers),
+        }

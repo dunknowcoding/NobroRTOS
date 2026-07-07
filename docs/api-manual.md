@@ -10,7 +10,60 @@ applications, adapters, and host tooling.
 | `nobro-kernel` | Manifest, admission, runtime, quota, capability, scheduler, IPC, alarms, recovery, health, and reports |
 | `nobro-hal` | Board profiles, platform traits, nRF52840 implementation, leases, timers, PWM, bus, and event capture |
 | `nobro-sal` | Stable service traits for adapters, apps, AI inference, and edge bridges |
+| `nobro-nn` | Heap-free MCU inference blocks: dense, int8 dense, 1-D/2-D convolution, pooling, recurrent cells, and attention |
+| `nobro-ml` | Heap-free DSP/ML utilities: anomaly stats, fusion, gesture detection, KWS audio features, model scheduling |
+| `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
+
+## Neural Network API
+
+`nobro-nn` is inference-side and `no_std`: callers pass all input, output, and
+scratch buffers explicitly. Dense layers use `[OUT][IN]` weights. 2-D
+convolution and pooling use NHWC tensors without a batch dimension, which keeps
+camera and sensor-grid models easy to inspect on small MCUs:
+
+```rust
+let mut out = [0.0f32; 4];
+nobro_nn::conv2d_valid(
+    &image_3x3x1,
+    3, 3, 1,
+    &kernel_2x2x1,
+    2, 2, 1,
+    &[0.0],
+    &mut out,
+);
+```
+
+For quantized models, `dense_int8` and `conv2d_valid_i8` accumulate into i32.
+The caller can then fuse activation, argmax, or requantization according to the
+model contract.
+
+`nobro-ml` provides the fixed keyword-spotting feature contract used by the
+yes/no example model. `kws_log_energy_features` turns up to one second of
+16 kHz mono PCM into 120 normalized features (`15 x 8`) without heap allocation:
+
+```rust
+let mut features = [0.0f32; nobro_ml::KWS_FEATURES];
+assert!(nobro_ml::kws_log_energy_features(&pcm_i16, &mut features));
+```
+
+## Security API
+
+`nobro-secure` keeps the secure-boot decision separate from the unsafe,
+board-specific jump. `SecureBoot::boot_plan` verifies image length, address
+range, entry/stack vector sanity, SHA-256 measurement, HMAC signature, and
+anti-rollback version before returning a `VerifiedBootPlan`:
+
+```rust
+let policy = nobro_secure::BootVectorPolicy::cortex_m(0x1000, 0x80000);
+let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
+```
+
+`tools/sign_firmware.py` can emit the matching manifest JSON:
+
+```powershell
+python tools/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
+```
 
 ## Kernel API
 
@@ -425,11 +478,15 @@ for fixture in nobro_hal::BOARD_PACKAGE_FIXTURES {
 
 `ResourceLease` and `LeaseGuard` provide exclusive ownership for shared
 peripherals. A driver should acquire a lease, perform bounded work, and let the
-guard release the resource.
+guard release the resource. Recovery supervisors can inspect the current owner
+and release every lease held by a faulted owner without disturbing other
+modules.
 
 ```rust
-let mut lease = lease_table.acquire(ResourceId::Twim0, module_id)?;
-bus.write_read(&mut lease, addr, tx, rx)?;
+let guard = nobro_hal::ResourceLease::acquire_guard(nobro_hal::Resource::Twim0, module_id)?;
+assert_eq!(nobro_hal::ResourceLease::owner(nobro_hal::Resource::Twim0), Some(module_id));
+drop(guard);
+nobro_hal::ResourceLease::release_all_for_owner(module_id);
 ```
 
 ### Event Capture

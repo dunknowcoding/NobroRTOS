@@ -145,9 +145,12 @@ def read_vision(b):
     parse its VISION line. `tool_python` selects the interpreter that has PIL/numpy."""
     tool = os.path.join(HERE, "vision_node.py")
     py = b.get("tool_python", sys.executable)
+    cmd = [py, "-u", tool, "--port", b["port"], "--frames", "2",
+           "--save", os.path.join(HERE, "..", "_work", "vision_last.jpg")]
+    if b.get("person_model"):
+        cmd += ["--person-model", b["person_model"]]
     out = subprocess.run(
-        [py, "-u", tool, "--port", b["port"], "--frames", "2",
-         "--save", os.path.join(HERE, "..", "_work", "vision_last.jpg")],
+        cmd,
         capture_output=True, text=True, timeout=b.get("seconds", 60)).stdout
     m = re.search(
         r"VISION \S+ scene=(\S+) activity=(\S+) luma=([\d.]+) entropy=([\d.]+) "
@@ -157,6 +160,10 @@ def read_vision(b):
     rec = {"pass": m.group(7) == "1", "scene": m.group(1), "activity": m.group(2),
            "luma": float(m.group(3)), "entropy": float(m.group(4)),
            "sharpness": int(m.group(5)), "diff": float(m.group(6))}
+    person = re.search(r"person=(\d+) person_score=([-\d.]+)", out)
+    if person:
+        rec["person"] = int(person.group(1))
+        rec["person_score"] = float(person.group(2))
     return rec, None
 
 
@@ -182,7 +189,7 @@ def network_rollup(boards):
     for name, d in boards.items():
         if "activity" in d:
             cameras.append({"node": name, "scene": d.get("scene"),
-                            "activity": d["activity"]})
+                            "activity": d["activity"], "person": d.get("person")})
         for key in ("accel_mg", "mag_mg"):
             if key in d:
                 imu_dev_mg = max(imu_dev_mg, abs(int(d[key]) - 1000))

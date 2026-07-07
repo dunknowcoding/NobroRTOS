@@ -10,6 +10,7 @@ utterances on-device with nobro-nn: `NOBRO-KWS hits=.. host_parity=.. all_pass=.
   python3 tools/train_kws_pipeline.py --data <dir with yes/ and no/ folders>
 """
 import argparse
+import json
 import random
 import sys
 import wave
@@ -24,11 +25,7 @@ FRAMES, BANDS = 15, 8
 N_IN = FRAMES * BANDS
 
 
-def wav_features(path: Path):
-    with wave.open(str(path), "rb") as f:
-        if f.getframerate() != 16000 or f.getnchannels() != 1:
-            return None
-        raw = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
+def pcm_features(raw):
     x = np.zeros(16000, dtype=np.float32)
     x[: min(len(raw), 16000)] = raw[:16000] / 32768.0
     feats = []
@@ -48,6 +45,14 @@ def wav_features(path: Path):
     return [float(v) for v in f]
 
 
+def wav_features(path: Path):
+    with wave.open(str(path), "rb") as f:
+        if f.getframerate() != 16000 or f.getnchannels() != 1:
+            return None
+        raw = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
+    return pcm_features(raw)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="_work/datasets/speech")
@@ -55,6 +60,8 @@ def main():
     ap.add_argument("--per-class", type=int, default=700)
     ap.add_argument("--epochs", type=int, default=25)
     ap.add_argument("--test-samples", type=int, default=16)
+    ap.add_argument("--json-out", default=None,
+                    help="optional live-audio JSON model path, usually under _work")
     args = ap.parse_args()
 
     rng = random.Random(7)
@@ -82,6 +89,27 @@ def main():
 
     model = export_model("kws-yes-no", 1, w, b, input_len=N_IN)
     print(f"int8 export: {len(model.weights)} bytes, scale_milli={model.scale_milli}")
+
+    if args.json_out:
+        json_path = Path(args.json_out)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps({
+            "name": "kws-yes-no",
+            "kind": "keyword-spotting-dense",
+            "labels": ["no", "yes"],
+            "feature_mode": "rfft-log-energy",
+            "sample_rate_hz": 16000,
+            "frames": FRAMES,
+            "bands": BANDS,
+            "input_len": N_IN,
+            "output_len": 2,
+            "weights": w,
+            "bias": b,
+            "threshold": 0.0,
+            "train_accuracy": acc_tr,
+            "test_accuracy": acc_te,
+        }, indent=2), encoding="utf-8")
+        print(f"wrote {json_path}")
 
     dev_x, dev_y = xte[: args.test_samples], yte[: args.test_samples]
     host_pred = [max(range(2), key=lambda j: dense(s, w, b)[j]) for s in dev_x]

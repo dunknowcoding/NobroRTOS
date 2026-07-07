@@ -120,6 +120,8 @@ pub trait HalLease {
     fn acquire(resource: Resource, owner: u8) -> Result<(), LeaseError>;
     fn release(resource: Resource, owner: u8) -> Result<(), LeaseError>;
     fn is_held(resource: Resource) -> bool;
+    fn owner(resource: Resource) -> Option<u8>;
+    fn release_all_for_owner(owner: u8) -> usize;
     fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError>;
 }
 
