@@ -27,9 +27,9 @@ to ArduinoNRF's own stacks by swapping a feature.
 backends. Swapping the whole USB stack is a one-line feature change, no app
 edits.
 
-## Radio / BLE / Zigbee - same pattern, planned
+## Radio / BLE / Zigbee / RFID - same pattern
 
-The mountable-backend shape extends to wireless, each behind its own trait:
+The mountable-backend shape extends to wireless and proximity links, each behind its own trait:
 
 - **BLE**: a `BleStack` trait with backends `nimble` (ArduinoNRF default) and
   `nrf-softdevice` (S140-compatible layout). The existing nRF `Radio` driver is
@@ -37,6 +37,7 @@ The mountable-backend shape extends to wireless, each behind its own trait:
 - **Zigbee / 802.15.4**: a `RadioCoprocessor` trait with backends such as UART
   co-processors and, later, the nRF on-chip RADIO running Nordic's official
   Zigbee sidecar firmware.
+- **RFID / NFC**: `SpiIo` adapts a board SPI driver to the no-heap `Mfrc522` backend, which exposes ISO 14443A UID polling through `IotTransport`.
 
 Each backend is `no_std`, feature-selected, and swappable per
 `core/boards/*/board.json`, so a board's wireless identity is data plus one

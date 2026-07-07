@@ -10,6 +10,7 @@ Use these rules:
 - Remote or sidecar inference stays outside hard-realtime loops.
 - ROS-style topics and services map to bounded queues and fixed records.
 - Mesh and OTA features use deterministic planners before packets are sent.
+- Proximity modules such as RFID readers expose bounded polling through the same IoT transport contract.
 - Robot control loops keep deadlines explicit and recover through module state.
 
 This lets one app combine an IMU, actuator, edge model, and network bridge

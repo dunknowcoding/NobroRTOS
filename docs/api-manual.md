@@ -14,6 +14,7 @@ applications, adapters, and host tooling.
 | `nobro-ml` | Heap-free DSP/ML utilities: anomaly stats, fusion, gesture detection, KWS audio features, model scheduling |
 | `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
 | `nobro-net` | Mesh routing, secure links, OTA chunking, store-forward queues, fleet OTA rollout planning |
+| `nobro-iot` | Mountable IoT transports for BLE, WiFi, Zigbee, Thread, RFID, and proprietary radios |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
 ## Neural Network API
@@ -48,6 +49,28 @@ let mut features = [0.0f32; nobro_ml::KWS_FEATURES];
 assert!(nobro_ml::kws_log_energy_features(&pcm_i16, &mut features));
 ```
 
+## IoT Transport API
+
+`nobro-iot` keeps link identity as data and physical radios behind small traits.
+Apps consume `IotTransport` for descriptor, link-state, send, and receive calls,
+so a BLE advertisement backend, a Zigbee co-processor, or an RFID reader can be
+mounted without changing application logic.
+
+RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
+adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and
+`Mfrc522<S>` provides bounded request, anticollision, UID polling, and an
+`IotTransport` implementation:
+
+```rust
+let mut reader = nobro_iot::Mfrc522::new(board_spi);
+reader.init()?;
+let uid = reader.poll_uid(4)?;
+assert!(!uid.is_empty());
+```
+
+The backend allocates no heap memory, bounds polling, validates ISO 14443A BCC,
+and returns explicit `RfidError` values for bus, timeout, collision, protocol,
+and buffer failures.
 ## Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,

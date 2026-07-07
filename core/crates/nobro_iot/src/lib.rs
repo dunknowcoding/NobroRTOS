@@ -73,7 +73,7 @@ pub mod link_catalog {
     pub const RFID_14443A: LinkDescriptor = LinkDescriptor {
         name: "ISO 14443A proximity",
         protocol: Protocol::Rfid,
-        mtu: 16, // classic sector-fragment granularity
+        mtu: 18, // MFRC522 FIFO response window used by the no-heap backend
         requires_join: false,
         broadcast_only: false,
     };
@@ -196,6 +196,318 @@ impl<'a> BleAdvBuilder<'a> {
 
 // ---------------------------------------------------------------- RFID (ISO 14443A)
 
+/// SPI register access a board support package provides for an RFID reader.
+///
+/// MFRC522 and similar readers use full-duplex SPI transactions for register reads and
+/// writes. The trait stays byte-oriented and dependency-free so Arduino, PlatformIO,
+/// embedded-hal, or a custom HAL can adapt to it with a tiny shim.
+pub trait SpiIo {
+    /// Transfer `write` bytes while collecting the same number of bytes in `read`.
+    /// Returns false when the bus transaction failed or the device was not selected.
+    fn transfer(&mut self, write: &[u8], read: &mut [u8]) -> bool;
+}
+
+/// Static RFID reader metadata used by board profiles and app generators.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RfidReaderDescriptor {
+    pub name: &'static str,
+    pub protocol: Protocol,
+    pub host_bus: &'static str,
+    pub max_uid_len: u8,
+    pub fifo_len: u8,
+}
+
+pub mod rfid_readers {
+    use super::*;
+
+    /// Common RC522 / MFRC522 SPI reader module for ISO 14443A tags.
+    pub const MFRC522_SPI: RfidReaderDescriptor = RfidReaderDescriptor {
+        name: "MFRC522 SPI reader",
+        protocol: Protocol::Rfid,
+        host_bus: "spi",
+        max_uid_len: 10,
+        fifo_len: 64,
+    };
+}
+
+/// Fixed-size ISO 14443A UID returned by a reader poll.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RfidUid {
+    bytes: [u8; 10],
+    len: u8,
+}
+
+impl RfidUid {
+    pub const fn empty() -> Self {
+        Self {
+            bytes: [0; 10],
+            len: 0,
+        }
+    }
+
+    pub fn from_slice(uid: &[u8]) -> Option<Self> {
+        if uid.is_empty() || uid.len() > 10 {
+            return None;
+        }
+        let mut out = Self::empty();
+        let mut i = 0;
+        while i < uid.len() {
+            out.bytes[i] = uid[i];
+            i += 1;
+        }
+        out.len = uid.len() as u8;
+        Some(out)
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.bytes[..self.len as usize]
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+/// Errors reported by the MFRC522 backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RfidError {
+    Bus,
+    Timeout,
+    Collision,
+    Protocol,
+    BufferTooSmall,
+}
+
+/// No-heap MFRC522 / RC522 reader backend for ISO 14443A polling.
+pub struct Mfrc522<S: SpiIo> {
+    spi: S,
+    initialized: bool,
+    rx_cache: [u8; 18],
+    rx_len: usize,
+}
+
+impl<S: SpiIo> Mfrc522<S> {
+    pub const fn new(spi: S) -> Self {
+        Self {
+            spi,
+            initialized: false,
+            rx_cache: [0; 18],
+            rx_len: 0,
+        }
+    }
+
+    pub fn into_inner(self) -> S {
+        self.spi
+    }
+
+    pub fn reader_descriptor(&self) -> RfidReaderDescriptor {
+        rfid_readers::MFRC522_SPI
+    }
+
+    /// Reset and configure the reader for ISO 14443A polling.
+    pub fn init(&mut self) -> Result<(), RfidError> {
+        self.write_reg(reg::COMMAND, cmd::SOFT_RESET)?;
+        self.write_reg(reg::MODE, 0x3D)?;
+        self.write_reg(reg::TIMER_MODE, 0x8D)?;
+        self.write_reg(reg::TIMER_PRESCALER, 0x3E)?;
+        self.write_reg(reg::TIMER_RELOAD_H, 0x00)?;
+        self.write_reg(reg::TIMER_RELOAD_L, 0x1E)?;
+        self.write_reg(reg::TX_ASK, 0x40)?;
+        self.write_reg(reg::TX_MODE, 0x00)?;
+        self.write_reg(reg::RX_MODE, 0x00)?;
+        self.set_bits(reg::TX_CONTROL, 0x03)?;
+        self.initialized = true;
+        Ok(())
+    }
+
+    /// Send REQA and return the ATQA bytes when a tag answers.
+    pub fn request_a(&mut self, out: &mut [u8]) -> Result<usize, RfidError> {
+        self.write_reg(reg::BIT_FRAMING, 0x07)?;
+        self.transceive(&[0x26], 7, out)
+    }
+
+    /// Run cascade-level-1 anticollision and return a 4-byte UID when present.
+    pub fn anticollision_level1(&mut self) -> Result<RfidUid, RfidError> {
+        let mut frame = [0u8; 5];
+        let n = self.transceive(&[0x93, 0x20], 0, &mut frame)?;
+        if n != 5 || !rfid::validate_anticollision(&frame) || rfid::has_next_cascade(&frame) {
+            return Err(RfidError::Protocol);
+        }
+        RfidUid::from_slice(&frame[..4]).ok_or(RfidError::Protocol)
+    }
+
+    /// Poll for one ISO 14443A card UID. This is non-allocating and bounded by `poll_budget`.
+    pub fn poll_uid(&mut self, poll_budget: u16) -> Result<RfidUid, RfidError> {
+        let mut atqa = [0u8; 2];
+        let mut tries = 0;
+        while tries < poll_budget {
+            match self.request_a(&mut atqa) {
+                Ok(2) => return self.anticollision_level1(),
+                Ok(_) => return Err(RfidError::Protocol),
+                Err(RfidError::Timeout) => tries += 1,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(RfidError::Timeout)
+    }
+
+    pub fn transceive(
+        &mut self,
+        tx: &[u8],
+        valid_bits: u8,
+        rx: &mut [u8],
+    ) -> Result<usize, RfidError> {
+        if tx.len() > usize::from(rfid_readers::MFRC522_SPI.fifo_len) {
+            return Err(RfidError::BufferTooSmall);
+        }
+        self.write_reg(reg::COMMAND, cmd::IDLE)?;
+        self.write_reg(reg::COMM_IRQ, 0x7F)?;
+        self.write_reg(reg::FIFO_LEVEL, 0x80)?;
+        for &b in tx {
+            self.write_reg(reg::FIFO_DATA, b)?;
+        }
+        self.write_reg(reg::BIT_FRAMING, valid_bits & 0x07)?;
+        self.write_reg(reg::COMMAND, cmd::TRANSCEIVE)?;
+        self.set_bits(reg::BIT_FRAMING, 0x80)?;
+
+        let mut polls = 0;
+        while polls < 200 {
+            let irq = self.read_reg(reg::COMM_IRQ)?;
+            if irq & 0x30 != 0 {
+                break;
+            }
+            if irq & 0x01 != 0 {
+                self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+                return Err(RfidError::Timeout);
+            }
+            polls += 1;
+        }
+        if polls == 200 {
+            self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+            return Err(RfidError::Timeout);
+        }
+
+        let err = self.read_reg(reg::ERROR)?;
+        if err & 0x08 != 0 {
+            self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+            return Err(RfidError::Collision);
+        }
+        if err & 0x13 != 0 {
+            self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+            return Err(RfidError::Protocol);
+        }
+        let fifo = usize::from(self.read_reg(reg::FIFO_LEVEL)?);
+        if fifo > rx.len() {
+            self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+            return Err(RfidError::BufferTooSmall);
+        }
+        let mut i = 0;
+        while i < fifo {
+            rx[i] = self.read_reg(reg::FIFO_DATA)?;
+            i += 1;
+        }
+        self.clear_bits(reg::BIT_FRAMING, 0x80)?;
+        Ok(fifo)
+    }
+
+    fn read_reg(&mut self, reg: u8) -> Result<u8, RfidError> {
+        let write = [((reg << 1) & 0x7E) | 0x80, 0x00];
+        let mut read = [0u8; 2];
+        if self.spi.transfer(&write, &mut read) {
+            Ok(read[1])
+        } else {
+            Err(RfidError::Bus)
+        }
+    }
+
+    fn write_reg(&mut self, reg: u8, value: u8) -> Result<(), RfidError> {
+        let write = [(reg << 1) & 0x7E, value];
+        let mut read = [0u8; 2];
+        if self.spi.transfer(&write, &mut read) {
+            Ok(())
+        } else {
+            Err(RfidError::Bus)
+        }
+    }
+
+    fn set_bits(&mut self, reg: u8, mask: u8) -> Result<(), RfidError> {
+        let v = self.read_reg(reg)?;
+        self.write_reg(reg, v | mask)
+    }
+
+    fn clear_bits(&mut self, reg: u8, mask: u8) -> Result<(), RfidError> {
+        let v = self.read_reg(reg)?;
+        self.write_reg(reg, v & !mask)
+    }
+}
+
+impl<S: SpiIo> IotTransport for Mfrc522<S> {
+    fn descriptor(&self) -> LinkDescriptor {
+        link_catalog::RFID_14443A
+    }
+
+    fn link_state(&mut self) -> IotLinkState {
+        if self.initialized {
+            IotLinkState::Up
+        } else {
+            IotLinkState::Down
+        }
+    }
+
+    fn send(&mut self, payload: &[u8]) -> bool {
+        let mut tmp = [0u8; 18];
+        match self.transceive(payload, 0, &mut tmp) {
+            Ok(n) => {
+                self.rx_cache[..n].copy_from_slice(&tmp[..n]);
+                self.rx_len = n;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn recv(&mut self, buf: &mut [u8]) -> usize {
+        if self.rx_len == 0 {
+            if let Ok(uid) = self.poll_uid(1) {
+                let n = uid.len().min(self.rx_cache.len());
+                self.rx_cache[..n].copy_from_slice(uid.as_slice());
+                self.rx_len = n;
+            }
+        }
+        let n = self.rx_len.min(buf.len());
+        buf[..n].copy_from_slice(&self.rx_cache[..n]);
+        self.rx_len = 0;
+        n
+    }
+}
+
+mod reg {
+    pub const COMMAND: u8 = 0x01;
+    pub const COMM_IRQ: u8 = 0x04;
+    pub const ERROR: u8 = 0x06;
+    pub const FIFO_DATA: u8 = 0x09;
+    pub const FIFO_LEVEL: u8 = 0x0A;
+    pub const BIT_FRAMING: u8 = 0x0D;
+    pub const MODE: u8 = 0x11;
+    pub const TX_MODE: u8 = 0x12;
+    pub const RX_MODE: u8 = 0x13;
+    pub const TX_CONTROL: u8 = 0x14;
+    pub const TX_ASK: u8 = 0x15;
+    pub const TIMER_MODE: u8 = 0x2A;
+    pub const TIMER_PRESCALER: u8 = 0x2B;
+    pub const TIMER_RELOAD_H: u8 = 0x2C;
+    pub const TIMER_RELOAD_L: u8 = 0x2D;
+}
+
+mod cmd {
+    pub const IDLE: u8 = 0x00;
+    pub const TRANSCEIVE: u8 = 0x0C;
+    pub const SOFT_RESET: u8 = 0x0F;
+}
 pub mod rfid {
     /// BCC of a 4-byte UID cascade level (XOR of the four bytes, ISO 14443-3 A).
     pub fn iso14443a_bcc(uid: &[u8; 4]) -> u8 {
@@ -418,6 +730,9 @@ mod tests {
         assert!(link_catalog::WIFI_TCP.requires_join);
         assert!(link_catalog::ZIGBEE_APS.mtu < link_catalog::WIFI_TCP.mtu);
         assert_eq!(link_catalog::RFID_14443A.protocol, Protocol::Rfid);
+        assert_eq!(link_catalog::RFID_14443A.mtu, 18);
+        assert_eq!(rfid_readers::MFRC522_SPI.host_bus, "spi");
+        assert_eq!(rfid_readers::MFRC522_SPI.max_uid_len, 10);
     }
 
     #[test]
@@ -513,24 +828,24 @@ mod tests {
 
     // Scripted UART: replays firmware bytes and captures what the backend transmits.
     struct FakeUart {
-        rx: heapless_vec,
+        rx: HeaplessVec,
         rx_pos: usize,
-        tx: heapless_vec,
+        tx: HeaplessVec,
     }
     // A tiny fixed-capacity byte vec so the test stays no_std/no-heap like the crate.
-    struct heapless_vec {
+    struct HeaplessVec {
         data: [u8; 256],
         len: usize,
     }
-    impl Default for heapless_vec {
+    impl Default for HeaplessVec {
         fn default() -> Self {
-            heapless_vec {
+            HeaplessVec {
                 data: [0; 256],
                 len: 0,
             }
         }
     }
-    impl heapless_vec {
+    impl HeaplessVec {
         fn push(&mut self, b: u8) {
             if self.len < self.data.len() {
                 self.data[self.len] = b;
@@ -579,7 +894,7 @@ mod tests {
 
     #[test]
     fn cc2530_backend_joins_and_captures_a_frame() {
-        let mut rx = heapless_vec::default();
+        let mut rx = HeaplessVec::default();
         // firmware replies PONG [ver_hi ver_lo], then an RX_FRAME with a beacon-request PSDU
         let (pong, pn) = frame(0x81, &[0, 8]);
         rx.extend(&pong[..pn]);
@@ -609,7 +924,7 @@ mod tests {
         let uart = FakeUart {
             rx,
             rx_pos: 0,
-            tx: heapless_vec::default(),
+            tx: HeaplessVec::default(),
         };
         let mut radio = Cc2530::new(uart);
         assert!(radio.join(11, 10_000));
@@ -646,6 +961,124 @@ mod tests {
         ]));
     }
 
+    #[derive(Clone, Copy)]
+    enum RfidReply {
+        Atqa,
+        Uid,
+        None,
+    }
+
+    struct FakeSpi {
+        regs: [u8; 64],
+        fifo: [u8; 64],
+        fifo_len: usize,
+        wrote_request_a: bool,
+        wrote_anticoll: bool,
+    }
+
+    impl Default for FakeSpi {
+        fn default() -> Self {
+            Self {
+                regs: [0; 64],
+                fifo: [0; 64],
+                fifo_len: 0,
+                wrote_request_a: false,
+                wrote_anticoll: false,
+            }
+        }
+    }
+
+    impl FakeSpi {
+        fn prepare_reply(&mut self, reply: RfidReply) {
+            match reply {
+                RfidReply::Atqa => {
+                    self.fifo[..2].copy_from_slice(&[0x04, 0x00]);
+                    self.fifo_len = 2;
+                }
+                RfidReply::Uid => {
+                    let uid = [0xDE, 0xAD, 0xBE, 0xEF];
+                    self.fifo[..4].copy_from_slice(&uid);
+                    self.fifo[4] = rfid::iso14443a_bcc(&uid);
+                    self.fifo_len = 5;
+                }
+                RfidReply::None => self.fifo_len = 0,
+            }
+            self.regs[reg::FIFO_LEVEL as usize] = self.fifo_len as u8;
+            self.regs[reg::COMM_IRQ as usize] = 0x30;
+            self.regs[reg::ERROR as usize] = 0;
+        }
+    }
+
+    impl SpiIo for FakeSpi {
+        fn transfer(&mut self, write: &[u8], read: &mut [u8]) -> bool {
+            if write.len() != 2 || read.len() != 2 {
+                return false;
+            }
+            let reg = (write[0] >> 1) & 0x3F;
+            if write[0] & 0x80 != 0 {
+                read[1] = if reg == super::reg::FIFO_DATA {
+                    let b = self.fifo[0];
+                    if self.fifo_len > 0 {
+                        let mut i = 1;
+                        while i < self.fifo_len {
+                            self.fifo[i - 1] = self.fifo[i];
+                            i += 1;
+                        }
+                        self.fifo_len -= 1;
+                        self.regs[super::reg::FIFO_LEVEL as usize] = self.fifo_len as u8;
+                    }
+                    b
+                } else {
+                    self.regs[reg as usize]
+                };
+            } else {
+                self.regs[reg as usize] = write[1];
+                if reg == super::reg::FIFO_LEVEL && write[1] & 0x80 != 0 {
+                    self.fifo_len = 0;
+                    self.wrote_request_a = false;
+                    self.wrote_anticoll = false;
+                }
+                if reg == super::reg::FIFO_DATA {
+                    self.fifo[self.fifo_len] = write[1];
+                    self.fifo_len += 1;
+                    if write[1] == 0x26 {
+                        self.wrote_request_a = true;
+                    }
+                    if self.fifo_len >= 2 && self.fifo[0] == 0x93 && self.fifo[1] == 0x20 {
+                        self.wrote_anticoll = true;
+                    }
+                }
+                if reg == super::reg::COMMAND && write[1] == super::cmd::TRANSCEIVE {
+                    if self.wrote_anticoll {
+                        self.prepare_reply(RfidReply::Uid);
+                    } else if self.wrote_request_a {
+                        self.prepare_reply(RfidReply::Atqa);
+                    } else {
+                        self.prepare_reply(RfidReply::None);
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    #[test]
+    fn mfrc522_backend_polls_uid_and_mounts_as_iot_transport() {
+        let spi = FakeSpi::default();
+        let mut reader = Mfrc522::new(spi);
+        assert_eq!(reader.link_state(), IotLinkState::Down);
+        assert!(reader.init().is_ok());
+        assert_eq!(reader.link_state(), IotLinkState::Up);
+        assert_eq!(reader.descriptor().protocol, Protocol::Rfid);
+        assert_eq!(reader.reader_descriptor(), rfid_readers::MFRC522_SPI);
+
+        let uid = reader.poll_uid(1).expect("uid");
+        assert_eq!(uid.as_slice(), &[0xDE, 0xAD, 0xBE, 0xEF]);
+
+        let mut out = [0u8; 10];
+        assert_eq!(reader.recv(&mut out), 4);
+        assert_eq!(&out[..4], &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
     // A tiny in-memory transport proves the trait surface composes.
     struct LoopbackRadio {
         buf: [u8; 64],
