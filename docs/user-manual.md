@@ -278,6 +278,9 @@ the generated task suitable for CI and editor problem workflows.
 or `nobro-contract.json`.
 Project checks validate the expected task commands, not just task labels, so
 renamed or stale editor tasks are reported before they mislead a workflow.
+The static web flasher lives under `packages/web-flasher` and supports local
+firmware drop, Web Serial boot-entry commands, and WebUSB transfers for devices
+that expose a compatible bulk endpoint.
 `check-starter-templates` validates every starter target in a temporary
 directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.

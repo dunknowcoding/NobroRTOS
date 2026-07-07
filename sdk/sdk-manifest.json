@@ -17,7 +17,8 @@
   "python_package": "bindings/python",
   "package_surfaces": {
     "arduino": "packages/arduino",
-    "platformio": "packages/platformio"
+    "platformio": "packages/platformio",
+    "web_flasher": "packages/web-flasher"
   },
   "generated_output_policy": {
     "repo_relative_work_dir": "_work",

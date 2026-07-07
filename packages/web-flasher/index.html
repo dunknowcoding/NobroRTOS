@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NobroRTOS Web Flasher</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel workspace" aria-label="Firmware workspace">
+        <div class="brand-row">
+          <div class="mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" role="img">
+              <path d="M32 4 56 18v28L32 60 8 46V18L32 4Z" fill="#101820"/>
+              <path d="M20 23h24v6H20v-6Zm0 12h16v6H20v-6Zm22 9 7-7-7-7v14Z" fill="#24d6a3"/>
+              <path d="M16 18 32 9l16 9-16 9-16-9Z" fill="#ffbf47"/>
+            </svg>
+          </div>
+          <div>
+            <h1>NobroRTOS Web Flasher</h1>
+            <p>Local firmware handoff for UF2, Web Serial boot entry, and WebUSB-capable devices.</p>
+          </div>
+        </div>
+
+        <label id="dropZone" class="drop-zone" for="fileInput">
+          <input id="fileInput" type="file" accept=".uf2,.bin,.hex,application/octet-stream">
+          <span class="drop-icon" aria-hidden="true">⬇</span>
+          <strong>Drop firmware here</strong>
+          <small>.uf2, .bin, or .hex</small>
+        </label>
+
+        <div class="metrics" aria-live="polite">
+          <div>
+            <span>File</span>
+            <strong id="fileName">none</strong>
+          </div>
+          <div>
+            <span>Size</span>
+            <strong id="fileSize">0 B</strong>
+          </div>
+          <div>
+            <span>CRC32</span>
+            <strong id="fileCrc">--------</strong>
+          </div>
+          <div>
+            <span>API</span>
+            <strong id="apiStatus">checking</strong>
+          </div>
+        </div>
+
+        <div class="actions" aria-label="Flashing actions">
+          <button id="serialTouchBtn" type="button">
+            <span aria-hidden="true">↻</span>
+            1200 Touch
+          </button>
+          <button id="serialCommandBtn" type="button">
+            <span aria-hidden="true">⏎</span>
+            Send DFU
+          </button>
+          <button id="webUsbBtn" type="button">
+            <span aria-hidden="true">⇪</span>
+            WebUSB Send
+          </button>
+          <button id="saveBtn" type="button">
+            <span aria-hidden="true">⇩</span>
+            Save Copy
+          </button>
+        </div>
+      </section>
+
+      <aside class="panel status-panel" aria-label="Flashing status">
+        <div class="status-head">
+          <h2>Session</h2>
+          <button id="clearLogBtn" type="button" class="icon-button" aria-label="Clear log">×</button>
+        </div>
+        <ol id="log" class="log"></ol>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
