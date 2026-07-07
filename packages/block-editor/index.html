@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NobroRTOS Block Editor</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel editor" aria-label="Block editor">
+        <header class="topbar">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M8 12h48v40H8z" fill="#12191d"/>
+              <path d="M16 20h14v10H16zM34 20h14v10H34zM16 34h32v10H16z" fill="#24d6a3"/>
+              <path d="m23 49 9-9 9 9" fill="none" stroke="#ffbf47" stroke-width="5"/>
+            </svg>
+          </div>
+          <div>
+            <h1>NobroRTOS Block Editor</h1>
+            <p>Visual app builder for the `app.json` contract.</p>
+          </div>
+        </header>
+
+        <div class="project-row">
+          <label>
+            <span>Project</span>
+            <input id="projectName" value="hello_device" maxlength="32">
+          </label>
+          <label>
+            <span>Board</span>
+            <select id="boardSelect">
+              <option value="nrf52840">nRF52840</option>
+              <option value="rp2350">RP2350</option>
+              <option value="esp32c3">ESP32-C3</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="layout">
+          <section class="palette" aria-label="Block palette">
+            <h2>Blocks</h2>
+            <button data-kind="actuator" data-brand="sg90" type="button">Servo SG90</button>
+            <button data-kind="actuator" data-brand="mg996r" type="button">Servo MG996R</button>
+            <button data-kind="actuator" data-brand="esc_bidir" type="button">ESC Bidirectional</button>
+            <button data-kind="sensor" data-brand="mpu6050" type="button">MPU6050 IMU</button>
+            <button data-kind="sensor" data-brand="mpu9250" type="button">MPU9250 IMU</button>
+            <button data-kind="sensor" data-brand="ina3221" type="button">INA3221 Power</button>
+            <button data-kind="behavior" data-text="sweep actuator when imu detects a tap" type="button">Tap Sweep</button>
+            <button data-kind="behavior" data-text="publish sensor state over mesh" type="button">Mesh Publish</button>
+            <button data-kind="behavior" data-text="degrade safely when sensor stream is stale" type="button">Safe Degrade</button>
+          </section>
+
+          <section class="stage" aria-label="App blocks">
+            <h2>App</h2>
+            <ul id="blockList" class="block-list"></ul>
+          </section>
+        </div>
+      </section>
+
+      <aside class="panel output" aria-label="Generated app JSON">
+        <div class="output-head">
+          <h2>app.json</h2>
+          <div>
+            <button id="copyBtn" type="button">Copy</button>
+            <button id="downloadBtn" type="button">Download</button>
+          </div>
+        </div>
+        <pre id="jsonOut"></pre>
+        <div id="status" class="status" aria-live="polite"></div>
+      </aside>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

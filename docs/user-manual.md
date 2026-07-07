@@ -281,6 +281,9 @@ renamed or stale editor tasks are reported before they mislead a workflow.
 The static web flasher lives under `packages/web-flasher` and supports local
 firmware drop, Web Serial boot-entry commands, and WebUSB transfers for devices
 that expose a compatible bulk endpoint.
+The static block editor lives under `packages/block-editor` and emits the same
+`app.json` schema consumed by `tools/nobro_app.py`, so visual workflows still
+land in the normal contract validator and Rust skeleton generator.
 `check-starter-templates` validates every starter target in a temporary
 directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
 Python board bridge onboarding paths aligned.
