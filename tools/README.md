@@ -131,6 +131,20 @@ directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
 project remains invalid, so generated VS Code tasks can fail clearly.
 
+## Static Build Budgets
+
+`static_budget.py` inspects an ELF with `arm-none-eabi-objdump` and reports
+flash, static RAM, worst-case stack depth, and a static instruction-cycle
+envelope. The cycle estimate is intentionally conservative and repeatable: it
+prices decoded instructions and flags loops, recursion, indirect calls, and
+unknown mnemonics for review.
+
+```powershell
+python tools/static_budget.py _work\firmware\app.elf --ram-budget 32768
+python tools/static_budget.py _work\firmware\app.elf --cycle-budget 200000 --clock-hz 64000000
+python tools/static_budget.py --selftest
+```
+
 ## Boot Entry
 
 `nobro_boot.py` provides host-side bootloader entry helpers for development and

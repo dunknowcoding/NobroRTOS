@@ -278,6 +278,20 @@ the generated task suitable for CI and editor problem workflows.
 or `nobro-contract.json`.
 Project checks validate the expected task commands, not just task labels, so
 renamed or stale editor tasks are reported before they mislead a workflow.
+`tools/static_budget.py` can gate build-time memory and timing envelopes for an
+ELF before it is packaged. It reports flash, static RAM, worst-case stack, and a
+static instruction-cycle estimate, then returns non-zero when a configured RAM
+or cycle budget is exceeded:
+
+```powershell
+python tools/static_budget.py _work\firmware\app.elf --ram-budget 32768
+python tools/static_budget.py _work\firmware\app.elf --cycle-budget 200000 --clock-hz 64000000
+```
+
+The timing estimate is a build-time review gate, not a substitute for final
+target timing validation. It flags loops, recursion, indirect calls, and
+unknown mnemonics so deadline-sensitive modules can be inspected before they
+reach board-specific tests.
 The static web flasher lives under `packages/web-flasher` and supports local
 firmware drop, Web Serial boot-entry commands, and WebUSB transfers for devices
 that expose a compatible bulk endpoint.
