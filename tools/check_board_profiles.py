@@ -16,6 +16,10 @@ PLATFORM_RAM = {                   # (ram_start, max_end) sanity window per plat
     "nrf52840": (0x2000_0000, 0x2004_0000),
     "esp32c3": (0x3FC8_0000, 0x3FCE_0000),
     "rp2350": (0x2000_0000, 0x2008_2000),
+    "samd21": (0x2000_0000, 0x2000_8000),
+    "stm32f4": (0x2000_0000, 0x2002_0000),
+    "imxrt1062": (0x2020_0000, 0x2028_0000),
+    "cortex_m": (0x2000_0000, 0x2000_8000),
 }
 ROOT = os.path.join(os.path.dirname(__file__), "..", "core", "boards")
 

@@ -1,0 +1,20 @@
+{
+  "board_id": "samd21_uf2_generic",
+  "platform_id": "samd21",
+  "feature": "board-samd21-uf2",
+  "description": "Generic SAMD21 UF2/SAM-BA-class board profile",
+  "boot": {
+    "layout": "Custom",
+    "app_flash_start": "0x2000",
+    "app_flash_len_bytes": 253952,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 32768
+  },
+  "capacity": {
+    "flash_budget_bytes": 49152,
+    "ram_budget_bytes": 12288,
+    "sample_pool_slots": 4,
+    "max_modules": 8
+  },
+  "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": 6 }
+}

@@ -1,0 +1,20 @@
+{
+  "board_id": "cortex_m_generic",
+  "platform_id": "cortex_m",
+  "feature": "board-cortexm-generic",
+  "description": "Small generic Cortex-M board profile for early adapter planning",
+  "boot": {
+    "layout": "Custom",
+    "app_flash_start": "0x08000000",
+    "app_flash_len_bytes": 131072,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 32768
+  },
+  "capacity": {
+    "flash_budget_bytes": 32768,
+    "ram_budget_bytes": 8192,
+    "sample_pool_slots": 4,
+    "max_modules": 6
+  },
+  "pins": { "led": 1, "servo_pwm": 2, "mvk_trigger": 3 }
+}

@@ -1,0 +1,20 @@
+{
+  "board_id": "teensy4_generic",
+  "platform_id": "imxrt1062",
+  "feature": "board-teensy4-generic",
+  "description": "Generic i.MX RT1062 / Teensy 4-class board profile",
+  "boot": {
+    "layout": "Custom",
+    "app_flash_start": "0x60000000",
+    "app_flash_len_bytes": 2097152,
+    "ram_start": "0x20200000",
+    "ram_len_bytes": 524288
+  },
+  "capacity": {
+    "flash_budget_bytes": 262144,
+    "ram_budget_bytes": 131072,
+    "sample_pool_slots": 16,
+    "max_modules": 24
+  },
+  "pins": { "led": 13, "servo_pwm": 2, "mvk_trigger": 3 }
+}
