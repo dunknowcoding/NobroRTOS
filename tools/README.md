@@ -47,6 +47,7 @@ python tools/nobro_contract_tool.py check-runtime-drill
 python tools/nobro_contract_tool.py sample-startup
 python tools/nobro_contract_tool.py sample-report runtime
 python tools/nobro_contract_tool.py sample-report health
+python tools/verify_timing_lease.py
 ```
 
 ## Host Simulation Commands
@@ -130,6 +131,17 @@ matrix, bundle matrix, and runtime drill checks into one JSON report.
 directory, validates it, and removes the temporary files when the gate exits.
 `check-project` and `repair-project` also return non-zero when a starter
 project remains invalid, so generated VS Code tasks can fail clearly.
+
+## Timing And Lease Verification
+
+`verify_timing_lease.py` exhaustively checks a bounded lease state space and
+scheduler-jitter model. It is dependency-free and complements Rust unit tests
+and randomized lease invariant tests:
+
+```powershell
+python tools/verify_timing_lease.py
+python tools/verify_timing_lease.py --resources 2 --owners 2 --depth 6
+```
 
 ## Static Build Budgets
 

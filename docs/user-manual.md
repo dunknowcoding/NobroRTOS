@@ -268,6 +268,7 @@ python tools/nobro_contract_tool.py sample-project python_board_bridge --name ed
 python tools/nobro_contract_tool.py write-project platformio --output _work\edge_demo --name edge_demo
 python tools/nobro_contract_tool.py check-project _work\edge_demo --target platformio
 python tools/nobro_contract_tool.py repair-project _work\edge_demo --target platformio
+python tools/verify_timing_lease.py
 ```
 
 Generated starter projects include VS Code task metadata for the same project
@@ -316,6 +317,8 @@ surface, starter templates, AI route matrix, AI preflight matrix, ROS preflight 
 matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, report matrix, and runtime drill validation before packaging.
+The timing and lease verifier exhaustively checks a bounded lease state space
+and scheduler-jitter model without external model-checker dependencies.
 Fleet OTA rollout logic lives in `nobro-net`: use `FleetOtaOrchestrator` to
 stage canary-first update waves, enforce maximum parallel updates, block rollout
 when fleet health is low, and roll failed nodes back before a transport-specific
