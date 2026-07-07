@@ -13,6 +13,7 @@ applications, adapters, and host tooling.
 | `nobro-nn` | Heap-free MCU inference blocks: dense, int8 dense, 1-D/2-D convolution, pooling, recurrent cells, and attention |
 | `nobro-ml` | Heap-free DSP/ML utilities: anomaly stats, fusion, gesture detection, KWS audio features, model scheduling |
 | `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
+| `nobro-net` | Mesh routing, secure links, OTA chunking, store-forward queues, fleet OTA rollout planning |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
 ## Neural Network API
@@ -475,6 +476,31 @@ completion status.
 Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` when software
 needs deterministic module-state bookkeeping for quiesce/resume while keeping
 hardware restart and heartbeat operations in adapter code.
+
+## Network API
+
+`nobro-net` provides no-heap mesh primitives for routing, secure links,
+store-forward delivery, OTA chunk reassembly, and fleet rollout planning.
+`FleetOtaOrchestrator<N>` stages OTA updates as canary-first waves, enforces a
+maximum number of active updates, blocks rollout when fleet health falls below
+policy, and rolls failed nodes back without allocating:
+
+```rust
+let mut fleet = nobro_net::FleetOtaOrchestrator::<4>::new();
+fleet.register(nobro_net::FleetOtaNode::new(1, 1))?;
+fleet.register(nobro_net::FleetOtaNode::new(2, 1))?;
+
+let wave = fleet.stage_next_wave(2, nobro_net::FleetOtaPolicy::DEFAULT)?;
+assert_eq!(wave.phase, nobro_net::FleetOtaPhase::Canary);
+fleet.mark_installing(1)?;
+fleet.complete_node(1, true)?;
+```
+
+After the canary confirms, later calls stage normal rollout waves up to the
+configured parallelism. Failed nodes move through rollback and eventually
+blocked state according to the failure policy, giving host tooling or firmware
+a deterministic rollout controller before transport-specific OTA packets are
+sent.
 
 ## HAL API
 

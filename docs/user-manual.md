@@ -316,6 +316,10 @@ surface, starter templates, AI route matrix, AI preflight matrix, ROS preflight 
 matrix, watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix,
 bundle matrix, report matrix, and runtime drill validation before packaging.
+Fleet OTA rollout logic lives in `nobro-net`: use `FleetOtaOrchestrator` to
+stage canary-first update waves, enforce maximum parallel updates, block rollout
+when fleet health is low, and roll failed nodes back before a transport-specific
+OTA sender moves chunks through the mesh.
 The Python public surface checker validates the top-level package exports with
 AST parsing, so host tools can catch stale imports without executing package
 initialization.

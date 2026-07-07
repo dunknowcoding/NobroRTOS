@@ -813,6 +813,308 @@ impl<const CHUNKS: usize> OtaReassembler<CHUNKS> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FleetOtaPhase {
+    Idle,
+    Canary,
+    Staged,
+    Installing,
+    Confirmed,
+    RolledBack,
+    Blocked,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FleetOtaNode {
+    pub id: u16,
+    pub current_version: u32,
+    pub target_version: u32,
+    pub phase: FleetOtaPhase,
+    pub healthy: bool,
+    pub failures: u8,
+}
+
+impl FleetOtaNode {
+    pub const fn new(id: u16, current_version: u32) -> Self {
+        Self {
+            id,
+            current_version,
+            target_version: 0,
+            phase: FleetOtaPhase::Idle,
+            healthy: true,
+            failures: 0,
+        }
+    }
+
+    pub const fn is_active(self) -> bool {
+        matches!(
+            self.phase,
+            FleetOtaPhase::Canary | FleetOtaPhase::Staged | FleetOtaPhase::Installing
+        )
+    }
+
+    pub const fn is_eligible(self, target_version: u32, max_failures: u8) -> bool {
+        self.healthy
+            && self.current_version != target_version
+            && self.failures < max_failures
+            && matches!(self.phase, FleetOtaPhase::Idle | FleetOtaPhase::RolledBack)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FleetOtaPolicy {
+    pub max_parallel: usize,
+    pub canary_count: usize,
+    pub min_healthy_percent: u8,
+    pub max_failures: u8,
+}
+
+impl FleetOtaPolicy {
+    pub const DEFAULT: Self = Self {
+        max_parallel: 2,
+        canary_count: 1,
+        min_healthy_percent: 80,
+        max_failures: 2,
+    };
+}
+
+impl Default for FleetOtaPolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FleetOtaError {
+    Full,
+    DuplicateNode(u16),
+    MissingNode(u16),
+    NoCapacity,
+    FleetHealthTooLow { healthy_percent: u8, required: u8 },
+    NoEligibleNodes,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FleetOtaWave<const N: usize> {
+    pub target_version: u32,
+    pub selected: [Option<u16>; N],
+    pub len: usize,
+    pub phase: FleetOtaPhase,
+}
+
+impl<const N: usize> FleetOtaWave<N> {
+    pub const fn new(target_version: u32, phase: FleetOtaPhase) -> Self {
+        Self {
+            target_version,
+            selected: [None; N],
+            len: 0,
+            phase,
+        }
+    }
+
+    fn push(&mut self, id: u16) -> bool {
+        if self.len >= N {
+            return false;
+        }
+        self.selected[self.len] = Some(id);
+        self.len += 1;
+        true
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+pub struct FleetOtaOrchestrator<const N: usize> {
+    nodes: [Option<FleetOtaNode>; N],
+}
+
+impl<const N: usize> Default for FleetOtaOrchestrator<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> FleetOtaOrchestrator<N> {
+    pub const fn new() -> Self {
+        Self { nodes: [None; N] }
+    }
+
+    pub fn register(&mut self, node: FleetOtaNode) -> Result<(), FleetOtaError> {
+        if self.find_index(node.id).is_some() {
+            return Err(FleetOtaError::DuplicateNode(node.id));
+        }
+        let Some(slot) = self.nodes.iter_mut().find(|slot| slot.is_none()) else {
+            return Err(FleetOtaError::Full);
+        };
+        *slot = Some(node);
+        Ok(())
+    }
+
+    pub fn set_health(&mut self, id: u16, healthy: bool) -> Result<(), FleetOtaError> {
+        let Some(index) = self.find_index(id) else {
+            return Err(FleetOtaError::MissingNode(id));
+        };
+        if let Some(node) = self.nodes[index].as_mut() {
+            node.healthy = healthy;
+        }
+        Ok(())
+    }
+
+    pub fn mark_installing(&mut self, id: u16) -> Result<(), FleetOtaError> {
+        let Some(index) = self.find_index(id) else {
+            return Err(FleetOtaError::MissingNode(id));
+        };
+        if let Some(node) = self.nodes[index].as_mut() {
+            if matches!(node.phase, FleetOtaPhase::Canary | FleetOtaPhase::Staged) {
+                node.phase = FleetOtaPhase::Installing;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn complete_node(&mut self, id: u16, success: bool) -> Result<(), FleetOtaError> {
+        self.complete_node_with_policy(id, success, FleetOtaPolicy::DEFAULT)
+    }
+
+    pub fn complete_node_with_policy(
+        &mut self,
+        id: u16,
+        success: bool,
+        policy: FleetOtaPolicy,
+    ) -> Result<(), FleetOtaError> {
+        let Some(index) = self.find_index(id) else {
+            return Err(FleetOtaError::MissingNode(id));
+        };
+        if let Some(node) = self.nodes[index].as_mut() {
+            if success {
+                node.current_version = node.target_version;
+                node.target_version = 0;
+                node.phase = FleetOtaPhase::Confirmed;
+                node.failures = 0;
+            } else {
+                node.failures = node.failures.saturating_add(1);
+                node.target_version = 0;
+                node.phase = if node.failures >= policy.max_failures {
+                    FleetOtaPhase::Blocked
+                } else {
+                    FleetOtaPhase::RolledBack
+                };
+            }
+        }
+        Ok(())
+    }
+
+    pub fn stage_next_wave(
+        &mut self,
+        target_version: u32,
+        policy: FleetOtaPolicy,
+    ) -> Result<FleetOtaWave<N>, FleetOtaError> {
+        let healthy_percent = self.healthy_percent();
+        if healthy_percent < policy.min_healthy_percent {
+            return Err(FleetOtaError::FleetHealthTooLow {
+                healthy_percent,
+                required: policy.min_healthy_percent,
+            });
+        }
+
+        let active = self.active_count();
+        if active >= policy.max_parallel {
+            return Err(FleetOtaError::NoCapacity);
+        }
+
+        let confirmed = self.confirmed_count(target_version);
+        if confirmed == 0 && active > 0 {
+            return Err(FleetOtaError::NoCapacity);
+        }
+        let phase = if confirmed == 0 {
+            FleetOtaPhase::Canary
+        } else {
+            FleetOtaPhase::Staged
+        };
+        let desired = if phase == FleetOtaPhase::Canary {
+            policy.canary_count.max(1)
+        } else {
+            policy.max_parallel
+        };
+        let limit = desired.min(policy.max_parallel - active);
+        let mut wave = FleetOtaWave::new(target_version, phase);
+
+        for slot in &mut self.nodes {
+            if wave.len >= limit {
+                break;
+            }
+            let Some(node) = slot.as_mut() else {
+                continue;
+            };
+            if !node.is_eligible(target_version, policy.max_failures) {
+                continue;
+            }
+            node.phase = phase;
+            node.target_version = target_version;
+            if !wave.push(node.id) {
+                return Err(FleetOtaError::Full);
+            }
+        }
+
+        if wave.is_empty() {
+            return Err(FleetOtaError::NoEligibleNodes);
+        }
+        Ok(wave)
+    }
+
+    pub fn node(&self, id: u16) -> Option<FleetOtaNode> {
+        self.find_index(id).and_then(|index| self.nodes[index])
+    }
+
+    pub fn len(&self) -> usize {
+        self.nodes.iter().flatten().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn healthy_percent(&self) -> u8 {
+        let total = self.len();
+        if total == 0 {
+            return 0;
+        }
+        let healthy = self
+            .nodes
+            .iter()
+            .flatten()
+            .filter(|node| node.healthy)
+            .count();
+        ((healthy * 100) / total) as u8
+    }
+
+    pub fn active_count(&self) -> usize {
+        self.nodes
+            .iter()
+            .flatten()
+            .filter(|node| node.is_active())
+            .count()
+    }
+
+    pub fn confirmed_count(&self, target_version: u32) -> usize {
+        self.nodes
+            .iter()
+            .flatten()
+            .filter(|node| {
+                node.current_version == target_version && node.phase == FleetOtaPhase::Confirmed
+            })
+            .count()
+    }
+
+    fn find_index(&self, id: u16) -> Option<usize> {
+        self.nodes
+            .iter()
+            .position(|node| matches!(node, Some(node) if node.id == id))
+    }
+}
+
 /// Store-and-forward buffer for a sleepy child (M132): hold messages destined for a node
 /// that is asleep, deliver them when it polls. Bounded ring; oldest dropped when full.
 pub struct StoreForward<T: Copy, const N: usize> {
@@ -955,6 +1257,86 @@ mod wireless_tests {
         assert!(r.receive(1));
         assert!(r.is_complete());
         assert_eq!(r.first_missing(), None);
+    }
+
+    #[test]
+    fn fleet_ota_stages_canary_then_rollout_waves() {
+        let mut ota = FleetOtaOrchestrator::<4>::new();
+        for id in 1..=4 {
+            ota.register(FleetOtaNode::new(id, 1)).unwrap();
+        }
+
+        let canary = ota.stage_next_wave(2, FleetOtaPolicy::DEFAULT).unwrap();
+        assert_eq!(canary.phase, FleetOtaPhase::Canary);
+        assert_eq!(canary.selected[0], Some(1));
+        assert_eq!(canary.len, 1);
+        assert_eq!(
+            ota.node(1).map(|node| node.phase),
+            Some(FleetOtaPhase::Canary)
+        );
+
+        assert_eq!(
+            ota.stage_next_wave(2, FleetOtaPolicy::DEFAULT),
+            Err(FleetOtaError::NoCapacity)
+        );
+        ota.mark_installing(1).unwrap();
+        ota.complete_node(1, true).unwrap();
+        assert_eq!(ota.confirmed_count(2), 1);
+
+        let rollout = ota.stage_next_wave(2, FleetOtaPolicy::DEFAULT).unwrap();
+        assert_eq!(rollout.phase, FleetOtaPhase::Staged);
+        assert_eq!(rollout.len, 2);
+        assert_eq!(rollout.selected[0], Some(2));
+        assert_eq!(rollout.selected[1], Some(3));
+        assert_eq!(ota.active_count(), 2);
+    }
+
+    #[test]
+    fn fleet_ota_blocks_when_fleet_health_is_low() {
+        let mut ota = FleetOtaOrchestrator::<4>::new();
+        for id in 1..=4 {
+            ota.register(FleetOtaNode::new(id, 1)).unwrap();
+        }
+        ota.set_health(3, false).unwrap();
+        ota.set_health(4, false).unwrap();
+
+        assert_eq!(
+            ota.stage_next_wave(2, FleetOtaPolicy::DEFAULT),
+            Err(FleetOtaError::FleetHealthTooLow {
+                healthy_percent: 50,
+                required: 80,
+            })
+        );
+    }
+
+    #[test]
+    fn fleet_ota_rolls_back_and_blocks_after_repeated_failures() {
+        let mut ota = FleetOtaOrchestrator::<2>::new();
+        ota.register(FleetOtaNode::new(7, 1)).unwrap();
+        let policy = FleetOtaPolicy {
+            max_parallel: 1,
+            canary_count: 1,
+            min_healthy_percent: 1,
+            max_failures: 2,
+        };
+
+        ota.stage_next_wave(2, policy).unwrap();
+        ota.complete_node_with_policy(7, false, policy).unwrap();
+        assert_eq!(
+            ota.node(7).map(|node| node.phase),
+            Some(FleetOtaPhase::RolledBack)
+        );
+
+        ota.stage_next_wave(2, policy).unwrap();
+        ota.complete_node_with_policy(7, false, policy).unwrap();
+        assert_eq!(
+            ota.node(7).map(|node| node.phase),
+            Some(FleetOtaPhase::Blocked)
+        );
+        assert_eq!(
+            ota.stage_next_wave(2, policy),
+            Err(FleetOtaError::NoEligibleNodes)
+        );
     }
 
     #[test]
