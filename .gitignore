@@ -58,3 +58,6 @@ docs/MILESTONES.md
 docs/roadmap.md
 docs/VS_*.md
 docs/*_INTERNAL.md
+
+# Arduino bench sketch build outputs
+tools/bench/*/build/
