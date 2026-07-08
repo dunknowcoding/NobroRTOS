@@ -288,16 +288,15 @@ const SCI2: Sci = Sci(0x4007_0040);
 const SCI1: Sci = Sci(0x4007_0020);
 const SCI9: Sci = Sci(0x4007_0120);
 
-/// Drive the three loopback output pins (D6=P111, D5=P107, D3=P105) to a fixed
-/// pattern HIGH/LOW/HIGH. The user wired these to A4/A0/A5, so the pattern is
-/// externally checkable once a readout channel exists; here it also proves our
-/// PORT1 GPIO writes take effect (part of the own-driver deliverable).
+/// Drive the loopback output pin (D5=P107) high. The current UNO R4 WiFi bench
+/// fixture routes D5 to A0, so the level is externally checkable once a readout
+/// channel exists; here it also proves our PORT1 GPIO writes take effect.
 fn drive_loopback() {
     unsafe {
         // PORT1 PCNTR1: low half PDR (1=output), high half PODR (output level).
-        // outputs: P111, P107, P105 ; levels: P111=1, P107=0, P105=1
-        let pdr = (1 << 11) | (1 << 7) | (1 << 5) | LED_BIT;
-        let podr = ((1u32 << 11) | (1 << 5)) << 16; // P111 & P105 high, P107 low
+        // outputs: P107 ; levels: P107=1
+        let pdr = (1 << 7) | LED_BIT;
+        let podr = (1u32 << 7) << 16;
         PORT1_PCNTR1.write_volatile(pdr | podr);
     }
 }
