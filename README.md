@@ -23,6 +23,7 @@
   <img alt="Authoring languages" src="https://img.shields.io/badge/author%20in-Rust%20%7C%20C%20%7C%20C%2B%2B-6f42c1?style=for-the-badge">
   <img alt="embedded-hal" src="https://img.shields.io/badge/embedded--hal-drivers%20run-0f766e?style=for-the-badge">
   <img alt="no_std" src="https://img.shields.io/badge/no__std-no%20heap-1f2937?style=for-the-badge">
+  <a href="docs/HW_QUICKSTART.md"><img alt="One-command verify" src="https://img.shields.io/badge/verify-one%20command-f59e0b?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -266,25 +267,34 @@ folders use the `nobro_*` project prefix.
 Every claim below is checked on a real board and self-certifies through a fixed
 `NOBRO_*` report (read over J-Link `mem32`, or over USB serial for probe-less boards).
 
-| Area | On-board result |
-| --- | --- |
-| **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM |
-| **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass |
-| **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass |
-| **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule |
-| **Edge AI** | bounded `AiInferenceSal` motion model: IDLE at 99.6% in its 2 ms budget; live over USB-CDC |
-| **ROS bridge** | bounded topic bridge: 2148 messages published and transmitted, 0 dropped, peak depth 1/8 |
-| **Robot closed loop** | IMU to servo pulse to PWM to readback, 1373/1373 readbacks exact |
-| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), including 9-pulse stuck-bus recovery |
-| **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI |
-| **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter |
-| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port; verified on an nRF52840 development board and a clone-silicon nRF52840 board with a patched `nrf-usbd` plus a self-DFU watchdog |
+| Area | On-board result | Verify with |
+| --- | --- | --- |
+| **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM | `nobro_hw_eval.py sched` |
+| **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass | `kernel_selftest` report |
+| **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass | `nobro_hw_eval.py sal` |
+| **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule | `recovery_demo` report |
+| **Edge AI** | bounded `AiInferenceSal` motion model: IDLE at 99.6% in its 2 ms budget; live over USB-CDC | `ai_imu_demo` report |
+| **ROS bridge** | bounded topic bridge: 2148 messages published and transmitted, 0 dropped, peak depth 1/8 | `ros_imu_demo` report |
+| **Robot closed loop** | IMU to servo pulse to PWM to readback, 1373/1373 readbacks exact | `closed_loop_demo` report |
+| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), including 9-pulse stuck-bus recovery | `nobro_hw_eval.py imu` |
+| **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI | `c_abi_demo` report |
+| **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter | `nobro_hw_eval.py eh` |
+| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port; verified on an nRF52840 development board and a clone-silicon nRF52840 board with a patched `nrf-usbd` plus a self-DFU watchdog | any serial monitor |
 
-Reproduce any of these in one command: `python tools/nobro_hw_eval.py imu`
-(also `sal`, `sched`); the kernel/AI/ROS/recovery/closed-loop demos flash + read their
-report over J-Link.
+The `nobro_hw_eval.py` rows are fully automated (build → flash → run → read → grade,
+see [docs/HW_QUICKSTART.md](docs/HW_QUICKSTART.md)); the `*_demo` rows flash the named
+app and read its fixed `NOBRO_*` report over J-Link or USB serial.
+
+**No hardware on your desk?** The software side grades itself the same way:
+
+```bash
+python tools/run_checks.py    # bindings + contracts + packages + chaos -> "RESULT: ALL PASS"
+```
 
 ## Capability Matrix
+
+<details>
+<summary><strong>Expand the full capability matrix</strong> &mdash; every subsystem, its status, and the receipts</summary>
 
 | Area | Status | Notes |
 | --- | --- | --- |
@@ -307,6 +317,8 @@ report over J-Link.
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
+
+</details>
 
 ## Quick Start
 
