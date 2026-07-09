@@ -1097,6 +1097,7 @@ dependencies = [
 name = "udi-imu-demo"
 version = "0.2.0"
 dependencies = [
+ "cc",
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",

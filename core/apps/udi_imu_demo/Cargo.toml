@@ -8,10 +8,16 @@ edition.workspace = true
 # an embedded-hal SpiDevice driver - behind the one ImuSal category trait. Both builds
 # must seal the same PASS in NOBRO_UDI_IMU_REPORT on real hardware; the report carries
 # which backend produced it. This is the sensor-side twin of nobro_usb's backend mounts.
+# One binary per bootloader layout avoids sharing one ELF between 0x1000 and 0x26000 links.
 [[bin]]
 name = "udi_imu_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
+
+[[bin]]
+name = "udi_imu_demo_s140"
+path = "src/main_s140.rs"
+required-features = ["board-nicenano-s140"]
 
 [dependencies]
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
