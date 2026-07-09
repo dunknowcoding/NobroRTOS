@@ -13,6 +13,7 @@ members = [
     "crates/nobro_secure",
     "crates/nobro_device",
     "crates/nobro_classic",
+    "crates/nobro_tierc",
     "crates/nobro_usb",
     "crates/nobro_storage",
     "crates/nobro_power",

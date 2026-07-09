@@ -755,6 +755,20 @@ name = "nobro-storage"
 version = "0.2.0"
 
 [[package]]
+name = "nobro-tierc"
+version = "0.2.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "defmt 0.3.100",
+ "defmt-rtt",
+ "libm",
+ "nobro-hal",
+ "nobro-kernel",
+ "panic-halt",
+]
+
+[[package]]
 name = "nobro-usb"
 version = "0.2.0"
 dependencies = [

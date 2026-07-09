@@ -1,0 +1,20 @@
+[package]
+name = "nobro-tierc"
+version.workspace = true
+edition.workspace = true
+
+# The Tier C distribution artifact: NobroRTOS's C-ABI runtime as a prebuilt static
+# library (libnobro.a). Same code path as c_abi_demo, minus any built-in module -
+# the user's C file supplies nobro_app_init/nobro_app_poll at final link.
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+nobro-hal = { path = "../nobro_hal", default-features = false, features = ["board-promicro-nosd"] }
+nobro-kernel = { path = "../nobro_kernel" }
+libm = "0.2"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
