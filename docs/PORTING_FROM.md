@@ -29,7 +29,8 @@ optional.
 
 ## Embassy / `embedded-hal` (highest ROI)
 
-Both are Rust + `embedded-hal`, so this is the smoothest path.
+Both are Rust + `embedded-hal`, so this is the smoothest path. For a step-by-step recipe
+with copy-pasteable code, see the **[Embassy cookbook](COOKBOOK_EMBASSY.md)**.
 
 - **Drivers:** an `embedded-hal` I2C/SPI **bus adapter** exposes NobroRTOS's `BusSal`
   as the `embedded-hal` traits a driver expects, so the large universe of
@@ -99,6 +100,13 @@ modules in Rust (or generate them from `nobro-contract.json`) and reuse Arduino
 3. Wrap hardware access behind a **SAL adapter** (reuse `embedded-hal` drivers).
 4. Replace executor/DDS/devicetree with the **board package + manifest + bridge**.
 5. Run admission; read the `NOBRO_*` reports to confirm the contract.
+
+## Cookbooks (step-by-step)
+
+- **[Embassy cookbook](COOKBOOK_EMBASSY.md)** - tasks to modules, keeping `embedded-hal`
+  drivers, and the bounded async executor as an escape hatch.
+- **[FreeRTOS cookbook](COOKBOOK_FREERTOS.md)** - `xTaskCreate`/queues/semaphores/timers
+  mapped to modules, mailboxes, capabilities, and deadline alarms.
 
 See [system-architecture.md](system-architecture.md) for the layering and
 [porting-guide.md](porting-guide.md) for adding a board.
