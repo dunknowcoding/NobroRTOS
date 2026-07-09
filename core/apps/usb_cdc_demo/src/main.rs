@@ -288,6 +288,24 @@ fn main() -> ! {
             let pass = i2c_ok == 1 && reads >= 10 && (800..1200).contains(&accel_mg);
             push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
             let _ = serial.write(&buf[..n]);
+
+            // Machine-decodable twin of the line above, in the standard
+            // `NOBRO-<NAME> key=value` shape the host tools and the web-flasher
+            // report console parse (nobro_rtos.node / parseStatusLine).
+            let mut mline = [0u8; 96];
+            let mut m = 0usize;
+            push(&mut mline, &mut m, b"NOBRO-CDC who=");
+            push_u32(&mut mline, &mut m, who);
+            push(&mut mline, &mut m, b" reads=");
+            push_u32(&mut mline, &mut m, reads);
+            push(&mut mline, &mut m, b" errors=");
+            push_u32(&mut mline, &mut m, errors);
+            push(&mut mline, &mut m, b" accel_mg=");
+            push_u32(&mut mline, &mut m, accel_mg);
+            push(&mut mline, &mut m, b" all_pass=");
+            push_u32(&mut mline, &mut m, u32::from(pass));
+            push(&mut mline, &mut m, b"\r\n");
+            let _ = serial.write(&mline[..m]);
         }
     }
 }

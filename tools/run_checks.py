@@ -69,6 +69,7 @@ def gate_specs(quick):
         ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
         ("wasm slot spike", [py, "tools/wasm_slot_spike.py", "--selftest"], ROOT),
         ("evidence pack smoke", [py, "tools/nobro_verify.py", "--selftest"], ROOT),
+        ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),
         ("udi surface", [py, "tools/check_udi.py", "--selftest"], ROOT),

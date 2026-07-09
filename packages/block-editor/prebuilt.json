@@ -1,0 +1,14 @@
+{
+  "name": "NobroRTOS no-code starter (S140 nRF52840)",
+  "package": "usb-cdc-demo",
+  "binary": "usb_cdc_demo_s140",
+  "features": [
+    "board-nicenano-s140"
+  ],
+  "uf2_name": "nobrortos-starter-s140.uf2",
+  "uf2_family": 2913282112,
+  "app_base": 155648,
+  "report_name": "CDC",
+  "starter_app_json": "tutorials/hello-device/app.json",
+  "console": "packages/web-flasher/index.html"
+}
