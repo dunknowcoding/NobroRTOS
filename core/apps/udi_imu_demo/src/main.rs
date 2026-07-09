@@ -201,10 +201,88 @@ mod backend {
     }
 }
 
-#[cfg(all(feature = "backend-native", feature = "backend-eh"))]
-compile_error!("mount exactly one IMU backend: backend-native OR backend-eh");
-#[cfg(not(any(feature = "backend-native", feature = "backend-eh")))]
-compile_error!("mount one IMU backend: --features backend-native or backend-eh");
+// ========================= backend: Arduino-library shim ===========================
+#[cfg(feature = "backend-arduino")]
+mod backend {
+    use super::*;
+    use nobro_hal::{board, lease::Resource, traits::HalLease, ActivePlatform as Hal, Spim0};
+
+    pub const BACKEND_ID: u32 = 3; // Arduino-style C++ library via the shim
+
+    // The Arduino-style driver compiled by build.rs (bindings/cpp/arduino_shim).
+    extern "C" {
+        fn arduino_imu_begin() -> i32;
+        fn arduino_imu_whoami() -> u8;
+        fn arduino_imu_read_accel(out_counts: *mut i32);
+    }
+
+    // The shim's host callbacks: Arduino's SPI/digitalWrite/delay surface, served by
+    // the same leased Spim0 the native backend uses. One SPI device per module.
+    static mut SHIM_SPIM: Option<Spim0> = None;
+
+    fn spim() -> &'static Spim0 {
+        unsafe { (*core::ptr::addr_of!(SHIM_SPIM)).as_ref().unwrap() }
+    }
+
+    #[no_mangle]
+    extern "C" fn nobro_shim_spi_select() {
+        spim().select();
+    }
+    #[no_mangle]
+    extern "C" fn nobro_shim_spi_deselect() {
+        spim().deselect();
+    }
+    #[no_mangle]
+    extern "C" fn nobro_shim_spi_transfer(out: u8) -> u8 {
+        let mut rx = [0u8; 1];
+        let _ = spim().transfer_held(&[out], &mut rx);
+        rx[0]
+    }
+    #[no_mangle]
+    extern "C" fn nobro_shim_delay_ms(ms: u32) {
+        cortex_m::asm::delay(ms.saturating_mul(64_000)); // 64 MHz core
+    }
+
+    pub struct Mpu9250Arduino;
+
+    pub fn mount() -> Mpu9250Arduino {
+        Hal::acquire(Resource::Spim0, 4).ok();
+        let spim = unsafe {
+            Spim0::init(
+                board::SPI_SCK_PIN,
+                board::SPI_MOSI_PIN,
+                board::SPI_MISO_PIN,
+                board::SPI_CS_PIN,
+            )
+        };
+        unsafe { *core::ptr::addr_of_mut!(SHIM_SPIM) = Some(spim) };
+        let _ = unsafe { arduino_imu_begin() }; // the LIBRARY does the bring-up
+        Mpu9250Arduino
+    }
+
+    impl ImuSal for Mpu9250Arduino {
+        type Error = ();
+
+        fn who_am_i(&mut self) -> Result<u8, ()> {
+            Ok(unsafe { arduino_imu_whoami() })
+        }
+
+        fn sample(&mut self) -> Result<ImuSample, ()> {
+            let mut counts = [0i32; 3];
+            unsafe { arduino_imu_read_accel(counts.as_mut_ptr()) };
+            Ok(counts_to_sample(counts[0] as i16, counts[1] as i16, counts[2] as i16))
+        }
+    }
+}
+
+#[cfg(any(
+    all(feature = "backend-native", feature = "backend-eh"),
+    all(feature = "backend-native", feature = "backend-arduino"),
+    all(feature = "backend-eh", feature = "backend-arduino")
+))]
+compile_error!("mount exactly one IMU backend: backend-native, backend-eh, or backend-arduino");
+#[cfg(not(any(feature = "backend-native", feature = "backend-eh", feature = "backend-arduino")))]
+compile_error!("mount one IMU backend: backend-native, backend-eh, or backend-arduino");
 
 // ============================ backend-agnostic evaluation ===========================
 
