@@ -36,6 +36,7 @@ def main() -> int:
     require("requestPort" in js and "requestDevice" in js, "browser pairing calls missing", errors)
     require("crc32" in js and "dropZone" in js, "file inspection/drop path missing", errors)
     require("transferOut" in js, "WebUSB transfer path missing", errors)
+    require("parseStatusLine" in js and "reportMonitorBtn" in html, "NOBRO report console missing", errors)
     require("@media" in css, "responsive CSS missing", errors)
     require("IronEngineWorld" not in html + js + css, "local Python environment leaked", errors)
 

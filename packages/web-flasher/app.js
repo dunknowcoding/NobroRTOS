@@ -14,6 +14,7 @@ const els = {
   apiStatus: document.getElementById("apiStatus"),
   serialTouchBtn: document.getElementById("serialTouchBtn"),
   serialCommandBtn: document.getElementById("serialCommandBtn"),
+  reportMonitorBtn: document.getElementById("reportMonitorBtn"),
   webUsbBtn: document.getElementById("webUsbBtn"),
   saveBtn: document.getElementById("saveBtn"),
   clearLogBtn: document.getElementById("clearLogBtn"),
@@ -55,6 +56,7 @@ function updateApiStatus() {
   els.apiStatus.textContent = `${serial ? "Serial" : "No Serial"} / ${usb ? "USB" : "No USB"}`;
   els.serialTouchBtn.disabled = !serial;
   els.serialCommandBtn.disabled = !serial;
+  els.reportMonitorBtn.disabled = !serial;
   els.webUsbBtn.disabled = !usb || !state.bytes;
   els.saveBtn.disabled = !state.bytes;
 }
@@ -69,6 +71,83 @@ async function loadFile(file) {
   els.fileCrc.textContent = crc32(bytes).toString(16).toUpperCase().padStart(8, "0");
   updateApiStatus();
   log("ok", "Loaded", `${file.name}, ${formatBytes(bytes.length)}.`);
+}
+
+// ---- NOBRO report console: decode a live node's status lines in the browser ----
+// Mirrors nobro_rtos.node.parse_status_line: `NOBRO-<NAME> key=value ...`.
+function parseStatusLine(line) {
+  const text = line.trim();
+  if (!text.startsWith("NOBRO-")) return null;
+  const space = text.indexOf(" ");
+  const name = (space < 0 ? text : text.slice(0, space)).slice("NOBRO-".length);
+  if (!name) return null;
+  const fields = {};
+  if (space >= 0) {
+    for (const token of text.slice(space + 1).split(/\s+/)) {
+      const eq = token.indexOf("=");
+      if (eq > 0) {
+        const raw = token.slice(eq + 1);
+        const num = Number(raw);
+        fields[token.slice(0, eq)] = Number.isFinite(num) && raw !== "" ? num : raw;
+      }
+    }
+  }
+  return { name, fields };
+}
+
+// Turn a decoded report into a plain sentence a first-time user understands.
+function describeReport(report) {
+  const f = report.fields;
+  const parts = [];
+  if ("all_pass" in f) parts.push(f.all_pass === 1 ? "all checks passing" : "CHECKS FAILING");
+  if ("subsystems" in f) parts.push(`${f.subsystems} subsystems`);
+  if ("arch" in f) parts.push(`running on ${f.arch}`);
+  const detail = parts.length ? parts.join(", ") : JSON.stringify(f);
+  return { ok: !("all_pass" in f) || f.all_pass === 1, text: `${report.name}: ${detail}` };
+}
+
+let monitorSession = null;
+
+async function reportMonitor() {
+  if (monitorSession) {
+    monitorSession.stop = true;
+    try { await monitorSession.reader.cancel(); } catch (_) { /* unblocks the read */ }
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    const reader = port.readable.getReader();
+    monitorSession = { stop: false, reader };
+    els.reportMonitorBtn.textContent = "Stop report console";
+    log("ok", "Report console", "listening - NOBRO_* lines decode below.");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (!monitorSession.stop) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        const report = parseStatusLine(line);
+        if (report) {
+          const d = describeReport(report);
+          log(d.ok ? "ok" : "bad", d.ok ? "✅ PASS" : "❌ FAIL", d.text);
+        } else if (line.trim().startsWith("{")) {
+          log("ok", "Telemetry", line.trim().slice(0, 120));
+        }
+      }
+    }
+    reader.releaseLock();
+    await port.close();
+  } catch (err) {
+    log("bad", "Report console", err.message || String(err));
+  } finally {
+    monitorSession = null;
+    els.reportMonitorBtn.textContent = "Open report console";
+  }
 }
 
 async function serialTouch1200() {
@@ -181,6 +260,7 @@ els.dropZone.addEventListener("drop", (event) => {
 
 els.serialTouchBtn.addEventListener("click", serialTouch1200);
 els.serialCommandBtn.addEventListener("click", serialCommand);
+els.reportMonitorBtn.addEventListener("click", reportMonitor);
 els.webUsbBtn.addEventListener("click", webUsbSend);
 els.saveBtn.addEventListener("click", saveCopy);
 els.clearLogBtn.addEventListener("click", () => {
