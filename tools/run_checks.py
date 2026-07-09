@@ -60,6 +60,8 @@ def gate_specs(quick):
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),
         ("tutorials", [py, "tools/tutorial_runner.py"], ROOT),
         ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
+        ("ros msg codegen", [py, "tools/ros_msg_gen.py", "--selftest"], ROOT),
+        ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
         ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
     ]
     return specs
