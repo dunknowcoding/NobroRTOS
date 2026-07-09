@@ -309,9 +309,10 @@ def validate_distribution_metadata(
     _require_equal(arduino.get("name"), "NobroRTOS", "Arduino package name")
     _require_equal(arduino.get("url"), EXPECTED_REPOSITORY, "Arduino repository")
     _require_equal(arduino.get("includes"), EXPECTED_INCLUDE, "Arduino include")
-    _require_forwarding_header(
+    _require_vendored_header(
         root / "packages" / "arduino" / "src" / EXPECTED_INCLUDE,
-        "../../../bindings/c/include/nobro_rtos.h",
+        "nobro_rtos.h",
+        root / "bindings" / "c" / "include" / "nobro_rtos.h",
     )
 
     _require_equal(platformio.get("name"), "NobroRTOS", "PlatformIO package name")
@@ -450,9 +451,10 @@ def validate_public_header_surface(
         report_count += 1
         view_count += 1
 
-    _require_forwarding_header(
+    _require_vendored_header(
         arduino_header_path,
-        "../../../bindings/c/include/nobro_rtos.h",
+        "nobro_rtos.h",
+        root / "bindings" / "c" / "include" / "nobro_rtos.h",
     )
     _require_forwarding_header(
         platformio_header_path,
@@ -520,6 +522,21 @@ def _require_forwarding_header(path: Path, target: str) -> None:
     text = path.read_text(encoding="utf-8")
     if f'#include "{target}"' not in text:
         raise ValueError(f"{path} must forward to {target}")
+
+
+def _require_vendored_header(path: Path, local: str, canonical: Path) -> None:
+    """Self-contained package contract: the umbrella header includes the LOCAL vendored
+    header (a Library-Manager install has no repo around it), and the vendored copy's
+    content matches the canonical one (tools/package_arduino.py --sync keeps it fresh;
+    its --check is the CI drift gate)."""
+    text = path.read_text(encoding="utf-8")
+    if f'#include "{local}"' not in text:
+        raise ValueError(f"{path} must include the vendored {local}")
+    vendored = path.parent / local
+    if not vendored.exists():
+        raise ValueError(f"{vendored} missing - run tools/package_arduino.py --sync")
+    if canonical.read_text(encoding="utf-8") not in vendored.read_text(encoding="utf-8"):
+        raise ValueError(f"{vendored} drifted from {canonical} - re-run --sync")
 
 
 def _extract_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:

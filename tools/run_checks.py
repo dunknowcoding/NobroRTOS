@@ -61,6 +61,7 @@ def main():
     )
     results["board profiles"] = run("board profiles", [sys.executable, "tools/check_board_profiles.py"])
     results["sdk manifest"] = run("sdk manifest", [sys.executable, "tools/check_sdk_manifest.py"])
+    results["arduino package"] = run("arduino package", [sys.executable, "tools/package_arduino.py", "--check"])
     results["web flasher"] = run("web flasher", [sys.executable, "tools/check_web_flasher.py"])
     results["block editor"] = run("block editor", [sys.executable, "tools/check_block_editor.py"])
     results["tutorials"] = run("tutorials", [sys.executable, "tools/tutorial_runner.py"])
