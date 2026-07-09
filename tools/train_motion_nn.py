@@ -12,7 +12,13 @@ Pipeline (the "NN tools -> embedded" path):
 
 No PyTorch/TF needed for a model this small; numpy is enough and the export is the
 real artifact. Run: python tools/train_motion_nn.py
+
+Besides the firmware weights, this also emits a contract-shaped "model card" into the
+block editor (packages/block-editor/models.json) so the browser ML block can offer this
+trained model as a drop-in inference block whose app.json entry matches AiModelContract.
 """
+import argparse
+import json
 import os
 import numpy as np
 
@@ -23,6 +29,54 @@ SHIFT1 = 5            # requantize layer-1 accumulator back toward int8 before R
 RNG = np.random.default_rng(7)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "core", "adapters", "nn-motion-ai", "src", "nn_weights.rs")
+MODELS_JSON = os.path.join(HERE, "..", "packages", "block-editor", "models.json")
+
+# Model identity + AiModelContract values, kept in lockstep with the firmware adapter
+# core/adapters/nn-motion-ai/src/lib.rs (MODEL_ID + contract()): on-device int8 MLP,
+# <=64 input bytes (<=32 u16 samples), 4 output bytes, 256-byte scratch arena, 2ms budget.
+PRESET = "nn_motion"
+MODEL_ID = 0x4E4E4D31           # "NNM1"
+BACKEND = "on_device"
+INPUT_BYTES_MAX = 64
+OUTPUT_BYTES_MAX = 4
+ARENA_BYTES = 256
+TIMEOUT_US = 2_000
+STALE_AFTER_US = 100_000        # 100ms freshness floor (AiModelContract requires > 0)
+CLASSES = ["idle", "active"]
+
+
+def write_model_card(models_json, acc_milli):
+    """Merge this model's card into the block-editor catalog (create/update its key)."""
+    card = {
+        "preset": PRESET,
+        "label": "Motion NN (idle/active)",
+        "source": "tools/train_motion_nn.py",
+        "classes": CLASSES,
+        "arch": {"window": WINDOW, "hidden": HIDDEN, "feat": FEAT},
+        "train_acc_milli": acc_milli,
+        # The exact fields AiModelContract.to_dict() emits for app.json ai_models[].
+        "contract": {
+            "model_id": MODEL_ID,
+            "backend": BACKEND,
+            "input_bytes_max": INPUT_BYTES_MAX,
+            "output_bytes_max": OUTPUT_BYTES_MAX,
+            "arena_bytes": ARENA_BYTES,
+            "timeout_us": TIMEOUT_US,
+            "stale_after_us": STALE_AFTER_US,
+        },
+    }
+    catalog = {}
+    if os.path.exists(models_json):
+        try:
+            with open(models_json, encoding="utf-8") as f:
+                catalog = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            catalog = {}
+    catalog[PRESET] = card
+    os.makedirs(os.path.dirname(models_json), exist_ok=True)
+    with open(models_json, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2, sort_keys=True)
+    return models_json
 
 
 def synth_window(active):
@@ -61,6 +115,14 @@ def make_dataset(n_each):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--models-json", default=MODELS_JSON,
+                    help="block-editor model catalog to update (default: "
+                         "packages/block-editor/models.json)")
+    ap.add_argument("--no-model-card", action="store_true",
+                    help="skip updating the block-editor model catalog")
+    args = ap.parse_args()
+
     Xi, y = make_dataset(600)
     feat_max = np.maximum(Xi.max(axis=0), 1).astype(np.int64)
     # int8 normalized features [0,127] - the firmware uses the same feat_max.
@@ -132,6 +194,10 @@ pub const TRAIN_ACC_MILLI: u32 = {int(acc_int * 1000)};
     with open(OUT, "w") as f:
         f.write(rs)
     print(f"wrote {os.path.relpath(OUT)}")
+
+    if not args.no_model_card:
+        path = write_model_card(args.models_json, int(acc_int * 1000))
+        print(f"wrote {os.path.relpath(path)} (block-editor ML block: {PRESET})")
 
 
 if __name__ == "__main__":

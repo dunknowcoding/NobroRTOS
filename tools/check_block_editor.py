@@ -10,6 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "packages" / "block-editor"
+sys.path.insert(0, str(ROOT / "tools"))
+import nobro_app  # noqa: E402  (shared app.json validator - keeps editor + catalog in sync)
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -32,7 +34,8 @@ def main() -> int:
             continue
         require((PKG / asset).is_file(), f"missing linked asset {asset}", errors)
 
-    for token in ["appJson", "downloadJson", "actuators", "sensors", "behaviors", "board"]:
+    for token in ["appJson", "downloadJson", "actuators", "sensors", "behaviors", "board",
+                  "ai_models", "mlModels", "loadModels"]:
         require(token in js, f"missing editor token {token}", errors)
     require("@media" in css, "responsive CSS missing", errors)
     require("IronEngineWorld" not in html + js + css, "local Python environment leaked", errors)
@@ -43,8 +46,32 @@ def main() -> int:
         "actuators": [{"name": "arm", "brand": "sg90", "channel": 0}],
         "sensors": [{"name": "imu", "brand": "mpu6050", "bus": "i2c", "address": "0x68"}],
         "behaviors": ["sweep actuator when imu detects a tap"],
+        "ai_models": [{"model_id": 0x4E4E4D31, "backend": "on_device",
+                       "input_bytes_max": 64, "output_bytes_max": 4, "arena_bytes": 256,
+                       "timeout_us": 2000, "stale_after_us": 100000}],
     }
-    require(json.loads(json.dumps(sample))["board"] == "nrf52840", "sample app JSON invalid", errors)
+    # The editor's ai_models output must pass the shared app.json validator unchanged.
+    require(not nobro_app.validate(json.loads(json.dumps(sample))),
+            "sample ML app.json fails nobro_app.validate", errors)
+
+    # models.json is the ML-block catalog train_motion_nn.py emits; verify it is present
+    # and each card carries a contract-shaped entry (mirrors AiModelContract fields).
+    models_path = PKG / "models.json"
+    if not models_path.is_file():
+        errors.append("missing models.json (run tools/train_motion_nn.py)")
+    else:
+        try:
+            cards = json.loads(models_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            cards = {}
+            errors.append(f"models.json invalid JSON: {exc}")
+        for preset, card in cards.items():
+            contract = (card or {}).get("contract")
+            require(isinstance(contract, dict), f"model {preset}: missing contract", errors)
+            if isinstance(contract, dict):
+                probe = {"board": "nrf52840", "ai_models": [contract]}
+                require(not nobro_app.validate(probe),
+                        f"model {preset}: contract fails validation", errors)
 
     print({"package": "block-editor", "files": required, "errors": errors, "ok": not errors})
     return 1 if errors else 0

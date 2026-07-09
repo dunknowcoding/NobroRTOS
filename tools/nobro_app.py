@@ -24,6 +24,12 @@ BOARDS = {
 SERVOS = {"generic_180", "sg90", "mg996r", "continuous"}
 MOTORS = {"esc_unidir", "esc_bidir"}
 SENSORS = {"mpu9250", "mpu6050", "icm45686", "ina3221", "bmp280"}
+# AI/ML models: block editor ML blocks emit these; validated against the same rules the
+# host AiModelContract enforces. Known ids come from the firmware adapters / train scripts.
+AI_BACKENDS = {"on_device", "remote_api", "edge_sidecar", "hybrid"}
+AI_MODELS = {0x4E4E4D31: "nn_motion", 0x4E4E4D33: "nn_motion3", 0x4D4F5431: "motion_variance"}
+AI_POSITIVE_FIELDS = ("model_id", "input_bytes_max", "output_bytes_max",
+                      "timeout_us", "stale_after_us")
 
 
 def validate(app):
@@ -42,6 +48,15 @@ def validate(app):
     for s in app.get("sensors", []):
         if s.get("brand") not in SENSORS:
             errs.append(f"sensor '{s.get('name')}': unknown brand '{s.get('brand')}'")
+    for m in app.get("ai_models", []):
+        mid = m.get("model_id")
+        if m.get("backend") not in AI_BACKENDS:
+            errs.append(f"ai_model {mid}: unknown backend '{m.get('backend')}'")
+        for k in AI_POSITIVE_FIELDS:
+            if not isinstance(m.get(k), int) or m.get(k, 0) <= 0:
+                errs.append(f"ai_model {mid}: {k} must be a positive integer")
+        if m.get("arena_bytes", 0) < 0:
+            errs.append(f"ai_model {mid}: arena_bytes cannot be negative")
     return errs
 
 
@@ -55,6 +70,11 @@ def plan(app):
               + (f" @ {s['address']}" if 'address' in s else ""))
     for t in app.get("behaviors", []):
         print(f"  behavior: {t}")
+    for m in app.get("ai_models", []):
+        known = AI_MODELS.get(m.get("model_id"), "custom")
+        print(f"  ai model {m.get('model_id')} ({known}): {m.get('backend')} "
+              f"{m.get('input_bytes_max')}->{m.get('output_bytes_max')}B, "
+              f"{m.get('timeout_us')}us budget")
 
 
 CONST = {"generic_180": "SERVO_GENERIC_180", "sg90": "SERVO_SG90",
@@ -91,6 +111,9 @@ def selftest():
         "actuators": [{"name": "arm", "brand": "sg90", "channel": 0}],
         "sensors": [{"name": "imu", "brand": "mpu6050", "bus": "i2c", "address": "0x68"}],
         "behaviors": ["sweep arm 0->180 when imu detects a tap"],
+        "ai_models": [{"model_id": 0x4E4E4D31, "backend": "on_device",
+                       "input_bytes_max": 64, "output_bytes_max": 4, "arena_bytes": 256,
+                       "timeout_us": 2000, "stale_after_us": 100000}],
     }
     errs = validate(app)
     ok = not errs
@@ -104,6 +127,11 @@ def selftest():
     bad_errs = validate(bad)
     ok = ok and len(bad_errs) == 3
     print(f"\nvalidation caught {len(bad_errs)} errors in the bad app (expect 3)")
+    # negative case: a malformed ML model (bad backend + 4 missing positive fields)
+    bad_ml = {"board": "nrf52840", "ai_models": [{"model_id": 5, "backend": "nope"}]}
+    bad_ml_errs = validate(bad_ml)
+    ok = ok and len(bad_ml_errs) == 5
+    print(f"validation caught {len(bad_ml_errs)} errors in the bad ML model (expect 5)")
     print(f"RESULT: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 

@@ -8,6 +8,42 @@ const catalog = {
   },
 };
 
+// Trained ML models offered as inference blocks. Seeded with the on-device motion NN
+// (kept in lockstep with tools/train_motion_nn.py + the nn-motion-ai firmware adapter);
+// refreshed at load from models.json, which train_motion_nn.py writes on every run.
+// Each contract mirrors AiModelContract.to_dict() so an ML block emits app.json that the
+// host contract tooling accepts unchanged.
+const mlModels = {
+  nn_motion: {
+    label: "Motion NN (idle/active)",
+    contract: {
+      model_id: 0x4e4e4d31,
+      backend: "on_device",
+      input_bytes_max: 64,
+      output_bytes_max: 4,
+      arena_bytes: 256,
+      timeout_us: 2000,
+      stale_after_us: 100000,
+    },
+  },
+};
+
+async function loadModels() {
+  try {
+    const res = await fetch("models.json", { cache: "no-store" });
+    if (!res.ok) return;
+    const cards = await res.json();
+    for (const [preset, card] of Object.entries(cards)) {
+      if (card && card.contract) {
+        mlModels[preset] = { label: card.label || preset, contract: card.contract };
+      }
+    }
+    render();
+  } catch (err) {
+    // Opened from file:// or served without models.json: keep the built-in seed.
+  }
+}
+
 const state = {
   blocks: [
     { kind: "actuator", name: "arm", brand: "sg90", channel: 0 },
@@ -54,6 +90,14 @@ function addBlock(data) {
       bus: "i2c",
       address: data.brand === "ina3221" ? "0x40" : "0x68",
     });
+  } else if (data.kind === "ml") {
+    const preset = data.model && mlModels[data.model] ? data.model : "nn_motion";
+    state.blocks.push({
+      kind: "ml",
+      name: nextName("model"),
+      model: preset,
+      ...mlModels[preset].contract,
+    });
   } else {
     state.blocks.push({ kind: "behavior", text: data.text });
   }
@@ -90,12 +134,16 @@ function updateBlock(index, patch) {
 function blockTitle(block) {
   if (block.kind === "actuator") return `${block.brand} actuator`;
   if (block.kind === "sensor") return `${block.brand} sensor`;
+  if (block.kind === "ml") return `${(mlModels[block.model] || {}).label || block.model} model`;
   return "behavior";
 }
 
 function blockDetail(block) {
   if (block.kind === "actuator") return `${block.name} on PWM ${block.channel}`;
   if (block.kind === "sensor") return `${block.name} on ${block.bus}${block.address ? ` @ ${block.address}` : ""}`;
+  if (block.kind === "ml") {
+    return `${block.name}: ${block.backend} ${block.input_bytes_max}\u2192${block.output_bytes_max}B, ${block.timeout_us}us`;
+  }
   return block.text;
 }
 
@@ -131,6 +179,14 @@ function editBlock(index) {
   }
   const name = window.prompt("Name", block.name);
   if (!name) return;
+  if (block.kind === "ml") {
+    const stale = Number(window.prompt("Stale-after (us)", String(block.stale_after_us)));
+    updateBlock(index, {
+      name: slug(name, block.name),
+      stale_after_us: Number.isFinite(stale) && stale > 0 ? stale : block.stale_after_us,
+    });
+    return;
+  }
   if (block.kind === "actuator") {
     const channel = Number(window.prompt("PWM channel", String(block.channel)));
     updateBlock(index, { name: slug(name, block.name), channel: Number.isFinite(channel) ? channel : block.channel });
@@ -148,14 +204,31 @@ function appJson() {
     .filter((b) => b.kind === "sensor")
     .map((b) => ({ name: b.name, brand: b.brand, bus: b.bus || "i2c", address: b.address || "0x68" }));
   const behaviors = state.blocks.filter((b) => b.kind === "behavior").map((b) => b.text);
-  return {
+  // ai_models[] matches AiModelContract.to_dict(): the same shape the host contract bundle
+  // and the AI_MODEL boot report consume. Only emitted when an ML block is present.
+  const aiModels = state.blocks
+    .filter((b) => b.kind === "ml")
+    .map((b) => ({
+      model_id: b.model_id,
+      backend: b.backend,
+      input_bytes_max: b.input_bytes_max,
+      output_bytes_max: b.output_bytes_max,
+      arena_bytes: b.arena_bytes,
+      timeout_us: b.timeout_us,
+      stale_after_us: b.stale_after_us,
+    }));
+  const app = {
     name: slug(els.projectName.value, "nobro_app"),
     board: els.boardSelect.value,
     actuators,
     sensors,
     behaviors,
   };
+  if (aiModels.length) app.ai_models = aiModels;
+  return app;
 }
+
+const ML_BACKENDS = new Set(["on_device", "remote_api", "edge_sidecar", "hybrid"]);
 
 function validate(app) {
   const errors = [];
@@ -168,6 +241,12 @@ function validate(app) {
   for (const actuator of app.actuators) {
     if (actuator.channel < 0 || actuator.channel >= board.pwm) {
       errors.push(`${actuator.name}: PWM ${actuator.channel} outside 0..${board.pwm - 1}`);
+    }
+  }
+  for (const model of app.ai_models || []) {
+    if (!ML_BACKENDS.has(model.backend)) errors.push(`model ${model.model_id}: bad backend`);
+    for (const key of ["model_id", "input_bytes_max", "output_bytes_max", "timeout_us", "stale_after_us"]) {
+      if (!(model[key] > 0)) errors.push(`model ${model.model_id}: ${key} must be > 0`);
     }
   }
   return errors;
@@ -212,3 +291,4 @@ els.copyBtn.addEventListener("click", copyJson);
 els.downloadBtn.addEventListener("click", downloadJson);
 
 render();
+loadModels();

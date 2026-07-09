@@ -1,0 +1,26 @@
+{
+  "nn_motion": {
+    "arch": {
+      "feat": 3,
+      "hidden": 8,
+      "window": 32
+    },
+    "classes": [
+      "idle",
+      "active"
+    ],
+    "contract": {
+      "arena_bytes": 256,
+      "backend": "on_device",
+      "input_bytes_max": 64,
+      "model_id": 1313754417,
+      "output_bytes_max": 4,
+      "stale_after_us": 100000,
+      "timeout_us": 2000
+    },
+    "label": "Motion NN (idle/active)",
+    "preset": "nn_motion",
+    "source": "tools/train_motion_nn.py",
+    "train_acc_milli": 1000
+  }
+}
