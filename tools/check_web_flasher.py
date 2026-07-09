@@ -16,6 +16,18 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
+def _local_leak_needles() -> list[str]:
+    """Bench-private identifiers that must never appear in shipped package text.
+    Loaded from an untracked file so the identifiers themselves stay out of the
+    public tree; absent file = no extra needles (public clones skip this)."""
+    from pathlib import Path
+    f = Path(__file__).with_name("leak_needles.local.txt")
+    if not f.exists():
+        return []
+    return [ln.strip() for ln in f.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.startswith("#")]
+
+
 def main() -> int:
     errors: list[str] = []
     required = ["index.html", "styles.css", "app.js", "README.md"]
@@ -38,7 +50,8 @@ def main() -> int:
     require("transferOut" in js, "WebUSB transfer path missing", errors)
     require("parseStatusLine" in js and "reportMonitorBtn" in html, "NOBRO report console missing", errors)
     require("@media" in css, "responsive CSS missing", errors)
-    require("IronEngineWorld" not in html + js + css, "local Python environment leaked", errors)
+    for needle in _local_leak_needles():
+        require(needle not in html + js + css, "local-bench identifier leaked", errors)
 
     print({
         "package": "web-flasher",

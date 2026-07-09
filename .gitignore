@@ -67,3 +67,4 @@ docs/*_INTERNAL.md
 
 # Arduino bench sketch build outputs
 tools/bench/*/build/
+tools/leak_needles.local.txt
