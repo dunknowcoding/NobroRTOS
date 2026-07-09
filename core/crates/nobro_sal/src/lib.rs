@@ -461,6 +461,17 @@ pub trait ImuSal {
     fn sample(&mut self) -> Result<ImuSample, Self::Error>;
 }
 
+/// The temperature **category** of the Universal Driver Interface (second category,
+/// same rule as [`ImuSal`]): whatever the part - an IMU die sensor, a BMP280, a
+/// thermocouple front-end - a backend reports centi-degrees-Celsius, so app code and
+/// plausibility checks are part-independent.
+pub trait TempSal {
+    type Error;
+
+    /// One blocking temperature read in centi-degrees Celsius (2534 = 25.34 C).
+    fn read_temp_centi_c(&mut self) -> Result<i32, Self::Error>;
+}
+
 /// Crypto hardware/software backend.
 pub trait CryptoSal {
     type Error;

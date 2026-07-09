@@ -20,7 +20,7 @@ Category trait (SAL)     e.g. ImuSal::sample()
 
 Every backend:
 
-1. Implements the **same category trait** (`ImuSal`, future `TempSal`, etc.).
+1. Implements the **same category trait** (`ImuSal`, `TempSal`, more to come).
 2. Is selected by **exactly one** `backend-*` Cargo feature (mutual exclusion).
 3. Carries a stable **`backend_id`** in the hardware eval report so you can prove
    which transport sealed the PASS without the evaluation function naming a driver.
@@ -78,3 +78,20 @@ function never names a transport.
 - [COOKBOOK_EMBASSY.md](COOKBOOK_EMBASSY.md) — task→module for Rust async refugees
 - [COOKBOOK_FREERTOS.md](COOKBOOK_FREERTOS.md) — xTaskCreate→module for C veterans
 - [HW_QUICKSTART.md](HW_QUICKSTART.md) — one-command hardware eval
+
+
+## Second category: `TempSal` (hardware-proven)
+
+The rule generalizes: `TempSal::read_temp_centi_c()` reports centi-degrees Celsius from
+whatever part a backend wraps. All three `udi_imu_demo` backends implement it against the
+same die-temperature register, sealed on the same board back to back:
+
+| Backend | `backend_id` | temp reading |
+| --- | --- | --- |
+| native HAL | 1 | 31.24 C |
+| embedded-hal | 2 | 31.20 C |
+| Arduino-library shim | 3 | 31.15 C |
+
+Three transports, one silicon, answers within 0.1 C - the category abstraction costs
+nothing in fidelity. The report's `temp_centi_c` field and its 10-60 C plausibility
+check are part of `all_pass`.

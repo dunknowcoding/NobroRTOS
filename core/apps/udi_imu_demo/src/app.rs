@@ -1,6 +1,6 @@
 ﻿use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_sal::{ImuSal, ImuSample};
+use nobro_sal::{ImuSal, ImuSample, TempSal};
 use panic_halt as _;
 
 #[repr(C)]
@@ -15,6 +15,7 @@ struct UdiImuReport {
     accel_mag_mg: u32,
     reads: u32,
     errors: u32,
+    temp_centi_c: u32,
     checksum: u32,
 }
 const MAGIC: u32 = 0x4E55_4449; // "NUDI"
@@ -31,8 +32,15 @@ static mut NOBRO_UDI_IMU_REPORT: UdiImuReport = UdiImuReport {
     accel_mag_mg: 0,
     reads: 0,
     errors: 0,
+    temp_centi_c: 0,
     checksum: 0,
 };
+
+/// MPU-9250 die temperature: TEMP_OUT counts -> centi-degrees C.
+/// datasheet: Temp_C = raw/333.87 + 21  ->  centi = raw*100/334 + 2100 (integer form).
+fn temp_counts_to_centi_c(raw: i16) -> i32 {
+    (i32::from(raw) * 100) / 334 + 2100
+}
 
 /// Integer square root (Newton) for the accel magnitude - no float, no libm.
 fn isqrt(n: u64) -> u64 {
@@ -123,6 +131,16 @@ mod backend {
             Ok(counts_to_sample(ax, ay, az))
         }
     }
+
+    impl TempSal for Mpu9250Native {
+        type Error = ();
+
+        fn read_temp_centi_c(&mut self) -> Result<i32, ()> {
+            let mut raw = [0u8; 2];
+            self.spim.read_burst(0x41, &mut raw).map_err(|_| ())?; // TEMP_OUT_H/L
+            Ok(temp_counts_to_centi_c(i16::from_be_bytes(raw)))
+        }
+    }
 }
 
 // ============================= backend: embedded-hal ===============================
@@ -180,6 +198,16 @@ mod backend {
             Ok(counts_to_sample(ax, ay, az))
         }
     }
+
+    impl TempSal for Mpu9250Eh {
+        type Error = ();
+
+        fn read_temp_centi_c(&mut self) -> Result<i32, ()> {
+            let mut rx = [0u8; 3];
+            self.dev.transfer(&mut rx, &[0x80 | 0x41, 0, 0]).map_err(|_| ())?;
+            Ok(temp_counts_to_centi_c(i16::from_be_bytes([rx[1], rx[2]])))
+        }
+    }
 }
 
 // ========================= backend: Arduino-library shim ===========================
@@ -195,6 +223,7 @@ mod backend {
         fn arduino_imu_begin() -> i32;
         fn arduino_imu_whoami() -> u8;
         fn arduino_imu_read_accel(out_counts: *mut i32);
+        fn arduino_imu_read_temp_counts() -> i32;
     }
 
     // The shim's host callbacks: Arduino's SPI/digitalWrite/delay surface, served by
@@ -254,6 +283,14 @@ mod backend {
             Ok(counts_to_sample(counts[0] as i16, counts[1] as i16, counts[2] as i16))
         }
     }
+
+    impl TempSal for Mpu9250Arduino {
+        type Error = ();
+
+        fn read_temp_centi_c(&mut self) -> Result<i32, ()> {
+            Ok(temp_counts_to_centi_c(unsafe { arduino_imu_read_temp_counts() } as i16))
+        }
+    }
 }
 
 #[cfg(any(
@@ -268,11 +305,12 @@ compile_error!("mount one IMU backend: backend-native, backend-eh, or backend-ar
 // ============================ backend-agnostic evaluation ===========================
 
 /// Everything below this line is the actual app - written against `ImuSal` only.
-fn evaluate(imu: &mut impl ImuSal) -> (u32, u32, u32, u32) {
+fn evaluate(imu: &mut (impl ImuSal + TempSal<Error = ()>)) -> (u32, u32, u32, u32, u32) {
     let who = u32::from(imu.who_am_i().unwrap_or(0));
     let mut reads = 0u32;
     let mut errors = 0u32;
     let mut last_mag = 0u32;
+    let temp_centi = imu.read_temp_centi_c().unwrap_or(0).clamp(0, i32::MAX) as u32;
     for _ in 0..50 {
         match imu.sample() {
             Ok(s) => {
@@ -285,18 +323,23 @@ fn evaluate(imu: &mut impl ImuSal) -> (u32, u32, u32, u32) {
             cortex_m::asm::nop();
         }
     }
-    (who, last_mag, reads, errors)
+    (who, last_mag, reads, errors, temp_centi)
 }
 
 #[entry]
 fn main() -> ! {
     let mut imu = backend::mount();
-    let (who, mag, reads, errors) = evaluate(&mut imu);
+    let (who, mag, reads, errors, temp) = evaluate(&mut imu);
 
-    // PASS: right silicon, all reads landed, magnitude ~1 g at rest (750..1250 mg).
-    let ok = who == 0x71 && reads == 50 && errors == 0 && (750..=1250).contains(&mag);
+    // PASS: right silicon, all reads landed, magnitude ~1 g at rest (750..1250 mg),
+    // die temperature plausible for a powered bench part (10..60 C via TempSal).
+    let ok = who == 0x71
+        && reads == 50
+        && errors == 0
+        && (750..=1250).contains(&mag)
+        && (1000..=6000).contains(&temp);
     let ap = u32::from(ok);
-    let cs = MAGIC ^ 1 ^ 1 ^ ap ^ backend::BACKEND_ID ^ who ^ mag ^ reads ^ errors;
+    let cs = MAGIC ^ 1 ^ 1 ^ ap ^ backend::BACKEND_ID ^ who ^ mag ^ reads ^ errors ^ temp;
     unsafe {
         NOBRO_UDI_IMU_REPORT = UdiImuReport {
             magic: MAGIC,
@@ -308,6 +351,7 @@ fn main() -> ! {
             accel_mag_mg: mag,
             reads,
             errors,
+            temp_centi_c: temp,
             checksum: cs,
         };
     }

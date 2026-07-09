@@ -33,6 +33,12 @@ public:
 
     uint8_t whoAmI() { return readRegister(0x75); }
 
+    int16_t readTempCounts() {
+        uint8_t raw[2];
+        readRegisters(0x41, raw, 2);  // TEMP_OUT_H/L
+        return (int16_t)(((uint16_t)raw[0] << 8) | raw[1]);
+    }
+
     void readAccel(int16_t &ax, int16_t &ay, int16_t &az) {
         uint8_t raw[6];
         readRegisters(0x3B, raw, 6);
@@ -84,6 +90,7 @@ MPU9250 imu(10);  // "pin 10" - the shim routes CS to the host's real chip-selec
 extern "C" {
 int32_t arduino_imu_begin(void) { return imu.begin() ? 0 : -1; }
 uint8_t arduino_imu_whoami(void) { return imu.whoAmI(); }
+int32_t arduino_imu_read_temp_counts(void) { return imu.readTempCounts(); }
 void arduino_imu_read_accel(int32_t out_counts[3]) {
     int16_t ax = 0, ay = 0, az = 0;
     imu.readAccel(ax, ay, az);

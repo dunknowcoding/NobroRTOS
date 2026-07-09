@@ -94,7 +94,7 @@ APPS = {
         "symbol": "NOBRO_UDI_IMU_REPORT",
         "magic": 0x4E554449,
         "fields": COMMON_HEAD + ["backend_id", "who_am_i", "accel_mag_mg", "reads",
-                                 "errors", "checksum"],
+                                 "errors", "temp_centi_c", "checksum"],
         "backends": True,
     },
     # Bounded async executor HW proof: same checks as host unit tests, no HAL.
