@@ -26,14 +26,53 @@ HOST_CRATES = [
 ]
 
 
-def run(name, cmd, cwd=ROOT, env=None):
-    print(f"--- {name} ---", flush=True)
+def run(name, cmd, cwd=ROOT, env=None, quiet=False):
+    if not quiet:
+        print(f"--- {name} ---", flush=True)
     r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
     ok = r.returncode == 0
-    for line in (r.stdout + r.stderr).strip().splitlines()[-3:]:
-        print("   ", line)
-    print(f"   => {'PASS' if ok else 'FAIL'}", flush=True)
-    return ok
+    tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
+    if not quiet:
+        for line in tail:
+            print("   ", line)
+        print(f"   => {'PASS' if ok else 'FAIL'}", flush=True)
+    return {"name": name, "ok": ok, "detail": tail}
+
+
+def gate_specs(quick):
+    """Return the ordered gate list as (name, cmd, cwd) tuples. Single source of truth
+    shared by the CLI summary here and the `nobro verify` Evidence Pack."""
+    py = sys.executable
+    bindings = os.path.join(ROOT, "bindings", "python")
+    specs = []
+    if not quick:
+        cargo = ["cargo", "test", "--target", HOST_TARGET]
+        for c in HOST_CRATES:
+            cargo += ["-p", c]
+        specs.append(("cargo host tests", cargo, CORE))
+    specs += [
+        ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
+        ("software surface", [py, "tools/nobro_contract_tool.py", "check-software-surface"], ROOT),
+        ("board profiles", [py, "tools/check_board_profiles.py"], ROOT),
+        ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
+        ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
+        ("web flasher", [py, "tools/check_web_flasher.py"], ROOT),
+        ("block editor", [py, "tools/check_block_editor.py"], ROOT),
+        ("tutorials", [py, "tools/tutorial_runner.py"], ROOT),
+        ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
+        ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
+    ]
+    return specs
+
+
+def run_gates(quick=False, quiet=False):
+    """Run every gate; return (results, all_ok). Results are dicts (name/ok/detail)."""
+    env = dict(os.environ)
+    env["CARGO_TARGET_DIR"] = os.path.join(ROOT, "_work", "ct2")
+    results = [run(name, cmd, cwd=cwd, env=env, quiet=quiet)
+               for name, cmd, cwd in gate_specs(quick)]
+    all_ok = all(r["ok"] for r in results)
+    return results, all_ok
 
 
 def main():
@@ -41,41 +80,11 @@ def main():
     ap.add_argument("--quick", action="store_true", help="skip the slow cargo test gate")
     args = ap.parse_args()
 
-    env = dict(os.environ)
-    env["CARGO_TARGET_DIR"] = os.path.join(ROOT, "_work", "ct2")
-    results = {}
-
-    if not args.quick:
-        cargo = ["cargo", "test", "--target", HOST_TARGET]
-        for c in HOST_CRATES:
-            cargo += ["-p", c]
-        results["cargo host tests"] = run("cargo host tests", cargo, cwd=CORE, env=env)
-    results["python bindings"] = run(
-        "python bindings",
-        [sys.executable, "-m", "unittest", "discover", "-s", "tests"],
-        cwd=os.path.join(ROOT, "bindings", "python"),
-    )
-    results["software surface"] = run(
-        "software surface",
-        [sys.executable, "tools/nobro_contract_tool.py", "check-software-surface"],
-    )
-    results["board profiles"] = run("board profiles", [sys.executable, "tools/check_board_profiles.py"])
-    results["sdk manifest"] = run("sdk manifest", [sys.executable, "tools/check_sdk_manifest.py"])
-    results["arduino package"] = run("arduino package", [sys.executable, "tools/package_arduino.py", "--check"])
-    results["web flasher"] = run("web flasher", [sys.executable, "tools/check_web_flasher.py"])
-    results["block editor"] = run("block editor", [sys.executable, "tools/check_block_editor.py"])
-    results["tutorials"] = run("tutorials", [sys.executable, "tools/tutorial_runner.py"])
-    results["app catalog"] = run(
-        "app catalog",
-        [sys.executable, "tools/nobro_app.py", "tutorials/hello-device/app.json"],
-    )
-    results["mesh chaos"] = run("mesh chaos", [sys.executable, "tools/chaos_test.py"])
+    results, all_ok = run_gates(quick=args.quick)
 
     print("\n=== SUMMARY ===")
-    all_ok = True
-    for k, v in results.items():
-        print(f"  {'PASS' if v else 'FAIL'}  {k}")
-        all_ok = all_ok and v
+    for r in results:
+        print(f"  {'PASS' if r['ok'] else 'FAIL'}  {r['name']}")
     print(f"RESULT: {'ALL PASS' if all_ok else 'FAIL'}")
     return 0 if all_ok else 1
 
