@@ -36,6 +36,12 @@ junit*.xml
 .ruff_cache/
 __pycache__/
 
+# Python build / packaging artifacts
+bindings/python/build/
+*.egg-info/
+dist/
+*.whl
+
 # Local toolchains and downloads
 .ncs-zigbee-work/
 tools/.nobro-work/
