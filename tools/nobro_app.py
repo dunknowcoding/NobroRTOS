@@ -7,8 +7,8 @@ choice against the catalog, prints a plain-language bring-up plan, and generates
 `main.rs` skeleton that mounts exactly those modules (M191/M192/M194). The catalog here
 mirrors the Rust `nobro-device` catalog, so JSON stays in lock-step with the firmware.
 
-  python3 tools/nobro_app.py examples/hello_device/app.json           # validate + plan
-  python3 tools/nobro_app.py examples/hello_device/app.json --gen out.rs
+  python3 tools/nobro_app.py tutorials/hello-device/app.json           # validate + plan
+  python3 tools/nobro_app.py tutorials/hello-device/app.json --gen out.rs
   python3 tools/nobro_app.py --selftest
 """
 import argparse

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""One-command verification orchestrator for NobroRTOS (M78).
+"""THE verification orchestrator for NobroRTOS: one command, one verdict.
 
-Runs every host-testable check - the cargo unit/integration tests for the host-portable
-crates plus the standalone host validators - collects results, and prints a unified
-PASS/FAIL. Fully autonomous (no hardware); the board J-Link demos are separate HW gates.
-Exit 0 = all green.
+Runs every host-testable gate - cargo tests for the portable crates, the Python binding
+suite, the software-surface contract, package checks (web flasher, block editor, SDK),
+board profiles, tutorials, and mesh chaos - then prints a single summary. Fully
+autonomous (no hardware); the board gates live in `nobro_hw_eval.py`. Exit 0 = all green.
+
+    python tools/run_checks.py            # everything
+    python tools/run_checks.py --quick    # skip the slow cargo test gate
+
+This wraps (never replaces) the narrower entry points, so `ci_matrix.sh` and
+`nobro_contract_tool.py check-software-surface` keep working standalone.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -30,16 +37,37 @@ def run(name, cmd, cwd=ROOT, env=None):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--quick", action="store_true", help="skip the slow cargo test gate")
+    args = ap.parse_args()
+
     env = dict(os.environ)
     env["CARGO_TARGET_DIR"] = os.path.join(ROOT, "_work", "ct2")
     results = {}
 
-    cargo = ["cargo", "test", "--target", HOST_TARGET]
-    for c in HOST_CRATES:
-        cargo += ["-p", c]
-    results["cargo host tests"] = run("cargo host tests", cargo, cwd=CORE, env=env)
+    if not args.quick:
+        cargo = ["cargo", "test", "--target", HOST_TARGET]
+        for c in HOST_CRATES:
+            cargo += ["-p", c]
+        results["cargo host tests"] = run("cargo host tests", cargo, cwd=CORE, env=env)
+    results["python bindings"] = run(
+        "python bindings",
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests"],
+        cwd=os.path.join(ROOT, "bindings", "python"),
+    )
+    results["software surface"] = run(
+        "software surface",
+        [sys.executable, "tools/nobro_contract_tool.py", "check-software-surface"],
+    )
     results["board profiles"] = run("board profiles", [sys.executable, "tools/check_board_profiles.py"])
     results["sdk manifest"] = run("sdk manifest", [sys.executable, "tools/check_sdk_manifest.py"])
+    results["web flasher"] = run("web flasher", [sys.executable, "tools/check_web_flasher.py"])
+    results["block editor"] = run("block editor", [sys.executable, "tools/check_block_editor.py"])
+    results["tutorials"] = run("tutorials", [sys.executable, "tools/tutorial_runner.py"])
+    results["app catalog"] = run(
+        "app catalog",
+        [sys.executable, "tools/nobro_app.py", "tutorials/hello-device/app.json"],
+    )
     results["mesh chaos"] = run("mesh chaos", [sys.executable, "tools/chaos_test.py"])
 
     print("\n=== SUMMARY ===")

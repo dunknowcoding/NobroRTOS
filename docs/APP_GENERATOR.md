@@ -6,7 +6,7 @@ crate whose `main.rs` assembles the manifest via `BootAssembly`, admits it, and 
 the host-readable `NOBRO_MANIFEST_REPORT` / `NOBRO_ADMISSION_REPORT`. The generated Rust
 is compiler-checked, so your contract is preserved - you never hand-write Rust.
 
-This is developer-experience Track 1A (see [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md)).
+This is the declarative app-generation path: describe the app as data, generate the Rust.
 
 ## Generate
 
@@ -27,7 +27,7 @@ cargo build -p my-control-app --release
 
 ## Verify on hardware
 
-Flash and read the reports (see [HARDWARE_BRINGUP.md](HARDWARE_BRINGUP.md)). A booted
+Flash and read the reports (see [HW_QUICKSTART.md](HW_QUICKSTART.md)). A booted
 app populates `NOBRO_MANIFEST_REPORT` (magic `NBMF`) and `NOBRO_ADMISSION_REPORT`
 (magic `NBAD`); both carry the module count and a sealed checksum, so a host tool
 confirms the manifest assembled and admission passed without a `defmt` decoder.

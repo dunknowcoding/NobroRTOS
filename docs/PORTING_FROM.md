@@ -87,7 +87,7 @@ guide, not a compatibility runtime:
 Arduino `setup()/loop()` maps to a module's `init()` + `poll()`. Today the
 C/C++/Arduino surface only **decodes `NOBRO_*` reports** on the host; on-MCU module
 authoring in C/C++ is the planned C-ABI work (see
-[DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md), Track 1B/1C). Until then, author
+the packaged-library tier on the roadmap). Until then, author
 modules in Rust (or generate them from `nobro-contract.json`) and reuse Arduino
 *library logic* through an adapter.
 

@@ -4,7 +4,7 @@
 Builds a hardware demo app, flashes it to an nRF52840 over SEGGER J-Link, lets it
 run, reads the app's fixed `NOBRO_*` eval report struct out of RAM with `mem32`,
 decodes it, and prints PASS/FAIL with every field. This automates the manual flow
-in docs/HARDWARE_BRINGUP.md so a newcomer runs a single command:
+in docs/HW_QUICKSTART.md so a newcomer runs a single command:
 
     python tools/nobro_hw_eval.py imu --profile nosd
     python tools/nobro_hw_eval.py sal        # kernel + servo PWM + sensor SAL
@@ -116,7 +116,7 @@ def find_jlink(explicit):
         if found:
             return found
     sys.exit("J-Link CLI not found - pass --jlink <path to JLink.exe / JLinkExe>. "
-             "(probe-rs users: flash/read with probe-rs instead; see docs/HARDWARE_BRINGUP.md.)")
+             "(probe-rs users: flash/read with probe-rs instead; see docs/HW_QUICKSTART.md.)")
 
 
 def main():
@@ -184,7 +184,7 @@ def main():
         sys.exit(f"short read: got {len(words)}/{nwords} words (board powered? IMU wired?)")
 
     fields = dict(zip(meta["fields"], words))
-    print(f"\n=== {args.app} on {args.board} ===")
+    print(f"\n=== {args.app} on {args.profile} ===")
     for name, val in fields.items():
         print(f"  {name:22} = {val} (0x{val:X})")
 
