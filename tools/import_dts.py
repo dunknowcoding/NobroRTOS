@@ -188,8 +188,8 @@ def import_board(text):
 SAMPLE_DTS = """\
 /dts-v1/;
 / {
-    model = "Nice Nano nRF52840";
-    compatible = "nordic,nrf52840-qiaa", "nordic,nrf52840";
+    model = "Generic nRF52840 DevBoard";
+    compatible = "acme,nrf52840-dev", "nordic,nrf52840";
     chosen { zephyr,code-partition = &code_partition; };
     sram0: memory@20000000 { reg = <0x20000000 0x40000>; };
     leds {
