@@ -74,6 +74,7 @@ members = [
     "apps/cc2530_link",
     "apps/cc2530_gateway",
     "apps/tri_radio",
+    "apps/udi_imu_demo",
 ]
 
 [workspace.package]

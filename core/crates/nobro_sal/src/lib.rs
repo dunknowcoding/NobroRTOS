@@ -436,6 +436,31 @@ pub trait SensorSal {
     fn poll(&mut self) -> Result<Option<Sample>, Self::Error>;
 }
 
+/// One IMU reading in category-level units (backend-independent).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuSample {
+    /// Acceleration per axis in milli-g.
+    pub accel_mg: [i32; 3],
+    /// Acceleration magnitude in milli-g (~1000 at rest).
+    pub accel_mag_mg: u32,
+}
+
+/// The IMU **category** interface of the Universal Driver Interface: one trait per
+/// sensor category, parts described as catalog data (`nobro_device::SensorDescriptor`),
+/// and N mountable backends per part - native HAL driver, an `embedded-hal` driver, a
+/// C/C++ module, or an Arduino-library shim - all selected by cargo feature, all
+/// producing the same category units. App code written against `ImuSal` never names a
+/// transport or a vendor library, so swapping the backend cannot change the app.
+pub trait ImuSal {
+    type Error;
+
+    /// The part's identity register value (e.g. MPU-9250 WHO_AM_I = 0x71), used with
+    /// the catalog descriptor to confirm the right silicon before trusting samples.
+    fn who_am_i(&mut self) -> Result<u8, Self::Error>;
+    /// One blocking category-level sample.
+    fn sample(&mut self) -> Result<ImuSample, Self::Error>;
+}
+
 /// Crypto hardware/software backend.
 pub trait CryptoSal {
     type Error;
