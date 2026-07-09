@@ -7,6 +7,7 @@ extern crate std;
 
 pub mod admission;
 pub mod alarm;
+pub mod async_exec;
 pub mod boot;
 pub mod capability;
 pub mod degrade;
@@ -40,6 +41,7 @@ pub use admission::{
     ADMISSION_REPORT_VERSION,
 };
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
+pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,
 };
