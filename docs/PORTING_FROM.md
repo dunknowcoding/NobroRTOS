@@ -73,7 +73,8 @@ admission-checked before any agent is contacted.
 ## Zephyr (most divergent)
 
 Zephyr brings devicetree, Kconfig, and its own subsystems, so this is a porting
-guide, not a compatibility runtime:
+guide, not a compatibility runtime. For a step-by-step recipe, see the
+**[Zephyr cookbook](COOKBOOK_ZEPHYR.md)**.
 
 | Zephyr | NobroRTOS |
 | --- | --- |
@@ -107,6 +108,9 @@ modules in Rust (or generate them from `nobro-contract.json`) and reuse Arduino
   drivers, and the bounded async executor as an escape hatch.
 - **[FreeRTOS cookbook](COOKBOOK_FREERTOS.md)** - `xTaskCreate`/queues/semaphores/timers
   mapped to modules, mailboxes, capabilities, and deadline alarms.
+- **[Zephyr cookbook](COOKBOOK_ZEPHYR.md)** - devicetree/Kconfig/`k_thread` mapped to
+  `board.json`, manifest capabilities, and SAL adapters; DTS import on-ramp.
+- **[UDI rule](UDI.md)** - one category, one trait, N mountable backends (ImuSal proof).
 
 See [system-architecture.md](system-architecture.md) for the layering and
 [porting-guide.md](porting-guide.md) for adding a board.

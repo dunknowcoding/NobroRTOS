@@ -36,6 +36,16 @@ before board-specific validation begins.
 
 ## Board Descriptor
 
+Board profiles live in `core/boards/*/board.json` and are validated by
+`tools/check_board_profiles.py`. For a Zephyr-style on-ramp from DeviceTree:
+
+```bash
+python tools/import_dts.py board.dts --out core/boards/mine/board.json
+```
+
+Review the `_review` list in the output — DTS carries hardware layout, not
+NobroRTOS software budgets or Cargo feature names. See [COOKBOOK_ZEPHYR.md](COOKBOOK_ZEPHYR.md).
+
 A board descriptor should include:
 
 - board name and stable hash
