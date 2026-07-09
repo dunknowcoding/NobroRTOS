@@ -62,6 +62,7 @@ def gate_specs(quick):
         ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
         ("ros msg codegen", [py, "tools/ros_msg_gen.py", "--selftest"], ROOT),
         ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
+        ("wasm slot spike", [py, "tools/wasm_slot_spike.py", "--selftest"], ROOT),
         ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
     ]
     return specs
