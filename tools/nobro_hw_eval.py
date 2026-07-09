@@ -97,6 +97,15 @@ APPS = {
                                  "errors", "checksum"],
         "backends": True,
     },
+    # Bounded async executor HW proof: same checks as host unit tests, no HAL.
+    "async": {
+        "package": "async-exec-demo",
+        "bin": {"nosd": "async_exec_demo"},
+        "symbol": "NOBRO_ASYNC_EXEC_REPORT",
+        "magic": 0x4E424153,
+        "fields": COMMON_HEAD + ["spawn_pass", "capacity_pass", "stall_pass",
+                                 "rounds_used", "tasks_completed", "checksum"],
+    },
 }
 PROFILE_FLASH = {"nosd": 0x1000, "s140": 0x26000}
 PROFILE_FEATURES = {"nosd": [], "s140": ["board-nicenano-s140"]}

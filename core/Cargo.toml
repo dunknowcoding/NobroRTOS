@@ -75,6 +75,7 @@ members = [
     "apps/cc2530_gateway",
     "apps/tri_radio",
     "apps/udi_imu_demo",
+    "apps/async_exec_demo",
 ]
 
 [workspace.package]

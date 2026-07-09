@@ -32,7 +32,8 @@ import static_budget
 ROOT = run_checks.ROOT
 RELEASE = os.path.join(ROOT, "_work", "cargo-target", "thumbv7em-none-eabihf", "release")
 # Representative demo ELFs to price if a build is present (basename only ever emitted).
-BUDGET_TARGETS = ["udi_imu_demo_s140", "udi_imu_demo", "imu_i2c_demo", "resource_sched_demo"]
+BUDGET_TARGETS = ["udi_imu_demo_s140", "udi_imu_demo", "imu_i2c_demo",
+                "resource_sched_demo", "async_exec_demo"]
 
 
 def git_commit():
@@ -92,9 +93,10 @@ def collect_budgets():
     return {"available": True, "targets": targets}
 
 
-def build_pack(quick):
-    results, all_ok = run_checks.run_gates(quick=quick)
+def build_pack_from_results(results, quick):
+    """Assemble an Evidence Pack from gate results already collected (no re-run)."""
     passed = sum(1 for r in results if r["ok"])
+    all_ok = all(r["ok"] for r in results)
     return {
         "tool": "nobro verify",
         "tagline": "The RTOS that shows its work.",
@@ -113,6 +115,25 @@ def build_pack(quick):
                    "detail": r["detail"]} for r in results],
         "budgets": collect_budgets(),
     }, all_ok
+
+
+def build_pack(quick):
+    results, all_ok = run_checks.run_gates(quick=quick)
+    pack, _ = build_pack_from_results(results, quick)
+    return pack, all_ok
+
+
+def selftest():
+    """Smoke-test pack assembly + HTML render without re-running the gate matrix."""
+    results = [{"name": "smoke", "ok": True, "detail": ["ok"]}]
+    pack, ok = build_pack_from_results(results, quick=True)
+    html_out = render_html(pack)
+    good = (ok and pack["summary"]["result"] == "ALL PASS"
+            and "Evidence Pack" in html_out and "smoke" in html_out)
+    print(f"pack result     : {pack['summary']['result']}")
+    print(f"html bytes      : {len(html_out)}")
+    print(f"RESULT: {'PASS' if good else 'FAIL'}")
+    return 0 if good else 1
 
 
 def render_html(pack):
@@ -198,9 +219,12 @@ th {{ color: #9da7b3; font-weight: 600; }}
 def main():
     ap = argparse.ArgumentParser(description="nobro verify - emit an Evidence Pack.")
     ap.add_argument("--quick", action="store_true", help="skip the slow cargo test gate")
+    ap.add_argument("--selftest", action="store_true", help="smoke-test pack render only")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "_work", "evidence"),
                     help="directory for evidence_pack.json / .html (default: _work/evidence)")
     args = ap.parse_args()
+    if args.selftest:
+        return selftest()
 
     pack, all_ok = build_pack(args.quick)
     os.makedirs(args.out_dir, exist_ok=True)
