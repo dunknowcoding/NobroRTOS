@@ -16,6 +16,7 @@
   <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/GitHub-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
   <img alt="Language" src="https://img.shields.io/badge/core-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white">
   <img alt="Target" src="https://img.shields.io/badge/MCU-nRF52840-2563eb?style=for-the-badge">
+  <img alt="Support tiers" src="https://img.shields.io/badge/HAL-1%20deep%20%C2%B7%207%20ports%20%C2%B7%206%20families-475569?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-0f766e?style=for-the-badge">
 </p>
 <p align="center">
@@ -290,6 +291,19 @@ app and read its fixed `NOBRO_*` report over J-Link or USB serial.
 ```bash
 python tools/run_checks.py    # bindings + contracts + packages + chaos -> "RESULT: ALL PASS"
 ```
+
+### Hardware support, honestly tiered
+
+"Supports N boards" hides more than it says, so NobroRTOS states exactly what each
+target gets. Cross-compile coverage is `tools/check_portability.sh`; the extended
+build matrix (ports + boards + SDK) is `tools/ci_matrix.sh`.
+
+| Tier | What it means | Targets today |
+| --- | --- | --- |
+| **Deep HAL** | leased peripherals, drivers, and every claim in the table above verified on the board | nRF52840 |
+| **Conformance ports** | the portable core's shared self-test suite runs on the silicon and reports `all_pass` | ESP32-C3, ESP32-S3, RP2350 (+ an 8-bit AVR kernel-lite subset) |
+| **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
+| **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | SAMD21, RA4M1, STM32F4, Teensy 4, and friends |
 
 ## Capability Matrix
 

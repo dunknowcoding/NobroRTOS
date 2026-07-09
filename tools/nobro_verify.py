@@ -63,6 +63,16 @@ def find_objdump():
     return None
 
 
+def budget_limits():
+    """Per-app ceilings from host/nobro-host-contract.json (Wave 15). Absent section
+    or app = informational only; present = a hard gate."""
+    try:
+        with open(os.path.join(ROOT, "host", "nobro-host-contract.json"), encoding="utf-8") as f:
+            return json.load(f).get("build_budgets", {})
+    except OSError:
+        return {}
+
+
 def collect_budgets():
     objdump = find_objdump()
     if objdump is None:
@@ -77,26 +87,43 @@ def collect_budgets():
             (_frames, _cycles, worst, _path, worst_cycles, *_rest) = static_budget.analyze(
                 elf, objdump)
             text, data, bss = static_budget.sizes(elf, objdump)
-            targets.append({
+            entry = {
                 "app": name,  # basename only, no path
                 "flash_b": text + data,
                 "static_ram_b": data + bss,
                 "worst_stack_b": worst,
                 "worst_total_ram_b": data + bss + worst,
                 "worst_cycles": worst_cycles,
-            })
+            }
+            lim = budget_limits().get(name)
+            if lim:
+                checks = {
+                    "max_flash_b": entry["flash_b"] <= lim["max_flash_b"],
+                    "max_worst_total_ram_b":
+                        entry["worst_total_ram_b"] <= lim["max_worst_total_ram_b"],
+                    "max_worst_cycles": entry["worst_cycles"] <= lim["max_worst_cycles"],
+                }
+                entry["budget"] = {"limits": lim, "pass": all(checks.values()),
+                                   "checks": checks}
+            targets.append(entry)
         except Exception as exc:
             targets.append({"app": name, "error": str(exc)[:200]})
     if not targets:
         return {"available": False,
                 "note": "no built demo ELFs under _work; run a build or hw_eval first"}
-    return {"available": True, "targets": targets}
+    graded = [t for t in targets if "budget" in t]
+    return {"available": True, "targets": targets,
+            "enforced": len(graded),
+            "all_within_budget": all(t["budget"]["pass"] for t in graded)}
 
 
 def build_pack_from_results(results, quick):
     """Assemble an Evidence Pack from gate results already collected (no re-run)."""
     passed = sum(1 for r in results if r["ok"])
     all_ok = all(r["ok"] for r in results)
+    budgets = collect_budgets()
+    budgets_ok = budgets.get("all_within_budget", True)
+    verdict_ok = all_ok and budgets_ok
     return {
         "tool": "nobro verify",
         "tagline": "The RTOS that shows its work.",
@@ -108,13 +135,14 @@ def build_pack_from_results(results, quick):
         "summary": {
             "total": len(results),
             "passed": passed,
-            "result": "ALL PASS" if all_ok else "FAIL",
+            "result": "ALL PASS" if verdict_ok else "FAIL",
+            "budgets_ok": budgets_ok,
         },
         "gates": [{"name": r["name"],
                    "result": "PASS" if r["ok"] else "FAIL",
                    "detail": r["detail"]} for r in results],
-        "budgets": collect_budgets(),
-    }, all_ok
+        "budgets": budgets,
+    }, verdict_ok
 
 
 def build_pack(quick):

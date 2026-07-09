@@ -1,9 +1,28 @@
 {
-  "cdc": { "maintenance_mi": "MI_00", "user_mi": "MI_02" },
-  "upload": { "touch_baud": 1200, "lock_per_port": true },
-  "debug": { "gdb_incompatible_with": ["deadline_benchmark", "radio_soak"] },
-  "ironengine": { "default_baud": 115200, "frame_headers": [170, 85] },
-  "ina_monitor": { "jsonl_line_rate_hz_max": 50 },
+  "cdc": {
+    "maintenance_mi": "MI_00",
+    "user_mi": "MI_02"
+  },
+  "upload": {
+    "touch_baud": 1200,
+    "lock_per_port": true
+  },
+  "debug": {
+    "gdb_incompatible_with": [
+      "deadline_benchmark",
+      "radio_soak"
+    ]
+  },
+  "ironengine": {
+    "default_baud": 115200,
+    "frame_headers": [
+      170,
+      85
+    ]
+  },
+  "ina_monitor": {
+    "jsonl_line_rate_hz_max": 50
+  },
   "boot_diagnostics": {
     "stage_order": [
       "board_profile",
@@ -13,10 +32,24 @@
       "admission",
       "runtime"
     ],
-    "status_labels": ["missing", "in_progress", "pass", "fail", "corrupt"],
+    "status_labels": [
+      "missing",
+      "in_progress",
+      "pass",
+      "fail",
+      "corrupt"
+    ],
     "diagnostic_code": "u32: stage_code << 24 | status_class << 16 | error_code_low16; status_class pass=0 missing=1 in_progress=2 corrupt=3 fail=4",
     "first_non_pass": true,
-    "summary_fields": ["diagnostic", "slots", "pass_count", "missing_count", "in_progress_count", "fail_count", "corrupt_count"]
+    "summary_fields": [
+      "diagnostic",
+      "slots",
+      "pass_count",
+      "missing_count",
+      "in_progress_count",
+      "fail_count",
+      "corrupt_count"
+    ]
   },
   "module_tags": {
     "1": "kernel",
@@ -88,7 +121,12 @@
       "4": "shared_memory",
       "255": "custom"
     },
-    "entity_kinds": ["topic", "service", "action", "parameter"]
+    "entity_kinds": [
+      "topic",
+      "service",
+      "action",
+      "parameter"
+    ]
   },
   "lab": {
     "default_board": "nrf52840_no_softdevice",
@@ -105,7 +143,11 @@
       "active_platform_trait": "nobro_hal::PlatformHal",
       "board_trait": "nobro_hal::BoardDesc",
       "platform_feature": "platform-nrf52840",
-      "future_platforms": ["platform-esp32", "platform-rp2040", "platform-stm32"]
+      "future_platforms": [
+        "platform-esp32",
+        "platform-rp2040",
+        "platform-stm32"
+      ]
     },
     "thresholds": {
       "max_jitter_us": 10,
@@ -319,6 +361,34 @@
       "4": "capability",
       "5": "missing_startup_node",
       "6": "unknown_startup_node"
+    }
+  },
+  "build_budgets": {
+    "_doc": "Per-app build-time ceilings enforced by nobro verify (Wave 15). worst_total_ram_b = static RAM + worst-case stack from the call-graph analyzer; worst_cycles = statically-priced worst path. Exceeding any ceiling fails the Evidence Pack.",
+    "udi_imu_demo_s140": {
+      "max_flash_b": 8192,
+      "max_worst_total_ram_b": 2048,
+      "max_worst_cycles": 1600
+    },
+    "udi_imu_demo": {
+      "max_flash_b": 8192,
+      "max_worst_total_ram_b": 2048,
+      "max_worst_cycles": 1600
+    },
+    "imu_i2c_demo": {
+      "max_flash_b": 14336,
+      "max_worst_total_ram_b": 2560,
+      "max_worst_cycles": 3000
+    },
+    "resource_sched_demo": {
+      "max_flash_b": 12288,
+      "max_worst_total_ram_b": 2304,
+      "max_worst_cycles": 3000
+    },
+    "async_exec_demo": {
+      "max_flash_b": 6144,
+      "max_worst_total_ram_b": 1792,
+      "max_worst_cycles": 1600
     }
   }
 }
