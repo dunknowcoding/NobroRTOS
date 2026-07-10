@@ -271,6 +271,7 @@ Every claim below is checked on a real board and self-certifies through a fixed
 | Area | On-board result | Verify with |
 | --- | --- | --- |
 | **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM | `nobro_hw_eval.py sched` |
+| **Kernel-op latency** | measured max over 1000 runs: mailbox IPC 125 ns, capability check 219 ns, lease pair 2.0 us, longest interrupt-masked window 2.4 us ([table](docs/MEASURED_LATENCIES.md)) | `nobro_hw_eval.py wcet` |
 | **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass | `kernel_selftest` report |
 | **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass | `nobro_hw_eval.py sal` |
 | **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule | `recovery_demo` report |
