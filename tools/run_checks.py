@@ -71,6 +71,7 @@ def gate_specs(quick):
         ("evidence pack smoke", [py, "tools/nobro_verify.py", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
+        ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),
         ("udi surface", [py, "tools/check_udi.py", "--selftest"], ROOT),

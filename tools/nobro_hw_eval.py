@@ -299,6 +299,9 @@ def main():
     ap.add_argument("--run-secs", type=int, default=14)
     ap.add_argument("--jlink", default=None)
     ap.add_argument("--no-build", action="store_true")
+    ap.add_argument("--json-out", default=None, metavar="PATH",
+                    help="also write the decoded report as JSON (fleet-evidence input, "
+                         "e.g. _work/evidence/hw/udi_eh.json)")
     ap.add_argument("--flash", choices=["jlink", "uf2"], default="jlink",
                     help="jlink: SWD loadbin (flash-only image, MBR/bootloader-safe on "
                          "both nosd @0x1000 and s140 @0x26000). uf2: drag-and-drop over "
@@ -395,6 +398,16 @@ def main():
     ok = fields["magic"] == meta["magic"] and fields["all_pass"] == 1 and fields["completed"] == 1
     print(f"\n{'PASS' if ok else 'FAIL'}: all_pass={fields['all_pass']} "
           f"magic={'ok' if fields['magic'] == meta['magic'] else 'BAD'}")
+
+    if args.json_out:
+        import json
+        record = {"app": args.app, "profile": args.profile,
+                  "backend": getattr(args, "backend", None),
+                  "ok": ok, "all_pass": fields.get("all_pass"), "fields": fields}
+        os.makedirs(os.path.dirname(os.path.abspath(args.json_out)), exist_ok=True)
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            json.dump(record, f, indent=2)
+        print(f"json: {args.json_out}")
     sys.exit(0 if ok else 1)
 
 
