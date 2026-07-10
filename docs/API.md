@@ -1,9 +1,23 @@
-# NobroRTOS API Manual
+# API Reference
+
+The complete public surface: Rust crates, the C ABI, the Python package, and
+the host contract. The generated per-crate index is [api-index.md](api-index.md)
+(regenerate with `python tools/gen_api_index.py`).
+
+### Crate roles at a glance (ml vs ai vs nn)
+
+| Crate | Role | Typical caller |
+| --- | --- | --- |
+| `nobro_nn` | from-scratch NN *inference blocks* (dense/conv/LSTM/attention, int8 kernels) | firmware running a model |
+| `nobro_ml` | classic/TinyML *utilities* (quantization, filters, anomaly, federated averaging) | firmware feature pipelines |
+| `nobro_ai` | model *governance*: manifests + checksums for already-trained models, cloud-session state machines | deployment + host tooling |
+
+## Crates and contracts
 
 This manual summarizes the public crates and the core contracts used by
 applications, adapters, and host tooling.
 
-## Crate Overview
+### Crate Overview
 
 | Crate | Purpose |
 | ----- | ------- |
@@ -17,7 +31,7 @@ applications, adapters, and host tooling.
 | `nobro-iot` | Mountable IoT transports for BLE, WiFi, Zigbee, Thread, RFID, and proprietary radios |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
-## Neural Network API
+### Neural Network API
 
 `nobro-nn` is inference-side and `no_std`: callers pass all input, output, and
 scratch buffers explicitly. Dense layers use `[OUT][IN]` weights. 2-D
@@ -49,7 +63,7 @@ let mut features = [0.0f32; nobro_ml::KWS_FEATURES];
 assert!(nobro_ml::kws_log_energy_features(&pcm_i16, &mut features));
 ```
 
-## IoT Transport API
+### IoT Transport API
 
 `nobro-iot` keeps link identity as data and physical radios behind small traits.
 Apps consume `IotTransport` for descriptor, link-state, send, and receive calls,
@@ -71,7 +85,7 @@ assert!(!uid.is_empty());
 The backend allocates no heap memory, bounds polling, validates ISO 14443A BCC,
 and returns explicit `RfidError` values for bus, timeout, collision, protocol,
 and buffer failures.
-## Security API
+### Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,
 board-specific jump. `SecureBoot::boot_plan` verifies image length, address
@@ -89,9 +103,9 @@ let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 python tools/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
 ```
 
-## Kernel API
+### Kernel API
 
-### Manifest
+#### Manifest
 
 `SystemManifest<N>` is a fixed-capacity list of `ModuleSpec` records. Each
 module declares:
@@ -127,7 +141,7 @@ uses the same contract shape as the Rust startup graph, rejects unknown modules,
 duplicate dependencies, and cycles, and emits a deterministic startup order for
 editor tasks and CI gates.
 
-### Boot Assembly
+#### Boot Assembly
 
 `BootAssembly` is a no-heap helper for firmware that wants less startup
 boilerplate without hiding the contracts. It builds a manifest from static
@@ -180,7 +194,7 @@ preflight still writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
 demo work begins, so host tools can stop at the adapter stage when descriptors
 do not match the selected board profile.
 
-### Admission
+#### Admission
 
 `AdmissionController` composes manifest validation, startup ordering, quota
 seeding, and capability grant construction:
@@ -196,7 +210,7 @@ let plan = nobro_kernel::AdmissionController::admit::<8, 8, 8>(
 Admission failures are reported through `AdmissionReport`, using stable error
 codes mirrored in `nobro-host` and `host/nobro-host-contract.json`.
 
-### Capability Trace
+#### Capability Trace
 
 `CapabilityTrace<N>` records privileged operations only after the module passes
 the same `CapabilityGrantTable` authorization used by the runtime. The trace is
@@ -229,7 +243,7 @@ let copied = trace.copy_replay(
 Use this path for debug replay, CI host simulations, and fault reviews where the
 debug data must obey the same capability boundaries as production code.
 
-### Runtime
+#### Runtime
 
 `Runtime` is the fixed-capacity control plane for admitted applications. It
 owns:
@@ -372,7 +386,7 @@ per-status counts for the same host report path. `check-report-matrix` keeps the
 individual fixed-report decoders locked to stable status and domain-field
 semantics.
 
-### Scheduler
+#### Scheduler
 
 `Scheduler` tracks deadline ticks, max jitter, and deadline misses without heap
 allocation. The default tick period is 20,000 us. Use
@@ -391,7 +405,7 @@ Use `check-scheduler-matrix` before packaging to verify the host mirror for
 on-time ticks, tolerated early/late jitter, deadline misses, wraparound, reset,
 and invalid-configuration paths.
 
-### Recovery
+#### Recovery
 
 `RecoveryCoordinator` routes faults through health counters, lifecycle state,
 actions, and event records. Recovery is module-scoped by default; global reset
@@ -500,7 +514,7 @@ Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` when software
 needs deterministic module-state bookkeeping for quiesce/resume while keeping
 hardware restart and heartbeat operations in adapter code.
 
-## Network API
+### Network API
 
 `nobro-net` provides no-heap mesh primitives for routing, secure links,
 store-forward delivery, OTA chunk reassembly, and fleet rollout planning.
@@ -525,9 +539,9 @@ blocked state according to the failure policy, giving host tooling or firmware
 a deterministic rollout controller before transport-specific OTA packets are
 sent.
 
-## HAL API
+### HAL API
 
-### BoardDesc
+#### BoardDesc
 
 `BoardDesc` exposes stable board facts:
 
@@ -587,7 +601,7 @@ for fixture in nobro_hal::BOARD_PACKAGE_FIXTURES {
 }
 ```
 
-### Leases
+#### Leases
 
 `ResourceLease` and `LeaseGuard` provide exclusive ownership for shared
 peripherals. A driver should acquire a lease, perform bounded work, and let the
@@ -602,15 +616,15 @@ drop(guard);
 nobro_hal::ResourceLease::release_all_for_owner(module_id);
 ```
 
-### Event Capture
+#### Event Capture
 
 `HalEventCapture` is the portable abstraction for event-to-timestamp routing.
 The nRF52840 backend maps it to PPI. Future ports can map it to another trigger
 fabric without changing app code.
 
-## SAL API
+### SAL API
 
-### BusSal
+#### BusSal
 
 Use for I2C, SPI, and UART-like transactions that need lease-aware access.
 
@@ -622,7 +636,7 @@ trait BusSal {
 }
 ```
 
-### SensorSal
+#### SensorSal
 
 Use for sampled data. Payload bytes travel through `Sample` tickets and static
 pools rather than heap buffers.
@@ -649,7 +663,7 @@ let mut sensor = nobro_adapter_sensor_stub::SensorStub::with_profile(
 let sample = sensor.poll_at(1_000)?;
 ```
 
-### ActuatorSal
+#### ActuatorSal
 
 Use for deadline-aware output.
 
@@ -657,13 +671,13 @@ Use for deadline-aware output.
 actuator.set_duty_us(channel, 1500, deadline_us)?;
 ```
 
-### StreamSal, RadioSal, CryptoSal
+#### StreamSal, RadioSal, CryptoSal
 
 `StreamSal` handles framed byte streams, `RadioSal` handles radio process loops
 and packet movement, and `CryptoSal` keeps cryptographic services behind a
 portable capability surface.
 
-### AiInferenceSal
+#### AiInferenceSal
 
 Use `AiInferenceSal` for bounded local, sidecar, hybrid, or remote inference.
 The contract declares backend kind, model identity, max input/output sizes,
@@ -745,7 +759,7 @@ assert!(report.verify_checksum());
 assert_eq!(report.route_preference, nobro_sal::AiRoutePreference::HybridFallback as u32);
 ```
 
-### ROS-Style Bridges
+#### ROS-Style Bridges
 
 ROS and micro-ROS compatibility should be implemented through adapters and
 metadata, not as kernel dependencies. Topic-like streams map to bounded queues,
@@ -831,7 +845,7 @@ watchdog matrix, scheduler matrix, event log matrix, quota matrix,
 degrade matrix, startup matrix, boot summary matrix, bundle matrix, report
 matrix, and runtime drill validation for pre-package review.
 
-## Host API
+### Host API
 
 `nobro-host` mirrors all report constants:
 
@@ -854,3 +868,101 @@ assert_eq!(summary.pass_count, nobro_host::BOOT_REPORT_STAGE_COUNT as u8);
 ```
 Host tools should prefer labels from `nobro-host` instead of embedding numeric
 tables locally.
+
+## Host contract (the JSON ABI mirror)
+
+The host contract defines the data that external tools can read from firmware
+images or runtime memory. The JSON mirror is:
+
+```text
+host/nobro-host-contract.json
+```
+
+The Rust mirror is:
+
+```text
+core/crates/nobro_host
+```
+
+### Stable Labels
+
+Module tag labels include kernel, HAL, bus, radio, sensor, actuator, stream,
+crypto, AI, and app modules. Capability labels include timebase, deadline
+timer, event capture, bus, radio, servo PWM, stream, crypto, sample pool, host
+report, AI inference, and AI endpoint ownership.
+
+### Report Symbols
+
+| Symbol | Meaning |
+| ------ | ------- |
+| `NOBRO_BOARD_PROFILE_REPORT` | Selected board, memory origin, budgets, and critical pins |
+| `NOBRO_BOARD_PACKAGE_REPORT` | Boot layout, flash/RAM regions, board capacity, critical pins, and package validation result |
+| `NOBRO_MANIFEST_REPORT` | Static module graph validity, capability bits, budget use, and error context |
+| `NOBRO_ADAPTER_COMPAT_REPORT` | Adapter inventory compatibility before app admission |
+| `NOBRO_AI_MODEL_REPORT` | AI backend, model ID, input/output bounds, arena bytes, timeout, and route policy |
+| `NOBRO_ROS_BRIDGE_REPORT` | ROS-style bridge transport, entity counts, buffer demand, and maximum timeout |
+| `NOBRO_ADMISSION_REPORT` | Admission result after manifest, startup, quota, and capability checks |
+| `NOBRO_RUNTIME_REPORT` | Runtime lifecycle, mailbox pressure, alarms, KV writes, quota use, and event pressure |
+| `NOBRO_HEALTH_REPORT` | Module health counters and latest recovery context |
+| `NOBRO_EVENT_LOG_REPORT` | Fixed event-ring summary |
+| `NOBRO_MODULE_RUNTIME_REPORT` | Module state counts and latest state transition |
+| `NOBRO_DEGRADE_APPLICATION_REPORT` | Latest degraded-mode application result |
+| `NOBRO_EVAL_REPORT` | Phase 1 resource scheduling evaluation record |
+| `NOBRO_SAL_EVAL_REPORT` | SAL adapter evaluation record |
+
+### Status Model
+
+Reports use the same status categories:
+
+- `missing`: zeroed report slot
+- `in_progress`: valid header, incomplete report
+- `pass`: complete and checksum-valid success
+- `fail`: complete and checksum-valid domain failure
+- `corrupt`: invalid header, version, or checksum
+
+Host tools should decode the first non-passing boot stage in this order:
+
+1. board profile
+2. board package
+3. manifest
+4. adapter compatibility
+5. admission
+6. runtime
+
+### Boot Summary
+
+`nobro-host` exposes `BootReports::summary()` for tools that need one compact
+view of boot state. The summary includes the first diagnostic, all six report
+slots, diagnostic code, and per-status counts. Tools should use this helper
+before rendering user-facing text.
+
+Python host tooling mirrors this shape in `BootReportSummary.to_dict()` and the
+`summarize-boot` CLI command, including the same diagnostic code layout and
+per-status count fields.
+Use `check-boot-summary-matrix` to validate all-pass, missing-stage,
+corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+status-count paths before changing report layouts or host tooling.
+### Checksum Rule
+
+Fixed reports use XOR checksums over every `u32` field except `checksum`.
+Timestamps wider than `u32` are split into low and high words.
+
+### Diagnostic Code
+
+Boot diagnostic code layout:
+
+```text
+stage_code << 24 | status_class << 16 | error_code_low16
+```
+
+### AI And ROS Tables
+
+`ai_contracts` defines stable numeric codes for AI backend kinds, route
+preferences, route targets, and the `NOBRO_AI_MODEL_REPORT` layout.
+`ros_bridge_contracts` defines the stable FNV-1a UTF-8 hash policy, ROS-style
+entity kinds, transport codes, and the `NOBRO_ROS_BRIDGE_REPORT` layout used by
+Python, C/C++, and Rust bridge metadata.
+
+Use `nobro-host` helper labels rather than duplicating numeric maps in host
+tools.
+

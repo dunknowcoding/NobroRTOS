@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 200" font-family="system-ui,sans-serif">
+  <rect x="8" y="30" width="180" height="120" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/>
+  <text x="98" y="75" text-anchor="middle" font-size="16" fill="#1e3a8a">your computer</text>
+  <rect x="40" y="90" width="116" height="34" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="98" y="112" text-anchor="middle" font-size="13" fill="#1e3a8a">hello.uf2</text>
+  <path d="M200 90 C 250 60, 300 60, 350 90" fill="none" stroke="#f59e0b" stroke-width="5" stroke-dasharray="10 7" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#f59e0b"/></marker></defs>
+  <text x="278" y="52" text-anchor="middle" font-size="14" fill="#b45309">drag it over!</text>
+  <rect x="360" y="46" width="190" height="96" rx="14" fill="#ecfdf5" stroke="#059669" stroke-width="3"/>
+  <text x="455" y="80" text-anchor="middle" font-size="16" fill="#065f46">NOBRO drive</text>
+  <circle cx="395" cy="112" r="9" fill="#22c55e"/>
+  <text x="470" y="117" text-anchor="middle" font-size="13" fill="#065f46">the board!</text>
+</svg>

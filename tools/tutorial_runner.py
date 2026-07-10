@@ -23,23 +23,25 @@ def require(path: Path) -> None:
         raise FileNotFoundError(str(path.relative_to(ROOT)))
 
 
-def check_book() -> dict:
-    book = ROOT / "docs" / "book" / "README.md"
-    require(book)
-    text = book.read_text(encoding="utf-8")
-    chapters = [
-        "01-contracts-first.md",
-        "02-local-validation.md",
-        "03-build-a-device-app.md",
-        "04-ai-robot-iot.md",
-        "05-diagnostics-recovery.md",
+def check_ladder() -> dict:
+    """The tutorials ladder: an index that names every tier, each tier's README
+    present. (The old docs/book was absorbed into the ladder + official docs.)"""
+    index = ROOT / "tutorials" / "README.md"
+    require(index)
+    text = index.read_text(encoding="utf-8")
+    tiers = [
+        "01-first-light",
+        "02-build-with-blocks",
+        "03-arduino-and-python",
+        "04-your-first-module",
+        "05-rust-deep-dive",
     ]
     missing = []
-    for chapter in chapters:
-        chapter_path = book.parent / chapter
-        if not chapter_path.exists() or chapter not in text:
-            missing.append(chapter)
-    return {"passing": not missing, "missing": missing, "chapters": len(chapters)}
+    for tier in tiers:
+        tier_readme = ROOT / "tutorials" / tier / "README.md"
+        if not tier_readme.exists() or tier not in text:
+            missing.append(tier)
+    return {"passing": not missing, "missing": missing, "tiers": len(tiers)}
 
 
 def check_hello_device() -> dict:
@@ -74,7 +76,7 @@ def check_verifier() -> dict:
 
 def run() -> dict:
     checks = {
-        "book": check_book(),
+        "ladder": check_ladder(),
         "hello_device": check_hello_device(),
         "verifier": check_verifier(),
     }

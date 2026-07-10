@@ -10,4 +10,4 @@ NobroRTOS product surface:
 - Build outputs (`*/build/`) are gitignored.
 
 If you want supported examples, start at `tutorials/`, `packages/arduino/examples/`,
-and `docs/GETTING_STARTED_NO_CODE.md` instead.
+and `docs/GETTING_STARTED.md` instead.

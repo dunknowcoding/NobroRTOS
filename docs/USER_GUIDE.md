@@ -1,9 +1,15 @@
-# NobroRTOS User Manual
+# User Guide
+
+Day-to-day work with the NobroRTOS SDK: the mental model, the declarative
+app generator, the prebuilt-firmware loop, authoring C modules against the
+prebuilt runtime, and keeping a working tree clean.
+
+## The repository, mentally
 
 This manual helps a firmware developer understand the repository, run local
 validation, and assemble a small NobroRTOS application.
 
-## Mental Model
+### Mental Model
 
 NobroRTOS is organized around explicit contracts:
 
@@ -17,7 +23,7 @@ NobroRTOS is organized around explicit contracts:
 - Host reports make boot, admission, runtime, health, and recovery state
   readable from outside the firmware image.
 
-## Workspace Setup
+### Workspace Setup
 
 Install Rust and the embedded target:
 
@@ -40,7 +46,7 @@ cargo test -p nobro-sal --target x86_64-pc-windows-msvc
 cargo test -p nobro-host --target x86_64-pc-windows-msvc
 ```
 
-## Build Profiles
+### Build Profiles
 
 `cargo check --workspace` uses `core/.cargo/config.toml`, so the default build
 target is `thumbv7em-none-eabihf`.
@@ -58,7 +64,7 @@ Example:
 cargo check -p sal-adapter-demo --no-default-features --features board-promicro-nosd
 ```
 
-## Creating An Application
+### Creating An Application
 
 A NobroRTOS application should assemble existing contracts rather than hide
 hardware behavior in private globals.
@@ -138,7 +144,7 @@ The `sal_adapter_demo` app follows this pattern: it assembles the manifest,
 startup graph, admission plan, and runtime through `BootAssembly`, then writes
 the adapter compatibility report before entering hardware-facing demo code.
 
-## Working With SAL
+### Working With SAL
 
 Application code should depend on `nobro-sal` traits:
 
@@ -158,7 +164,7 @@ sensor fixture. It can emit plausible IMU samples, stay silent, inject periodic
 adapter errors, or produce implausible payloads without requiring external
 hardware.
 
-## AI And Robotics Bridges
+### AI And Robotics Bridges
 
 AI modules should declare their model identity, backend kind, memory budget,
 input/output bounds, timeout, and recovery behavior before admission. Local
@@ -209,7 +215,7 @@ documented in `tools/audio_kws_node.py`. The feature contract is fixed at
 16 kHz mono, one second, 15 frames, and 8 log-energy bands, so a PDM or I2S
 adapter only has to supply bounded PCM windows.
 
-## Diagnostics
+### Diagnostics
 
 NobroRTOS exports fixed-layout reports with `NOBRO_*` symbols. The canonical
 contract is `host/nobro-host-contract.json`.
@@ -377,7 +383,7 @@ The bundle matrix checker validates module naming, capability ownership,
 AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency
 errors, and JSON roundtrip stability.
 
-## Cleanup
+### Cleanup
 
 Keep generated data under `_work/`:
 
@@ -389,3 +395,284 @@ Remove-Item -Recurse -Force _work\logs -ErrorAction SilentlyContinue
 
 `_work/`, target directories, firmware binaries, coverage output, and local
 toolchains are ignored by Git.
+
+## Declarative apps (the app.json generator)
+
+`gen-app` turns a declarative module spec into a **buildable NobroRTOS firmware app**.
+You describe the module (criticality + memory budget); the generator emits a workspace
+crate whose `main.rs` assembles the manifest via `BootAssembly`, admits it, and exports
+the host-readable `NOBRO_MANIFEST_REPORT` / `NOBRO_ADMISSION_REPORT`. The generated Rust
+is compiler-checked, so your contract is preserved - you never hand-write Rust.
+
+This is the declarative app-generation path: describe the app as data, generate the Rust.
+
+### Generate
+
+```powershell
+python tools/nobro_contract_tool.py gen-app --name my_control_app --module control
+# options: --criticality {best_effort|user|driver|system}  --flash <bytes>  --ram <bytes>  --pool <slots>
+```
+
+This writes `core/apps/my_control_app/` (`Cargo.toml`, `build.rs`, `src/main.rs`,
+`nobro-contract.json`, `README.md`) and registers it as a workspace member.
+
+### Build
+
+```powershell
+cd core
+cargo build -p my-control-app --release
+```
+
+### Verify on hardware
+
+Flash and read the reports (see [HW_QUICKSTART.md](HW_QUICKSTART.md)). A booted
+app populates `NOBRO_MANIFEST_REPORT` (magic `NBMF`) and `NOBRO_ADMISSION_REPORT`
+(magic `NBAD`); both carry the module count and a sealed checksum, so a host tool
+confirms the manifest assembled and admission passed without a `defmt` decoder.
+
+Verified end to end on the development board: a generated `driver`-criticality app compiles for
+`thumbv7em`, boots, assembles a 2-module manifest (kernel + your module), and passes
+admission.
+
+### Editing the contract
+
+Edit `nobro-contract.json` (the module's criticality / memory budget) and re-run
+`gen-app --overwrite`, or edit `src/main.rs` directly. Either way the manifest is
+re-validated by the compiler and at admission.
+
+### Authoring module logic in C or C++
+
+`gen-app` scaffolds a Rust app. To write module *logic* outside Rust, generate a
+C or C++ module skeleton over the [C ABI](../bindings/c/include/nobro_app.h):
+
+```powershell
+python tools/nobro_contract_tool.py gen-module --name my_sensor --lang c   --out my_mod
+python tools/nobro_contract_tool.py gen-module --name my_sensor --lang cpp --out my_mod
+```
+
+This writes an editable module (`nobro_app_init()` once, `nobro_app_poll()` each
+cycle) and prints the build command, which compiles + links your file into the
+`c_abi_demo` firmware via the `c-source` / `cpp-source` path (needs
+`arm-none-eabi-gcc` / `g++`). Both languages are verified end to end on the development board - the
+kernel admits the C or C++ module and it drives a sensor to a passing report. See
+[bindings/c/README.md](../bindings/c/README.md) and
+[bindings/cpp/README.md](../bindings/cpp/README.md).
+
+## The prebuilt UF2 loop
+
+**UX rung 0 target:** flash a prebuilt UF2 **once**, then iterate by editing *data*
+(`app.json` from the block editor) — no toolchain, no rebuild, code-free after first
+flash.
+
+### The loop
+
+```
+1. Drag-drop prebuilt UF2  →  board enumerates (DFU/COM)
+2. Open block editor       →  design app visually
+3. Export app.json         →  drop on serial / future UF2 data partition
+4. Web console / ReportReader  →  plain-English PASS/FAIL from NOBRO_* reports
+```
+
+NobroRTOS already has every piece except the **prebuilt UF2 bundle** and the
+**app.json hot-swap transport**:
+
+| Piece | Status |
+| --- | --- |
+| Block editor → `app.json` | Done (Wave 2 ML block) |
+| Web-flasher report console | Done (Wave 1) |
+| `nobro_app.py` validator | Done |
+| Bootloader-safe UF2 flash | Done (`hw_eval --flash uf2`) |
+| Prebuilt "shell" UF2 | **Wave 8** |
+| app.json runtime reload | **Wave 8+** (manifest hot-reload or serial drop) |
+
+### Prebuilt shell firmware
+
+The shell UF2 is a known-good firmware image that:
+
+1. Boots through the six-stage chain and emits decodable `NOBRO_*` reports.
+2. Exposes a **data slot** for `app.json` (KV store, flash log, or serial ingest).
+3. Re-admits modules when `app.json` changes (no reflash).
+
+Build command (once Wave 8 lands):
+
+```bash
+python tools/package_prebuilt_uf2.py --profile s140 --out packages/prebuilt/
+```
+
+### What the user sees
+
+After the one-time UF2 flash:
+
+- Block editor exports `app.json`.
+- User drops the file (serial upload or future mass-storage slot).
+- Console shows: "✅ servo mounted, sensor alive" or the first-fault sentence.
+
+This matches the CircuitPython "edit `code.py`, save, it runs" bar — except the
+editable artifact is **contract data**, not Python source.
+
+### Gate (planned)
+
+`check_prebuilt_loop.py` will verify:
+
+- `packages/prebuilt/` contains a manifest (profile, hash, version).
+- Sample `app.json` from the block editor passes `nobro_app.validate()`.
+- Web-flasher parser recognizes the shell's report lines.
+
+See Wave 8 in `REMODELING_PLAN_INTERNAL.md`.
+
+## Tier C: C modules against libnobro.a
+
+Tier C is for C developers who want NobroRTOS's control plane (admission, budgets,
+leases, `NOBRO_*` reports) without touching the Rust toolchain. You get a prebuilt
+`libnobro.a` containing the whole runtime — boot, vector table, kernel, host services —
+and you supply one C file.
+
+### 1. Get the bundle
+
+From a release download, or from anyone with the Rust toolchain:
+
+```bash
+python tools/build_libnobro.py --build     # stages _work/tierc/
+```
+
+The bundle: `libnobro.a`, the linker scripts it expects (`link.x`, `memory.x`,
+`defmt.x`), the C ABI headers (`nobro_app.h`, `nobro_rtos.h`), a reference module
+(`imu_module.c`), and one-line build scripts.
+
+### 2. Write your module
+
+Your entire authoring surface is two functions against `nobro_app.h`:
+
+```c
+#include "nobro_app.h"
+
+int32_t nobro_app_init(void) {
+    uint8_t wake[2] = {0x6B, 0x01};
+    return nobro_i2c_write(0x68, wake, 2);      /* bounded host service */
+}
+
+int32_t nobro_app_poll(void) {
+    /* nobro_i2c_write_read(...) + nobro_publish_imu(...) */
+    return 0;
+}
+```
+
+The kernel admits your module (capabilities, memory budget, deadlines) and drives
+`init`/`poll`; hardware is reachable only through the bounded host services.
+
+### 3. Link (this is the whole build)
+
+```bash
+./build.sh my_module.c        # or build.cmd my_module.c on Windows
+# = arm-none-eabi-gcc <cpu flags> my_module.c \
+#     -Wl,--whole-archive libnobro.a -Wl,--no-whole-archive \
+#     -T link.x -T defmt.x -nostartfiles -lm -o firmware.elf
+```
+
+`--whole-archive` matters: the vector table lives in the archive and nothing
+references it by symbol, so the linker must keep every member.
+
+### 4. Flash + verify
+
+The ELF targets the no-SoftDevice layout (app at `0x1000`). Flash it with any SWD
+probe (`docs/HW_QUICKSTART.md`) or convert to UF2 for drag-and-drop. Verification is
+the usual story: the firmware seals `NOBRO_IMU_HW_EVAL_REPORT`, and
+`tools/nobro_hw_eval.py` or a serial monitor grades it PASS/FAIL.
+
+### Current scope, honestly
+
+- One prebuilt layout today: **nRF52840, no-SoftDevice**. The S140 variant is a
+  rebuild flag away for whoever produces bundles.
+- The link test (`python tools/build_libnobro.py --check`) runs in CI, so a bundle
+  that stops linking against plain gcc fails the gate before it reaches you.
+
+## Keeping the tree clean (operations)
+
+This guide keeps the repository clean and repeatable during development.
+
+### Local Work Root
+
+Use `_work/` for all generated assets:
+
+| Path | Purpose |
+| ---- | ------- |
+| `_work/cargo-target/` | `CARGO_TARGET_DIR` |
+| `_work/artifacts/` | local firmware images |
+| `_work/logs/` | run logs and captured output |
+| `_work/downloads/` | temporary downloads |
+| `_work/toolchain/` | optional portable tools |
+
+`_work/` is ignored by Git. Do not commit generated firmware, build caches,
+coverage data, or downloaded toolchains.
+
+### Validation Commands
+
+```powershell
+cd core
+$env:CARGO_TARGET_DIR = (Resolve-Path '..\_work').Path + '\cargo-target'
+cargo fmt --all -- --check
+cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
+cargo test -p nobro-sal --target x86_64-pc-windows-msvc
+cargo test -p nobro-host --target x86_64-pc-windows-msvc
+cargo check --workspace
+cd ..
+python tools/nobro_contract_tool.py doctor
+python tools/nobro_contract_tool.py check-host-contract
+python tools/nobro_contract_tool.py check-distribution-metadata
+python tools/nobro_contract_tool.py check-public-headers
+python tools/nobro_contract_tool.py check-software-surface
+python tools/nobro_contract_tool.py check-starter-templates
+python tools/nobro_contract_tool.py check-ai-route
+python tools/nobro_contract_tool.py check-ai-route-matrix
+python tools/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/nobro_contract_tool.py check-ros-preflight-matrix
+python tools/nobro_contract_tool.py check-bundle-matrix
+python tools/nobro_contract_tool.py check-report-matrix
+python tools/nobro_contract_tool.py check-recovery-matrix
+python tools/nobro_contract_tool.py check-watchdog-matrix
+python tools/nobro_contract_tool.py check-scheduler-matrix
+python tools/nobro_contract_tool.py check-event-log-matrix
+python tools/nobro_contract_tool.py check-quota-matrix
+python tools/nobro_contract_tool.py check-degrade-matrix
+python tools/nobro_contract_tool.py check-startup-matrix
+python tools/nobro_contract_tool.py check-boot-summary-matrix
+python tools/nobro_contract_tool.py check-report-matrix
+python tools/nobro_contract_tool.py check-runtime-drill
+```
+
+`check-report-matrix` should pass before packaging any host tooling change that
+touches fixed reports, boot diagnostics, AI model descriptors, or ROS bridge
+descriptors.
+`check-ai-preflight-matrix` should pass before packaging AI-facing tooling or
+starter templates. It catches oversized inference buffers, insufficient module
+RAM, missing AI capabilities, stale snapshot policy violations, degraded
+fallback, unavailable routes, and open endpoint circuits without contacting a
+model or endpoint.
+`check-ros-preflight-matrix` should pass before packaging ROS-style bridge
+tooling or starter templates. It catches oversized bridge payloads, undersized
+response buffers, zero-depth queues, parameter value overflow, and timeout
+budget violations without contacting a ROS transport or agent.
+Kernel recovery tests should pass before changing self-healing logic. They
+cover fixed-capacity recovery planning, execution cursor progress, overdue-step
+visibility, output-buffer backpressure, watchdog escalation, and module
+lifecycle recovery completion without contacting external hardware.
+
+### Commit Hygiene
+
+- Keep documentation and comments in English.
+- Keep local route notes out of Git.
+- Keep generated files under ignored paths.
+- Commit coherent architecture or feature slices.
+- Do not create tags or releases until the project has a formal complete
+  version.
+
+### Python Environment
+
+If Python tooling is needed, use any Python 3 environment (a venv is fine):
+
+```powershell
+python3 -m venv .venv && . .venv/bin/activate
+```
+
+Python tools should write outputs under `_work/`.
+

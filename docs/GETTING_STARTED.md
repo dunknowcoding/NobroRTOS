@@ -1,0 +1,181 @@
+# Getting Started
+
+One page from zero to a verified PASS, whichever kind of user you are.
+Pick your row, follow one section, and end at the same place: a device (or
+simulator) explaining itself through `NOBRO_*` reports.
+
+| You have | Start at |
+| --- | --- |
+| A board, no toolchain | [Zero-code path](#zero-code-path-no-toolchain) |
+| Rust + a probe/UF2 board | [Hardware quick start](#hardware-quick-start) |
+| Just a laptop | [Toolchains and IDEs](#toolchains-and-ides) |
+
+## Hardware quick start
+
+Everything on real hardware funnels through **one command**: flash an eval app, let it
+run, then read its fixed `NOBRO_*` report back over the debug probe and grade it PASS
+or FAIL. No serial console required.
+
+### Prerequisites
+
+- An nRF52840 dev board wired to a SEGGER J-Link (SWD). Other probes work with
+  `probe-rs`; the tool flag below assumes J-Link.
+- Rust (`rustup target add thumbv7em-none-eabihf`) and Python 3.10+.
+- `arm-none-eabi-objcopy` on PATH (any GNU Arm toolchain provides it).
+
+### One command
+
+```bash
+python tools/nobro_hw_eval.py imu            # build + flash + run + read + grade
+python tools/nobro_hw_eval.py sal            # servo + sensor SAL round-trip
+python tools/nobro_hw_eval.py eh             # embedded-hal driver path
+python tools/nobro_hw_eval.py sched          # scheduler / PPI / PWM timing
+```
+
+Each run ends with an explicit verdict:
+
+```
+=== imu on nosd ===
+  magic                  = 1313164366 (0x4E42...)
+  all_pass               = 1 (0x1)
+PASS: all_pass=1
+```
+
+Options: `--profile` picks the flash layout (`nosd` at 0x1000 or `s140` at 0x26000 for
+SoftDevice boards), `--jlink <path>` points at a non-default J-Link CLI, `--no-build`
+reuses the last binary.
+
+### What "PASS" means
+
+The app seals a fixed-layout report struct in RAM (`NOBRO_*_REPORT`); the tool reads it
+via the probe and checks `magic`, `completed`, and `all_pass`. If a board is silent or
+mis-wired you get a short read with a pointed message — not a hang.
+
+### No probe? No board?
+
+- **Serial boards:** most demos also print their report line over USB-CDC/UART; any
+  serial monitor shows the same `all_pass=1`.
+- **No hardware at all:** the Python simulators under `bindings/python` and the host
+  test suite (`cargo test` on the portable crates, `tools/ci_matrix.sh`) exercise the
+  same contracts on your desktop.
+
+### Performance notes (facts, not folklore)
+
+- Bus transfers (SPIM/TWIM) ride the nRF's **EasyDMA** - the CPU is not bit-banging
+  or polling data bytes; drivers wait on transfer-end events with bounded spins.
+- Sensor samples move through the kernel as **zero-copy tickets** (`SamplePool`):
+  producers publish a slot, consumers borrow it - payloads are not copied through
+  queues.
+- Kernel-op costs are measured, not guessed: see
+  [MEASURED_LATENCIES.md](MEASURED_LATENCIES.md).
+
+## Zero-code path (no toolchain)
+
+The zero-toolchain path: flash one prebuilt image by drag-and-drop, watch the board
+explain itself in a browser, and design your first app as blocks — no Rust, no
+compiler, no IDE.
+
+### 1. Flash the starter (once)
+
+You need an nRF52840 board with the UF2 (S140) bootloader — most nice!nano-style
+boards ship with it.
+
+1. Double-tap the RESET button. A USB drive appears (its `INFO_UF2.TXT` should say
+   `SoftDevice: S140`).
+2. Drag `nobrortos-starter-s140.uf2` onto the drive. The board reboots on its own.
+
+Where to get the UF2: a release download, or anyone with the toolchain runs
+`python tools/package_prebuilt_uf2.py --build` and hands you the file from
+`_work/prebuilt/`.
+
+### 2. Watch it explain itself
+
+Open `packages/web-flasher/index.html` in Chrome or Edge and click
+**Open report console**, then pick the board's serial port. The starter streams its
+self-verification and the console translates it into plain sentences:
+
+```
+✅ PASS  CDC: all checks passing
+NobroRTOS IMU who=0x71 addr=104 i2c=1 reads=1240 err=0 accel=1002mg ... PASS
+```
+
+If the board's sensor is missing or mis-wired, you see exactly which check failed —
+the same first-fault discipline every NobroRTOS app has.
+
+(No browser with Web Serial? Any serial monitor at 115200 shows the same lines, and
+`pip install nobro-rtos-tools` gives you a Python decoder.)
+
+### 3. Design your own app as blocks
+
+Open `packages/block-editor/index.html`, arrange board + servo + sensor (+ ML)
+blocks, and export `app.json`. Validate it instantly — this needs only Python:
+
+```bash
+python tools/nobro_app.py your-app.json          # catalog-checked plan, PASS/FAIL
+```
+
+### 4. When you outgrow no-code
+
+Turning your `app.json` into firmware is one command with the toolchain installed
+(`python tools/nobro_app.py your-app.json --gen main.rs`, then build) — or hand the
+JSON to anyone with the toolchain. Every path lands back at the same report console,
+so nothing you learned here is thrown away.
+
+| You are here | Next rung |
+| --- | --- |
+| No-code starter | Arduino library (`packages/arduino`, no Rust needed) |
+| Arduino sketches | Python host tools (`pip install nobro-rtos-tools`) |
+| Python | C/C++ modules, then the full Rust workspace |
+
+## Toolchains and IDEs
+
+NobroRTOS is not tied to the Arduino IDE or VS Code. The core is plain Rust + Cargo, so it
+builds and flashes from a terminal on Linux, macOS, or Windows with only `rustup`.
+
+### Pure CLI (recommended, any OS)
+
+```bash
+rustup target add thumbv7em-none-eabihf          # or your board's target
+cargo build -p kernel-selftest --release          # build firmware
+python3 tools/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
+python3 tools/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2 (Pico/nice!nano)
+python3 tools/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
+```
+
+`tools/flash.py` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
+override the J-Link path with the `JLINK_EXE` env var. `tools/bin2uf2.py` converts a raw
+`.bin` to a UF2 for any family (rp2350 / rp2040 / nrf52840).
+
+### Cross-MCU, one command
+
+```bash
+bash tools/check_portability.sh   # builds the portable core for all 6 MCU families
+bash tools/ci_matrix.sh           # host tests + portability + port builds + validators
+bash tools/lint_gate.sh           # clippy -D warnings gate
+```
+
+### Editors and IDEs (all optional)
+
+- **Any editor + rust-analyzer** (Neovim, Helix, Zed, Emacs, IntelliJ-Rust, VS Code).
+- **No editor at all**: the CLI above is complete.
+- **Arduino IDE / PlatformIO**: only needed for the ESP32/AVR *bench nodes* (which run
+  vendor firmware), via `arduino-cli` - not for the NobroRTOS Rust core.
+
+### Config-driven, no Rust knowledge
+
+```bash
+python3 tools/nobro_app.py my_robot/app.json --gen main.rs
+```
+
+Describe the board + actuators + sensors in JSON; the builder validates against the device
+catalog and generates the Rust. This is the on-ramp for beginners and for higher-level
+front-ends (a GUI, a block editor, or another language) that emit the JSON.
+
+### Other OS / SDK surfaces
+
+- **Linux/macOS/Windows**: identical Cargo + Python flow; only the flashing backend differs.
+- **CI**: `tools/ci_matrix.sh` is a single exit-coded gate for GitHub Actions / GitLab CI.
+- **C / C++**: `bindings/c` + `bindings/cpp` expose the module ABI for non-Rust codebases.
+- **Web flasher / PlatformIO packaging**: the SDK manifest (`sdk/sdk-manifest.json`,
+  validated by `tools/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.
+

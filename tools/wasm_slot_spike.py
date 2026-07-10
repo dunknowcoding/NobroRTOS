@@ -16,7 +16,7 @@ What is modeled faithfully:
   * a pure-Python "guest" that mirrors bindings/c/examples/imu_module.c using only the
     import facade + its own memory, against a simulated MPU-class device (WHO_AM_I=0x71).
 
-See docs/WASM_MODULE_SLOT.md. Emits _work/evidence/wasm_slot.json. Bench-agnostic output.
+See docs/ENGINEERING.md. Emits _work/evidence/wasm_slot.json. Bench-agnostic output.
 
     python tools/wasm_slot_spike.py
     python tools/wasm_slot_spike.py --selftest

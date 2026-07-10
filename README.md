@@ -24,7 +24,7 @@
   <img alt="Authoring languages" src="https://img.shields.io/badge/author%20in-Rust%20%7C%20C%20%7C%20C%2B%2B-6f42c1?style=for-the-badge">
   <img alt="embedded-hal" src="https://img.shields.io/badge/embedded--hal-drivers%20run-0f766e?style=for-the-badge">
   <img alt="no_std" src="https://img.shields.io/badge/no__std-no%20heap-1f2937?style=for-the-badge">
-  <a href="docs/HW_QUICKSTART.md"><img alt="One-command verify" src="https://img.shields.io/badge/verify-one%20command-f59e0b?style=for-the-badge"></a>
+  <a href="docs/GETTING_STARTED.md"><img alt="One-command verify" src="https://img.shields.io/badge/verify-one%20command-f59e0b?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -80,7 +80,7 @@ and just open the board's COM port.
 | **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, capability-scoped resources, and the `embedded-hal` driver ecosystem |
 | **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
 | **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
-| **Porting from another RTOS** | A thin SAL + C ABI so Zephyr/Embassy/bare-metal drivers and C/C++ logic drop in &mdash; see [docs/PORTING_FROM.md](docs/PORTING_FROM.md) |
+| **Porting from another RTOS** | A thin SAL + C ABI so Zephyr/Embassy/bare-metal drivers and C/C++ logic drop in &mdash; see [docs/PORTING.md](docs/PORTING.md) |
 
 ## System Map
 
@@ -271,7 +271,7 @@ Every claim below is checked on a real board and self-certifies through a fixed
 | Area | On-board result | Verify with |
 | --- | --- | --- |
 | **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM | `nobro_hw_eval.py sched` |
-| **Kernel-op latency** | measured max over 1000 runs: mailbox IPC 125 ns, capability check 219 ns, lease pair 2.0 us, longest interrupt-masked window 2.4 us ([table](docs/MEASURED_LATENCIES.md)) | `nobro_hw_eval.py wcet` |
+| **Kernel-op latency** | measured max over 1000 runs: mailbox IPC 125 ns, capability check 219 ns, lease pair 2.0 us, longest interrupt-masked window 2.4 us ([table](docs/ENGINEERING.md)) | `nobro_hw_eval.py wcet` |
 | **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass | `kernel_selftest` report |
 | **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass | `nobro_hw_eval.py sal` |
 | **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule | `recovery_demo` report |
@@ -284,7 +284,7 @@ Every claim below is checked on a real board and self-certifies through a fixed
 | **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port; verified on an nRF52840 development board and a clone-silicon nRF52840 board with a patched `nrf-usbd` plus a self-DFU watchdog | any serial monitor |
 
 The `nobro_hw_eval.py` rows are fully automated (build → flash → run → read → grade,
-see [docs/HW_QUICKSTART.md](docs/HW_QUICKSTART.md)); the `*_demo` rows flash the named
+see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)); the `*_demo` rows flash the named
 app and read its fixed `NOBRO_*` report over J-Link or USB serial.
 
 **No hardware on your desk?** The software side grades itself the same way:
@@ -381,12 +381,12 @@ outside the public package surface.
 | Guide | Use It For |
 | --- | --- |
 | [NobroRTOS Book](docs/book/README.md) | Guided path from contracts to tutorials |
-| [User Manual](docs/user-manual.md) | Setup, app assembly, diagnostics, common workflows |
-| [API Manual](docs/api-manual.md) | Public crate contracts and examples |
-| [System Architecture](docs/system-architecture.md) | Layering, memory discipline, recovery model |
-| [Porting Guide](docs/porting-guide.md) | Adding boards and preserving board/package contracts |
-| [Host Contract](docs/host-contract.md) | `NOBRO_*` ABI, checksum rules, stage order |
-| [Operations Guide](docs/operations-guide.md) | Maintenance habits and validation gates |
+| [User Manual](docs/USER_GUIDE.md) | Setup, app assembly, diagnostics, common workflows |
+| [API Manual](docs/API.md) | Public crate contracts and examples |
+| [System Architecture](docs/ARCHITECTURE.md) | Layering, memory discipline, recovery model |
+| [Porting Guide](docs/PORTING.md) | Adding boards and preserving board/package contracts |
+| [Host Contract](docs/API.md) | `NOBRO_*` ABI, checksum rules, stage order |
+| [Operations Guide](docs/USER_GUIDE.md) | Maintenance habits and validation gates |
 
 ## Design Influences
 

@@ -67,7 +67,7 @@ def build() -> int:
             "3. Open packages/web-flasher/index.html, click 'Open report console', pick the port.\n"
             "   The board explains itself: 'CDC: all checks passing, ...'.\n"
             "4. Design your own app in packages/block-editor (exports app.json - this folder\n"
-            "   has the starter). Building that app needs the toolchain; see docs/GETTING_STARTED_NO_CODE.md.\n"
+            "   has the starter). Building that app needs the toolchain; see docs/GETTING_STARTED.md.\n"
         )
     digest = hashlib.sha256(uf2).hexdigest()
     print(f"bundle: {OUT_DIR}")
@@ -94,8 +94,8 @@ def check() -> int:
                            capture_output=True, text=True)
         if r.returncode:
             errors.append("starter app.json fails the catalog validator")
-    if not os.path.isfile(os.path.join(ROOT, "docs", "GETTING_STARTED_NO_CODE.md")):
-        errors.append("docs/GETTING_STARTED_NO_CODE.md missing")
+    if not os.path.isfile(os.path.join(ROOT, "docs", "GETTING_STARTED.md")):
+        errors.append("docs/GETTING_STARTED.md missing")
 
     uf2_path = os.path.join(OUT_DIR, man.get("uf2_name", ""))
     if os.path.isfile(uf2_path):

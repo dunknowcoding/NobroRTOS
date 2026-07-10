@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 220" font-family="system-ui,sans-serif">
+  <g font-size="13">
+    <rect x="10"  y="170" width="150" height="38" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/><text x="85"  y="194" text-anchor="middle" fill="#92400e">01 first light 🔆</text>
+    <rect x="115" y="128" width="150" height="38" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/><text x="190" y="152" text-anchor="middle" fill="#1e3a8a">02 blocks 🧩</text>
+    <rect x="220" y="86"  width="150" height="38" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/><text x="295" y="110" text-anchor="middle" fill="#14532d">03 Arduino + Python 🐍</text>
+    <rect x="325" y="44"  width="150" height="38" rx="8" fill="#fae8ff" stroke="#a21caf" stroke-width="2"/><text x="400" y="68"  text-anchor="middle" fill="#701a75">04 C module 🔧</text>
+    <rect x="400" y="2"   width="150" height="38" rx="8" fill="#ffe4e6" stroke="#e11d48" stroke-width="2"/><text x="475" y="26"  text-anchor="middle" fill="#881337">05 Rust deep dive 🦀</text>
+  </g>
+</svg>

@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UDI_APP = os.path.join(ROOT, "core", "apps", "udi_imu_demo")
 CARGO = os.path.join(UDI_APP, "Cargo.toml")
 APP_RS = os.path.join(UDI_APP, "src", "app.rs")
-UDI_DOC = os.path.join(ROOT, "docs", "UDI.md")
+UDI_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE.md")
 HW_EVAL = os.path.join(ROOT, "tools", "nobro_hw_eval.py")
 
 BACKENDS = ("backend-native", "backend-eh", "backend-arduino")
@@ -39,12 +39,12 @@ def check():
         errs.append("app.rs does not reference ImuSal trait")
 
     if not os.path.isfile(UDI_DOC):
-        errs.append("docs/UDI.md missing")
+        errs.append("docs/ARCHITECTURE.md missing")
     else:
         doc = open(UDI_DOC, encoding="utf-8").read()
         for token in ("ImuSal", "backend-native", "backend-arduino", "category, one trait"):
             if token not in doc:
-                errs.append(f"docs/UDI.md missing '{token}'")
+                errs.append(f"docs/ARCHITECTURE.md missing '{token}'")
 
     if '"udi"' not in hw or "NOBRO_UDI_IMU_REPORT" not in hw:
         errs.append("nobro_hw_eval.py missing udi entry")

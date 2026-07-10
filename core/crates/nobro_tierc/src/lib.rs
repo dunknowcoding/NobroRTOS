@@ -4,7 +4,7 @@
 //! admission, kernel drive loop, the `extern "C"` host services, and the vector
 //! table/entry from cortex-m-rt. A C developer links their `nobro_app_init` /
 //! `nobro_app_poll` module against it with arm-none-eabi-gcc - see
-//! docs/TIER_C_GETTING_STARTED.md and tools/build_libnobro.py.
+//! docs/USER_GUIDE.md and tools/build_libnobro.py.
 //! NobroRTOS C ABI demo.
 //!
 //! Tier C runtime staticlib: provides the `extern "C"` host services (the NobroRTOS C ABI), admits a
