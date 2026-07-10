@@ -1,4 +1,8 @@
 //! No-heap networking primitives for multi-board NobroRTOS meshes.
+//! **Scope, honestly:** this is a mesh/link-layer toolkit (routing, sync, rollup,
+//! store-and-forward, OTA chunking, formation) - NOT an IP stack. There is no
+//! TCP/UDP/DHCP/socket layer here; IP-facing nodes pair a NobroRTOS radio node with
+//! a bridge (see tools/radio_wifi_bridge.py) or an IP-capable co-processor.
 //!
 //! - [`RoutingTable`] - bounded distance-vector routing (next hop by lowest cost) (M52)
 //! - [`TimeSync`] - round-trip clock offset/delay estimation (NTP-style) (M53)

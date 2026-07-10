@@ -1,0 +1,58 @@
+# Hosted mirror of the local-first gates (Wave 21). The authoritative command remains
+# `python tools/run_checks.py` on a workstation; this workflow runs the Python-only
+# subset on every push so regressions surface even when nobody runs the full matrix.
+name: gates
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: python binding tests
+        working-directory: bindings/python
+        run: python -m unittest discover -s tests
+      - name: software surface contract
+        run: python tools/nobro_contract_tool.py check-software-surface
+      - name: board profiles
+        run: python tools/check_board_profiles.py
+      - name: sdk manifest
+        run: python tools/check_sdk_manifest.py
+      - name: arduino package drift
+        run: python tools/package_arduino.py --check
+      - name: web flasher + block editor + tutorials
+        run: |
+          python tools/check_web_flasher.py
+          python tools/check_block_editor.py
+          python tools/tutorial_runner.py
+      - name: codegen + evidence selftests
+        run: |
+          python tools/ros_msg_gen.py --selftest
+          python tools/import_dts.py --selftest
+          python tools/wasm_slot_spike.py --selftest
+          python tools/fleet_evidence.py --selftest
+          python tools/check_release_versions.py
+          python tools/check_ros_bridge.py --selftest
+          python tools/check_udi.py --selftest
+      - name: mesh chaos
+        run: python tools/chaos_test.py
+
+  # Full Rust matrix on demand only (keeps CI minutes sane; local ci_matrix.sh is king).
+  rust-matrix:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - name: host tests (portable crates)
+        working-directory: core
+        run: cargo test --target x86_64-unknown-linux-gnu -p nobro-net -p nobro-crypto -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-sal -p nobro-kernel -p nobro-classic

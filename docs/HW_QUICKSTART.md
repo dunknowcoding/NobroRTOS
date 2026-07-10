@@ -46,3 +46,13 @@ mis-wired you get a short read with a pointed message — not a hang.
 - **No hardware at all:** the Python simulators under `bindings/python` and the host
   test suite (`cargo test` on the portable crates, `tools/ci_matrix.sh`) exercise the
   same contracts on your desktop.
+
+## Performance notes (facts, not folklore)
+
+- Bus transfers (SPIM/TWIM) ride the nRF's **EasyDMA** - the CPU is not bit-banging
+  or polling data bytes; drivers wait on transfer-end events with bounded spins.
+- Sensor samples move through the kernel as **zero-copy tickets** (`SamplePool`):
+  producers publish a slot, consumers borrow it - payloads are not copied through
+  queues.
+- Kernel-op costs are measured, not guessed: see
+  [MEASURED_LATENCIES.md](MEASURED_LATENCIES.md).
