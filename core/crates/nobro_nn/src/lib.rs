@@ -9,6 +9,10 @@
 //! Weight layouts (row-major): `dense` weights are `[out][in]`; recurrent cells take
 //! separate input (`[out][in]`) and hidden (`[out][hidden]`) matrices; LSTM gate order
 //! is `i, f, g, o` stacked along the output dimension.
+//!
+//! **ROLE (vs sibling crates):** `nobro_nn` = from-scratch NN *inference blocks* (dense/conv/LSTM/attention, int8
+//! kernels) that firmware executes. Quantization utilities live in `nobro_ml`;
+//! model manifests/cloud governance in `nobro_ai`.
 #![cfg_attr(not(test), no_std)]
 
 // ------------------------------------------------------------------ scalar math
@@ -218,6 +222,7 @@ pub fn conv1d_valid(input: &[f32], kernel: &[f32], bias: f32, out: &mut [f32]) {
 /// - `out`: `[H - KH + 1][W - KW + 1][OUT]`
 ///
 /// The caller owns every buffer; there is no heap use and no hidden scratch space.
+#[allow(clippy::too_many_arguments)] // conv2d's natural signature: image+kernel dims are the API
 pub fn conv2d_valid(
     input: &[f32],
     in_h: usize,
@@ -263,6 +268,7 @@ pub fn conv2d_valid(
 /// Shapes and layouts match [`conv2d_valid`]. `bias` is already in accumulator units,
 /// typically `bias_real / (scale_input * scale_kernel)`. The output is intentionally
 /// left as raw int32 accumulators so the caller can fuse activation or requantization.
+#[allow(clippy::too_many_arguments)] // conv2d's natural signature: image+kernel dims are the API
 pub fn conv2d_valid_i8(
     input: &[i8],
     in_h: usize,
@@ -304,6 +310,7 @@ pub fn conv2d_valid_i8(
 }
 
 /// Average-pool an NHWC tensor. Useful for camera thumbnails and tiny CNN downsampling.
+#[allow(clippy::too_many_arguments)] // pooling over an image: dims are the API
 pub fn avg_pool2d(
     input: &[f32],
     in_h: usize,

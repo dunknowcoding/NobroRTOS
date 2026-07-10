@@ -9,6 +9,10 @@
 //! API keys are referenced by [`ApiKeyRef`] handles (slots in `nobro_secure`'s KeyStore -
 //! raw secrets never pass through this crate), reconnects use bounded exponential
 //! backoff, and a request budget keeps a chatty node from starving the link.
+//!
+//! **ROLE (vs sibling crates):** `nobro_ai` = model *governance* for already-trained models: manifests + checksums
+//! the deploy pipeline validates, and cloud-session state machines. The math lives
+//! elsewhere: inference blocks in `nobro_nn`, TinyML utilities in `nobro_ml`.
 #![cfg_attr(not(test), no_std)]
 
 // ---------------------------------------------------------------- model deployment

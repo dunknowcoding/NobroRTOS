@@ -71,7 +71,7 @@ def main() -> int:
     # and each card carries a contract-shaped entry (mirrors AiModelContract fields).
     models_path = PKG / "models.json"
     if not models_path.is_file():
-        errors.append("missing models.json (run tools/train_motion_nn.py)")
+        errors.append("missing models.json (run tools/dev/train_motion_nn.py)")
     else:
         try:
             cards = json.loads(models_path.read_text(encoding="utf-8"))

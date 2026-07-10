@@ -4,6 +4,11 @@
 //! - [`reject`] confidence-threshold reject option (M42)
 //! - [`complementary`] two-source sensor fusion (M46)
 //! - [`kws_log_energy_features`] fixed-size keyword-spotting audio features (M115)
+//!
+//! **ROLE (vs sibling crates):** `nobro_ml` = classic/TinyML *utilities* (quantization, filters, anomaly, federated
+//! averaging) used inside firmware feature pipelines. Neural-net *inference blocks*
+//! live in `nobro_nn`; model *governance* (manifests, checksums, cloud sessions) in
+//! `nobro_ai`.
 #![cfg_attr(not(test), no_std)]
 
 /// Welford streaming mean/variance (no stored window).

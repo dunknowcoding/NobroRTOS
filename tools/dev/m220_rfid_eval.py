@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """M220 hardware gate: RC522 UID read on Arduino UNO R4 WiFi via NiusWireless.
 
-Builds tools/bench/UnoR4RfidRc522Verify, uploads over serial/DFU, and watches for:
+Builds tools/dev/bench/UnoR4RfidRc522Verify, uploads over serial/DFU, and watches for:
   M220 RESULT: PASS NiusWireless_RC522_UID
 
 UNO R4 WiFi exposes two USB serial paths on this bench:
@@ -27,8 +27,8 @@ import subprocess
 import sys
 import time
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKETCH = os.path.join(REPO, "tools", "bench", "UnoR4RfidRc522Verify")
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SKETCH = os.path.join(REPO, "tools", "dev", "bench", "UnoR4RfidRc522Verify")
 BUILD = os.path.join(REPO, "_work", "m220_unor4_rfid_build")
 FQBN = "arduino:renesas_uno:unor4wifi"
 PASS_RE = re.compile(r"M220 RESULT: PASS NiusWireless_RC522_UID")

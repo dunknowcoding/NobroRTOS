@@ -23,7 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bindings" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bindings" / "python"))
 from nobro_rtos.zigbee import decode_mac_frame  # noqa: E402
 
 JLINK = os.environ.get("JLINK_EXE", r"C:\Program Files\SEGGER\JLink\JLink.exe")

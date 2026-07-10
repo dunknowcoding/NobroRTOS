@@ -16,7 +16,7 @@ import random
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bindings" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bindings" / "python"))
 from nobro_rtos.nn_export import dense, evaluate, export_model, train_dense  # noqa: E402
 
 SIDE = 16

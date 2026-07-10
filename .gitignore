@@ -55,7 +55,7 @@ Thumbs.db
 .agents/
 
 # Private bench manifest (users copy boards.example.json)
-tools/boards.json
+tools/dev/boards.json
 
 # Internal-only docs (competitive/strategy analysis - not public)
 docs/DEVELOPER_EXPERIENCE.md
@@ -67,5 +67,5 @@ docs/*_INTERNAL.md
 docs/rtos_review.md
 
 # Arduino bench sketch build outputs
-tools/bench/*/build/
+tools/dev/bench/*/build/
 tools/leak_needles.local.txt

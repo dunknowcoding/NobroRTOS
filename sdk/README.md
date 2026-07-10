@@ -1,46 +1,50 @@
-# NobroRTOS Standalone SDK
+# NobroRTOS SDK
 
-This folder defines the standalone SDK distribution surface.
+Everything a user consumes, in one place — the command surface, the C headers, the
+prebuilt firmware, and the language packages. The implementation lives in `core/`;
+this folder is the *product*.
 
-Current contents:
-
-- `sdk-manifest.json` describes the canonical SDK contract, include roots,
-  host tools, package surfaces, and generated-output policy.
-- C and C++ headers are sourced from `bindings/c/include` and
-  `bindings/cpp/include`.
-- Host report decoding helpers are sourced from `bindings/python` and
-  `tools/nobro_contract_tool.py`.
-- Python contract builders, report decoders, and host simulators are packaged
-  from `bindings/python`.
-
-The core implementation remains in `core/`; this folder should contain only the
-stable SDK packaging surface.
-
-Generated archives, compiler outputs, and local caches must be written under a
-throwaway work directory such as `_work/` and must not be committed.
-
-Before packaging the SDK surface, run the software surface gate from the
-repository root:
-
-```powershell
-python tools/nobro_contract_tool.py check-software-surface
-python tools/nobro_contract_tool.py check-ai-preflight-matrix
-python tools/nobro_contract_tool.py check-ros-preflight-matrix
-python tools/nobro_contract_tool.py check-report-matrix
+```
+sdk/
+├── cli/nobro.py        the SDK command (app · eval · flash · verify · fleet ·
+│                       budget · sign · package · contract)
+├── include/            the C ABI headers, drift-gated copies of the canonical
+│                       bindings/c/include (regenerate: nobro package arduino --sync)
+├── firmware/           prebuilt, committed firmware images
+│   ├── nobrortos-starter-s140.uf2   drag-drop starter (S140 layout, app @0x26000)
+│   └── starter-app.json             the declarative app it runs
+├── python/             the pip-installable host package (install pointer)
+└── sdk-manifest.json   machine-readable SDK contract (validated in CI)
 ```
 
-The report matrix gate protects the SDK-facing diagnostic surface by checking
-fixed-report statuses, checksums, error labels, and decoded AI/ROS report fields.
-The AI preflight matrix gate protects SDK-facing inference adapters by checking
-buffer limits, scratch and arena RAM, module capabilities, route budget, stale
-snapshot limits, fallback policy, unavailable routes, and endpoint circuit
-state without contacting a model or service.
-The ROS preflight matrix gate protects SDK-facing bridge adapters by checking
-payload, response-buffer, queue-depth, parameter-size, and timeout bounds
-without contacting a ROS transport or agent.
+## The one command
 
-The gate returns one JSON report for the host contract, package metadata,
-public headers, starter templates, AI route matrix, AI preflight matrix, ROS
-preflight matrix, recovery matrix, watchdog matrix, scheduler matrix, event log matrix, quota
-matrix, degrade matrix, startup matrix, boot summary matrix, bundle matrix,
-report matrix, and runtime drill checks.
+```bash
+python sdk/cli/nobro.py verify            # every software gate -> Evidence Pack
+python sdk/cli/nobro.py eval imu          # build+flash+run+grade on hardware
+python sdk/cli/nobro.py app my-app.json   # validate a declarative app
+python sdk/cli/nobro.py package arduino --zip
+```
+
+Every subcommand forwards to a stable tool under `tools/` and accepts that tool's
+flags unchanged (`nobro eval --help` = the real help).
+
+## What consumes what
+
+| You are building… | Take |
+| --- | --- |
+| An Arduino sketch | the library zip (`nobro package arduino --zip`) — headers included |
+| A C module, no Rust | the Tier C bundle (`nobro package tierc --build`) + `include/` |
+| A Python host tool | `pip install ./bindings/python` (see [python/README.md](python/README.md)) |
+| A first experience | drag `firmware/nobrortos-starter-s140.uf2` onto the board's UF2 drive — [tutorial 01](../tutorials/README.md) |
+| Rust firmware | the workspace itself ([docs/GETTING_STARTED.md](../docs/GETTING_STARTED.md)) |
+
+## Guarantees
+
+- `include/` never drifts from the canonical headers — a CI gate fails on mismatch.
+- The committed UF2 is bootloader-safe (app region only) and verified by the
+  `prebuilt uf2 loop` gate, which re-parses the container on every run.
+- The whole surface is contract-checked: `python tools/nobro_contract_tool.py
+  check-software-surface` (part of `nobro verify`).
+- Generated archives and build outputs go to `_work/`, never committed — the only
+  committed binaries are the intentional `firmware/` images.

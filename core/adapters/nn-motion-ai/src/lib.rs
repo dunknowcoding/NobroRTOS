@@ -1,7 +1,7 @@
 //! Neural-network motion classifier: a bounded on-device inference adapter
 //! (`AiInferenceSal`) backed by a trained **int8 MLP** (3 features -> 8 hidden -> 2
 //! classes). Unlike the variance classifier, the decision boundary is *learned*: the
-//! weights in `nn_weights.rs` are produced by `tools/train_motion_nn.py` and embedded
+//! weights in `nn_weights.rs` are produced by `tools/dev/train_motion_nn.py` and embedded
 //! as const arrays. Inference is integer-only (no heap, no float), runs in bounded
 //! time and a fixed arena, and depends only on the SAL traits - the "NN tools ->
 //! embedded" pipeline behind NobroRTOS's bounded AI contract.
