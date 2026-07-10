@@ -9,6 +9,9 @@ const TICKS_PER_PERIOD: u32 = 20_000;
 pub struct DeadlineTimer;
 
 impl DeadlineTimer {
+    /// # Safety
+    /// Caller must own the TIMER1 lease and call once; reprograms TIMER1's mode,
+    /// prescaler and compare registers for the 50 Hz deadline slot.
     pub unsafe fn init() {
         let t = TIMER1::ptr();
         (*t).tasks_stop.write(|w| w.bits(1));

@@ -57,6 +57,10 @@ pub struct Spim0 {
 impl Spim0 {
     /// Configure SPIM0 on the given raw nRF pin numbers (mode 3, 1 Mbps). CS is set up
     /// as a GPIO output idling high. Caller must own the `Spim0` lease.
+    ///
+    /// # Safety
+    /// Pins must be the board's wired SPI pins and not muxed to another peripheral;
+    /// reprograms SPIM0's PSEL/ENABLE and the CS pin's GPIO config.
     pub unsafe fn init(sck: u8, mosi: u8, miso: u8, cs: u8) -> Self {
         let base = SPIM0_BASE;
         *reg(base, SPIM_ENABLE) = SPIM_ENABLE_DISABLED;

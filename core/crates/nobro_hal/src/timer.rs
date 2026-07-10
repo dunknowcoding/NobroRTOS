@@ -11,6 +11,9 @@ static OVERFLOW: AtomicU32 = AtomicU32::new(0);
 pub struct MicroTimer;
 
 impl MicroTimer {
+    /// # Safety
+    /// Caller must own the TIMER0 lease and call once at boot; starts the 1 MHz
+    /// free-running timebase every timestamped API reads.
     pub unsafe fn init() {
         let t = TIMER0::ptr();
         (*t).tasks_stop.write(|w| w.bits(1));
@@ -46,6 +49,8 @@ impl MicroTimer {
         unsafe { (*TIMER0::ptr()).cc[2].read().bits() }
     }
 
+    /// # Safety
+    /// Requires a prior [`MicroTimer::init`]; writes TIMER0's CAPTURE[1] task.
     pub unsafe fn trigger_capture_1() {
         (*TIMER0::ptr()).tasks_capture[1].write(|w| w.bits(1));
     }

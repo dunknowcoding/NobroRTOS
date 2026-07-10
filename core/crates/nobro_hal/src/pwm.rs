@@ -40,6 +40,10 @@ pub struct PwmServo {
 
 impl PwmServo {
     /// 50 Hz at prescaler 4 (1 MHz tick), around 1500 us center pulse.
+    ///
+    /// # Safety
+    /// Caller must own the PWM0 lease; `pin` must be the board's wired servo pin.
+    /// Writes the static PWM_SEQ buffer PWM0 DMA-reads - exactly one PWM owner at a time.
     pub unsafe fn init_50hz(pin: u8, pulse_us: u32) -> Self {
         let prescaler: u8 = 4;
         let counter_top: u16 = 19_999; // 20 ms period at 1 MHz
@@ -74,6 +78,9 @@ impl PwmServo {
         clock / (u32::from(self.counter_top) + 1)
     }
 
+    /// # Safety
+    /// Requires the PWM0 this instance initialised to still be enabled; rewrites the
+    /// DMA-read sequence buffer in place.
     pub unsafe fn set_pulse_us(&mut self, pulse_us: u32) {
         self.pulse_us = pulse_us;
         let duty = (pulse_us as u16).min(self.counter_top);
@@ -94,6 +101,10 @@ impl PwmServo {
         }
     }
     /// Update pulse on an already-initialised PWM0 servo output.
+    ///
+    /// # Safety
+    /// PWM0 must have been initialised by [`PwmServo::init_50hz`] (reads live
+    /// COUNTERTOP and rewrites the DMA sequence buffer).
     pub unsafe fn set_active_pulse_us(pulse_us: u32) {
         let top = *reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
         let duty = (pulse_us as u16).min(top);
@@ -125,10 +136,17 @@ pub struct PwmBank {
 
 impl PwmBank {
     /// Bring up PWM0 at 50 Hz with one output pin per channel (`None` = channel unused).
+    ///
+    /// # Safety
+    /// Caller must own the PWM0 lease; pins must be wired outputs. Mutually exclusive
+    /// with [`PwmServo`] - both drive PWM0 and its static sequence memory.
     pub unsafe fn init_50hz(pins: [Option<u8>; 4], center_us: u32) -> Self {
         let counter_top: u16 = 19_999; // 20 ms at 1 MHz (prescaler 4)
-        for v in PWM_BANK_SEQ.iter_mut() {
-            *v = pwm_seq_value(center_us as u16, counter_top);
+        // raw-pointer write: no &mut to the static (2024 static_mut_refs rule); the
+        // Safety contract above guarantees exclusive PWM0 ownership.
+        let seq = ptr::addr_of_mut!(PWM_BANK_SEQ);
+        for i in 0..4 {
+            (*seq)[i] = pwm_seq_value(center_us as u16, counter_top);
         }
         *reg(PWM0_BASE, PWM_ENABLE) = 0;
         *reg(PWM0_BASE, PWM_MODE) = 0;
@@ -148,6 +166,9 @@ impl PwmBank {
         Self { counter_top }
     }
 
+    /// # Safety
+    /// Requires the PWM0 this bank initialised to still be enabled; rewrites the
+    /// channel's slot in the DMA-read sequence buffer.
     pub unsafe fn set_pulse_us(&mut self, channel: usize, pulse_us: u32) {
         if channel < 4 {
             PWM_BANK_SEQ[channel] = pwm_seq_value(pulse_us as u16, self.counter_top);

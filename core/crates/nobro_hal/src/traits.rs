@@ -79,14 +79,26 @@ pub trait HalClock {
 
 /// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).
 pub trait HalEventCapture {
+    /// # Safety
+    /// Caller must own the capture peripheral's lease and call this once before any
+    /// other method; it writes the platform's event-routing registers.
     unsafe fn init();
+    /// # Safety
+    /// Requires a prior successful [`HalEventCapture::init`]; fires a hardware event
+    /// and reads the latched timestamp registers.
     unsafe fn trigger_and_latency_us() -> Option<u32>;
     fn latency_stats() -> (u32, u32);
+    /// # Safety
+    /// Requires a prior successful [`HalEventCapture::init`]; `channel` must be a
+    /// channel this platform routed during init (out-of-range reads undefined data).
     unsafe fn capture_snapshot(channel: usize) -> EventCaptureSnapshot;
 }
 
 /// 50 Hz deadline / servo slot timer.
 pub trait HalDeadline {
+    /// # Safety
+    /// Caller must own the deadline timer's lease and call this once; it configures
+    /// the timer peripheral's mode, prescaler, and compare registers.
     unsafe fn init();
     fn enable_interrupt();
     fn on_interrupt();
@@ -96,7 +108,13 @@ pub trait HalDeadline {
 
 /// Servo-style PWM backend.
 pub trait HalServoPwm {
+    /// # Safety
+    /// Caller must own the PWM lease; `pin` must be the board's wired servo pin
+    /// (driving an arbitrary pin can conflict with other peripherals' pin muxing).
     unsafe fn init_50hz(pin: u8, pulse_us: u32);
+    /// # Safety
+    /// Requires a prior [`HalServoPwm::init_50hz`]; writes the live PWM compare
+    /// buffer the peripheral is DMA-reading.
     unsafe fn set_active_pulse_us(pulse_us: u32);
     fn read_pulse_us() -> u32;
 }
@@ -112,6 +130,9 @@ pub trait HalBus {
 
 /// Register readback self-test (replaces scope for CI / autonomous eval).
 pub trait HalSelfTest<B: BoardDesc> {
+    /// # Safety
+    /// Reconfigures live peripherals (PWM/timers) for the self-test scene; caller
+    /// must hold the relevant leases and accept the outputs toggling on real pins.
     unsafe fn scene_d_pass(profile: ServoProfile) -> (bool, PwmSnapshot, BoardParity);
 }
 
@@ -132,8 +153,13 @@ pub trait PlatformHal:
     const PLATFORM_ID: &'static str;
     type Board: BoardDesc;
     fn servo_profile() -> ServoProfile;
+    /// # Safety
+    /// Call once at boot before any timestamped API; starts the platform's
+    /// free-running timebase peripheral (caller must own its lease).
     unsafe fn init_timebase();
     /// One-shot bring-up: deadline timer, event capture, servo PWM for eval demos.
+    /// # Safety
+    /// Combines the init methods above - same lease and call-once requirements.
     unsafe fn init_scheduling_demo(profile: ServoProfile);
 }
 

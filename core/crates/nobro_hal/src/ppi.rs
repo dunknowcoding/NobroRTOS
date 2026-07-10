@@ -6,6 +6,9 @@ use crate::board::{LED_PIN, MVK_TRIGGER_PIN};
 
 const PPI_CH: usize = 0;
 
+/// # Safety
+/// Caller must own the PPI + GPIOTE + TIMER0 leases and call once; wires GPIOTE
+/// channel 0 and PPI channel 0 to TIMER0 capture (pin edge -> hardware timestamp).
 pub unsafe fn mvk_setup_gpiote_ppi_capture() {
     let gpiote = GPIOTE::ptr();
     (*gpiote).config[0].write(|w| {
@@ -34,10 +37,16 @@ pub unsafe fn mvk_setup_gpiote_ppi_capture() {
     (*ppi).chenset.write(|w| unsafe { w.bits(1 << PPI_CH) });
 }
 
+/// # Safety
+/// Writes the board LED pin's PIN_CNF; caller must not have muxed that pin to
+/// another peripheral.
 pub unsafe fn led_init_output() {
     gpio_output(LED_PIN, false);
 }
 
+/// # Safety
+/// Read-modify-writes the GPIO OUT register unsynchronized; only call from one
+/// context (no ISR/main interleaving on the same port).
 pub unsafe fn led_toggle() {
     let pin = LED_PIN as u32;
     if pin < 32 {
@@ -52,6 +61,9 @@ pub unsafe fn led_toggle() {
     }
 }
 
+/// # Safety
+/// Configures the MVK trigger pin as input+pull-up; caller must not have muxed
+/// that pin elsewhere.
 pub unsafe fn trigger_input_init() {
     gpio_input_pullup(MVK_TRIGGER_PIN);
 }

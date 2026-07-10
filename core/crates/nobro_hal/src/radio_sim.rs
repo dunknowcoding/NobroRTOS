@@ -14,6 +14,9 @@ static LATENCY_SAMPLES: AtomicU32 = AtomicU32::new(0);
 pub struct RadioRxSim;
 
 impl RadioRxSim {
+    /// # Safety
+    /// Caller must own the EGU0 + PPI leases and call once; wires EGU0 to TIMER0
+    /// capture as the radio-event stand-in.
     pub unsafe fn init() {
         Self::init_ppi();
     }
@@ -30,6 +33,9 @@ impl RadioRxSim {
     }
 
     /// Fire EGU + PPI capture; return EGU to CAPTURE latency in microseconds.
+    ///
+    /// # Safety
+    /// Requires a prior [`RadioRxSim::init`]; triggers live EGU0 tasks.
     pub unsafe fn trigger_and_latency_us() -> Option<u32> {
         (*EGU0::ptr()).tasks_trigger[0].write(|w| w.bits(1));
         for _ in 0..500 {

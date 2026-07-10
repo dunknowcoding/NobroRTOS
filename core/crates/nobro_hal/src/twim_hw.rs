@@ -91,6 +91,9 @@ fn recover_bus(sda: u8, scl: u8) {
 pub struct Twim0;
 
 impl Twim0 {
+    /// # Safety
+    /// Caller must own the Twim0 lease; `sda`/`scl` must be the board's wired I2C
+    /// pins. Runs the 9-pulse bus recovery (drives SCL as GPIO) before enabling TWI.
     pub unsafe fn init(sda: u8, scl: u8) {
         recover_bus(sda, scl);
         let base = TWI0_BASE;

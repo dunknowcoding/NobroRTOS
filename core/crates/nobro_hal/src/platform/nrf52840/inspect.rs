@@ -26,6 +26,9 @@ fn reg(base: u32, off: u32) -> u32 {
 }
 
 impl PwmSnapshot {
+    /// # Safety
+    /// Volatile-reads live PWM0 registers; PWM0 must be powered (post-init) or the
+    /// snapshot reflects reset values.
     pub unsafe fn capture() -> Self {
         let prescaler = reg(PWM0_BASE, PWM_PRESCALER) as u8;
         let counter_top = reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
@@ -56,6 +59,9 @@ impl PwmSnapshot {
 }
 
 impl EventCaptureSnapshot {
+    /// # Safety
+    /// Volatile-reads live PPI channel registers; `ch` must be < the platform's PPI
+    /// channel count.
     pub unsafe fn capture_radio_channel(ch: usize) -> Self {
         let chen = reg(PPI_BASE, PPI_CHEN);
         let channel_enabled = (chen & (1 << ch)) != 0;
@@ -86,6 +92,10 @@ impl HalSelfTest<board::Board> for Nrf52840 {
 }
 
 /// Scene D entry (legacy path for apps).
+///
+/// # Safety
+/// Reconfigures PWM0 for the self-test; caller must hold the PWM lease and accept
+/// the servo pin toggling.
 pub unsafe fn scene_d_pass(expected_pulse_us: u32) -> (bool, PwmSnapshot, BoardParity) {
     Nrf52840::scene_d_pass(ServoProfile::new(
         50,

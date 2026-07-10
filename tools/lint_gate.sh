@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../core" || exit 1
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/../_work/ct-lint}"
 
 out=$(cargo clippy -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto -p nobro-ml \
-    -p nobro-sensor -p nobro-power -p nobro-control -p nobro-conformance \
+    -p nobro-sensor -p nobro-power -p nobro-control -p nobro-conformance -p nobro-hal \
     --target x86_64-pc-windows-msvc -- -D warnings 2>&1)
 rc=$?
 echo "$out" | tail -3
