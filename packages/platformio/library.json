@@ -1,6 +1,6 @@
 {
   "name": "NobroRTOS",
-  "version": "0.0.0-dev",
+  "version": "0.1.0",
   "description": "Ultra-light embedded RTOS contracts for AI robotics, IoT, and intelligent control.",
   "keywords": [
     "rtos",
