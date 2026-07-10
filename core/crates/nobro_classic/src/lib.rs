@@ -7,6 +7,8 @@
 //! | `xSemaphoreCreate*` | [`Semaphore`] | binary + counting, no alloc |
 //! | `xSemaphoreCreateMutex` | [`Mutex`] | ownership-checked; peripherals use kernel leases (no priority inversion) |
 //! | `xTimerCreate` | [`SoftwareTimer`] | tick-driven, one-shot / auto-reload |
+//! | `xEventGroupCreate/Set/Clear/WaitBits` | [`EventFlags`] | 32 flags, poll-style wait_any/wait_all |
+//! | block on N objects (queue sets) | [`select2`] | bounded multi-event wait, idle hook between polls |
 //!
 //! Everything here is `no_std`, `#![forbid(unsafe_code)]`, and sized at compile time - a
 //! FreeRTOS user migrates the API surface while gaining bounded RAM and safety.
@@ -278,5 +280,160 @@ mod tests {
         // 10 ticks * 30 = 300; period 50 -> ~6 fires
         assert!((5..=6).contains(&fires), "auto-reload fired {fires} times");
         assert!(auto.is_active());
+    }
+}
+
+/// Event flag group (FreeRTOS `xEventGroup*`): up to 32 flags in one word, no heap,
+/// non-blocking like everything else in this crate. `wait_*` are polls - combine with
+/// [`select2`] for bounded multi-event waiting instead of busy loops.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EventFlags {
+    bits: u32,
+}
+
+impl EventFlags {
+    /// `xEventGroupCreate` (statically - no allocation).
+    pub const fn new() -> Self {
+        Self { bits: 0 }
+    }
+    /// `xEventGroupSetBits`. Returns the flag word after setting.
+    pub fn set(&mut self, mask: u32) -> u32 {
+        self.bits |= mask;
+        self.bits
+    }
+    /// `xEventGroupClearBits`. Returns the flag word after clearing.
+    pub fn clear(&mut self, mask: u32) -> u32 {
+        self.bits &= !mask;
+        self.bits
+    }
+    /// `xEventGroupGetBits`.
+    pub fn get(&self) -> u32 {
+        self.bits
+    }
+    /// `xEventGroupWaitBits(..., xWaitForAllBits = pdFALSE)` as a poll: if ANY flag in
+    /// `mask` is set, returns the matching flags (clearing them when `clear_on_exit`).
+    pub fn wait_any(&mut self, mask: u32, clear_on_exit: bool) -> Option<u32> {
+        let hit = self.bits & mask;
+        if hit == 0 {
+            return None;
+        }
+        if clear_on_exit {
+            self.bits &= !hit;
+        }
+        Some(hit)
+    }
+    /// `xEventGroupWaitBits(..., xWaitForAllBits = pdTRUE)` as a poll: only when ALL
+    /// flags in `mask` are set.
+    pub fn wait_all(&mut self, mask: u32, clear_on_exit: bool) -> Option<u32> {
+        if self.bits & mask != mask {
+            return None;
+        }
+        if clear_on_exit {
+            self.bits &= !mask;
+        }
+        Some(mask)
+    }
+}
+
+/// Which of two event sources became ready first (see [`select2`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ready {
+    First,
+    Second,
+}
+
+/// Bounded multi-event wait: poll two readiness closures alternately for at most
+/// `max_polls` rounds, calling `idle` between rounds (insert `wfe`/a scheduler yield
+/// there on a real target; a no-op in tests). This is the answer to "wait on a queue
+/// AND a timer" without busy-waiting forever: the wait is bounded by construction,
+/// like every other primitive here. Returns which source fired, or `None` on timeout.
+pub fn select2(
+    mut first: impl FnMut() -> bool,
+    mut second: impl FnMut() -> bool,
+    max_polls: u32,
+    mut idle: impl FnMut(),
+) -> Option<Ready> {
+    for _ in 0..max_polls {
+        if first() {
+            return Some(Ready::First);
+        }
+        if second() {
+            return Some(Ready::Second);
+        }
+        idle();
+    }
+    None
+}
+
+#[cfg(test)]
+mod event_flags_tests {
+    use super::*;
+
+    #[test]
+    fn set_wait_any_and_all() {
+        let mut ev = EventFlags::new();
+        assert_eq!(ev.wait_any(0b111, true), None);
+        ev.set(0b001);
+        ev.set(0b100);
+        assert_eq!(ev.get(), 0b101);
+        // any: returns only the matching, clears only the matching
+        assert_eq!(ev.wait_any(0b011, true), Some(0b001));
+        assert_eq!(ev.get(), 0b100);
+        // all: not satisfied until every bit present
+        assert_eq!(ev.wait_all(0b110, true), None);
+        ev.set(0b010);
+        assert_eq!(ev.wait_all(0b110, true), Some(0b110));
+        assert_eq!(ev.get(), 0);
+    }
+
+    #[test]
+    fn clear_on_exit_false_preserves_flags() {
+        let mut ev = EventFlags::new();
+        ev.set(0b1010);
+        assert_eq!(ev.wait_any(0b1000, false), Some(0b1000));
+        assert_eq!(ev.get(), 0b1010); // untouched
+        assert_eq!(ev.clear(0b0010), 0b1000);
+    }
+
+    #[test]
+    fn select2_returns_first_ready_source_and_bounds_the_wait() {
+        // queue empties on round 3; timer never fires
+        let mut round = 0;
+        let got = select2(
+            || {
+                round += 1;
+                round >= 3
+            },
+            || false,
+            10,
+            || {},
+        );
+        assert_eq!(got, Some(Ready::First));
+
+        // neither fires -> bounded timeout, idle called each round
+        let mut idles = 0;
+        let got = select2(|| false, || false, 5, || idles += 1);
+        assert_eq!(got, None);
+        assert_eq!(idles, 5);
+
+        // second wins when first is quiet
+        let got = select2(|| false, || true, 5, || {});
+        assert_eq!(got, Some(Ready::Second));
+    }
+
+    #[test]
+    fn select2_composes_flags_and_queue() {
+        let mut ev = EventFlags::new();
+        let mut q: Queue<u8, 4> = Queue::new();
+        q.send(9);
+        // both ready -> first (flags) has priority order semantics
+        ev.set(0b1);
+        let got = select2(
+            || ev.wait_any(0b1, true).is_some(),
+            || q.receive().is_some(),
+            3,
+            || {},
+        );
+        assert_eq!(got, Some(Ready::First));
     }
 }

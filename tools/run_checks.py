@@ -27,7 +27,7 @@ CORE = os.path.join(ROOT, "core")
 HOST_TARGET = "x86_64-pc-windows-msvc"
 HOST_CRATES = [
     "nobro-net", "nobro-crypto", "nobro-ml", "nobro-sensor", "nobro-power",
-    "nobro-sal", "nobro-kernel", "nobro-adapter-ina3221",
+    "nobro-sal", "nobro-kernel", "nobro-adapter-ina3221", "nobro-classic",
 ]
 
 

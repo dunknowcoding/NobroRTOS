@@ -48,6 +48,8 @@ ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
 | `xTimerCreate` (software timer) | `Alarm` in the `AlarmQueue` | one-shot / periodic deadline events |
 | task watchdog | `Watchdog` + `HealthMonitor` counters | misses drive module-scoped recovery |
 | priority inheritance | not needed | shared resources are owned, not locked across tasks |
+| `xEventGroupSetBits/WaitBits` | `nobro_classic::EventFlags` | 32 flags; `wait_any`/`wait_all` polls, `clear_on_exit` semantics preserved |
+| queue sets / block-on-many | `nobro_classic::select2` | bounded multi-event wait with an idle hook (insert `wfe` there); never unbounded |
 | heap (`pvPortMalloc`) | static pools, fixed capacity | no hot-path allocation |
 
 ## 3. Priorities become criticality + deadline
