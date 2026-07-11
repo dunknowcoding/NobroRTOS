@@ -28,10 +28,12 @@
 use core::cell::RefCell;
 use core::future::Future;
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU8, Ordering};
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 use critical_section::Mutex;
+// Drop-in atomics: native CAS where the ISA has it, critical-section fallback
+// on CAS-less cores (thumbv6m/AVR) — matches scheduler.rs.
+use portable_atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU8, Ordering};
 
 use crate::async_exec::SpawnedTask;
 
