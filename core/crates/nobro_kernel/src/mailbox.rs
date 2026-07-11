@@ -43,10 +43,18 @@ pub enum MailboxError {
     Full,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MailboxWork {
+    pub inspected: usize,
+    pub shifted: usize,
+}
+
 pub struct Mailbox<const N: usize> {
     slots: [Option<Message>; N],
     head: usize,
     len: usize,
+    control_len: usize,
+    control_reserve: usize,
     dropped: u32,
 }
 
@@ -56,18 +64,42 @@ impl<const N: usize> Mailbox<N> {
             slots: [None; N],
             head: 0,
             len: 0,
+            control_len: 0,
+            control_reserve: 0,
             dropped: 0,
         }
     }
 
+    pub const fn with_control_reserve(reserved: usize) -> Self {
+        let mut mailbox = Self::new();
+        mailbox.control_reserve = if reserved > N { N } else { reserved };
+        mailbox
+    }
+
+    const fn is_control(message: Message) -> bool {
+        matches!(message.kind, MessageKind::Recovery | MessageKind::Shutdown)
+    }
+
     pub fn push(&mut self, message: Message) -> Result<(), MailboxError> {
-        if self.len == N {
+        let control = Self::is_control(message);
+        if self.len == N || (!control && self.len >= N.saturating_sub(self.control_reserve)) {
             self.dropped = self.dropped.saturating_add(1);
             return Err(MailboxError::Full);
         }
 
-        let idx = (self.head + self.len) % N;
-        self.slots[idx] = Some(message);
+        if control {
+            for age in (self.control_len..self.len).rev() {
+                let src = (self.head + age) % N;
+                let dst = (self.head + age + 1) % N;
+                self.slots[dst] = self.slots[src].take();
+            }
+            let idx = (self.head + self.control_len) % N;
+            self.slots[idx] = Some(message);
+            self.control_len += 1;
+        } else {
+            let idx = (self.head + self.len) % N;
+            self.slots[idx] = Some(message);
+        }
         self.len += 1;
         Ok(())
     }
@@ -78,21 +110,30 @@ impl<const N: usize> Mailbox<N> {
         }
 
         let message = self.slots[self.head].take();
+        if self.control_len > 0 {
+            self.control_len -= 1;
+        }
         self.head = (self.head + 1) % N;
         self.len -= 1;
         message
     }
 
     pub fn pop_for(&mut self, to: ModuleId) -> Option<Message> {
+        self.pop_for_with_work(to).0
+    }
+
+    pub fn pop_for_with_work(&mut self, to: ModuleId) -> (Option<Message>, MailboxWork) {
+        let mut work = MailboxWork::default();
         for age in 0..self.len {
+            work.inspected += 1;
             let idx = (self.head + age) % N;
             if self.slots[idx].map(|msg| msg.to == to).unwrap_or(false) {
                 let message = self.slots[idx].take();
-                self.compact_from(age);
-                return message;
+                work.shifted = self.compact_from(age);
+                return (message, work);
             }
         }
-        None
+        (None, work)
     }
 
     pub fn remove_for(&mut self, module: ModuleId) -> usize {
@@ -142,7 +183,19 @@ impl<const N: usize> Mailbox<N> {
         self.dropped
     }
 
-    fn compact_from(&mut self, age: usize) {
+    pub const fn control_reserve(&self) -> usize {
+        self.control_reserve
+    }
+
+    pub const fn control_len(&self) -> usize {
+        self.control_len
+    }
+
+    fn compact_from(&mut self, age: usize) -> usize {
+        if age < self.control_len {
+            self.control_len -= 1;
+        }
+        let shifted = self.len - age - 1;
         for shift in age..(self.len - 1) {
             let dst = (self.head + shift) % N;
             let src = (self.head + shift + 1) % N;
@@ -151,6 +204,7 @@ impl<const N: usize> Mailbox<N> {
         let tail = (self.head + self.len - 1) % N;
         self.slots[tail] = None;
         self.len -= 1;
+        shifted
     }
 }
 
@@ -253,5 +307,67 @@ mod tests {
             Some(msg(ModuleId::Kernel, ModuleId::Radio, 3))
         );
         assert!(mailbox.is_empty());
+    }
+
+    #[test]
+    fn reserved_control_capacity_and_priority_survive_normal_saturation() {
+        let mut mailbox = Mailbox::<4>::with_control_reserve(1);
+        for arg in 0..3 {
+            mailbox
+                .push(msg(ModuleId::Sensor, ModuleId::Radio, arg))
+                .unwrap();
+        }
+        assert_eq!(
+            mailbox.push(msg(ModuleId::Sensor, ModuleId::Radio, 99)),
+            Err(MailboxError::Full)
+        );
+        let recovery = Message::new(
+            ModuleId::Kernel,
+            ModuleId::Sensor,
+            MessageKind::Recovery,
+            7,
+            0,
+        );
+        mailbox.push(recovery).unwrap();
+        assert_eq!(mailbox.control_len(), 1);
+        assert_eq!(mailbox.pop(), Some(recovery));
+        assert_eq!(mailbox.pop().map(|message| message.arg0), Some(0));
+    }
+
+    #[test]
+    fn full_selective_paths_report_exact_bounded_work() {
+        let mut tail = Mailbox::<8>::new();
+        for arg in 0..7 {
+            tail.push(msg(ModuleId::Sensor, ModuleId::Radio, arg))
+                .unwrap();
+        }
+        tail.push(msg(ModuleId::Sensor, ModuleId::Kernel, 7))
+            .unwrap();
+        let (_, scan_heavy) = tail.pop_for_with_work(ModuleId::Kernel);
+        assert_eq!(
+            scan_heavy,
+            MailboxWork {
+                inspected: 8,
+                shifted: 0
+            }
+        );
+
+        let mut shift = Mailbox::<8>::new();
+        shift
+            .push(msg(ModuleId::Sensor, ModuleId::Kernel, 0))
+            .unwrap();
+        for arg in 1..8 {
+            shift
+                .push(msg(ModuleId::Sensor, ModuleId::Radio, arg))
+                .unwrap();
+        }
+        let (_, shift_heavy) = shift.pop_for_with_work(ModuleId::Kernel);
+        assert_eq!(
+            shift_heavy,
+            MailboxWork {
+                inspected: 1,
+                shifted: 7
+            }
+        );
     }
 }

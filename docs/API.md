@@ -564,7 +564,10 @@ dispatch, executable platform actions, and module-state bookkeeping together.
 ### Network API
 
 `nobro-net` provides no-heap mesh primitives for routing, secure links,
-store-forward delivery, OTA chunk reassembly, and fleet rollout planning.
+store-forward delivery, owned OTA image assembly, and fleet rollout planning.
+`OtaImageAssembler<BYTES, CHUNKS>` validates image/chunk geometry, owns
+out-of-order payloads, reports the first hole, and returns the image only after
+complete SHA-256 verification.
 `FleetOtaOrchestrator<N>` stages OTA updates as canary-first waves, enforces a
 maximum number of active updates, blocks rollout when fleet health falls below
 policy, and rolls failed nodes back without allocating:
@@ -585,6 +588,10 @@ configured parallelism. Failed nodes move through rollback and eventually
 blocked state according to the failure policy, giving host tooling or firmware
 a deterministic rollout controller before transport-specific OTA packets are
 sent.
+
+`stage_next_wave` is useful for isolated policy simulation. Production update
+paths should call `stage_verified_wave`, which accepts only the private-field
+`VerifiedSignedImage` produced by `nobro-secure`'s asymmetric verification.
 
 ### HAL API
 

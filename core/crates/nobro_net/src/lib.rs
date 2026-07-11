@@ -885,6 +885,86 @@ impl<const CHUNKS: usize> OtaReassembler<CHUNKS> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OtaImageError {
+    Empty,
+    ImageTooLarge,
+    TooManyChunks,
+    InvalidChunk,
+    Incomplete,
+    HashMismatch,
+}
+
+/// Owns bounded OTA chunk data and releases it only after complete SHA-256 validation.
+pub struct OtaImageAssembler<const BYTES: usize, const CHUNKS: usize> {
+    image: [u8; BYTES],
+    tracker: OtaReassembler<CHUNKS>,
+    image_len: usize,
+    chunk_size: usize,
+    expected_hash: [u8; 32],
+}
+
+impl<const BYTES: usize, const CHUNKS: usize> OtaImageAssembler<BYTES, CHUNKS> {
+    pub fn new(
+        image_len: usize,
+        chunk_size: usize,
+        expected_hash: [u8; 32],
+    ) -> Result<Self, OtaImageError> {
+        if image_len == 0 || chunk_size == 0 {
+            return Err(OtaImageError::Empty);
+        }
+        if image_len > BYTES {
+            return Err(OtaImageError::ImageTooLarge);
+        }
+        let chunks = image_len.div_ceil(chunk_size);
+        let tracker = OtaReassembler::new(chunks).map_err(|error| match error {
+            OtaReassemblyError::Empty => OtaImageError::Empty,
+            OtaReassemblyError::TooManyChunks { .. } => OtaImageError::TooManyChunks,
+        })?;
+        Ok(Self {
+            image: [0; BYTES],
+            tracker,
+            image_len,
+            chunk_size,
+            expected_hash,
+        })
+    }
+
+    pub fn receive(&mut self, index: usize, chunk: &[u8]) -> Result<bool, OtaImageError> {
+        if index >= self.tracker.total {
+            return Err(OtaImageError::InvalidChunk);
+        }
+        let start = index
+            .checked_mul(self.chunk_size)
+            .ok_or(OtaImageError::InvalidChunk)?;
+        let expected_len = self.chunk_size.min(self.image_len - start);
+        if chunk.len() != expected_len {
+            return Err(OtaImageError::InvalidChunk);
+        }
+        if self.tracker.have[index] {
+            return Ok(false);
+        }
+        self.image[start..start + expected_len].copy_from_slice(chunk);
+        debug_assert!(self.tracker.receive(index));
+        Ok(true)
+    }
+
+    pub fn verify(&self) -> Result<&[u8], OtaImageError> {
+        if !self.tracker.is_complete() {
+            return Err(OtaImageError::Incomplete);
+        }
+        let image = &self.image[..self.image_len];
+        if nobro_crypto::sha256::sha256(image) != self.expected_hash {
+            return Err(OtaImageError::HashMismatch);
+        }
+        Ok(image)
+    }
+
+    pub fn first_missing(&self) -> Option<usize> {
+        self.tracker.first_missing()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FleetOtaPhase {
     Idle,
     Canary,
@@ -1394,6 +1474,35 @@ mod wireless_tests {
     }
 
     #[test]
+    fn ota_owns_out_of_order_chunks_and_releases_only_verified_image() {
+        let image = b"authenticated bounded ota image";
+        let hash = sha256(image);
+        let mut ota = OtaImageAssembler::<64, 8>::new(image.len(), 7, hash).unwrap();
+        assert_eq!(ota.verify(), Err(OtaImageError::Incomplete));
+        assert_eq!(ota.receive(2, &image[14..21]), Ok(true));
+        assert_eq!(ota.receive(0, &image[..7]), Ok(true));
+        assert_eq!(ota.receive(1, &image[7..14]), Ok(true));
+        assert_eq!(ota.receive(3, &image[21..28]), Ok(true));
+        assert_eq!(ota.receive(4, &image[28..]), Ok(true));
+        assert_eq!(ota.verify(), Ok(&image[..]));
+
+        let mut tampered = OtaImageAssembler::<64, 8>::new(image.len(), 7, hash).unwrap();
+        for (index, chunk) in image.chunks(7).enumerate() {
+            let mut bytes = [0; 7];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            if index == 1 {
+                bytes[0] ^= 1;
+            }
+            tampered.receive(index, &bytes[..chunk.len()]).unwrap();
+        }
+        assert_eq!(tampered.verify(), Err(OtaImageError::HashMismatch));
+        assert_eq!(
+            OtaImageAssembler::<8, 1>::new(image.len(), 7, hash).err(),
+            Some(OtaImageError::ImageTooLarge)
+        );
+    }
+
+    #[test]
     fn fleet_ota_stages_canary_then_rollout_waves() {
         let mut ota = FleetOtaOrchestrator::<4>::new();
         for id in 1..=4 {
@@ -1585,5 +1694,30 @@ mod wireless_tests {
                                            // a's link drops; b re-parents directly to the coordinator
         assert!(net.reparent(b, 0));
         assert_eq!(net.depth(b), Some(1));
+    }
+
+    #[test]
+    fn arbitrary_wire_inputs_are_bounded_and_never_panic() {
+        let mut state = 0xA5A5_1234u32;
+        let key = [0x5A; 16];
+        for case in 0..4096usize {
+            let len = case % 65;
+            let mut bytes = [0u8; 64];
+            for byte in &mut bytes[..len] {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                *byte = (state >> 24) as u8;
+            }
+            let mut samples = [0i32; 16];
+            let _ = telemetry_pack::unpack(&bytes[..len], &mut samples);
+            let mut plaintext = [0u8; 64];
+            let _ = secure_link::open_addressed(&key, &bytes[..len], state, &mut plaintext);
+            let _ = teleop::apply(&key, &bytes[..len], 1, 2, state);
+
+            let hash = sha256(&bytes[..16.min(len)]);
+            let mut ota = OtaImageAssembler::<32, 8>::new(16, 4, hash).unwrap();
+            let index = (state as usize) % 12;
+            let chunk_len = (state as usize >> 8) % 8;
+            let _ = ota.receive(index, &bytes[..chunk_len.min(len)]);
+        }
     }
 }

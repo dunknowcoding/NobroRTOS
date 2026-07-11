@@ -322,7 +322,7 @@ impl<
         }
         Ok(Self {
             plan,
-            mailbox: Mailbox::new(),
+            mailbox: Mailbox::with_control_reserve(usize::from(MAILBOX > 1)),
             alarms: AlarmQueue::new(),
             kv: KvStore::new(),
             kv_owners: [None; KV],
@@ -1489,16 +1489,6 @@ mod tests {
                 0,
             ))
             .unwrap();
-        runtime
-            .send(Message::new(
-                ModuleId::Kernel,
-                ModuleId::Sensor,
-                MessageKind::Command,
-                3,
-                0,
-            ))
-            .unwrap();
-
         assert_eq!(
             runtime.dispatch_due_alarms(10),
             Err(RuntimeError::Mailbox(MailboxError::Full))

@@ -181,10 +181,10 @@ fn main() -> ! {
         let _ = Hal::release(Resource::Egu0, 7);
     });
 
-    // worst-occupancy IPC (OBS-02): the mailbox is FULL and the selective pop's
-    // match sits at the TAIL, so the scan walks all 8 slots and compaction
-    // shifts every survivor — the maximal `pop_for` path at this capacity.
-    let mut full = Mailbox::<8>::new();
+    // Worst-occupancy IPC (OBS-02): measure both full-mailbox extremes. A tail
+    // match scans all eight slots; a head match shifts all seven survivors.
+    let mut full_scan = Mailbox::<8>::new();
+    let mut full_shift = Mailbox::<8>::new();
     let filler = Message::new(
         ModuleId::Kernel,
         ModuleId::Radio,
@@ -201,17 +201,25 @@ fn main() -> ! {
     );
     let mut mailbox_worst_cyc = 0u32;
     for _ in 0..ITERS {
-        while full.pop().is_some() {}
+        while full_scan.pop().is_some() {}
         for _ in 0..7 {
-            let _ = full.push(filler);
+            let _ = full_scan.push(filler);
         }
-        let _ = full.push(target);
-        let dt = timed(|| {
-            let _ = full.pop_for(ModuleId::Sensor);
+        let _ = full_scan.push(target);
+        let scan_cycles = timed(|| {
+            let _ = full_scan.pop_for(ModuleId::Sensor);
         });
-        if dt > mailbox_worst_cyc {
-            mailbox_worst_cyc = dt;
+        mailbox_worst_cyc = mailbox_worst_cyc.max(scan_cycles);
+
+        while full_shift.pop().is_some() {}
+        let _ = full_shift.push(target);
+        for _ in 0..7 {
+            let _ = full_shift.push(filler);
         }
+        let shift_cycles = timed(|| {
+            let _ = full_shift.pop_for(ModuleId::Sensor);
+        });
+        mailbox_worst_cyc = mailbox_worst_cyc.max(shift_cycles);
     }
 
     // worst-occupancy alarms (OBS-02): earliest-due scan + pop over a FULL queue.

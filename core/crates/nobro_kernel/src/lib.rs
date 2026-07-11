@@ -88,7 +88,7 @@ pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use launch_gate::ModuleLaunchGate;
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHooks};
-pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
+pub use mailbox::{Mailbox, MailboxError, MailboxWork, Message, MessageKind};
 pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, module_code, Capability, CapabilitySet,
     Criticality, DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec,
