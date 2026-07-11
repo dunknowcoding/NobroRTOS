@@ -304,4 +304,50 @@ mod tests {
         assert!(!SamplePool::release(PoolHandle::INVALID));
         assert_eq!(SamplePool::free_slots(), SAMPLE_POOL_SIZE);
     }
+
+    #[test]
+    fn isr_main_handoff_keeps_slot_live_until_consumer_release() {
+        release_all_slots();
+        let sample = SamplePool::alloc(SampleKind::Raw, 1, 0, 0).unwrap();
+        assert!(SamplePool::retain(sample.handle));
+
+        // Main drops its reference after publishing the handle to the ISR consumer.
+        assert!(SamplePool::release(sample.handle));
+        assert!(
+            SamplePool::with_slot_mut(sample.handle, SampleKind::Raw, 1, |slot| {
+                slot[0] = 42;
+            })
+            .is_some()
+        );
+        assert_eq!(
+            SamplePool::with_slot(sample.handle, SampleKind::Raw, 1, |slot| slot[0]),
+            Some(42)
+        );
+
+        assert!(SamplePool::release(sample.handle));
+        assert!(!SamplePool::is_live(sample.handle));
+    }
+
+    #[test]
+    fn multicore_release_order_model_never_frees_with_outstanding_reference() {
+        for order in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            release_all_slots();
+            let sample = SamplePool::alloc(SampleKind::Raw, 1, 0, 0).unwrap();
+            assert!(SamplePool::retain(sample.handle));
+            assert!(SamplePool::retain(sample.handle));
+
+            for (position, _actor) in order.into_iter().enumerate() {
+                assert!(SamplePool::release(sample.handle));
+                assert_eq!(SamplePool::is_live(sample.handle), position < 2);
+            }
+            assert!(!SamplePool::release(sample.handle));
+        }
+    }
 }
