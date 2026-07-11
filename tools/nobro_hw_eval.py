@@ -154,14 +154,10 @@ def tool(binbase, name):
 
 
 def find_jlink(explicit):
-    """Locate the J-Link CLI across OSes. Windows: JLink.exe under Program Files;
-    Linux: JLinkExe under /opt/SEGGER; macOS: JLinkExe under /Applications/SEGGER.
-    Falls back to whatever is on PATH."""
+    """Locate the J-Link CLI from an explicit argument, PATH, or standard Unix locations."""
     if explicit:
         return explicit
     patterns = [
-        r"C:\Program Files\SEGGER\JLink*\JLink.exe",
-        r"C:\Program Files (x86)\SEGGER\JLink*\JLink.exe",
         "/opt/SEGGER/JLink*/JLinkExe",
         "/opt/SEGGER/JLink/JLinkExe",
         "/Applications/SEGGER/JLink*/JLinkExe",

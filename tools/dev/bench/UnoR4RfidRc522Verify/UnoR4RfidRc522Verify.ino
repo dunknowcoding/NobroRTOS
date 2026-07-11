@@ -1,23 +1,10 @@
 // M220 — RFID-RC522 hardware verifier on Arduino UNO R4 WiFi (NiusWireless backend).
 //
-// Wiring (software SPI on SDA/SCL pins):
-//   RC522 SDA  -> SDA  (D18 / A4)   chip-select
-//   RC522 SCK  -> SCL  (D19 / A5)   software SPI clock
-//   RC522 MOSI -> D11
-//   RC522 MISO -> D12
-//   RC522 IRQ  -> D13               (input only; polling path used here)
-//   RC522 RST  -> D10
-//   RC522 3.3V -> 3.3V  (not 5 V)
-//   RC522 GND  -> GND
-//
-// Bench fixture (optional): D5 drives A0 through a loopback jumper.
-//
-// Serial at 115200 on the stock ESP32-S3 USB bridge (typical COM23 after reset).
 // Place a tag on the reader; the sketch prints:
 //   M220 RESULT: PASS NiusWireless_RC522_UID
 //
 // One-command host gate:
-//   python tools/m220_rfid_eval.py --port COM23
+//   python tools/dev/m220_rfid_eval.py --execute --auto
 //
 #include <NiusWireless.h>
 

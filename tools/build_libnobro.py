@@ -35,9 +35,6 @@ def find_gcc():
         hit = shutil.which(name)
         if hit:
             return hit
-    for pat in (r"C:\msys64\ucrt64\bin\arm-none-eabi-gcc.exe",):
-        if os.path.exists(pat):
-            return pat
     return None
 
 

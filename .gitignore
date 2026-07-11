@@ -69,3 +69,4 @@ docs/rtos_review.md
 # Arduino bench sketch build outputs
 tools/dev/bench/*/build/
 tools/leak_needles.local.txt
+tools/dev/*_INTERNAL.py

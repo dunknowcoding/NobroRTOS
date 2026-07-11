@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """M220 hardware gate: RC522 UID read on Arduino UNO R4 WiFi via NiusWireless.
 
-Builds tools/dev/bench/UnoR4RfidRc522Verify, uploads over serial/DFU, and watches for:
+Discovers compatible USB interfaces read-only by default. With `--execute`, builds
+tools/dev/bench/UnoR4RfidRc522Verify, uploads over serial/DFU, and watches for:
   M220 RESULT: PASS NiusWireless_RC522_UID
 
-UNO R4 WiFi exposes two USB serial paths on this bench:
-  COM23 — ESP32-S3 bridge (runtime Serial @ 115200); use for monitor after flash.
-  COM32 — Renesas native-USB SAM-BA bootloader (PID 0x006D); use for upload when
-          already in bootloader (pass --dfu-bootloader or let --auto pick it).
-
 Examples:
-  python tools/m220_rfid_eval.py --auto
-  python tools/m220_rfid_eval.py --port COM32 --dfu-bootloader --monitor-port COM23
-  python tools/m220_rfid_eval.py --port COM23
-  python tools/m220_rfid_eval.py --compile-only
+  python tools/dev/m220_rfid_eval.py
+  python tools/dev/m220_rfid_eval.py --execute --auto
+  python tools/dev/m220_rfid_eval.py --execute --port <PORT> --dfu-bootloader
+  python tools/dev/m220_rfid_eval.py --compile-only
 
 Requires: arduino-cli, renesas_uno core, NiusWireless library (sibling repo or --library).
 """
@@ -78,9 +74,9 @@ def discover_unor4_ports() -> tuple[str | None, str | None]:
         for info in list_ports.comports():
             if info.vid != ARDUINO_VID:
                 continue
-            if info.pid == BOOTLOADER_PID and port_openable(info.device):
+            if info.pid == BOOTLOADER_PID:
                 upload_port = info.device
-            elif info.pid == RUNTIME_PID and port_openable(info.device):
+            elif info.pid == RUNTIME_PID:
                 monitor_port = info.device
                 if upload_port is None:
                     upload_port = info.device
@@ -125,7 +121,7 @@ def is_bootloader_port(port: str) -> bool:
                 return info.pid == BOOTLOADER_PID
     except ImportError:
         pass
-    return port.upper().endswith("32")
+    return False
 
 
 def upload(port: str, *, dfu_bootloader: bool, retries: int) -> bool:
@@ -202,25 +198,33 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--auto", action="store_true",
-                    help="Detect UNO R4 upload/monitor ports (COM32 bootloader / COM23 runtime)")
+                    help="Detect compatible upload/monitor interfaces by USB VID/PID")
     ap.add_argument("--port", default=os.environ.get("M220_UPLOAD_PORT"),
-                    help="Upload port (default: auto-detect COM32/COM23)")
+                    help="Upload port (default: auto-detect by USB identity)")
     ap.add_argument("--monitor-port", default=os.environ.get("M220_MONITOR_PORT"),
-                    help="Serial monitor port after reset (default: COM23 if present)")
+                    help="Serial monitor port after reset")
     ap.add_argument("--library", default=os.environ.get("NIUSWIRELESS_LIB"),
                     help="Path to NiusWireless library")
     ap.add_argument("--timeout", type=float, default=45.0,
                     help="Seconds to wait for tag PASS line")
     ap.add_argument("--compile-only", action="store_true")
+    ap.add_argument("--execute", action="store_true",
+                    help="Authorize compile/upload/monitor; default is read-only discovery")
     ap.add_argument("--skip-upload", action="store_true")
     ap.add_argument("--skip-compile", action="store_true")
     ap.add_argument(
         "--dfu-bootloader",
         action="store_true",
-        help="Board already in native-USB bootloader (COM32 DFU): skip 1200-bps touch",
+        help="Board is already in its native-USB bootloader; skip 1200-bps touch",
     )
     ap.add_argument("--upload-retries", type=int, default=3)
     args = ap.parse_args()
+
+    if not args.execute and not args.compile_only:
+        upload_port, monitor_port = discover_unor4_ports()
+        print(f"Read-only discovery: upload={upload_port or '?'} monitor={monitor_port or '?'}")
+        print("RESULT: PASS discovery")
+        return 0
 
     library = args.library or default_niuswireless_lib()
     if not library:
@@ -247,7 +251,7 @@ def main() -> int:
               flush=True)
 
     if not upload_port and not args.skip_upload:
-        print("RESULT: FAIL no_port (plug UNO R4 WiFi; expect COM23 runtime or COM32 bootloader)",
+        print("RESULT: FAIL no_port (no compatible runtime or bootloader interface found)",
               file=sys.stderr)
         return 1
 
@@ -263,10 +267,8 @@ def main() -> int:
             print(f"Runtime upload on {upload_port} (1200-bps touch -> bootloader)", flush=True)
         if not upload(upload_port, dfu_bootloader=dfu, retries=args.upload_retries):
             print("RESULT: FAIL upload\n"
-                  "  Bootloader (COM32): single-tap RESET once, or replug USB; retry with "
-                  "--port COM32 --dfu-bootloader\n"
-                  "  Runtime (COM23): single-tap RESET to exit DFU, wait for COM23, retry "
-                  "--port COM23 or --auto",
+                  "  Re-run read-only discovery, then retry with the detected interface; "
+                  "use --dfu-bootloader only when discovery identifies the bootloader.",
                   file=sys.stderr)
             return 1
         print("Upload OK — waiting for board reset...", flush=True)

@@ -4,7 +4,7 @@
     "bench. Each node has a `protocol`: nobro_report (read a NOBRO_* struct over J-Link),",
     "jsonl_bridge (START/STOP JSONL app), serial_regex (match any app's output), vision",
     "(camera frame analytics), or sim (synthetic node). Replace the placeholder ports with",
-    "your own serial ports (e.g. COM3 on Windows, /dev/ttyUSB0 on Linux). `tool_python`",
+    "your own serial-port placeholders. `tool_python`",
     "defaults to `python3`; set it only if a node needs a specific interpreter. Camera",
     "nodes may also set `person_model` to a JSON model generated under _work."
   ],

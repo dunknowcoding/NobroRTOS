@@ -23,8 +23,8 @@ import sys
 import tempfile
 
 import os as _os
-# Override with the JLINK_EXE env var; the default is the common Windows install path.
-JLINK_EXE = _os.environ.get("JLINK_EXE", r"C:\Program Files\SEGGER\JLink\JLink.exe")
+# Override with JLINK_EXE, otherwise use the executable available on PATH.
+JLINK_EXE = _os.environ.get("JLINK_EXE") or shutil.which("JLink.exe") or shutil.which("JLinkExe") or "JLinkExe"
 
 
 def cmd_jlink(args):

@@ -15,6 +15,7 @@ bridged: a frame that arrived over 802.15.4 leaves over WiFi.
 import argparse
 import json
 import os
+import shutil
 import socket
 import struct
 import subprocess
@@ -26,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bindings" / "python"))
 from nobro_rtos.zigbee import decode_mac_frame  # noqa: E402
 
-JLINK = os.environ.get("JLINK_EXE", r"C:\Program Files\SEGGER\JLink\JLink.exe")
+JLINK = os.environ.get("JLINK_EXE") or shutil.which("JLink.exe") or shutil.which("JLinkExe") or "JLinkExe"
 
 
 def read_report_words(addr: int, count: int, device: str = "nRF52840_xxAA") -> list[int]:

@@ -17,12 +17,13 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 
-JLINK = r"C:\Program Files\SEGGER\JLink_V924a\JLink.exe"
+JLINK = os.environ.get("JLINK_EXE") or shutil.which("JLink.exe") or shutil.which("JLinkExe") or "JLinkExe"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 

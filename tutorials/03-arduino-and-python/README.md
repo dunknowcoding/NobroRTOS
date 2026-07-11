@@ -59,7 +59,7 @@ Have a live NobroRTOS board on a serial port? Watch it talk:
 ```python
 from nobro_rtos.node import NobroNode
 
-with NobroNode("YOUR_PORT_HERE") as node:      # e.g. "COM5" or "/dev/ttyACM0"
+with NobroNode("YOUR_PORT_HERE") as node:
     for report in node.reports(seconds=5):
         print("PASS" if report.fields.get("all_pass") == 1 else "FAIL", report.name)
 ```

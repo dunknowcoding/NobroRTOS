@@ -3,6 +3,7 @@
 
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -22,20 +23,53 @@ PRIVATE = {
     "Windows machine path": re.compile(r"\b[A-Za-z]:\\"),
     "local environment": re.compile(r"\b(?:conda|venv)\s+(?:activate|env)\b", re.IGNORECASE),
 }
+TEXT_SUFFIXES = {
+    ".c", ".cc", ".cpp", ".h", ".hpp", ".ino", ".json", ".md", ".ps1",
+    ".py", ".rs", ".sh", ".toml", ".txt", ".yaml", ".yml",
+}
+
+
+def tracked_text_files() -> list[pathlib.Path]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
+    )
+    return [
+        ROOT / raw.decode("utf-8")
+        for raw in result.stdout.split(b"\0")
+        if raw and pathlib.Path(raw.decode("utf-8")).suffix.lower() in TEXT_SUFFIXES
+    ]
 
 
 def main() -> int:
     errors: list[str] = []
+    local_needles_path = ROOT / "tools" / "leak_needles.local.txt"
+    local_needles = []
+    if local_needles_path.is_file():
+        local_needles = [
+            line.strip()
+            for line in local_needles_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+
+    for path in tracked_text_files():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        relative = path.relative_to(ROOT)
+        patterns = {} if path == pathlib.Path(__file__).resolve() else PRIVATE
+        for label, pattern in patterns.items():
+            for match in pattern.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(f"{relative}:{line}: {label}: {match.group(0)!r}")
+        folded = text.casefold()
+        for needle in local_needles:
+            if needle.casefold() in folded:
+                errors.append(f"{relative}: local privacy needle present")
+
     for path in DOCS:
         if not path.is_file():
             errors.append(f"missing public document: {path.relative_to(ROOT)}")
             continue
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(ROOT)
-        for label, pattern in PRIVATE.items():
-            for match in pattern.finditer(text):
-                line = text.count("\n", 0, match.start()) + 1
-                errors.append(f"{relative}:{line}: {label}: {match.group(0)!r}")
         for match in LINK.finditer(text):
             target = match.group(1).split("#", 1)[0].strip()
             if not target or "://" in target or target.startswith(("mailto:", "#")):
@@ -52,7 +86,10 @@ def main() -> int:
 
     for error in errors:
         print(f"FAIL: {error}")
-    print(f"PUBLIC DOCS: {'PASS' if not errors else 'FAIL'} ({len(DOCS)} files)")
+    print(
+        f"PUBLIC TREE: {'PASS' if not errors else 'FAIL'} "
+        f"({len(tracked_text_files())} tracked text files; {len(DOCS)} public docs)"
+    )
     return int(bool(errors))
 
 

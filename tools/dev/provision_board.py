@@ -11,6 +11,7 @@ Usage:
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +21,7 @@ CORE = os.path.join(ROOT, "core")
 WORK = os.path.join(ROOT, "_work")
 TARGET = "thumbv7em-none-eabihf"
 DEVICE = "nRF52840_xxAA"
-JLINK = r"C:\Program Files\SEGGER\JLink_V924a\JLink.exe"
+JLINK = os.environ.get("JLINK_EXE") or shutil.which("JLink.exe") or shutil.which("JLinkExe") or "JLinkExe"
 
 
 def sh(cmd, cwd=None, env=None):

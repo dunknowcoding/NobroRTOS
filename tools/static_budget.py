@@ -24,7 +24,6 @@ from collections import defaultdict
 
 DEFAULT_OBJDUMPS = [
     "arm-none-eabi-objdump",
-    r"C:\msys64\ucrt64\bin\arm-none-eabi-objdump.exe",
 ]
 
 SYM_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
