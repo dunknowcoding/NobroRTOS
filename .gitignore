@@ -14,6 +14,8 @@ core/**/target/
 *.bin
 *.elf
 *.hex
+# Standalone baseline workspaces build into their own target dirs
+core/baselines/*/target/
 *.uf2
 # The one intentional, owner-approved firmware artifact users drag onto the board:
 !sdk/firmware/nobrortos-starter-s140.uf2

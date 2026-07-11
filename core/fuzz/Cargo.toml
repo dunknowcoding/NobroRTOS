@@ -36,5 +36,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "abi_lengths"
+path = "fuzz_targets/abi_lengths.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
 members = ["."]

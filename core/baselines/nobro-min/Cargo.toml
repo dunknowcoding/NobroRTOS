@@ -1,0 +1,23 @@
+[package]
+name = "nobro-min"
+version = "0.1.0"
+edition = "2021"
+
+# The NobroRTOS implementation of the baseline workload: manifest -> admission
+# -> KernelExecutor + ModuleCtx mailbox. No defmt/RTT, no HAL crate - the same
+# raw GPIO/TIMER registers as the bare-metal floor, so the delta IS the kernel.
+
+[workspace]
+
+[dependencies]
+nobro-kernel = { path = "../../crates/nobro_kernel" }
+nobro-power = { path = "../../crates/nobro_power" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = false

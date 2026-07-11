@@ -2,15 +2,19 @@
 """Contract-aware OTA preflight demo: sign -> verify -> admission -> boot, one script.
 
 This is the "audit-survivable OTA" story made runnable on the host with no hardware. It
-chains the four checks a NobroRTOS node performs before it will run a new image, reusing
-the real building blocks (never re-implementing crypto or contract rules):
+chains the checks a NobroRTOS node performs before it will run a new image, reusing the
+real building blocks (never re-implementing crypto or contract rules):
 
-  1. SIGN      measurement = SHA-256(image); signature = HMAC(boot_key, measurement||ver)
-               (tools/sign_firmware.py - byte-identical to nobro_secure::SecureBoot)
-  2. VERIFY    re-measure + check signature + anti-rollback + Cortex-M vector policy,
-               reproducing SecureBoot::verify verdicts (Accept / RejectTampered /
-               RejectSignature / RejectRollback). Also runs the NEGATIVE cases so the
-               preflight is shown to *reject* a tampered image and a rollback.
+  1. SIGN      the ASYMMETRIC contract (nobro_secure::security_v2): the manifest binds
+               key_id, version, image geometry, and the SHA-256 measurement into one
+               domain-separated signing digest, signed with Ed25519 against a pinned
+               public key. (Falls back to the legacy HMAC scheme with a warning only
+               when the host lacks the `cryptography` package; evidence records which.)
+  2. VERIFY    re-measure + pinned-key Ed25519 verify + PERSISTENT anti-rollback floor
+               (the PersistentBootController model: stage -> try -> confirm advances a
+               monotonic floor that survives this process) + Cortex-M vector policy.
+               The NEGATIVE cases run too: a tampered image, a wrong-key signature, and
+               a downgrade below the *persisted* floor must all be rejected.
   3. ADMISSION validate the system contract bundle (capabilities, deadlines, startup DAG)
                via nobro_rtos.NobroContractBundle, then seal an admission report.
   4. BOOT      assemble the six-stage boot-report bundle and decode it through the host
@@ -22,7 +26,7 @@ the real building blocks (never re-implementing crypto or contract rules):
     python tools/ota_preflight_demo.py --min-version 5 # tighter anti-rollback floor
 
 Emits _work/evidence/ota_preflight.json. Exit 0 only when the good image passes every
-stage AND the tampered/rollback images are correctly rejected. Bench-agnostic output.
+stage AND every negative case is correctly rejected. Bench-agnostic output.
 """
 import argparse
 import json
@@ -56,6 +60,31 @@ DEFAULT_KEY = bytes([0x5A]) * 32
 # Demo Cortex-M flash window (nRF52840-class): app somewhere in [0x1000, 0x100000).
 POLICY_MIN_LOAD = 0x1000
 POLICY_MAX_END = 0x100000
+# Domain separator - byte-identical to nobro_secure::security_v2::signing_digest.
+SIGNING_DOMAIN = b"NobroRTOS Ed25519 image manifest v1"
+KEY_ID = 1
+
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (  # noqa: E402
+        Ed25519PrivateKey,
+        Ed25519PublicKey,
+    )
+    HAVE_ED25519 = True
+except ImportError:  # pragma: no cover - environments without `cryptography`
+    HAVE_ED25519 = False
+
+
+def signing_digest(manifest: dict) -> bytes:
+    """SHA-256 digest exactly as the device computes it (security_v2)."""
+    import hashlib
+    import struct
+    hasher = hashlib.sha256()
+    hasher.update(SIGNING_DOMAIN)
+    hasher.update(struct.pack("<6I", manifest["key_id"], manifest["version"],
+                              manifest["image_len"], manifest["load_addr"],
+                              manifest["entry_addr"], manifest["stack_top"]))
+    hasher.update(bytes.fromhex(manifest["measurement"]))
+    return hasher.digest()
 
 
 # --- 1. SIGN ---------------------------------------------------------------------------
@@ -67,18 +96,25 @@ def synth_image() -> bytes:
 
 
 def make_manifest(image: bytes, version: int, key: bytes,
-                  load_addr: int, entry_addr: int, stack_top: int) -> dict:
+                  load_addr: int, entry_addr: int, stack_top: int,
+                  signer=None) -> dict:
     measurement = sign_firmware.measure(image)
-    signature = sign_firmware.sign(key, measurement, version)
-    return {
+    manifest = {
+        "key_id": KEY_ID,
         "version": version,
         "image_len": len(image),
         "load_addr": load_addr,
         "entry_addr": entry_addr,
         "stack_top": stack_top,
         "measurement": measurement.hex(),
-        "signature": signature.hex(),
     }
+    if signer is not None:
+        manifest["scheme"] = "ed25519-manifest-v1"
+        manifest["signature"] = signer.sign(signing_digest(manifest)).hex()
+    else:
+        manifest["scheme"] = "hmac-legacy"
+        manifest["signature"] = sign_firmware.sign(key, measurement, version).hex()
+    return manifest
 
 
 # --- 2. VERIFY (mirrors nobro_secure::SecureBoot::verify + BootVectorPolicy) -----------
@@ -99,24 +135,66 @@ def vector_policy_ok(manifest: dict) -> tuple[bool, str]:
     return True, "ok"
 
 
-def verify(image: bytes, manifest: dict, key: bytes, min_version: int) -> dict:
-    """Return the SecureBoot verdict for this image against its manifest + floor."""
+def verify(image: bytes, manifest: dict, key: bytes, min_version: int,
+           pinned_public=None) -> dict:
+    """SecureBoot verdict, mirroring verify_signed_boot's check order:
+    length -> measurement -> rollback -> pinned key -> signature -> vectors."""
+    if len(image) != manifest["image_len"]:
+        return {"verdict": "RejectTampered", "accepted": False,
+                "reason": "image length differs from manifest"}
     actual = sign_firmware.measure(image)
     if actual.hex() != manifest["measurement"]:
         return {"verdict": "RejectTampered", "accepted": False,
                 "reason": "measurement mismatch (image changed after signing)"}
-    expected_sig = sign_firmware.sign(key, actual, manifest["version"]).hex()
-    if expected_sig != manifest["signature"]:
-        return {"verdict": "RejectSignature", "accepted": False,
-                "reason": "signature does not match this key/version"}
     if manifest["version"] < min_version:
         return {"verdict": "RejectRollback", "accepted": False,
                 "reason": f"version {manifest['version']} below floor {min_version}"}
+    if manifest.get("scheme") == "ed25519-manifest-v1":
+        if pinned_public is None or manifest["key_id"] != KEY_ID:
+            return {"verdict": "RejectSignature", "accepted": False,
+                    "reason": "no pinned key for this key_id"}
+        try:
+            pinned_public.verify(bytes.fromhex(manifest["signature"]),
+                                 signing_digest(manifest))
+        except Exception:
+            return {"verdict": "RejectSignature", "accepted": False,
+                    "reason": "Ed25519 signature invalid against the pinned key"}
+    else:
+        expected_sig = sign_firmware.sign(key, actual, manifest["version"]).hex()
+        if expected_sig != manifest["signature"]:
+            return {"verdict": "RejectSignature", "accepted": False,
+                    "reason": "signature does not match this key/version"}
     ok, why = vector_policy_ok(manifest)
     if not ok:
         return {"verdict": "RejectVectorPolicy", "accepted": False, "reason": why}
     return {"verdict": "Accept", "accepted": True, "reason": "measurement+signature+"
             "version+vectors all valid"}
+
+
+# --- persistent boot state (PersistentBootController model) ----------------------------
+
+class PersistentFloor:
+    """Monotonic anti-rollback floor persisted across process runs - the host
+    model of PersistentBootController's stage -> try -> confirm contract."""
+
+    def __init__(self, path: str, initial: int):
+        self.path = path
+        self.state = {"generation": 0, "floor": initial, "confirmed": None}
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                stored = json.load(f)
+            # The floor only ever ratchets upward, whatever the CLI says.
+            if stored.get("floor", 0) > initial:
+                self.state = stored
+
+    def confirm(self, version: int) -> bool:
+        if version < self.state["floor"]:
+            return False
+        self.state = {"generation": self.state["generation"] + 1,
+                      "floor": version, "confirmed": version}
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(self.state, f)
+        return True
 
 
 # --- 3. ADMISSION (real contract bundle) ----------------------------------------------
@@ -226,24 +304,51 @@ def main() -> int:
         image = synth_image()
         image_name = "<synthesized>"
 
+    # Deterministic demo keypair (asymmetric path) - derived from the demo key
+    # bytes so the evidence is reproducible; never a production key.
+    signer = wrong_signer = pinned_public = None
+    if HAVE_ED25519:
+        signer = Ed25519PrivateKey.from_private_bytes(key)
+        wrong_signer = Ed25519PrivateKey.from_private_bytes(bytes([0xA5]) * 32)
+        pinned_public = signer.public_key()
+    scheme = "ed25519-manifest-v1" if HAVE_ED25519 else "hmac-legacy"
+
+    # Persistent monotonic rollback floor (PersistentBootController model).
+    floor_store = PersistentFloor(
+        os.path.join(args.out_dir, "ota_boot_state.json"), args.min_version)
+    floor = floor_store.state["floor"]
+
     # 1. SIGN
-    manifest = make_manifest(image, args.version, key,
-                             load_addr=0x26000, entry_addr=0x26401, stack_top=0x20040000)
-    print(f"[1/4] SIGN      {image_name} v{args.version} ({len(image)} B)")
+    manifest = make_manifest(image, args.version, key, load_addr=0x26000,
+                             entry_addr=0x26401, stack_top=0x20040000, signer=signer)
+    print(f"[1/4] SIGN      {image_name} v{args.version} ({len(image)} B) "
+          f"scheme={scheme}")
     print(f"                measurement {manifest['measurement'][:16]}... "
           f"sig {manifest['signature'][:16]}...")
 
-    # 2. VERIFY - good path plus the two rejections the preflight must catch.
-    good = verify(image, manifest, key, args.min_version)
+    # 2. VERIFY - good path plus every rejection the preflight must catch.
+    good = verify(image, manifest, key, floor, pinned_public)
     tampered_img = bytearray(image); tampered_img[0] ^= 0xFF
-    tampered = verify(bytes(tampered_img), manifest, key, args.min_version)
-    rollback_manifest = make_manifest(image, args.min_version - 1, key,
-                                      0x26000, 0x26401, 0x20040000)
-    rollback = verify(image, rollback_manifest, key, args.min_version)
+    tampered = verify(bytes(tampered_img), manifest, key, floor, pinned_public)
+    rollback_manifest = make_manifest(image, max(floor - 1, 0), key,
+                                      0x26000, 0x26401, 0x20040000, signer=signer)
+    rollback = verify(image, rollback_manifest, key, floor, pinned_public)
+    if HAVE_ED25519:
+        forged_manifest = make_manifest(image, args.version, key, 0x26000, 0x26401,
+                                        0x20040000, signer=wrong_signer)
+        forged = verify(image, forged_manifest, key, floor, pinned_public)
+    else:
+        forged = {"verdict": "SkippedNoEd25519", "accepted": False,
+                  "reason": "cryptography package unavailable"}
     verify_ok = (good["accepted"] and tampered["verdict"] == "RejectTampered"
-                 and rollback["verdict"] == "RejectRollback")
-    print(f"[2/4] VERIFY    good={good['verdict']}  "
-          f"tampered={tampered['verdict']}  rollback={rollback['verdict']}  "
+                 and rollback["verdict"] == "RejectRollback"
+                 and (not HAVE_ED25519 or forged["verdict"] == "RejectSignature"))
+    # Confirm the accepted version: the persisted floor ratchets monotonically,
+    # so the NEXT run rejects this version's downgrades even with a looser CLI.
+    confirmed = good["accepted"] and floor_store.confirm(args.version)
+    print(f"[2/4] VERIFY    good={good['verdict']}  tampered={tampered['verdict']}  "
+          f"rollback={rollback['verdict']}  forged={forged['verdict']}  "
+          f"floor={floor}->{floor_store.state['floor']}  "
           f"=> {'PASS' if verify_ok else 'FAIL'}")
 
     # 3. ADMISSION - only meaningful if the image was accepted for install.
@@ -259,20 +364,23 @@ def main() -> int:
           f"diagnostic={boot['diagnostic_code']} "
           f"({boot['decoded']['stage']}/{boot['decoded']['status']})")
 
-    all_ok = bool(good["accepted"] and verify_ok and admission["admitted"]
-                  and boot["passing"])
+    all_ok = bool(good["accepted"] and verify_ok and confirmed
+                  and admission["admitted"] and boot["passing"])
     pack = {
         "tool": "ota preflight demo",
         "chain": ["sign", "verify", "admission", "boot"],
+        "scheme": scheme,
         "image": {"name": image_name, "len": len(image), "version": args.version},
         "min_version": args.min_version,
+        "persistent_floor": floor_store.state,
         "sign": {"measurement": manifest["measurement"],
                  "signature": manifest["signature"],
+                 "key_id": manifest["key_id"],
                  "load_addr": manifest["load_addr"],
                  "entry_addr": manifest["entry_addr"],
                  "stack_top": manifest["stack_top"]},
         "verify": {"good": good, "tampered": tampered, "rollback": rollback,
-                   "ok": verify_ok},
+                   "forged_key": forged, "ok": verify_ok},
         "admission": admission,
         "boot": boot,
         "result": "PASS" if all_ok else "FAIL",

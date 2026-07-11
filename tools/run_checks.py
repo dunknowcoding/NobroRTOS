@@ -114,6 +114,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
         ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
         ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
+        ("baseline measure", [py, "tools/measure_baselines.py", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),
@@ -131,6 +132,9 @@ def gate_specs(quick, rust_only=False, extended=False):
              "-max_total_time=10"], CORE),
             ("fuzz control smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
              host_target(), "control_state", "--",
+             "-max_total_time=10"], CORE),
+            ("fuzz abi-length smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
+             host_target(), "abi_lengths", "--",
              "-max_total_time=10"], CORE),
         ]
     return specs

@@ -101,6 +101,7 @@ jobs:
           cargo fuzz run --target x86_64-unknown-linux-gnu wire_inputs -- -max_total_time=15
           cargo fuzz run --target x86_64-unknown-linux-gnu database_images -- -max_total_time=15
           cargo fuzz run --target x86_64-unknown-linux-gnu control_state -- -max_total_time=15
+          cargo fuzz run --target x86_64-unknown-linux-gnu abi_lengths -- -max_total_time=15
       - name: address sanitizer smoke
         working-directory: core
         env:

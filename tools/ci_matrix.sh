@@ -32,6 +32,8 @@ gate "host tests (portable crates)" \
 
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 
+gate "resource baselines (RES-01 sizes vs budgets)"   python tools/measure_baselines.py
+
 gate "esp32c3 port build" \
   bash -c 'cd core/ports/esp32c3 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-c3" cargo build --release'
 

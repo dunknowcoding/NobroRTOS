@@ -113,6 +113,41 @@ points remain available to classic loops:
 This is an executor-owned idle path, not a preemptive idle task. Ports must implement the
 actual clock/RTC/sleep operations and are responsible for wake-source correctness.
 
+## Measured resource baselines (vs bare metal and Embassy)
+
+One identical workload (50 Hz control + 10 Hz sensor + consumer over a message
+channel, raw-register GPIO/TIMER in all three), pinned build settings
+(`opt-level = "z"`, fat LTO, one codegen unit, no logging), nRF52840 target.
+Suite: `core/baselines/`; runner: `python tools/measure_baselines.py`
+(regression budgets enforced in CI). Measured 2026-07-11, rustc stable:
+
+| implementation | flash | static RAM | source lines |
+| --- | ---: | ---: | ---: |
+| bare-metal floor | 1,324 B | 16 B | 75 |
+| **NobroRTOS** (`nobro-min`) | 16,080 B | 16 B | 152 |
+| Embassy (`embassy-min`) | 3,708 B | 4,644 B | 72 |
+
+Honest reading, both directions:
+
+- NobroRTOS spends **~12 KB more flash than Embassy** on this tiny workload.
+  That flash buys machinery Embassy does not perform: manifest validation,
+  admission with schedulability analysis, capability grants, object quotas,
+  health/recovery, and the traced module context. If you do not want those,
+  Embassy is the lighter executor - the numbers say so and we will not argue.
+- The RAM trade runs the other way: NobroRTOS holds **16 B** of static RAM to
+  Embassy's **4,644 B** (executor arenas, timer driver, task statics). On
+  RAM-starved parts the tank is the lean one.
+- Verbosity is real: 152 lines vs 72. The contract-first style costs about 2x
+  the source of the async style today; the task-builder and graph APIs under
+  development target exactly that gap.
+- The **minimal profile is enforced, not promised**: the measurement fails CI
+  if a `nobro-min`-class binary links any unselected service (crypto, secure
+  boot, storage, database, net/fleet, AI/ML/NN) - verified at symbol level.
+  Profiles are dependency sets: minimal = kernel (+power hooks); managed =
+  + secure/storage/database; assured = + net/fleet/AI surfaces.
+- These are **size** specimens only. CPU/energy/latency claims in either
+  direction require the HIL rig and are reported separately with their method.
+
 ## Measured kernel-op latencies
 
 The external question every RTOS dodges: *what do core operations actually cost, worst

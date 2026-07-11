@@ -1,0 +1,20 @@
+[package]
+name = "baremetal-min"
+version = "0.1.0"
+edition = "2021"
+
+# The floor of the baseline suite: the same 50 Hz control / 10 Hz sensor /
+# consumer workload with no framework at all.
+
+[workspace]
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = false

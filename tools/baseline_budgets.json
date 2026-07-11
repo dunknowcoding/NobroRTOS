@@ -1,0 +1,5 @@
+{
+  "_comment": "Regression ceilings for the RES-01 size specimens (~25% headroom over 2026-07-11 measurements: nobro-min 16080/16, baremetal 1324/16). CI fails when exceeded.",
+  "nobro-min": { "flash": 20000, "static_ram": 1024 },
+  "baremetal-min": { "flash": 2048, "static_ram": 256 }
+}
