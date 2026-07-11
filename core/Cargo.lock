@@ -635,15 +635,8 @@ name = "nobro-c-abi-demo"
 version = "0.2.0"
 dependencies = [
  "cc",
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "libm",
  "nobro-c-abi-module",
- "nobro-hal",
- "nobro-kernel",
- "panic-halt",
+ "nobro-tierc",
 ]
 
 [[package]]

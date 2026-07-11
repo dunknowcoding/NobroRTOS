@@ -16,15 +16,8 @@ path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
 [dependencies]
-nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
-nobro-kernel = { path = "../../crates/nobro_kernel" }
+nobro-tierc = { path = "../../crates/nobro_tierc", default-features = false }
 nobro-c-abi-module = { path = "../c_abi_module", optional = true }
-libm = "0.2"
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-cortex-m-rt = "0.7"
-defmt = "0.3"
-defmt-rtt = "0.4"
-panic-halt = "0.2"
 
 [build-dependencies]
 cc = { version = "1.0", optional = true }
@@ -34,5 +27,5 @@ default = ["board-promicro-nosd", "rust-module"]
 rust-module = ["dep:nobro-c-abi-module"]
 c-source = ["dep:cc"]
 cpp-source = ["dep:cc"]
-board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
-board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]
+board-promicro-nosd = ["nobro-tierc/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-tierc/board-nicenano-s140"]
