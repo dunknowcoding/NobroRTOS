@@ -303,6 +303,7 @@ dependencies = [
  "defmt-rtt",
  "nobro-database",
  "nobro-hal",
+ "nobro-storage",
  "panic-halt",
 ]
 
@@ -785,6 +786,9 @@ dependencies = [
 [[package]]
 name = "nobro-database"
 version = "0.2.0"
+dependencies = [
+ "nobro-storage",
+]
 
 [[package]]
 name = "nobro-device"

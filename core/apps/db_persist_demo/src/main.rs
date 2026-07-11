@@ -10,7 +10,8 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_database::{RecordCodec, Table};
+use nobro_database::{PersistentTable, RecordCodec, Table};
+use nobro_storage::Flash;
 use panic_halt as _;
 
 #[repr(C)]
@@ -84,8 +85,16 @@ const NVMC: u32 = 0x4001_E000;
 const NVMC_READY: u32 = NVMC + 0x400;
 const NVMC_CONFIG: u32 = NVMC + 0x504;
 const NVMC_ERASEPAGE: u32 = NVMC + 0x508;
-/// Dedicated page, clear of the app image and of flash_log_demo's page (0x80000).
-const PAGE: u32 = 0x8_4000;
+/// Dedicated alternating pages, clear of the app image and other persistence demos.
+const PAGES: [u32; 2] = [0x8_4000, 0x8_5000];
+const PAGE_WORDS: usize = 1024;
+
+#[derive(Clone, Copy)]
+enum FlashError {
+    Verify,
+}
+
+struct NvmcDbFlash;
 
 unsafe fn nvmc_wait() {
     while core::ptr::read_volatile(NVMC_READY as *const u32) & 1 == 0 {}
@@ -100,24 +109,41 @@ unsafe fn flash_erase(page: u32) {
     nvmc_wait();
 }
 
-unsafe fn flash_write_words(addr: u32, data: &[u8]) {
+unsafe fn flash_write_word(addr: u32, value: u32) {
     core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 1);
     nvmc_wait();
-    for (i, chunk) in data.chunks(4).enumerate() {
-        let mut word = [0xFFu8; 4];
-        word[..chunk.len()].copy_from_slice(chunk);
-        core::ptr::write_volatile(
-            (addr + (i as u32) * 4) as *mut u32,
-            u32::from_le_bytes(word),
-        );
-        nvmc_wait();
-    }
+    core::ptr::write_volatile(addr as *mut u32, value);
+    nvmc_wait();
     core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 0);
     nvmc_wait();
 }
 
-fn flash_slice(addr: u32, len: usize) -> &'static [u8] {
-    unsafe { core::slice::from_raw_parts(addr as *const u8, len) }
+impl Flash for NvmcDbFlash {
+    type Error = FlashError;
+    const WORDS: usize = PAGE_WORDS;
+
+    fn erase(&mut self, page: usize) -> Result<(), Self::Error> {
+        unsafe { flash_erase(PAGES[page]) };
+        (0..PAGE_WORDS)
+            .all(|word| self.read_word(page, word) == u32::MAX)
+            .then_some(())
+            .ok_or(FlashError::Verify)
+    }
+
+    fn write_word(&mut self, page: usize, word: usize, value: u32) -> Result<(), Self::Error> {
+        if self.read_word(page, word) != u32::MAX {
+            return Err(FlashError::Verify);
+        }
+        let address = PAGES[page] + (word as u32) * 4;
+        unsafe { flash_write_word(address, value) };
+        (self.read_word(page, word) == value)
+            .then_some(())
+            .ok_or(FlashError::Verify)
+    }
+
+    fn read_word(&self, page: usize, word: usize) -> u32 {
+        unsafe { core::ptr::read_volatile((PAGES[page] + (word as u32) * 4) as *const u32) }
+    }
 }
 
 #[entry]
@@ -126,13 +152,12 @@ fn main() -> ! {
     // Image budget: header 20 + CAP rows * (4 key + 8 record) + checksum 4.
     const IMG_MAX: usize = 20 + CAP * 12 + 4;
 
-    // Recover the table from flash (the image is length-prefixed by row count, so try
-    // the maximal window; from_image validates magic + checksum).
-    let (mut table, recovered) =
-        match Table::<BootRecord, CAP>::from_image(flash_slice(PAGE, IMG_MAX)) {
-            Ok(t) => (t, 1u32),
-            Err(_) => (Table::new(), 0u32),
-        };
+    let mut image = [0u8; IMG_MAX];
+    let mut persisted = PersistentTable::mount(NvmcDbFlash);
+    let (mut table, recovered) = match persisted.load::<BootRecord, CAP>(&mut image) {
+        Ok(table) => (table, 1u32),
+        Err(_) => (Table::new(), 0u32),
+    };
 
     // Rows recovered from the previous boot must carry the marker intact.
     let mut ok = table.iter().all(|(_, r)| r.marker == MARKER);
@@ -164,15 +189,12 @@ fn main() -> ! {
         )
         .is_ok();
 
-    // Persist the image and verify it reads back as the same table.
-    let mut img = [0u8; IMG_MAX];
-    let image_len = table.to_image(&mut img).unwrap_or(0);
+    // Persist transactionally and remount immediately through the same recovery path.
+    let image_len = table.to_image(&mut image).unwrap_or(0);
     ok &= image_len > 0;
-    unsafe {
-        flash_erase(PAGE);
-        flash_write_words(PAGE, &img[..image_len]);
-    }
-    let readback = Table::<BootRecord, CAP>::from_image(flash_slice(PAGE, image_len));
+    ok &= persisted.save(&table, &mut image).is_ok();
+    let persisted = PersistentTable::mount(persisted.into_flash());
+    let readback = persisted.load::<BootRecord, CAP>(&mut image);
     ok &= matches!(&readback, Ok(t) if t.len() == table.len()
         && t.get(COUNTER_KEY).map(|r| r.value) == Some(boot_count));
 

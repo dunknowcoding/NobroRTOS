@@ -329,17 +329,27 @@ mod tests {
 
     impl ProtectedKeyBackend for MemoryKeys {
         type Error = ();
-        fn contains(&self, id: u32) -> Result<bool, Self::Error> { Ok(self.id == Some(id)) }
+        fn contains(&self, id: u32) -> Result<bool, Self::Error> {
+            Ok(self.id == Some(id))
+        }
         fn provision(&mut self, id: u32, key: &[u8; 32]) -> Result<(), Self::Error> {
             self.id = Some(id);
             self.key.copy_from_slice(key);
             Ok(())
         }
         fn revoke(&mut self, id: u32) -> Result<(), Self::Error> {
-            if self.id == Some(id) { self.key.fill(0); self.id = None; }
+            if self.id == Some(id) {
+                self.key.fill(0);
+                self.id = None;
+            }
             Ok(())
         }
-        fn authenticate(&self, id: u32, message: &[u8], tag: &[u8; 32]) -> Result<bool, Self::Error> {
+        fn authenticate(
+            &self,
+            id: u32,
+            message: &[u8],
+            tag: &[u8; 32],
+        ) -> Result<bool, Self::Error> {
             Ok(self.id == Some(id) && verify_tag(&hmac_sha256(&self.key, message), tag))
         }
     }
@@ -477,11 +487,27 @@ mod tests {
 
     #[test]
     fn protected_backend_policy_rejects_range_and_replacement() {
-        let mut backend = MemoryKeys { id: None, key: [0; 32] };
-        let policy = ProvisionPolicy { min_key_id: 10, max_key_id: 20, allow_replace: false };
-        assert_eq!(provision_protected_key(&mut backend, policy, 9, &[1; 32]), Ok(false));
-        assert_eq!(provision_protected_key(&mut backend, policy, 10, &[2; 32]), Ok(true));
-        assert_eq!(provision_protected_key(&mut backend, policy, 10, &[3; 32]), Ok(false));
+        let mut backend = MemoryKeys {
+            id: None,
+            key: [0; 32],
+        };
+        let policy = ProvisionPolicy {
+            min_key_id: 10,
+            max_key_id: 20,
+            allow_replace: false,
+        };
+        assert_eq!(
+            provision_protected_key(&mut backend, policy, 9, &[1; 32]),
+            Ok(false)
+        );
+        assert_eq!(
+            provision_protected_key(&mut backend, policy, 10, &[2; 32]),
+            Ok(true)
+        );
+        assert_eq!(
+            provision_protected_key(&mut backend, policy, 10, &[3; 32]),
+            Ok(false)
+        );
         let tag = hmac_sha256(&[2; 32], b"challenge");
         assert_eq!(backend.authenticate(10, b"challenge", &tag), Ok(true));
         backend.revoke(10).unwrap();

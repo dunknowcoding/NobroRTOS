@@ -122,6 +122,24 @@ let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 python tools/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
 ```
 
+### Transactional Database Persistence
+
+`nobro-storage::BlobStore` stores one bounded byte image across two alternating
+flash pages. Payload and checksum are written before the commit marker, and mount
+selects the newest valid generation. A reset during erase or programming therefore
+exposes either the complete old image or the complete new image.
+
+`nobro-database::PersistentTable` combines that transaction protocol with
+`Table<V, N>`'s stable `RecordCodec`. Callers supply a scratch buffer, keeping load
+and save allocation-free:
+
+```rust
+let mut persisted = nobro_database::PersistentTable::mount(board_flash);
+let mut image = [0u8; 256];
+let table = persisted.load::<Reading, 8>(&mut image)?;
+persisted.save(&table, &mut image)?;
+```
+
 ### Kernel API
 
 #### Manifest

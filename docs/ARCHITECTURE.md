@@ -140,6 +140,15 @@ image writing, and the final unsafe jump. HMAC remains appropriate for
 per-device authentication and authenticated report envelopes, but it is not the
 fleet firmware-signing authority.
 
+### Persistence Boundary
+
+`nobro-storage` separates record-oriented KV persistence from transactional byte
+images. Both use two flash pages, wrap-aware generations, integrity validation,
+and a commit-last selection point. `nobro-database::PersistentTable` feeds its
+stable schema image into the transactional blob path using caller-owned scratch
+memory. Board ports define the reserved pages and implement fallible erase,
+program, and readback verification.
+
 ### Recovery Model
 
 Recovery is module-scoped first:

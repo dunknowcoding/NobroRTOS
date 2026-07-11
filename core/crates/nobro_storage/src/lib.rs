@@ -31,6 +31,147 @@ pub struct KvStore<F: Flash> {
     generation: u32,
 }
 
+const BLOB_MAGIC: u32 = 0x4E42_4C42; // "NBLB"
+const BLOB_COMMITTED: u32 = 0x424C_4F42; // "BLOB", written last
+const BLOB_HEADER_WORDS: usize = 5; // magic, generation, byte length, checksum, commit
+
+/// Alternating-page transactional storage for one bounded byte image.
+///
+/// The inactive page is erased and populated before its commit word is written. Mount
+/// ignores every uncommitted or checksum-invalid page, so a reset at any program/erase
+/// boundary exposes either the complete old image or the complete new image.
+pub struct BlobStore<F: Flash> {
+    flash: F,
+    active: Option<usize>,
+    generation: u32,
+    len: usize,
+}
+
+impl<F: Flash> BlobStore<F> {
+    pub const fn capacity() -> usize {
+        F::WORDS.saturating_sub(BLOB_HEADER_WORDS) * 4
+    }
+
+    fn flash<T>(result: Result<T, F::Error>) -> Result<T, KvError<F::Error>> {
+        result.map_err(KvError::Flash)
+    }
+
+    fn checksum_bytes(generation: u32, len: usize, bytes: impl Iterator<Item = u8>) -> u32 {
+        let mut hash = 0x811C_9DC5u32;
+        for byte in generation
+            .to_le_bytes()
+            .into_iter()
+            .chain((len as u32).to_le_bytes())
+            .chain(bytes)
+        {
+            hash = (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193);
+        }
+        hash
+    }
+
+    fn valid_page(flash: &F, page: usize) -> Option<(u32, usize)> {
+        if F::WORDS < BLOB_HEADER_WORDS
+            || flash.read_word(page, 0) != BLOB_MAGIC
+            || flash.read_word(page, 4) != BLOB_COMMITTED
+        {
+            return None;
+        }
+        let generation = flash.read_word(page, 1);
+        let len = flash.read_word(page, 2) as usize;
+        if len > Self::capacity() {
+            return None;
+        }
+        let bytes = (0..len).map(|offset| {
+            let word = flash.read_word(page, BLOB_HEADER_WORDS + offset / 4);
+            word.to_le_bytes()[offset % 4]
+        });
+        (flash.read_word(page, 3) == Self::checksum_bytes(generation, len, bytes))
+            .then_some((generation, len))
+    }
+
+    pub fn mount(flash: F) -> Self {
+        let p0 = Self::valid_page(&flash, 0);
+        let p1 = Self::valid_page(&flash, 1);
+        let selected = match (p0, p1) {
+            (None, None) => None,
+            (Some(a), None) => Some((0, a)),
+            (None, Some(b)) => Some((1, b)),
+            (Some(a), Some(b)) => {
+                if KvStore::<F>::generation_is_newer(b.0, a.0) {
+                    Some((1, b))
+                } else {
+                    Some((0, a))
+                }
+            }
+        };
+        let (active, generation, len) = selected
+            .map(|(page, (generation, len))| (Some(page), generation, len))
+            .unwrap_or((None, 0, 0));
+        Self {
+            flash,
+            active,
+            generation,
+            len,
+        }
+    }
+
+    pub fn read(&self, out: &mut [u8]) -> Result<Option<usize>, KvError<F::Error>> {
+        let Some(page) = self.active else {
+            return Ok(None);
+        };
+        if out.len() < self.len {
+            return Err(KvError::Full);
+        }
+        for (offset, byte) in out[..self.len].iter_mut().enumerate() {
+            let word = self.flash.read_word(page, BLOB_HEADER_WORDS + offset / 4);
+            *byte = word.to_le_bytes()[offset % 4];
+        }
+        Ok(Some(self.len))
+    }
+
+    pub fn replace(&mut self, image: &[u8]) -> Result<(), KvError<F::Error>> {
+        if image.len() > Self::capacity() || image.len() > u32::MAX as usize {
+            return Err(KvError::Full);
+        }
+        let new = self.active.map_or(0, |page| 1 - page);
+        let generation = self.generation.wrapping_add(1);
+        let checksum = Self::checksum_bytes(generation, image.len(), image.iter().copied());
+
+        Self::flash(self.flash.erase(new))?;
+        Self::flash(self.flash.write_word(new, 0, BLOB_MAGIC))?;
+        Self::flash(self.flash.write_word(new, 1, generation))?;
+        Self::flash(self.flash.write_word(new, 2, image.len() as u32))?;
+        Self::flash(self.flash.write_word(new, 3, checksum))?;
+        for (word_offset, chunk) in image.chunks(4).enumerate() {
+            let mut bytes = [0xFF; 4];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            Self::flash(self.flash.write_word(
+                new,
+                BLOB_HEADER_WORDS + word_offset,
+                u32::from_le_bytes(bytes),
+            ))?;
+        }
+        Self::flash(self.flash.write_word(new, 4, BLOB_COMMITTED))?;
+
+        let old = self.active;
+        self.active = Some(new);
+        self.generation = generation;
+        self.len = image.len();
+        if let Some(old) = old {
+            Self::flash(self.flash.erase(old))?;
+        }
+        Ok(())
+    }
+
+    pub const fn generation(&self) -> u32 {
+        self.generation
+    }
+
+    pub fn into_flash(self) -> F {
+        self.flash
+    }
+}
+
 impl<F: Flash> KvStore<F> {
     fn flash<T>(result: Result<T, F::Error>) -> Result<T, KvError<F::Error>> {
         result.map_err(KvError::Flash)
@@ -343,5 +484,44 @@ mod tests {
     fn generation_selection_is_wrap_aware() {
         assert!(KvStore::<MockFlash>::generation_is_newer(0, u32::MAX));
         assert!(!KvStore::<MockFlash>::generation_is_newer(u32::MAX, 0));
+    }
+
+    #[test]
+    fn blob_survives_multiple_mount_replace_cycles() {
+        let mut store = BlobStore::mount(MockFlash::new());
+        for generation in 1..=12u8 {
+            let image = [generation; 41];
+            store.replace(&image).unwrap();
+            store = BlobStore::mount(store.into_flash());
+            let mut recovered = [0; 64];
+            assert_eq!(store.read(&mut recovered), Ok(Some(image.len())));
+            assert_eq!(&recovered[..image.len()], &image);
+            assert_eq!(store.generation(), u32::from(generation));
+        }
+    }
+
+    #[test]
+    fn every_blob_failure_point_preserves_old_or_new_complete_image() {
+        let old = [0x35; 37];
+        let new = [0xA7; 43];
+        let mut baseline = BlobStore::mount(MockFlash::new());
+        baseline.replace(&old).unwrap();
+        let baseline_flash = baseline.into_flash();
+
+        for cutoff in 0..24 {
+            let mut flash = baseline_flash.clone();
+            flash.writes_until_failure = Some(cutoff);
+            let mut store = BlobStore::mount(flash);
+            let _ = store.replace(&new);
+            let mut flash = store.into_flash();
+            flash.writes_until_failure = None;
+            let remounted = BlobStore::mount(flash);
+            let mut recovered = [0; 64];
+            let len = remounted.read(&mut recovered).unwrap().unwrap();
+            assert!(
+                (len == old.len() && recovered[..len] == old)
+                    || (len == new.len() && recovered[..len] == new)
+            );
+        }
     }
 }

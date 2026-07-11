@@ -7,6 +7,8 @@
 #![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
 
+use nobro_storage::{BlobStore, Flash, KvError};
+
 /// Errors a table operation can produce.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DbError {
@@ -16,6 +18,63 @@ pub enum DbError {
     Key,
     /// A persistence image failed structural, checksum, schema, or record validation.
     BadImage,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PersistentDbError<E> {
+    Empty,
+    Database(DbError),
+    Storage(KvError<E>),
+}
+
+/// Transactional persistence adapter for a typed table image.
+///
+/// Callers provide the image scratch buffer so neither serialization nor recovery needs
+/// an allocator. `BlobStore` owns the alternating-page commit protocol; `Table` owns the
+/// stable schema, structural validation, and record decoding.
+pub struct PersistentTable<F: Flash> {
+    store: BlobStore<F>,
+}
+
+impl<F: Flash> PersistentTable<F> {
+    pub fn mount(flash: F) -> Self {
+        Self {
+            store: BlobStore::mount(flash),
+        }
+    }
+
+    pub fn load<V: RecordCodec, const N: usize>(
+        &self,
+        scratch: &mut [u8],
+    ) -> Result<Table<V, N>, PersistentDbError<F::Error>> {
+        let len = self
+            .store
+            .read(scratch)
+            .map_err(PersistentDbError::Storage)?
+            .ok_or(PersistentDbError::Empty)?;
+        Table::from_image(&scratch[..len]).map_err(PersistentDbError::Database)
+    }
+
+    pub fn save<V: RecordCodec, const N: usize>(
+        &mut self,
+        table: &Table<V, N>,
+        scratch: &mut [u8],
+    ) -> Result<(), PersistentDbError<F::Error>> {
+        let len = table
+            .to_image(scratch)
+            .map_err(PersistentDbError::Database)?;
+        self.store
+            .replace(&scratch[..len])
+            .map_err(PersistentDbError::Storage)
+    }
+
+    pub const fn generation(&self) -> u32 {
+        self.store.generation()
+    }
+
+    pub fn into_flash(self) -> F {
+        self.store.into_flash()
+    }
 }
 
 /// Stable persistence contract for one table record.
@@ -274,6 +333,37 @@ impl<V: RecordCodec, const N: usize> Table<V, N> {
 mod tests {
     use super::*;
 
+    #[derive(Clone)]
+    struct TestFlash([[u32; 64]; 2]);
+
+    impl TestFlash {
+        fn new() -> Self {
+            Self([[u32::MAX; 64]; 2])
+        }
+    }
+
+    impl Flash for TestFlash {
+        type Error = ();
+        const WORDS: usize = 64;
+
+        fn erase(&mut self, page: usize) -> Result<(), Self::Error> {
+            self.0[page].fill(u32::MAX);
+            Ok(())
+        }
+
+        fn write_word(&mut self, page: usize, word: usize, value: u32) -> Result<(), Self::Error> {
+            if self.0[page][word] != u32::MAX {
+                return Err(());
+            }
+            self.0[page][word] = value;
+            Ok(())
+        }
+
+        fn read_word(&self, page: usize, word: usize) -> u32 {
+            self.0[page][word]
+        }
+    }
+
     #[derive(Clone, Copy, Default, PartialEq, Debug)]
     struct Reading {
         celsius_milli: i32,
@@ -424,5 +514,35 @@ mod tests {
         let mut too_many = image;
         too_many[16..20].copy_from_slice(&3u32.to_le_bytes());
         assert!(Table::<Reading, 2>::from_image(&too_many[..len]).is_err());
+    }
+
+    #[test]
+    fn typed_table_uses_transactional_blob_across_repeated_mounts() {
+        let mut persisted = PersistentTable::mount(TestFlash::new());
+        let mut image = [0; 128];
+        assert!(matches!(
+            persisted.load::<Reading, 4>(&mut image),
+            Err(PersistentDbError::Empty)
+        ));
+
+        for cycle in 1..=10 {
+            let mut table = persisted
+                .load::<Reading, 4>(&mut image)
+                .unwrap_or_else(|_| Table::new());
+            table
+                .upsert(
+                    1,
+                    Reading {
+                        celsius_milli: cycle * 1000,
+                        ok: true,
+                    },
+                )
+                .unwrap();
+            persisted.save(&table, &mut image).unwrap();
+            persisted = PersistentTable::mount(persisted.into_flash());
+            let recovered = persisted.load::<Reading, 4>(&mut image).unwrap();
+            assert_eq!(recovered.get(1), table.get(1));
+            assert_eq!(persisted.generation(), cycle as u32);
+        }
     }
 }

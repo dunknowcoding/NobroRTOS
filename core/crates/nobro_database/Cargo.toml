@@ -9,6 +9,7 @@ edition.workspace = true
 # byte-image contract nobro_storage uses.
 
 [dependencies]
+nobro-storage = { path = "../nobro_storage" }
 
 [features]
 default = []

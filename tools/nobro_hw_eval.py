@@ -139,6 +139,17 @@ APPS = {
         "fields": COMMON_HEAD + ["spawn_pass", "capacity_pass", "stall_pass",
                                  "rounds_used", "tasks_completed", "checksum"],
     },
+    # Transactional typed-database persistence: the runner resets the target repeatedly
+    # and requires every post-first boot to recover while the boot counter advances.
+    "database": {
+        "package": "db-persist-demo",
+        "bin": {"nosd": "db_persist"},
+        "symbol": "NOBRO_DB_PERSIST_REPORT",
+        "magic": 0x4E444250,
+        "fields": COMMON_HEAD + ["recovered", "boot_count", "rows", "image_len",
+                                 "checksum"],
+        "reset_cycles": 3,
+    },
 }
 PROFILE_FLASH = {"nosd": 0x1000, "s140": 0x26000}
 PROFILE_FEATURES = {"nosd": [], "s140": ["board-nicenano-s140"]}
@@ -416,7 +427,15 @@ def main():
         print(out)
         sys.exit(f"short read: got {len(words)}/{nwords} words (board powered? IMU wired?)")
 
-    fields = dict(zip(meta["fields"], words))
+    reports = [dict(zip(meta["fields"], words))]
+    for _ in range(1, meta.get("reset_cycles", 1)):
+        cycle_words, cycle_out = read_report(jlink, addr, nwords, run_ms)
+        if len(cycle_words) < nwords:
+            print(cycle_out)
+            sys.exit(f"short read after reset: got {len(cycle_words)}/{nwords} words")
+        reports.append(dict(zip(meta["fields"], cycle_words)))
+
+    fields = reports[-1]
     label = f"{args.app} on {args.profile}"
     if meta.get("backends"):
         label += f" (backend={args.backend})"
@@ -424,7 +443,16 @@ def main():
     for name, val in fields.items():
         print(f"  {name:22} = {val} (0x{val:X})")
 
-    ok = fields["magic"] == meta["magic"] and fields["all_pass"] == 1 and fields["completed"] == 1
+    ok = all(report["magic"] == meta["magic"]
+             and report["all_pass"] == 1
+             and report["completed"] == 1
+             for report in reports)
+    if meta.get("reset_cycles"):
+        ok = (ok
+              and all(report["recovered"] == 1 for report in reports[1:])
+              and all(later["boot_count"] > earlier["boot_count"]
+                      for earlier, later in zip(reports, reports[1:])))
+        print("  reset_boot_counts      =", [report["boot_count"] for report in reports])
     print(f"\n{'PASS' if ok else 'FAIL'}: all_pass={fields['all_pass']} "
           f"magic={'ok' if fields['magic'] == meta['magic'] else 'BAD'}")
 
@@ -432,7 +460,8 @@ def main():
         import json
         record = {"app": args.app, "profile": args.profile,
                   "backend": getattr(args, "backend", None),
-                  "ok": ok, "all_pass": fields.get("all_pass"), "fields": fields}
+                  "ok": ok, "all_pass": fields.get("all_pass"), "fields": fields,
+                  "reset_reports": reports if len(reports) > 1 else None}
         os.makedirs(os.path.dirname(os.path.abspath(args.json_out)), exist_ok=True)
         with open(args.json_out, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
