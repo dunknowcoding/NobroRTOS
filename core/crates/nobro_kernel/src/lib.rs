@@ -16,6 +16,7 @@ pub mod eval;
 pub mod event_log;
 pub mod executor;
 pub mod fault_inject;
+pub mod foreign_host;
 pub mod foreign_module;
 pub mod health;
 pub mod hot_reload;
@@ -63,6 +64,9 @@ pub use eval::{
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
 pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
+pub use foreign_host::{
+    ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
+};
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use hot_reload::{

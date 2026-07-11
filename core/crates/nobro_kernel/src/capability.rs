@@ -201,12 +201,16 @@ impl<const N: usize> CapabilityTrace<N> {
             .authorize(input.module, input.capability)
             .map_err(CapabilityTraceError::Unauthorized)?;
 
+        Ok(self.record(input))
+    }
+
+    pub(crate) fn record(&mut self, input: CapabilityTraceInput) -> CapabilityTraceRecord {
         let record = CapabilityTraceRecord::from_input(self.seq, input);
         self.seq = self.seq.wrapping_add(1);
 
         if N == 0 {
             self.dropped = self.dropped.saturating_add(1);
-            return Ok(record);
+            return record;
         }
 
         if self.len == N {
@@ -217,7 +221,7 @@ impl<const N: usize> CapabilityTrace<N> {
 
         self.records[self.next] = Some(record);
         self.next = (self.next + 1) % N;
-        Ok(record)
+        record
     }
 
     pub fn copy_replay(

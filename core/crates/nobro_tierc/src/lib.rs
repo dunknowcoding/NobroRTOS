@@ -29,19 +29,42 @@ use nobro_hal::{
 };
 use nobro_kernel::{
     eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS},
-    kernel_module_spec, AdmissionReport, BootAssembly, Capability, CapabilitySet, Criticality,
-    DeadlineContract, FaultThresholds, ForeignModuleRunner, KernelError, ManifestReport,
-    MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, StartupDependency, SystemProfile,
+    kernel_module_spec, AdmissionReport, BootAssembly, Capability, CapabilitySet,
+    CapabilityTraceOp, Criticality, DeadlineContract, FaultThresholds, ForeignHostCall,
+    ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignModuleRunner, KernelError,
+    ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, StartupDependency,
+    SystemProfile,
 };
 
 // ---- The NobroRTOS C ABI: host services callable from a C (or extern-"C") module ----
 
 static MODULE_GATE: ModuleLaunchGate = ModuleLaunchGate::new();
+static HOST_CONTEXT: ForeignHostContext<32> = ForeignHostContext::new(
+    &MODULE_GATE,
+    ForeignHostQuota::new(100_000, 4 * 1024 * 1024),
+);
+
+fn host_error(error: ForeignHostError) -> i32 {
+    match error {
+        ForeignHostError::NotAdmitted | ForeignHostError::CapabilityDenied => -2,
+        ForeignHostError::QuotaExceeded => -3,
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn nobro_now_us() -> u64 {
-    if MODULE_GATE.allows(Capability::Timebase) {
-        Hal::now_us()
+    let mut now = 0;
+    if HOST_CONTEXT
+        .invoke(
+            ForeignHostCall::new(Capability::Timebase, CapabilityTraceOp::Read, 0),
+            || {
+                now = Hal::now_us();
+                0
+            },
+        )
+        .is_ok()
+    {
+        now
     } else {
         0
     }
@@ -49,16 +72,21 @@ pub extern "C" fn nobro_now_us() -> u64 {
 
 #[no_mangle]
 pub extern "C" fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i32 {
-    if !MODULE_GATE.allows(Capability::Bus0) {
-        return -2;
-    }
     if tx.is_null() {
         return -1;
     }
     let bytes = unsafe { core::slice::from_raw_parts(tx, len as usize) };
-    match Twim0::write_bytes(addr, bytes) {
-        Ok(()) => 0,
-        Err(_) => -1,
+    match HOST_CONTEXT.invoke(
+        ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
+            .args(u32::from(addr), len)
+            .bytes(len),
+        || match Twim0::write_bytes(addr, bytes) {
+            Ok(()) => 0,
+            Err(_) => -1,
+        },
+    ) {
+        Ok(result) => result,
+        Err(error) => host_error(error),
     }
 }
 
@@ -70,17 +98,22 @@ pub extern "C" fn nobro_i2c_write_read(
     rx: *mut u8,
     rx_len: u32,
 ) -> i32 {
-    if !MODULE_GATE.allows(Capability::Bus0) {
-        return -2;
-    }
     if tx.is_null() || rx.is_null() {
         return -1;
     }
     let t = unsafe { core::slice::from_raw_parts(tx, tx_len as usize) };
     let r = unsafe { core::slice::from_raw_parts_mut(rx, rx_len as usize) };
-    match Twim0::write_read(addr, t, r) {
-        Ok(()) => 0,
-        Err(_) => -1,
+    match HOST_CONTEXT.invoke(
+        ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
+            .args(u32::from(addr), tx_len.saturating_add(rx_len))
+            .bytes(tx_len.saturating_add(rx_len)),
+        || match Twim0::write_read(addr, t, r) {
+            Ok(()) => 0,
+            Err(_) => -1,
+        },
+    ) {
+        Ok(result) => result,
+        Err(error) => host_error(error),
     }
 }
 
@@ -100,31 +133,40 @@ pub extern "C" fn nobro_publish_imu(
     gz: i16,
     temp_raw: i16,
 ) {
-    if !MODULE_GATE.allows(Capability::HostReport) {
-        return;
-    }
-    let (axf, ayf, azf) = (
-        ax as f32 / 16_384.0,
-        ay as f32 / 16_384.0,
-        az as f32 / 16_384.0,
+    let _ = HOST_CONTEXT.invoke(
+        ForeignHostCall::new(
+            Capability::HostReport,
+            CapabilityTraceOp::Write,
+            Hal::now_us(),
+        )
+        .args(u32::from(who), u32::from(dev_addr))
+        .bytes(18),
+        || {
+            let (axf, ayf, azf) = (
+                ax as f32 / 16_384.0,
+                ay as f32 / 16_384.0,
+                az as f32 / 16_384.0,
+            );
+            let accel_mg = (libm::sqrtf(axf * axf + ayf * ayf + azf * azf) * 1000.0) as u32;
+            let (gxf, gyf, gzf) = (gx as f32 / 131.0, gy as f32 / 131.0, gz as f32 / 131.0);
+            let gyro_mdps = (libm::sqrtf(gxf * gxf + gyf * gyf + gzf * gzf) * 1000.0) as u32;
+            let tc = temp_raw as f32 / 333.87 + 21.0;
+            let temp_centi = if tc > 0.0 { (tc * 100.0) as u32 } else { 0 };
+            unsafe {
+                READS += 1;
+                NOBRO_IMU_HW_EVAL_REPORT.board_id_tag = 1;
+                NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
+                NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(dev_addr);
+                NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;
+                NOBRO_IMU_HW_EVAL_REPORT.imu_reads = READS;
+                NOBRO_IMU_HW_EVAL_REPORT.imu_errors = 0;
+                NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = accel_mg;
+                NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = gyro_mdps;
+                NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = temp_centi;
+            }
+            0
+        },
     );
-    let accel_mg = (libm::sqrtf(axf * axf + ayf * ayf + azf * azf) * 1000.0) as u32;
-    let (gxf, gyf, gzf) = (gx as f32 / 131.0, gy as f32 / 131.0, gz as f32 / 131.0);
-    let gyro_mdps = (libm::sqrtf(gxf * gxf + gyf * gyf + gzf * gzf) * 1000.0) as u32;
-    let tc = temp_raw as f32 / 333.87 + 21.0;
-    let temp_centi = if tc > 0.0 { (tc * 100.0) as u32 } else { 0 };
-    unsafe {
-        READS += 1;
-        NOBRO_IMU_HW_EVAL_REPORT.board_id_tag = 1;
-        NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
-        NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(dev_addr);
-        NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;
-        NOBRO_IMU_HW_EVAL_REPORT.imu_reads = READS;
-        NOBRO_IMU_HW_EVAL_REPORT.imu_errors = 0;
-        NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = accel_mg;
-        NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = gyro_mdps;
-        NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = temp_centi;
-    }
 }
 
 // ---- Module callbacks (provided by the rust-module crate or the compiled C) ----
@@ -202,6 +244,11 @@ fn main() -> ! {
     let granted = boot.runtime.plan().grants.granted(ModuleId::Sensor);
     let mut foreign = ForeignModuleRunner::new(&MODULE_GATE);
     if foreign.admit(granted).is_err() {
+        idle();
+    }
+    if let Some(granted) = granted {
+        HOST_CONTEXT.admit(ModuleId::Sensor, granted);
+    } else {
         idle();
     }
     if foreign.initialize(|| unsafe { nobro_app_init() }).is_err() {

@@ -175,6 +175,12 @@ Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are
 idempotent at the runtime API boundary.
 
+Foreign C/C++ modules use a narrower enforced boundary. `ForeignModuleRunner`
+owns admission and callback state, while `ForeignHostContext` binds the admitted
+identity to every host operation and combines capability authorization, call/byte
+quota charging, execution, and bounded trace records. The foreign caller cannot
+supply a `ModuleId`; denial or quota exhaustion prevents the protected operation.
+
 ### Memory Discipline
 
 Default rules:

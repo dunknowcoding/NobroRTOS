@@ -565,6 +565,12 @@ admission never reaches `nobro_app_init`, and a negative init or poll result
 revokes all host-service authority before further callbacks are rejected. The
 runtime records init/poll failures as structured module recovery faults before
 entering its fail-closed platform idle path.
+Every exported host service also passes through one dispatcher-owned
+`ForeignHostContext`. The C module cannot provide an identity: the context binds
+the admitted module, checks its capability, charges bounded call/byte usage, and
+records the attempted and completed operation before returning a result. Quota
+exhaustion is reported as a negative host-service result and therefore follows
+the same fail-closed callback recovery path.
 
 ### 3. Link (this is the whole build)
 
