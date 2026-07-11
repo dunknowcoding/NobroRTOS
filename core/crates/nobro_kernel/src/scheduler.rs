@@ -177,6 +177,7 @@ pub fn default_action(err: &KernelError) -> crate::Action {
         KernelError::RadioTxFail => RetryDelay(1000),
         KernelError::SensorReadFail => Ignore,
         KernelError::DeadlineMissed => NotifyUserTask,
+        KernelError::ForeignModuleInitFail | KernelError::ForeignModulePollFail => RebootModule,
     }
 }
 

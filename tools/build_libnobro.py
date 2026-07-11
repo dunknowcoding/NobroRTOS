@@ -5,9 +5,11 @@
             harvest the generated linker scripts (link.x/memory.x/defmt.x) from the
             cargo OUT_DIRs, and stage _work/tierc/ with the canonical C headers +
             a reference module + build.sh/build.cmd one-liners.
-  --check   THE GATE: link bindings/c/examples/imu_module.c against the staged
-            archive with arm-none-eabi-gcc and verify the resulting ELF has the
-            vector table + resolved module symbols. Skips (PASS with a note) when
+  --check   THE GATE: link the reference module and negative init/poll modules
+            against the staged archive with arm-none-eabi-gcc and verify each ELF
+            has the vector table + resolved module symbols. Portable kernel tests
+            execute the corresponding fail-closed callback state transitions.
+            Skips (PASS with a note) when
             arm-none-eabi-gcc or the staged archive is absent, so public clones
             without an Arm toolchain still gate clean.
 
@@ -83,28 +85,46 @@ def check() -> int:
         print(f"SKIP link test: {why}")
         print("RESULT: PASS (skipped)")
         return 0
-    elf = os.path.join(OUT, "tierc_link_test.elf")
-    cmd = ([gcc] + GCC_FLAGS +
-           [os.path.join(OUT, "imu_module.c"), "-I", OUT,
-            "-Wl,--whole-archive", archive, "-Wl,--no-whole-archive",
-            "-T", os.path.join(OUT, "link.x"), "-T", os.path.join(OUT, "defmt.x"),
-            "-nostartfiles", "-lm", "-o", elf])
-    print("+", " ".join(os.path.basename(c) if os.sep in c else c for c in cmd))
-    r = subprocess.run(cmd, cwd=OUT, capture_output=True, text=True)
-    if r.returncode:
-        print(r.stderr[-1500:])
-        print("RESULT: FAIL (link)")
-        return 1
+    negative_sources = {
+        "tierc_init_fail.c": (
+            '#include "nobro_app.h"\n'
+            "int32_t nobro_app_init(void) { return -11; }\n"
+            "int32_t nobro_app_poll(void) { return 0; }\n"
+        ),
+        "tierc_poll_fail.c": (
+            '#include "nobro_app.h"\n'
+            "int32_t nobro_app_init(void) { return 0; }\n"
+            "int32_t nobro_app_poll(void) { return -12; }\n"
+        ),
+    }
+    for name, source in negative_sources.items():
+        with open(os.path.join(OUT, name), "w", newline="\n") as f:
+            f.write(source)
+
     nm = shutil.which("arm-none-eabi-nm") or gcc.replace("gcc", "nm")
-    syms = subprocess.run([nm, elf], capture_output=True, text=True).stdout
-    need = ["Reset", "nobro_app_init", "nobro_app_poll", "NOBRO_IMU_HW_EVAL_REPORT"]
-    missing = [s for s in need if s not in syms]
-    if missing:
-        print("missing symbols:", missing)
-        print("RESULT: FAIL (symbols)")
-        return 1
-    size = os.path.getsize(elf)
-    print(f"linked {os.path.basename(elf)} ({size} bytes); vector table + module symbols resolved")
+    for source in ("imu_module.c", *negative_sources):
+        stem = os.path.splitext(source)[0]
+        elf = os.path.join(OUT, stem + ".elf")
+        cmd = ([gcc] + GCC_FLAGS +
+               [os.path.join(OUT, source), "-I", OUT,
+                "-Wl,--whole-archive", archive, "-Wl,--no-whole-archive",
+                "-T", os.path.join(OUT, "link.x"), "-T", os.path.join(OUT, "defmt.x"),
+                "-nostartfiles", "-lm", "-o", elf])
+        print("+", " ".join(os.path.basename(c) if os.sep in c else c for c in cmd))
+        r = subprocess.run(cmd, cwd=OUT, capture_output=True, text=True)
+        if r.returncode:
+            print(r.stderr[-1500:])
+            print(f"RESULT: FAIL (link {source})")
+            return 1
+        syms = subprocess.run([nm, elf], capture_output=True, text=True).stdout
+        need = ["Reset", "nobro_app_init", "nobro_app_poll", "NOBRO_IMU_HW_EVAL_REPORT"]
+        missing = [s for s in need if s not in syms]
+        if missing:
+            print("missing symbols:", missing)
+            print(f"RESULT: FAIL (symbols {source})")
+            return 1
+        size = os.path.getsize(elf)
+        print(f"linked {os.path.basename(elf)} ({size} bytes); required symbols resolved")
     print("RESULT: PASS")
     return 0
 

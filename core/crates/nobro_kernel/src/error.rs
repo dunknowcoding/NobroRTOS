@@ -7,6 +7,8 @@ pub enum KernelError {
     RadioTxFail,
     SensorReadFail,
     DeadlineMissed,
+    ForeignModuleInitFail,
+    ForeignModulePollFail,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

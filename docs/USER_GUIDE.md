@@ -560,6 +560,12 @@ int32_t nobro_app_poll(void) {
 The kernel admits your module (capabilities, memory budget, deadlines) and drives
 `init`/`poll`; hardware is reachable only through the bounded host services.
 
+The shipped runtime owns callback state through `ForeignModuleRunner`: rejected
+admission never reaches `nobro_app_init`, and a negative init or poll result
+revokes all host-service authority before further callbacks are rejected. The
+runtime records init/poll failures as structured module recovery faults before
+entering its fail-closed platform idle path.
+
 ### 3. Link (this is the whole build)
 
 ```bash

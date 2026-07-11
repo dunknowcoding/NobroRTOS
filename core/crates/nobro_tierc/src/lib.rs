@@ -30,8 +30,8 @@ use nobro_hal::{
 use nobro_kernel::{
     eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS},
     kernel_module_spec, AdmissionReport, BootAssembly, Capability, CapabilitySet, Criticality,
-    DeadlineContract, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate,
-    ModuleSpec, StartupDependency, SystemProfile,
+    DeadlineContract, FaultThresholds, ForeignModuleRunner, KernelError, ManifestReport,
+    MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, StartupDependency, SystemProfile,
 };
 
 // ---- The NobroRTOS C ABI: host services callable from a C (or extern-"C") module ----
@@ -151,7 +151,7 @@ fn idle() -> ! {
     }
 }
 
-fn admit() -> bool {
+fn admit() -> Option<CDemoBoot> {
     let specs = [
         kernel_module_spec(
             MemoryBudget::new(24 * 1024, 8 * 1024, 4),
@@ -172,25 +172,16 @@ fn admit() -> bool {
     // System budget the admitted modules must fit within (flash, RAM, pool slots,
     // max modules). Generous for the kernel + one sensor module.
     let profile = SystemProfile::new(192 * 1024, 64 * 1024, 8, 4);
-    let (reports, granted) =
-        match CDemoBoot::build_with_failure(&specs, &deps, profile, FaultThresholds::DEFAULT, 0) {
-            Ok(boot) => {
-                let granted = boot.runtime.plan().grants.granted(ModuleId::Sensor);
-                (boot.reports(), granted)
-            }
-            Err(failure) => (failure.reports(), None),
-        };
+    let result = CDemoBoot::build_with_failure(&specs, &deps, profile, FaultThresholds::DEFAULT, 0);
+    let reports = match &result {
+        Ok(boot) => boot.reports(),
+        Err(failure) => failure.reports(),
+    };
     unsafe {
         NOBRO_MANIFEST_REPORT = reports.manifest;
         NOBRO_ADMISSION_REPORT = reports.admission;
     }
-    if let Some(granted) = granted {
-        MODULE_GATE.install(granted);
-        true
-    } else {
-        MODULE_GATE.revoke();
-        false
-    }
+    result.ok()
 }
 
 #[cortex_m_rt::entry]
@@ -207,17 +198,27 @@ fn main() -> ! {
         NOBRO_IMU_HW_EVAL_REPORT.version = IMU_HW_EVAL_VERSION;
     }
 
-    if !admit() {
+    let Some(mut boot) = admit() else { idle() };
+    let granted = boot.runtime.plan().grants.granted(ModuleId::Sensor);
+    let mut foreign = ForeignModuleRunner::new(&MODULE_GATE);
+    if foreign.admit(granted).is_err() {
         idle();
     }
-
-    if unsafe { nobro_app_init() } < 0 {
-        MODULE_GATE.revoke();
+    if foreign.initialize(|| unsafe { nobro_app_init() }).is_err() {
+        let _ = boot.runtime.record_error(
+            ModuleId::Sensor,
+            KernelError::ForeignModuleInitFail,
+            Hal::now_us(),
+        );
         idle();
     }
     loop {
-        if unsafe { nobro_app_poll() } < 0 {
-            MODULE_GATE.revoke();
+        if foreign.poll(|| unsafe { nobro_app_poll() }).is_err() {
+            let _ = boot.runtime.record_error(
+                ModuleId::Sensor,
+                KernelError::ForeignModulePollFail,
+                Hal::now_us(),
+            );
             idle();
         }
         if unsafe { READS } >= MIN_IMU_HW_READS {

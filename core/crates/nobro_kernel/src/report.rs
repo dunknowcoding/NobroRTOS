@@ -614,6 +614,8 @@ pub const fn error_code(error: KernelError) -> u32 {
         KernelError::RadioTxFail => 3,
         KernelError::SensorReadFail => 4,
         KernelError::DeadlineMissed => 5,
+        KernelError::ForeignModuleInitFail => 6,
+        KernelError::ForeignModulePollFail => 7,
     }
 }
 

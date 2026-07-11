@@ -117,6 +117,12 @@ int32_t nobro_app_poll(void) {                 /* kernel calls every cycle */
 }
 ```
 
+Callback dispatch is fail-closed. Admission denial prevents both callbacks;
+negative `nobro_app_init` or `nobro_app_poll` results revoke the module's host
+capabilities and prevent subsequent polls. The Tier-C packaging gate links both
+negative callback objects with the shipped archive, while portable kernel tests
+execute and verify the denial/failure state transitions.
+
 The NobroRTOS app provides the `extern "C"` host services, admits the module through
 `BootAssembly`, and drives the callbacks. Because the ABI is plain `extern "C"`, the
 module object can come from any toolchain. `core/apps/c_abi_demo` builds it two ways
