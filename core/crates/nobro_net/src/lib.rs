@@ -1700,7 +1700,10 @@ mod wireless_tests {
     fn arbitrary_wire_inputs_are_bounded_and_never_panic() {
         let mut state = 0xA5A5_1234u32;
         let key = [0x5A; 16];
-        for case in 0..4096usize {
+        // The persistent libFuzzer target supplies the large campaign. Miri's
+        // interpreter still exercises every decoder path, but at a bounded CI cost.
+        let cases = if cfg!(miri) { 64 } else { 4096 };
+        for case in 0..cases {
             let len = case % 65;
             let mut bytes = [0u8; 64];
             for byte in &mut bytes[..len] {

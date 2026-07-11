@@ -22,7 +22,7 @@ gate() {
 }
 
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/_work/ct-ci}"
-HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
+HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')}"
 export HOST_TARGET
 
 gate "host tests (portable crates)" \

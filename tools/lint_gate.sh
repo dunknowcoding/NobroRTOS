@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")/../core" || exit 1
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/../_work/ct-lint}"
-HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
+HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')}"
 
 out=$(cargo clippy --no-deps -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto -p nobro-ml \
     -p nobro-sensor -p nobro-power -p nobro-control -p nobro-conformance -p nobro-hal -p nobro-classic \

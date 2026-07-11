@@ -60,7 +60,7 @@ def run(name, cmd, cwd=ROOT, env=None, quiet=False):
     return {"name": name, "ok": ok, "detail": tail}
 
 
-def gate_specs(quick, rust_only=False):
+def gate_specs(quick, rust_only=False, extended=False):
     """Return the ordered gate list as (name, cmd, cwd) tuples. Single source of truth
     shared by the CLI summary here and the `nobro verify` Evidence Pack."""
     py = sys.executable
@@ -77,6 +77,21 @@ def gate_specs(quick, rust_only=False):
         lint += ["--", "-D", "warnings"]
         specs.append(("cargo clippy", lint, CORE))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
+        specs.append(("dependency source/license policy", [py, "tools/check_dependency_policy.py"], ROOT))
+        specs.append(("fuzz harnesses + corpora", [py, "tools/check_fuzz_targets.py"], ROOT))
+        if extended:
+            specs += [
+                ("cargo advisory audit", ["cargo", "audit"], CORE),
+                ("Rust coverage", ["cargo", "llvm-cov", "--target", host_target(),
+                 "-p", "nobro-kernel", "-p", "nobro-net", "-p", "nobro-secure",
+                 "-p", "nobro-storage", "-p", "nobro-database", "-p", "nobro-power",
+                 "-p", "nobro-sal", "--lcov", "--output-path",
+                 os.path.join(ROOT, "_work", "coverage.lcov")], CORE),
+                ("Miri portable safety", ["cargo", "+nightly", "miri", "test",
+                 "--target", host_target(),
+                 "-p", "nobro-database", "-p", "nobro-storage", "-p", "nobro-net",
+                 "-p", "nobro-secure"], CORE),
+            ]
     if rust_only:
         return specs
     specs += [
@@ -86,6 +101,7 @@ def gate_specs(quick, rust_only=False):
         ("board profiles", [py, "tools/check_board_profiles.py"], ROOT),
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
         ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
+        ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("web flasher", [py, "tools/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),
         ("tutorials", [py, "tools/tutorial_runner.py"], ROOT),
@@ -103,15 +119,25 @@ def gate_specs(quick, rust_only=False):
         ("udi surface", [py, "tools/check_udi.py", "--selftest"], ROOT),
         ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
     ]
+    if extended:
+        specs += [
+            ("cross-MCU matrix", ["bash", "tools/ci_matrix.sh"], ROOT),
+            ("fuzz wire smoke", ["cargo", "+nightly", "fuzz", "run", "wire_inputs", "--",
+             "-max_total_time=10"], CORE),
+            ("fuzz database smoke", ["cargo", "+nightly", "fuzz", "run", "database_images", "--",
+             "-max_total_time=10"], CORE),
+            ("fuzz control smoke", ["cargo", "+nightly", "fuzz", "run", "control_state", "--",
+             "-max_total_time=10"], CORE),
+        ]
     return specs
 
 
-def run_gates(quick=False, quiet=False, rust_only=False):
+def run_gates(quick=False, quiet=False, rust_only=False, extended=False):
     """Run every gate; return (results, all_ok). Results are dicts (name/ok/detail)."""
     env = dict(os.environ)
     env["CARGO_TARGET_DIR"] = os.path.join(ROOT, "_work", "ct2")
     results = [run(name, cmd, cwd=cwd, env=env, quiet=quiet)
-               for name, cmd, cwd in gate_specs(quick, rust_only=rust_only)]
+               for name, cmd, cwd in gate_specs(quick, rust_only=rust_only, extended=extended)]
     all_ok = all(r["ok"] for r in results)
     return results, all_ok
 
@@ -123,9 +149,13 @@ def main():
                     help="skip Evidence Pack emission even when all gates pass")
     ap.add_argument("--rust-only", action="store_true",
                     help="run the comprehensive portable Rust test/lint/format gates only")
+    ap.add_argument("--extended", action="store_true",
+                    help="also require audit, coverage, Miri, fuzz smoke, and cross-MCU gates")
     args = ap.parse_args()
 
-    results, all_ok = run_gates(quick=args.quick, rust_only=args.rust_only)
+    results, all_ok = run_gates(
+        quick=args.quick, rust_only=args.rust_only, extended=args.extended
+    )
 
     print("\n=== SUMMARY ===")
     for r in results:

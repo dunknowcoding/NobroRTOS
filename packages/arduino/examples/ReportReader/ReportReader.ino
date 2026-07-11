@@ -8,6 +8,7 @@
 //
 // It runs on ANY Arduino board (architectures=*): open the Serial Monitor at 115200.
 #include <NobroRTOS.h>
+#include <stdio.h>
 
 // A miniature report in the standard shape: magic, version, completed, all_pass,
 // payload words..., checksum-of-everything-before-it.

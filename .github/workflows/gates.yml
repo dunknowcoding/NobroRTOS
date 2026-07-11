@@ -55,3 +55,81 @@ jobs:
           targets: thumbv7em-none-eabihf
       - name: comprehensive Rust gates
         run: python tools/run_checks.py --rust-only --no-evidence
+
+  supply-chain-and-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-llvm-cov
+      - name: locked source and license policy
+        run: python tools/check_dependency_policy.py
+      - name: advisory database audit
+        working-directory: core
+        run: cargo audit
+      - name: portable coverage
+        working-directory: core
+        run: >-
+          cargo llvm-cov -p nobro-kernel -p nobro-net -p nobro-secure
+          -p nobro-storage -p nobro-database -p nobro-power -p nobro-sal
+          --target x86_64-unknown-linux-gnu --lcov --output-path ../coverage.lcov
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: coverage.lcov
+
+  miri-fuzz-sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri,rust-src
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Miri portable safety boundary
+        working-directory: core
+        run: >-
+          cargo miri test --target x86_64-unknown-linux-gnu
+          -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure
+      - name: persistent fuzz corpus smoke
+        working-directory: core
+        run: |
+          cargo fuzz run wire_inputs -- -max_total_time=15
+          cargo fuzz run database_images -- -max_total_time=15
+          cargo fuzz run control_state -- -max_total_time=15
+      - name: address sanitizer smoke
+        working-directory: core
+        env:
+          RUSTFLAGS: -Zsanitizer=address
+        run: >-
+          cargo test -Zbuild-std --target x86_64-unknown-linux-gnu
+          -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure
+
+  cross-mcu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
+      - name: full reproducible cross-MCU matrix
+        run: bash tools/ci_matrix.sh
+
+  arduino-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: install representative cores
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli core install arduino:renesas_uno
+      - name: compile public package examples
+        env:
+          NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi
+        run: python tools/check_arduino_compile.py

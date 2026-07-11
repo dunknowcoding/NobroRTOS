@@ -10,6 +10,7 @@ edition.workspace = true
 [dependencies]
 usb-device = "0.3"
 usbd-serial = "0.2"
+portable-atomic = "1"
 nrf-usbd = { path = "../../vendor/nrf-usbd", optional = true }
 cortex-m = { version = "0.7", optional = true }
 

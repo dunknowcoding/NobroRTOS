@@ -79,6 +79,7 @@ members = [
     "apps/kernel_wcet_demo",
     "apps/async_exec_demo",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.2.0"

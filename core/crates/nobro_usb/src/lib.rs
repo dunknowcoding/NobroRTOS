@@ -18,7 +18,7 @@
 //! ```
 #![no_std]
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, Ordering};
 
 #[cfg(not(any(
     feature = "backend-nrf-usbd",
