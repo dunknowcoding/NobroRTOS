@@ -113,6 +113,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
         ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
+        ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),

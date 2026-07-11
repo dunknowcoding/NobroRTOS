@@ -59,7 +59,7 @@ APPS = {
     },
     "sal": {
         "package": "sal-adapter-demo",
-        "bin": {"nosd": "sal_adapter_demo"},
+        "bin": {"nosd": "sal_adapter_demo", "s140": "sal_adapter_demo"},
         "symbol": "NOBRO_SAL_EVAL_REPORT",
         "magic": 0x4E424E32,
         "fields": COMMON_HEAD + ["servo_steps", "servo_readback_ok", "imu_samples",
@@ -67,7 +67,7 @@ APPS = {
     },
     "eh": {  # IMU read through the embedded-hal I2c trait (driver-compat proof)
         "package": "eh-imu-demo",
-        "bin": {"nosd": "eh_imu_demo"},
+        "bin": {"nosd": "eh_imu_demo", "s140": "eh_imu_demo"},
         "symbol": "NOBRO_IMU_HW_EVAL_REPORT",
         "magic": 0x4E424E33,
         "fields": COMMON_HEAD + ["board_id_tag", "who_am_i", "dev_addr", "i2c_devices",
@@ -76,7 +76,7 @@ APPS = {
     },
     "sched": {
         "package": "resource-sched-demo",
-        "bin": {"nosd": "resource_sched_demo"},
+        "bin": {"nosd": "resource_sched_demo", "s140": "resource_sched_demo"},
         "symbol": "NOBRO_EVAL_REPORT",
         "magic": 0x4E424E31,
         "fields": COMMON_HEAD + ["scene_a_pass", "scene_a_max_jitter_us", "scene_a_ticks",
@@ -133,7 +133,7 @@ APPS = {
     # Bounded async executor HW proof: same checks as host unit tests, no HAL.
     "async": {
         "package": "async-exec-demo",
-        "bin": {"nosd": "async_exec_demo"},
+        "bin": {"nosd": "async_exec_demo", "s140": "async_exec_demo"},
         "symbol": "NOBRO_ASYNC_EXEC_REPORT",
         "magic": 0x4E424153,
         "fields": COMMON_HEAD + ["spawn_pass", "capacity_pass", "stall_pass",
@@ -143,7 +143,7 @@ APPS = {
     # and requires every post-first boot to recover while the boot counter advances.
     "database": {
         "package": "db-persist-demo",
-        "bin": {"nosd": "db_persist"},
+        "bin": {"nosd": "db_persist", "s140": "db_persist"},
         "symbol": "NOBRO_DB_PERSIST_REPORT",
         "magic": 0x4E444250,
         "fields": COMMON_HEAD + ["recovered", "boot_count", "rows", "image_len",
@@ -188,7 +188,7 @@ def tool(binbase, name):
 
 
 def find_jlink(explicit):
-    """Locate the J-Link CLI from an explicit argument, PATH, or standard Unix locations."""
+    """Locate the J-Link CLI from an explicit argument, PATH, or standard locations."""
     if explicit:
         return explicit
     patterns = [
@@ -196,6 +196,11 @@ def find_jlink(explicit):
         "/opt/SEGGER/JLink/JLinkExe",
         "/Applications/SEGGER/JLink*/JLinkExe",
     ]
+    if os.name == "nt":
+        for root_name in ("ProgramFiles", "ProgramFiles(x86)"):
+            root = os.environ.get(root_name)
+            if root:
+                patterns.append(os.path.join(root, "SEGGER", "JLink*", "JLink.exe"))
     for pat in patterns:
         hits = sorted(glob.glob(pat))
         if hits:
@@ -347,6 +352,9 @@ def main():
                          "both nosd @0x1000 and s140 @0x26000). uf2: drag-and-drop over "
                          "the DFU drive (also updates bootloader settings; needs the "
                          "board in DFU or a J-Link to enter it).")
+    ap.add_argument("--launch", choices=["reset", "vector"], default="reset",
+                    help="reset: let the installed boot chain launch the image; vector: "
+                         "after J-Link load, set VTOR/MSP/PC directly (evaluation only)")
     args = ap.parse_args()
 
     meta = APPS[args.app]
@@ -407,14 +415,25 @@ def main():
             sys.exit("no UF2 DFU drive found (double-tap reset, or check the board)")
         drive = drives[0][0]
         print(f"copying {os.path.basename(uf2path)} -> {drive}")
-        shutil.copy(uf2path, drive)
+        # UF2 volumes commonly eject immediately after the final byte. copyfile avoids
+        # the post-copy metadata update performed by shutil.copy, which races that eject.
+        shutil.copyfile(uf2path, os.path.join(drive, os.path.basename(uf2path)))
         time.sleep(args.run_secs + 4)  # bootloader flashes, resets, app runs
         words, out = read_report(jlink, addr, nwords, run_ms)
     else:  # jlink: bootloader-safe loadbin of the flash-only image
         binpath = os.path.join(WORK, f"{binname}.bin")
         with open(binpath, "wb") as f:
             f.write(img)
-        out = jlink_script(jlink, f"loadbin {binpath},0x{base:X}\nr\ng\n"
+        if args.launch == "vector":
+            initial_sp, reset_pc = struct.unpack_from("<II", img)
+            if not (0x2000_0000 <= initial_sp <= 0x2004_0000
+                    and base <= (reset_pc & ~1) < base + len(img)):
+                sys.exit("invalid application vectors; refusing direct launch")
+            launch = (f"r\nh\nw4 0xE000ED08 0x{base:X}\n"
+                      f"wreg MSP, 0x{initial_sp:X}\nsetpc 0x{reset_pc:X}\ng")
+        else:
+            launch = "r\ng"
+        out = jlink_script(jlink, f"loadbin {binpath},0x{base:X}\n{launch}\n"
                                   f"sleep {run_ms}\nh\nmem32 0x{addr:08X},{nwords:X}")
         words = []
         for line in out.splitlines():
@@ -429,7 +448,18 @@ def main():
 
     reports = [dict(zip(meta["fields"], words))]
     for _ in range(1, meta.get("reset_cycles", 1)):
-        cycle_words, cycle_out = read_report(jlink, addr, nwords, run_ms)
+        if args.flash == "jlink" and args.launch == "vector":
+            cycle_out = jlink_script(
+                jlink, f"{launch}\nsleep {run_ms}\nh\nmem32 0x{addr:08X},{nwords:X}"
+            )
+            cycle_words = []
+            for line in cycle_out.splitlines():
+                match = re.match(r"\s*[0-9A-Fa-f]{8}\s*=\s*(.+)", line)
+                if match:
+                    cycle_words += [int(word, 16) for word in match.group(1).split()]
+            cycle_words = cycle_words[:nwords]
+        else:
+            cycle_words, cycle_out = read_report(jlink, addr, nwords, run_ms)
         if len(cycle_words) < nwords:
             print(cycle_out)
             sys.exit(f"short read after reset: got {len(cycle_words)}/{nwords} words")

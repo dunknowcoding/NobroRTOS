@@ -10,7 +10,6 @@ edition.workspace = true
 [[bin]]
 name = "eh_imu_demo"
 path = "src/main.rs"
-required-features = ["board-promicro-nosd"]
 
 [dependencies]
 nobro-eh-i2c = { path = "../../adapters/embedded-hal-i2c", default-features = false }
