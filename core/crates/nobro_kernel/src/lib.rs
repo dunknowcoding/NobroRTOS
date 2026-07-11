@@ -6,6 +6,7 @@
 extern crate std;
 
 pub mod admission;
+pub mod admission_analysis;
 pub mod alarm;
 pub mod async_exec;
 pub mod async_rt;
@@ -50,6 +51,7 @@ pub use admission::{
     AdmissionController, AdmissionError, AdmissionPlan, AdmissionReport, ADMISSION_REPORT_MAGIC,
     ADMISSION_REPORT_VERSION,
 };
+pub use admission_analysis::{AdmissionAnalysis, ModuleCost, ShedError, ShedPlan};
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
 pub use async_rt::{
