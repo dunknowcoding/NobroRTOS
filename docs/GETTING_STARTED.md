@@ -131,6 +131,28 @@ so nothing you learned here is thrown away.
 
 ## Toolchains and IDEs
 
+### One project command
+
+The SDK project flow keeps generated work under ignored `_work/projects/` by default:
+
+```bash
+python sdk/cli/nobro.py project new rover
+python sdk/cli/nobro.py project run _work/projects/rover
+python sdk/cli/nobro.py project report _work/projects/rover/reports/simulation.json
+```
+
+`run` explains the graph-derived contract and admission headroom, compiles a real
+host graph regenerated from the same `workload.json`, runs the bounded simulation,
+and decodes its report. To bring an existing task graph across, use
+`project import --from embassy ...` or
+`--from freertos ...`; the generated migration report points to async, global
+interrupt/DMA, allocation, and platform assumptions line by line. Imported budgets
+are placeholders that must be reviewed before hardware use.
+
+`project run --mode hardware --app <eval-app>` invokes the state-restoring HIL path.
+It evaluates the selected repository firmware app and does not pretend the host
+scaffold binary is directly flashable.
+
 NobroRTOS is not tied to the Arduino IDE or VS Code. The core builds from a terminal on
 Linux, macOS, or Windows with Rust, Python, the selected target support, and any external
 flash utility required by that target.

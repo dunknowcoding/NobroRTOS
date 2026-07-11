@@ -69,6 +69,19 @@ touching hardware. For a configured nRF deep-HAL target, `python tools/nobro_hw_
 imu` performs build, flash, report readback, and grading; it is not a generic command for
 every advertised compile target.
 
+Create and run a graph-declared application without hand-writing the expanded
+manifest, startup, capability, quota, and executor inputs:
+
+```bash
+python sdk/cli/nobro.py project new rover
+python sdk/cli/nobro.py project run _work/projects/rover
+```
+
+The project command prints the derived contract and marginal costs, compiles the
+graph scaffold, simulates it, and decodes the resulting report. It can also import
+and line-attribute Embassy or FreeRTOS task graphs; hardware mode delegates to the
+state-restoring HIL evaluator and is explicit about which repository app it flashes.
+
 ## Who It's For
 
 | You are a&hellip; | NobroRTOS gives you |

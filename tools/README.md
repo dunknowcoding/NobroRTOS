@@ -12,6 +12,7 @@ Every file here has one job. Users normally drive these through the SDK command
 | `fleet_evidence.py` | fold software/OTA/hardware/replay evidence → fleet verdict |
 | `ci_matrix.sh` | extended Rust build matrix (host tests, portability, ports) |
 | `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
+| `nobro_project.py` | create/import/explain/build/simulate/flash/report project flow |
 
 ## Gates (each also runs standalone)
 

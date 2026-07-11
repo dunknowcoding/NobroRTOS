@@ -398,6 +398,21 @@ toolchains are ignored by Git.
 
 ## Declarative apps (the app.json generator)
 
+For the newer graph-oriented flow, use the SDK project command:
+
+```bash
+python sdk/cli/nobro.py project new rover
+python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
+python sdk/cli/nobro.py project build _work/projects/rover
+python sdk/cli/nobro.py project simulate _work/projects/rover
+```
+
+The concise `workload.json` task/channel graph regenerates the build input and is
+expanded into the same low-level contract the kernel admits. `project import` scans
+Embassy or FreeRTOS sources and generates an
+ignored scaffold plus a line-attributed adaptation report; it never silently guesses
+production budgets. `project run` combines explain, build, simulate, and report decode.
+
 `gen-app` turns a declarative module spec into a **buildable NobroRTOS firmware app**.
 You describe the module (criticality + memory budget); the generator emits a workspace
 crate whose `main.rs` assembles the manifest via `BootAssembly`, admits it, and exports

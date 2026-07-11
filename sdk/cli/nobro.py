@@ -14,6 +14,7 @@
 | sign     | measure + sign a firmware image               | tools/sign_firmware.py |
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
 | contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
+| project  | create/import/explain/build/run/report apps   | tools/nobro_project.py |
 
 Each command accepts its underlying tool's flags unchanged - `nobro eval --help`
 shows exactly what `tools/nobro_hw_eval.py --help` shows. The mapping is data, so
@@ -36,6 +37,7 @@ COMMANDS = {
     "budget": "static_budget.py",
     "sign": "sign_firmware.py",
     "contract": "nobro_contract_tool.py",
+    "project": "nobro_project.py",
 }
 PACKAGE_KINDS = {
     "arduino": "package_arduino.py",

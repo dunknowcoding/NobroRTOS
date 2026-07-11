@@ -6,8 +6,8 @@ this folder is the *product*.
 
 ```
 sdk/
-├── cli/nobro.py        the SDK command (app · eval · flash · verify · fleet ·
-│                       budget · sign · package · contract)
+├── cli/nobro.py        the SDK command (project · app · eval · flash · verify ·
+│                       fleet · budget · sign · package · contract)
 ├── include/            the C ABI headers, drift-gated copies of the canonical
 │                       bindings/c/include (regenerate: nobro package arduino --sync)
 ├── firmware/           prebuilt, committed firmware images
@@ -23,11 +23,19 @@ sdk/
 python sdk/cli/nobro.py verify            # every software gate -> Evidence Pack
 python sdk/cli/nobro.py eval imu          # build+flash+run+grade on hardware
 python sdk/cli/nobro.py app my-app.json   # validate a declarative app
+python sdk/cli/nobro.py project new rover # buildable graph scaffold under _work
+python sdk/cli/nobro.py project run _work/projects/rover
 python sdk/cli/nobro.py package arduino --zip
 ```
 
 Every subcommand forwards to a stable tool under `tools/` and accepts that tool's
 flags unchanged (`nobro eval --help` = the real help).
+
+`project` is the end-to-end application path: create or import an Embassy/FreeRTOS
+task graph, explain the derived admission contract and marginal costs, compile the
+graph regenerated from the same workload, simulate it, decode its report, or invoke
+the state-restoring HIL evaluator. Hardware mode clearly evaluates a selected
+repository firmware app; it does not claim that the host scaffold itself is flashable.
 
 ## What consumes what
 

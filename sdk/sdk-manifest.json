@@ -12,7 +12,8 @@
     "bindings/cpp/include"
   ],
   "host_tools": [
-    "tools/nobro_contract_tool.py"
+    "tools/nobro_contract_tool.py",
+    "tools/nobro_project.py"
   ],
   "python_package": "bindings/python",
   "package_surfaces": {
