@@ -26,7 +26,9 @@ pub mod lifecycle;
 pub mod lifecycle_hooks;
 pub mod mailbox;
 pub mod manifest;
+pub mod module_ctx;
 pub mod module_runtime;
+pub mod objects;
 pub mod pool;
 pub mod quota;
 pub mod recovery;
@@ -82,12 +84,14 @@ pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHoo
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,
-    DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec, SystemBudget,
-    SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC, MANIFEST_REPORT_VERSION,
+    DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec, ObjectQuota,
+    SystemBudget, SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC, MANIFEST_REPORT_VERSION,
 };
+pub use module_ctx::ModuleCtx;
 pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
+pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
@@ -106,8 +110,16 @@ pub use report::{
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
 pub use runtime::{
-    AlarmDispatch, DegradeApplication, RecoveryPlanning, Runtime, RuntimeError, WatchdogSweep,
+    AlarmDispatch, CapacityError, DegradeApplication, RecoveryPlanning, Runtime, RuntimeCapacities,
+    RuntimeError, WatchdogSweep,
 };
+
+/// Preset runtime capacity profiles — coherent by construction, so users pick a
+/// size instead of juggling seven const generics. Custom instantiations are
+/// still validated when the runtime is assembled.
+pub type SmallRuntime = Runtime<4, 4, 8, 4, 8, 4, 16>;
+pub type StandardRuntime = Runtime<8, 8, 16, 8, 16, 8, 32>;
+pub type LargeRuntime = Runtime<16, 16, 32, 16, 32, 16, 64>;
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use startup::{

@@ -33,6 +33,9 @@ class Capability(IntEnum):
     HOST_REPORT = 10
     AI_INFERENCE = 11
     AI_ENDPOINT = 12
+    MAILBOX = 13
+    ALARM = 14
+    KV_STORE = 15
 
     @property
     def bit(self) -> int:

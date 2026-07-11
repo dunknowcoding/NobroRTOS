@@ -30,7 +30,7 @@ MODULE_NAMES = {0: "kernel", 1: "hal", 2: "bus", 3: "radio", 4: "sensor",
 CAPABILITY_NAMES = {0: "timebase", 1: "deadline_timer", 2: "event_capture", 3: "bus0",
                     4: "bus1", 5: "radio", 6: "servo_pwm", 7: "stream", 8: "crypto",
                     9: "sample_pool", 10: "host_report", 11: "ai_inference",
-                    12: "ai_endpoint"}
+                    12: "ai_endpoint", 13: "mailbox", 14: "alarm", 15: "kv_store"}
 APP_FLAG = 0x80
 
 RECORD_FMT = "<IQBBBxIII"

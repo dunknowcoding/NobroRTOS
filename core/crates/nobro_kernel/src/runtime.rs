@@ -2,17 +2,44 @@
 
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
-    Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
-    DependencyImpact, EventLogReport, EventSeverity, FaultThresholdError, FaultThresholds,
-    HealthReport, HotReloadError, HotReloadOutcome, HotReloadPlan, KernelError, KvError, KvKey,
-    KvStore, KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind, ModuleHookError,
-    ModuleId, ModuleLifecycleHooks, ModuleReloadHooks, ModuleReloadRequest, ModuleRunState,
-    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
-    RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport, RuntimeReportInput,
-    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
-    WatchdogEntry, WatchdogError,
+    Capability, CapabilityGrantError, CapabilityReplayScope, CapabilityTrace, CapabilityTraceInput,
+    CapabilityTraceOp, CapabilityTraceRecord, DegradeApplicationReport, DegradeDecision,
+    DegradeReason, DependencyImpact, EventLogReport, EventSeverity, FaultThresholdError,
+    FaultThresholds, HealthReport, HotReloadError, HotReloadOutcome, HotReloadPlan, KernelError,
+    KvError, KvKey, KvStore, KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind,
+    ModuleHookError, ModuleId, ModuleLifecycleHooks, ModuleReloadHooks, ModuleReloadRequest,
+    ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
+    ModuleRuntimeReport, ObjectKind, ObjectLedger, ObjectQuota, ObjectQuotaError, ObjectUsage,
+    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan,
+    RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport,
+    RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
+    SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
+
+/// Capacities a `Runtime` instantiation was compiled with, and the coherence
+/// failure reported when they cannot serve the admitted module set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeCapacities {
+    pub startup: usize,
+    pub quotas: usize,
+    pub mailbox: usize,
+    pub alarms: usize,
+    pub kv: usize,
+    pub health: usize,
+    pub log: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapacityError {
+    /// A per-module table is smaller than the admitted module count, so some
+    /// module would silently lack quota/health/object tracking.
+    ModuleTablesTooSmall {
+        modules: usize,
+        capacities: RuntimeCapacities,
+    },
+    /// A shared queue was compiled with zero capacity.
+    EmptyQueue { capacities: RuntimeCapacities },
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeError {
@@ -26,10 +53,28 @@ pub enum RuntimeError {
     FaultThreshold(FaultThresholdError),
     ModuleHook(ModuleHookError),
     RecoveryNotActive(ModuleId),
+    KvOwnedByOther { key: KvKey, owner: ModuleId },
+    AlarmOwnedByOther { id: AlarmId, owner: ModuleId },
+    PoolExhausted,
+    PoolStaleHandle,
     Quota(QuotaError),
+    Object(ObjectQuotaError),
+    Capacity(CapacityError),
     Recovery(RecoveryError),
     RecoveryPlan(RecoveryPlanError),
     Watchdog(WatchdogError),
+}
+
+impl From<ObjectQuotaError> for RuntimeError {
+    fn from(error: ObjectQuotaError) -> Self {
+        Self::Object(error)
+    }
+}
+
+impl From<CapacityError> for RuntimeError {
+    fn from(error: CapacityError) -> Self {
+        Self::Capacity(error)
+    }
 }
 
 impl From<AdmissionError> for RuntimeError {
@@ -215,9 +260,12 @@ pub struct Runtime<
     mailbox: Mailbox<MAILBOX>,
     alarms: AlarmQueue<ALARMS>,
     kv: KvStore<KV>,
+    kv_owners: [Option<(KvKey, ModuleId)>; KV],
     recovery: RecoveryCoordinator<HEALTH, LOG>,
     watchdog: Watchdog<HEALTH>,
     modules: ModuleRuntimeGuard<QUOTAS>,
+    objects: ObjectLedger<QUOTAS>,
+    trace: CapabilityTrace<LOG>,
     degrade: DegradeApplication,
 }
 
@@ -231,20 +279,58 @@ impl<
         const LOG: usize,
     > Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
 {
+    /// The capacities this instantiation was compiled with.
+    pub const fn capacities() -> RuntimeCapacities {
+        RuntimeCapacities {
+            startup: STARTUP,
+            quotas: QUOTAS,
+            mailbox: MAILBOX,
+            alarms: ALARMS,
+            kv: KV,
+            health: HEALTH,
+            log: LOG,
+        }
+    }
+
+    /// One coherence check over the const-generic capacities, run before any
+    /// runtime is assembled: every admitted module needs a startup, quota,
+    /// object, and health slot, and the shared queues must be non-empty.
+    fn validate_capacities(modules: usize) -> Result<(), CapacityError> {
+        let capacities = Self::capacities();
+        if modules > QUOTAS || modules > HEALTH || modules > STARTUP {
+            return Err(CapacityError::ModuleTablesTooSmall {
+                modules,
+                capacities,
+            });
+        }
+        if MAILBOX == 0 || ALARMS == 0 || KV == 0 || LOG == 0 {
+            return Err(CapacityError::EmptyQueue { capacities });
+        }
+        Ok(())
+    }
+
     pub fn from_plan(
         plan: AdmissionPlan<STARTUP, QUOTAS>,
         thresholds: FaultThresholds,
     ) -> Result<Self, RuntimeError> {
         thresholds.validate()?;
+        Self::validate_capacities(plan.module_count())?;
         let modules = ModuleRuntimeGuard::try_from_startup_plan(&plan.startup)?;
+        let mut objects = ObjectLedger::new();
+        for module in plan.startup.order.iter().flatten() {
+            objects.register(*module, ObjectQuota::DEFAULT);
+        }
         Ok(Self {
             plan,
             mailbox: Mailbox::new(),
             alarms: AlarmQueue::new(),
             kv: KvStore::new(),
+            kv_owners: [None; KV],
             recovery: RecoveryCoordinator::new(thresholds),
             watchdog: Watchdog::new(),
             modules,
+            objects,
+            trace: CapabilityTrace::new(),
             degrade: DegradeApplication::none(),
         })
     }
@@ -260,7 +346,12 @@ impl<
             startup_nodes,
             profile,
         )?;
-        Self::from_plan(plan, thresholds)
+        let mut runtime = Self::from_plan(plan, thresholds)?;
+        // Manifest-declared object quotas replace the defaults the plan seeded.
+        for spec in manifest.iter() {
+            runtime.objects.register(spec.id, spec.objects);
+        }
+        Ok(runtime)
     }
 
     pub fn admit_graph<const MODULES: usize, const GRAPH: usize>(
@@ -287,18 +378,43 @@ impl<
         Ok(())
     }
 
+    /// Module a mailbox slot is charged to: the sender, except that
+    /// kernel-origin notifications (alarm/recovery fan-out) are charged to
+    /// their destination so a module's own alarm storm cannot hide behind the
+    /// exempt kernel identity.
+    fn accountable(message: Message) -> ModuleId {
+        if message.from == ModuleId::Kernel {
+            message.to
+        } else {
+            message.from
+        }
+    }
+
     pub fn send(&mut self, message: Message) -> Result<(), RuntimeError> {
         self.ensure_message_endpoints_enabled(message)?;
-        self.mailbox.push(message)?;
+        let accountable = Self::accountable(message);
+        self.objects.charge(accountable, ObjectKind::MailboxSlot)?;
+        if let Err(error) = self.mailbox.push(message) {
+            self.objects.release(accountable, ObjectKind::MailboxSlot)?;
+            return Err(RuntimeError::Mailbox(error));
+        }
         Ok(())
     }
 
     pub fn recv(&mut self) -> Option<Message> {
-        self.mailbox.pop()
+        let message = self.mailbox.pop()?;
+        let _ = self
+            .objects
+            .release(Self::accountable(message), ObjectKind::MailboxSlot);
+        Some(message)
     }
 
     pub fn recv_for(&mut self, module: ModuleId) -> Option<Message> {
-        self.mailbox.pop_for(module)
+        let message = self.mailbox.pop_for(module)?;
+        let _ = self
+            .objects
+            .release(Self::accountable(message), ObjectKind::MailboxSlot);
+        Some(message)
     }
 
     pub fn schedule_once(
@@ -309,7 +425,11 @@ impl<
         now_us: u64,
     ) -> Result<(), RuntimeError> {
         self.ensure_module_enabled(module)?;
-        self.alarms.schedule_once(id, module, delay_us, now_us)?;
+        self.objects.charge(module, ObjectKind::Alarm)?;
+        if let Err(error) = self.alarms.schedule_once(id, module, delay_us, now_us) {
+            self.objects.release(module, ObjectKind::Alarm)?;
+            return Err(RuntimeError::Alarm(error));
+        }
         Ok(())
     }
 
@@ -321,13 +441,29 @@ impl<
         now_us: u64,
     ) -> Result<(), RuntimeError> {
         self.ensure_module_enabled(module)?;
-        self.alarms
-            .schedule_periodic(id, module, period_us, now_us)?;
+        self.objects.charge(module, ObjectKind::Alarm)?;
+        if let Err(error) = self.alarms.schedule_periodic(id, module, period_us, now_us) {
+            self.objects.release(module, ObjectKind::Alarm)?;
+            return Err(RuntimeError::Alarm(error));
+        }
         Ok(())
     }
 
     pub fn cancel_alarm(&mut self, id: AlarmId) -> Result<Alarm, RuntimeError> {
-        self.alarms.cancel(id).map_err(RuntimeError::from)
+        let alarm = self.alarms.cancel(id)?;
+        self.objects.release(alarm.module, ObjectKind::Alarm)?;
+        Ok(alarm)
+    }
+
+    /// Put a cancelled alarm back exactly as it was (undo path for a denied
+    /// cross-module cancel), restoring its owner's object charge.
+    pub(crate) fn restore_alarm(&mut self, alarm: Alarm) -> Result<(), RuntimeError> {
+        self.objects.charge(alarm.module, ObjectKind::Alarm)?;
+        if let Err(error) = self.alarms.restore(alarm) {
+            self.objects.release(alarm.module, ObjectKind::Alarm)?;
+            return Err(RuntimeError::Alarm(error));
+        }
+        Ok(())
     }
 
     pub fn dispatch_due_alarms(&mut self, now_us: u64) -> Result<usize, RuntimeError> {
@@ -341,10 +477,30 @@ impl<
     pub fn try_dispatch_due_alarms(&mut self, now_us: u64) -> AlarmDispatch {
         let mut dispatched = 0;
         while let Some(alarm) = self.alarms.next_due(now_us) {
-            if let Err(error) = self.mailbox.push(alarm_message(alarm)) {
+            let message = alarm_message(alarm);
+            let accountable = Self::accountable(message);
+            if self
+                .objects
+                .charge(accountable, ObjectKind::MailboxSlot)
+                .is_err()
+            {
+                return AlarmDispatch::blocked(
+                    dispatched,
+                    alarm,
+                    RuntimeError::Mailbox(MailboxError::Full),
+                );
+            }
+            if let Err(error) = self.mailbox.push(message) {
+                let _ = self.objects.release(accountable, ObjectKind::MailboxSlot);
                 return AlarmDispatch::blocked(dispatched, alarm, RuntimeError::Mailbox(error));
             }
-            self.alarms.pop_due(now_us);
+            // One-shot alarms leave the queue on pop; periodic alarms reschedule
+            // and keep their charge.
+            if let Some(fired) = self.alarms.pop_due(now_us) {
+                if fired.period_us.is_none() {
+                    let _ = self.objects.release(fired.module, ObjectKind::Alarm);
+                }
+            }
             dispatched += 1;
         }
         AlarmDispatch::completed(dispatched)
@@ -362,6 +518,8 @@ impl<
     }
 
     pub fn kv_set(&mut self, key: KvKey, value: KvValue) -> Result<(), RuntimeError> {
+        // Trusted-dispatcher path: entries are kernel-owned (exempt from object
+        // quotas). Module-owned writes go through `ModuleCtx::kv_set`.
         self.kv.set(key, value)?;
         Ok(())
     }
@@ -371,7 +529,85 @@ impl<
     }
 
     pub fn kv_delete(&mut self, key: KvKey) -> Result<KvValue, RuntimeError> {
-        self.kv.delete(key).map_err(RuntimeError::from)
+        let value = self.kv.delete(key)?;
+        if let Some(owner) = self.take_kv_owner(key) {
+            self.objects.release(owner, ObjectKind::KvEntry)?;
+        }
+        Ok(value)
+    }
+
+    pub fn kv_owner(&self, key: KvKey) -> Option<ModuleId> {
+        self.kv_owners
+            .iter()
+            .flatten()
+            .find(|(owned, _)| *owned == key)
+            .map(|(_, owner)| *owner)
+    }
+
+    fn take_kv_owner(&mut self, key: KvKey) -> Option<ModuleId> {
+        for slot in self.kv_owners.iter_mut() {
+            if slot.map(|(owned, _)| owned == key).unwrap_or(false) {
+                return slot.take().map(|(_, owner)| owner);
+            }
+        }
+        None
+    }
+
+    /// Module-owned KV write: charges the module's KV quota for new keys and
+    /// refuses to overwrite a key another module owns.
+    pub(crate) fn kv_set_owned(
+        &mut self,
+        module: ModuleId,
+        key: KvKey,
+        value: KvValue,
+    ) -> Result<(), RuntimeError> {
+        match self.kv_owner(key) {
+            Some(owner) if owner != module => {
+                return Err(RuntimeError::KvOwnedByOther { key, owner });
+            }
+            Some(_) => {
+                self.kv.set(key, value)?;
+                return Ok(());
+            }
+            None => {}
+        }
+        if self.kv.contains(key) {
+            // Kernel-owned key: modules may not overwrite dispatcher state.
+            return Err(RuntimeError::KvOwnedByOther {
+                key,
+                owner: ModuleId::Kernel,
+            });
+        }
+        self.objects.charge(module, ObjectKind::KvEntry)?;
+        if let Err(error) = self.kv.set(key, value) {
+            self.objects.release(module, ObjectKind::KvEntry)?;
+            return Err(RuntimeError::Kv(error));
+        }
+        if let Some(slot) = self.kv_owners.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some((key, module));
+        }
+        Ok(())
+    }
+
+    /// Module-owned KV delete: only the owner may delete its keys.
+    pub(crate) fn kv_delete_owned(
+        &mut self,
+        module: ModuleId,
+        key: KvKey,
+    ) -> Result<KvValue, RuntimeError> {
+        match self.kv_owner(key) {
+            Some(owner) if owner != module => Err(RuntimeError::KvOwnedByOther { key, owner }),
+            Some(_) => {
+                let value = self.kv.delete(key)?;
+                let _ = self.take_kv_owner(key);
+                self.objects.release(module, ObjectKind::KvEntry)?;
+                Ok(value)
+            }
+            None => Err(RuntimeError::KvOwnedByOther {
+                key,
+                owner: ModuleId::Kernel,
+            }),
+        }
     }
 
     pub fn reserve_quota(
@@ -804,7 +1040,7 @@ impl<
         }
     }
 
-    fn ensure_module_enabled(&self, module: ModuleId) -> Result<(), RuntimeError> {
+    pub(crate) fn ensure_module_enabled(&self, module: ModuleId) -> Result<(), RuntimeError> {
         let Some(entry) = self.modules.entry(module) else {
             return Err(RuntimeError::Module(ModuleRuntimeError::Missing(module)));
         };
@@ -822,13 +1058,81 @@ impl<
     }
 
     fn cleanup_module_resources(&mut self, module: ModuleId) -> Result<SystemBudget, RuntimeError> {
-        self.alarms.remove_for(module);
-        self.mailbox.remove_for(module);
+        let removed_alarms = self.alarms.remove_for(module);
+        for _ in 0..removed_alarms {
+            self.objects.release(module, ObjectKind::Alarm)?;
+        }
+
+        let objects = &mut self.objects;
+        self.mailbox.remove_for_with(module, |message| {
+            let _ = objects.release(Self::accountable(message), ObjectKind::MailboxSlot);
+        });
+
+        for idx in 0..KV {
+            let Some((key, owner)) = self.kv_owners[idx] else {
+                continue;
+            };
+            if owner != module {
+                continue;
+            }
+            self.kv_owners[idx] = None;
+            let _ = self.kv.delete(key);
+            self.objects.release(module, ObjectKind::KvEntry)?;
+        }
+
         self.watchdog.remove(module);
-        self.plan
-            .quotas
-            .reset_usage(module)
-            .map_err(RuntimeError::from)
+        let released = self.plan.quotas.reset_usage(module)?;
+        // Post-cleanup invariant: the module must hold no kernel objects.
+        // A residual charge means an accounting path missed a release.
+        self.objects.verify_clear(module)?;
+        Ok(released)
+    }
+
+    pub fn object_usage(&self, module: ModuleId) -> Option<ObjectUsage> {
+        self.objects.usage(module)
+    }
+
+    pub fn object_quota(&self, module: ModuleId) -> Option<ObjectQuota> {
+        self.objects.quota(module)
+    }
+
+    /// Accumulate measured execution time for a module (executor-fed).
+    pub fn charge_cpu(&mut self, module: ModuleId, duration_us: u32) {
+        self.objects.charge_cpu(module, duration_us);
+    }
+
+    pub const fn capability_trace(&self) -> &CapabilityTrace<LOG> {
+        &self.trace
+    }
+
+    pub fn copy_capability_trace(
+        &self,
+        scope: CapabilityReplayScope,
+        out: &mut [CapabilityTraceRecord],
+    ) -> usize {
+        self.trace.copy_replay(scope, out)
+    }
+
+    pub(crate) fn trace_record(&mut self, input: CapabilityTraceInput) {
+        let _ = self.trace.record(input);
+    }
+
+    pub(crate) fn authorize_traced(
+        &mut self,
+        module: ModuleId,
+        capability: Capability,
+        at_us: u64,
+    ) -> Result<(), RuntimeError> {
+        if let Err(error) = self.plan.grants.authorize(module, capability) {
+            self.trace_record(CapabilityTraceInput::new(
+                module,
+                capability,
+                CapabilityTraceOp::Fault,
+                at_us,
+            ));
+            return Err(RuntimeError::Capability(error));
+        }
+        Ok(())
     }
 }
 

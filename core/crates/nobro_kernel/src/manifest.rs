@@ -35,6 +35,12 @@ pub enum Capability {
     HostReport = 10,
     AiInference = 11,
     AiEndpoint = 12,
+    /// Send/receive kernel mailbox messages through a module context.
+    Mailbox = 13,
+    /// Schedule/cancel software alarms through a module context.
+    Alarm = 14,
+    /// Read/write the kernel key-value store through a module context.
+    KvStore = 15,
 }
 
 impl Capability {
@@ -220,6 +226,9 @@ impl MemoryBudget {
 pub struct DeadlineContract {
     pub period_us: u32,
     pub max_jitter_us: u32,
+    /// Declared worst-case execution cost per period. Zero = not declared;
+    /// declared costs participate in the admission utilization check.
+    pub execution_budget_us: u32,
 }
 
 impl DeadlineContract {
@@ -227,7 +236,52 @@ impl DeadlineContract {
         Self {
             period_us,
             max_jitter_us,
+            execution_budget_us: 0,
         }
+    }
+
+    pub const fn execution_budget(mut self, execution_budget_us: u32) -> Self {
+        self.execution_budget_us = execution_budget_us;
+        self
+    }
+
+    /// Utilization contribution in parts-per-ten-thousand (0 when undeclared).
+    pub const fn utilization_permyriad(self) -> u64 {
+        if self.period_us == 0 {
+            return 0;
+        }
+        (self.execution_budget_us as u64 * 10_000) / self.period_us as u64
+    }
+}
+
+/// Per-module kernel-object quota: how many mailbox slots, alarms, and KV entries
+/// the module may hold at once. Charged and released automatically by the runtime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ObjectQuota {
+    pub mailbox_slots: u8,
+    pub alarms: u8,
+    pub kv_entries: u8,
+}
+
+impl ObjectQuota {
+    pub const DEFAULT: Self = Self {
+        mailbox_slots: 8,
+        alarms: 8,
+        kv_entries: 8,
+    };
+
+    pub const fn new(mailbox_slots: u8, alarms: u8, kv_entries: u8) -> Self {
+        Self {
+            mailbox_slots,
+            alarms,
+            kv_entries,
+        }
+    }
+}
+
+impl Default for ObjectQuota {
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
@@ -240,6 +294,7 @@ pub struct ModuleSpec {
     pub memory: MemoryBudget,
     pub deadline: Option<DeadlineContract>,
     pub fault_thresholds: FaultThresholds,
+    pub objects: ObjectQuota,
 }
 
 impl ModuleSpec {
@@ -252,7 +307,13 @@ impl ModuleSpec {
             memory: MemoryBudget::ZERO,
             deadline: None,
             fault_thresholds: FaultThresholds::DEFAULT,
+            objects: ObjectQuota::DEFAULT,
         }
+    }
+
+    pub const fn objects(mut self, objects: ObjectQuota) -> Self {
+        self.objects = objects;
+        self
     }
 
     pub const fn requires(mut self, capabilities: CapabilitySet) -> Self {
@@ -293,6 +354,11 @@ impl ModuleSpec {
             Some(deadline) => {
                 hash = hash_u32(hash, deadline.period_us);
                 hash = hash_u32(hash, deadline.max_jitter_us);
+                // Hashed only when declared so manifests without execution budgets
+                // keep their pre-existing pinned fingerprints.
+                if deadline.execution_budget_us != 0 {
+                    hash = hash_u32(hash, deadline.execution_budget_us);
+                }
             }
             None => {
                 hash = hash_u32(hash, 0);
@@ -301,6 +367,12 @@ impl ModuleSpec {
         }
         hash = hash_u32(hash, u32::from(self.fault_thresholds.notify_after));
         hash = hash_u32(hash, u32::from(self.fault_thresholds.reboot_after));
+        // Same rule: only a non-default object quota changes the fingerprint.
+        if self.objects != ObjectQuota::DEFAULT {
+            hash = hash_u32(hash, u32::from(self.objects.mailbox_slots));
+            hash = hash_u32(hash, u32::from(self.objects.alarms));
+            hash = hash_u32(hash, u32::from(self.objects.kv_entries));
+        }
         hash
     }
 }
@@ -333,6 +405,10 @@ pub enum ManifestError {
     EmptyManifest,
     MissingKernel,
     InvalidKernelContract,
+    /// Sum of declared execution budgets exceeds the available processor time.
+    Overutilized {
+        utilization_permyriad: u64,
+    },
 }
 
 impl ManifestError {
@@ -352,6 +428,7 @@ impl ManifestError {
             Self::EmptyManifest => 12,
             Self::MissingKernel => 13,
             Self::InvalidKernelContract => 14,
+            Self::Overutilized { .. } => 15,
         }
     }
 
@@ -370,7 +447,8 @@ impl ManifestError {
             | Self::BudgetExceeded { .. }
             | Self::EmptyManifest
             | Self::MissingKernel
-            | Self::InvalidKernelContract => None,
+            | Self::InvalidKernelContract
+            | Self::Overutilized { .. } => None,
         }
     }
 
@@ -393,7 +471,8 @@ impl ManifestError {
             | Self::UserOwnsKernelCapability(_)
             | Self::EmptyManifest
             | Self::MissingKernel
-            | Self::InvalidKernelContract => 0,
+            | Self::InvalidKernelContract
+            | Self::Overutilized { .. } => 0,
         }
     }
 }
@@ -484,6 +563,19 @@ impl<const N: usize> SystemManifest<N> {
         {
             return Err(ManifestError::InvalidKernelContract);
         }
+
+        // Declared execution costs must fit within the processor: the utilization
+        // sum over all deadline modules may not exceed 100%.
+        let utilization_permyriad: u64 = self
+            .iter()
+            .filter_map(|spec| spec.deadline)
+            .map(DeadlineContract::utilization_permyriad)
+            .sum();
+        if utilization_permyriad > 10_000 {
+            return Err(ManifestError::Overutilized {
+                utilization_permyriad,
+            });
+        }
         Ok(())
     }
 
@@ -568,6 +660,7 @@ impl<const N: usize> SystemManifest<N> {
             if deadline.period_us == 0
                 || deadline.max_jitter_us == 0
                 || deadline.max_jitter_us >= deadline.period_us
+                || deadline.execution_budget_us > deadline.period_us
             {
                 return Err(ManifestError::InvalidDeadline(spec.id));
             }

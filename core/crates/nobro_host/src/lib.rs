@@ -347,6 +347,9 @@ pub const fn capability_bit_label(bit: u32) -> Option<&'static str> {
         10 => Some("host_report"),
         11 => Some("ai_inference"),
         12 => Some("ai_endpoint"),
+        13 => Some("mailbox"),
+        14 => Some("alarm"),
+        15 => Some("kv_store"),
         _ => None,
     }
 }
@@ -366,6 +369,9 @@ pub const fn capability_mask_label(mask: u32) -> Option<&'static str> {
         0x0000_0400 => Some("host_report"),
         0x0000_0800 => Some("ai_inference"),
         0x0000_1000 => Some("ai_endpoint"),
+        0x0000_2000 => Some("mailbox"),
+        0x0000_4000 => Some("alarm"),
+        0x0000_8000 => Some("kv_store"),
         _ => None,
     }
 }

@@ -76,7 +76,10 @@
     "9": "sample_pool",
     "10": "host_report",
     "11": "ai_inference",
-    "12": "ai_endpoint"
+    "12": "ai_endpoint",
+    "13": "mailbox",
+    "14": "alarm",
+    "15": "kv_store"
   },
   "ai_contracts": {
     "report": {

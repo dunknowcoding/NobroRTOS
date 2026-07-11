@@ -85,6 +85,11 @@ impl<const N: usize> AlarmQueue<N> {
         self.alarms[idx].take().ok_or(AlarmError::Missing(id))
     }
 
+    /// Re-insert an alarm exactly as it was (undo path for a denied cancel).
+    pub(crate) fn restore(&mut self, alarm: Alarm) -> Result<(), AlarmError> {
+        self.insert(alarm)
+    }
+
     pub fn remove_for(&mut self, module: ModuleId) -> usize {
         let mut removed = 0;
         for slot in self.alarms.iter_mut() {

@@ -96,6 +96,16 @@ impl<const N: usize> Mailbox<N> {
     }
 
     pub fn remove_for(&mut self, module: ModuleId) -> usize {
+        self.remove_for_with(module, |_| {})
+    }
+
+    /// Remove every message touching `module`, handing each removed message to
+    /// `on_removed` so the caller can reconcile per-message accounting.
+    pub fn remove_for_with(
+        &mut self,
+        module: ModuleId,
+        mut on_removed: impl FnMut(Message),
+    ) -> usize {
         let mut removed = 0;
         let mut age = 0;
         while age < self.len {
@@ -104,7 +114,9 @@ impl<const N: usize> Mailbox<N> {
                 .map(|msg| msg.from == module || msg.to == module)
                 .unwrap_or(false)
             {
-                let _ = self.slots[idx].take();
+                if let Some(message) = self.slots[idx].take() {
+                    on_removed(message);
+                }
                 self.compact_from(age);
                 removed += 1;
             } else {
