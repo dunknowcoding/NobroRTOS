@@ -5,7 +5,7 @@
 <p align="center">
   <strong>A tiny, Rust-first real-time OS that makes one board &mdash; or a hundred &mdash; feel teachable.</strong><br>
   The <strong>AI &middot; Robot &middot; IoT nexus</strong> for microcontrollers: explicit contracts, static memory,
-  deadline discipline, and host-readable diagnostics &mdash; small enough to read in an afternoon.
+  deadline discipline, and host-readable diagnostics &mdash; with every support tier stated explicitly.
 </p>
 
 <p align="center">
@@ -56,31 +56,28 @@ abstraction layer for hardware, communication, and edge intelligence.
 
 ## Start In 60 Seconds
 
-You need Rust + the embedded target, and a way to flash an nRF52840 (a SEGGER
-J-Link, or any board with a UF2 bootloader).
+The fastest portable start is the host gate. Hardware evaluation additionally needs
+a locally configured target profile and a safe flash/readback path.
 
 ```powershell
-rustup target add thumbv7em-none-eabihf
-rustup component add llvm-tools-preview
 git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
-
-# Build + flash + read a real sensor, self-certified, in ONE command:
-python tools/nobro_hw_eval.py imu
+python tools/run_checks.py --quick --no-evidence
 ```
 
-It builds the IMU demo, flashes the development board, reads the kernel's host-readable report
-straight out of RAM, and prints **PASS/FAIL**. No debug probe? Flash `usb_cdc_demo`
-and just open the board's COM port.
+That checks public contracts, packages, tutorials, bindings, and documentation without
+touching hardware. For a configured nRF deep-HAL target, `python tools/nobro_hw_eval.py
+imu` performs build, flash, report readback, and grading; it is not a generic command for
+every advertised compile target.
 
 ## Who It's For
 
 | You are a&hellip; | NobroRTOS gives you |
 | --- | --- |
-| **Beginner / maker** | One-command build-flash-verify, an Arduino-style `setup()/loop()` in C++, and reports that say exactly what failed |
+| **Beginner / maker** | A host-only quick gate, an Arduino-style `setup()/loop()` in C++, and one-command hardware grading on the configured deep-HAL profile |
 | **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, declared capability grants, and the `embedded-hal` driver ecosystem |
 | **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
 | **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
-| **Porting from another RTOS** | A thin SAL + C ABI so Zephyr/Embassy/bare-metal drivers and C/C++ logic drop in &mdash; see [docs/PORTING.md](docs/PORTING.md) |
+| **Porting from another RTOS** | A thin SAL + C ABI for reusing driver/algorithm code while task wiring and resource contracts are re-expressed &mdash; see [docs/PORTING.md](docs/PORTING.md) |
 
 ## System Map
 
@@ -125,8 +122,9 @@ int32_t nobro_app_poll(void) { /* nobro_i2c_write_read(...) + nobro_publish_imu(
 ```
 
 Prefer pure config? A JSON contract generates a compiling Rust firmware. Prefer
-existing drivers? The `embedded-hal` adapter runs unmodified `embedded-hal` device
-crates as-is. Authoring details: [bindings/c/README.md](bindings/c/README.md) and
+existing synchronous drivers? The `embedded-hal` adapters preserve compatible device
+logic while NobroRTOS supplies the bus; async-only drivers need an async adapter or a
+bounded executor wrapper. Authoring details: [bindings/c/README.md](bindings/c/README.md) and
 [bindings/cpp/README.md](bindings/cpp/README.md).
 
 ## Why It Exists
@@ -230,13 +228,11 @@ mindmap
 
 Near-term engineering focus:
 
-- connect app assembly patterns to `BootAssembly` without hiding contracts
-- keep board profile and board package fixtures aligned
-- harden adapter manifests and compatibility examples
-- grow AI inference and ROS/micro-ROS bridge contracts without adding heap
-  pressure to realtime paths
-- expand host decoding examples for `NOBRO_*` reports
-- keep every hardware-facing feature backed by a software validation gate
+- reduce contract boilerplate for common periodic and event-driven apps without
+  weakening admission or hiding resource cost
+- make async composition a first-class bounded authoring option
+- extend deep runtime/HAL evidence beyond the primary nRF52840 target
+- keep security, persistence, recovery, and power behavior tied to executable gates
 
 ## Repository Layout
 
@@ -265,8 +261,8 @@ folders use the `nobro_*` project prefix.
 
 ## Verified On Hardware
 
-Every claim below is checked on a real board and self-certifies through a fixed
-`NOBRO_*` report (read over J-Link `mem32`, or over USB serial for probe-less boards).
+The rows below are snapshots from the nRF52840 deep-HAL profile, checked through fixed
+`NOBRO_*` reports. They do not imply the same runtime depth on compile-only targets.
 
 | Area | On-board result | Verify with |
 | --- | --- | --- |

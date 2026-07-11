@@ -11,14 +11,15 @@ resource ownership. Importing another stack's executor, DDS transport, devicetre
 glue, or heap behavior unmodified would import exactly the unbounded behavior
 NobroRTOS exists to prevent. What *does* transfer is the part with real value:
 driver logic, algorithms, and message schemas. What must be re-expressed is the
-*system wiring* (tasks, timing, recovery, transport config), and that re-expression
-is usually small and mechanical.
+*system wiring* (tasks, timing, recovery, transport config). For a multi-task async
+application that work can be substantial; the current low-level API favors explicitness
+over minimum source size.
 
 ### What transfers vs what you re-express
 
 | From the source app | Transfers as-is? | In NobroRTOS |
 | --- | --- | --- |
-| `embedded-hal` device drivers (sensors, displays, radios) | **Yes** | run under a `BusSal` adapter unchanged |
+| synchronous `embedded-hal` device drivers | **Usually** | device logic stays; ownership/error types may need an adapter |
 | Pure algorithm / DSP / control-law code (`no_std`, no heap) | **Yes** | call it from a module's `poll()` |
 | Message/struct schemas (ROS msg, packet layouts) | **Mostly** | map to fixed-capacity records / bounded queues |
 | Async tasks / threads | Re-expressed | become **modules** with budgets + (if RT) deadlines |
@@ -37,9 +38,9 @@ optional.
 Both are Rust + `embedded-hal`, so this is the smoothest path. For a step-by-step recipe
 with copy-pasteable code, see the Embassy cookbook in this guide.
 
-- **Drivers:** an `embedded-hal` I2C/SPI **bus adapter** exposes NobroRTOS's `BusSal`
-  as the `embedded-hal` traits a driver expects, so the large universe of
-  `embedded-hal` drivers runs unchanged.
+- **Drivers:** synchronous `embedded-hal` I2C/SPI adapters preserve compatible device
+  logic. Drivers that require async traits, own interrupts/DMA globally, or assume a
+  particular HAL lifetime need an additional adapter.
 - **Tasks to modules:** each Embassy `#[embassy_executor::task]` becomes a NobroRTOS
   module. An `async fn` that `await`s a timer becomes a `poll()` that checks a
   deadline alarm and returns; cooperative `select!` over events becomes draining a
@@ -91,12 +92,10 @@ Zephyr cookbook later in this guide.
 
 ### Arduino / C
 
-Arduino `setup()/loop()` maps to a module's `init()` + `poll()`. Today the
-C/C++/Arduino surface only **decodes `NOBRO_*` reports** on the host; on-MCU module
-authoring in C/C++ is the planned C-ABI work (see
-the packaged-library tier on the roadmap). Until then, author
-modules in Rust (or generate them from `nobro-contract.json`) and reuse Arduino
-*library logic* through an adapter.
+Arduino `setup()/loop()` maps to a module's `init()` + `poll()`. The C ABI now drives
+on-device C/C++ module logic through `nobro_app_init` / `nobro_app_poll` and bounded
+host services. It does not make arbitrary Arduino libraries binary-compatible: code
+that owns interrupts, global peripherals, or a vendor scheduler still needs an adapter.
 
 ### Recommended porting recipe
 
@@ -134,8 +133,8 @@ and admission rejects a system that cannot meet them.
 ### 1. `xTaskCreate` -> a module
 
 A FreeRTOS task is a function with its own stack and a fixed priority. A NobroRTOS module is
-a struct with `init()` + `poll(now_us)` and a declared contract; the kernel owns the stack
-budget and the schedule.
+a struct with `init()` + `poll(now_us)` and a declared contract; the kernel validates the
+RAM budget and schedule, while the firmware/linker layout still owns actual stack allocation.
 
 ```c
 /* FreeRTOS */
@@ -169,7 +168,7 @@ ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
 | counting semaphore | quota / pool slots | admission-checked capacity |
 | `xTimerCreate` (software timer) | `Alarm` in the `AlarmQueue` | one-shot / periodic deadline events |
 | task watchdog | `Watchdog` + `HealthMonitor` counters | misses drive module-scoped recovery |
-| priority inheritance | not needed | shared resources are owned, not locked across tasks |
+| priority inheritance | not provided | shared hardware should be owned by a bounded service module; arbitrary blocking locks are outside the model |
 | `xEventGroupSetBits/WaitBits` | `nobro_classic::EventFlags` | 32 flags; `wait_any`/`wait_all` polls, `clear_on_exit` semantics preserved |
 | queue sets / block-on-many | `nobro_classic::select2` | bounded multi-event wait with an idle hook (insert `wfe` there); never unbounded |
 | heap (`pvPortMalloc`) | static pools, fixed capacity | no hot-path allocation |
@@ -226,10 +225,11 @@ You already write `no_std` Rust with `embedded-hal` drivers and `async fn` tasks
 cookbook is the mechanical recipe for re-expressing an Embassy app as a NobroRTOS system.
 It complements the high-level migration overview with copy-pasteable steps.
 
-The one idea to internalize: **Embassy gives you an unbounded async runtime; NobroRTOS gives
-you bounded modules that declare their budget and are admission-checked.** Your driver and
-algorithm code transfers unchanged - the *system wiring* is what you rewrite, and it stays
-small.
+The one idea to internalize: **Embassy already provides static, allocation-free async
+tasks; NobroRTOS adds explicit admission, resource, recovery, and deadline contracts.**
+That extra policy currently costs more declarations and more wiring. Pure algorithms and
+compatible driver logic transfer; async task composition is rewritten or hosted inside
+the bounded executor, and complex applications should not expect the port to stay small.
 
 ### 1. A task becomes a module
 
@@ -279,10 +279,10 @@ Mapping table:
 
 ### 2. Keep your `embedded-hal` drivers
 
-Your drivers stay as-is. A bus adapter exposes NobroRTOS's `BusSal` as the `embedded-hal`
-I2C/SPI traits a driver expects (see `core/adapters/embedded-hal-i2c` and
-`core/adapters/embedded-hal-spi`), so the driver crate you already depend on runs unchanged
-inside the module. This is the highest-ROI part of the port: no driver rewrite.
+Compatible synchronous driver logic can stay. A bus adapter exposes NobroRTOS's `BusSal`
+as the `embedded-hal` I2C/SPI traits (see `core/adapters/embedded-hal-i2c` and
+`core/adapters/embedded-hal-spi`). Async-only drivers and drivers that own platform-global
+interrupt/DMA state still need adaptation.
 
 ### 3. When you genuinely want `async fn`: the bounded executor
 
@@ -305,11 +305,10 @@ match exec.run_to_idle(64) {
 }
 ```
 
-The difference from Embassy: capacity is a `const N` you pick up front, `spawn` fails loudly
-at the limit, and `run_to_idle` is itself bounded (it returns `Stalled` rather than looping
-forever). You get the async ergonomics without importing unbounded behavior. Use it as an
-escape hatch, not as the whole system - hard-real-time work still belongs on the deadline
-scheduler.
+Embassy also uses statically allocated task pools. NobroRTOS's smaller executor adds an
+explicit per-drive poll-work limit and returns `Stalled`, but it has fewer async-aware
+drivers, timers, and composition primitives. Treat it as a bounded escape hatch today,
+not as an ergonomic replacement for an Embassy application executor.
 
 ### 4. Message types: generate them from ROS `.msg` (optional)
 

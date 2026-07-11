@@ -42,6 +42,13 @@ def tracked_text_files() -> list[pathlib.Path]:
 
 def main() -> int:
     errors: list[str] = []
+    tracked = {
+        pathlib.Path(raw.decode("utf-8"))
+        for raw in subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
+        ).stdout.split(b"\0")
+        if raw
+    }
     local_needles_path = ROOT / "tools" / "leak_needles.local.txt"
     local_needles = []
     if local_needles_path.is_file():
@@ -78,12 +85,28 @@ def main() -> int:
             if not resolved.exists():
                 line = text.count("\n", 0, match.start()) + 1
                 errors.append(f"{relative}:{line}: broken link: {target}")
+                continue
+            try:
+                tracked_target = resolved.relative_to(ROOT)
+            except ValueError:
+                continue
+            if not (
+                tracked_target in tracked
+                or (resolved.is_dir() and any(p.is_relative_to(tracked_target) for p in tracked))
+            ):
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(f"{relative}:{line}: link target is not tracked: {target}")
         for match in TOOL.finditer(text):
             target = ROOT / match.group(1)
             if not target.is_file():
                 line = text.count("\n", 0, match.start()) + 1
                 errors.append(f"{relative}:{line}: missing CLI tool: {match.group(1)}")
 
+    generated = subprocess.run(
+        [sys.executable, "tools/gen_api_index.py", "--check"], cwd=ROOT
+    )
+    if generated.returncode:
+        errors.append("generated API index is stale")
     for error in errors:
         print(f"FAIL: {error}")
     print(

@@ -529,7 +529,7 @@ and you supply one C file.
 
 ### 1. Get the bundle
 
-From a release download, or from anyone with the Rust toolchain:
+No release bundle is currently published. A trusted builder with the Rust toolchain runs:
 
 ```bash
 python tools/build_libnobro.py --build     # stages _work/tierc/

@@ -5,6 +5,7 @@ Scans core/crates/*/src/lib.rs and core/adapters/*/src/lib.rs for each crate's d
 comment and its public items (fn / struct / enum / trait), and writes docs/api-index.md.
 Pure stdlib; keeps a browsable surface map in sync with the code.
 """
+import argparse
 import glob
 import os
 import re
@@ -38,6 +39,9 @@ def scan(lib):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="fail if the tracked index is stale")
+    args = parser.parse_args()
     libs = sorted(
         glob.glob(os.path.join(ROOT, "core", "crates", "*", "src", "lib.rs"))
         + glob.glob(os.path.join(ROOT, "core", "adapters", "*", "src", "lib.rs"))
@@ -56,10 +60,18 @@ def main():
                 out.append(f"- **{kind}**: {names}")
         out.append("")
     dest = os.path.join(ROOT, "docs", "api-index.md")
-    open(dest, "w", encoding="utf-8").write("\n".join(out))
+    rendered = "\n".join(out)
     pub_total = sum(
         len(scan(l)[1][k]) for l in libs for k in ("trait", "struct", "enum", "fn")
     )
+    if args.check:
+        current = open(dest, encoding="utf-8").read() if os.path.exists(dest) else ""
+        if current != rendered:
+            print("API INDEX: FAIL (run python tools/gen_api_index.py)")
+            return 1
+        print(f"API INDEX: PASS ({len(libs)} crates, {pub_total} public items)")
+        return 0
+    open(dest, "w", encoding="utf-8", newline="\n").write(rendered)
     print(f"wrote docs/api-index.md: {len(libs)} crates, {pub_total} public items")
     return 0
 

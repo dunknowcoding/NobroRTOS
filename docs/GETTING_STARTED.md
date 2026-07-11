@@ -6,13 +6,13 @@ simulator) explaining itself through `NOBRO_*` reports.
 
 | You have | Start at |
 | --- | --- |
-| A board, no toolchain | [Zero-code path](#zero-code-path-no-toolchain) |
+| A compatible board and a prebuilt starter image | [Zero-code path](#zero-code-path-no-toolchain) |
 | Rust + a probe/UF2 board | [Hardware quick start](#hardware-quick-start) |
 | Just a laptop | [Toolchains and IDEs](#toolchains-and-ides) |
 
 ## Hardware quick start
 
-Everything on real hardware funnels through **one command**: flash an eval app, let it
+The configured nRF deep-HAL path funnels through **one command**: flash an eval app, let it
 run, then read its fixed `NOBRO_*` report back over the debug probe and grade it PASS
 or FAIL. No serial console required.
 
@@ -48,8 +48,8 @@ reuses the last binary.
 ### What "PASS" means
 
 The app seals a fixed-layout report struct in RAM (`NOBRO_*_REPORT`); the tool reads it
-via the probe and checks `magic`, `completed`, and `all_pass`. If a board is silent or
-mis-wired you get a short read with a pointed message — not a hang.
+via the probe and checks `magic`, `completed`, and `all_pass`. If a target is silent or
+a required peripheral is unavailable, the bounded run returns a pointed failure.
 
 ### No probe? No board?
 
@@ -61,8 +61,9 @@ mis-wired you get a short read with a pointed message — not a hang.
 
 ### Performance notes (facts, not folklore)
 
-- Bus transfers (SPIM/TWIM) ride the nRF's **EasyDMA** - the CPU is not bit-banging
-  or polling data bytes; drivers wait on transfer-end events with bounded spins.
+- SPI transfers use EasyDMA. The current portable I2C provider uses bounded CPU-polled
+  legacy TWI and reports `TransferMode::Polling`; conformance tests prevent it from being
+  advertised as DMA.
 - Sensor samples move through the kernel as **zero-copy tickets** (`SamplePool`):
   producers publish a slot, consumers borrow it - payloads are not copied through
   queues.
@@ -71,7 +72,8 @@ mis-wired you get a short read with a pointed message — not a hang.
 
 ## Zero-code path (no toolchain)
 
-The zero-toolchain path: flash one prebuilt image by drag-and-drop, watch the board
+The zero-toolchain path requires a prebuilt image supplied by a release or another trusted
+builder: flash it by drag-and-drop, watch the board
 explain itself in a browser, and design your first app as blocks — no Rust, no
 compiler, no IDE.
 
@@ -84,7 +86,7 @@ boards ship with it.
    `SoftDevice: S140`).
 2. Drag `nobrortos-starter-s140.uf2` onto the drive. The board reboots on its own.
 
-Where to get the UF2: a release download, or anyone with the toolchain runs
+There is currently no published release artifact in this repository. A trusted builder runs
 `python tools/package_prebuilt_uf2.py --build` and hands you the file from
 `_work/prebuilt/`.
 
@@ -99,11 +101,11 @@ self-verification and the console translates it into plain sentences:
 NobroRTOS IMU who=0x71 addr=104 i2c=1 reads=1240 err=0 accel=1002mg ... PASS
 ```
 
-If the board's sensor is missing or mis-wired, you see exactly which check failed —
+If the required sensor is unavailable, you see exactly which check failed —
 the same first-fault discipline every NobroRTOS app has.
 
-(No browser with Web Serial? Any serial monitor at 115200 shows the same lines, and
-`pip install nobro-rtos-tools` gives you a Python decoder.)
+(No browser with Web Serial? Any serial monitor at 115200 shows the same lines; the
+repository's Python report tools provide the decoder from a source checkout.)
 
 ### 3. Design your own app as blocks
 
@@ -124,27 +126,30 @@ so nothing you learned here is thrown away.
 | You are here | Next rung |
 | --- | --- |
 | No-code starter | Arduino library (`packages/arduino`, no Rust needed) |
-| Arduino sketches | Python host tools (`pip install nobro-rtos-tools`) |
+| Arduino sketches | Python host tools from this repository |
 | Python | C/C++ modules, then the full Rust workspace |
 
 ## Toolchains and IDEs
 
-NobroRTOS is not tied to the Arduino IDE or VS Code. The core is plain Rust + Cargo, so it
-builds and flashes from a terminal on Linux, macOS, or Windows with only `rustup`.
+NobroRTOS is not tied to the Arduino IDE or VS Code. The core builds from a terminal on
+Linux, macOS, or Windows with Rust, Python, the selected target support, and any external
+flash utility required by that target.
 
 ### Pure CLI (recommended, any OS)
 
 ```bash
 rustup target add thumbv7em-none-eabihf          # or your board's target
+cd core
 cargo build -p kernel-selftest --release          # build firmware
+cd ..
 python3 tools/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
 python3 tools/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2 (Pico/nice!nano)
 python3 tools/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
 ```
 
 `tools/flash.py` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
-override the J-Link path with the `JLINK_EXE` env var. `tools/bin2uf2.py` converts a raw
-`.bin` to a UF2 for any family (rp2350 / rp2040 / nrf52840).
+override the J-Link path with the `JLINK_EXE` env var. `tools/bin2uf2.py` converts raw
+binaries only for its explicit nRF52840, RP2040, and RP2350-Arm family IDs.
 
 ### Cross-MCU, one command
 

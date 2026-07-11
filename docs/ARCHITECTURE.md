@@ -108,8 +108,11 @@ agent is contacted.
 ### Static Async Direction
 
 Embassy demonstrates that embedded async can stay allocation-free and efficient.
-NobroRTOS keeps this direction by using fixed task tables, explicit periods,
-deadline budgets, mailbox backpressure, and no allocator on critical paths.
+NobroRTOS currently offers a bounded executor plus fixed task tables, explicit periods,
+deadline budgets, mailbox backpressure, and no allocator on critical paths. Its async
+authoring surface is less composable and more verbose than Embassy's: users often must
+spell out manifest, admission, capability, and budget objects separately. Future work must
+preserve bounded admission while making common async task graphs concise and flexible.
 
 ### Isolation And Mixed Criticality
 
@@ -381,9 +384,9 @@ Fault handling is intentionally small:
   the first alarm blocked by mailbox backpressure, without dropping the alarm.
   Runtime code can route that blocked alarm through recovery as a deadline
   fault, keeping timer backpressure visible to health reports.
-- `KvStore` defines the kernel-owned configuration contract as a fixed-capacity
-  table; future flash persistence can keep the same API without adding a
-  seventh SAL.
+- `KvStore` is the kernel's volatile fixed-capacity configuration table. Durable
+  records and typed database images use `nobro-storage` and `PersistentTable`; a port
+  still has to reserve flash pages and implement fallible erase/program/readback.
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.

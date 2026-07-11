@@ -4,7 +4,7 @@ Seven documents, one purpose each. Start at the top; go deeper as needed.
 
 | Document | Read it when you want to… |
 | --- | --- |
-| [GETTING_STARTED.md](GETTING_STARTED.md) | go from zero to a verified PASS — hardware, zero-code, or laptop-only |
+| [GETTING_STARTED.md](GETTING_STARTED.md) | reach a verified PASS on a laptop, or use a configured hardware/prebuilt-image path |
 | [USER_GUIDE.md](USER_GUIDE.md) | work with the SDK day-to-day: app generator, prebuilt firmware loop, C modules, repo hygiene |
 | [API.md](API.md) | look up the public surface: Rust crates, C ABI, Python package, host contract |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | understand the layers, design rules, mountable backends, and the Universal Driver Interface |

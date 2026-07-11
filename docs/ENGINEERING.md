@@ -14,32 +14,34 @@ piece actually guarantees, and where the boundaries are.
 
 | Mechanism | What it guarantees | Where |
 | --- | --- | --- |
-| **Capability grants** | admission derives a declared grant set; protected dispatch paths must still consult it atomically with each operation | `nobro_kernel` (manifest → admission) |
-| **Quota ledger** | admission seeds bounded declarations and runtime helpers track explicit reservations; automatic allocator/CPU charging is still being integrated | `nobro_kernel::quota` |
+| **Capability grants** | admission derives grants; protected runtime operations are crate-private and `ModuleCtx`/foreign-host dispatch checks authority while recording trace evidence | `nobro_kernel` |
+| **Quota and energy accounting** | admission seeds bounded object quotas; protected dispatch charges objects and executor poll duration feeds per-module energy accounting | `nobro_kernel`, `nobro_power` |
 | **Peripheral leases** | exclusive, owner-checked access to buses/timers/radios; wrong-owner release is an error, verified by a 30k-op property test | `nobro_hal::lease` |
 | **Bounded everything** | fixed-capacity mailboxes, pools, bridges; no heap = no heap exploits, no fragmentation | whole tree (`no_std`, no alloc) |
 
-### The update trust chain (our own crypto, no vendor lock)
+### The update trust chain
 
 ```
 measure = SHA-256(image)
-sig     = HMAC-SHA256(boot_key, measure || version)
-verify  → Accept / RejectTampered / RejectSignature / RejectRollback
+sig     = Ed25519(signing_key, domain || version || geometry || vectors || measure)
+verify  → VerifiedSignedImage / reject
 ```
 
-- `nobro_secure::SecureBoot` makes the **decision**: a tampered, forged, or
-  version-rolled-back image is refused; `commit()` ratchets the anti-rollback floor.
-- `tools/sign_firmware.py` is the authority side; host and device are **pinned to the
-  same test vector**, so a divergence breaks the build, not a deployment.
-- `tools/ota_preflight_demo.py` chains sign → verify → admission → boot in one gated
-  script and must *reject* the bad images to pass CI.
-- Supporting pieces: `KeyStore` (slot-addressed keys, no raw key in app code),
-  `RollbackGuard`, `TamperSeal` (region integrity), `AuditLog` (hash-chained events).
+- `nobro_secure` verifies against a pinned Ed25519 public key and produces a private-field
+  `VerifiedSignedImage` token only after image geometry, vectors, measurement, and rollback
+  policy pass.
+- `PersistentBootController` commits stage, first trial, confirm, and revert transitions
+  through monotonic storage; storage failure is fail-closed.
+- Rust tests pin signing vectors and reject altered metadata, vectors, image bytes, keys,
+  versions, and persistent-state failures. The older host OTA preflight demo remains a
+  symmetric-authentication simulation and is not evidence for this asymmetric boundary.
+- Supporting pieces include the non-exporting protected-key backend contract and provisioning
+  policy, `RollbackGuard`, `TamperSeal`, and a hash-chained `AuditLog`.
 
-**Honest boundary:** the *jump-to-image* step of secure boot belongs to a bootloader
-we don't ship yet; NobroRTOS provides the verification core and proves it rejects.
-HMAC means the verifier holds the (symmetric) key — asymmetric signatures are the
-planned upgrade when a bootloader lands.
+**Honest boundary:** the platform bootloader still owns protected key storage, image
+writing, reset-vector handoff, and enforcement before untrusted application code runs.
+The repository provides and tests the verification/state-machine core, not a complete
+ROM-to-application secure-boot product.
 
 ### Diagnostics without disclosure
 
@@ -49,8 +51,8 @@ paths and environments by construction.
 
 ### Sandboxing direction (exploration)
 
-The C-ABI module boundary is being modeled for **Wasm-style isolation** (fixed linear
-memory, bounds-checked marshaling, per-poll fuel): see `docs/WASM_MODULE_SLOT.md`.
+The C-ABI module boundary has a **Wasm-style isolation exploration** (fixed linear
+memory, bounds-checked marshaling, per-poll fuel) exercised by a host-side spike.
 Today's C/C++ modules are trusted code behind capability grants — isolation claims
 wait until a real runtime is embedded and verified.
 
@@ -99,16 +101,17 @@ a bounded shape.
 
 ### Idle
 
-Demo apps idle with `cortex_m::asm::delay` for determinism during eval. For power,
-the sanctioned idle insertion points are:
+Some measurement apps use deterministic delays. The production executor requires a
+`PowerPlatform`: it programs the next wake before idle/low-power entry, accounts measured
+poll energy, and runs fallible peripheral suspend/resume hooks. Lower-level insertion
+points remain available to classic loops:
 
 - the `idle` callback of `nobro_classic::select2` — put `cortex_m::asm::wfe` there;
 - the main loop between polls — `wfe` wakes on any event/interrupt;
 - timed sleep via the RTC (`rtc_sleep_demo`, hardware-verified) for scheduled wakeups.
 
-A kernel-owned idle *task* does not exist by design (nothing preempts, so there is
-nothing to yield from). If a future preemptive profile lands, the idle hook becomes
-kernel API; until then, claiming one would be decoration.
+This is an executor-owned idle path, not a preemptive idle task. Ports must implement the
+actual clock/RTC/sleep operations and are responsible for wake-source correctness.
 
 ## Measured kernel-op latencies
 
