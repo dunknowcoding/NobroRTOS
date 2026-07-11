@@ -60,6 +60,50 @@ def parse_berkeley(size_output: str) -> dict:
     raise ValueError("unrecognized size output")
 
 
+def elf_sizes(elf: pathlib.Path) -> dict:
+    """text/data/bss straight from the ELF section headers — no external tool,
+    so the gate runs identically on any CI host. Matches berkeley `size`
+    semantics: text = alloc non-writable progbits, data = alloc writable
+    progbits, bss = alloc nobits."""
+    import struct
+    blob = elf.read_bytes()
+    assert blob[:4] == b"\x7fELF", "not an ELF"
+    is64 = blob[4] == 2
+    little = blob[5] == 1
+    end = "<" if little else ">"
+    if is64:
+        shoff, shentsize, shnum = struct.unpack_from(end + "Q", blob, 0x28)[0], \
+            struct.unpack_from(end + "H", blob, 0x3A)[0], \
+            struct.unpack_from(end + "H", blob, 0x3C)[0]
+    else:
+        shoff = struct.unpack_from(end + "I", blob, 0x20)[0]
+        shentsize = struct.unpack_from(end + "H", blob, 0x2E)[0]
+        shnum = struct.unpack_from(end + "H", blob, 0x30)[0]
+    text = data = bss = 0
+    for index in range(shnum):
+        base = shoff + index * shentsize
+        if is64:
+            sh_type, sh_flags = struct.unpack_from(end + "IQ", blob, base + 4)[0], \
+                struct.unpack_from(end + "Q", blob, base + 8)[0]
+            sh_size = struct.unpack_from(end + "Q", blob, base + 0x20)[0]
+        else:
+            sh_type = struct.unpack_from(end + "I", blob, base + 4)[0]
+            sh_flags = struct.unpack_from(end + "I", blob, base + 8)[0]
+            sh_size = struct.unpack_from(end + "I", blob, base + 0x14)[0]
+        alloc = sh_flags & 0x2
+        write = sh_flags & 0x1
+        if not alloc:
+            continue
+        if sh_type == 8:  # SHT_NOBITS
+            bss += sh_size
+        elif write:
+            data += sh_size
+        else:
+            text += sh_size
+    return {"text": text, "data": data, "bss": bss,
+            "flash": text + data, "static_ram": data + bss}
+
+
 def source_lines(directory: pathlib.Path) -> int:
     count = 0
     for path in (directory / "src").rglob("*.rs"):
@@ -162,8 +206,6 @@ def main() -> int:
     if args.selftest:
         return selftest()
 
-    size_tool = find_llvm_tool("llvm-size")
-    nm_tool = find_llvm_tool("llvm-nm")
     budgets = json.loads(BUDGETS.read_text(encoding="utf-8")) if BUDGETS.is_file() else {}
 
     report = {"schema": "nobro-baselines-v1", "target": TARGET, "results": {}}
@@ -183,12 +225,10 @@ def main() -> int:
             failures.append(f"{name}: build failed")
             continue
         elf = directory / "target" / TARGET / "release" / name
-        sizes = parse_berkeley(subprocess.run(
-            [size_tool, str(elf)], capture_output=True, text=True, check=True
-        ).stdout)
+        sizes = elf_sizes(elf)
         sizes["source_lines"] = source_lines(directory)
         if name == "nobro-min":
-            breakdown = crate_breakdown(nm_tool, elf)
+            breakdown = crate_breakdown(find_llvm_tool("llvm-nm"), elf)
             if args.breakdown:
                 sizes["flash_by_crate"] = breakdown
             violations = minimal_profile_violations(breakdown)
