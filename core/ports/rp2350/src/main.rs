@@ -20,6 +20,8 @@ use hal::multicore::{Multicore, Stack};
 
 use nobro_conformance::run_all;
 
+mod portable;
+
 /// RP2350 boot: the bootrom requires this image-definition block.
 #[link_section = ".start_block"]
 #[used]

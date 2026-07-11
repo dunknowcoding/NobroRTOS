@@ -357,6 +357,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-hal"
+version = "0.2.0"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "nobro-kernel"
 version = "0.2.0"
 dependencies = [
@@ -384,6 +392,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nobro-conformance",
+ "nobro-hal",
  "panic-halt",
  "rp235x-hal",
  "usb-device",

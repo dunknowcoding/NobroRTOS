@@ -16,6 +16,7 @@ cortex-m = "0.7"
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 nobro-conformance = { path = "../../crates/nobro_conformance" }
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 
 [profile.release]
 debug = 2

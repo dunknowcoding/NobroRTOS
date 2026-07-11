@@ -836,6 +836,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-hal"
+version = "0.2.0"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "nobro-kernel"
 version = "0.2.0"
 dependencies = [
@@ -863,6 +871,7 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "nobro-conformance",
+ "nobro-hal",
  "nobro-usb",
 ]
 

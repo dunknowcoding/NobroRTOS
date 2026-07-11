@@ -116,6 +116,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
         ("baseline measure", [py, "tools/measure_baselines.py", "--selftest"], ROOT),
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
+        ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),

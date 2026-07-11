@@ -10,6 +10,8 @@ use esp_println::println;
 
 use nobro_conformance::{run_all, SUBSYSTEMS};
 
+mod portable;
+
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
