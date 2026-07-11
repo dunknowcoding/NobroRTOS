@@ -104,9 +104,10 @@ jobs:
       - name: address sanitizer smoke
         working-directory: core
         env:
+          CARGO_TARGET_DIR: ../_work/ci-asan
           RUSTFLAGS: -Zsanitizer=address
         run: >-
-          cargo test -Zbuild-std --target x86_64-unknown-linux-gnu
+          cargo test --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure
 
   cross-mcu:
