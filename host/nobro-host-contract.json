@@ -146,11 +146,7 @@
       "active_platform_trait": "nobro_hal::PlatformHal",
       "board_trait": "nobro_hal::BoardDesc",
       "platform_feature": "platform-nrf52840",
-      "future_platforms": [
-        "platform-esp32",
-        "platform-rp2040",
-        "platform-stm32"
-      ]
+      "portable_contract_feature": "contract-only"
     },
     "thresholds": {
       "max_jitter_us": 10,

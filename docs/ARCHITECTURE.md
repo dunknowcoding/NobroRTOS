@@ -498,6 +498,15 @@ buffer that preserves the latest records, tracks drops, and can be copied into a
 host-readable report without exposing dynamic logging dependencies to ISR or
 hard-real-time code.
 
+## Portable Hardware Providers
+
+`PlatformHal` identifies a platform and board package; it does not require a
+monolithic set of peripherals. Timebase, scheduling, deadline, capture, PWM,
+lease, I2C, SPI, and self-test behavior are independent provider traits.
+Portable leases use a neutral class plus instance number, and each platform
+adapter performs the concrete peripheral mapping. Bus providers also declare
+whether transfers are polling or DMA.
+
 ## Mountable stacks (HAL modularity)
 
 NobroRTOS keeps board and vendor differences behind **mountable backends**: a
@@ -519,13 +528,14 @@ to ArduinoNRF's own stacks by swapping a feature.
 
 | feature | backend | status |
 | --- | --- | --- |
-| `backend-nrf-usbd` (default) | vendored `nrf-usbd` + `usbd-serial` CDC | working on the S140-compatible profile |
-| `backend-tinyusb` | TinyUSB (C) via FFI | mountable scaffold; `tud_*` FFI glue is the follow-up |
-| `backend-taichiusb` | ArduinoNRF's TaichiUSB (Layer 0) | mountable scaffold; C-ABI shim to the Arduino core is the follow-up |
+| `backend-nrf-usbd` (default) | vendored `nrf-usbd` + `usbd-serial` CDC | implemented |
+| `backend-usb-serial-jtag` | fixed-function USB serial/JTAG peripheral | implemented |
+| `backend-ra-usbfs` | USBFS CDC device backend | implemented |
 
-`usb_stack_demo` consumes only `mount()` + `UsbStack` and builds for all three
-backends. Swapping the whole USB stack is a one-line feature change, no app
-edits.
+`usb_stack_demo` consumes only `mount()` + `UsbStack`. Compile-time guards allow
+exactly one implemented backend, and a process-wide permanent claim rejects a
+second mount before hardware access. Nonfunctional placeholder stacks are not
+published as features.
 
 ### Radio / BLE / Zigbee / RFID - same pattern
 

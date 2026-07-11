@@ -14,7 +14,7 @@ use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
 use nobro_adapter_ros_imu_bridge::{RosImuBridge, DEPTH, MAX_MSG, TOPIC_IMU};
 use nobro_hal::{
     lease::Resource,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 use nobro_kernel::{pool::SamplePool, ImuPayload};

@@ -64,6 +64,20 @@ impl TwimBus {
         })
     }
 
+    pub fn write(&self, addr: u8, bytes: &[u8]) -> Result<(), BusError> {
+        Twim0::write_bytes(addr, bytes).map_err(|error| match error {
+            BusError::Timeout => BusError::Nack,
+            other => other,
+        })
+    }
+
+    pub fn read(&self, addr: u8, bytes: &mut [u8]) -> Result<(), BusError> {
+        Twim0::read_bytes(addr, bytes).map_err(|error| match error {
+            BusError::Timeout => BusError::Nack,
+            other => other,
+        })
+    }
+
     /// Stub read kept for Phase 1 lease demo compatibility.
     pub fn read_stub(&self, addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
         if buf.len() > 32 {

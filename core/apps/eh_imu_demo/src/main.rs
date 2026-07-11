@@ -16,7 +16,7 @@ use nobro_eh_i2c::NobroI2c;
 use nobro_hal::{
     bus::TwimBus,
     lease::Resource,
-    traits::{HalLease, PlatformHal},
+    traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
 };
 use nobro_kernel::eval::{

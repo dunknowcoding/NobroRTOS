@@ -16,7 +16,7 @@ use nobro_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausi
 use nobro_hal::{
     lease::Resource,
     ppi,
-    traits::{HalClock, HalDeadline, HalLease, HalServoPwm, PlatformHal},
+    traits::{HalClock, HalDeadline, HalLease, HalSchedulingProvider, HalServoPwm, PlatformHal},
     ActivePlatform as Hal, BoardPackageReport, BoardProfileReport, ACTIVE_BOARD_PACKAGE,
 };
 use nobro_kernel::{

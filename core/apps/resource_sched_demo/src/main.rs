@@ -17,7 +17,10 @@ use nobro_hal::{
     inspect,
     lease::{LeaseError, Resource},
     ppi,
-    traits::{HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, PlatformHal},
+    traits::{
+        HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalSchedulingProvider,
+        PlatformHal,
+    },
     ActivePlatform as Hal,
 };
 use nobro_kernel::{
@@ -123,6 +126,7 @@ fn scene_b_check_once() {
         }
         Err(LeaseError::NotHeld) => defmt::warn!("scene B: NotHeld"),
         Err(LeaseError::WrongOwner) => defmt::warn!("scene B: WrongOwner"),
+        Err(LeaseError::Unsupported) => defmt::warn!("scene B: unsupported lease"),
     }
 }
 

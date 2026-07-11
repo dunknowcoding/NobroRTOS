@@ -13,7 +13,7 @@ use panic_halt as _;
 
 use nobro_hal::{
     lease::Resource,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 use nobro_kernel::fault_inject::{FaultInjector, FaultMode, FaultRule};

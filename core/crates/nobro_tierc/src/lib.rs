@@ -24,7 +24,7 @@ use panic_halt as _;
 use nobro_hal::{
     bus::TwimBus,
     lease::Resource,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, Twim0, I2C_SCL_PIN, I2C_SDA_PIN,
 };
 use nobro_kernel::{

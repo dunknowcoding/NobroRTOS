@@ -16,7 +16,7 @@ use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
 use nobro_adapter_robo_servo::RoboServoAdapter;
 use nobro_hal::{
     lease::Resource,
-    traits::{HalClock, HalLease, HalServoPwm, PlatformHal},
+    traits::{HalClock, HalLease, HalSchedulingProvider, HalServoPwm, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 use nobro_kernel::{pool::SamplePool, ImuPayload};

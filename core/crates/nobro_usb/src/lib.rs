@@ -2,9 +2,8 @@
 //!
 //! A board mounts exactly one backend behind the [`UsbStack`] trait, chosen at build time
 //! by a `backend-*` cargo feature. The app never names a concrete stack - it calls
-//! [`mount`] and talks CDC bytes - so the same firmware runs over the vendored `nrf-usbd`,
-//! TinyUSB, or ArduinoNRF's TaichiUSB depending on the dev board. This keeps NobroRTOS
-//! aligned with ArduinoNRF Layer-0 (native `NrfUsbd`) while making the choice swappable.
+//! [`mount`] and talks CDC bytes. Only implemented backends are selectable; placeholder
+//! stacks are deliberately not advertised as working features.
 //!
 //! ```ignore
 //! let cfg = UsbConfig::new(0x1209, 0x0001, "NiusRobotLab", "NobroRTOS CDC", "NBRO1");
@@ -19,10 +18,10 @@
 //! ```
 #![no_std]
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
 #[cfg(not(any(
     feature = "backend-nrf-usbd",
-    feature = "backend-tinyusb",
-    feature = "backend-taichiusb",
     feature = "backend-usb-serial-jtag",
     feature = "backend-ra-usbfs"
 )))]
@@ -31,23 +30,6 @@ compile_error!("exactly one USB backend feature must be enabled");
 #[cfg(any(
     all(
         feature = "backend-nrf-usbd",
-        any(
-            feature = "backend-tinyusb",
-            feature = "backend-taichiusb",
-            feature = "backend-usb-serial-jtag",
-            feature = "backend-ra-usbfs"
-        )
-    ),
-    all(
-        feature = "backend-tinyusb",
-        any(
-            feature = "backend-taichiusb",
-            feature = "backend-usb-serial-jtag",
-            feature = "backend-ra-usbfs"
-        )
-    ),
-    all(
-        feature = "backend-taichiusb",
         any(feature = "backend-usb-serial-jtag", feature = "backend-ra-usbfs")
     ),
     all(feature = "backend-usb-serial-jtag", feature = "backend-ra-usbfs")
@@ -123,16 +105,6 @@ mod nrf_usbd_backend;
 #[cfg(feature = "backend-nrf-usbd")]
 pub use nrf_usbd_backend::NrfUsbdCdc;
 
-#[cfg(feature = "backend-tinyusb")]
-mod tinyusb_backend;
-#[cfg(feature = "backend-tinyusb")]
-pub use tinyusb_backend::TinyUsbCdc;
-
-#[cfg(feature = "backend-taichiusb")]
-mod taichiusb_backend;
-#[cfg(feature = "backend-taichiusb")]
-pub use taichiusb_backend::TaichiUsbCdc;
-
 #[cfg(feature = "backend-usb-serial-jtag")]
 mod usb_serial_jtag_backend;
 #[cfg(feature = "backend-usb-serial-jtag")]
@@ -145,42 +117,55 @@ pub use ra_usbfs_backend::{RaUsbfsCdc, Stage};
 
 /// Mount the USB stack backend selected for this board and return it as a `UsbStack`.
 /// Exactly one `backend-*` feature must be enabled.
+struct MountClaim(AtomicBool);
+
+impl MountClaim {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    fn claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+}
+
+fn claim_mount() {
+    static MOUNTED: MountClaim = MountClaim::new();
+    assert!(MOUNTED.claim(), "a USB backend can only be mounted once");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MountClaim;
+
+    #[test]
+    fn global_mount_contract_is_permanent() {
+        let claim = MountClaim::new();
+        assert!(claim.claim());
+        assert!(!claim.claim());
+    }
+}
+
 #[cfg(feature = "backend-nrf-usbd")]
 pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
+    claim_mount();
     NrfUsbdCdc::mount(cfg)
 }
 
-#[cfg(all(feature = "backend-tinyusb", not(feature = "backend-nrf-usbd")))]
+#[cfg(all(feature = "backend-usb-serial-jtag", not(feature = "backend-nrf-usbd")))]
 pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
-    TinyUsbCdc::mount(cfg)
-}
-
-#[cfg(all(
-    feature = "backend-taichiusb",
-    not(feature = "backend-nrf-usbd"),
-    not(feature = "backend-tinyusb")
-))]
-pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
-    TaichiUsbCdc::mount(cfg)
-}
-
-#[cfg(all(
-    feature = "backend-usb-serial-jtag",
-    not(feature = "backend-nrf-usbd"),
-    not(feature = "backend-tinyusb"),
-    not(feature = "backend-taichiusb")
-))]
-pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
+    claim_mount();
     UsbSerialJtagCdc::mount(cfg)
 }
 
 #[cfg(all(
     feature = "backend-ra-usbfs",
     not(feature = "backend-nrf-usbd"),
-    not(feature = "backend-tinyusb"),
-    not(feature = "backend-taichiusb"),
     not(feature = "backend-usb-serial-jtag")
 ))]
 pub fn mount(cfg: &UsbConfig) -> impl UsbStack {
+    claim_mount();
     RaUsbfsCdc::mount(cfg)
 }

@@ -13,7 +13,7 @@ use nobro_eh_spi::NobroSpiDevice;
 use nobro_hal::{
     board,
     lease::Resource,
-    traits::{HalLease, PlatformHal},
+    traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 use nobro_ml::{Gesture, GestureDetector};

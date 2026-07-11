@@ -1,7 +1,7 @@
 //! USB stack modularity demo: the app talks only to `nobro_usb::mount()` + the `UsbStack`
 //! trait, never a concrete backend. Building with `--features backend-nrf-usbd` (default),
-//! `backend-tinyusb`, or `backend-taichiusb` swaps the whole USB stack under the same app
-//! code - the "modularized, configurable, mountable" USB requirement. This build mounts
+//! a board-supported backend swaps the whole USB stack under the same app code - the
+//! "modularized, configurable, mountable" USB requirement. This build mounts
 //! the nrf-usbd backend and echoes CDC bytes once enumerated (a NobroRTOS greeting on
 //! connect), matching ArduinoNRF Layer-0's native NrfUsbd behavior.
 #![no_std]

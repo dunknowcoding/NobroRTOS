@@ -657,7 +657,10 @@ for fixture in nobro_hal::BOARD_PACKAGE_FIXTURES {
 
 #### Leases
 
-`ResourceLease` and `LeaseGuard` provide exclusive ownership for shared
+Portable code uses `HalLease` with neutral `LeaseId` class/instance values such
+as `LeaseId::PRIMARY_I2C`; platform adapters map those IDs to concrete hardware.
+Board-specific drivers may use `ResourceLease` and `LeaseGuard` directly for
+exclusive ownership of shared
 peripherals. A driver should acquire a lease, perform bounded work, and let the
 guard release the resource. Recovery supervisors can inspect the current owner
 and release every lease held by a faulted owner without disturbing other
@@ -669,6 +672,14 @@ assert_eq!(nobro_hal::ResourceLease::owner(nobro_hal::Resource::Twim0), Some(mod
 drop(guard);
 nobro_hal::ResourceLease::release_all_for_owner(module_id);
 ```
+
+#### Portable Bus Transactions
+
+`HalI2c` exposes write, read, and repeated-start write/read operations;
+`HalSpi` exposes equal-length full-duplex transfers. Each provider declares
+`TRANSFER_MODE`, so scheduling and evaluation code can distinguish polling from
+DMA instead of assuming one platform-wide behavior. The current deep backend
+reports polling I2C and DMA SPI.
 
 #### Event Capture
 

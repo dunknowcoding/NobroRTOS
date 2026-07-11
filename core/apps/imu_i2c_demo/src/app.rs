@@ -9,7 +9,7 @@ use nobro_hal::{
     board_desc::BoardDesc,
     lease::Resource,
     ppi,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, Board,
 };
 use nobro_kernel::{

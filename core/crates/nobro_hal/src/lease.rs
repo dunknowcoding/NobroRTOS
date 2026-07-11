@@ -2,6 +2,8 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
+use crate::traits::LeaseId;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Resource {
     Timer0,
@@ -48,11 +50,29 @@ impl Resource {
     }
 }
 
+impl From<Resource> for LeaseId {
+    fn from(resource: Resource) -> Self {
+        match resource {
+            Resource::Timer0 => Self::SYSTEM_TIMER,
+            Resource::Twim0 => Self::PRIMARY_I2C,
+            Resource::Twim1 => Self::SECONDARY_I2C,
+            Resource::Spim0 => Self::PRIMARY_SPI,
+            Resource::Radio => Self::PRIMARY_RADIO,
+            Resource::Rtc2 => Self::LOW_POWER_TIMER,
+            Resource::Timer3 => Self::DEADLINE_TIMER,
+            Resource::Pwm0 => Self::PRIMARY_PWM,
+            Resource::Egu0 => Self::SOFTWARE_EVENT,
+            Resource::Ppi => Self::EVENT_ROUTER,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeaseError {
     AlreadyHeld,
     NotHeld,
     WrongOwner,
+    Unsupported,
 }
 
 struct LeaseSlot {

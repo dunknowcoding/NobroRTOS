@@ -14,7 +14,7 @@ use nobro_adapter_motion_ai::{MotionClassifier, CLASS_IDLE, MODEL_ID};
 use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
 use nobro_hal::{
     lease::Resource,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 use nobro_kernel::{pool::SamplePool, ImuPayload};

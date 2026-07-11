@@ -4,13 +4,14 @@ use crate::board;
 use crate::board_desc::{BusLayout, ServoProfile};
 use crate::bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 use crate::deadline_timer::DeadlineTimer;
-use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+use crate::lease::{LeaseError, Resource, ResourceLease};
 use crate::radio_sim::RadioRxSim;
 use crate::snapshots::EventCaptureSnapshot;
 use crate::timer::MicroTimer;
 use crate::traits::{
-    HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalLease, HalServoPwm,
-    HardwareCapability, HardwareCapabilitySet, PlatformHal,
+    HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalI2c, HalLease,
+    HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider, HardwareCapability,
+    HardwareCapabilitySet, LeaseClass, LeaseId, PlatformHal, TransferMode,
 };
 
 pub mod inspect;
@@ -32,19 +33,25 @@ impl HalCompatibility for Nrf52840 {
         .with(HardwareCapability::EventCapture)
         .with(HardwareCapability::ServoPwm)
         .with(HardwareCapability::Bus)
+        .with(HardwareCapability::I2c)
+        .with(HardwareCapability::Spi)
         .with(HardwareCapability::SelfTest);
 }
 
 impl PlatformHal for Nrf52840 {
     const PLATFORM_ID: &'static str = "nrf52840";
     type Board = board::Board;
+}
 
-    fn servo_profile() -> ServoProfile {
-        ServoProfile::new(50, board::SERVO_CENTER_US, board::SERVO_PWM_PIN)
-    }
-
+impl HalTimebaseProvider for Nrf52840 {
     unsafe fn init_timebase() {
         MicroTimer::init();
+    }
+}
+
+impl HalSchedulingProvider for Nrf52840 {
+    fn servo_profile() -> ServoProfile {
+        ServoProfile::new(50, board::SERVO_CENTER_US, board::SERVO_PWM_PIN)
     }
 
     unsafe fn init_scheduling_demo(profile: ServoProfile) {
@@ -62,28 +69,42 @@ impl HalClock for Nrf52840 {
 }
 
 impl HalLease for Nrf52840 {
-    fn acquire(resource: Resource, owner: u8) -> Result<(), LeaseError> {
-        ResourceLease::acquire(resource, owner)
+    fn acquire(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError> {
+        ResourceLease::acquire(map_lease(resource.into())?, owner)
     }
 
-    fn release(resource: Resource, owner: u8) -> Result<(), LeaseError> {
-        ResourceLease::release(resource, owner)
+    fn release(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError> {
+        ResourceLease::release(map_lease(resource.into())?, owner)
     }
 
-    fn is_held(resource: Resource) -> bool {
-        ResourceLease::is_held(resource)
+    fn is_held(resource: impl Into<LeaseId>) -> bool {
+        map_lease(resource.into()).is_ok_and(ResourceLease::is_held)
     }
 
-    fn owner(resource: Resource) -> Option<u8> {
-        ResourceLease::owner(resource)
+    fn owner(resource: impl Into<LeaseId>) -> Option<u8> {
+        map_lease(resource.into())
+            .ok()
+            .and_then(ResourceLease::owner)
     }
 
     fn release_all_for_owner(owner: u8) -> usize {
         ResourceLease::release_all_for_owner(owner)
     }
+}
 
-    fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
-        ResourceLease::acquire_guard(resource, owner)
+fn map_lease(resource: LeaseId) -> Result<Resource, LeaseError> {
+    match (resource.class, resource.instance) {
+        (LeaseClass::Timer, 0) => Ok(Resource::Timer0),
+        (LeaseClass::Timer, 2) => Ok(Resource::Rtc2),
+        (LeaseClass::Timer, 3) => Ok(Resource::Timer3),
+        (LeaseClass::I2c, 0) => Ok(Resource::Twim0),
+        (LeaseClass::I2c, 1) => Ok(Resource::Twim1),
+        (LeaseClass::Spi, 0) => Ok(Resource::Spim0),
+        (LeaseClass::Radio, 0) => Ok(Resource::Radio),
+        (LeaseClass::Pwm, 0) => Ok(Resource::Pwm0),
+        (LeaseClass::EventRouter, 0) => Ok(Resource::Ppi),
+        (LeaseClass::SoftwareEvent, 0) => Ok(Resource::Egu0),
+        _ => Err(LeaseError::Unsupported),
     }
 }
 
@@ -155,6 +176,37 @@ impl HalBus for TwimBus {
     }
 }
 
+impl HalI2c for TwimBus {
+    type Error = BusError;
+    const TRANSFER_MODE: TransferMode = TransferMode::Polling;
+
+    fn write(&mut self, address: u8, bytes: &[u8]) -> Result<(), Self::Error> {
+        TwimBus::write(self, address, bytes)
+    }
+
+    fn read(&mut self, address: u8, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        TwimBus::read(self, address, bytes)
+    }
+
+    fn write_read(
+        &mut self,
+        address: u8,
+        write: &[u8],
+        read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        TwimBus::write_read(self, address, write, read)
+    }
+}
+
+impl HalSpi for crate::spim_hw::Spim0 {
+    type Error = BusError;
+    const TRANSFER_MODE: TransferMode = TransferMode::Dma;
+
+    fn transfer(&mut self, write: &[u8], read: &mut [u8]) -> Result<(), Self::Error> {
+        crate::spim_hw::Spim0::transfer(self, write, read)
+    }
+}
+
 /// Compile-time selected active backend.
 pub type Active = Nrf52840;
 
@@ -171,9 +223,20 @@ mod tests {
             .with(HardwareCapability::EventCapture)
             .with(HardwareCapability::ServoPwm)
             .with(HardwareCapability::Bus)
+            .with(HardwareCapability::I2c)
+            .with(HardwareCapability::Spi)
             .with(HardwareCapability::SelfTest);
 
         assert!(Nrf52840::supports(required));
         assert_eq!(Nrf52840::CAPABILITIES.missing(required).bits(), 0);
+        assert_eq!(<TwimBus as HalI2c>::TRANSFER_MODE, TransferMode::Polling);
+        assert_eq!(
+            <crate::spim_hw::Spim0 as HalSpi>::TRANSFER_MODE,
+            TransferMode::Dma
+        );
+        assert_eq!(
+            map_lease(LeaseId::new(LeaseClass::Spi, 7)),
+            Err(LeaseError::Unsupported)
+        );
     }
 }

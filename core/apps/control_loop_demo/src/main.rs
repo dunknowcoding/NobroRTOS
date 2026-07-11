@@ -16,7 +16,7 @@ use nobro_eh_spi::NobroSpiDevice;
 use nobro_hal::{
     board,
     lease::Resource,
-    traits::{HalClock, HalLease, PlatformHal},
+    traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
 
