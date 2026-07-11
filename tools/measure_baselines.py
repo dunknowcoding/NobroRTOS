@@ -30,7 +30,7 @@ BASE = ROOT / "core" / "baselines"
 OUT = ROOT / "_work" / "evidence" / "baselines.json"
 BUDGETS = ROOT / "tools" / "baseline_budgets.json"
 TARGET = "thumbv7em-none-eabihf"
-IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "embassy-min")
+IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "nobro-graph-min", "embassy-min")
 
 
 def find_llvm_tool(name: str) -> str:
@@ -171,8 +171,14 @@ def check_budgets(measure: dict, budgets: dict) -> list[str]:
 
 
 def build(directory: pathlib.Path) -> tuple[bool, str]:
+    env = os.environ.copy()
+    # CI orchestrators (ci_matrix.sh) export a global CARGO_TARGET_DIR; the
+    # baselines must build into their own tree so the ELF paths and the
+    # per-implementation lockfiles stay deterministic everywhere.
+    env["CARGO_TARGET_DIR"] = str(directory / "target")
     completed = subprocess.run(
-        ["cargo", "build", "--release"], cwd=directory, capture_output=True, text=True
+        ["cargo", "build", "--release"], cwd=directory,
+        capture_output=True, text=True, env=env,
     )
     return completed.returncode == 0, completed.stderr[-2000:]
 
@@ -227,7 +233,7 @@ def main() -> int:
         elf = directory / "target" / TARGET / "release" / name
         sizes = elf_sizes(elf)
         sizes["source_lines"] = source_lines(directory)
-        if name == "nobro-min":
+        if name in ("nobro-min", "nobro-graph-min"):
             breakdown = crate_breakdown(find_llvm_tool("llvm-nm"), elf)
             if args.breakdown:
                 sizes["flash_by_crate"] = breakdown
