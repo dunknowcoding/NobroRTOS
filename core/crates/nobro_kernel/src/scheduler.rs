@@ -1,5 +1,8 @@
 //! Deadline slot scheduler (Phase 1): TIMER1 drives 50 Hz hard-real-time ticks.
 
+use core::cell::Cell;
+
+use critical_section::Mutex;
 use portable_atomic::{AtomicU32, Ordering};
 
 use crate::KernelError;
@@ -13,10 +16,16 @@ static MAX_JITTER_US: AtomicU32 = AtomicU32::new(0);
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_MISSES: AtomicU32 = AtomicU32::new(0);
 static JITTER_TOLERANCE_US: AtomicU32 = AtomicU32::new(DEFAULT_JITTER_TOLERANCE_US);
+static STATS_SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 pub type DeadlineHandler = fn();
 
-static mut DEADLINE_HANDLER: Option<DeadlineHandler> = None;
+static DEADLINE_HANDLER: Mutex<Cell<Option<DeadlineHandler>>> = Mutex::new(Cell::new(None));
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineHandlerError {
+    AlreadyRegistered,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SchedulerStats {
@@ -32,16 +41,35 @@ impl Scheduler {
     /// # Safety
     /// Must be set before the scheduler tick starts; the handler runs in interrupt
     /// context and must be interrupt-safe.
-    pub unsafe fn set_deadline_handler(handler: DeadlineHandler) {
-        DEADLINE_HANDLER = Some(handler);
+    pub unsafe fn set_deadline_handler(
+        handler: DeadlineHandler,
+    ) -> Result<(), DeadlineHandlerError> {
+        critical_section::with(|cs| {
+            let slot = DEADLINE_HANDLER.borrow(cs);
+            if slot.get().is_some() {
+                Err(DeadlineHandlerError::AlreadyRegistered)
+            } else {
+                slot.set(Some(handler));
+                Ok(())
+            }
+        })
+    }
+
+    /// # Safety
+    /// The caller must first quiesce the timer interrupt and ensure the previous
+    /// handler has returned.
+    pub unsafe fn clear_deadline_handler() {
+        critical_section::with(|cs| DEADLINE_HANDLER.borrow(cs).set(None));
     }
 
     pub fn reset_stats() {
+        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
         EXPECTED_NEXT_US.store(0, Ordering::Release);
         MAX_JITTER_US.store(0, Ordering::Release);
         TICK_COUNT.store(0, Ordering::Release);
         DEADLINE_MISSES.store(0, Ordering::Release);
         JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
+        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
     }
 
     pub fn max_jitter_us() -> u32 {
@@ -61,43 +89,57 @@ impl Scheduler {
     }
 
     pub fn set_jitter_tolerance_us(tolerance_us: u32) {
+        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
         JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
+        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
     }
 
     pub fn stats() -> SchedulerStats {
-        SchedulerStats {
-            tick_count: Self::tick_count(),
-            max_jitter_us: Self::max_jitter_us(),
-            deadline_misses: Self::deadline_misses(),
-            jitter_tolerance_us: Self::jitter_tolerance_us(),
+        loop {
+            let before = STATS_SEQUENCE.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                core::hint::spin_loop();
+                continue;
+            }
+            let stats = SchedulerStats {
+                tick_count: Self::tick_count(),
+                max_jitter_us: Self::max_jitter_us(),
+                deadline_misses: Self::deadline_misses(),
+                jitter_tolerance_us: Self::jitter_tolerance_us(),
+            };
+            let after = STATS_SEQUENCE.load(Ordering::Acquire);
+            if before == after {
+                return stats;
+            }
         }
     }
 
     /// Called from TIMER1 ISR or polled compare handler.
     pub fn on_deadline_tick(now_us: u64) {
+        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
         let now_lo = now_us as u32;
         let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
         if expected != 0 {
             let late = now_lo.wrapping_sub(expected);
             let early = expected.wrapping_sub(now_lo);
             let jitter = late.min(early);
-            if jitter > MAX_JITTER_US.load(Ordering::Relaxed) {
-                MAX_JITTER_US.store(jitter, Ordering::Release);
-            }
+            MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
             if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
                 DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
             }
         }
-        EXPECTED_NEXT_US.store(
-            now_lo.wrapping_add(DEADLINE_PERIOD_US as u32),
-            Ordering::Release,
-        );
+        let next = if expected == 0 {
+            now_lo.wrapping_add(DEADLINE_PERIOD_US as u32)
+        } else {
+            expected.wrapping_add(DEADLINE_PERIOD_US as u32)
+        };
+        EXPECTED_NEXT_US.store(next, Ordering::Release);
         TICK_COUNT.fetch_add(1, Ordering::AcqRel);
+        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
 
-        unsafe {
-            if let Some(handler) = DEADLINE_HANDLER {
-                handler();
-            }
+        let handler = critical_section::with(|cs| DEADLINE_HANDLER.borrow(cs).get());
+        if let Some(handler) = handler {
+            handler();
         }
     }
 
@@ -119,7 +161,7 @@ impl Timer {
     }
 
     pub fn after_ms(ms: u64, now_us: u64) -> Self {
-        Self::after_us(ms * 1000, now_us)
+        Self::after_us(ms.saturating_mul(1000), now_us)
     }
 
     pub fn is_ready(&self, now_us: u64) -> bool {
@@ -180,8 +222,24 @@ mod tests {
 
         let stats = Scheduler::stats();
         assert_eq!(stats.tick_count, 3);
-        assert_eq!(stats.max_jitter_us, 30);
+        assert_eq!(stats.max_jitter_us, 50);
         assert_eq!(stats.deadline_misses, 1);
         assert_eq!(stats.jitter_tolerance_us, 25);
+    }
+
+    #[test]
+    fn late_tick_does_not_shift_the_periodic_phase() {
+        Scheduler::reset_stats();
+        Scheduler::on_deadline_tick(1_000);
+        Scheduler::on_deadline_tick(21_007);
+        Scheduler::on_deadline_tick(41_000);
+        assert_eq!(Scheduler::max_jitter_us(), 7);
+    }
+
+    #[test]
+    fn millisecond_timer_saturates_before_addition() {
+        let timer = Timer::after_ms(u64::MAX, 10);
+        assert!(timer.is_ready(u64::MAX));
+        assert!(!timer.is_ready(u64::MAX - 1));
     }
 }

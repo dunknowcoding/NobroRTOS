@@ -22,11 +22,13 @@ gate() {
 }
 
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/_work/ct-ci}"
+HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
+export HOST_TARGET
 
 gate "host tests (portable crates)" \
   bash -c 'cd core && cargo test -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
     -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control -p nobro-conformance \
-    --target x86_64-pc-windows-msvc'
+    --target "$HOST_TARGET"'
 
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 

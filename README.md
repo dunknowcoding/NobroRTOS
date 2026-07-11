@@ -77,7 +77,7 @@ and just open the board's COM port.
 | You are a&hellip; | NobroRTOS gives you |
 | --- | --- |
 | **Beginner / maker** | One-command build-flash-verify, an Arduino-style `setup()/loop()` in C++, and reports that say exactly what failed |
-| **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, capability-scoped resources, and the `embedded-hal` driver ecosystem |
+| **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, declared capability grants, and the `embedded-hal` driver ecosystem |
 | **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
 | **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
 | **Porting from another RTOS** | A thin SAL + C ABI so Zephyr/Embassy/bare-metal drivers and C/C++ logic drop in &mdash; see [docs/PORTING.md](docs/PORTING.md) |
@@ -380,7 +380,7 @@ outside the public package surface.
 
 | Guide | Use It For |
 | --- | --- |
-| [NobroRTOS Book](docs/book/README.md) | Guided path from contracts to tutorials |
+| [Documentation Index](docs/README.md) | Guided path from first run to internals |
 | [User Manual](docs/USER_GUIDE.md) | Setup, app assembly, diagnostics, common workflows |
 | [API Manual](docs/API.md) | Public crate contracts and examples |
 | [System Architecture](docs/ARCHITECTURE.md) | Layering, memory discipline, recovery model |

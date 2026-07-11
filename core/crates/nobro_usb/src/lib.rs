@@ -19,6 +19,41 @@
 //! ```
 #![no_std]
 
+#[cfg(not(any(
+    feature = "backend-nrf-usbd",
+    feature = "backend-tinyusb",
+    feature = "backend-taichiusb",
+    feature = "backend-usb-serial-jtag",
+    feature = "backend-ra-usbfs"
+)))]
+compile_error!("exactly one USB backend feature must be enabled");
+
+#[cfg(any(
+    all(
+        feature = "backend-nrf-usbd",
+        any(
+            feature = "backend-tinyusb",
+            feature = "backend-taichiusb",
+            feature = "backend-usb-serial-jtag",
+            feature = "backend-ra-usbfs"
+        )
+    ),
+    all(
+        feature = "backend-tinyusb",
+        any(
+            feature = "backend-taichiusb",
+            feature = "backend-usb-serial-jtag",
+            feature = "backend-ra-usbfs"
+        )
+    ),
+    all(
+        feature = "backend-taichiusb",
+        any(feature = "backend-usb-serial-jtag", feature = "backend-ra-usbfs")
+    ),
+    all(feature = "backend-usb-serial-jtag", feature = "backend-ra-usbfs")
+))]
+compile_error!("USB backend features are mutually exclusive");
+
 /// Enumeration progress of the CDC device, backend-agnostic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CdcState {

@@ -87,7 +87,7 @@ fn main() -> ! {
         pkt[0] = 0x5A;
         pkt[1..5].copy_from_slice(&seq.to_le_bytes());
         pkt[5..9].copy_from_slice(&accel_mag_mg.to_le_bytes());
-        if Radio::send(&pkt) {
+        if Radio::send(&pkt).is_ok() {
             tx_sent = tx_sent.wrapping_add(1);
         }
 

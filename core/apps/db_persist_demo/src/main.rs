@@ -10,7 +10,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_database::Table;
+use nobro_database::{RecordCodec, Table};
 use panic_halt as _;
 
 #[repr(C)]
@@ -47,6 +47,31 @@ static mut NOBRO_DB_PERSIST_REPORT: Report = Report {
 struct BootRecord {
     value: u32,
     marker: u32,
+}
+
+impl RecordCodec for BootRecord {
+    const SCHEMA_ID: u32 = 0x4E42_5253; // stable boot-record schema
+    const ENCODED_LEN: usize = 8;
+
+    fn encode(&self, out: &mut [u8]) -> bool {
+        if out.len() != Self::ENCODED_LEN {
+            return false;
+        }
+        out[..4].copy_from_slice(&self.value.to_le_bytes());
+        out[4..8].copy_from_slice(&self.marker.to_le_bytes());
+        true
+    }
+
+    fn decode(input: &[u8]) -> Option<Self> {
+        if input.len() != Self::ENCODED_LEN {
+            return None;
+        }
+        let record = Self {
+            value: u32::from_le_bytes(input[..4].try_into().ok()?),
+            marker: u32::from_le_bytes(input[4..8].try_into().ok()?),
+        };
+        (record.marker == MARKER).then_some(record)
+    }
 }
 const MARKER: u32 = 0x4E42_5253; // "NBRS"
 /// Key of the boot-counter row; per-boot rows use BOOT_ROW_BASE + count.
@@ -98,8 +123,8 @@ fn flash_slice(addr: u32, len: usize) -> &'static [u8] {
 #[entry]
 fn main() -> ! {
     const CAP: usize = 8;
-    // Image budget: header 8 + CAP rows * (4 key + 8 record) + crc 4.
-    const IMG_MAX: usize = 8 + CAP * 12 + 4;
+    // Image budget: header 20 + CAP rows * (4 key + 8 record) + checksum 4.
+    const IMG_MAX: usize = 20 + CAP * 12 + 4;
 
     // Recover the table from flash (the image is length-prefixed by row count, so try
     // the maximal window; from_image validates magic + checksum).

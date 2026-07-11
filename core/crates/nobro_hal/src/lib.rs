@@ -78,7 +78,7 @@ pub use inspect::scene_d_pass;
 #[cfg(feature = "platform-nrf52840")]
 pub use pwm::{PwmBank, PwmServo, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]
-pub use radio_hw::Radio;
+pub use radio_hw::{Radio, RadioError};
 #[cfg(feature = "platform-nrf52840")]
 pub use radio_sim::RadioRxSim;
 #[cfg(feature = "platform-nrf52840")]

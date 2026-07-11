@@ -37,6 +37,12 @@ const SHORT_END_DISABLE: u32 = 1 << 1;
 /// Max application payload per packet.
 pub const RADIO_MAX_PAYLOAD: usize = 32;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RadioError {
+    TooLarge,
+    Timeout,
+}
+
 fn reg(off: u32) -> *mut u32 {
     (RADIO_BASE + off) as *mut u32
 }
@@ -67,10 +73,12 @@ impl Radio {
         *reg(CRCINIT) = 0x0000_FFFF;
     }
 
-    /// Send a payload (truncated to `RADIO_MAX_PAYLOAD`). Returns true if the radio
-    /// completed the transmission (END/DISABLED), false on timeout.
-    pub fn send(payload: &[u8]) -> bool {
-        let n = payload.len().min(RADIO_MAX_PAYLOAD);
+    /// Send one complete payload without truncation.
+    pub fn send(payload: &[u8]) -> Result<(), RadioError> {
+        if payload.len() > RADIO_MAX_PAYLOAD {
+            return Err(RadioError::TooLarge);
+        }
+        let n = payload.len();
         let mut pkt = [0u8; RADIO_MAX_PAYLOAD + 1];
         pkt[0] = n as u8;
         pkt[1..1 + n].copy_from_slice(&payload[..n]);
@@ -90,7 +98,11 @@ impl Radio {
                 cortex_m::asm::nop();
             }
             *reg(SHORTS) = 0;
-            ok
+            if ok {
+                Ok(())
+            } else {
+                Err(RadioError::Timeout)
+            }
         }
     }
 

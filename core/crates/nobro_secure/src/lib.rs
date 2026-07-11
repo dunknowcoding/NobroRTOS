@@ -1,7 +1,7 @@
 //! Security + data-integrity primitives (M174/M176/M177/M179/M180/M185).
 #![cfg_attr(not(test), no_std)]
 
-use nobro_crypto::sha256::{hmac_sha256, sha256};
+use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 
 /// Device attestation (M174): prove firmware identity by HMAC over a nonce + the
 /// firmware measurement, keyed by a per-device secret. A verifier that shares the key
@@ -62,6 +62,17 @@ impl<const N: usize> KeyStore<N> {
         (0..N)
             .find(|&i| self.used[i] && self.ids[i] == id)
             .map(|i| &self.keys[i])
+    }
+
+    /// Remove and zeroize a provisioned RAM key.
+    pub fn deprovision(&mut self, id: u32) -> bool {
+        let Some(i) = (0..N).find(|&i| self.used[i] && self.ids[i] == id) else {
+            return false;
+        };
+        self.keys[i].fill(0);
+        self.ids[i] = 0;
+        self.used[i] = false;
+        true
     }
 }
 
@@ -152,6 +163,15 @@ pub struct ConfigStore<const N: usize> {
 }
 
 impl<const N: usize> ConfigStore<N> {
+    fn authenticated_tag(key: &[u8; 32], version: u32, data: &[u8]) -> [u8; 32] {
+        let mut hash = Sha256::new();
+        hash.update(b"NobroRTOS ConfigStore v1");
+        hash.update(&version.to_le_bytes());
+        hash.update(&(data.len() as u64).to_le_bytes());
+        hash.update(data);
+        hmac_sha256(key, &hash.finalize())
+    }
+
     pub const fn empty() -> Self {
         Self {
             version: 0,
@@ -166,13 +186,17 @@ impl<const N: usize> ConfigStore<N> {
         }
         self.version = version;
         self.len = data.len();
+        self.bytes.fill(0);
         self.bytes[..data.len()].copy_from_slice(data);
-        self.tag = hmac_sha256(key, &self.bytes[..self.len]);
+        self.tag = Self::authenticated_tag(key, version, data);
         true
     }
     /// Return the config bytes only if the integrity tag still verifies.
     pub fn load(&self, key: &[u8; 32]) -> Option<(u32, &[u8])> {
-        let expect = hmac_sha256(key, &self.bytes[..self.len]);
+        if self.len > N {
+            return None;
+        }
+        let expect = Self::authenticated_tag(key, self.version, &self.bytes[..self.len]);
         if verify_tag(&expect, &self.tag) {
             Some((self.version, &self.bytes[..self.len]))
         } else {
@@ -206,6 +230,8 @@ mod tests {
         assert!(!ks.provision(1, [9; 32])); // dup id rejected
         assert!(!ks.provision(3, [3; 32])); // full
         assert_eq!(ks.get(2), Some(&[2u8; 32]));
+        assert!(ks.deprovision(2));
+        assert_eq!(ks.get(2), None);
         assert_eq!(ks.get(9), None);
     }
 
@@ -258,6 +284,12 @@ mod tests {
         assert_eq!(data, b"rate=100;mode=turbo");
         // wrong key -> integrity fails
         assert!(cfg.load(&[0u8; 32]).is_none());
+
+        cfg.version ^= 1;
+        assert!(cfg.load(&key).is_none());
+        cfg.version ^= 1;
+        cfg.len -= 1;
+        assert!(cfg.load(&key).is_none());
     }
 }
 
@@ -276,6 +308,13 @@ pub struct OtaAgent {
     version: [u32; 2], // installed version per slot (index 0=A,1=B)
     good: [bool; 2],   // slot confirmed-good (booted successfully)
     min_version: u32,  // anti-rollback floor
+    staged: Option<Slot>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OtaError {
+    NoStagedImage,
+    InvalidStagedVersion,
 }
 
 impl OtaAgent {
@@ -289,6 +328,7 @@ impl OtaAgent {
             version,
             good,
             min_version: active_version,
+            staged: None,
         }
     }
 
@@ -319,14 +359,21 @@ impl OtaAgent {
         let slot = self.inactive();
         self.version[Self::idx(slot)] = candidate_version;
         self.good[Self::idx(slot)] = false; // unproven until it boots + confirms
+        self.staged = Some(slot);
         Some(slot)
     }
 
     /// Boot into the staged slot (call after a reset into it). Does not yet confirm-good.
-    pub fn boot_staged(&mut self) -> Slot {
-        self.active = self.inactive();
-        self.min_version = self.version[Self::idx(self.active)];
-        self.active
+    pub fn boot_staged(&mut self) -> Result<Slot, OtaError> {
+        let slot = self.staged.ok_or(OtaError::NoStagedImage)?;
+        let version = self.version[Self::idx(slot)];
+        if version <= self.min_version {
+            return Err(OtaError::InvalidStagedVersion);
+        }
+        self.active = slot;
+        self.min_version = version;
+        self.staged = None;
+        Ok(self.active)
     }
 
     /// The freshly-booted slot confirmed healthy (watchdog fed, self-test passed).
@@ -336,10 +383,12 @@ impl OtaAgent {
 
     /// Boot failed to confirm: revert to the other slot if it is known-good.
     pub fn revert(&mut self) -> Slot {
+        if self.good[Self::idx(self.active)] {
+            return self.active;
+        }
         let other = self.inactive();
         if self.good[Self::idx(other)] {
             self.active = other;
-            self.min_version = self.version[Self::idx(other)];
         }
         self.active
     }
@@ -377,15 +426,24 @@ pub struct BootImageManifest {
 pub struct BootVectorPolicy {
     pub min_load_addr: u32,
     pub max_end_addr: u32,
+    pub min_stack_addr: u32,
+    pub max_stack_addr: u32,
     pub stack_alignment: u32,
     pub require_thumb_entry: bool,
 }
 
 impl BootVectorPolicy {
-    pub const fn cortex_m(min_load_addr: u32, max_end_addr: u32) -> Self {
+    pub const fn cortex_m(
+        min_load_addr: u32,
+        max_end_addr: u32,
+        min_stack_addr: u32,
+        max_stack_addr: u32,
+    ) -> Self {
         Self {
             min_load_addr,
             max_end_addr,
+            min_stack_addr,
+            max_stack_addr,
             stack_alignment: 8,
             require_thumb_entry: true,
         }
@@ -500,13 +558,22 @@ impl SecureBoot {
         if manifest.load_addr < policy.min_load_addr || end > policy.max_end_addr {
             return Err(BootPlanError::AddressRange);
         }
-        if manifest.entry_addr == 0 || (policy.require_thumb_entry && manifest.entry_addr & 1 == 0)
-        {
+        let entry_code_addr = if policy.require_thumb_entry {
+            if manifest.entry_addr & 1 == 0 {
+                return Err(BootPlanError::InvalidEntry);
+            }
+            manifest.entry_addr & !1
+        } else {
+            manifest.entry_addr
+        };
+        if entry_code_addr < manifest.load_addr || entry_code_addr >= end {
             return Err(BootPlanError::InvalidEntry);
         }
         if manifest.stack_top == 0
             || policy.stack_alignment == 0
-            || manifest.stack_top % policy.stack_alignment != 0
+            || !manifest.stack_top.is_multiple_of(policy.stack_alignment)
+            || manifest.stack_top <= policy.min_stack_addr
+            || manifest.stack_top > policy.max_stack_addr
         {
             return Err(BootPlanError::InvalidStack);
         }
@@ -614,7 +681,7 @@ mod secure_boot_tests {
             version: 8,
             image_len: image.len() as u32,
             load_addr: 0x1000,
-            entry_addr: 0x1101,
+            entry_addr: 0x1001,
             stack_top: 0x2001_0000,
             measurement,
             signature,
@@ -624,10 +691,10 @@ mod secure_boot_tests {
                 &BOOT_KEY,
                 image,
                 &manifest,
-                BootVectorPolicy::cortex_m(0x1000, 0x80000),
+                BootVectorPolicy::cortex_m(0x1000, 0x80000, 0x2000_0000, 0x2004_0000),
             )
             .unwrap();
-        assert_eq!(plan.entry_addr, 0x1101);
+        assert_eq!(plan.entry_addr, 0x1001);
         assert_eq!(plan.version, 8);
     }
 
@@ -640,13 +707,13 @@ mod secure_boot_tests {
             version: 8,
             image_len: image.len() as u32,
             load_addr: 0x1000,
-            entry_addr: 0x1101,
+            entry_addr: 0x1001,
             stack_top: 0x2001_0000,
             measurement,
             signature,
         };
         let sb = SecureBoot::new(7);
-        let policy = BootVectorPolicy::cortex_m(0x1000, 0x80000);
+        let policy = BootVectorPolicy::cortex_m(0x1000, 0x80000, 0x2000_0000, 0x2004_0000);
 
         manifest.image_len += 1;
         assert_eq!(
@@ -654,12 +721,12 @@ mod secure_boot_tests {
             Err(BootPlanError::SizeMismatch)
         );
         manifest.image_len = image.len() as u32;
-        manifest.entry_addr = 0x1100;
+        manifest.entry_addr = 0x1000;
         assert_eq!(
             sb.boot_plan(&BOOT_KEY, image, &manifest, policy),
             Err(BootPlanError::InvalidEntry)
         );
-        manifest.entry_addr = 0x1101;
+        manifest.entry_addr = 0x1001;
         manifest.signature[0] ^= 1;
         assert_eq!(
             sb.boot_plan(&BOOT_KEY, image, &manifest, policy),
@@ -679,12 +746,12 @@ mod ota_tests {
         // stage v6 into B, boot it
         assert_eq!(ota.stage(6), Some(Slot::B));
         assert_eq!(ota.stage(4), None); // rollback rejected
-        assert_eq!(ota.boot_staged(), Slot::B);
+        assert_eq!(ota.boot_staged(), Ok(Slot::B));
         // if B never confirms, revert to the still-good A
         assert_eq!(ota.revert(), Slot::A);
         // now do a good update: stage v7 into B, boot + confirm
         assert_eq!(ota.stage(7), Some(Slot::B));
-        assert_eq!(ota.boot_staged(), Slot::B);
+        assert_eq!(ota.boot_staged(), Ok(Slot::B));
         ota.confirm();
         // a later revert stays on B (A is older but still good) - active unchanged when
         // current slot is confirmed

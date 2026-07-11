@@ -220,8 +220,9 @@ impl Twim0 {
 
             if send_stop {
                 clear_event(base, TWI_EVENTS_STOPPED);
-                let _ = wait_event(base, TWI_EVENTS_STOPPED);
+                let stopped = wait_event(base, TWI_EVENTS_STOPPED);
                 *reg(base, TWI_SHORTS) = 0;
+                stopped?;
             } else {
                 *reg(base, TWI_SHORTS) = 0;
             }

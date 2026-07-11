@@ -101,11 +101,11 @@ impl SensorStub {
             return Ok(None);
         }
         if let SensorStubMode::ErrorEvery(period) = self.profile.mode {
-            if period != 0 && self.tick % period == 0 {
+            if period != 0 && self.tick.is_multiple_of(period) {
                 return Err(SensorStubError::InjectedFault);
             }
         }
-        if self.tick % self.profile.sample_period_ticks != 0 {
+        if !self.tick.is_multiple_of(self.profile.sample_period_ticks) {
             return Ok(None);
         }
 
@@ -119,7 +119,7 @@ impl SensorStub {
 
     fn payload_for_tick(&self) -> ImuPayload {
         if let SensorStubMode::BadDataEvery(period) = self.profile.mode {
-            if period != 0 && self.tick % period == 0 {
+            if period != 0 && self.tick.is_multiple_of(period) {
                 return ImuPayload {
                     accel_g: [4.0, 0.0, 0.0],
                     gyro_dps: [0.0, 0.0, 0.0],

@@ -14,8 +14,8 @@ piece actually guarantees, and where the boundaries are.
 
 | Mechanism | What it guarantees | Where |
 | --- | --- | --- |
-| **Capability grants** | a module only touches the services its manifest declares; admission rejects over-claiming before anything runs | `nobro_kernel` (manifest → admission) |
-| **Quota ledger** | RAM/flash/CPU budgets are reserved up front; a module cannot starve the system at runtime | `nobro_kernel::quota` |
+| **Capability grants** | admission derives a declared grant set; protected dispatch paths must still consult it atomically with each operation | `nobro_kernel` (manifest → admission) |
+| **Quota ledger** | admission seeds bounded declarations and runtime helpers track explicit reservations; automatic allocator/CPU charging is still being integrated | `nobro_kernel::quota` |
 | **Peripheral leases** | exclusive, owner-checked access to buses/timers/radios; wrong-owner release is an error, verified by a 30k-op property test | `nobro_hal::lease` |
 | **Bounded everything** | fixed-capacity mailboxes, pools, bridges; no heap = no heap exploits, no fragmentation | whole tree (`no_std`, no alloc) |
 
@@ -72,7 +72,7 @@ are NobroRTOS's answers, with measurements where a number exists.
 Kernel primitives that must be atomic (peripheral leases) use `critical_section`
 (PRIMASK on Cortex-M). The **longest masked window a kernel operation produces was
 measured at 152 cycles = 2.4 µs @ 64 MHz** (max over 1000 runs; see
-[MEASURED_LATENCIES.md](MEASURED_LATENCIES.md), reproduce with
+the measured-latency section below, reproduce with
 `nobro_hw_eval.py wcet`). Pure-data kernel ops (mailbox, quota, alarms, capability
 checks) run unmasked — they take `&mut self` and belong to one context.
 
@@ -277,4 +277,3 @@ python tools/wasm_slot_spike.py --selftest # assert the boundary holds (gated)
 The stub proves the calling convention and the bounded/marshaled boundary; swapping the
 pure-Python guest for a wasm3/wasmtime instance that imports the same four functions is the
 remaining, mechanical step if this graduates from a spike.
-

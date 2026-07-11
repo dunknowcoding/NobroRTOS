@@ -75,8 +75,14 @@ impl Future for Never {
 
 fn test_spawn_complete() -> (bool, u32, u32) {
     let done = AtomicU32::new(0);
-    let f1 = pin!(Countdown { left: 3, done: &done });
-    let f2 = pin!(Countdown { left: 1, done: &done });
+    let f1 = pin!(Countdown {
+        left: 3,
+        done: &done
+    });
+    let f2 = pin!(Countdown {
+        left: 1,
+        done: &done
+    });
     let mut exec = BoundedExecutor::<4>::new();
     if exec.spawn(f1).is_err() || exec.spawn(f2).is_err() {
         return (false, 0, 0);
@@ -89,8 +95,14 @@ fn test_spawn_complete() -> (bool, u32, u32) {
 
 fn test_capacity() -> bool {
     let done = AtomicU32::new(0);
-    let f1 = pin!(Countdown { left: 0, done: &done });
-    let f2 = pin!(Countdown { left: 0, done: &done });
+    let f1 = pin!(Countdown {
+        left: 0,
+        done: &done
+    });
+    let f2 = pin!(Countdown {
+        left: 0,
+        done: &done
+    });
     let mut exec = BoundedExecutor::<1>::new();
     exec.spawn(f1).is_ok() && exec.spawn(f2) == Err(AsyncError::Full)
 }

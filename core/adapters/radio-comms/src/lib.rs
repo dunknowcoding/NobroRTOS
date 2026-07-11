@@ -74,10 +74,6 @@ impl StreamSal for RadioComms {
     }
 
     fn write_frame(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        if Radio::send(buf) {
-            Ok(())
-        } else {
-            Err(RadioCommsError::TxTimeout)
-        }
+        Radio::send(buf).map_err(|_| RadioCommsError::TxTimeout)
     }
 }

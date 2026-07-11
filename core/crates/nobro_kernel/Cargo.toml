@@ -9,6 +9,7 @@ nobro-hal = { path = "../nobro_hal", default-features = false, features = ["cont
 # that lack atomic CAS (Cortex-M0+, RISC-V without the 'a' extension) - keeps the kernel
 # portable across MCU families.
 portable-atomic = { version = "1", default-features = false }
+critical-section = "1.2"
 
 [features]
 default = ["portable-atomic-cs"]
@@ -16,3 +17,6 @@ default = ["portable-atomic-cs"]
 # provides atomics another way (esp-hal assume-single-core) disable default features.
 portable-atomic-cs = ["portable-atomic/critical-section"]
 hal-profile = ["dep:nobro-hal"]
+
+[dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }

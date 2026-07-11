@@ -269,7 +269,7 @@ mod tests {
     struct TestBoard;
 
     impl BoardDesc for TestBoard {
-        const PLATFORM_ID: &'static str = "test-platform";
+        const PLATFORM_ID: &'static str = "cortex_m";
         const BOARD_ID: &'static str = "test-board";
         const APP_FLASH_START: u32 = 0x4000;
         const CAPACITY: BoardCapacity = BoardCapacity::new(64 * 1024, 16 * 1024, 8, 4);
@@ -285,7 +285,7 @@ mod tests {
 
         assert!(report.verify_checksum());
         assert_eq!(report.magic, BOARD_PROFILE_REPORT_MAGIC);
-        assert_eq!(report.platform_hash, hash_str("test-platform"));
+        assert_eq!(report.platform_hash, hash_str("cortex_m"));
         assert_eq!(report.board_hash, hash_str("test-board"));
         assert_eq!(report.app_flash_start, 0x4000);
         assert_eq!(report.flash_budget_bytes, 64 * 1024);
@@ -301,8 +301,8 @@ mod tests {
     #[test]
     fn board_package_report_preserves_validation_result() {
         let package = BoardPackage::from_board::<TestBoard>(
-            crate::board_desc::BootLayout::NoSoftDevice,
-            60 * 1024,
+            crate::board_desc::BootLayout::Custom,
+            64 * 1024,
             0x2000_0000,
             16 * 1024,
         );
@@ -312,9 +312,9 @@ mod tests {
         assert_eq!(report.magic, BOARD_PACKAGE_REPORT_MAGIC);
         assert_eq!(report.valid, 1);
         assert_eq!(report.error_code, 0);
-        assert_eq!(report.platform_hash, hash_str("test-platform"));
+        assert_eq!(report.platform_hash, hash_str("cortex_m"));
         assert_eq!(report.board_hash, hash_str("test-board"));
-        assert_eq!(report.boot_layout, 1);
+        assert_eq!(report.boot_layout, 255);
         assert_eq!(report.app_flash_start, 0x4000);
         assert_eq!(report.ram_start, 0x2000_0000);
 
@@ -325,8 +325,8 @@ mod tests {
     #[test]
     fn board_package_report_exports_error_code() {
         let mut package = BoardPackage::from_board::<TestBoard>(
-            crate::board_desc::BootLayout::NoSoftDevice,
-            60 * 1024,
+            crate::board_desc::BootLayout::Custom,
+            64 * 1024,
             0x2000_0000,
             16 * 1024,
         );

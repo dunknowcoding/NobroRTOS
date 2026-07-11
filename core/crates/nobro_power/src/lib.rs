@@ -52,9 +52,11 @@ impl PowerManager {
     }
 
     pub fn duty_milli(&self) -> u32 {
-        (self.active_us * 1000)
+        self.active_us
+            .saturating_mul(1000)
             .checked_div(self.window_us)
-            .unwrap_or(0) as u32
+            .unwrap_or(0)
+            .min(u64::from(u32::MAX)) as u32
     }
 }
 
@@ -103,7 +105,7 @@ impl<const N: usize> EnergyLedger<N> {
 
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
     pub fn charge(&mut self, task: u8, active_us: u64, power_uw: u64) -> bool {
-        let energy_uj = active_us * power_uw / 1_000_000;
+        let energy_uj = active_us.saturating_mul(power_uw) / 1_000_000;
         for e in self.entries[..self.len].iter_mut() {
             if e.0 == task {
                 e.1 = e.1.saturating_add(energy_uj);

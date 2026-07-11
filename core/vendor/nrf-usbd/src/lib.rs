@@ -1,6 +1,7 @@
 //! USB peripheral driver for nRF microcontrollers.
 
 #![no_std]
+#![allow(mismatched_lifetime_syntaxes)] // generated PAC API predates the renamed rustc lint
 
 mod errata;
 mod pac;

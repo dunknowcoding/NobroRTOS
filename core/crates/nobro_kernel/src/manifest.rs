@@ -330,6 +330,9 @@ pub enum ManifestError {
         limit: SystemBudget,
     },
     UserOwnsKernelCapability(ModuleId),
+    EmptyManifest,
+    MissingKernel,
+    InvalidKernelContract,
 }
 
 impl ManifestError {
@@ -346,6 +349,9 @@ impl ManifestError {
             Self::ModuleLimitExceeded { .. } => 9,
             Self::BudgetExceeded { .. } => 10,
             Self::UserOwnsKernelCapability(_) => 11,
+            Self::EmptyManifest => 12,
+            Self::MissingKernel => 13,
+            Self::InvalidKernelContract => 14,
         }
     }
 
@@ -359,7 +365,12 @@ impl ManifestError {
             | Self::UserOwnsKernelCapability(module) => Some(module),
             Self::CapabilityOwnershipConflict { module, .. }
             | Self::MissingOwnedCapability { module, .. } => Some(module),
-            Self::Full | Self::ModuleLimitExceeded { .. } | Self::BudgetExceeded { .. } => None,
+            Self::Full
+            | Self::ModuleLimitExceeded { .. }
+            | Self::BudgetExceeded { .. }
+            | Self::EmptyManifest
+            | Self::MissingKernel
+            | Self::InvalidKernelContract => None,
         }
     }
 
@@ -379,7 +390,10 @@ impl ManifestError {
             | Self::EmptyMemoryBudget(_)
             | Self::ModuleLimitExceeded { .. }
             | Self::BudgetExceeded { .. }
-            | Self::UserOwnsKernelCapability(_) => 0,
+            | Self::UserOwnsKernelCapability(_)
+            | Self::EmptyManifest
+            | Self::MissingKernel
+            | Self::InvalidKernelContract => 0,
         }
     }
 }
@@ -438,6 +452,7 @@ impl<const N: usize> SystemManifest<N> {
 
     pub fn validate_profile(&self, profile: SystemProfile) -> Result<(), ManifestError> {
         self.validate()?;
+        self.validate_system_contract()?;
         if self.len() > profile.max_modules {
             return Err(ManifestError::ModuleLimitExceeded {
                 modules: self.len(),
@@ -451,6 +466,24 @@ impl<const N: usize> SystemManifest<N> {
             return Err(ManifestError::BudgetExceeded { used, limit });
         }
 
+        Ok(())
+    }
+
+    fn validate_system_contract(&self) -> Result<(), ManifestError> {
+        if self.is_empty() {
+            return Err(ManifestError::EmptyManifest);
+        }
+        let Some(kernel) = self.iter().find(|spec| spec.id == ModuleId::Kernel) else {
+            return Err(ManifestError::MissingKernel);
+        };
+        if kernel.criticality != Criticality::HardRealtime
+            || !kernel.owns.contains_all(kernel_owned_capabilities())
+            || self.iter().any(|spec| {
+                spec.id != ModuleId::Kernel && spec.owns.intersects(kernel_owned_capabilities())
+            })
+        {
+            return Err(ManifestError::InvalidKernelContract);
+        }
         Ok(())
     }
 
@@ -528,11 +561,14 @@ impl<const N: usize> SystemManifest<N> {
             return Err(ManifestError::InvalidFaultThreshold(spec.id));
         }
 
-        if spec.criticality == Criticality::HardRealtime {
-            let Some(deadline) = spec.deadline else {
-                return Err(ManifestError::MissingDeadline(spec.id));
-            };
-            if deadline.period_us == 0 || deadline.max_jitter_us == 0 {
+        if spec.criticality == Criticality::HardRealtime && spec.deadline.is_none() {
+            return Err(ManifestError::MissingDeadline(spec.id));
+        }
+        if let Some(deadline) = spec.deadline {
+            if deadline.period_us == 0
+                || deadline.max_jitter_us == 0
+                || deadline.max_jitter_us >= deadline.period_us
+            {
                 return Err(ManifestError::InvalidDeadline(spec.id));
             }
         }
@@ -769,6 +805,44 @@ mod tests {
         assert_eq!(
             manifest.validate(),
             Err(ManifestError::MissingDeadline(ModuleId::Actuator))
+        );
+    }
+
+    #[test]
+    fn every_declared_deadline_must_be_well_formed() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(4096, 512, 0))
+                    .deadline(DeadlineContract::new(100, 100)),
+            )
+            .unwrap();
+        assert_eq!(
+            manifest.validate(),
+            Err(ManifestError::InvalidDeadline(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn profile_requires_the_kernel_contract() {
+        let empty = SystemManifest::<1>::new();
+        assert_eq!(
+            empty.validate_profile(SystemProfile::NRF52840_CORE),
+            Err(ManifestError::EmptyManifest)
+        );
+
+        let mut no_kernel = SystemManifest::<1>::new();
+        no_kernel
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(4096, 512, 0)),
+            )
+            .unwrap();
+        assert_eq!(
+            no_kernel.validate_profile(SystemProfile::NRF52840_CORE),
+            Err(ManifestError::MissingKernel)
         );
     }
 

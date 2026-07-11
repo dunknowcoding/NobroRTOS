@@ -8,6 +8,7 @@ pub struct WatchdogEntry {
     pub timeout_us: u64,
     pub last_beat_us: u64,
     pub missed: u32,
+    pub expired_reported: bool,
 }
 
 impl WatchdogEntry {
@@ -67,6 +68,7 @@ impl<const N: usize> Watchdog<N> {
             timeout_us,
             last_beat_us: now_us,
             missed: 0,
+            expired_reported: false,
         });
         Ok(())
     }
@@ -77,6 +79,7 @@ impl<const N: usize> Watchdog<N> {
         };
         entry.last_beat_us = now_us;
         entry.missed = 0;
+        entry.expired_reported = false;
         Ok(())
     }
 
@@ -86,6 +89,24 @@ impl<const N: usize> Watchdog<N> {
             if !entry.is_expired(now_us) {
                 continue;
             }
+            entry.missed = entry.missed.saturating_add(1);
+            if count < out.len() {
+                out[count] = entry.module;
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Report only the transition into an expired state. Repeated sweeps during
+    /// one uninterrupted outage return no additional event until a heartbeat.
+    pub fn expired_edges(&mut self, now_us: u64, out: &mut [ModuleId]) -> usize {
+        let mut count = 0;
+        for entry in self.entries.iter_mut().flatten() {
+            if !entry.is_expired(now_us) || entry.expired_reported {
+                continue;
+            }
+            entry.expired_reported = true;
             entry.missed = entry.missed.saturating_add(1);
             if count < out.len() {
                 out[count] = entry.module;
@@ -150,6 +171,8 @@ mod tests {
         assert_eq!(count, 1);
         assert_eq!(expired[0], ModuleId::Sensor);
         assert_eq!(watchdog.get(ModuleId::Sensor).expect("sensor").missed, 1);
+        assert_eq!(watchdog.expired(160, &mut expired), 1);
+        assert_eq!(watchdog.get(ModuleId::Sensor).expect("sensor").missed, 2);
     }
 
     #[test]
@@ -188,6 +211,7 @@ mod tests {
             timeout_us: 100,
             last_beat_us: 20,
             missed: 0,
+            expired_reported: false,
         };
 
         assert_eq!(entry.age_us(90), 70);
@@ -220,6 +244,7 @@ mod tests {
                 timeout_us: 100,
                 last_beat_us: 0,
                 missed: 0,
+                expired_reported: false,
             })
         );
         assert_eq!(watchdog.get(ModuleId::Sensor), None);
@@ -230,6 +255,7 @@ mod tests {
                 timeout_us: 200,
                 last_beat_us: 0,
                 missed: 0,
+                expired_reported: false,
             })
         );
     }

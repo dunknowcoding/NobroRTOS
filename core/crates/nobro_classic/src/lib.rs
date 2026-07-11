@@ -40,7 +40,7 @@ impl<T: Copy, const N: usize> Queue<T, N> {
     }
     /// `xQueueSend` (to back). Returns false if full (pdFALSE).
     pub fn send(&mut self, item: T) -> bool {
-        if self.count == N {
+        if N == 0 || self.count == N {
             return false;
         }
         self.buf[self.tail] = Some(item);
@@ -50,7 +50,7 @@ impl<T: Copy, const N: usize> Queue<T, N> {
     }
     /// `xQueueSendToFront`.
     pub fn send_to_front(&mut self, item: T) -> bool {
-        if self.count == N {
+        if N == 0 || self.count == N {
             return false;
         }
         self.head = (self.head + N - 1) % N;
@@ -129,7 +129,9 @@ impl Semaphore {
     }
 }
 
-/// Ownership mutex (FreeRTOS `xMutex`). Peripheral access should use the kernel's
+/// Non-recursive ownership token (FreeRTOS-style `xMutex`). This is deliberately
+/// non-blocking and contains no protected data; it is not a Rust data mutex. Peripheral
+/// access should use the kernel's
 /// resource leases instead - those are priority-inversion-free because the kernel
 /// arbitrates ownership. This is for app-level mutual exclusion.
 #[derive(Clone, Copy, Debug, Default)]
@@ -141,14 +143,15 @@ impl Mutex {
     pub const fn new() -> Self {
         Self { owner: None }
     }
-    /// `xSemaphoreTake` on a mutex: succeeds if free (or re-taken by the same owner).
+    /// `xSemaphoreTake` on the token: succeeds only if free. Recursive acquisition is
+    /// rejected so one release can never accidentally unlock a nested acquisition.
     pub fn take(&mut self, owner: u8) -> bool {
         match self.owner {
             None => {
                 self.owner = Some(owner);
                 true
             }
-            Some(o) => o == owner,
+            Some(_) => false,
         }
     }
     /// `xSemaphoreGive`: only the holder may release.
@@ -254,10 +257,18 @@ mod tests {
         let mut m = Mutex::new();
         assert!(m.take(1));
         assert!(!m.take(2)); // held by 1
-        assert!(m.take(1)); // re-entrant by holder
+        assert!(!m.take(1)); // explicitly non-recursive
         assert!(!m.give(2)); // only holder releases
         assert!(m.give(1));
         assert!(m.take(2)); // now free
+    }
+
+    #[test]
+    fn zero_capacity_queue_fails_without_panicking() {
+        let mut q = Queue::<u8, 0>::new();
+        assert!(!q.send(1));
+        assert!(!q.send_to_front(1));
+        assert_eq!(q.receive(), None);
     }
 
     #[test]

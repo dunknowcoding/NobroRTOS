@@ -2,6 +2,9 @@
 //! the nRF dev boards, matching ArduinoNRF Layer-0's native `NrfUsbd`). Owns a `'static`
 //! bus allocator so the `UsbDevice`/`SerialPort` can live inside the backend struct.
 
+use core::mem::MaybeUninit;
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use nrf_usbd::{UsbPeripheral, Usbd};
 use usb_device::device::{UsbDevice, UsbDeviceBuilder, UsbDeviceState, UsbVidPid};
 use usb_device::{bus::UsbBusAllocator, device::StringDescriptors};
@@ -19,7 +22,23 @@ type Bus = Usbd<Nrf52840Usbd>;
 
 // The allocator must outlive the device + serial (which borrow it), so it lives in a
 // static. A board mounts a single USB stack, so a single slot is sufficient.
-static mut ALLOC: Option<UsbBusAllocator<Bus>> = None;
+static mut ALLOC: MaybeUninit<UsbBusAllocator<Bus>> = MaybeUninit::uninit();
+
+struct MountClaim(AtomicBool);
+
+impl MountClaim {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    fn try_claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+}
+
+static MOUNT_CLAIM: MountClaim = MountClaim::new();
 
 const CLOCK: u32 = 0x4000_0000;
 const POWER: u32 = 0x4000_0000; // POWER shares the base region on nRF52
@@ -36,7 +55,7 @@ unsafe fn wr(a: u32, v: u32) {
 /// to own the PAC `Peripherals`). The sequence supports both direct and UF2 handoff.
 unsafe fn peripheral_clean_start() {
     // HFXO (USB needs the external 32 MHz crystal).
-    wr(CLOCK + 0x000, 1); // TASKS_HFCLKSTART
+    wr(CLOCK, 1); // TASKS_HFCLKSTART
     while rd(CLOCK + 0x100) == 0 {} // EVENTS_HFCLKSTARTED
                                     // Gate on VBUS present (do NOT wait on OUTPUTRDY - it never sets on VDD-powered boards).
     while rd(POWER + 0x438) & 1 == 0 {} // POWER.USBREGSTATUS.VBUSDETECT
@@ -62,11 +81,16 @@ pub struct NrfUsbdCdc {
 
 impl NrfUsbdCdc {
     pub fn mount(cfg: &UsbConfig) -> Self {
+        assert!(
+            MOUNT_CLAIM.try_claim(),
+            "the nRF USB backend can only be mounted once"
+        );
         unsafe {
             peripheral_clean_start();
-            ALLOC = Some(UsbBusAllocator::new(Usbd::new(Nrf52840Usbd)));
-            let alloc: &'static UsbBusAllocator<Bus> =
-                (*core::ptr::addr_of!(ALLOC)).as_ref().unwrap();
+            core::ptr::addr_of_mut!(ALLOC).write(MaybeUninit::new(UsbBusAllocator::new(
+                Usbd::new(Nrf52840Usbd),
+            )));
+            let alloc: &'static UsbBusAllocator<Bus> = &*(*core::ptr::addr_of!(ALLOC)).as_ptr();
             let serial = SerialPort::new(alloc);
             let strings = StringDescriptors::default()
                 .manufacturer(cfg.manufacturer)
@@ -83,6 +107,18 @@ impl NrfUsbdCdc {
                 ever_configured: false,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MountClaim;
+
+    #[test]
+    fn mount_claim_is_permanent_and_rejects_a_second_mount() {
+        let claim = MountClaim::new();
+        assert!(claim.try_claim());
+        assert!(!claim.try_claim());
     }
 }
 

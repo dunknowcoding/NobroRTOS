@@ -67,7 +67,7 @@ mis-wired you get a short read with a pointed message — not a hang.
   producers publish a slot, consumers borrow it - payloads are not copied through
   queues.
 - Kernel-op costs are measured, not guessed: see
-  [MEASURED_LATENCIES.md](MEASURED_LATENCIES.md).
+  [ENGINEERING.md](ENGINEERING.md).
 
 ## Zero-code path (no toolchain)
 
@@ -178,4 +178,3 @@ front-ends (a GUI, a block editor, or another language) that emit the JSON.
 - **C / C++**: `bindings/c` + `bindings/cpp` expose the module ABI for non-Rust codebases.
 - **Web flasher / PlatformIO packaging**: the SDK manifest (`sdk/sdk-manifest.json`,
   validated by `tools/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.
-

@@ -17,8 +17,8 @@ use panic_halt as _;
 use nobro_classic::EventFlags;
 use nobro_hal::{lease::Resource, traits::HalLease, ActivePlatform as Hal};
 use nobro_kernel::{
-    alarm::AlarmId, AlarmQueue, Capability, CapabilityGrantTable, CapabilitySet, Mailbox,
-    Message, MessageKind, ModuleId, QuotaLedger, SystemBudget,
+    alarm::AlarmId, AlarmQueue, Capability, CapabilityGrantTable, CapabilitySet, Mailbox, Message,
+    MessageKind, ModuleId, QuotaLedger, SystemBudget,
 };
 
 #[repr(C)]
@@ -100,7 +100,13 @@ fn main() -> ! {
 
     // mailbox push + pop (the kernel IPC hot path)
     let mut mb = Mailbox::<8>::new();
-    let msg = Message::new(ModuleId::Kernel, ModuleId::Sensor, MessageKind::Command, 1, 0);
+    let msg = Message::new(
+        ModuleId::Kernel,
+        ModuleId::Sensor,
+        MessageKind::Command,
+        1,
+        0,
+    );
     let mailbox_cyc = wcet(|| {
         let _ = mb.push(msg);
         let _ = mb.pop();
@@ -126,7 +132,10 @@ fn main() -> ! {
 
     // capability authorize (every host-service call passes through this)
     let mut table = CapabilityGrantTable::<4>::new();
-    let _ = table.register(ModuleId::Sensor, CapabilitySet::empty().with(Capability::Bus0));
+    let _ = table.register(
+        ModuleId::Sensor,
+        CapabilitySet::empty().with(Capability::Bus0),
+    );
     let authorize_cyc = wcet(|| {
         let _ = table.authorize(ModuleId::Sensor, Capability::Bus0);
     });

@@ -93,7 +93,12 @@ range, entry/stack vector sanity, SHA-256 measurement, HMAC signature, and
 anti-rollback version before returning a `VerifiedBootPlan`:
 
 ```rust
-let policy = nobro_secure::BootVectorPolicy::cortex_m(0x1000, 0x80000);
+let policy = nobro_secure::BootVectorPolicy::cortex_m(
+    0x1000,
+    0x80000,
+    0x2000_0000,
+    0x2004_0000,
+);
 let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 ```
 
@@ -240,8 +245,8 @@ let copied = trace.copy_replay(
 );
 ```
 
-Use this path for debug replay, CI host simulations, and fault reviews where the
-debug data must obey the same capability boundaries as production code.
+Use this path for debug replay, CI host simulations, and fault reviews. Recording is
+opt-in; an absent record is not proof that no direct/raw operation occurred.
 
 #### Runtime
 
@@ -454,13 +459,12 @@ Use `Runtime::record_error_with_plan_and_impact` or
 has startup impact data for a shared dependency. The planner validates that the
 impact root matches the recovery outcome module before emitting dependent-module
 steps.
-Use `HotReloadPlan` and `Runtime::hot_reload_module` when a driver module needs
-to be replaced while the system remains alive. The runtime creates a fixed
-quiesce, lease-release, unmount, mount, and resume plan, rejects kernel or
-disabled-module reloads, purges stale alarms, mailbox records, watchdog entries,
-and transient quota usage, then resumes the module after the plan deadline. HAL
-or adapter code supplies a `LeaseReleaser`, so board-specific resource cleanup
-stays outside the kernel:
+Use `HotReloadPlan` and `Runtime::hot_reload_module` for bounded reload planning and
+resource quiescence. The current runtime does not replace executable code: it suspends
+the existing module, releases registered resources, records the requested revision, and
+resumes it after the plan deadline. Kernel and disabled-module requests are rejected.
+HAL or adapter code supplies a `LeaseReleaser`, so board-specific cleanup stays outside
+the kernel:
 
 ```rust
 struct HalLeaseReleaser;
@@ -965,4 +969,3 @@ Python, C/C++, and Rust bridge metadata.
 
 Use `nobro-host` helper labels rather than duplicating numeric maps in host
 tools.
-

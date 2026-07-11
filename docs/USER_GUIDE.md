@@ -425,7 +425,7 @@ cargo build -p my-control-app --release
 
 ### Verify on hardware
 
-Flash and read the reports (see [HW_QUICKSTART.md](HW_QUICKSTART.md)). A booted
+Flash and read the reports (see [GETTING_STARTED.md](GETTING_STARTED.md)). A booted
 app populates `NOBRO_MANIFEST_REPORT` (magic `NBMF`) and `NOBRO_ADMISSION_REPORT`
 (magic `NBAD`); both carry the module count and a sealed checksum, so a host tool
 confirms the manifest assembled and admission passed without a `defmt` decoder.
@@ -473,30 +473,30 @@ flash.
 4. Web console / ReportReader  →  plain-English PASS/FAIL from NOBRO_* reports
 ```
 
-NobroRTOS already has every piece except the **prebuilt UF2 bundle** and the
-**app.json hot-swap transport**:
+NobroRTOS ships the bundle builder and manifest gate. Runtime `app.json` hot-swap is not
+implemented; changing application behavior still requires rebuilding firmware.
 
 | Piece | Status |
 | --- | --- |
-| Block editor → `app.json` | Done (Wave 2 ML block) |
-| Web-flasher report console | Done (Wave 1) |
+| Block editor → `app.json` | Implemented |
+| Web-flasher report console | Implemented |
 | `nobro_app.py` validator | Done |
 | Bootloader-safe UF2 flash | Done (`hw_eval --flash uf2`) |
-| Prebuilt "shell" UF2 | **Wave 8** |
-| app.json runtime reload | **Wave 8+** (manifest hot-reload or serial drop) |
+| Prebuilt diagnostic UF2 bundle | Implemented by `package_prebuilt_uf2.py --build` |
+| `app.json` runtime reload | Not implemented; rebuild required |
 
 ### Prebuilt shell firmware
 
 The shell UF2 is a known-good firmware image that:
 
 1. Boots through the six-stage chain and emits decodable `NOBRO_*` reports.
-2. Exposes a **data slot** for `app.json` (KV store, flash log, or serial ingest).
-3. Re-admits modules when `app.json` changes (no reflash).
+2. Enumerates as USB CDC and exposes host-readable diagnostic reports.
+3. Bundles validated starter `app.json` as source input for a later rebuild.
 
-Build command (once Wave 8 lands):
+Build command:
 
 ```bash
-python tools/package_prebuilt_uf2.py --profile s140 --out packages/prebuilt/
+python tools/package_prebuilt_uf2.py --build
 ```
 
 ### What the user sees
@@ -504,21 +504,21 @@ python tools/package_prebuilt_uf2.py --profile s140 --out packages/prebuilt/
 After the one-time UF2 flash:
 
 - Block editor exports `app.json`.
-- User drops the file (serial upload or future mass-storage slot).
+- User validates the file and rebuilds firmware; live serial/mass-storage ingestion is not
+  currently supported.
 - Console shows: "✅ servo mounted, sensor alive" or the first-fault sentence.
 
 This matches the CircuitPython "edit `code.py`, save, it runs" bar — except the
 editable artifact is **contract data**, not Python source.
 
-### Gate (planned)
+### Gate
 
-`check_prebuilt_loop.py` will verify:
+`python tools/package_prebuilt_uf2.py --check` verifies:
 
-- `packages/prebuilt/` contains a manifest (profile, hash, version).
+- The committed bundle manifest matches the safe flash layout.
 - Sample `app.json` from the block editor passes `nobro_app.validate()`.
-- Web-flasher parser recognizes the shell's report lines.
-
-See Wave 8 in `REMODELING_PLAN_INTERNAL.md`.
+- A locally built UF2, when present under `_work/prebuilt/`, has valid block structure,
+  family ID, and address bounds.
 
 ## Tier C: C modules against libnobro.a
 
@@ -575,7 +575,7 @@ references it by symbol, so the linker must keep every member.
 ### 4. Flash + verify
 
 The ELF targets the no-SoftDevice layout (app at `0x1000`). Flash it with any SWD
-probe (`docs/HW_QUICKSTART.md`) or convert to UF2 for drag-and-drop. Verification is
+probe (`docs/GETTING_STARTED.md`) or convert to UF2 for drag-and-drop. Verification is
 the usual story: the firmware seals `NOBRO_IMU_HW_EVAL_REPORT`, and
 `tools/nobro_hw_eval.py` or a serial monitor grades it PASS/FAIL.
 
@@ -675,4 +675,3 @@ python3 -m venv .venv && . .venv/bin/activate
 ```
 
 Python tools should write outputs under `_work/`.
-

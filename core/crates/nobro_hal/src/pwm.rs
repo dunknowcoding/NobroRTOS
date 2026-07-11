@@ -47,7 +47,7 @@ impl PwmServo {
     pub unsafe fn init_50hz(pin: u8, pulse_us: u32) -> Self {
         let prescaler: u8 = 4;
         let counter_top: u16 = 19_999; // 20 ms period at 1 MHz
-        let duty = (pulse_us as u16).min(counter_top);
+        let duty = pulse_us.min(u32::from(counter_top)) as u16;
 
         PWM_SEQ[0] = pwm_seq_value(duty, counter_top);
         PWM_SEQ[1] = 0;
@@ -69,7 +69,7 @@ impl PwmServo {
         Self {
             counter_top,
             prescaler,
-            pulse_us,
+            pulse_us: u32::from(duty),
         }
     }
 
@@ -82,8 +82,8 @@ impl PwmServo {
     /// Requires the PWM0 this instance initialised to still be enabled; rewrites the
     /// DMA-read sequence buffer in place.
     pub unsafe fn set_pulse_us(&mut self, pulse_us: u32) {
-        self.pulse_us = pulse_us;
-        let duty = (pulse_us as u16).min(self.counter_top);
+        let duty = pulse_us.min(u32::from(self.counter_top)) as u16;
+        self.pulse_us = u32::from(duty);
         PWM_SEQ[0] = pwm_seq_value(duty, self.counter_top);
         *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
     }
@@ -107,7 +107,7 @@ impl PwmServo {
     /// COUNTERTOP and rewrites the DMA sequence buffer).
     pub unsafe fn set_active_pulse_us(pulse_us: u32) {
         let top = *reg(PWM0_BASE, PWM_COUNTERTOP) as u16;
-        let duty = (pulse_us as u16).min(top);
+        let duty = pulse_us.min(u32::from(top)) as u16;
         PWM_SEQ[0] = pwm_seq_value(duty, top);
         *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
     }
@@ -142,11 +142,11 @@ impl PwmBank {
     /// with [`PwmServo`] - both drive PWM0 and its static sequence memory.
     pub unsafe fn init_50hz(pins: [Option<u8>; 4], center_us: u32) -> Self {
         let counter_top: u16 = 19_999; // 20 ms at 1 MHz (prescaler 4)
-        // raw-pointer write: no &mut to the static (2024 static_mut_refs rule); the
-        // Safety contract above guarantees exclusive PWM0 ownership.
+                                       // raw-pointer write: no &mut to the static (2024 static_mut_refs rule); the
+                                       // Safety contract above guarantees exclusive PWM0 ownership.
         let seq = ptr::addr_of_mut!(PWM_BANK_SEQ);
         for i in 0..4 {
-            (*seq)[i] = pwm_seq_value(center_us as u16, counter_top);
+            (*seq)[i] = pwm_seq_value(center_us.min(u32::from(counter_top)) as u16, counter_top);
         }
         *reg(PWM0_BASE, PWM_ENABLE) = 0;
         *reg(PWM0_BASE, PWM_MODE) = 0;
@@ -171,7 +171,8 @@ impl PwmBank {
     /// channel's slot in the DMA-read sequence buffer.
     pub unsafe fn set_pulse_us(&mut self, channel: usize, pulse_us: u32) {
         if channel < 4 {
-            PWM_BANK_SEQ[channel] = pwm_seq_value(pulse_us as u16, self.counter_top);
+            let duty = pulse_us.min(u32::from(self.counter_top)) as u16;
+            PWM_BANK_SEQ[channel] = pwm_seq_value(duty, self.counter_top);
             *reg(PWM0_BASE, PWM_TASKS_SEQSTART0) = 1;
         }
     }

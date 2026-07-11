@@ -42,6 +42,7 @@ pub struct TaskStats {
     pub polls: u32,
     pub ready: u32,
     pub overruns: u32,
+    pub missed_releases: u32,
     pub last_poll_us: u64,
     pub next_due_us: u64,
     pub max_observed_us: u32,
@@ -53,6 +54,7 @@ impl TaskStats {
             polls: 0,
             ready: 0,
             overruns: 0,
+            missed_releases: 0,
             last_poll_us: 0,
             next_due_us: 0,
             max_observed_us: 0,
@@ -150,7 +152,16 @@ impl<const N: usize> TaskTable<N> {
         let slot = self.slots.get_mut(idx)?.as_mut()?;
         slot.stats.polls = slot.stats.polls.saturating_add(1);
         slot.stats.last_poll_us = now_us;
-        slot.stats.next_due_us = now_us.saturating_add(u64::from(slot.meta.period_us));
+        let period = u64::from(slot.meta.period_us);
+        let releases_elapsed = now_us.saturating_sub(slot.stats.next_due_us) / period;
+        slot.stats.missed_releases = slot
+            .stats
+            .missed_releases
+            .saturating_add(releases_elapsed.min(u64::from(u32::MAX)) as u32);
+        slot.stats.next_due_us = slot
+            .stats
+            .next_due_us
+            .saturating_add(releases_elapsed.saturating_add(1).saturating_mul(period));
         slot.stats.max_observed_us = slot.stats.max_observed_us.max(duration_us);
         if duration_us > slot.meta.budget_us {
             slot.stats.overruns = slot.stats.overruns.saturating_add(1);
@@ -279,6 +290,20 @@ mod tests {
         assert_eq!(stats.overruns, 1);
         assert_eq!(stats.max_observed_us, 250);
         assert_eq!(stats.next_due_us, 1000);
+    }
+
+    #[test]
+    fn late_poll_preserves_phase_and_counts_missed_releases() {
+        let mut table = TaskTable::<1>::new();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1000, 100),
+                0,
+            )
+            .unwrap();
+        let stats = table.record_poll(0, 2_500, 50, Poll::Ready).unwrap();
+        assert_eq!(stats.missed_releases, 2);
+        assert_eq!(stats.next_due_us, 3_000);
     }
 
     #[test]

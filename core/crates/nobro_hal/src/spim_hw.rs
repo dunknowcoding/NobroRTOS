@@ -105,11 +105,14 @@ impl Spim0 {
         }
     }
 
-    /// One full-duplex EasyDMA transfer of `n = min(tx.len(), rx.len())` bytes, WITHOUT
+    /// One full-duplex EasyDMA transfer of equally sized buffers, WITHOUT
     /// touching chip-select (caller brackets with select()/deselect()). EasyDMA needs
     /// RAM buffers, so the bytes are staged through stack buffers.
     pub fn transfer_held(&self, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
-        let n = tx.len().min(rx.len());
+        if tx.len() != rx.len() {
+            return Err(BusError::LengthMismatch);
+        }
+        let n = tx.len();
         if n == 0 || n > SPIM_XFER_MAX {
             return Err(BusError::Timeout);
         }

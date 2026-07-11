@@ -32,7 +32,7 @@ fn main() -> ! {
         let mut pkt = [0u8; 5];
         pkt[0] = 0xA5;
         pkt[1..5].copy_from_slice(&seq.to_le_bytes());
-        if Radio::send(&pkt) {
+        if Radio::send(&pkt).is_ok() {
             tx_sent = tx_sent.wrapping_add(1);
         }
 

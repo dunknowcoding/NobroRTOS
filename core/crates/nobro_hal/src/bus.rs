@@ -12,6 +12,7 @@ pub enum BusError {
     LeaseDenied,
     Timeout,
     Nack,
+    LengthMismatch,
 }
 
 pub struct TwimBus {

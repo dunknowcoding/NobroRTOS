@@ -54,7 +54,7 @@ impl AiInferenceSal for MotionClassifier {
         output: &mut [u8],
     ) -> Result<AiInferenceResult, Self::Error> {
         let bytes = request.input;
-        if bytes.len() < 4 || bytes.len() % 2 != 0 || output.is_empty() {
+        if bytes.len() < 4 || !bytes.len().is_multiple_of(2) || output.is_empty() {
             return Err(MotionError::BadBuffer);
         }
         let n = bytes.len() / 2;

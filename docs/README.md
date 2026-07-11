@@ -16,6 +16,5 @@ Learning by doing instead? The step-by-step ladder lives in
 [`tutorials/`](../tutorials/README.md) — from a zero-code first light to Rust
 deep dives.
 
-Maintainer-only material (publish checklist, bench notes) lives with the dev
-tools, not here. Files matching `*_INTERNAL.md` are private planning documents
-and are git-ignored by design.
+Maintainer-only planning and lab notes are intentionally outside this public
+documentation set.

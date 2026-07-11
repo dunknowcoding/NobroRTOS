@@ -32,7 +32,7 @@ pub struct Bmp280Calib {
 pub fn compensate_temp(c: &Bmp280Calib, adc_t: i32) -> (i32, i32) {
     let t1 = i32::from(c.t1);
     let var1 = (((adc_t >> 3) - (t1 << 1)) * i32::from(c.t2)) >> 11;
-    let var2 = ((((adc_t >> 4) - t1) * ((adc_t >> 4) - t1)) >> 12) * i32::from(c.t3) >> 14;
+    let var2 = (((((adc_t >> 4) - t1) * ((adc_t >> 4) - t1)) >> 12) * i32::from(c.t3)) >> 14;
     let t_fine = var1 + var2;
     let t = (t_fine * 5 + 128) >> 8;
     (t_fine, t)

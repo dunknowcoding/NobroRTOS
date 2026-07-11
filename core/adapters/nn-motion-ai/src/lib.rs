@@ -117,7 +117,7 @@ impl AiInferenceSal for NnMotionClassifier {
         output: &mut [u8],
     ) -> Result<AiInferenceResult, Self::Error> {
         let bytes = request.input;
-        if bytes.len() < 4 || bytes.len() % 2 != 0 || output.is_empty() {
+        if bytes.len() < 4 || !bytes.len().is_multiple_of(2) || output.is_empty() {
             return Err(NnError::BadBuffer);
         }
         let n = (bytes.len() / 2).min(WINDOW);
@@ -210,7 +210,7 @@ impl AiInferenceSal for Nn3MotionClassifier {
         output: &mut [u8],
     ) -> Result<AiInferenceResult, Self::Error> {
         let bytes = request.input;
-        if bytes.len() < 4 || bytes.len() % 2 != 0 || output.is_empty() {
+        if bytes.len() < 4 || !bytes.len().is_multiple_of(2) || output.is_empty() {
             return Err(NnError::BadBuffer);
         }
         let n = (bytes.len() / 2).min(nn3_weights::WINDOW);

@@ -281,7 +281,7 @@ fn main() -> ! {
         let mut pkt = [0u8; 5];
         pkt[0] = 0xA5;
         pkt[1..5].copy_from_slice(&beat.to_le_bytes());
-        if Radio::send(&pkt) {
+        if Radio::send(&pkt).is_ok() {
             radio_tx += 1;
         }
 

@@ -187,8 +187,14 @@ mod tests {
     #[test]
     fn spawns_and_completes_within_bound() {
         let done = AtomicU32::new(0);
-        let f1 = pin!(Countdown { left: 3, done: &done });
-        let f2 = pin!(Countdown { left: 1, done: &done });
+        let f1 = pin!(Countdown {
+            left: 3,
+            done: &done
+        });
+        let f2 = pin!(Countdown {
+            left: 1,
+            done: &done
+        });
         let mut exec = BoundedExecutor::<4>::new();
         exec.spawn(f1).unwrap();
         exec.spawn(f2).unwrap();
@@ -205,8 +211,14 @@ mod tests {
     #[test]
     fn spawn_past_capacity_is_rejected_not_allocated() {
         let done = AtomicU32::new(0);
-        let f1 = pin!(Countdown { left: 0, done: &done });
-        let f2 = pin!(Countdown { left: 0, done: &done });
+        let f1 = pin!(Countdown {
+            left: 0,
+            done: &done
+        });
+        let f2 = pin!(Countdown {
+            left: 0,
+            done: &done
+        });
         let mut exec = BoundedExecutor::<1>::new();
         assert_eq!(exec.spawn(f1), Ok(0));
         assert_eq!(exec.spawn(f2), Err(AsyncError::Full));
@@ -215,7 +227,10 @@ mod tests {
     #[test]
     fn run_once_reports_progress() {
         let done = AtomicU32::new(0);
-        let f = pin!(Countdown { left: 2, done: &done });
+        let f = pin!(Countdown {
+            left: 2,
+            done: &done
+        });
         let mut exec = BoundedExecutor::<2>::new();
         exec.spawn(f).unwrap();
 

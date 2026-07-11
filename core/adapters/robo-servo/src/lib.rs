@@ -31,6 +31,9 @@ impl RoboServoAdapter {
         }
     }
 
+    /// # Safety
+    /// The caller must hold the PWM0 lease and ensure this pin is configured as the
+    /// exclusive servo output for the lifetime of the active PWM peripheral.
     pub unsafe fn attach_50hz(&self, center_us: u32) -> Result<(), RoboServoError> {
         if center_us < self.min_us || center_us > self.max_us {
             return Err(RoboServoError::PulseOutOfRange);

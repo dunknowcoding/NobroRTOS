@@ -179,6 +179,51 @@ impl BoardPackage {
         if !self.capacity.is_usable() {
             return Err(BoardPackageError::EmptyCapacity);
         }
+        if self
+            .boot
+            .app_flash_start
+            .checked_add(self.boot.app_flash_len_bytes)
+            .is_none()
+            || self
+                .boot
+                .ram_start
+                .checked_add(self.boot.ram_len_bytes)
+                .is_none()
+        {
+            return Err(BoardPackageError::AddressOverflow);
+        }
+        if self.capacity.flash_budget_bytes > self.boot.app_flash_len_bytes
+            || self.capacity.ram_budget_bytes > self.boot.ram_len_bytes
+        {
+            return Err(BoardPackageError::CapacityExceedsRegion);
+        }
+        let expected_flash_start = match self.boot.layout {
+            BootLayout::NoSoftDevice => Some(0x1000),
+            BootLayout::SoftDeviceS140V6 => Some(0x26000),
+            BootLayout::Custom => None,
+        };
+        if expected_flash_start
+            .map(|expected| expected != self.boot.app_flash_start)
+            .unwrap_or(false)
+        {
+            return Err(BoardPackageError::LayoutOriginMismatch);
+        }
+        let ram_window = match self.platform_id {
+            "nrf52840" => Some((0x2000_0000, 0x2004_0000)),
+            "esp32c3" => Some((0x3FC8_0000, 0x3FCE_0000)),
+            "rp2350" => Some((0x2000_0000, 0x2008_2000)),
+            "samd21" | "cortex_m" => Some((0x2000_0000, 0x2000_8000)),
+            "stm32f4" => Some((0x2000_0000, 0x2002_0000)),
+            "imxrt1062" => Some((0x2020_0000, 0x2028_0000)),
+            _ => None,
+        };
+        let Some((ram_min, ram_max)) = ram_window else {
+            return Err(BoardPackageError::UnknownPlatform);
+        };
+        let ram_end = self.boot.ram_start + self.boot.ram_len_bytes;
+        if self.boot.ram_start < ram_min || ram_end > ram_max {
+            return Err(BoardPackageError::RamOutsidePlatformRange);
+        }
         if self.pins.led_pin == self.pins.servo_pwm_pin
             || self.pins.led_pin == self.pins.mvk_trigger_pin
             || self.pins.servo_pwm_pin == self.pins.mvk_trigger_pin
@@ -189,7 +234,9 @@ impl BoardPackage {
     }
 
     pub const fn app_flash_end(&self) -> u32 {
-        self.boot.app_flash_start + self.boot.app_flash_len_bytes
+        self.boot
+            .app_flash_start
+            .saturating_add(self.boot.app_flash_len_bytes)
     }
 }
 
@@ -202,6 +249,11 @@ pub enum BoardPackageError {
     EmptyRamRegion,
     EmptyCapacity,
     DuplicateCriticalPin,
+    AddressOverflow,
+    CapacityExceedsRegion,
+    LayoutOriginMismatch,
+    UnknownPlatform,
+    RamOutsidePlatformRange,
 }
 
 impl BoardPackageError {
@@ -214,6 +266,11 @@ impl BoardPackageError {
             Self::EmptyRamRegion => 5,
             Self::EmptyCapacity => 6,
             Self::DuplicateCriticalPin => 7,
+            Self::AddressOverflow => 8,
+            Self::CapacityExceedsRegion => 9,
+            Self::LayoutOriginMismatch => 10,
+            Self::UnknownPlatform => 11,
+            Self::RamOutsidePlatformRange => 12,
         }
     }
 }
@@ -250,7 +307,7 @@ mod tests {
     struct TestBoard;
 
     impl BoardDesc for TestBoard {
-        const PLATFORM_ID: &'static str = "test-platform";
+        const PLATFORM_ID: &'static str = "cortex_m";
         const BOARD_ID: &'static str = "test-board";
         const APP_FLASH_START: u32 = 0x1000;
         const CAPACITY: BoardCapacity = BoardCapacity::new(64 * 1024, 16 * 1024, 4, 8);
@@ -264,15 +321,15 @@ mod tests {
     fn board_package_from_board_validates_static_contract() {
         let package = BoardPackage::from_board::<TestBoard>(
             BootLayout::NoSoftDevice,
-            60 * 1024,
+            64 * 1024,
             0x2000_0000,
             16 * 1024,
         );
 
-        assert_eq!(package.platform_id, "test-platform");
+        assert_eq!(package.platform_id, "cortex_m");
         assert_eq!(package.board_id, "test-board");
         assert_eq!(package.boot.layout, BootLayout::NoSoftDevice);
-        assert_eq!(package.app_flash_end(), 0x1000 + 60 * 1024);
+        assert_eq!(package.app_flash_end(), 0x1000 + 64 * 1024);
         assert_eq!(package.pins, BoardPins::new(1, 2, 3));
         assert_eq!(package.validate(), Ok(()));
     }
@@ -281,7 +338,7 @@ mod tests {
     fn board_package_rejects_invalid_contracts() {
         let mut package = BoardPackage::from_board::<TestBoard>(
             BootLayout::NoSoftDevice,
-            60 * 1024,
+            64 * 1024,
             0x2000_0000,
             16 * 1024,
         );

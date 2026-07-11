@@ -586,10 +586,9 @@ function never names a transport.
 
 ### Related docs
 
-- [PORTING_FROM.md](PORTING_FROM.md) — high-level import story
-- [COOKBOOK_EMBASSY.md](COOKBOOK_EMBASSY.md) — task→module for Rust async refugees
-- [COOKBOOK_FREERTOS.md](COOKBOOK_FREERTOS.md) — xTaskCreate→module for C veterans
-- [HW_QUICKSTART.md](HW_QUICKSTART.md) — one-command hardware eval
+- [PORTING.md](PORTING.md) — migration cookbooks and board-port workflow
+- [GETTING_STARTED.md](GETTING_STARTED.md) — one-command hardware and host evaluation
+- [ENGINEERING.md](ENGINEERING.md) — measured behavior and internal evidence
 
 
 ### Second category: `TempSal` (hardware-proven)
@@ -607,4 +606,3 @@ same die-temperature register, sealed on the same board back to back:
 Three transports, one silicon, answers within 0.1 C - the category abstraction costs
 nothing in fidelity. The report's `temp_centi_c` field and its 10-60 C plausibility
 check are part of `all_pass`.
-

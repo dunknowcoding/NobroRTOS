@@ -21,6 +21,8 @@ jobs:
         run: python -m unittest discover -s tests
       - name: software surface contract
         run: python tools/nobro_contract_tool.py check-software-surface
+      - name: public documentation
+        run: python tools/check_public_docs.py
       - name: board profiles
         run: python tools/check_board_profiles.py
       - name: sdk manifest
@@ -44,15 +46,12 @@ jobs:
       - name: mesh chaos
         run: python tools/chaos_test.py
 
-  # Full Rust matrix on demand only (keeps CI minutes sane; local ci_matrix.sh is king).
   rust-matrix:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7em-none-eabihf
-      - name: host tests (portable crates)
-        working-directory: core
-        run: cargo test --target x86_64-unknown-linux-gnu -p nobro-net -p nobro-crypto -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-sal -p nobro-kernel -p nobro-classic
+      - name: comprehensive Rust gates
+        run: python tools/run_checks.py --rust-only --no-evidence

@@ -19,6 +19,7 @@ pub mod fault_inject;
 pub mod health;
 pub mod hot_reload;
 pub mod kv;
+pub mod launch_gate;
 pub mod lifecycle;
 pub mod mailbox;
 pub mod manifest;
@@ -66,6 +67,7 @@ pub use hot_reload::{
     HotReloadStepKind, LeaseReleaser, NoopLeaseReleaser,
 };
 pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
+pub use launch_gate::ModuleLaunchGate;
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{

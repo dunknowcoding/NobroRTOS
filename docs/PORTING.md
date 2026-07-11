@@ -35,7 +35,7 @@ optional.
 ### Embassy / `embedded-hal` (highest ROI)
 
 Both are Rust + `embedded-hal`, so this is the smoothest path. For a step-by-step recipe
-with copy-pasteable code, see the **[Embassy cookbook](COOKBOOK_EMBASSY.md)**.
+with copy-pasteable code, see the Embassy cookbook in this guide.
 
 - **Drivers:** an `embedded-hal` I2C/SPI **bus adapter** exposes NobroRTOS's `BusSal`
   as the `embedded-hal` traits a driver expects, so the large universe of
@@ -79,7 +79,7 @@ admission-checked before any agent is contacted.
 
 Zephyr brings devicetree, Kconfig, and its own subsystems, so this is a porting
 guide, not a compatibility runtime. For a step-by-step recipe, see the
-**[Zephyr cookbook](COOKBOOK_ZEPHYR.md)**.
+Zephyr cookbook later in this guide.
 
 | Zephyr | NobroRTOS |
 | --- | --- |
@@ -109,22 +109,22 @@ modules in Rust (or generate them from `nobro-contract.json`) and reuse Arduino
 
 ### Cookbooks (step-by-step)
 
-- **[Embassy cookbook](COOKBOOK_EMBASSY.md)** - tasks to modules, keeping `embedded-hal`
+- **Embassy cookbook below** - tasks to modules, keeping `embedded-hal`
   drivers, and the bounded async executor as an escape hatch.
-- **[FreeRTOS cookbook](COOKBOOK_FREERTOS.md)** - `xTaskCreate`/queues/semaphores/timers
+- **FreeRTOS cookbook below** - `xTaskCreate`/queues/semaphores/timers
   mapped to modules, mailboxes, capabilities, and deadline alarms.
-- **[Zephyr cookbook](COOKBOOK_ZEPHYR.md)** - devicetree/Kconfig/`k_thread` mapped to
+- **Zephyr cookbook below** - devicetree/Kconfig/`k_thread` mapped to
   `board.json`, manifest capabilities, and SAL adapters; DTS import on-ramp.
-- **[UDI rule](UDI.md)** - one category, one trait, N mountable backends (ImuSal proof).
+- **UDI rule in [ARCHITECTURE.md](ARCHITECTURE.md)** - one category, one trait, N mountable backends.
 
-See [system-architecture.md](system-architecture.md) for the layering and
-[porting-guide.md](porting-guide.md) for adding a board.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for layering and the board-port workflow later in
+this guide.
 
 ## From FreeRTOS
 
 You think in tasks, priorities, queues, semaphores, and software timers. This cookbook maps
 those primitives onto NobroRTOS and shows where the mental model changes. It complements the
-high-level [PORTING_FROM.md](PORTING_FROM.md).
+high-level migration overview above.
 
 The one idea to internalize: **FreeRTOS schedules priorities you assign; NobroRTOS schedules
 a criticality + deadline contract it can check.** Instead of tuning priorities until timing
@@ -224,7 +224,7 @@ and calls back into host-provided services.
 
 You already write `no_std` Rust with `embedded-hal` drivers and `async fn` tasks. This
 cookbook is the mechanical recipe for re-expressing an Embassy app as a NobroRTOS system.
-It complements the high-level [PORTING_FROM.md](PORTING_FROM.md) with copy-pasteable steps.
+It complements the high-level migration overview with copy-pasteable steps.
 
 The one idea to internalize: **Embassy gives you an unbounded async runtime; NobroRTOS gives
 you bounded modules that declare their budget and are admission-checked.** Your driver and
@@ -322,7 +322,7 @@ python tools/ros_msg_gen.py sensor_msgs/Imu.msg --type sensor_msgs/Imu --gen-rus
 
 The emitted module is self-contained `no_std` with little-endian `encode`/`decode` and a
 stable type hash - the same hash the device and host agree on. See
-[the ROS section of PORTING_FROM.md](PORTING_FROM.md#micro-ros--ros-2).
+the ROS migration section in this guide.
 
 ### 5. Recipe summary
 
@@ -337,7 +337,7 @@ stable type hash - the same hash the device and host agree on. See
 
 You think in devicetree, Kconfig, `k_thread`, work queues, and `k_timer`. This
 cookbook maps those primitives onto NobroRTOS and shows where the mental model
-changes. It complements [PORTING_FROM.md](PORTING_FROM.md).
+changes. It complements the migration overview above.
 
 The one idea to internalize: **Zephyr describes hardware in DTS and configures
 features in Kconfig; NobroRTOS describes hardware in `board.json` and configures
@@ -422,7 +422,7 @@ porting move:
 4. Replace DTS pin macros with `board.json` pin entries + HAL features.
 
 If your driver is already `embedded-hal`, use `backend-eh` behind a UDI category
-trait — see [UDI.md](UDI.md).
+trait — see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### 5. Recipe summary
 
@@ -432,7 +432,7 @@ trait — see [UDI.md](UDI.md).
 4. Wrap hardware access in a **SAL adapter**.
 5. Run admission and read **`NOBRO_*` reports** to confirm the contract.
 
-See [porting-guide.md](porting-guide.md) for adding a board family and
+See the board-port workflow in this guide for adding a board family and
 [import_dts.py](../tools/import_dts.py) for the DTS on-ramp.
 
 ## Porting NobroRTOS to a new board or MCU
@@ -481,7 +481,7 @@ python tools/import_dts.py board.dts --out core/boards/mine/board.json
 ```
 
 Review the `_review` list in the output — DTS carries hardware layout, not
-NobroRTOS software budgets or Cargo feature names. See [COOKBOOK_ZEPHYR.md](COOKBOOK_ZEPHYR.md).
+NobroRTOS software budgets or Cargo feature names. See the Zephyr cookbook above.
 
 A board descriptor should include:
 
@@ -563,4 +563,3 @@ Before a board port becomes a recommended target, it should provide:
 
 Public product documentation uses NobroRTOS. Existing Rust crate names retain
 the `nobro-*` prefix until a coordinated crate migration is performed.
-

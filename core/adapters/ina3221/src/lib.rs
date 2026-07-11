@@ -97,7 +97,6 @@ mod tests {
                         };
                         buf.copy_from_slice(&v.to_be_bytes());
                     }
-                    _ => {}
                 }
             }
             Ok(())

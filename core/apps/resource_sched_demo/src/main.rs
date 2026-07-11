@@ -54,7 +54,7 @@ fn main() -> ! {
     let profile = Hal::servo_profile();
     unsafe {
         Hal::init_scheduling_demo(profile);
-        Scheduler::set_deadline_handler(on_deadline_slot);
+        let _ = Scheduler::set_deadline_handler(on_deadline_slot);
         ppi::led_init_output();
         defmt::info!(
             "init PWM {}Hz pin {} pulse {}us",

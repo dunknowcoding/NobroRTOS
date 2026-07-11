@@ -40,7 +40,8 @@ impl<const N: usize> RoutingTable<N> {
             .position(|r| matches!(r, Some(rt) if rt.dest == dest))
     }
 
-    /// Offer a route; accept it if new, strictly cheaper, or fresher (higher seq).
+    /// Offer a route; accept it if new, strictly cheaper, or fresher according to
+    /// 8-bit serial-number arithmetic. A forward distance of 1..=127 is newer.
     pub fn update(&mut self, dest: u16, next_hop: u16, cost: u8, seq: u8) -> bool {
         let cand = Route {
             dest,
@@ -50,7 +51,9 @@ impl<const N: usize> RoutingTable<N> {
         };
         if let Some(i) = self.find(dest) {
             let cur = self.routes[i].unwrap();
-            let better = seq > cur.seq || (seq == cur.seq && cost < cur.cost);
+            let distance = seq.wrapping_sub(cur.seq);
+            let fresher = distance != 0 && distance < 128;
+            let better = fresher || (seq == cur.seq && cost < cur.cost);
             if better {
                 self.routes[i] = Some(cand);
             }
@@ -509,6 +512,7 @@ pub mod secure_link {
         BadLength,
         BadTag,
         Replay,
+        WrongEndpoint,
     }
 
     fn nonce(src: u16, dst: u16, seq: u32) -> [u8; ccm::NONCE_LEN] {
@@ -548,13 +552,23 @@ pub mod secure_link {
         last_seq: u32,
         out: &mut [u8],
     ) -> Result<(u16, u32, usize), LinkError> {
+        let (src, _dst, seq, len) = open_addressed(key, frame, last_seq, out)?;
+        Ok((src, seq, len))
+    }
+
+    /// Open a sealed frame while preserving both authenticated endpoint IDs.
+    pub fn open_addressed(
+        key: &[u8; 16],
+        frame: &[u8],
+        last_seq: u32,
+        out: &mut [u8],
+    ) -> Result<(u16, u16, u32, usize), LinkError> {
         if frame.len() < OVERHEAD {
             return Err(LinkError::BadLength);
         }
         let src = u16::from_le_bytes([frame[0], frame[1]]);
         let dst = u16::from_le_bytes([frame[2], frame[3]]);
         let seq = u32::from_le_bytes([frame[4], frame[5], frame[6], frame[7]]);
-        let _ = dst;
         if seq <= last_seq {
             return Err(LinkError::Replay);
         }
@@ -569,7 +583,7 @@ pub mod secure_link {
             nobro_crypto::ccm::CcmError::BadTag => LinkError::BadTag,
             _ => LinkError::BadLength,
         })?;
-        Ok((src, seq, n))
+        Ok((src, dst, seq, n))
     }
 }
 
@@ -613,18 +627,22 @@ pub mod telemetry_pack {
         let mut prev = 0i32;
         while r < data.len() && n < out.len() {
             let mut v = 0u32;
-            let mut shift = 0;
-            loop {
+            for byte_index in 0..5 {
                 if r >= data.len() {
                     return None;
                 }
                 let b = data[r];
                 r += 1;
-                v |= u32::from(b & 0x7F) << shift;
+                if byte_index == 4 && (b & 0xF0) != 0 {
+                    return None;
+                }
+                v |= u32::from(b & 0x7F) << (byte_index * 7);
                 if b & 0x80 == 0 {
                     break;
                 }
-                shift += 7;
+                if byte_index == 4 {
+                    return None;
+                }
             }
             let d = unzigzag(v);
             let s = if n == 0 { d } else { prev.wrapping_add(d) };
@@ -632,7 +650,11 @@ pub mod telemetry_pack {
             prev = s;
             n += 1;
         }
-        Some(n)
+        if r == data.len() {
+            Some(n)
+        } else {
+            None
+        }
     }
 }
 
@@ -715,15 +737,40 @@ pub mod teleop {
         secure_link::seal(key, src, dst, seq, &payload, out)
     }
 
-    /// Returns (channel, value) if authentic + fresh.
-    pub fn apply(key: &[u8; 16], frame: &[u8], last_seq: u32) -> Result<(u8, i16), LinkError> {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct AppliedCommand {
+        pub src: u16,
+        pub dst: u16,
+        pub seq: u32,
+        pub channel: u8,
+        pub value: i16,
+    }
+
+    /// Opens a command only for the expected link endpoints and returns the new
+    /// replay floor together with the command.
+    pub fn apply(
+        key: &[u8; 16],
+        frame: &[u8],
+        expected_src: u16,
+        expected_dst: u16,
+        last_seq: u32,
+    ) -> Result<AppliedCommand, LinkError> {
         let mut buf = [0u8; 8];
-        let (_src, _seq, n) = secure_link::open(key, frame, last_seq, &mut buf)?;
+        let (src, dst, seq, n) = secure_link::open_addressed(key, frame, last_seq, &mut buf)?;
+        if src != expected_src || dst != expected_dst {
+            return Err(LinkError::WrongEndpoint);
+        }
         if n < 3 {
             return Err(LinkError::BadLength);
         }
         let value = ((buf[1] as i16) << 8) | (buf[2] as i16 & 0xFF);
-        Ok((buf[0], value))
+        Ok(AppliedCommand {
+            src,
+            dst,
+            seq,
+            channel: buf[0],
+            value,
+        })
     }
 }
 
@@ -751,11 +798,16 @@ mod final_net_tests {
         let mut frame = [0u8; 32];
         let n = teleop::command(&key, 1, 9, 5, 2, -1200, &mut frame).unwrap();
         // authentic + fresh
-        assert_eq!(teleop::apply(&key, &frame[..n], 4), Ok((2, -1200)));
+        let command = teleop::apply(&key, &frame[..n], 1, 9, 4).unwrap();
+        assert_eq!((command.channel, command.value, command.seq), (2, -1200, 5));
         // replay (seq <= floor) rejected
-        assert!(teleop::apply(&key, &frame[..n], 5).is_err());
+        assert!(teleop::apply(&key, &frame[..n], 1, 9, 5).is_err());
         // wrong key rejected
-        assert!(teleop::apply(&[0u8; 16], &frame[..n], 4).is_err());
+        assert!(teleop::apply(&[0u8; 16], &frame[..n], 1, 9, 4).is_err());
+        assert_eq!(
+            teleop::apply(&key, &frame[..n], 2, 9, 4),
+            Err(secure_link::LinkError::WrongEndpoint)
+        );
     }
 }
 
@@ -784,13 +836,28 @@ pub struct OtaReassembler<const CHUNKS: usize> {
     received: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OtaReassemblyError {
+    Empty,
+    TooManyChunks { requested: usize, capacity: usize },
+}
+
 impl<const CHUNKS: usize> OtaReassembler<CHUNKS> {
-    pub fn new(total_chunks: usize) -> Self {
-        Self {
-            have: [false; CHUNKS],
-            total: total_chunks.min(CHUNKS),
-            received: 0,
+    pub fn new(total_chunks: usize) -> Result<Self, OtaReassemblyError> {
+        if total_chunks == 0 {
+            return Err(OtaReassemblyError::Empty);
         }
+        if total_chunks > CHUNKS {
+            return Err(OtaReassemblyError::TooManyChunks {
+                requested: total_chunks,
+                capacity: CHUNKS,
+            });
+        }
+        Ok(Self {
+            have: [false; CHUNKS],
+            total: total_chunks,
+            received: 0,
+        })
     }
     /// Number of chunks an image of `image_len` bytes needs at `chunk_size`.
     pub fn chunk_count(image_len: usize, chunk_size: usize) -> usize {
@@ -859,7 +926,7 @@ impl FleetOtaNode {
 
     pub const fn is_eligible(self, target_version: u32, max_failures: u8) -> bool {
         self.healthy
-            && self.current_version != target_version
+            && self.current_version < target_version
             && self.failures < max_failures
             && matches!(self.phase, FleetOtaPhase::Idle | FleetOtaPhase::RolledBack)
     }
@@ -894,8 +961,16 @@ pub enum FleetOtaError {
     DuplicateNode(u16),
     MissingNode(u16),
     NoCapacity,
-    FleetHealthTooLow { healthy_percent: u8, required: u8 },
+    FleetHealthTooLow {
+        healthy_percent: u8,
+        required: u8,
+    },
     NoEligibleNodes,
+    InvalidTargetVersion,
+    InvalidTransition {
+        from: FleetOtaPhase,
+        to: FleetOtaPhase,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -973,6 +1048,11 @@ impl<const N: usize> FleetOtaOrchestrator<N> {
         if let Some(node) = self.nodes[index].as_mut() {
             if matches!(node.phase, FleetOtaPhase::Canary | FleetOtaPhase::Staged) {
                 node.phase = FleetOtaPhase::Installing;
+            } else {
+                return Err(FleetOtaError::InvalidTransition {
+                    from: node.phase,
+                    to: FleetOtaPhase::Installing,
+                });
             }
         }
         Ok(())
@@ -992,6 +1072,18 @@ impl<const N: usize> FleetOtaOrchestrator<N> {
             return Err(FleetOtaError::MissingNode(id));
         };
         if let Some(node) = self.nodes[index].as_mut() {
+            if node.phase != FleetOtaPhase::Installing
+                || node.target_version <= node.current_version
+            {
+                return Err(FleetOtaError::InvalidTransition {
+                    from: node.phase,
+                    to: if success {
+                        FleetOtaPhase::Confirmed
+                    } else {
+                        FleetOtaPhase::RolledBack
+                    },
+                });
+            }
             if success {
                 node.current_version = node.target_version;
                 node.target_version = 0;
@@ -1015,6 +1107,15 @@ impl<const N: usize> FleetOtaOrchestrator<N> {
         target_version: u32,
         policy: FleetOtaPolicy,
     ) -> Result<FleetOtaWave<N>, FleetOtaError> {
+        if target_version == 0
+            || self
+                .nodes
+                .iter()
+                .flatten()
+                .any(|node| target_version < node.current_version)
+        {
+            return Err(FleetOtaError::InvalidTargetVersion);
+        }
         let healthy_percent = self.healthy_percent();
         if healthy_percent < policy.min_healthy_percent {
             return Err(FleetOtaError::FleetHealthTooLow {
@@ -1145,6 +1246,9 @@ impl<T: Copy, const N: usize> StoreForward<T, N> {
     }
     /// Buffer `item` for `dst` (dropping the oldest if full).
     pub fn store(&mut self, dst: u16, item: T) {
+        if N == 0 {
+            return;
+        }
         let slot = (self.head + self.len) % N;
         if self.len == N {
             self.head = (self.head + 1) % N; // overwrite oldest
@@ -1160,7 +1264,19 @@ impl<T: Copy, const N: usize> StoreForward<T, N> {
             let i = (self.head + k) % N;
             if self.msg[i].is_some() && self.dst[i] == dst {
                 let m = self.msg[i].take();
-                // compact is unnecessary; the slot is just marked empty
+                for offset in k..self.len - 1 {
+                    let from = (self.head + offset + 1) % N;
+                    let to = (self.head + offset) % N;
+                    self.dst[to] = self.dst[from];
+                    self.msg[to] = self.msg[from];
+                }
+                let tail = (self.head + self.len - 1) % N;
+                self.dst[tail] = 0;
+                self.msg[tail] = None;
+                self.len -= 1;
+                if self.len == 0 {
+                    self.head = 0;
+                }
                 return m;
             }
         }
@@ -1253,7 +1369,7 @@ mod wireless_tests {
     #[test]
     fn ota_reassembles_and_reports_missing() {
         assert_eq!(OtaReassembler::<64>::chunk_count(1000, 256), 4);
-        let mut r = OtaReassembler::<8>::new(4);
+        let mut r = OtaReassembler::<8>::new(4).unwrap();
         assert!(r.receive(0) && r.receive(2) && r.receive(3));
         assert!(!r.receive(0)); // dup
         assert_eq!(r.first_missing(), Some(1));
@@ -1325,6 +1441,7 @@ mod wireless_tests {
         };
 
         ota.stage_next_wave(2, policy).unwrap();
+        ota.mark_installing(7).unwrap();
         ota.complete_node_with_policy(7, false, policy).unwrap();
         assert_eq!(
             ota.node(7).map(|node| node.phase),
@@ -1332,6 +1449,7 @@ mod wireless_tests {
         );
 
         ota.stage_next_wave(2, policy).unwrap();
+        ota.mark_installing(7).unwrap();
         ota.complete_node_with_policy(7, false, policy).unwrap();
         assert_eq!(
             ota.node(7).map(|node| node.phase),
@@ -1354,6 +1472,57 @@ mod wireless_tests {
         assert_eq!(sf.deliver(9), Some(0xCC));
         assert_eq!(sf.deliver(9), None);
         assert_eq!(sf.deliver(7), Some(0xBB));
+    }
+
+    #[test]
+    fn malformed_varints_and_oversized_ota_are_rejected() {
+        let mut samples = [0i32; 2];
+        assert_eq!(
+            telemetry_pack::unpack(&[0x80, 0x80, 0x80, 0x80, 0x80, 0], &mut samples),
+            None
+        );
+        assert_eq!(
+            OtaReassembler::<2>::new(3).err(),
+            Some(OtaReassemblyError::TooManyChunks {
+                requested: 3,
+                capacity: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn route_freshness_wraps_and_store_forward_reclaims_holes() {
+        let mut routes = RoutingTable::<1>::new();
+        assert!(routes.update(7, 1, 5, 255));
+        assert!(routes.update(7, 2, 5, 0));
+        assert_eq!(routes.next_hop(7), Some(2));
+
+        let mut sf = StoreForward::<u8, 3>::new();
+        sf.store(1, 10);
+        sf.store(2, 20);
+        sf.store(1, 30);
+        assert_eq!(sf.deliver(2), Some(20));
+        sf.store(3, 40);
+        assert_eq!(sf.deliver(1), Some(10));
+        assert_eq!(sf.deliver(1), Some(30));
+        assert_eq!(sf.deliver(3), Some(40));
+    }
+
+    #[test]
+    fn fleet_ota_rejects_downgrades_and_invalid_transitions() {
+        let mut ota = FleetOtaOrchestrator::<1>::new();
+        ota.register(FleetOtaNode::new(1, 5)).unwrap();
+        assert_eq!(
+            ota.stage_next_wave(4, FleetOtaPolicy::DEFAULT),
+            Err(FleetOtaError::InvalidTargetVersion)
+        );
+        assert_eq!(
+            ota.complete_node(1, true),
+            Err(FleetOtaError::InvalidTransition {
+                from: FleetOtaPhase::Idle,
+                to: FleetOtaPhase::Confirmed,
+            })
+        );
     }
 
     #[test]

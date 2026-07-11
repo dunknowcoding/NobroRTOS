@@ -30,19 +30,28 @@ use nobro_hal::{
 use nobro_kernel::{
     eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS},
     kernel_module_spec, AdmissionReport, BootAssembly, Capability, CapabilitySet, Criticality,
-    DeadlineContract, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleSpec,
-    StartupDependency, SystemProfile,
+    DeadlineContract, FaultThresholds, ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate,
+    ModuleSpec, StartupDependency, SystemProfile,
 };
 
 // ---- The NobroRTOS C ABI: host services callable from a C (or extern-"C") module ----
 
+static MODULE_GATE: ModuleLaunchGate = ModuleLaunchGate::new();
+
 #[no_mangle]
 pub extern "C" fn nobro_now_us() -> u64 {
-    Hal::now_us()
+    if MODULE_GATE.allows(Capability::Timebase) {
+        Hal::now_us()
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i32 {
+    if !MODULE_GATE.allows(Capability::Bus0) {
+        return -2;
+    }
     if tx.is_null() {
         return -1;
     }
@@ -61,6 +70,9 @@ pub extern "C" fn nobro_i2c_write_read(
     rx: *mut u8,
     rx_len: u32,
 ) -> i32 {
+    if !MODULE_GATE.allows(Capability::Bus0) {
+        return -2;
+    }
     if tx.is_null() || rx.is_null() {
         return -1;
     }
@@ -88,6 +100,9 @@ pub extern "C" fn nobro_publish_imu(
     gz: i16,
     temp_raw: i16,
 ) {
+    if !MODULE_GATE.allows(Capability::HostReport) {
+        return;
+    }
     let (axf, ayf, azf) = (
         ax as f32 / 16_384.0,
         ay as f32 / 16_384.0,
@@ -136,7 +151,7 @@ fn idle() -> ! {
     }
 }
 
-fn admit() {
+fn admit() -> bool {
     let specs = [
         kernel_module_spec(
             MemoryBudget::new(24 * 1024, 8 * 1024, 4),
@@ -147,7 +162,8 @@ fn admit() {
                 CapabilitySet::empty()
                     .with(Capability::Bus0)
                     .with(Capability::SamplePool)
-                    .with(Capability::Timebase),
+                    .with(Capability::Timebase)
+                    .with(Capability::HostReport),
             )
             .owns(CapabilitySet::empty().with(Capability::Bus0))
             .memory(MemoryBudget::new(30 * 1024, 2 * 1024, 2)),
@@ -156,14 +172,24 @@ fn admit() {
     // System budget the admitted modules must fit within (flash, RAM, pool slots,
     // max modules). Generous for the kernel + one sensor module.
     let profile = SystemProfile::new(192 * 1024, 64 * 1024, 8, 4);
-    let reports =
+    let (reports, granted) =
         match CDemoBoot::build_with_failure(&specs, &deps, profile, FaultThresholds::DEFAULT, 0) {
-            Ok(boot) => boot.reports(),
-            Err(failure) => failure.reports(),
+            Ok(boot) => {
+                let granted = boot.runtime.plan().grants.granted(ModuleId::Sensor);
+                (boot.reports(), granted)
+            }
+            Err(failure) => (failure.reports(), None),
         };
     unsafe {
         NOBRO_MANIFEST_REPORT = reports.manifest;
         NOBRO_ADMISSION_REPORT = reports.admission;
+    }
+    if let Some(granted) = granted {
+        MODULE_GATE.install(granted);
+        true
+    } else {
+        MODULE_GATE.revoke();
+        false
     }
 }
 
@@ -181,13 +207,19 @@ fn main() -> ! {
         NOBRO_IMU_HW_EVAL_REPORT.version = IMU_HW_EVAL_VERSION;
     }
 
-    admit();
+    if !admit() {
+        idle();
+    }
 
     if unsafe { nobro_app_init() } < 0 {
+        MODULE_GATE.revoke();
         idle();
     }
     loop {
-        let _ = unsafe { nobro_app_poll() };
+        if unsafe { nobro_app_poll() } < 0 {
+            MODULE_GATE.revoke();
+            idle();
+        }
         if unsafe { READS } >= MIN_IMU_HW_READS {
             let mut report = unsafe { NOBRO_IMU_HW_EVAL_REPORT };
             report.seal();

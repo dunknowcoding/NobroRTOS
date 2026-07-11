@@ -496,7 +496,7 @@ impl<
 
     pub fn sweep_watchdogs(&mut self, now_us: u64) -> Result<WatchdogSweep<HEALTH>, RuntimeError> {
         let mut modules = [ModuleId::Kernel; HEALTH];
-        let expired = self.watchdog.expired(now_us, &mut modules);
+        let expired = self.watchdog.expired_edges(now_us, &mut modules);
         let mut sweep = WatchdogSweep::new();
 
         for module in modules.iter().copied().take(expired) {
@@ -563,11 +563,11 @@ impl<
     pub fn disable_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
         self.ensure_module_admitted(module)?;
         if self.module_state(module) == Some(ModuleRunState::Disabled) {
-            self.cleanup_module_resources(module);
+            self.cleanup_module_resources(module)?;
             return Ok(());
         }
         self.modules.disable(module, now_us)?;
-        self.cleanup_module_resources(module);
+        self.cleanup_module_resources(module)?;
         Ok(())
     }
 
@@ -589,7 +589,7 @@ impl<
         }
 
         let released_leases = leases.release_all_for_owner(lease_owner);
-        let released_quota = self.cleanup_module_resources(module);
+        let released_quota = self.cleanup_module_resources(module)?;
         self.modules.resume(module, plan.deadline_us)?;
 
         Ok(HotReloadOutcome {
@@ -640,7 +640,7 @@ impl<
                 continue;
             }
             self.modules.disable(module, now_us)?;
-            self.cleanup_module_resources(module);
+            self.cleanup_module_resources(module)?;
             application.disabled += 1;
         }
 
@@ -763,14 +763,14 @@ impl<
         Ok(())
     }
 
-    fn cleanup_module_resources(&mut self, module: ModuleId) -> SystemBudget {
+    fn cleanup_module_resources(&mut self, module: ModuleId) -> Result<SystemBudget, RuntimeError> {
         self.alarms.remove_for(module);
         self.mailbox.remove_for(module);
         self.watchdog.remove(module);
         self.plan
             .quotas
             .reset_usage(module)
-            .unwrap_or(SystemBudget::ZERO)
+            .map_err(RuntimeError::from)
     }
 }
 
@@ -2048,6 +2048,14 @@ mod tests {
             Some(KernelError::DeadlineMissed)
         );
         assert_eq!(runtime.state(), SystemState::Degraded);
+        assert_eq!(
+            runtime
+                .watchdog_entry(ModuleId::Sensor)
+                .expect("watchdog")
+                .missed,
+            1
+        );
+        assert!(runtime.sweep_watchdogs(250).unwrap().is_empty());
         assert_eq!(
             runtime
                 .watchdog_entry(ModuleId::Sensor)

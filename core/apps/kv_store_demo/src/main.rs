@@ -54,9 +54,10 @@ unsafe fn nvmc_wait() {
 }
 
 impl Flash for NvmcFlash {
+    type Error = ();
     const WORDS: usize = 1024; // 4 KB page
 
-    fn erase(&mut self, page: usize) {
+    fn erase(&mut self, page: usize) -> Result<(), Self::Error> {
         unsafe {
             core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 2);
             nvmc_wait();
@@ -65,9 +66,12 @@ impl Flash for NvmcFlash {
             core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 0);
             nvmc_wait();
         }
+        (self.read_word(page, 0) == u32::MAX && self.read_word(page, Self::WORDS - 1) == u32::MAX)
+            .then_some(())
+            .ok_or(())
     }
 
-    fn write_word(&mut self, page: usize, word: usize, val: u32) {
+    fn write_word(&mut self, page: usize, word: usize, val: u32) -> Result<(), Self::Error> {
         unsafe {
             core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 1);
             nvmc_wait();
@@ -76,6 +80,7 @@ impl Flash for NvmcFlash {
             core::ptr::write_volatile(NVMC_CONFIG as *mut u32, 0);
             nvmc_wait();
         }
+        (self.read_word(page, word) == val).then_some(()).ok_or(())
     }
 
     fn read_word(&self, page: usize, word: usize) -> u32 {
@@ -87,12 +92,12 @@ impl Flash for NvmcFlash {
 fn main() -> ! {
     // Start from clean pages each run so the pass criteria are deterministic.
     let mut f = NvmcFlash;
-    f.erase(0);
-    f.erase(1);
+    let _ = f.erase(0);
+    let _ = f.erase(1);
 
-    let mut kv = KvStore::mount(NvmcFlash);
+    let mut kv = KvStore::mount(NvmcFlash).unwrap();
 
-    // 1024 words = header + 511 records; 1200 puts over 5 keys forces compactions.
+    // 1024 words = 3-word header + 340 committed records; this forces compactions.
     let mut puts: u32 = 0;
     for i in 0..1200u32 {
         if kv.put((i % 5) as u16, 10_000 + i).is_ok() {
@@ -113,7 +118,7 @@ fn main() -> ! {
 
     // Remount (fresh mount over the same flash) and re-verify: persistence.
     drop(kv);
-    let kv2 = KvStore::mount(NvmcFlash);
+    let kv2 = KvStore::mount(NvmcFlash).unwrap();
     let mut remount_ok: u32 = 0;
     for k in 0..5u16 {
         let expect = 10_000 + (1195 + u32::from(k));
