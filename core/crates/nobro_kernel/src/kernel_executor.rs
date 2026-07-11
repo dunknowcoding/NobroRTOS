@@ -575,11 +575,11 @@ mod tests {
             ticks.set(t + 1_000);
             t
         };
-        let first = exec.run_cycle(&clock, |_| Ok(Poll::Pending)).unwrap();
+        let first = exec.run_cycle(clock, |_| Ok(Poll::Pending)).unwrap();
         assert!(first.overrun && !first.contained);
         // Force the next release to be due immediately.
         ticks.set(200_000);
-        let second = exec.run_cycle(&clock, |_| Ok(Poll::Pending)).unwrap();
+        let second = exec.run_cycle(clock, |_| Ok(Poll::Pending)).unwrap();
         assert!(second.overrun && second.contained);
         assert_eq!(
             exec.runtime().module_state(ModuleId::Sensor),
@@ -589,7 +589,7 @@ mod tests {
         // The disabled module is never polled again: its releases are skipped
         // and counted.
         ticks.set(400_000);
-        let third = exec.run_cycle(&clock, |_| panic!("must not poll")).unwrap();
+        let third = exec.run_cycle(clock, |_| panic!("must not poll")).unwrap();
         assert_eq!(third.skipped_release, Some(ModuleId::Sensor));
         assert_eq!(third.polled, None);
     }
