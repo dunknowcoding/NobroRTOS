@@ -1169,6 +1169,15 @@ impl<const N: usize> FleetOtaOrchestrator<N> {
         Ok(wave)
     }
 
+    /// Stage only an image that crossed the asymmetric secure-boot boundary.
+    pub fn stage_verified_wave(
+        &mut self,
+        verified: &nobro_secure::VerifiedSignedImage,
+        policy: FleetOtaPolicy,
+    ) -> Result<FleetOtaWave<N>, FleetOtaError> {
+        self.stage_next_wave(verified.plan().version, policy)
+    }
+
     pub fn node(&self, id: u16) -> Option<FleetOtaNode> {
         self.find_index(id).and_then(|index| self.nodes[index])
     }
@@ -1356,6 +1365,11 @@ impl<const N: usize> NetworkFormation<N> {
 #[cfg(test)]
 mod wireless_tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+    use nobro_crypto::sha256::sha256;
+    use nobro_secure::{
+        verify_signed_boot, BootVectorPolicy, PinnedKeyPolicy, SignedImageManifest,
+    };
 
     #[test]
     fn rssi_picks_best_link_then_cheapest() {
@@ -1409,6 +1423,42 @@ mod wireless_tests {
         assert_eq!(rollout.selected[0], Some(2));
         assert_eq!(rollout.selected[1], Some(3));
         assert_eq!(ota.active_count(), 2);
+    }
+
+    #[test]
+    fn fleet_ota_accepts_only_an_asymmetrically_verified_target() {
+        let image = b"fleet release";
+        let signing = SigningKey::from_bytes(&[9; 32]);
+        let mut manifest = SignedImageManifest {
+            key_id: 4,
+            version: 2,
+            image_len: image.len() as u32,
+            load_addr: 0x1000,
+            entry_addr: 0x1001,
+            stack_top: 0x2000_1000,
+            measurement: sha256(image),
+            signature: [0; 64],
+        };
+        manifest.signature = signing.sign(&manifest.signing_digest()).to_bytes();
+
+        let mut keys = PinnedKeyPolicy::<1>::new();
+        assert!(keys.pin(4, signing.verifying_key().to_bytes()));
+        let verified = verify_signed_boot(
+            image,
+            &manifest,
+            &keys,
+            BootVectorPolicy::cortex_m(0x1000, 0x4000, 0x2000_0000, 0x2000_2000),
+            1,
+        )
+        .unwrap();
+
+        let mut ota = FleetOtaOrchestrator::<1>::new();
+        ota.register(FleetOtaNode::new(1, 1)).unwrap();
+        let wave = ota
+            .stage_verified_wave(&verified, FleetOtaPolicy::DEFAULT)
+            .unwrap();
+        assert_eq!(wave.target_version, 2);
+        assert_eq!(wave.selected[0], Some(1));
     }
 
     #[test]

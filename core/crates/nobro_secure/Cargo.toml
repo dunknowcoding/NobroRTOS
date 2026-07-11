@@ -9,6 +9,7 @@ edition.workspace = true
 # store with an integrity tag (M185). no_std, no heap.
 [dependencies]
 nobro-crypto = { path = "../nobro_crypto", default-features = false }
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "signature"] }
 
 [features]
 default = ["portable-atomic-cs"]

@@ -88,9 +88,23 @@ and buffer failures.
 ### Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,
-board-specific jump. `SecureBoot::boot_plan` verifies image length, address
-range, entry/stack vector sanity, SHA-256 measurement, HMAC signature, and
-anti-rollback version before returning a `VerifiedBootPlan`:
+board-specific jump. The recommended fleet boundary is `verify_signed_boot`,
+which verifies a pinned Ed25519 key, signed image metadata, SHA-256 measurement,
+anti-rollback floor, and entry/stack policy before returning a
+`VerifiedSignedImage`. Its fields are private, so update and boot controllers
+cannot manufacture an unverified release token.
+
+`PersistentBootController` commits stage, first-trial, confirm, and revert state
+through `MonotonicBootStore`; storage failures stop the boot decision. A board
+port supplies the durable store and the final jump. `ProtectedKeyBackend`
+similarly lets a platform authenticate without exporting key bytes, while
+`AuthenticatedReportEnvelope` is the integrity boundary for reports used in
+trust decisions.
+
+The older `SecureBoot::boot_plan` HMAC path remains for per-device authentication
+and compatibility. It verifies image length, address range, entry/stack vector
+sanity, SHA-256 measurement, and anti-rollback version before returning a
+`VerifiedBootPlan`:
 
 ```rust
 let policy = nobro_secure::BootVectorPolicy::cortex_m(
@@ -102,7 +116,7 @@ let policy = nobro_secure::BootVectorPolicy::cortex_m(
 let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 ```
 
-`tools/sign_firmware.py` can emit the matching manifest JSON:
+`tools/sign_firmware.py` can emit a matching legacy HMAC manifest JSON:
 
 ```powershell
 python tools/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json

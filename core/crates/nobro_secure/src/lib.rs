@@ -3,6 +3,9 @@
 
 use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 
+mod security_v2;
+pub use security_v2::*;
+
 /// Device attestation (M174): prove firmware identity by HMAC over a nonce + the
 /// firmware measurement, keyed by a per-device secret. A verifier that shares the key
 /// and knows the expected measurement recomputes and compares.

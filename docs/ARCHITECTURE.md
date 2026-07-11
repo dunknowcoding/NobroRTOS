@@ -125,6 +125,21 @@ NobroRTOS maps that rule into:
 - fixed event and health reports
 - bounded AI and robotics bridge contracts
 
+### Firmware Trust Boundary
+
+Fleet releases cross an asymmetric boundary before update policy can use them.
+`nobro-secure` verifies a pinned Ed25519 key, signed image geometry and vectors,
+the SHA-256 image measurement, and the rollback floor. Only that operation can
+construct `VerifiedSignedImage`; both fleet rollout and persistent boot staging
+consume this private-field token.
+
+Boot trial, confirmation, and revert decisions are committed through a
+monotonic storage contract before they take effect, and storage errors fail
+closed. Platform ports own durable flash layout, protected-key implementation,
+image writing, and the final unsafe jump. HMAC remains appropriate for
+per-device authentication and authenticated report envelopes, but it is not the
+fleet firmware-signing authority.
+
 ### Recovery Model
 
 Recovery is module-scoped first:
