@@ -18,6 +18,7 @@ pub mod executor;
 pub mod fault_inject;
 pub mod foreign_host;
 pub mod foreign_module;
+pub mod graph;
 pub mod health;
 pub mod hot_reload;
 pub mod kernel_executor;
@@ -74,6 +75,7 @@ pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
+pub use graph::{AppGraph, BuiltGraph, GraphError, TaskDecl};
 pub use health::{
     FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,
     ModuleId,

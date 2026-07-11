@@ -124,7 +124,8 @@ Suite: `core/baselines/`; runner: `python tools/measure_baselines.py`
 | implementation | flash | static RAM | source lines |
 | --- | ---: | ---: | ---: |
 | bare-metal floor | 1,324 B | 16 B | 75 |
-| **NobroRTOS** (`nobro-min`) | 16,080 B | 16 B | 152 |
+| **NobroRTOS, explicit contract** (`nobro-min`) | 16,080 B | 16 B | 152 |
+| **NobroRTOS, graph API** (`nobro-graph-min`) | 18,996 B | 16 B | 114 |
 | Embassy (`embassy-min`) | 3,708 B | 4,644 B | 72 |
 
 Honest reading, both directions:
@@ -137,9 +138,13 @@ Honest reading, both directions:
 - The RAM trade runs the other way: NobroRTOS holds **16 B** of static RAM to
   Embassy's **4,644 B** (executor arenas, timer driver, task statics). On
   RAM-starved parts the tank is the lean one.
-- Verbosity is real: 152 lines vs 72. The contract-first style costs about 2x
-  the source of the async style today; the task-builder and graph APIs under
-  development target exactly that gap.
+- Verbosity is real and now measured twice: 152 lines hand-written vs 72 for
+  Embassy. The graph API (`AppGraph` + typed task builders with safe defaults
+  and channel-derived capabilities) cuts the same app to 114 lines - the
+  contract section itself drops from ~55 lines to ~14 - for a ~2.9 KB flash
+  premium (the builder expands into the same validated manifest). The
+  remaining gap to 72 is mostly the raw-register peripheral code both Nobro
+  variants share with the floor.
 - The **minimal profile is enforced, not promised**: the measurement fails CI
   if a `nobro-min`-class binary links any unselected service (crypto, secure
   boot, storage, database, net/fleet, AI/ML/NN) - verified at symbol level.
