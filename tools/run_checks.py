@@ -122,11 +122,14 @@ def gate_specs(quick, rust_only=False, extended=False):
     if extended:
         specs += [
             ("cross-MCU matrix", ["bash", "tools/ci_matrix.sh"], ROOT),
-            ("fuzz wire smoke", ["cargo", "+nightly", "fuzz", "run", "wire_inputs", "--",
+            ("fuzz wire smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
+             host_target(), "wire_inputs", "--",
              "-max_total_time=10"], CORE),
-            ("fuzz database smoke", ["cargo", "+nightly", "fuzz", "run", "database_images", "--",
+            ("fuzz database smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
+             host_target(), "database_images", "--",
              "-max_total_time=10"], CORE),
-            ("fuzz control smoke", ["cargo", "+nightly", "fuzz", "run", "control_state", "--",
+            ("fuzz control smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
+             host_target(), "control_state", "--",
              "-max_total_time=10"], CORE),
         ]
     return specs
