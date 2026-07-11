@@ -1,5 +1,5 @@
 {
-  "_comment": "Honest per-platform capability matrix (PORT-01, Wave 48). Each platform declares which portable nobro_hal provider contracts it satisfies, at what tier, so 'platform breadth' is machine-checkable and never an nRF-shaped placeholder. Tiers: deep = implemented + on-hardware HIL evidence; provider = portable trait implemented + compile-verified against the real target (on-HW HIL bench-gated); conformance = runs the shared portable-core suite; absent = not implemented. validated_by names how the claim is checked.",
+  "_comment": "Honest per-platform capability matrix (PORT-01, Waves 48/50). Each platform declares which portable nobro_hal provider contracts it satisfies, at what tier, so 'platform breadth' is machine-checkable and never an nRF-shaped placeholder. Tiers: deep = implemented + automated on-hardware HIL evidence; provider = portable trait implemented + compile-verified against the real target, with physical evidence stated separately; conformance = shared portable-core suite available; absent = not implemented. validated_by names the current automated gate.",
   "providers": [
     "timebase", "deadline", "event_capture", "servo_pwm",
     "i2c", "spi", "lease", "self_test"
@@ -9,7 +9,8 @@
       "arch": "thumbv7em",
       "tier": "deep",
       "implements": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease", "self_test"],
-      "hil": "automated (tools/hil_matrix.py) on the primary bench",
+      "automated_hil": true,
+      "hil": "automated with tools/hil_matrix.py; private endpoints stay outside the repository",
       "validated_by": "hil_matrix deep-HAL 10/10 with firmware hashes"
     },
     "rp2350": {
@@ -17,22 +18,25 @@
       "tier": "provider",
       "implements": ["timebase"],
       "planned": ["deadline", "servo_pwm", "i2c", "spi", "lease"],
-      "hil": "bench-gated (no RP2350 board on the primary bench)",
-      "validated_by": "portable timebase provider compile-verified for thumbv8m + live verify_timebase_provider() in the port self-test; conformance suite (7 subsystems) + dual-core"
+      "automated_hil": false,
+      "hil": "not yet integrated into the automated HIL collector",
+      "validated_by": "portable timebase provider compile-verified for thumbv8m; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed 2026-07-11; conformance suite (7 subsystems) + dual-core"
     },
     "esp32c3": {
       "arch": "riscv32imc",
       "tier": "provider",
       "implements": ["timebase"],
       "planned": ["deadline", "i2c", "spi"],
+      "automated_hil": false,
       "limitations": "no PPI-equivalent hardware event router; servo PWM via LEDC/MCPWM differs from the nRF model",
-      "hil": "bench-gated (no ESP32-C3 board on the primary bench)",
-      "validated_by": "portable timebase provider compile-verified for riscv32imc + live verify_timebase_provider() in the port self-test; conformance suite (7 subsystems)"
+      "hil": "not yet integrated into the automated HIL collector",
+      "validated_by": "portable timebase provider compile-verified for riscv32imc; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed and prior app restored 2026-07-11; conformance suite (7 subsystems)"
     },
     "esp32s3": {
       "arch": "xtensa",
       "tier": "conformance",
       "implements": [],
+      "automated_hil": false,
       "hil": "bench-gated",
       "validated_by": "conformance suite + USB-Serial-JTAG self-report"
     },
@@ -40,6 +44,7 @@
       "arch": "thumbv7em",
       "tier": "conformance",
       "implements": [],
+      "automated_hil": false,
       "hil": "bench-gated",
       "validated_by": "conformance suite"
     },
@@ -47,6 +52,7 @@
       "arch": "thumbv6m",
       "tier": "conformance",
       "implements": [],
+      "automated_hil": false,
       "hil": "bench-gated",
       "validated_by": "conformance suite"
     },
@@ -54,6 +60,7 @@
       "arch": "avr",
       "tier": "conformance",
       "implements": [],
+      "automated_hil": false,
       "hil": "bench-gated",
       "validated_by": "conformance suite"
     }

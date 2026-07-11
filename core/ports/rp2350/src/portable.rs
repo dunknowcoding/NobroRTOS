@@ -9,10 +9,9 @@
 //! Honest scope: the timebase and compatibility/identity providers are
 //! implemented and self-checked live (the clock must advance). The deeper
 //! peripheral providers (deadline capture, servo PWM, I2C/SPI transactions,
-//! leases) and on-hardware HIL for those remain bench-gated — there is no
-//! RP2350 board on the primary bench — and are declared honestly in the
-//! platform tier matrix (`core/boards/platform_tiers.json`), never stubbed to
-//! look complete.
+//! leases) remain provider gaps, and automated on-hardware HIL has not yet
+//! been integrated. The platform tier matrix states that boundary rather than
+//! presenting compile verification as physical evidence.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
@@ -92,5 +91,6 @@ pub fn verify_timebase_provider() -> bool {
         core::hint::spin_loop();
     }
     let t1 = Rp2350::now_us();
-    t1 > t0 && <Rp2350 as HalCompatibility>::supports(HardwareCapabilitySet::EMPTY)
+    let required = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+    t1 > t0 && <Rp2350 as HalCompatibility>::supports(required)
 }

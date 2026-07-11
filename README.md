@@ -313,10 +313,13 @@ target gets. The machine-readable capability matrix is `core/boards/platform_tie
 | Tier | What it means | Targets today |
 | --- | --- | --- |
 | **Deep HAL** | leased peripherals, drivers, and every claim in the table above verified on the board with automated HIL | nRF52840 |
-| **Provider ports** | implement the *same* portable `nobro_hal` provider traits as the deep HAL (starting with the microsecond timebase), compile-verified against the real target with a live on-chip self-check; deeper peripheral parity and on-hardware HIL are bench-gated and listed honestly in the matrix | RP2350 (Cortex-M33), ESP32-C3 (RISC-V) |
+| **Provider ports** | implement the *same* portable `nobro_hal` provider traits as the deep HAL (starting with the microsecond timebase), compile-verified against the real target; firmware includes the provider check in its report and passed local physical smoke, while deeper peripheral parity and reusable automated HIL remain pending | RP2350 (Cortex-M33), ESP32-C3 (RISC-V) |
 | **Conformance ports** | the portable core's shared self-test suite runs on the silicon and reports `all_pass` | ESP32-S3, RA4M1, SAMD21 (+ an 8-bit AVR kernel-lite subset) |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
+
+The exact scheduling, resource, isolation, tooling, and per-platform boundaries are
+maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 
 ## Capability Matrix
 

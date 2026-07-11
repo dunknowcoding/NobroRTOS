@@ -17,6 +17,7 @@ Every file here has one job. Users normally drive these through the SDK command
 ## Gates (each also runs standalone)
 
 `check_block_editor.py` · `check_board_profiles.py` · `check_portability.sh` ·
+`check_async_miri.py` · `check_fuzz_targets.py` · `check_platform_tiers.py` ·
 `check_release_versions.py` · `check_ros_bridge.py` · `check_sdk_manifest.py` ·
 `check_udi.py` · `check_web_flasher.py` · `chaos_test.py` · `tutorial_runner.py` ·
 `verify_timing_lease.py` · `wasm_slot_spike.py` · `ota_preflight_demo.py`

@@ -7,7 +7,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FUZZ = os.path.join(ROOT, "core", "fuzz")
-TARGETS = ("wire_inputs", "database_images", "control_state", "abi_lengths")
+TARGETS = ("wire_inputs", "database_images", "control_state", "abi_lengths", "async_reactor")
 
 
 def main():

@@ -8,9 +8,8 @@
 //!
 //! Honest scope: timebase + compatibility/identity providers are implemented
 //! and self-checked live. Deeper peripheral providers (deadline capture, PWM,
-//! I2C/SPI, leases) and on-hardware HIL remain bench-gated — there is no
-//! ESP32-C3 board on the primary bench — and are declared honestly in the
-//! platform tier matrix, never stubbed to look complete.
+//! I2C/SPI, leases) remain provider gaps, and automated on-hardware HIL has
+//! not yet been integrated. The platform tier matrix states that boundary.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
@@ -68,5 +67,6 @@ pub fn verify_timebase_provider() -> bool {
         core::hint::spin_loop();
     }
     let t1 = Esp32C3::now_us();
-    t1 > t0 && <Esp32C3 as HalCompatibility>::supports(HardwareCapabilitySet::EMPTY)
+    let required = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+    t1 > t0 && <Esp32C3 as HalCompatibility>::supports(required)
 }

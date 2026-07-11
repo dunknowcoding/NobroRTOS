@@ -179,6 +179,7 @@ class PersistentFloor:
 
     def __init__(self, path: str, initial: int):
         self.path = path
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self.state = {"generation": 0, "floor": initial, "confirmed": None}
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as f:

@@ -1,6 +1,6 @@
 # NobroRTOS Documentation
 
-Seven documents, one purpose each. Start at the top; go deeper as needed.
+Eight documents, one purpose each. Start at the top; go deeper as needed.
 
 | Document | Read it when you want to… |
 | --- | --- |
@@ -10,6 +10,7 @@ Seven documents, one purpose each. Start at the top; go deeper as needed.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | understand the layers, design rules, mountable backends, and the Universal Driver Interface |
 | [PORTING.md](PORTING.md) | migrate from FreeRTOS / Embassy / Zephyr, or port NobroRTOS to new silicon |
 | [ENGINEERING.md](ENGINEERING.md) | audit the internals: security, interrupts, measured latencies, unsafe inventory, Wasm slot |
+| [LIMITATIONS.md](LIMITATIONS.md) | see exact scheduling, resource, isolation, tooling, and platform support boundaries |
 | [api-index.md](api-index.md) | scan the generated per-crate symbol index (appendix to API.md) |
 
 Learning by doing instead? The step-by-step ladder lives in

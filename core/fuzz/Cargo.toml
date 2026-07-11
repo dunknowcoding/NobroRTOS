@@ -43,5 +43,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "async_reactor"
+path = "fuzz_targets/async_reactor.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
 members = ["."]

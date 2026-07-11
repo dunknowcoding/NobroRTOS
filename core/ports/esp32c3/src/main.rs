@@ -17,7 +17,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-
 #[esp_hal::main]
 fn main() -> ! {
     let _peripherals = esp_hal::init(esp_hal::Config::default());
@@ -25,15 +24,20 @@ fn main() -> ! {
 
     println!("NobroRTOS ESP32-C3 port (M84) - portable core on RISC-V rv32imc");
 
+    let timebase_ok = portable::verify_timebase_provider();
     let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let mut all = true;
+    let mut all = timebase_ok;
     for (name, ok) in SUBSYSTEMS.iter().zip(results) {
         println!("  {}: {}", name, if ok { "PASS" } else { "FAIL" });
         all &= ok;
     }
 
     loop {
-        println!("NOBRO-C3 arch=riscv32imc subsystems=7 all_pass={}", u32::from(all));
+        println!(
+            "NOBRO-C3 arch=riscv32imc subsystems=7 providers=1 timebase={} all_pass={}",
+            u32::from(timebase_ok),
+            u32::from(all)
+        );
         delay.delay_millis(1000);
     }
 }

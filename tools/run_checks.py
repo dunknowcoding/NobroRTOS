@@ -91,6 +91,7 @@ def gate_specs(quick, rust_only=False, extended=False):
                  "--target", host_target(),
                  "-p", "nobro-database", "-p", "nobro-storage", "-p", "nobro-net",
                  "-p", "nobro-secure"], CORE),
+                ("Miri bounded async", [py, "tools/check_async_miri.py"], ROOT),
             ]
     if rust_only:
         return specs
@@ -138,6 +139,9 @@ def gate_specs(quick, rust_only=False, extended=False):
              "-max_total_time=10"], CORE),
             ("fuzz abi-length smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
              host_target(), "abi_lengths", "--",
+             "-max_total_time=10"], CORE),
+            ("fuzz async smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
+             host_target(), "async_reactor", "--",
              "-max_total_time=10"], CORE),
         ]
     return specs

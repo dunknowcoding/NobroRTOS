@@ -95,6 +95,14 @@ jobs:
         run: >-
           cargo miri test --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure
+      - name: Miri bounded async boundary
+        working-directory: core
+        env:
+          # AsyncCore is embedded with static-cell lifetime; tests model that with Box::leak.
+          MIRIFLAGS: -Zmiri-ignore-leaks
+        run: >-
+          cargo miri test --target x86_64-unknown-linux-gnu
+          -p nobro-kernel async_rt::tests
       - name: persistent fuzz corpus smoke
         working-directory: core
         run: |
@@ -102,6 +110,7 @@ jobs:
           cargo fuzz run --target x86_64-unknown-linux-gnu database_images -- -max_total_time=15
           cargo fuzz run --target x86_64-unknown-linux-gnu control_state -- -max_total_time=15
           cargo fuzz run --target x86_64-unknown-linux-gnu abi_lengths -- -max_total_time=15
+          cargo fuzz run --target x86_64-unknown-linux-gnu async_reactor -- -max_total_time=15
       - name: address sanitizer smoke
         working-directory: core
         env:

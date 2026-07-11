@@ -61,6 +61,12 @@ fn put_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
     }
 }
 
+fn put_bytes(buf: &mut [u8], pos: &mut usize, bytes: &[u8]) {
+    let room = buf.len().saturating_sub(*pos);
+    let count = room.min(bytes.len());
+    buf[*pos..*pos + count].copy_from_slice(&bytes[..count]);
+    *pos += count;
+}
 
 #[hal::entry]
 fn main() -> ! {
@@ -76,7 +82,7 @@ fn main() -> ! {
         &mut watchdog,
     )
     .unwrap();
-    let mut timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
+    let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
     // M94: bring up core1 with its own stack, running an independent counter task.
     let mut sio = hal::Sio::new(pac.SIO);
@@ -103,8 +109,9 @@ fn main() -> ! {
         .device_class(2) // CDC
         .build();
 
+    let timebase_ok = portable::verify_timebase_provider();
     let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let all = results.iter().all(|&r| r);
+    let all = timebase_ok && results.iter().all(|&r| r);
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;
@@ -117,14 +124,17 @@ fn main() -> ! {
         let now = timer.get_counter();
         if (now - last_report).to_millis() >= 1000 {
             last_report = now;
-            let mut msg = [0u8; 80];
-            let head = if all {
-                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=1 cores=2 core1="[..]
-            } else {
-                &b"NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=0 cores=2 core1="[..]
-            };
-            let mut pos = head.len();
-            msg[..pos].copy_from_slice(head);
+            let mut msg = [0u8; 112];
+            let mut pos = 0;
+            put_bytes(
+                &mut msg,
+                &mut pos,
+                b"NOBRO-RP2350 arch=thumbv8m subsystems=7 providers=1 timebase=",
+            );
+            put_u32(&mut msg, &mut pos, u32::from(timebase_ok));
+            put_bytes(&mut msg, &mut pos, b" all_pass=");
+            put_u32(&mut msg, &mut pos, u32::from(all));
+            put_bytes(&mut msg, &mut pos, b" cores=2 core1=");
             put_u32(&mut msg, &mut pos, CORE1_TICKS.load(Ordering::Relaxed));
             if pos + 2 <= msg.len() {
                 msg[pos] = b'\r';
