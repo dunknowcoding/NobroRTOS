@@ -289,11 +289,11 @@ let planning = runtime.record_error_with_plan::<4>(
 assert!(planning.plan.deadline_us >= now_us);
 ```
 
-Use `apply_recovery_step(step, now_us)` when a firmware loop or host simulator
-wants runtime bookkeeping for a dispatched recovery step. The runtime applies
-quiesce and resume steps to module state, rejects disabled modules, and leaves
-restart, retry, notify, and heartbeat verification work to board-specific
-adapters.
+Use `apply_recovery_step(step, now_us, hooks)` when a firmware loop or host
+simulator dispatches a recovery step. `ModuleLifecycleHooks` is the executable
+adapter boundary for notify, retry, quiesce, stop/start, self-test, heartbeat,
+and resume. A hook error is returned as `RuntimeError::ModuleHook`, and the
+runtime does not advance the module to active state after a failed operation.
 
 The `check-watchdog-matrix` CLI validates non-mutating liveness prechecks,
 expiry mutation, heartbeat reset, multi-module expiry, and capacity errors.
@@ -459,12 +459,13 @@ Use `Runtime::record_error_with_plan_and_impact` or
 has startup impact data for a shared dependency. The planner validates that the
 impact root matches the recovery outcome module before emitting dependent-module
 steps.
-Use `HotReloadPlan` and `Runtime::hot_reload_module` for bounded reload planning and
-resource quiescence. The current runtime does not replace executable code: it suspends
-the existing module, releases registered resources, records the requested revision, and
-resumes it after the plan deadline. Kernel and disabled-module requests are rejected.
-HAL or adapter code supplies a `LeaseReleaser`, so board-specific cleanup stays outside
-the kernel:
+Use `HotReloadPlan` and `Runtime::reload_module` for bounded module-slot
+replacement. The runtime suspends the module, releases registered resources,
+then requires `ModuleReloadHooks` to unmount, mount the requested revision,
+self-test, verify a heartbeat, and resume. Kernel and disabled-module requests
+are rejected. Hook failure is fail-closed: the module remains non-active. HAL
+or adapter code supplies both the module-slot hooks and a `LeaseReleaser`, so
+board-specific mechanics stay outside the kernel:
 
 ```rust
 struct HalLeaseReleaser;
@@ -478,13 +479,16 @@ impl nobro_kernel::LeaseReleaser for HalLeaseReleaser {
 }
 
 let mut leases = HalLeaseReleaser;
-let outcome = runtime.hot_reload_module::<5, _>(
-    nobro_kernel::ModuleId::Sensor,
-    7,
-    3,
-    now_us,
-    nobro_kernel::HotReloadPolicy::DEFAULT,
+let outcome = runtime.reload_module::<5, _, _>(
+    nobro_kernel::ModuleReloadRequest::new(
+        nobro_kernel::ModuleId::Sensor,
+        7,
+        3,
+        now_us,
+        nobro_kernel::HotReloadPolicy::DEFAULT,
+    ),
     &mut leases,
+    &mut module_slot,
 )?;
 assert_eq!(outcome.plan.len, 5);
 ```
@@ -506,17 +510,15 @@ let empty = nobro_kernel::RecoveryStep::new(
 let mut due = [empty; 2];
 let dispatch = execution.dispatch_due(now_us, &mut due);
 for step in due.iter().take(dispatch.dispatched) {
-    // Map the step to board-specific notify, retry, restart, or resume work.
-    let _ = step;
+    runtime.apply_recovery_step(*step, now_us, &mut lifecycle_hooks)?;
 }
 ```
 
 The execution cursor owns no heap memory, uses caller-owned output buffers, and
 reports remaining steps, next due time, consumed budget, overdue work, and
 completion status.
-Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` when software
-needs deterministic module-state bookkeeping for quiesce/resume while keeping
-hardware restart and heartbeat operations in adapter code.
+Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` to keep ordered
+dispatch, executable platform actions, and module-state bookkeeping together.
 
 ### Network API
 

@@ -76,6 +76,33 @@ pub trait LeaseReleaser {
     fn release_all_for_owner(&mut self, owner: u8) -> usize;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModuleReloadRequest {
+    pub module: ModuleId,
+    pub lease_owner: u8,
+    pub new_revision: u32,
+    pub now_us: u64,
+    pub policy: HotReloadPolicy,
+}
+
+impl ModuleReloadRequest {
+    pub const fn new(
+        module: ModuleId,
+        lease_owner: u8,
+        new_revision: u32,
+        now_us: u64,
+        policy: HotReloadPolicy,
+    ) -> Self {
+        Self {
+            module,
+            lease_owner,
+            new_revision,
+            now_us,
+            policy,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NoopLeaseReleaser;
 

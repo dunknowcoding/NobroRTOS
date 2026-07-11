@@ -4,13 +4,13 @@ use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
     DependencyImpact, EventLogReport, EventSeverity, FaultThresholds, HealthReport, HotReloadError,
-    HotReloadOutcome, HotReloadPlan, HotReloadPolicy, KernelError, KvError, KvKey, KvStore,
-    KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind, ModuleId, ModuleRunState,
-    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
-    RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport, RuntimeReportInput,
-    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
-    WatchdogEntry, WatchdogError,
+    HotReloadOutcome, HotReloadPlan, KernelError, KvError, KvKey, KvStore, KvValue, LeaseReleaser,
+    Mailbox, MailboxError, Message, MessageKind, ModuleHookError, ModuleId, ModuleLifecycleHooks,
+    ModuleReloadHooks, ModuleReloadRequest, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError,
+    ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError,
+    RecoveryOutcome, RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep,
+    RecoveryStepKind, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget,
+    SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,6 +22,8 @@ pub enum RuntimeError {
     Mailbox(MailboxError),
     Module(ModuleRuntimeError),
     HotReload(HotReloadError),
+    ModuleHook(ModuleHookError),
+    RecoveryNotActive(ModuleId),
     Quota(QuotaError),
     Recovery(RecoveryError),
     RecoveryPlan(RecoveryPlanError),
@@ -67,6 +69,12 @@ impl From<ModuleRuntimeError> for RuntimeError {
 impl From<HotReloadError> for RuntimeError {
     fn from(error: HotReloadError) -> Self {
         Self::HotReload(error)
+    }
+}
+
+impl From<ModuleHookError> for RuntimeError {
+    fn from(error: ModuleHookError) -> Self {
+        Self::ModuleHook(error)
     }
 }
 
@@ -506,43 +514,69 @@ impl<
         Ok(sweep)
     }
 
-    pub fn complete_module_recovery(
+    fn complete_module_recovery(
         &mut self,
         module: ModuleId,
         now_us: u64,
     ) -> Result<(), RuntimeError> {
         self.ensure_module_enabled(module)?;
-        self.recovery.transition(SystemState::InitDrivers, now_us)?;
-        self.recovery.transition(SystemState::Running, now_us)?;
+        if self.module_state(module) != Some(ModuleRunState::Recovering) {
+            return Err(RuntimeError::RecoveryNotActive(module));
+        }
         self.record_ok(module, now_us)?;
+        if self.modules.count_state(ModuleRunState::Recovering) == 1 {
+            if self.modules.count_state(ModuleRunState::Faulted) == 0 {
+                self.recovery.transition(SystemState::InitDrivers, now_us)?;
+                self.recovery.transition(SystemState::Running, now_us)?;
+            } else {
+                self.recovery.transition(SystemState::Degraded, now_us)?;
+            }
+        }
         self.modules.complete_recovery(module, now_us)?;
         Ok(())
     }
 
-    pub fn apply_recovery_step(
+    pub fn apply_recovery_step<H: ModuleLifecycleHooks>(
         &mut self,
         step: RecoveryStep,
         now_us: u64,
+        hooks: &mut H,
     ) -> Result<(), RuntimeError> {
         self.ensure_module_enabled(step.module)?;
         match step.kind {
-            RecoveryStepKind::Observe
-            | RecoveryStepKind::Notify
-            | RecoveryStepKind::Retry
-            | RecoveryStepKind::RestartModule
-            | RecoveryStepKind::VerifyHeartbeat => Ok(()),
+            RecoveryStepKind::Observe => Ok(()),
+            RecoveryStepKind::Notify => hooks.notify(step.module).map_err(RuntimeError::from),
+            RecoveryStepKind::Retry => hooks.retry(step.module).map_err(RuntimeError::from),
             RecoveryStepKind::QuiesceModule => match self.module_state(step.module) {
-                Some(ModuleRunState::Suspended) | Some(ModuleRunState::Recovering) => Ok(()),
+                Some(ModuleRunState::Suspended) => Ok(()),
                 _ => {
-                    self.modules.suspend(step.module, now_us)?;
+                    hooks.quiesce(step.module)?;
+                    if self.module_state(step.module) != Some(ModuleRunState::Recovering) {
+                        self.modules.suspend(step.module, now_us)?;
+                    }
                     Ok(())
                 }
             },
+            RecoveryStepKind::RestartModule => {
+                hooks.stop(step.module)?;
+                hooks.start(step.module)?;
+                Ok(())
+            }
+            RecoveryStepKind::VerifyHeartbeat => {
+                hooks.self_test(step.module)?;
+                hooks.heartbeat(step.module)?;
+                self.record_ok(step.module, now_us)
+            }
             RecoveryStepKind::ResumeModule => match self.module_state(step.module) {
                 Some(ModuleRunState::Active) => Ok(()),
                 _ => {
-                    self.modules.resume(step.module, now_us)?;
-                    Ok(())
+                    hooks.resume(step.module)?;
+                    if self.module_state(step.module) == Some(ModuleRunState::Recovering) {
+                        self.complete_module_recovery(step.module, now_us)
+                    } else {
+                        self.modules.resume(step.module, now_us)?;
+                        Ok(())
+                    }
                 }
             },
         }
@@ -571,25 +605,32 @@ impl<
         Ok(())
     }
 
-    pub fn hot_reload_module<const STEPS: usize, L: LeaseReleaser>(
+    pub fn reload_module<const STEPS: usize, L: LeaseReleaser, H: ModuleReloadHooks>(
         &mut self,
-        module: ModuleId,
-        lease_owner: u8,
-        new_revision: u32,
-        now_us: u64,
-        policy: HotReloadPolicy,
+        request: ModuleReloadRequest,
         leases: &mut L,
+        hooks: &mut H,
     ) -> Result<HotReloadOutcome<STEPS>, RuntimeError> {
+        let ModuleReloadRequest {
+            module,
+            lease_owner,
+            new_revision,
+            now_us,
+            policy,
+        } = request;
         self.ensure_module_enabled(module)?;
         let plan = HotReloadPlan::build(module, new_revision, now_us, policy)?;
 
-        match self.module_state(module) {
-            Some(ModuleRunState::Suspended) | Some(ModuleRunState::Recovering) => {}
-            _ => self.modules.suspend(module, now_us)?,
-        }
+        hooks.quiesce(module)?;
+        self.modules.suspend(module, now_us)?;
 
         let released_leases = leases.release_all_for_owner(lease_owner);
         let released_quota = self.cleanup_module_resources(module)?;
+        hooks.unmount(module)?;
+        hooks.mount(module, new_revision)?;
+        hooks.self_test(module)?;
+        hooks.heartbeat(module)?;
+        hooks.resume(module)?;
         self.modules.resume(module, plan.deadline_us)?;
 
         Ok(HotReloadOutcome {
@@ -789,8 +830,8 @@ mod tests {
     use super::*;
     use crate::{
         kernel_module_spec, Action, CapabilitySet, Criticality, DeadlineContract, DependencySet,
-        FaultThresholds, MemoryBudget, ModuleSpec, RecoveryPlanError, RecoveryPlanPolicy,
-        RecoveryStep, RecoveryStepKind,
+        FaultThresholds, HotReloadPolicy, MemoryBudget, ModuleSpec, RecoveryPlanError,
+        RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
     };
 
     type TestRuntime = Runtime<4, 4, 4, 4, 4, 4, 16>;
@@ -809,6 +850,63 @@ mod tests {
             } else {
                 0
             }
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeHooks {
+        calls: usize,
+        mounted_revision: Option<u32>,
+        fail: Option<ModuleHookError>,
+    }
+
+    impl FakeHooks {
+        fn called(&mut self, operation: ModuleHookError) -> Result<(), ModuleHookError> {
+            self.calls += 1;
+            if self.fail == Some(operation) {
+                Err(operation)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl ModuleLifecycleHooks for FakeHooks {
+        fn notify(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Notify)
+        }
+        fn retry(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Retry)
+        }
+        fn quiesce(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Quiesce)
+        }
+        fn stop(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Stop)
+        }
+        fn start(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Start)
+        }
+        fn self_test(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::SelfTest)
+        }
+        fn heartbeat(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Heartbeat)
+        }
+        fn resume(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Resume)
+        }
+    }
+
+    impl ModuleReloadHooks for FakeHooks {
+        fn unmount(&mut self, _module: ModuleId) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Unmount)
+        }
+
+        fn mount(&mut self, _module: ModuleId, revision: u32) -> Result<(), ModuleHookError> {
+            self.called(ModuleHookError::Mount)?;
+            self.mounted_revision = Some(revision);
+            Ok(())
         }
     }
 
@@ -1430,7 +1528,8 @@ mod tests {
         assert_eq!(
             runtime.apply_recovery_step(
                 RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::ResumeModule, 20, 500),
-                20
+                20,
+                &mut FakeHooks::default(),
             ),
             Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
                 ModuleId::Sensor
@@ -1467,15 +1566,13 @@ mod tests {
             released: 2,
             calls: 0,
         };
+        let mut hooks = FakeHooks::default();
 
         let outcome = runtime
-            .hot_reload_module::<5, _>(
-                ModuleId::Sensor,
-                7,
-                3,
-                20,
-                HotReloadPolicy::DEFAULT,
+            .reload_module::<5, _, _>(
+                ModuleReloadRequest::new(ModuleId::Sensor, 7, 3, 20, HotReloadPolicy::DEFAULT),
                 &mut leases,
+                &mut hooks,
             )
             .unwrap();
 
@@ -1485,6 +1582,8 @@ mod tests {
         assert_eq!(outcome.plan.len, 5);
         assert_eq!(outcome.plan.new_revision, 3);
         assert_eq!(leases.calls, 1);
+        assert_eq!(hooks.calls, 6);
+        assert_eq!(hooks.mounted_revision, Some(3));
         assert_eq!(
             runtime.module_state(ModuleId::Sensor),
             Some(ModuleRunState::Active)
@@ -1507,15 +1606,13 @@ mod tests {
             released: 1,
             calls: 0,
         };
+        let mut hooks = FakeHooks::default();
 
         assert_eq!(
-            runtime.hot_reload_module::<5, _>(
-                ModuleId::Kernel,
-                1,
-                2,
-                20,
-                HotReloadPolicy::DEFAULT,
+            runtime.reload_module::<5, _, _>(
+                ModuleReloadRequest::new(ModuleId::Kernel, 1, 2, 20, HotReloadPolicy::DEFAULT,),
                 &mut leases,
+                &mut hooks,
             ),
             Err(RuntimeError::HotReload(HotReloadError::CannotReloadKernel))
         );
@@ -1523,19 +1620,145 @@ mod tests {
 
         runtime.disable_module(ModuleId::Sensor, 30).unwrap();
         assert_eq!(
-            runtime.hot_reload_module::<5, _>(
-                ModuleId::Sensor,
-                1,
-                2,
-                40,
-                HotReloadPolicy::DEFAULT,
+            runtime.reload_module::<5, _, _>(
+                ModuleReloadRequest::new(ModuleId::Sensor, 1, 2, 40, HotReloadPolicy::DEFAULT,),
                 &mut leases,
+                &mut hooks,
             ),
             Err(RuntimeError::Module(ModuleRuntimeError::Disabled(
                 ModuleId::Sensor
             )))
         );
         assert_eq!(leases.calls, 0);
+    }
+
+    #[test]
+    fn runtime_reload_stays_suspended_when_mount_fails() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        let mut leases = FakeLeases {
+            owner: 1,
+            released: 1,
+            calls: 0,
+        };
+        let mut hooks = FakeHooks {
+            fail: Some(ModuleHookError::Mount),
+            ..FakeHooks::default()
+        };
+
+        assert_eq!(
+            runtime.reload_module::<5, _, _>(
+                ModuleReloadRequest::new(ModuleId::Sensor, 1, 2, 20, HotReloadPolicy::DEFAULT,),
+                &mut leases,
+                &mut hooks,
+            ),
+            Err(RuntimeError::ModuleHook(ModuleHookError::Mount))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Suspended)
+        );
+        assert_eq!(hooks.mounted_revision, None);
+    }
+
+    #[test]
+    fn recovery_hook_failure_does_not_report_restart_success() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 30)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+        let mut hooks = FakeHooks {
+            fail: Some(ModuleHookError::Start),
+            ..FakeHooks::default()
+        };
+
+        assert_eq!(
+            runtime.apply_recovery_step(
+                RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::RestartModule, 50, 5_000,),
+                50,
+                &mut hooks,
+            ),
+            Err(RuntimeError::ModuleHook(ModuleHookError::Start))
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Recovering)
+        );
+        assert_eq!(runtime.state(), SystemState::Recovering);
+    }
+
+    #[test]
+    fn concurrent_module_recovery_keeps_global_state_until_last_resume() {
+        let manifest = SystemManifest::<3>::from_specs(&[
+            kernel_module_spec(
+                MemoryBudget::new(16 * 1024, 4 * 1024, 4),
+                DeadlineContract::new(20_000, 10),
+            ),
+            ModuleSpec::new(ModuleId::Sensor, Criticality::Driver).memory(MemoryBudget::new(
+                4 * 1024,
+                1024,
+                1,
+            )),
+            ModuleSpec::new(ModuleId::Radio, Criticality::Driver).memory(MemoryBudget::new(
+                4 * 1024,
+                1024,
+                1,
+            )),
+        ])
+        .unwrap();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+            StartupNode::new(ModuleId::Radio, DependencySet::empty().with_index(0)),
+        ];
+        let mut runtime = Runtime::<3, 3, 4, 4, 4, 3, 16>::admit(
+            &manifest,
+            &startup,
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+        runtime.boot_to_running(10).unwrap();
+        for (module, base) in [(ModuleId::Sensor, 20), (ModuleId::Radio, 50)] {
+            for offset in 0..3 {
+                runtime
+                    .record_error(module, KernelError::DeadlineMissed, base + offset)
+                    .unwrap();
+            }
+        }
+
+        let mut hooks = FakeHooks::default();
+        runtime
+            .apply_recovery_step(
+                RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::ResumeModule, 100, 500),
+                100,
+                &mut hooks,
+            )
+            .unwrap();
+        assert_eq!(runtime.state(), SystemState::Recovering);
+        assert_eq!(
+            runtime.module_state(ModuleId::Radio),
+            Some(ModuleRunState::Recovering)
+        );
+
+        runtime
+            .apply_recovery_step(
+                RecoveryStep::new(ModuleId::Radio, RecoveryStepKind::ResumeModule, 110, 500),
+                110,
+                &mut hooks,
+            )
+            .unwrap();
+        assert_eq!(runtime.state(), SystemState::Running);
     }
 
     #[test]
@@ -1744,13 +1967,25 @@ mod tests {
         );
 
         runtime
-            .apply_recovery_step(planning.plan.steps[0].unwrap(), 50)
+            .apply_recovery_step(
+                planning.plan.steps[0].unwrap(),
+                50,
+                &mut FakeHooks::default(),
+            )
             .unwrap();
         runtime
-            .apply_recovery_step(planning.plan.steps[1].unwrap(), 60)
+            .apply_recovery_step(
+                planning.plan.steps[1].unwrap(),
+                60,
+                &mut FakeHooks::default(),
+            )
             .unwrap();
         runtime
-            .apply_recovery_step(planning.plan.steps[2].unwrap(), 70)
+            .apply_recovery_step(
+                planning.plan.steps[2].unwrap(),
+                70,
+                &mut FakeHooks::default(),
+            )
             .unwrap();
         assert_eq!(
             runtime.module_state(ModuleId::App(1)),
@@ -1766,7 +2001,9 @@ mod tests {
         );
 
         for step in planning.plan.steps[3..8].iter().flatten() {
-            runtime.apply_recovery_step(*step, step.due_us).unwrap();
+            runtime
+                .apply_recovery_step(*step, step.due_us, &mut FakeHooks::default())
+                .unwrap();
         }
         assert_eq!(
             runtime.module_state(ModuleId::Bus),
@@ -1780,7 +2017,7 @@ mod tests {
             runtime.module_state(ModuleId::App(1)),
             Some(ModuleRunState::Active)
         );
-        assert_eq!(runtime.state(), SystemState::Recovering);
+        assert_eq!(runtime.state(), SystemState::Running);
     }
 
     #[test]
@@ -2100,10 +2337,10 @@ mod tests {
         let mut runtime = runtime();
         runtime.boot_to_running(10).unwrap();
 
-        assert!(matches!(
+        assert_eq!(
             runtime.complete_module_recovery(ModuleId::Sensor, 20),
-            Err(RuntimeError::Recovery(RecoveryError::Lifecycle(_)))
-        ));
+            Err(RuntimeError::RecoveryNotActive(ModuleId::Sensor))
+        );
     }
 
     #[test]

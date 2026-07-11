@@ -21,6 +21,7 @@ pub mod hot_reload;
 pub mod kv;
 pub mod launch_gate;
 pub mod lifecycle;
+pub mod lifecycle_hooks;
 pub mod mailbox;
 pub mod manifest;
 pub mod module_runtime;
@@ -64,11 +65,12 @@ pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
 pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,
-    HotReloadStepKind, LeaseReleaser, NoopLeaseReleaser,
+    HotReloadStepKind, LeaseReleaser, ModuleReloadRequest, NoopLeaseReleaser,
 };
 pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use launch_gate::ModuleLaunchGate;
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
+pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHooks};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,

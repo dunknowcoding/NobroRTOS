@@ -158,9 +158,13 @@ Runtime impact-aware recovery entry points require the caller to pass the
 dependency impact explicitly and reject mismatched impact roots, keeping startup
 graph ownership outside the hot runtime state while still preserving misuse
 detection.
-`Runtime::apply_recovery_step` closes the software bookkeeping loop for
-dispatched recovery plans: quiesce and resume steps update module runtime
-state, while restart and heartbeat verification remain adapter responsibilities.
+`Runtime::apply_recovery_step` closes the execution and bookkeeping loop for
+dispatched recovery plans. `ModuleLifecycleHooks` performs platform-owned
+notify, retry, quiesce, stop/start, self-test, heartbeat, and resume work. The
+runtime updates module state only after the corresponding hook succeeds.
+`Runtime::reload_module` similarly requires `ModuleReloadHooks` to perform an
+actual module-slot unmount/mount and verification; a failed replacement leaves
+the module non-active.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

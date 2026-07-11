@@ -135,6 +135,14 @@ impl<const N: usize> RecoveryPlan<N> {
                     now_us.saturating_add(u64::from(policy.retry_budget_us)),
                     policy.verify_budget_us,
                 ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::ResumeModule,
+                    now_us
+                        .saturating_add(u64::from(policy.retry_budget_us))
+                        .saturating_add(u64::from(policy.verify_budget_us)),
+                    policy.resume_budget_us,
+                ))?;
             }
             Action::RetryDelay(delay_us) => {
                 let retry_due = now_us.saturating_add(u64::from(delay_us));
@@ -151,6 +159,14 @@ impl<const N: usize> RecoveryPlan<N> {
                     RecoveryStepKind::VerifyHeartbeat,
                     retry_due.saturating_add(u64::from(policy.retry_budget_us)),
                     policy.verify_budget_us,
+                ))?;
+                plan.push(RecoveryStep::new(
+                    outcome.module,
+                    RecoveryStepKind::ResumeModule,
+                    retry_due
+                        .saturating_add(u64::from(policy.retry_budget_us))
+                        .saturating_add(u64::from(policy.verify_budget_us)),
+                    policy.resume_budget_us,
                 ))?;
             }
             Action::RebootModule => {
@@ -671,11 +687,11 @@ mod tests {
         };
 
         let plan =
-            RecoveryPlan::<2>::from_outcome(outcome, 10_000, RecoveryPlanPolicy::DEFAULT).unwrap();
+            RecoveryPlan::<3>::from_outcome(outcome, 10_000, RecoveryPlanPolicy::DEFAULT).unwrap();
 
-        assert_eq!(plan.len, 2);
-        assert_eq!(plan.required_budget_us, 4_000);
-        assert_eq!(plan.deadline_us, 14_000);
+        assert_eq!(plan.len, 3);
+        assert_eq!(plan.required_budget_us, 4_500);
+        assert_eq!(plan.deadline_us, 14_500);
         assert_eq!(
             plan.steps[0],
             Some(RecoveryStep::new(
@@ -692,6 +708,15 @@ mod tests {
                 RecoveryStepKind::VerifyHeartbeat,
                 13_000,
                 1_000
+            ))
+        );
+        assert_eq!(
+            plan.steps[2],
+            Some(RecoveryStep::new(
+                ModuleId::Radio,
+                RecoveryStepKind::ResumeModule,
+                14_000,
+                500
             ))
         );
     }
@@ -1045,12 +1070,12 @@ mod tests {
             state: SystemState::Running,
         };
         let plan =
-            RecoveryPlan::<2>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
+            RecoveryPlan::<3>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
         let mut execution = RecoveryPlanExecution::from_plan(plan);
 
         let dispatch = execution.dispatch_due(2_000, &mut []);
         assert_eq!(dispatch.dispatched, 0);
-        assert_eq!(dispatch.remaining, 2);
+        assert_eq!(dispatch.remaining, 3);
         assert_eq!(dispatch.next_due_us, 1_100);
         assert_eq!(dispatch.overdue_us, 900);
         assert_eq!(execution.dispatched_count(), 0);
