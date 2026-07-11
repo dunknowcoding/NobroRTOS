@@ -322,7 +322,11 @@
       "8": "empty_memory_budget",
       "9": "module_limit_exceeded",
       "10": "budget_exceeded",
-      "11": "user_owns_kernel_capability"
+      "11": "user_owns_kernel_capability",
+      "12": "empty_manifest",
+      "13": "missing_kernel",
+      "14": "invalid_kernel_contract",
+      "15": "overutilized"
     }
   },
   "adapter_compat_report": {

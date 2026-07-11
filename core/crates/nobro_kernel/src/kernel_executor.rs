@@ -31,7 +31,7 @@ use portable_atomic::{AtomicU32, Ordering};
 
 use crate::{
     module_code, KernelError, ModuleCtx, ModuleId, ModuleRunState, Poll, Runtime, RuntimeError,
-    TaskMeta, TaskTable, TaskTableError,
+    StackFault, StackGuardTable, TaskMeta, TaskTable, TaskTableError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -244,6 +244,25 @@ impl<
         &mut self,
     ) -> &mut Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG> {
         &mut self.runtime
+    }
+
+    /// Sweep the registered stack guards and route the first broken canary
+    /// into recovery as a `StackViolation` attributed to the owning module
+    /// (MEM-01). Call once per cycle or from a maintenance tick.
+    pub fn enforce_stack_guards<const G: usize>(
+        &mut self,
+        guards: &StackGuardTable<G>,
+        now_us: u64,
+    ) -> Result<Option<StackFault>, ExecError> {
+        let Some(fault) = guards.sweep() else {
+            return Ok(None);
+        };
+        if self.runtime.module_state(fault.module) == Some(ModuleRunState::Active) {
+            let _ = self
+                .runtime
+                .record_error(fault.module, KernelError::StackViolation, now_us)?;
+        }
+        Ok(Some(fault))
     }
 
     /// One bounded cycle of the authoritative loop. `clock` supplies monotonic
@@ -573,6 +592,46 @@ mod tests {
         let third = exec.run_cycle(&clock, |_| panic!("must not poll")).unwrap();
         assert_eq!(third.skipped_release, Some(ModuleId::Sensor));
         assert_eq!(third.polled, None);
+    }
+
+    #[test]
+    fn stack_guard_enforcement_attributes_and_routes_into_recovery() {
+        use crate::{StackGuardTable, StackRegion};
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.seal().unwrap();
+
+        let mut fake_stack = [0u8; 64];
+        let mut guards = StackGuardTable::<1>::new();
+        unsafe {
+            guards
+                .register(
+                    ModuleId::Sensor,
+                    StackRegion {
+                        base: fake_stack.as_mut_ptr() as usize,
+                        len: fake_stack.len(),
+                        canary_bytes: 8,
+                    },
+                )
+                .unwrap();
+        }
+        assert_eq!(exec.enforce_stack_guards(&guards, 10).unwrap(), None);
+
+        // Overflow the fake stack through its canary.
+        for byte in fake_stack.iter_mut() {
+            *byte = 0xEE;
+        }
+        let fault = exec
+            .enforce_stack_guards(&guards, 20)
+            .unwrap()
+            .expect("stack fault");
+        assert_eq!(fault.module, ModuleId::Sensor);
+        // The violation entered the health pipeline for the module.
+        let health = exec.runtime().health_report(ModuleId::Sensor).unwrap();
+        assert!(health.total_errors >= 1);
+        assert_eq!(
+            health.last_error,
+            crate::error_code(KernelError::StackViolation)
+        );
     }
 
     #[test]

@@ -9,6 +9,11 @@ pub enum KernelError {
     DeadlineMissed,
     ForeignModuleInitFail,
     ForeignModulePollFail,
+    /// A stack guard's canary was destroyed or its watermark crossed the
+    /// configured limit - attributed to the owning execution context (MEM-01).
+    StackViolation,
+    /// A memory-protection (MPU) fault was captured and attributed (MEM-02).
+    MemoryFault,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

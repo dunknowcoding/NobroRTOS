@@ -108,6 +108,28 @@ APPS = {
                                  "critical_section_cyc", "mailbox_worst_cyc",
                                  "alarm_worst_cyc", "checksum"],
     },
+    # Negative stack-overflow test (MEM-01): the kernel StackGuardTable must
+    # survive shallow recursion, trip + attribute on deep recursion, and re-arm.
+    "stack": {
+        "package": "stack-guard-demo",
+        "bin": {"nosd": "stack_guard_demo", "s140": "stack_guard_demo_s140"},
+        "symbol": "NOBRO_STACK_REPORT",
+        "magic": 0x4E53474B,
+        "fields": COMMON_HEAD + ["intact_after_shallow", "tripped_after_deep",
+                                 "attributed_module", "rearmed_ok", "guard_addr",
+                                 "checksum"],
+    },
+    # Negative MPU test (MEM-02): a KernelMpuPlan region must fault exactly once,
+    # capture an attributed MpuFaultRecord, and recover cleanly.
+    "mpu": {
+        "package": "mpu-guard-demo",
+        "bin": {"nosd": "mpu_guard_demo", "s140": "mpu_guard_demo_s140"},
+        "symbol": "NOBRO_MPU_REPORT",
+        "magic": 0x4E4D5055,
+        "fields": COMMON_HEAD + ["write_before_ok", "faults_caught", "write_after_ok",
+                                 "fault_module", "fault_was_data_access", "fault_addr",
+                                 "checksum"],
+    },
     # Bounded async executor HW proof: same checks as host unit tests, no HAL.
     "async": {
         "package": "async-exec-demo",

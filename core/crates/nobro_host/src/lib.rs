@@ -282,6 +282,10 @@ pub const fn manifest_error_label(code: u32) -> Option<&'static str> {
         9 => Some("module_limit_exceeded"),
         10 => Some("budget_exceeded"),
         11 => Some("user_owns_kernel_capability"),
+        12 => Some("empty_manifest"),
+        13 => Some("missing_kernel"),
+        14 => Some("invalid_kernel_contract"),
+        15 => Some("overutilized"),
         _ => None,
     }
 }

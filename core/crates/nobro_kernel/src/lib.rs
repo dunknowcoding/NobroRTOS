@@ -38,6 +38,7 @@ pub mod retry;
 pub mod runtime;
 pub mod sample;
 pub mod scheduler;
+pub mod stack_guard;
 pub mod startup;
 pub mod supervisor;
 pub mod task_supervisor;
@@ -129,6 +130,10 @@ pub type StandardRuntime = Runtime<8, 8, 16, 8, 16, 8, 32>;
 pub type LargeRuntime = Runtime<16, 16, 32, 16, 32, 16, 64>;
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
+pub use stack_guard::{
+    StackFault, StackGuardError, StackGuardTable, StackRegion, StackStatus, DEFAULT_CANARY_BYTES,
+    WATERMARK_PATTERN,
+};
 pub use startup::{
     DependencyImpact, DependencySet, StartupError, StartupGraph, StartupGraphError, StartupNode,
     StartupPlan, StartupPlanner,

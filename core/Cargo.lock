@@ -498,6 +498,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
+ "nobro-kernel",
  "panic-halt",
 ]
 
@@ -1055,6 +1056,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
+ "nobro-kernel",
  "panic-halt",
 ]
 

@@ -200,6 +200,9 @@ pub fn default_action(err: &KernelError) -> crate::Action {
         KernelError::SensorReadFail => Ignore,
         KernelError::DeadlineMissed => NotifyUserTask,
         KernelError::ForeignModuleInitFail | KernelError::ForeignModulePollFail => RebootModule,
+        // Memory-safety violations mean the module's state cannot be trusted:
+        // restart it through recovery, never resume in place.
+        KernelError::StackViolation | KernelError::MemoryFault => RebootModule,
     }
 }
 

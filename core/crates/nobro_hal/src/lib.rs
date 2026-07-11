@@ -9,6 +9,7 @@
 pub mod board_desc;
 pub mod board_fixtures;
 pub mod lease;
+pub mod mpu;
 pub mod platform;
 pub mod snapshots;
 pub mod traits;

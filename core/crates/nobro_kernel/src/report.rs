@@ -616,6 +616,8 @@ pub const fn error_code(error: KernelError) -> u32 {
         KernelError::DeadlineMissed => 5,
         KernelError::ForeignModuleInitFail => 6,
         KernelError::ForeignModulePollFail => 7,
+        KernelError::StackViolation => 8,
+        KernelError::MemoryFault => 9,
     }
 }
 
