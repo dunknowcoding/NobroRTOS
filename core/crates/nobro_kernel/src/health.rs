@@ -51,11 +51,27 @@ pub struct FaultThresholds {
     pub reboot_after: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FaultThresholdError {
+    NotifyZero,
+    RebootBeforeNotify,
+}
+
 impl FaultThresholds {
     pub const DEFAULT: Self = Self {
         notify_after: 3,
         reboot_after: 8,
     };
+
+    pub const fn validate(self) -> Result<(), FaultThresholdError> {
+        if self.notify_after == 0 {
+            Err(FaultThresholdError::NotifyZero)
+        } else if self.reboot_after < self.notify_after {
+            Err(FaultThresholdError::RebootBeforeNotify)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 pub struct HealthMonitor<const N: usize> {
@@ -145,6 +161,27 @@ impl<const N: usize> Default for HealthMonitor<N> {
 mod tests {
     use super::*;
     use crate::scheduler::default_action;
+
+    #[test]
+    fn fault_thresholds_reject_incoherent_escalation() {
+        assert_eq!(
+            FaultThresholds {
+                notify_after: 0,
+                reboot_after: 1,
+            }
+            .validate(),
+            Err(FaultThresholdError::NotifyZero)
+        );
+        assert_eq!(
+            FaultThresholds {
+                notify_after: 3,
+                reboot_after: 2,
+            }
+            .validate(),
+            Err(FaultThresholdError::RebootBeforeNotify)
+        );
+        assert!(FaultThresholds::DEFAULT.validate().is_ok());
+    }
 
     #[test]
     fn ok_resets_consecutive_errors() {

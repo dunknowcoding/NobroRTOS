@@ -457,6 +457,10 @@ work. Health and fault counters continue to advance, while duplicate event and
 lifecycle work is coalesced; `RecoveryOutcome::coalesced` and
 `suppressed_faults(module)` expose the decision. Coalesced outcomes cannot be
 converted into duplicate recovery plans.
+Both manifest-level and runtime-global `FaultThresholds` are validated:
+notification must be nonzero and reboot escalation cannot precede notification.
+Invalid global thresholds fail runtime construction as
+`RuntimeError::FaultThreshold` before any module state is activated.
 Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
 `RecoveryOutcome` with the generated plan.
 Use `Runtime::record_error_with_plan_and_impact` or

@@ -3,14 +3,15 @@
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, DegradeApplicationReport, DegradeDecision, DegradeReason,
-    DependencyImpact, EventLogReport, EventSeverity, FaultThresholds, HealthReport, HotReloadError,
-    HotReloadOutcome, HotReloadPlan, KernelError, KvError, KvKey, KvStore, KvValue, LeaseReleaser,
-    Mailbox, MailboxError, Message, MessageKind, ModuleHookError, ModuleId, ModuleLifecycleHooks,
-    ModuleReloadHooks, ModuleReloadRequest, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError,
-    ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError, RecoveryCoordinator, RecoveryError,
-    RecoveryOutcome, RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep,
-    RecoveryStepKind, RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget,
-    SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    DependencyImpact, EventLogReport, EventSeverity, FaultThresholdError, FaultThresholds,
+    HealthReport, HotReloadError, HotReloadOutcome, HotReloadPlan, KernelError, KvError, KvKey,
+    KvStore, KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind, ModuleHookError,
+    ModuleId, ModuleLifecycleHooks, ModuleReloadHooks, ModuleReloadRequest, ModuleRunState,
+    ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard, ModuleRuntimeReport, QuotaError,
+    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanError,
+    RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport, RuntimeReportInput,
+    StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog,
+    WatchdogEntry, WatchdogError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub enum RuntimeError {
     Mailbox(MailboxError),
     Module(ModuleRuntimeError),
     HotReload(HotReloadError),
+    FaultThreshold(FaultThresholdError),
     ModuleHook(ModuleHookError),
     RecoveryNotActive(ModuleId),
     Quota(QuotaError),
@@ -69,6 +71,12 @@ impl From<ModuleRuntimeError> for RuntimeError {
 impl From<HotReloadError> for RuntimeError {
     fn from(error: HotReloadError) -> Self {
         Self::HotReload(error)
+    }
+}
+
+impl From<FaultThresholdError> for RuntimeError {
+    fn from(error: FaultThresholdError) -> Self {
+        Self::FaultThreshold(error)
     }
 }
 
@@ -227,6 +235,7 @@ impl<
         plan: AdmissionPlan<STARTUP, QUOTAS>,
         thresholds: FaultThresholds,
     ) -> Result<Self, RuntimeError> {
+        thresholds.validate()?;
         let modules = ModuleRuntimeGuard::try_from_startup_plan(&plan.startup)?;
         Ok(Self {
             plan,
@@ -1002,6 +1011,26 @@ mod tests {
         assert!(runtime
             .authorize(ModuleId::Sensor, Capability::SamplePool)
             .is_ok());
+    }
+
+    #[test]
+    fn runtime_rejects_invalid_global_fault_thresholds() {
+        let manifest = manifest();
+        assert_eq!(
+            TestRuntime::admit(
+                &manifest,
+                &startup(),
+                profile(),
+                FaultThresholds {
+                    notify_after: 4,
+                    reboot_after: 3,
+                },
+            )
+            .map(|_| ()),
+            Err(RuntimeError::FaultThreshold(
+                FaultThresholdError::RebootBeforeNotify
+            ))
+        );
     }
 
     #[test]

@@ -68,7 +68,9 @@ pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
-pub use health::{FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId};
+pub use health::{
+    FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId,
+};
 pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,
     HotReloadStepKind, LeaseReleaser, ModuleReloadRequest, NoopLeaseReleaser,
