@@ -36,6 +36,11 @@ struct WcetReport {
     lease_cyc: u32,
     event_flags_cyc: u32,
     critical_section_cyc: u32,
+    /// Worst-path IPC (OBS-02): selective pop of the OLDEST-position match from
+    /// a FULL mailbox, forcing the maximal compaction walk.
+    mailbox_worst_cyc: u32,
+    /// Worst-path alarms (OBS-02): earliest-due scan + pop over a FULL queue.
+    alarm_worst_cyc: u32,
     checksum: u32,
 }
 const MAGIC: u32 = 0x4E57_4354; // "NWCT"
@@ -55,6 +60,8 @@ static mut NOBRO_WCET_REPORT: WcetReport = WcetReport {
     lease_cyc: 0,
     event_flags_cyc: 0,
     critical_section_cyc: 0,
+    mailbox_worst_cyc: 0,
+    alarm_worst_cyc: 0,
     checksum: 0,
 };
 
@@ -92,6 +99,17 @@ fn wcet(mut op: impl FnMut()) -> u32 {
         }
     }
     max
+}
+
+/// One timed run with barriers; callers re-establish worst-case preconditions
+/// outside this region.
+#[inline(always)]
+fn timed(mut op: impl FnMut()) -> u32 {
+    cortex_m::asm::dsb();
+    let t0 = cyccnt();
+    op();
+    cortex_m::asm::dsb();
+    cyccnt().wrapping_sub(t0)
 }
 
 #[entry]
@@ -163,6 +181,55 @@ fn main() -> ! {
         let _ = Hal::release(Resource::Egu0, 7);
     });
 
+    // worst-occupancy IPC (OBS-02): the mailbox is FULL and the selective pop's
+    // match sits at the TAIL, so the scan walks all 8 slots and compaction
+    // shifts every survivor — the maximal `pop_for` path at this capacity.
+    let mut full = Mailbox::<8>::new();
+    let filler = Message::new(
+        ModuleId::Kernel,
+        ModuleId::Radio,
+        MessageKind::Command,
+        0,
+        0,
+    );
+    let target = Message::new(
+        ModuleId::Kernel,
+        ModuleId::Sensor,
+        MessageKind::Command,
+        9,
+        0,
+    );
+    let mut mailbox_worst_cyc = 0u32;
+    for _ in 0..ITERS {
+        while full.pop().is_some() {}
+        for _ in 0..7 {
+            let _ = full.push(filler);
+        }
+        let _ = full.push(target);
+        let dt = timed(|| {
+            let _ = full.pop_for(ModuleId::Sensor);
+        });
+        if dt > mailbox_worst_cyc {
+            mailbox_worst_cyc = dt;
+        }
+    }
+
+    // worst-occupancy alarms (OBS-02): earliest-due scan + pop over a FULL queue.
+    let mut full_aq = AlarmQueue::<8>::new();
+    let mut alarm_worst_cyc = 0u32;
+    for _ in 0..ITERS {
+        for i in 0..8u16 {
+            let _ = full_aq.cancel(AlarmId(i));
+            let _ = full_aq.schedule_once(AlarmId(i), ModuleId::Sensor, u64::from(i), 0);
+        }
+        let dt = timed(|| {
+            let _ = full_aq.pop_due(20);
+        });
+        if dt > alarm_worst_cyc {
+            alarm_worst_cyc = dt;
+        }
+    }
+
     // sanity ceilings @64 MHz: every op must be sub-10 µs (640 cycles) except the
     // composite CS probe (sub-20 µs). Failing these means a regression, not noise.
     let ok = mailbox_cyc > 0
@@ -178,11 +245,16 @@ fn main() -> ! {
         && event_flags_cyc > 0
         && event_flags_cyc < 640
         && critical_section_cyc > 0
-        && critical_section_cyc < 1280;
+        && critical_section_cyc < 1280
+        // Full-occupancy worst paths stay bounded: sub-20 µs at N=8.
+        && mailbox_worst_cyc > 0
+        && mailbox_worst_cyc < 1280
+        && alarm_worst_cyc > 0
+        && alarm_worst_cyc < 1280;
 
     let ap = u32::from(ok);
     let cs = MAGIC
-        ^ 1
+        ^ 2
         ^ 1
         ^ ap
         ^ ITERS
@@ -192,11 +264,13 @@ fn main() -> ! {
         ^ authorize_cyc
         ^ lease_cyc
         ^ event_flags_cyc
-        ^ critical_section_cyc;
+        ^ critical_section_cyc
+        ^ mailbox_worst_cyc
+        ^ alarm_worst_cyc;
     unsafe {
         NOBRO_WCET_REPORT = WcetReport {
             magic: MAGIC,
-            version: 1,
+            version: 2,
             completed: 1,
             all_pass: ap,
             iters: ITERS,
@@ -207,6 +281,8 @@ fn main() -> ! {
             lease_cyc,
             event_flags_cyc,
             critical_section_cyc,
+            mailbox_worst_cyc,
+            alarm_worst_cyc,
             checksum: cs,
         };
     }

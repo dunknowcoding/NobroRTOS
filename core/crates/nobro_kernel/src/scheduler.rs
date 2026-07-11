@@ -7,7 +7,7 @@ use portable_atomic::{AtomicU32, Ordering};
 
 use crate::KernelError;
 
-/// Expected interval between deadline ticks (50 Hz servo loop).
+/// Default interval between deadline ticks (50 Hz servo loop).
 pub const DEADLINE_PERIOD_US: u64 = 20_000;
 pub const DEFAULT_JITTER_TOLERANCE_US: u32 = 10;
 
@@ -16,6 +16,7 @@ static MAX_JITTER_US: AtomicU32 = AtomicU32::new(0);
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_MISSES: AtomicU32 = AtomicU32::new(0);
 static JITTER_TOLERANCE_US: AtomicU32 = AtomicU32::new(DEFAULT_JITTER_TOLERANCE_US);
+static TICK_PERIOD_US: AtomicU32 = AtomicU32::new(DEADLINE_PERIOD_US as u32);
 static STATS_SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 pub type DeadlineHandler = fn();
@@ -69,6 +70,7 @@ impl Scheduler {
         TICK_COUNT.store(0, Ordering::Release);
         DEADLINE_MISSES.store(0, Ordering::Release);
         JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
+        TICK_PERIOD_US.store(DEADLINE_PERIOD_US as u32, Ordering::Release);
         STATS_SEQUENCE.fetch_add(1, Ordering::Release);
     }
 
@@ -92,6 +94,25 @@ impl Scheduler {
         STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
         JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
         STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn tick_period_us() -> u32 {
+        TICK_PERIOD_US.load(Ordering::Acquire)
+    }
+
+    /// Configure the deadline cadence (SCH-05). Must match the reprogrammed
+    /// hardware timer compare interval; call with the tick source quiesced,
+    /// then `reset_stats()` so jitter is measured against the new phase.
+    /// Zero periods are rejected (the previous cadence is kept).
+    pub fn set_tick_period_us(period_us: u32) -> bool {
+        if period_us == 0 {
+            return false;
+        }
+        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+        TICK_PERIOD_US.store(period_us, Ordering::Release);
+        EXPECTED_NEXT_US.store(0, Ordering::Release);
+        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        true
     }
 
     pub fn stats() -> SchedulerStats {
@@ -128,10 +149,11 @@ impl Scheduler {
                 DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
             }
         }
+        let period = TICK_PERIOD_US.load(Ordering::Acquire);
         let next = if expected == 0 {
-            now_lo.wrapping_add(DEADLINE_PERIOD_US as u32)
+            now_lo.wrapping_add(period)
         } else {
-            expected.wrapping_add(DEADLINE_PERIOD_US as u32)
+            expected.wrapping_add(period)
         };
         EXPECTED_NEXT_US.store(next, Ordering::Release);
         TICK_COUNT.fetch_add(1, Ordering::AcqRel);
@@ -235,6 +257,19 @@ mod tests {
         Scheduler::on_deadline_tick(21_007);
         Scheduler::on_deadline_tick(41_000);
         assert_eq!(Scheduler::max_jitter_us(), 7);
+    }
+
+    #[test]
+    fn tick_cadence_is_configurable_and_rejects_zero() {
+        Scheduler::reset_stats();
+        assert!(!Scheduler::set_tick_period_us(0));
+        assert_eq!(Scheduler::tick_period_us(), DEADLINE_PERIOD_US as u32);
+        assert!(Scheduler::set_tick_period_us(1_000)); // 1 kHz control loop
+        Scheduler::on_deadline_tick(10_000);
+        Scheduler::on_deadline_tick(11_004);
+        assert_eq!(Scheduler::max_jitter_us(), 4);
+        Scheduler::reset_stats(); // restores the default cadence
+        assert_eq!(Scheduler::tick_period_us(), DEADLINE_PERIOD_US as u32);
     }
 
     #[test]

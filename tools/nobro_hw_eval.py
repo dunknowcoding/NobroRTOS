@@ -105,7 +105,8 @@ APPS = {
         "magic": 0x4E574354,
         "fields": COMMON_HEAD + ["iters", "mailbox_cyc", "alarm_cyc", "quota_cyc",
                                  "authorize_cyc", "lease_cyc", "event_flags_cyc",
-                                 "critical_section_cyc", "checksum"],
+                                 "critical_section_cyc", "mailbox_worst_cyc",
+                                 "alarm_worst_cyc", "checksum"],
     },
     # Bounded async executor HW proof: same checks as host unit tests, no HAL.
     "async": {

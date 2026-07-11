@@ -20,6 +20,7 @@ pub mod foreign_host;
 pub mod foreign_module;
 pub mod health;
 pub mod hot_reload;
+pub mod kernel_executor;
 pub mod kv;
 pub mod launch_gate;
 pub mod lifecycle;
@@ -64,7 +65,9 @@ pub use eval::{
     SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
 };
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
-pub use executor::{I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable};
+pub use executor::{
+    I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable, TaskTableError,
+};
 pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
@@ -77,15 +80,19 @@ pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,
     HotReloadStepKind, LeaseReleaser, ModuleReloadRequest, NoopLeaseReleaser,
 };
+pub use kernel_executor::{
+    ContainmentPolicy, CycleOutcome, ExecError, ExecutionSentinel, KernelExecutor, StuckPoll,
+};
 pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use launch_gate::ModuleLaunchGate;
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHooks};
 pub use mailbox::{Mailbox, MailboxError, Message, MessageKind};
 pub use manifest::{
-    kernel_module_spec, kernel_owned_capabilities, Capability, CapabilitySet, Criticality,
-    DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec, ObjectQuota,
-    SystemBudget, SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC, MANIFEST_REPORT_VERSION,
+    kernel_module_spec, kernel_owned_capabilities, module_code, Capability, CapabilitySet,
+    Criticality, DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec,
+    ObjectQuota, SystemBudget, SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC,
+    MANIFEST_REPORT_VERSION,
 };
 pub use module_ctx::ModuleCtx;
 pub use module_runtime::{

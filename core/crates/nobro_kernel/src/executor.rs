@@ -179,6 +179,47 @@ impl<const N: usize> TaskTable<N> {
             .find(|slot| slot.meta.module == module)
             .copied()
     }
+
+    pub fn meta_at(&self, idx: usize) -> Option<TaskMeta> {
+        self.slots.get(idx)?.as_ref().map(|slot| slot.meta)
+    }
+
+    /// All registered task contracts (schedulability-analysis input).
+    pub fn metas(&self) -> [Option<TaskMeta>; N] {
+        let mut metas = [None; N];
+        for (out, slot) in metas.iter_mut().zip(self.slots.iter()) {
+            *out = slot.as_ref().map(|slot| slot.meta);
+        }
+        metas
+    }
+
+    /// Skip one release without executing it (module not runnable): the release
+    /// is counted as missed and the phase-anchored next due advances.
+    pub fn skip_release(&mut self, idx: usize, now_us: u64) {
+        let Some(Some(slot)) = self.slots.get_mut(idx) else {
+            return;
+        };
+        let period = u64::from(slot.meta.period_us);
+        let releases_elapsed = now_us.saturating_sub(slot.stats.next_due_us) / period;
+        let skipped = releases_elapsed.saturating_add(1);
+        slot.stats.missed_releases = slot
+            .stats
+            .missed_releases
+            .saturating_add(skipped.min(u64::from(u32::MAX)) as u32);
+        slot.stats.next_due_us = slot
+            .stats
+            .next_due_us
+            .saturating_add(skipped.saturating_mul(period));
+    }
+
+    /// Earliest phase-anchored release over the whole set.
+    pub fn next_due_us(&self) -> Option<u64> {
+        self.slots
+            .iter()
+            .flatten()
+            .map(|slot| slot.stats.next_due_us)
+            .min()
+    }
 }
 
 impl<const N: usize> Default for TaskTable<N> {
