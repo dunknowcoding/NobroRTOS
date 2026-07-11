@@ -39,11 +39,19 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> Supervisor<HEALTH_SLOTS,
     }
 
     pub fn record_error(&mut self, module: ModuleId, error: KernelError, now_us: u64) -> Action {
-        let action = self
-            .health
-            .record_error(module, error, now_us, self.thresholds, self.policy);
+        let action = self.record_error_unlogged(module, error, now_us);
         self.log.push_health(now_us, module, error, action);
         action
+    }
+
+    pub(crate) fn record_error_unlogged(
+        &mut self,
+        module: ModuleId,
+        error: KernelError,
+        now_us: u64,
+    ) -> Action {
+        self.health
+            .record_error(module, error, now_us, self.thresholds, self.policy)
     }
 
     pub fn snapshot(&self, module: ModuleId) -> Option<SupervisorSnapshot> {

@@ -418,7 +418,11 @@ impl<
             .recovery
             .record_error(module, error, now_us)
             .map_err(RuntimeError::from)?;
-        self.modules.note_recovery_outcome(outcome, now_us)?;
+        if outcome.coalesced {
+            self.modules.note_coalesced_fault(module, now_us)?;
+        } else {
+            self.modules.note_recovery_outcome(outcome, now_us)?;
+        }
         Ok(outcome)
     }
 
@@ -457,7 +461,11 @@ impl<
             .recovery
             .record_watchdog_expired(module, now_us)
             .map_err(RuntimeError::from)?;
-        self.modules.note_recovery_outcome(outcome, now_us)?;
+        if outcome.coalesced {
+            self.modules.note_coalesced_fault(module, now_us)?;
+        } else {
+            self.modules.note_recovery_outcome(outcome, now_us)?;
+        }
         Ok(outcome)
     }
 
@@ -1881,17 +1889,17 @@ mod tests {
             ),
             ModuleSpec::new(ModuleId::Bus, Criticality::System).memory(MemoryBudget::new(
                 4 * 1024,
-                1 * 1024,
+                1024,
                 1,
             )),
             ModuleSpec::new(ModuleId::Sensor, Criticality::Driver).memory(MemoryBudget::new(
                 4 * 1024,
-                1 * 1024,
+                1024,
                 1,
             )),
             ModuleSpec::new(ModuleId::App(1), Criticality::User).memory(MemoryBudget::new(
                 4 * 1024,
-                1 * 1024,
+                1024,
                 1,
             )),
         ])

@@ -452,6 +452,11 @@ Use `RecoveryPlanPolicy` to tune notify, retry, restart, verification, resume,
 and maximum total recovery budgets. Capacity and budget failures are explicit
 errors, so self-healing can be reviewed before being attached to board-specific
 restart or power-control code.
+`RecoveryStormPolicy` sets a bounded cooldown for identical module/error/action
+work. Health and fault counters continue to advance, while duplicate event and
+lifecycle work is coalesced; `RecoveryOutcome::coalesced` and
+`suppressed_faults(module)` expose the decision. Coalesced outcomes cannot be
+converted into duplicate recovery plans.
 Runtime helpers return `RecoveryPlanning<N>`, which pairs the committed
 `RecoveryOutcome` with the generated plan.
 Use `Runtime::record_error_with_plan_and_impact` or

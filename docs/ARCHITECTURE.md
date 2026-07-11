@@ -165,6 +165,11 @@ runtime updates module state only after the corresponding hook succeeds.
 `Runtime::reload_module` similarly requires `ModuleReloadHooks` to perform an
 actual module-slot unmount/mount and verification; a failed replacement leaves
 the module non-active.
+Identical fault work is bounded by `RecoveryStormPolicy`: health counters still
+record every occurrence, but duplicate event/lifecycle/recovery-plan dispatch is
+coalesced during the cooldown. Action escalation, error changes, cooldown expiry,
+and a healthy record re-open dispatch, preserving first-fault evidence without
+hiding worsening health.
 
 Disabled modules lose mailbox traffic, alarms, quota reservations, watchdog
 registrations, and runtime authorization. Repeated disable commands are

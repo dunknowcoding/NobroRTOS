@@ -11,6 +11,33 @@ pub struct RecoveryOutcome {
     pub error: KernelError,
     pub action: Action,
     pub state: SystemState,
+    pub coalesced: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryStormPolicy {
+    pub cooldown_us: u64,
+}
+
+impl RecoveryStormPolicy {
+    pub const DEFAULT: Self = Self {
+        cooldown_us: 100_000,
+    };
+}
+
+impl Default for RecoveryStormPolicy {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FaultDispatch {
+    module: ModuleId,
+    error: KernelError,
+    action: Action,
+    last_dispatched_us: u64,
+    suppressed: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,6 +107,7 @@ pub enum RecoveryPlanError {
     Full,
     BudgetExceeded { required_us: u64, limit_us: u32 },
     ImpactRootMismatch { outcome: ModuleId, impact: ModuleId },
+    Coalesced,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +125,9 @@ impl<const N: usize> RecoveryPlan<N> {
         now_us: u64,
         policy: RecoveryPlanPolicy,
     ) -> Result<Self, RecoveryPlanError> {
+        if outcome.coalesced {
+            return Err(RecoveryPlanError::Coalesced);
+        }
         let mut plan = Self {
             outcome,
             steps: [None; N],
@@ -503,6 +534,8 @@ pub enum RecoveryError {
 pub struct RecoveryCoordinator<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> {
     supervisor: Supervisor<HEALTH_SLOTS, LOG_SLOTS>,
     lifecycle: Lifecycle,
+    storm_policy: RecoveryStormPolicy,
+    dispatches: [Option<FaultDispatch>; HEALTH_SLOTS],
 }
 
 impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
@@ -512,6 +545,20 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         Self {
             supervisor: Supervisor::with_default_policy(thresholds),
             lifecycle: Lifecycle::new(),
+            storm_policy: RecoveryStormPolicy::DEFAULT,
+            dispatches: [None; HEALTH_SLOTS],
+        }
+    }
+
+    pub const fn with_storm_policy(
+        thresholds: FaultThresholds,
+        storm_policy: RecoveryStormPolicy,
+    ) -> Self {
+        Self {
+            supervisor: Supervisor::with_default_policy(thresholds),
+            lifecycle: Lifecycle::new(),
+            storm_policy,
+            dispatches: [None; HEALTH_SLOTS],
         }
     }
 
@@ -526,6 +573,13 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
 
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
         self.supervisor.record_ok(module, now_us);
+        if let Some(slot) = self
+            .dispatches
+            .iter_mut()
+            .find(|slot| slot.map(|entry| entry.module == module).unwrap_or(false))
+        {
+            *slot = None;
+        }
     }
 
     pub fn record_error(
@@ -534,7 +588,20 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         error: KernelError,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RecoveryError> {
-        let action = self.supervisor.record_error(module, error, now_us);
+        let action = self.supervisor.record_error_unlogged(module, error, now_us);
+        let coalesced = self.coalesce(module, error, action, now_us);
+        if coalesced {
+            return Ok(RecoveryOutcome {
+                module,
+                error,
+                action,
+                state: self.lifecycle.state(),
+                coalesced: true,
+            });
+        }
+        self.supervisor
+            .events_mut()
+            .push_health(now_us, module, error, action);
         let event = self
             .lifecycle
             .apply_action(module, error, action, now_us)
@@ -546,6 +613,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
             error,
             action,
             state: self.lifecycle.state(),
+            coalesced: false,
         })
     }
 
@@ -571,6 +639,57 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
 
     pub fn events(&self) -> &EventLog<LOG_SLOTS> {
         self.supervisor.events()
+    }
+
+    pub fn suppressed_faults(&self, module: ModuleId) -> u32 {
+        self.dispatches
+            .iter()
+            .flatten()
+            .find(|entry| entry.module == module)
+            .map(|entry| entry.suppressed)
+            .unwrap_or(0)
+    }
+
+    fn coalesce(
+        &mut self,
+        module: ModuleId,
+        error: KernelError,
+        action: Action,
+        now_us: u64,
+    ) -> bool {
+        if let Some(entry) = self
+            .dispatches
+            .iter_mut()
+            .flatten()
+            .find(|entry| entry.module == module)
+        {
+            let same = entry.error == error && entry.action == action;
+            let cooling =
+                now_us.saturating_sub(entry.last_dispatched_us) < self.storm_policy.cooldown_us;
+            if same && cooling {
+                entry.suppressed = entry.suppressed.saturating_add(1);
+                return true;
+            }
+            *entry = FaultDispatch {
+                module,
+                error,
+                action,
+                last_dispatched_us: now_us,
+                suppressed: entry.suppressed,
+            };
+            return false;
+        }
+
+        if let Some(slot) = self.dispatches.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some(FaultDispatch {
+                module,
+                error,
+                action,
+                last_dispatched_us: now_us,
+                suppressed: 0,
+            });
+        }
+        false
     }
 }
 
@@ -639,6 +758,53 @@ mod tests {
     }
 
     #[test]
+    fn identical_fault_work_is_coalesced_without_losing_health_counts() {
+        let mut recovery = RecoveryCoordinator::<1, 16>::with_storm_policy(
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 10,
+            },
+            RecoveryStormPolicy { cooldown_us: 100 },
+        );
+        recovery
+            .transition(SystemState::ValidateManifest, 1)
+            .unwrap();
+        recovery.transition(SystemState::InitDrivers, 2).unwrap();
+        recovery.transition(SystemState::Running, 3).unwrap();
+
+        let first = recovery
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 10)
+            .unwrap();
+        let events_after_first = recovery.events().len();
+        let repeated = recovery
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 20)
+            .unwrap();
+
+        assert!(!first.coalesced);
+        assert!(repeated.coalesced);
+        assert_eq!(recovery.events().len(), events_after_first);
+        assert_eq!(recovery.suppressed_faults(ModuleId::Sensor), 1);
+        assert_eq!(
+            recovery
+                .snapshot(ModuleId::Sensor)
+                .unwrap()
+                .counters
+                .total_errors,
+            2
+        );
+        assert_eq!(
+            RecoveryPlan::<2>::from_outcome(repeated, 20, RecoveryPlanPolicy::DEFAULT),
+            Err(RecoveryPlanError::Coalesced)
+        );
+
+        let after_cooldown = recovery
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 110)
+            .unwrap();
+        assert!(!after_cooldown.coalesced);
+        assert!(recovery.events().len() > events_after_first);
+    }
+
+    #[test]
     fn watchdog_expiry_is_routed_as_deadline_fault() {
         let mut recovery = running_coordinator();
 
@@ -658,6 +824,7 @@ mod tests {
             error: KernelError::SensorReadFail,
             action: Action::NotifyUserTask,
             state: SystemState::Degraded,
+            coalesced: false,
         };
 
         let plan =
@@ -684,6 +851,7 @@ mod tests {
             error: KernelError::RadioTxFail,
             action: Action::RetryDelay(2_000),
             state: SystemState::Running,
+            coalesced: false,
         };
 
         let plan =
@@ -728,6 +896,7 @@ mod tests {
             error: KernelError::DeadlineMissed,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
 
         let plan =
@@ -798,6 +967,7 @@ mod tests {
             error: KernelError::BusTimeout,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
 
         let plan = RecoveryPlan::<8>::from_outcome_with_impact(
@@ -891,6 +1061,7 @@ mod tests {
             error: KernelError::DeadlineMissed,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
 
         assert_eq!(
@@ -937,6 +1108,7 @@ mod tests {
             error: KernelError::DeadlineMissed,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
         let plan =
             RecoveryPlan::<4>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
@@ -984,6 +1156,7 @@ mod tests {
             error: KernelError::DeadlineMissed,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
         let plan =
             RecoveryPlan::<4>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
@@ -1031,6 +1204,7 @@ mod tests {
             error: KernelError::DeadlineMissed,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
         let plan =
             RecoveryPlan::<4>::from_outcome(outcome, 10, RecoveryPlanPolicy::DEFAULT).unwrap();
@@ -1068,6 +1242,7 @@ mod tests {
             error: KernelError::RadioTxFail,
             action: Action::RetryDelay(1_000),
             state: SystemState::Running,
+            coalesced: false,
         };
         let plan =
             RecoveryPlan::<3>::from_outcome(outcome, 100, RecoveryPlanPolicy::DEFAULT).unwrap();
@@ -1098,6 +1273,7 @@ mod tests {
             error: KernelError::BusTimeout,
             action: Action::RebootModule,
             state: SystemState::Recovering,
+            coalesced: false,
         };
 
         assert_eq!(

@@ -129,6 +129,20 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         self.transition(module, ModuleRunState::Active, now_us)
     }
 
+    pub fn note_coalesced_fault(
+        &mut self,
+        module: ModuleId,
+        now_us: u64,
+    ) -> Result<(), ModuleRuntimeError> {
+        let entry = self.entry_mut(module)?;
+        if entry.state == ModuleRunState::Disabled {
+            return Err(ModuleRuntimeError::Disabled(module));
+        }
+        entry.fault_count = entry.fault_count.saturating_add(1);
+        entry.last_change_us = now_us;
+        Ok(())
+    }
+
     pub fn state(&self, module: ModuleId) -> Option<ModuleRunState> {
         self.entry(module).map(|entry| entry.state)
     }
@@ -299,6 +313,7 @@ mod tests {
                     error: KernelError::RadioTxFail,
                     action: Action::RetryDelay(1000),
                     state: SystemState::Running,
+                    coalesced: false,
                 },
                 10,
             )
@@ -328,6 +343,7 @@ mod tests {
                     error: KernelError::BusTimeout,
                     action: Action::NotifyUserTask,
                     state: SystemState::Degraded,
+                    coalesced: false,
                 },
                 2,
             ),

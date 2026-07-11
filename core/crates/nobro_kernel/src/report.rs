@@ -760,6 +760,7 @@ mod tests {
                     error: KernelError::SensorReadFail,
                     action: Action::NotifyUserTask,
                     state: SystemState::Degraded,
+                    coalesced: false,
                 },
                 0x1_0000_00C0,
             )
