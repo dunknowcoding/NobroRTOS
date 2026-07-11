@@ -145,7 +145,7 @@ fn main() -> ! {
     let chunk = SystemBudget::new(0, 64, 1);
     let quota_cyc = wcet(|| {
         let _ = ledger.reserve(ModuleId::Sensor, chunk);
-        let _ = ledger.release(ModuleId::Sensor, chunk);
+        debug_assert!(ledger.release(ModuleId::Sensor, chunk).is_ok());
     });
 
     // capability authorize (every host-service call passes through this)

@@ -203,6 +203,13 @@ pub fn default_action(err: &KernelError) -> crate::Action {
         // Memory-safety violations mean the module's state cannot be trusted:
         // restart it through recovery, never resume in place.
         KernelError::StackViolation | KernelError::MemoryFault => RebootModule,
+        KernelError::WatchdogExpired => NotifyUserTask,
+        KernelError::ModuleCrash
+        | KernelError::PoolCorruption
+        | KernelError::PowerTransitionFail => RebootModule,
+        KernelError::ProtocolAuthFail | KernelError::QuotaBreach | KernelError::StorageFail => {
+            NotifyUserTask
+        }
     }
 }
 

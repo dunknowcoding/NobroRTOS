@@ -4,16 +4,16 @@ use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, CapabilityReplayScope, CapabilityTrace, CapabilityTraceInput,
     CapabilityTraceOp, CapabilityTraceRecord, DegradeApplicationReport, DegradeDecision,
-    DegradeReason, DependencyImpact, EventLogReport, EventSeverity, FaultThresholdError,
-    FaultThresholds, HealthReport, HotReloadError, HotReloadOutcome, HotReloadPlan, KernelError,
-    KvError, KvKey, KvStore, KvValue, LeaseReleaser, Mailbox, MailboxError, Message, MessageKind,
-    ModuleHookError, ModuleId, ModuleLifecycleHooks, ModuleReloadHooks, ModuleReloadRequest,
-    ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
-    ModuleRuntimeReport, ObjectKind, ObjectLedger, ObjectQuota, ObjectQuotaError, ObjectUsage,
-    QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan,
-    RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind, RuntimeReport,
-    RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest, SystemProfile,
-    SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    DegradeReason, DependencyImpact, EventLogReport, EventSeverity, FaultPolicy,
+    FaultThresholdError, FaultThresholds, HealthFault, HealthReport, HotReloadError,
+    HotReloadOutcome, HotReloadPlan, KernelError, KvError, KvKey, KvStore, KvValue, LeaseReleaser,
+    Mailbox, MailboxError, Message, MessageKind, ModuleHookError, ModuleId, ModuleLifecycleHooks,
+    ModuleReloadHooks, ModuleReloadRequest, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError,
+    ModuleRuntimeGuard, ModuleRuntimeReport, ObjectKind, ObjectLedger, ObjectQuota,
+    ObjectQuotaError, ObjectUsage, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
+    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
+    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
+    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
 };
 
 /// Capacities a `Runtime` instantiation was compiled with, and the coherence
@@ -390,7 +390,7 @@ impl<
         }
     }
 
-    pub fn send(&mut self, message: Message) -> Result<(), RuntimeError> {
+    pub(crate) fn send(&mut self, message: Message) -> Result<(), RuntimeError> {
         self.ensure_message_endpoints_enabled(message)?;
         let accountable = Self::accountable(message);
         self.objects.charge(accountable, ObjectKind::MailboxSlot)?;
@@ -401,15 +401,7 @@ impl<
         Ok(())
     }
 
-    pub fn recv(&mut self) -> Option<Message> {
-        let message = self.mailbox.pop()?;
-        let _ = self
-            .objects
-            .release(Self::accountable(message), ObjectKind::MailboxSlot);
-        Some(message)
-    }
-
-    pub fn recv_for(&mut self, module: ModuleId) -> Option<Message> {
+    pub(crate) fn recv_for(&mut self, module: ModuleId) -> Option<Message> {
         let message = self.mailbox.pop_for(module)?;
         let _ = self
             .objects
@@ -417,7 +409,7 @@ impl<
         Some(message)
     }
 
-    pub fn schedule_once(
+    pub(crate) fn schedule_once(
         &mut self,
         id: AlarmId,
         module: ModuleId,
@@ -433,7 +425,7 @@ impl<
         Ok(())
     }
 
-    pub fn schedule_periodic(
+    pub(crate) fn schedule_periodic(
         &mut self,
         id: AlarmId,
         module: ModuleId,
@@ -449,7 +441,7 @@ impl<
         Ok(())
     }
 
-    pub fn cancel_alarm(&mut self, id: AlarmId) -> Result<Alarm, RuntimeError> {
+    pub(crate) fn cancel_alarm(&mut self, id: AlarmId) -> Result<Alarm, RuntimeError> {
         let alarm = self.alarms.cancel(id)?;
         self.objects.release(alarm.module, ObjectKind::Alarm)?;
         Ok(alarm)
@@ -466,7 +458,8 @@ impl<
         Ok(())
     }
 
-    pub fn dispatch_due_alarms(&mut self, now_us: u64) -> Result<usize, RuntimeError> {
+    #[cfg(test)]
+    pub(crate) fn dispatch_due_alarms(&mut self, now_us: u64) -> Result<usize, RuntimeError> {
         let dispatch = self.try_dispatch_due_alarms(now_us);
         match dispatch.error {
             Some(error) => Err(error),
@@ -474,7 +467,7 @@ impl<
         }
     }
 
-    pub fn try_dispatch_due_alarms(&mut self, now_us: u64) -> AlarmDispatch {
+    pub(crate) fn try_dispatch_due_alarms(&mut self, now_us: u64) -> AlarmDispatch {
         let mut dispatched = 0;
         while let Some(alarm) = self.alarms.next_due(now_us) {
             let message = alarm_message(alarm);
@@ -506,7 +499,7 @@ impl<
         AlarmDispatch::completed(dispatched)
     }
 
-    pub fn dispatch_due_alarms_with_recovery(
+    pub(crate) fn dispatch_due_alarms_with_recovery(
         &mut self,
         now_us: u64,
     ) -> Result<AlarmDispatch, RuntimeError> {
@@ -517,23 +510,16 @@ impl<
         Ok(dispatch)
     }
 
-    pub fn kv_set(&mut self, key: KvKey, value: KvValue) -> Result<(), RuntimeError> {
+    #[cfg(test)]
+    pub(crate) fn kv_set(&mut self, key: KvKey, value: KvValue) -> Result<(), RuntimeError> {
         // Trusted-dispatcher path: entries are kernel-owned (exempt from object
         // quotas). Module-owned writes go through `ModuleCtx::kv_set`.
         self.kv.set(key, value)?;
         Ok(())
     }
 
-    pub fn kv_get(&self, key: KvKey) -> Option<KvValue> {
+    pub(crate) fn kv_get(&self, key: KvKey) -> Option<KvValue> {
         self.kv.get(key)
-    }
-
-    pub fn kv_delete(&mut self, key: KvKey) -> Result<KvValue, RuntimeError> {
-        let value = self.kv.delete(key)?;
-        if let Some(owner) = self.take_kv_owner(key) {
-            self.objects.release(owner, ObjectKind::KvEntry)?;
-        }
-        Ok(value)
     }
 
     pub fn kv_owner(&self, key: KvKey) -> Option<ModuleId> {
@@ -610,7 +596,7 @@ impl<
         }
     }
 
-    pub fn reserve_quota(
+    pub(crate) fn reserve_quota(
         &mut self,
         module: ModuleId,
         amount: SystemBudget,
@@ -620,7 +606,7 @@ impl<
         Ok(())
     }
 
-    pub fn release_quota(
+    pub(crate) fn release_quota(
         &mut self,
         module: ModuleId,
         amount: SystemBudget,
@@ -663,6 +649,23 @@ impl<
             .recovery
             .record_error(module, error, now_us)
             .map_err(RuntimeError::from)?;
+        if outcome.coalesced {
+            self.modules.note_coalesced_fault(module, now_us)?;
+        } else {
+            self.modules.note_recovery_outcome(outcome, now_us)?;
+        }
+        Ok(outcome)
+    }
+
+    pub fn record_fault(
+        &mut self,
+        module: ModuleId,
+        fault: HealthFault,
+        now_us: u64,
+        policy: &mut impl FaultPolicy,
+    ) -> Result<RecoveryOutcome, RuntimeError> {
+        self.ensure_module_enabled(module)?;
+        let outcome = self.recovery.record_fault(module, fault, now_us, policy)?;
         if outcome.coalesced {
             self.modules.note_coalesced_fault(module, now_us)?;
         } else {
@@ -2613,7 +2616,7 @@ mod tests {
         assert_eq!(sweep.len, 1);
         assert_eq!(
             sweep.outcomes[0].map(|outcome| outcome.error),
-            Some(KernelError::DeadlineMissed)
+            Some(KernelError::WatchdogExpired)
         );
         assert_eq!(runtime.state(), SystemState::Degraded);
         assert_eq!(

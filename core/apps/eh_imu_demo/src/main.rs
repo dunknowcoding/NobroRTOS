@@ -54,11 +54,11 @@ fn idle() -> ! {
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, 3).ok();
+    Hal::acquire(Resource::Twim0, 3).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     TwimBus::init_pins(I2C_SDA_PIN, I2C_SCL_PIN);
 
     unsafe {

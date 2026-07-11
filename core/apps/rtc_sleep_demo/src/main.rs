@@ -57,7 +57,7 @@ unsafe fn wr(a: u32, v: u32) {
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }

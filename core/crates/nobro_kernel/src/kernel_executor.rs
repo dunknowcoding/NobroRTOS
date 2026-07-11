@@ -27,6 +27,7 @@
 //! module in real time — the bounded containment answer for cooperative
 //! execution; preemption is intentionally out of scope for this profile.
 
+use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform};
 use portable_atomic::{AtomicU32, Ordering};
 
 use crate::{
@@ -58,6 +59,8 @@ pub enum ExecError {
     /// A task was registered after sealing.
     Sealed,
     Runtime(RuntimeError),
+    Power(PowerHookError),
+    PowerLedgerFull,
 }
 
 impl From<TaskTableError> for ExecError {
@@ -69,6 +72,12 @@ impl From<TaskTableError> for ExecError {
 impl From<RuntimeError> for ExecError {
     fn from(error: RuntimeError) -> Self {
         Self::Runtime(error)
+    }
+}
+
+impl From<PowerHookError> for ExecError {
+    fn from(error: PowerHookError) -> Self {
+        Self::Power(error)
     }
 }
 
@@ -153,6 +162,7 @@ pub struct CycleOutcome {
     pub watchdog_recoveries: usize,
     /// Nothing runnable before this time — the authoritative idle/sleep input.
     pub idle_until_us: Option<u64>,
+    pub power_mode: Option<PowerMode>,
 }
 
 pub struct KernelExecutor<
@@ -169,6 +179,7 @@ pub struct KernelExecutor<
     tasks: TaskTable<TASKS>,
     containment: ContainmentPolicy,
     sentinel: ExecutionSentinel,
+    power: ExecutorPower<TASKS>,
     sealed: bool,
 }
 
@@ -193,6 +204,7 @@ impl<
             tasks: TaskTable::new(),
             containment,
             sentinel: ExecutionSentinel::new(),
+            power: ExecutorPower::new(1_000_000, 1_000_000, 1_000),
             sealed: false,
         }
     }
@@ -238,6 +250,37 @@ impl<
         &self.tasks
     }
 
+    pub const fn power(&self) -> &ExecutorPower<TASKS> {
+        &self.power
+    }
+
+    pub fn set_task_power(&mut self, module: ModuleId, power_uw: u64) -> bool {
+        self.power
+            .set_task_power(module_code(module) as u16, power_uw)
+    }
+
+    pub fn suspend_module(
+        &mut self,
+        module: ModuleId,
+        now_us: u64,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<(), ExecError> {
+        platform.suspend(module_code(module) as u16)?;
+        self.runtime.suspend_module(module, now_us)?;
+        Ok(())
+    }
+
+    pub fn resume_module(
+        &mut self,
+        module: ModuleId,
+        now_us: u64,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<(), ExecError> {
+        platform.resume(module_code(module) as u16)?;
+        self.runtime.resume_module(module, now_us)?;
+        Ok(())
+    }
+
     /// Trusted-dispatcher escape hatch for setup that must happen between
     /// cycles (never hand this to module code).
     pub fn runtime_mut(
@@ -271,6 +314,7 @@ impl<
     pub fn run_cycle(
         &mut self,
         clock: impl Fn() -> u64,
+        power_platform: &mut impl PowerPlatform,
         mut dispatch: impl FnMut(
             &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         ) -> Result<Poll, KernelError>,
@@ -289,6 +333,12 @@ impl<
 
         let Some(idx) = self.tasks.due_index(now_us) else {
             outcome.idle_until_us = self.next_activity_us();
+            outcome.power_mode = Some(self.power.apply_idle(
+                now_us,
+                false,
+                outcome.idle_until_us,
+                power_platform,
+            )?);
             return Ok(outcome);
         };
         let meta = self.tasks.meta_at(idx).expect("due task has a slot");
@@ -298,6 +348,12 @@ impl<
             self.tasks.skip_release(idx, now_us);
             outcome.skipped_release = Some(meta.module);
             outcome.idle_until_us = self.next_activity_us();
+            outcome.power_mode = Some(self.power.apply_idle(
+                now_us,
+                false,
+                outcome.idle_until_us,
+                power_platform,
+            )?);
             return Ok(outcome);
         }
 
@@ -316,6 +372,12 @@ impl<
         // Accounting is unconditional: measured time reaches the CPU ledger and
         // the task statistics whether the poll succeeded or faulted.
         self.runtime.charge_cpu(meta.module, duration_us);
+        if !self
+            .power
+            .account_task(module_code(meta.module) as u16, u64::from(duration_us))
+        {
+            return Err(ExecError::PowerLedgerFull);
+        }
         let stats = self
             .tasks
             .record_poll(
@@ -370,6 +432,18 @@ impl<
         }
 
         outcome.idle_until_us = self.next_activity_us();
+        let work_pending = self.tasks.due_index(end_us).is_some()
+            || self
+                .runtime
+                .alarms()
+                .next_due_us()
+                .is_some_and(|due| due <= end_us);
+        outcome.power_mode = Some(self.power.apply_idle(
+            end_us,
+            work_pending,
+            outcome.idle_until_us,
+            power_platform,
+        )?);
         Ok(outcome)
     }
 
@@ -436,6 +510,35 @@ mod tests {
     type TestRuntime = Runtime<4, 4, 8, 4, 8, 4, 32>;
     type TestExecutor = KernelExecutor<4, 4, 4, 8, 4, 8, 4, 32>;
 
+    #[derive(Default)]
+    struct PowerHooks {
+        wake: Option<u64>,
+        mode: Option<PowerMode>,
+        suspended: Option<u16>,
+    }
+
+    impl PowerPlatform for PowerHooks {
+        fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+            self.wake = deadline_us;
+            Ok(())
+        }
+        fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+            self.mode = Some(mode);
+            Ok(())
+        }
+        fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+            self.suspended = Some(task_id);
+            Ok(())
+        }
+        fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+            if self.suspended != Some(task_id) {
+                return Err(PowerHookError { source: 1, code: 1 });
+            }
+            self.suspended = None;
+            Ok(())
+        }
+    }
+
     fn runtime() -> TestRuntime {
         let mut manifest = SystemManifest::<3>::new();
         manifest
@@ -482,8 +585,9 @@ mod tests {
             0,
         )
         .unwrap();
+        let mut power = PowerHooks::default();
         assert_eq!(
-            exec.run_cycle(|| 0, |_| Ok(Poll::Ready)).err(),
+            exec.run_cycle(|| 0, &mut power, |_| Ok(Poll::Ready)).err(),
             Some(ExecError::NotSealed)
         );
 
@@ -517,6 +621,7 @@ mod tests {
             0,
         )
         .unwrap();
+        assert!(exec.set_task_power(ModuleId::Actuator, 2_000_000));
         exec.seal().unwrap();
 
         // Deterministic clock: entry, poll start, poll end, ...
@@ -527,7 +632,7 @@ mod tests {
             t
         };
         let outcome = exec
-            .run_cycle(clock, |ctx| {
+            .run_cycle(clock, &mut PowerHooks::default(), |ctx| {
                 // Higher criticality wins the tie: actuator runs first and can
                 // use its granted mailbox capability through the context.
                 assert_eq!(ctx.module(), ModuleId::Actuator);
@@ -551,6 +656,31 @@ mod tests {
         );
         // The sensor task is still due: the loop names the next activity.
         assert_eq!(outcome.idle_until_us, Some(0));
+        assert_eq!(exec.power().ledger().energy_uj(6), Some(1_000));
+    }
+
+    #[test]
+    fn executor_programs_idle_wake_and_runs_peripheral_power_hooks() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 10_000, 1_000),
+            10_000,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+        let mut hooks = PowerHooks::default();
+        let outcome = exec
+            .run_cycle(|| 0, &mut hooks, |_| panic!("not due"))
+            .unwrap();
+        assert_eq!(outcome.idle_until_us, Some(10_000));
+        assert_eq!(outcome.power_mode, Some(PowerMode::LowPower));
+        assert_eq!(hooks.wake, Some(10_000));
+
+        exec.suspend_module(ModuleId::Sensor, 1, &mut hooks)
+            .unwrap();
+        assert_eq!(hooks.suspended, Some(5));
+        exec.resume_module(ModuleId::Sensor, 2, &mut hooks).unwrap();
+        assert_eq!(hooks.suspended, None);
     }
 
     #[test]
@@ -575,11 +705,16 @@ mod tests {
             ticks.set(t + 1_000);
             t
         };
-        let first = exec.run_cycle(clock, |_| Ok(Poll::Pending)).unwrap();
+        let mut power = PowerHooks::default();
+        let first = exec
+            .run_cycle(clock, &mut power, |_| Ok(Poll::Pending))
+            .unwrap();
         assert!(first.overrun && !first.contained);
         // Force the next release to be due immediately.
         ticks.set(200_000);
-        let second = exec.run_cycle(clock, |_| Ok(Poll::Pending)).unwrap();
+        let second = exec
+            .run_cycle(clock, &mut power, |_| Ok(Poll::Pending))
+            .unwrap();
         assert!(second.overrun && second.contained);
         assert_eq!(
             exec.runtime().module_state(ModuleId::Sensor),
@@ -589,7 +724,9 @@ mod tests {
         // The disabled module is never polled again: its releases are skipped
         // and counted.
         ticks.set(400_000);
-        let third = exec.run_cycle(clock, |_| panic!("must not poll")).unwrap();
+        let third = exec
+            .run_cycle(clock, &mut power, |_| panic!("must not poll"))
+            .unwrap();
         assert_eq!(third.skipped_release, Some(ModuleId::Sensor));
         assert_eq!(third.polled, None);
     }

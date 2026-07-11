@@ -51,7 +51,8 @@ fn rd(dev: &mut NobroSpiDevice, reg: u8) -> Result<u8, ()> {
     Ok(rx[1])
 }
 fn wr(dev: &mut NobroSpiDevice, reg: u8, val: u8) {
-    let _ = dev.write(&[reg & 0x7F, val]);
+    dev.write(&[reg & 0x7F, val])
+        .unwrap_or_else(|_| defmt::panic!("SPI write"));
 }
 fn rd16(dev: &mut NobroSpiDevice, reg_h: u8) -> i16 {
     let h = rd(dev, reg_h).unwrap_or(0);
@@ -125,11 +126,11 @@ fn main() -> ! {
         | (u32::from(idle_ok) << 3);
 
     // --- live MPU-9250 at rest: 200 samples must produce no gesture ---
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Spim0, 4).ok();
+    Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
     let mut dev = unsafe {
         NobroSpiDevice::new(
             board::SPI_SCK_PIN,

@@ -2,13 +2,13 @@
 
 use crate::{
     manifest::module_code, Action, EventKind, EventLog, EventPayload, EventRecord, EventSeverity,
-    KernelError, ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeGuard, Supervisor,
-    SupervisorSnapshot, SystemBudget, SystemState,
+    FaultSource, KernelError, ModuleId, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeGuard,
+    Supervisor, SupervisorSnapshot, SystemBudget, SystemState,
 };
 use crate::{DegradeApplication, DegradeReason};
 
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4E42_484C; // "NBHL"
-pub const HEALTH_REPORT_VERSION: u32 = 1;
+pub const HEALTH_REPORT_VERSION: u32 = 2;
 pub const RUNTIME_REPORT_MAGIC: u32 = 0x4E42_5254; // "NBRT"
 pub const RUNTIME_REPORT_VERSION: u32 = 1;
 pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4E42_454C; // "NBEL"
@@ -29,6 +29,10 @@ pub struct HealthReport {
     pub consecutive_errors: u32,
     pub last_error: u32,
     pub last_action: u32,
+    pub fault_source: u32,
+    pub fault_code: u32,
+    pub fault_detail0: u32,
+    pub fault_detail1: u32,
     pub event_count: u32,
     pub dropped_events: u32,
     pub error_events: u32,
@@ -49,6 +53,10 @@ impl HealthReport {
             consecutive_errors: 0,
             last_error: 0,
             last_action: 0,
+            fault_source: 0,
+            fault_code: 0,
+            fault_detail0: 0,
+            fault_detail1: 0,
             event_count: 0,
             dropped_events: 0,
             error_events: 0,
@@ -70,6 +78,26 @@ impl HealthReport {
             consecutive_errors: u32::from(snapshot.counters.consecutive_errors),
             last_error: snapshot.counters.last_error.map(error_code).unwrap_or(0),
             last_action: action_code(snapshot.counters.last_action),
+            fault_source: snapshot
+                .counters
+                .last_fault
+                .map(|fault| fault_source_code(fault.context.source))
+                .unwrap_or(0),
+            fault_code: snapshot
+                .counters
+                .last_fault
+                .map(|fault| u32::from(fault.context.code))
+                .unwrap_or(0),
+            fault_detail0: snapshot
+                .counters
+                .last_fault
+                .map(|fault| fault.context.detail0)
+                .unwrap_or(0),
+            fault_detail1: snapshot
+                .counters
+                .last_fault
+                .map(|fault| fault.context.detail1)
+                .unwrap_or(0),
             event_count: snapshot.log_len as u32,
             dropped_events: snapshot.dropped_events,
             error_events,
@@ -121,6 +149,10 @@ impl HealthReport {
             ^ self.consecutive_errors
             ^ self.last_error
             ^ self.last_action
+            ^ self.fault_source
+            ^ self.fault_code
+            ^ self.fault_detail0
+            ^ self.fault_detail1
             ^ self.event_count
             ^ self.dropped_events
             ^ self.error_events
@@ -618,6 +650,28 @@ pub const fn error_code(error: KernelError) -> u32 {
         KernelError::ForeignModulePollFail => 7,
         KernelError::StackViolation => 8,
         KernelError::MemoryFault => 9,
+        KernelError::WatchdogExpired => 10,
+        KernelError::ModuleCrash => 11,
+        KernelError::ProtocolAuthFail => 12,
+        KernelError::QuotaBreach => 13,
+        KernelError::PoolCorruption => 14,
+        KernelError::StorageFail => 15,
+        KernelError::PowerTransitionFail => 16,
+    }
+}
+
+pub const fn fault_source_code(source: FaultSource) -> u32 {
+    match source {
+        FaultSource::Kernel => 1,
+        FaultSource::Scheduler => 2,
+        FaultSource::Watchdog => 3,
+        FaultSource::Module => 4,
+        FaultSource::Bus => 5,
+        FaultSource::Protocol => 6,
+        FaultSource::Storage => 7,
+        FaultSource::Memory => 8,
+        FaultSource::Power => 9,
+        FaultSource::Foreign => 10,
     }
 }
 

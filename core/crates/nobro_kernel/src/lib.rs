@@ -59,7 +59,7 @@ pub use capability::{
     CapabilityTraceRecord,
 };
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
-pub use error::{Action, KernelError};
+pub use error::{Action, FaultContext, FaultSource, HealthFault, KernelError};
 pub use eval::{
     EvalGate, EvalReport, ImuHwEvalReport, SalEvalReport, EVAL_MAGIC, IMU_HW_EVAL_MAGIC,
     MAX_JITTER_US, MIN_DEADLINE_TICKS, MIN_IMU_HW_READS, MIN_IMU_SAMPLES, MIN_SERVO_STEPS,
@@ -75,7 +75,8 @@ pub use foreign_host::{
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
 pub use health::{
-    FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot, ModuleId,
+    FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,
+    ModuleId,
 };
 pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,

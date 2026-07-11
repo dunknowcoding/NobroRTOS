@@ -70,7 +70,8 @@ fn rd(dev: &mut NobroSpiDevice, reg: u8) -> u8 {
     rx[1]
 }
 fn wr(dev: &mut NobroSpiDevice, reg: u8, val: u8) {
-    let _ = dev.write(&[reg & 0x7F, val]);
+    dev.write(&[reg & 0x7F, val])
+        .unwrap_or_else(|_| defmt::panic!("SPI write"));
 }
 fn isqrt(n: u64) -> u64 {
     if n == 0 {
@@ -97,11 +98,11 @@ const OWNER_SPI: u8 = 4;
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Spim0, OWNER_SPI).ok();
+    Hal::acquire(Resource::Spim0, OWNER_SPI).unwrap_or_else(|_| defmt::panic!("SPI lease"));
     let mut dev = unsafe {
         NobroSpiDevice::new(
             board::SPI_SCK_PIN,

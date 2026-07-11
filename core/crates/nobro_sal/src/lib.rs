@@ -1559,6 +1559,13 @@ pub fn default_action(err: &KernelError) -> nobro_kernel::Action {
         // Memory-safety violations mean module state cannot be trusted: restart
         // through recovery, never resume in place.
         KernelError::StackViolation | KernelError::MemoryFault => RebootModule,
+        KernelError::WatchdogExpired => NotifyUserTask,
+        KernelError::ModuleCrash
+        | KernelError::PoolCorruption
+        | KernelError::PowerTransitionFail => RebootModule,
+        KernelError::ProtocolAuthFail | KernelError::QuotaBreach | KernelError::StorageFail => {
+            NotifyUserTask
+        }
     }
 }
 

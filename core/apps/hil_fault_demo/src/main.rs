@@ -50,7 +50,7 @@ static mut NOBRO_HIL_REPORT: Report = Report {
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
@@ -62,9 +62,10 @@ fn main() -> ! {
     };
     let mut rc = RecoveryCoordinator::<4, 16>::new(thresholds);
     rc.transition(SystemState::ValidateManifest, Hal::now_us())
-        .ok();
-    rc.transition(SystemState::InitDrivers, Hal::now_us()).ok();
-    rc.transition(SystemState::Running, Hal::now_us()).ok();
+        .unwrap();
+    rc.transition(SystemState::InitDrivers, Hal::now_us())
+        .unwrap();
+    rc.transition(SystemState::Running, Hal::now_us()).unwrap();
 
     // Fault script: the sensor throws SensorReadFail on every check for a window.
     let mut fi = FaultInjector::<2>::new();
@@ -73,7 +74,7 @@ fn main() -> ! {
         KernelError::SensorReadFail,
         FaultMode::Window { start: 1, end: 6 },
     ))
-    .ok();
+    .unwrap();
 
     let mut faults_injected = 0u32;
     let mut reached_degraded = 0u32;

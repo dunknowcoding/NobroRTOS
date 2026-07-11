@@ -12,8 +12,5 @@ pub mod nrf52840;
 #[cfg(feature = "platform-nrf52840")]
 pub use nrf52840::Active as ActivePlatform;
 
-#[cfg(all(
-    not(feature = "platform-nrf52840"),
-    not(feature = "contract-only"),
-))]
+#[cfg(all(not(feature = "platform-nrf52840"), not(feature = "contract-only"),))]
 compile_error!("nobro-hal: enable one platform feature (e.g. platform-nrf52840)");

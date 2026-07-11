@@ -324,9 +324,11 @@ edges that are specific to the application boot path.
 
 Fault handling is intentionally small:
 
-- `KernelError` classifies failures.
+- `KernelError` classifies failures; `HealthFault` adds source, subsystem code,
+  and two bounded detail words.
 - `Action` describes recovery without allocating memory.
-- `HealthMonitor` tracks per-module consecutive failures.
+- `HealthMonitor` tracks per-module consecutive failures and their full latest
+  context; `FaultPolicy` may retain state and decide per module.
 - `FaultThresholds` escalates from local retry, to user notification, to module
   reboot.
 - `EventLog` keeps a fixed-size ring of health, recovery, overrun, manifest,
@@ -340,6 +342,10 @@ Fault handling is intentionally small:
 - `ModuleRuntimeGuard` tracks fixed-slot module states across Active,
   Suspended, Faulted, Recovering, and Disabled paths so recovery and later
   device-power policy share one control-plane model.
+- `KernelExecutor` owns `ExecutorPower`: measured poll duration feeds the
+  per-module energy ledger, and authoritative next-activity time drives a
+  fallible wake-program/sleep-entry hook. Executor suspension and resume call
+  peripheral power hooks before committing module state.
 - `Lifecycle` defines legal boot, running, degraded, recovering, and halted
   transitions so recovery paths are explicit and testable.
 - `DegradePlanner` keeps System and HardRealtime modules enabled while shedding

@@ -31,13 +31,18 @@ fn main() -> ! {
     loop {
         if usb.poll() == CdcState::Configured {
             if !greeted {
-                let _ = usb.write(b"NobroRTOS modular USB stack up.\r\n");
+                let banner = b"NobroRTOS modular USB stack up.\r\n";
+                if usb.write(banner) != banner.len() {
+                    defmt::warn!("USB banner backpressure");
+                }
                 greeted = true;
             }
             // echo whatever the host sends
             let n = usb.read(&mut rx);
             if n > 0 {
-                let _ = usb.write(&rx[..n]);
+                if usb.write(&rx[..n]) != n {
+                    defmt::warn!("USB echo backpressure");
+                }
             }
         } else {
             greeted = false;

@@ -27,7 +27,8 @@ fn rd(dev: &mut NobroSpiDevice, reg: u8) -> u8 {
 }
 
 fn wr(dev: &mut NobroSpiDevice, reg: u8, val: u8) {
-    let _ = dev.write(&[reg & 0x7F, val]);
+    dev.write(&[reg & 0x7F, val])
+        .unwrap_or_else(|_| defmt::panic!("SPI write"));
 }
 
 fn isqrt(n: u64) -> u64 {

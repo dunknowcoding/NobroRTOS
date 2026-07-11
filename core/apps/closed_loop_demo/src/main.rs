@@ -58,17 +58,25 @@ static mut NOBRO_CLOSEDLOOP_REPORT: ClosedLoopReport = ClosedLoopReport {
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 1).ok();
+    Hal::acquire(Resource::Timer0, 1).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).ok();
-    let mut imu = Mpu9250Imu::probe_and_init(OWNER_TWIM).ok();
+    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
+    let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
+        Ok(imu) => Some(imu),
+        Err(_) => {
+            defmt::warn!("optional IMU unavailable; loop remains in degraded mode");
+            None
+        }
+    };
 
     let profile = Hal::servo_profile();
     let mut servo = RoboServoAdapter::new(profile.pin);
     unsafe {
-        let _ = servo.attach_50hz(profile.center_pulse_us);
+        servo
+            .attach_50hz(profile.center_pulse_us)
+            .unwrap_or_else(|_| defmt::panic!("servo attach"));
     }
 
     unsafe {

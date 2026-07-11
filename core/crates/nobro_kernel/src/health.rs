@@ -1,6 +1,6 @@
 //! Lightweight module health tracking and recovery decisions.
 
-use crate::{Action, KernelError};
+use crate::{Action, HealthFault, KernelError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleId {
@@ -21,6 +21,7 @@ pub struct HealthCounters {
     pub total_errors: u32,
     pub consecutive_errors: u16,
     pub last_error: Option<KernelError>,
+    pub last_fault: Option<HealthFault>,
     pub last_action: Action,
     pub last_seen_us: u64,
     pub last_recovery_us: u64,
@@ -32,6 +33,7 @@ impl HealthCounters {
             total_errors: 0,
             consecutive_errors: 0,
             last_error: None,
+            last_fault: None,
             last_action: Action::Ignore,
             last_seen_us: 0,
             last_recovery_us: 0,
@@ -78,6 +80,30 @@ pub struct HealthMonitor<const N: usize> {
     slots: [Option<HealthSlot>; N],
 }
 
+/// Stateful, module-aware fault policy. Implementations may retain backoff/history and
+/// inspect the complete source context plus updated counters.
+pub trait FaultPolicy {
+    fn decide(
+        &mut self,
+        module: ModuleId,
+        fault: &HealthFault,
+        counters: &HealthCounters,
+    ) -> Action;
+}
+
+struct FunctionPolicy(fn(&KernelError) -> Action);
+
+impl FaultPolicy for FunctionPolicy {
+    fn decide(
+        &mut self,
+        _module: ModuleId,
+        fault: &HealthFault,
+        _counters: &HealthCounters,
+    ) -> Action {
+        (self.0)(&fault.error)
+    }
+}
+
 impl<const N: usize> HealthMonitor<N> {
     pub const fn new() -> Self {
         Self { slots: [None; N] }
@@ -99,6 +125,23 @@ impl<const N: usize> HealthMonitor<N> {
         thresholds: FaultThresholds,
         policy: fn(&KernelError) -> Action,
     ) -> Action {
+        self.record_fault(
+            module,
+            HealthFault::from_error(error),
+            now_us,
+            thresholds,
+            &mut FunctionPolicy(policy),
+        )
+    }
+
+    pub fn record_fault(
+        &mut self,
+        module: ModuleId,
+        fault: HealthFault,
+        now_us: u64,
+        thresholds: FaultThresholds,
+        policy: &mut impl FaultPolicy,
+    ) -> Action {
         let Some(slot) = self.find_or_insert(module) else {
             return Action::NotifyUserTask;
         };
@@ -106,7 +149,8 @@ impl<const N: usize> HealthMonitor<N> {
         let consecutive = slot.counters.consecutive_errors.saturating_add(1);
         slot.counters.total_errors = slot.counters.total_errors.saturating_add(1);
         slot.counters.consecutive_errors = consecutive;
-        slot.counters.last_error = Some(error);
+        slot.counters.last_error = Some(fault.error);
+        slot.counters.last_fault = Some(fault);
         slot.counters.last_seen_us = now_us;
 
         let action = if consecutive >= thresholds.reboot_after {
@@ -115,7 +159,7 @@ impl<const N: usize> HealthMonitor<N> {
         } else if consecutive >= thresholds.notify_after {
             Action::NotifyUserTask
         } else {
-            policy(&error)
+            policy.decide(module, &fault, &slot.counters)
         };
 
         slot.counters.last_action = action;
@@ -162,6 +206,26 @@ mod tests {
     use super::*;
     use crate::scheduler::default_action;
 
+    struct StatefulPolicy {
+        calls: u16,
+    }
+
+    impl FaultPolicy for StatefulPolicy {
+        fn decide(
+            &mut self,
+            module: ModuleId,
+            fault: &HealthFault,
+            _counters: &HealthCounters,
+        ) -> Action {
+            self.calls += 1;
+            if module == ModuleId::Bus && fault.context.detail0 == 0x52 {
+                Action::RetryDelay(u32::from(self.calls) * 100)
+            } else {
+                Action::NotifyUserTask
+            }
+        }
+    }
+
     #[test]
     fn fault_thresholds_reject_incoherent_escalation() {
         assert_eq!(
@@ -181,6 +245,30 @@ mod tests {
             Err(FaultThresholdError::RebootBeforeNotify)
         );
         assert!(FaultThresholds::DEFAULT.validate().is_ok());
+    }
+
+    #[test]
+    fn structured_fault_preserves_context_and_uses_stateful_module_policy() {
+        let mut monitor = HealthMonitor::<1>::new();
+        let mut policy = StatefulPolicy { calls: 0 };
+        let fault = HealthFault::new(
+            KernelError::BusTimeout,
+            crate::FaultContext::new(crate::FaultSource::Bus, 7, 0x52, 400),
+        );
+        assert_eq!(
+            monitor.record_fault(
+                ModuleId::Bus,
+                fault,
+                10,
+                FaultThresholds {
+                    notify_after: 3,
+                    reboot_after: 5,
+                },
+                &mut policy,
+            ),
+            Action::RetryDelay(100)
+        );
+        assert_eq!(monitor.get(ModuleId::Bus).unwrap().last_fault, Some(fault));
     }
 
     #[test]

@@ -60,7 +60,7 @@ fn spin_ms(ms: u32) {
 
 #[entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
@@ -68,16 +68,16 @@ fn main() -> ! {
     // 10 ms check-in interval; strikes 1/3/5 -> Restart/Degrade/Reboot.
     let mut sup = TaskSupervisor::<4>::new(1, 3, 5);
     let now = Hal::now_us();
-    sup.register(ModuleId::Sensor, 10_000, now).ok();
-    sup.register(ModuleId::Radio, 10_000, now).ok();
+    sup.register(ModuleId::Sensor, 10_000, now).unwrap();
+    sup.register(ModuleId::Radio, 10_000, now).unwrap();
 
     // Phase 1: both tasks live for 5 polls -> Healthy throughout.
     let mut healthy_ok = true;
     for _ in 0..5 {
         spin_ms(5);
         let t = Hal::now_us();
-        sup.checkin(ModuleId::Sensor, t).ok();
-        sup.checkin(ModuleId::Radio, t).ok();
+        sup.checkin(ModuleId::Sensor, t).unwrap();
+        sup.checkin(ModuleId::Radio, t).unwrap();
         healthy_ok &= sup.poll(t) == SupervisionAction::Healthy;
     }
 
@@ -89,7 +89,7 @@ fn main() -> ! {
     for strike in 1..=5u32 {
         spin_ms(12); // past the sensor's 10 ms deadline each iteration
         let t = Hal::now_us();
-        sup.checkin(ModuleId::Radio, t).ok();
+        sup.checkin(ModuleId::Radio, t).unwrap();
         let action = sup.poll(t);
         if let SupervisionAction::Restart(m)
         | SupervisionAction::Degrade(m)
@@ -107,12 +107,12 @@ fn main() -> ! {
     // Phase 3: the sensor recovers (strikes were at reboot threshold, so we model a
     // post-reboot fresh task: check in twice and expect Healthy again).
     let t = Hal::now_us();
-    sup.checkin(ModuleId::Sensor, t).ok();
-    sup.checkin(ModuleId::Radio, t).ok();
+    sup.checkin(ModuleId::Sensor, t).unwrap();
+    sup.checkin(ModuleId::Radio, t).unwrap();
     spin_ms(5);
     let t2 = Hal::now_us();
-    sup.checkin(ModuleId::Sensor, t2).ok();
-    sup.checkin(ModuleId::Radio, t2).ok();
+    sup.checkin(ModuleId::Sensor, t2).unwrap();
+    sup.checkin(ModuleId::Radio, t2).unwrap();
     let recovered =
         u32::from(sup.poll(t2) == SupervisionAction::Healthy || sup.strikes(ModuleId::Sensor) >= 5); // at reboot threshold strikes persist by design
 

@@ -277,8 +277,11 @@ let copied = trace.copy_replay(
 );
 ```
 
-Use this path for debug replay, CI host simulations, and fault reviews. Recording is
-opt-in; an absent record is not proof that no direct/raw operation occurred.
+General modules do not call raw protected runtime primitives: those methods are
+crate-private and `ModuleCtx` records attempt/completion or fault around the
+operation. The foreign host boundary follows the same rule. An absent retained
+record is meaningful for these governed operations when `dropped() == 0`;
+trusted platform code is outside this module-security trace.
 
 #### Runtime
 
@@ -294,14 +297,13 @@ owns:
 - degraded-mode reports
 - event-log and health reports
 
-Common runtime operations:
+Module-facing operations use the identity-bound context:
 
 ```rust
-runtime.reserve_quota(module_id, flash_bytes, ram_bytes, pool_slots)?;
-runtime.send_control_message(sender, receiver, opcode, payload)?;
-runtime.schedule_alarm(module_id, deadline_us, period_us)?;
-runtime.disable_module(module_id)?;
-let report = runtime.runtime_report();
+ctx.send(receiver, kind, arg0, arg1)?;
+ctx.schedule_once(alarm_id, delay_us)?;
+ctx.kv_set(key, value)?;
+let sample = ctx.pool_alloc(kind, len, deadline_us)?;
 ```
 
 Use `watchdog_expired_count(now_us)` for a non-mutating liveness precheck.
@@ -332,6 +334,19 @@ expiry mutation, heartbeat reset, multi-module expiry, and capacity errors.
 The `check-scheduler-matrix` CLI validates on-time ticks, tolerated early/late
 jitter, missed deadlines, 32-bit time wraparound, counter reset, and invalid
 scheduler configuration.
+
+#### Executor Power And Structured Faults
+
+`KernelExecutor::run_cycle` accepts a `PowerPlatform` implementation. When no
+work is due, it programs the absolute wake deadline before entering the mode
+chosen by `ExecutorPower`; every completed poll automatically charges measured
+active time to its module's energy profile. Executor suspend/resume methods call
+fallible peripheral hooks before committing module state.
+
+Use `HealthFault` when subsystem context matters. It combines `KernelError` with
+`FaultContext { source, code, detail0, detail1 }`. A `FaultPolicy` can retain
+state and receives the module plus updated health counters; HealthReport v2
+exports the latest context.
 
 `EventLog` exposes non-mutating capacity helpers such as `is_full()`,
 `remaining_capacity()`, `latest_sequence()`, and `has_dropped_events()`. Use

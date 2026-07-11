@@ -123,11 +123,11 @@ fn main() -> ! {
     }
 
     // Bring up the timebase + IMU (TWIM I2C) before starting USB enumeration.
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).ok();
+    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     let imu = Mpu9250Imu::probe_and_init(OWNER_TWIM);
     let (who, addr, i2c_ok) = match &imu {
         Ok(d) => (u32::from(d.who_am_i()), u32::from(d.addr()), 1u32),
@@ -287,7 +287,9 @@ fn main() -> ! {
             push(&mut buf, &mut n, b"mdps ");
             let pass = i2c_ok == 1 && reads >= 10 && (800..1200).contains(&accel_mg);
             push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
-            let _ = serial.write(&buf[..n]);
+            if serial.write(&buf[..n]).is_err() {
+                defmt::warn!("USB telemetry backpressure");
+            }
 
             // Machine-decodable twin of the line above, in the standard
             // `NOBRO-<NAME> key=value` shape the host tools and the web-flasher
@@ -305,7 +307,9 @@ fn main() -> ! {
             push(&mut mline, &mut m, b" all_pass=");
             push_u32(&mut mline, &mut m, u32::from(pass));
             push(&mut mline, &mut m, b"\r\n");
-            let _ = serial.write(&mline[..m]);
+            if serial.write(&mline[..m]).is_err() {
+                defmt::warn!("USB model-report backpressure");
+            }
         }
     }
 }

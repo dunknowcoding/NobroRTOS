@@ -10,6 +10,20 @@ pub enum PowerMode {
     Off,      // deepest sleep until external wake
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PowerHookError {
+    pub source: u16,
+    pub code: u16,
+}
+
+/// Fallible board power operations owned by the authoritative executor.
+pub trait PowerPlatform {
+    fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError>;
+    fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError>;
+    fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError>;
+    fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError>;
+}
+
 /// Chooses a power mode and enforces an active-time duty budget over a window.
 pub struct PowerManager {
     active_us: u64,
@@ -85,7 +99,7 @@ mod tests {
 /// Per-task energy ledger (M161): charge each task's active time at a measured power
 /// draw (uW) and report energy in uJ. Fixed capacity, no heap.
 pub struct EnergyLedger<const N: usize> {
-    entries: [(u8, u64); N], // (task id, energy uJ)
+    entries: [(u16, u64); N], // (task id, energy uJ)
     len: usize,
 }
 
@@ -104,7 +118,7 @@ impl<const N: usize> EnergyLedger<N> {
     }
 
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
-    pub fn charge(&mut self, task: u8, active_us: u64, power_uw: u64) -> bool {
+    pub fn charge(&mut self, task: u16, active_us: u64, power_uw: u64) -> bool {
         let energy_uj = active_us.saturating_mul(power_uw) / 1_000_000;
         for e in self.entries[..self.len].iter_mut() {
             if e.0 == task {
@@ -120,7 +134,7 @@ impl<const N: usize> EnergyLedger<N> {
         true
     }
 
-    pub fn energy_uj(&self, task: u8) -> Option<u64> {
+    pub fn energy_uj(&self, task: u16) -> Option<u64> {
         self.entries[..self.len]
             .iter()
             .find(|e| e.0 == task)
@@ -132,14 +146,112 @@ impl<const N: usize> EnergyLedger<N> {
     }
 
     /// The hungriest task (id, energy uJ).
-    pub fn top(&self) -> Option<(u8, u64)> {
+    pub fn top(&self) -> Option<(u16, u64)> {
         self.entries[..self.len].iter().copied().max_by_key(|e| e.1)
+    }
+}
+
+/// Executor-owned power policy, task power profiles, and measured energy ledger.
+pub struct ExecutorPower<const N: usize> {
+    manager: PowerManager,
+    ledger: EnergyLedger<N>,
+    profiles: [(u16, u64); N],
+    profile_len: usize,
+    default_power_uw: u64,
+}
+
+impl<const N: usize> ExecutorPower<N> {
+    pub const fn new(window_us: u64, budget_us: u64, default_power_uw: u64) -> Self {
+        Self {
+            manager: PowerManager::new(window_us, budget_us),
+            ledger: EnergyLedger::new(),
+            profiles: [(0, 0); N],
+            profile_len: 0,
+            default_power_uw,
+        }
+    }
+
+    pub fn set_task_power(&mut self, task_id: u16, power_uw: u64) -> bool {
+        if let Some(profile) = self.profiles[..self.profile_len]
+            .iter_mut()
+            .find(|profile| profile.0 == task_id)
+        {
+            profile.1 = power_uw;
+            return true;
+        }
+        if self.profile_len == N {
+            return false;
+        }
+        self.profiles[self.profile_len] = (task_id, power_uw);
+        self.profile_len += 1;
+        true
+    }
+
+    pub fn account_task(&mut self, task_id: u16, active_us: u64) -> bool {
+        let power_uw = self.profiles[..self.profile_len]
+            .iter()
+            .find(|profile| profile.0 == task_id)
+            .map(|profile| profile.1)
+            .unwrap_or(self.default_power_uw);
+        let _ = self.manager.account_active(active_us);
+        self.ledger.charge(task_id, active_us, power_uw)
+    }
+
+    pub fn apply_idle(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerMode, PowerHookError> {
+        let relative = deadline_us.map(|deadline| deadline.saturating_sub(now_us));
+        let mode = self.manager.select(work_pending, relative);
+        if mode != PowerMode::Active {
+            platform.program_wake(deadline_us)?;
+            platform.enter(mode)?;
+        }
+        Ok(mode)
+    }
+
+    pub const fn ledger(&self) -> &EnergyLedger<N> {
+        &self.ledger
+    }
+
+    pub const fn manager(&self) -> &PowerManager {
+        &self.manager
     }
 }
 
 #[cfg(test)]
 mod energy_tests {
     use super::*;
+
+    #[derive(Default)]
+    struct Hooks {
+        wake: Option<u64>,
+        mode: Option<PowerMode>,
+        suspended: Option<u16>,
+    }
+
+    impl PowerPlatform for Hooks {
+        fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+            self.wake = deadline_us;
+            Ok(())
+        }
+        fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+            self.mode = Some(mode);
+            Ok(())
+        }
+        fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+            self.suspended = Some(task_id);
+            Ok(())
+        }
+        fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+            (self.suspended == Some(task_id))
+                .then(|| self.suspended = None)
+                .ok_or(PowerHookError { source: 1, code: 2 })
+        }
+    }
 
     #[test]
     fn ledger_charges_and_ranks_tasks() {
@@ -153,6 +265,22 @@ mod energy_tests {
         assert_eq!(led.total_uj(), 4_000);
         assert!(led.charge(2, 1_000_000, 40_000)); // radio burns 40 mJ more
         assert_eq!(led.top(), Some((2, 42_000)));
+    }
+
+    #[test]
+    fn executor_power_accounts_and_programs_wake_before_sleep() {
+        let mut power = ExecutorPower::<2>::new(1_000_000, 100_000, 1_000);
+        assert!(power.set_task_power(7, 5_000));
+        assert!(power.account_task(7, 200_000));
+        assert_eq!(power.ledger().energy_uj(7), Some(1_000));
+
+        let mut hooks = Hooks::default();
+        assert_eq!(
+            power.apply_idle(10_000, false, Some(20_000), &mut hooks),
+            Ok(PowerMode::LowPower)
+        );
+        assert_eq!(hooks.wake, Some(20_000));
+        assert_eq!(hooks.mode, Some(PowerMode::LowPower));
     }
 }
 

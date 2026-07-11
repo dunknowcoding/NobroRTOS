@@ -70,11 +70,11 @@ fn idle() -> ! {
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).ok();
+    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
         Ok(d) => d,
         Err(_) => idle(),

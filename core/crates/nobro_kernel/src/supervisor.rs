@@ -1,8 +1,8 @@
 //! Kernel supervisor tying health decisions to the event log.
 
 use crate::{
-    scheduler::default_action, Action, EventLog, FaultThresholds, HealthCounters, HealthMonitor,
-    KernelError, ModuleId,
+    scheduler::default_action, Action, EventLog, FaultPolicy, FaultThresholds, HealthCounters,
+    HealthFault, HealthMonitor, KernelError, ModuleId,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +42,29 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> Supervisor<HEALTH_SLOTS,
         let action = self.record_error_unlogged(module, error, now_us);
         self.log.push_health(now_us, module, error, action);
         action
+    }
+
+    pub fn record_fault(
+        &mut self,
+        module: ModuleId,
+        fault: HealthFault,
+        now_us: u64,
+        policy: &mut impl FaultPolicy,
+    ) -> Action {
+        let action = self.record_fault_unlogged(module, fault, now_us, policy);
+        self.log.push_health(now_us, module, fault.error, action);
+        action
+    }
+
+    pub(crate) fn record_fault_unlogged(
+        &mut self,
+        module: ModuleId,
+        fault: HealthFault,
+        now_us: u64,
+        policy: &mut impl FaultPolicy,
+    ) -> Action {
+        self.health
+            .record_fault(module, fault, now_us, self.thresholds, policy)
     }
 
     pub(crate) fn record_error_unlogged(

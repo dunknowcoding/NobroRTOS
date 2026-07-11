@@ -97,7 +97,7 @@ mod backend {
     }
 
     pub fn mount() -> Mpu9250Native {
-        Hal::acquire(Resource::Spim0, 4).ok();
+        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let spim = unsafe {
             Spim0::init(
                 board::SPI_SCK_PIN,
@@ -106,10 +106,12 @@ mod backend {
                 board::SPI_CS_PIN,
             )
         };
-        let _ = spim.write_reg(0x6B, 0x80); // device reset
+        spim.write_reg(0x6B, 0x80)
+            .unwrap_or_else(|_| defmt::panic!("IMU reset"));
         settle();
         for (reg, val) in MPU_INIT {
-            let _ = spim.write_reg(reg, val);
+            spim.write_reg(reg, val)
+                .unwrap_or_else(|_| defmt::panic!("IMU init"));
         }
         settle();
         Mpu9250Native { spim }
@@ -158,11 +160,12 @@ mod backend {
     }
 
     fn wr(dev: &mut NobroSpiDevice, reg: u8, val: u8) {
-        let _ = dev.write(&[reg & 0x7F, val]);
+        dev.write(&[reg & 0x7F, val])
+            .unwrap_or_else(|_| defmt::panic!("SPI write"));
     }
 
     pub fn mount() -> Mpu9250Eh {
-        Hal::acquire(Resource::Spim0, 4).ok();
+        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let mut dev = unsafe {
             NobroSpiDevice::new(
                 board::SPI_SCK_PIN,
@@ -256,7 +259,7 @@ mod backend {
     pub struct Mpu9250Arduino;
 
     pub fn mount() -> Mpu9250Arduino {
-        Hal::acquire(Resource::Spim0, 4).ok();
+        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let spim = unsafe {
             Spim0::init(
                 board::SPI_SCK_PIN,

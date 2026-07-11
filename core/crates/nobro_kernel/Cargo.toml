@@ -10,6 +10,7 @@ nobro-hal = { path = "../nobro_hal", default-features = false, features = ["cont
 # portable across MCU families.
 portable-atomic = { version = "1", default-features = false }
 critical-section = "1.2"
+nobro-power = { path = "../nobro_power" }
 
 [features]
 default = ["portable-atomic-cs"]

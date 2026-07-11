@@ -1,8 +1,8 @@
 //! Recovery coordinator for health, lifecycle, and watchdog-triggered faults.
 
 use crate::{
-    Action, DependencyImpact, EventLog, FaultThresholds, KernelError, Lifecycle, LifecycleError,
-    ModuleId, Supervisor, SupervisorSnapshot, SystemState,
+    Action, DependencyImpact, EventLog, FaultPolicy, FaultThresholds, HealthFault, KernelError,
+    Lifecycle, LifecycleError, ModuleId, Supervisor, SupervisorSnapshot, SystemState,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -617,12 +617,49 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         })
     }
 
+    pub fn record_fault(
+        &mut self,
+        module: ModuleId,
+        fault: HealthFault,
+        now_us: u64,
+        policy: &mut impl FaultPolicy,
+    ) -> Result<RecoveryOutcome, RecoveryError> {
+        let action = self
+            .supervisor
+            .record_fault_unlogged(module, fault, now_us, policy);
+        let coalesced = self.coalesce(module, fault.error, action, now_us);
+        if coalesced {
+            return Ok(RecoveryOutcome {
+                module,
+                error: fault.error,
+                action,
+                state: self.lifecycle.state(),
+                coalesced: true,
+            });
+        }
+        self.supervisor
+            .events_mut()
+            .push_health(now_us, module, fault.error, action);
+        let event = self
+            .lifecycle
+            .apply_action(module, fault.error, action, now_us)
+            .map_err(RecoveryError::Lifecycle)?;
+        self.supervisor.events_mut().push(event);
+        Ok(RecoveryOutcome {
+            module,
+            error: fault.error,
+            action,
+            state: self.lifecycle.state(),
+            coalesced: false,
+        })
+    }
+
     pub fn record_watchdog_expired(
         &mut self,
         module: ModuleId,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RecoveryError> {
-        self.record_error(module, KernelError::DeadlineMissed, now_us)
+        self.record_error(module, KernelError::WatchdogExpired, now_us)
     }
 
     pub const fn state(&self) -> SystemState {
@@ -805,14 +842,14 @@ mod tests {
     }
 
     #[test]
-    fn watchdog_expiry_is_routed_as_deadline_fault() {
+    fn watchdog_expiry_keeps_its_distinct_fault_class() {
         let mut recovery = running_coordinator();
 
         let outcome = recovery
             .record_watchdog_expired(ModuleId::Actuator, 40)
             .unwrap();
 
-        assert_eq!(outcome.error, KernelError::DeadlineMissed);
+        assert_eq!(outcome.error, KernelError::WatchdogExpired);
         assert_eq!(outcome.action, Action::NotifyUserTask);
         assert_eq!(outcome.state, SystemState::Degraded);
     }

@@ -105,12 +105,18 @@ fn main() -> ! {
     while periph.CLOCK.events_hfclkstarted.read().bits() == 0 {}
     while periph.POWER.usbregstatus.read().vbusdetect().bit_is_clear() {}
 
-    Hal::acquire(Resource::Timer0, 2).ok();
+    Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).ok();
-    let mut imu = Mpu9250Imu::probe_and_init(OWNER_TWIM).ok();
+    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
+    let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
+        Ok(imu) => Some(imu),
+        Err(_) => {
+            defmt::warn!("optional IMU unavailable; USB inference stays degraded");
+            None
+        }
+    };
 
     let mut model = MotionClassifier::new();
     let model_id = model.contract().model_id;
@@ -235,7 +241,9 @@ fn main() -> ! {
             push(&mut buf, &mut n, b"/1000 accel=");
             push_u32(&mut buf, &mut n, u32::from(accel_mg));
             push(&mut buf, &mut n, b"mg\r\n");
-            let _ = serial.write(&buf[..n]);
+            if serial.write(&buf[..n]).is_err() {
+                defmt::warn!("USB telemetry backpressure");
+            }
         }
     }
 }

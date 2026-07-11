@@ -94,6 +94,7 @@ fn main() -> ! {
 
     // StreamSal frame TX through the managed radio (takes + releases the lease).
     let mut frames_sent: u32 = 0;
+    let mut release_ok = false;
     if let Ok(mut comms) = RadioComms::acquire(7) {
         for i in 0..20u32 {
             let pkt = [0xC2u8, (i & 0xFF) as u8, ((i >> 8) & 0xFF) as u8];
@@ -104,10 +105,10 @@ fn main() -> ! {
                 cortex_m::asm::nop();
             }
         }
-        let _ = comms.release();
+        release_ok = comms.release().is_ok();
     }
 
-    let pass = lease_ok && capability_ok && frames_sent >= 10;
+    let pass = lease_ok && capability_ok && frames_sent >= 10 && release_ok;
     let lo = u32::from(lease_ok);
     let co = u32::from(capability_ok);
     let ap = u32::from(pass);

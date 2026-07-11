@@ -27,7 +27,6 @@ macro_rules! radio_reg {
 }
 
 radio_reg!(TASKS_TXEN, 0x000);
-radio_reg!(TASKS_DISABLE, 0x010);
 radio_reg!(EVENTS_DISABLED, 0x110);
 radio_reg!(SHORTS, 0x200);
 radio_reg!(PACKETPTR, 0x504);
@@ -141,7 +140,9 @@ fn telemetry_loop(radio: &mut impl IotTransport) -> ! {
         payload[0..4].copy_from_slice(&beat.to_le_bytes());
         payload[4] = 1; // status: alive/all_pass
         if radio.link_state() == IotLinkState::Up {
-            let _ = radio.send(&payload);
+            if !radio.send(&payload) {
+                defmt::warn!("advertising send failed");
+            }
         }
 
         // ~100 ms advertising interval
