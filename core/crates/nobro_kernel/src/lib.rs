@@ -8,6 +8,7 @@ extern crate std;
 pub mod admission;
 pub mod alarm;
 pub mod async_exec;
+pub mod async_rt;
 pub mod boot;
 pub mod capability;
 pub mod degrade;
@@ -51,6 +52,10 @@ pub use admission::{
 };
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
+pub use async_rt::{
+    join2, select2, AsyncCore, CancelToken, Channel, Either, ReactorError, ReactorExecutor,
+    ReactorStats, Signal, Sleep, TimerQueue,
+};
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,
 };
