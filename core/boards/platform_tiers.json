@@ -1,14 +1,29 @@
 {
   "_comment": "Honest per-platform capability matrix (PORT-01, Waves 48/50). Each platform declares which portable nobro_hal provider contracts it satisfies, at what tier, so 'platform breadth' is machine-checkable and never an nRF-shaped placeholder. Tiers: deep = implemented + automated on-hardware HIL evidence; provider = portable trait implemented + compile-verified against the real target, with physical evidence stated separately; conformance = shared portable-core suite available; absent = not implemented. validated_by names the current automated gate.",
   "providers": [
-    "timebase", "deadline", "event_capture", "servo_pwm",
-    "i2c", "spi", "lease", "self_test"
+    "timebase",
+    "deadline",
+    "event_capture",
+    "servo_pwm",
+    "i2c",
+    "spi",
+    "lease",
+    "self_test"
   ],
   "platforms": {
     "nrf52840": {
       "arch": "thumbv7em",
       "tier": "deep",
-      "implements": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease", "self_test"],
+      "implements": [
+        "timebase",
+        "deadline",
+        "event_capture",
+        "servo_pwm",
+        "i2c",
+        "spi",
+        "lease",
+        "self_test"
+      ],
       "automated_hil": true,
       "hil": "automated with tools/hil_matrix.py; private endpoints stay outside the repository",
       "validated_by": "hil_matrix deep-HAL 10/10 with firmware hashes"
@@ -16,17 +31,31 @@
     "rp2350": {
       "arch": "thumbv8m",
       "tier": "provider",
-      "implements": ["timebase"],
-      "planned": ["deadline", "servo_pwm", "i2c", "spi", "lease"],
+      "implements": [
+        "timebase"
+      ],
+      "planned": [
+        "deadline",
+        "servo_pwm",
+        "i2c",
+        "spi",
+        "lease"
+      ],
       "automated_hil": false,
       "hil": "not yet integrated into the automated HIL collector",
-      "validated_by": "portable timebase provider compile-verified for thumbv8m; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed 2026-07-11; conformance suite (7 subsystems) + dual-core"
+      "validated_by": "portable timebase provider compile-verified for thumbv8m; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed 2026-07-11; conformance suite (7 subsystems) + dual-core; Wave 58 cross-core reactor PHYSICALLY VERIFIED on real Pico 2 W 2026-07-12 (core1 drains a cross-core MpmcChannel, core1_acc==core1_processed*3)"
     },
     "esp32c3": {
       "arch": "riscv32imc",
       "tier": "provider",
-      "implements": ["timebase"],
-      "planned": ["deadline", "i2c", "spi"],
+      "implements": [
+        "timebase"
+      ],
+      "planned": [
+        "deadline",
+        "i2c",
+        "spi"
+      ],
       "automated_hil": false,
       "limitations": "no PPI-equivalent hardware event router; servo PWM via LEDC/MCPWM differs from the nRF model",
       "hil": "not yet integrated into the automated HIL collector",

@@ -16,7 +16,10 @@
       "id": "project_firmware",
       "status": "integrated",
       "evidence_path": "tools/nobro_firmware_project.py",
-      "required_tokens": ["Generate host-readable contracts and production firmware", "nrf52840-s140"],
+      "required_tokens": [
+        "Generate host-readable contracts and production firmware",
+        "nrf52840-s140"
+      ],
       "closure_path": "tools/nobro_firmware_project.py",
       "closure_path_state": "present",
       "review": "UX-04"
@@ -25,7 +28,11 @@
       "id": "lease_sessions",
       "status": "integrated",
       "evidence_path": "core/crates/nobro_hal/src/lease.rs",
-      "required_tokens": ["generation", "ensure_live", "release_token"],
+      "required_tokens": [
+        "generation",
+        "ensure_live",
+        "release_token"
+      ],
       "closure_path": "core/crates/nobro_hal/src/quiesce.rs",
       "closure_path_state": "present",
       "review": "CON-03"
@@ -34,7 +41,11 @@
       "id": "arduino_cpp_facade",
       "status": "integrated",
       "evidence_path": "packages/arduino/src/NobroRTOS.h",
-      "required_tokens": ["class NobroApp", "errorText()", "TaskId control"],
+      "required_tokens": [
+        "class NobroApp",
+        "errorText()",
+        "TaskId control"
+      ],
       "review": "UX-05"
     },
     {
@@ -65,18 +76,26 @@
       "id": "multicore_graph",
       "status": "integrated",
       "evidence_path": "core/ports/rp2350/src/main.rs",
-      "required_tokens": ["XCORE_WORK", "ReactorExecutor::bind", "CORE1_PROCESSED"],
-      "forbidden_tokens": ["CORE1_TICKS"],
+      "required_tokens": [
+        "XCORE_WORK",
+        "ReactorExecutor::bind",
+        "CORE1_PROCESSED"
+      ],
+      "forbidden_tokens": [
+        "CORE1_TICKS"
+      ],
       "closure_path": "core/crates/nobro_kernel/src/multicore.rs",
       "closure_path_state": "present",
-      "note": "Wave 57 placement contract (plan_placement, per-core admission) + Wave 58 real core1 reactor draining a cross-core MpmcChannel; compile-verified for thumbv8m + host/Miri cross-core stall model. Physical dual-core throughput/isolation on real RP2350 silicon is bench-gated (no board on the primary bench).",
+      "note": "Wave 57 placement contract (plan_placement, per-core admission) + Wave 58 real core1 reactor draining a cross-core MpmcChannel; compile-verified for thumbv8m + host/Miri cross-core stall model. Physical dual-core throughput/isolation on real RP2350 silicon is bench-gated (no board on the primary bench). PHYSICALLY VERIFIED on a real Raspberry Pi Pico 2 W (RP2350) 2026-07-12: self-DFU/BOOTSEL flash, read back all_pass=1 timebase=1 cores=2 with core1 draining the cross-core MpmcChannel (core1_acc==core1_processed*3 exactly).",
       "review": "MC-01"
     },
     {
       "id": "esp32s3_application_provider",
       "status": "conformance",
       "evidence_path": "core/ports/esp32s3/src/main.rs",
-      "required_tokens": ["run_all"],
+      "required_tokens": [
+        "run_all"
+      ],
       "closure_path": "core/ports/esp32s3/src/portable.rs",
       "closure_path_state": "absent",
       "review": "ECO-02"
@@ -85,7 +104,9 @@
       "id": "ra4m1_application_provider",
       "status": "conformance",
       "evidence_path": "core/ports/ra4m1/src/main.rs",
-      "required_tokens": ["run_all"],
+      "required_tokens": [
+        "run_all"
+      ],
       "closure_path": "core/ports/ra4m1/src/portable.rs",
       "closure_path_state": "absent",
       "review": "ECO-02"
@@ -94,7 +115,9 @@
       "id": "provider_hil",
       "status": "physical_ad_hoc",
       "evidence_path": "core/boards/platform_tiers.json",
-      "required_tokens": ["local physical smoke passed"],
+      "required_tokens": [
+        "local physical smoke passed"
+      ],
       "closure_path": "tools/provider_hil.py",
       "closure_path_state": "absent",
       "review": "HIL-02"
@@ -105,15 +128,21 @@
       "id": "simple_equivalent",
       "status": "integrated",
       "evidence_path": "core/baselines/README.md",
-      "required_tokens": ["The workload (identical in all three)"],
+      "required_tokens": [
+        "The workload (identical in all three)"
+      ],
       "review": "RES-01"
     },
     {
       "id": "complex_equivalent",
-      "status": "absent",
-      "closure_path": "core/baselines/complex",
-      "closure_path_state": "absent",
-      "review": "RES-02"
+      "status": "integrated",
+      "closure_path": "core/baselines/nobro-graph-complex/src/main.rs",
+      "closure_path_state": "present",
+      "review": "RES-02",
+      "evidence_path": "core/baselines/README.md",
+      "required_tokens": [
+        "The complex workload (Wave 59)"
+      ]
     },
     {
       "id": "complex_freertos_variant",
@@ -127,7 +156,8 @@
       "status": "absent",
       "closure_path": "tools/measure_complex_hil.py",
       "closure_path_state": "absent",
-      "review": "RES-02"
+      "review": "RES-02",
+      "note": "Energy/CPU campaign CANCELLED 2026-07-12 (no power meters on the bench); stays absent by design, not oversight."
     },
     {
       "id": "embassy_tuned_and_static_variants",
