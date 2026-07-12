@@ -108,9 +108,11 @@ jobs:
         env:
           # AsyncCore is embedded with static-cell lifetime; tests model that with Box::leak.
           MIRIFLAGS: -Zmiri-ignore-leaks
-        run: >-
-          cargo miri test --target x86_64-unknown-linux-gnu
-          -p nobro-kernel async_rt::tests async_mpmc::tests
+        # Two invocations: `cargo test` takes a single positional filter, so the
+        # reactor and the MPMC/task-group boundary are checked separately.
+        run: |
+          cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
+          cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
       - name: persistent fuzz corpus smoke
         working-directory: core
         run: |
