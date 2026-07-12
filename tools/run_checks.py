@@ -103,6 +103,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
         ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
+        ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
         ("web flasher", [py, "tools/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),
         ("tutorials", [py, "tools/tutorial_runner.py"], ROOT),

@@ -23,10 +23,9 @@
     },
     {
       "id": "arduino_cpp_facade",
-      "status": "c_abi_only",
+      "status": "integrated",
       "evidence_path": "packages/arduino/src/NobroRTOS.h",
-      "required_tokens": ["#include \"nobro_rtos.h\""],
-      "forbidden_tokens": ["class NobroApp"],
+      "required_tokens": ["class NobroApp", "errorText()", "TaskId control"],
       "review": "UX-05"
     },
     {

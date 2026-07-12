@@ -34,7 +34,9 @@ jobs:
       - name: sdk manifest
         run: python tools/check_sdk_manifest.py
       - name: arduino package drift
-        run: python tools/package_arduino.py --check
+        run: |
+          python tools/package_arduino.py --check
+          python tools/check_arduino_facade.py
       - name: web flasher + block editor + tutorials
         run: |
           python tools/check_web_flasher.py
@@ -147,7 +149,8 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install arduino:avr
           arduino-cli core install arduino:renesas_uno
+          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
       - name: compile public package examples
         env:
-          NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi
+          NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
         run: python tools/check_arduino_compile.py

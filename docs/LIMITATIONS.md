@@ -17,6 +17,7 @@ including rows that are still absent.
 | Async | No allocation; up to 32 reactor tasks per core; fixed timer/channel capacities | Channels retain one parked sender and receiver waker, so use them as single-producer/single-consumer primitives or add arbitration |
 | Composition | One graph derives manifest, startup, task metadata, labels, and unambiguous mailbox grants | Capability kinds remain a closed bit set, and stable numeric module codes remain on wire formats |
 | Project workflow | `nobro project` creates/imports, explains, builds, simulates, and reports; `nobro firmware` generates a real nRF `no_std` crate and admission workload from one declaration | Production generation currently covers explicit nRF52840 S140/no-SoftDevice layouts. It does not yet bind application behavior to arbitrary providers, flash generated firmware, or infer measured WCET/interrupt/DMA ownership |
+| Arduino authoring | Fixed-capacity `NobroApp` declares tasks/channels and previews admission with plain errors; all examples compile on AVR, RA4M1, ESP32-S3, and ArduinoNRF | The facade does not embed the Rust executor or prove timing; production execution and physical behavior still require generated/core firmware, providers, and HIL |
 
 ## Resources
 
