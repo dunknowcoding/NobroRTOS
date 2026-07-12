@@ -21,9 +21,9 @@ including rows that are still absent.
 
 ## Resources
 
-The pinned minimal-workload baseline currently measures NobroRTOS at 16,080 bytes of
+The pinned minimal-workload baseline currently measures NobroRTOS at 15,992 bytes of
 flash and 16 bytes of static RAM, versus 3,708/4,644 for Embassy and 1,324/16 for the
-bare-metal baseline. The graph API reduces contract boilerplate but adds about 2.9 KiB
+bare-metal baseline. The graph API reduces contract boilerplate but adds about 3.1 KiB
 of flash in that baseline. These numbers are regression-gated, not universal forecasts;
 re-run `python tools/measure_baselines.py` for the pinned targets and settings.
 

@@ -1,9 +1,9 @@
 # Measured resource baselines (RES-01)
 
-One workload, three implementations, identical build settings — so "heavier /
-lighter" claims about NobroRTOS are numbers, not adjectives.
+Equivalent workloads, multiple implementations, identical build settings — so
+"heavier / lighter" claims about NobroRTOS are numbers, not adjectives.
 
-## The workload (identical in all three)
+## The simple workload (equivalent observable behavior)
 
 On an nRF52840, with TIMER0 free-running at 1 MHz as the time source:
 
@@ -12,8 +12,9 @@ On an nRF52840, with TIMER0 free-running at 1 MHz as the time source:
    pollute the comparison.)
 2. **sensor** — 10 Hz periodic task: produces a synthetic sample
    (`count * 3 + 7`) into the framework's message channel.
-3. **consumer** — drains the channel and folds samples into an exponential
-   moving average.
+3. **consumer stage** — drains the channel and folds samples into an exponential
+   moving average. Embassy expresses this as a separately spawned async task;
+   the bare-metal and NobroRTOS specimens drain it in their control/poll path.
 
 Every implementation exports the same observable state:
 `#[no_mangle] static BASELINE_REPORT: [u32; 4]` =
@@ -62,7 +63,7 @@ counts) and a plain table. Thresholds for `nobro-min` live in
 
 ## The complex workload (Wave 59)
 
-The simple workload above is 2 tasks. To answer "NobroRTOS can't handle
+The simple NobroRTOS graph above has 2 admitted periodic tasks. To test the narrower claim that NobroRTOS cannot handle
 multiple complex tasks / Embassy is more flexible", the **complex** workload is
 a five-stage pipeline with fan-out and backpressure:
 
@@ -75,6 +76,8 @@ fusion(100Hz) -> control(50Hz) -> radio(20Hz)
 | --- | --- | --- |
 | `baremetal-complex/` | the floor | five stages, hand-rolled deadline schedule + hand-rolled channels/backpressure |
 | `nobro-graph-complex/` | NobroRTOS graph API | five `TaskDecl`s + three `.channel()`s; manifest/admission/quotas/capabilities/startup/executor all derived |
+| `embassy-complex/` | Embassy 0.7 | five async tasks, tickless `Ticker`s, and three one-slot `embassy-sync` channels |
+| `freertos-complex/` | FreeRTOS Kernel 11.3.0 | five statically allocated tasks, three static queues, delay-until scheduling, no heap |
 
 ### Measured (2026-07-12, `thumbv7em-none-eabihf`, opt-level=z, LTO=fat)
 
@@ -84,6 +87,8 @@ fusion(100Hz) -> control(50Hz) -> radio(20Hz)
 | nobro-graph-min (2 tasks) | 19124 | 16 | 114 |
 | baremetal-complex (5 tasks) | 1436 | 16 | 109 |
 | nobro-graph-complex (5 tasks) | 20332 | 16 | 148 |
+| embassy-complex (5 tasks) | 4328 | 4724 | 112 |
+| freertos-complex (5 tasks) | 6724 | 3828 | 175 |
 
 **The point, honestly both ways:** NobroRTOS carries a fixed framework cost
 (~18 KB flash) that a bare-metal loop does not — for a 2-task blinker, that is
@@ -97,10 +102,13 @@ deadline, and backpressure flag is hand-maintained with no admission or
 isolation. This is a footprint/authoring comparison only; it makes no claim
 about runtime behavior or correctness.
 
-**Embassy-complex and FreeRTOS-complex** equivalents are part of the full
-comparative campaign (Wave 61): Embassy builds only with registry access
-(measured offline-skipped here like `embassy-min`), and a FreeRTOS C specimen
-needs its own port. Those rows are declared, not silently omitted.
+The Embassy and FreeRTOS rows are now real builds, not declarations. The FreeRTOS
+specimen vendors the exact official V11.3.0 kernel subset and records its commit and
+MIT license; only the benchmark's own `src/` C/Rust/configuration lines count as user
+source. Static RAM includes each framework's statically reserved task/channel storage.
+These figures still establish only build footprint and authoring size. Equivalent CPU
+busy time, latency, misses, throughput, stack high-water, and residency belong to the
+Wave-61 runtime campaign; the multi-device physical workflow belongs to Wave 68.
 
 ## Profile isolation, symbol-attributed (Wave 60)
 

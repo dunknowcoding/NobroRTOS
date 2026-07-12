@@ -115,8 +115,8 @@ actual clock/RTC/sleep operations and are responsible for wake-source correctnes
 
 ## Measured resource baselines (vs bare metal and Embassy)
 
-One identical workload (50 Hz control + 10 Hz sensor + consumer over a message
-channel, raw-register GPIO/TIMER in all three), pinned build settings
+One equivalent-observable workload (50 Hz control + 10 Hz sensor + consumer stage
+over a message channel, raw-register GPIO/TIMER in all variants), pinned build settings
 (`opt-level = "z"`, fat LTO, one codegen unit, no logging), nRF52840 target.
 Suite: `core/baselines/`; runner: `python tools/measure_baselines.py`
 (regression budgets enforced in CI). Measured 2026-07-11, rustc stable:
@@ -124,8 +124,8 @@ Suite: `core/baselines/`; runner: `python tools/measure_baselines.py`
 | implementation | flash | static RAM | source lines |
 | --- | ---: | ---: | ---: |
 | bare-metal floor | 1,324 B | 16 B | 75 |
-| **NobroRTOS, explicit contract** (`nobro-min`) | 16,080 B | 16 B | 152 |
-| **NobroRTOS, graph API** (`nobro-graph-min`) | 18,996 B | 16 B | 114 |
+| **NobroRTOS, explicit contract** (`nobro-min`) | 15,992 B | 16 B | 152 |
+| **NobroRTOS, graph API** (`nobro-graph-min`) | 19,124 B | 16 B | 114 |
 | Embassy (`embassy-min`) | 3,708 B | 4,644 B | 72 |
 
 Honest reading, both directions:
@@ -152,6 +152,13 @@ Honest reading, both directions:
   + secure/storage/database; assured = + net/fleet/AI surfaces.
 - These are **size** specimens only. CPU/energy/latency claims in either
   direction require the HIL rig and are reported separately with their method.
+
+The Wave-59 complex specimen adds a five-stage fusion/control/radio/storage/
+diagnostic graph with three one-slot backpressure edges. Under the same profile,
+bare metal measures 1,436 B flash / 16 B static RAM / 109 local source lines;
+Embassy 4,328 / 4,724 / 112; official FreeRTOS 11.3.0 6,724 / 3,828 / 175;
+and NobroRTOS 20,332 / 16 / 148. These are real builds with common observable
+semantics, not declarations, but remain footprint/authoring evidence only.
 
 ## Measured kernel-op latencies
 

@@ -1,0 +1,20 @@
+[package]
+name = "freertos-complex"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = false

@@ -129,7 +129,7 @@
       "status": "integrated",
       "evidence_path": "core/baselines/README.md",
       "required_tokens": [
-        "The workload (identical in all three)"
+        "The simple workload (equivalent observable behavior)"
       ],
       "review": "RES-01"
     },
@@ -146,9 +146,32 @@
     },
     {
       "id": "complex_freertos_variant",
-      "status": "absent",
-      "closure_path": "core/baselines/complex/freertos",
-      "closure_path_state": "absent",
+      "status": "integrated",
+      "closure_path": "core/baselines/freertos-complex",
+      "closure_path_state": "present",
+      "evidence_path": "core/baselines/freertos-complex/src/workload.c",
+      "required_tokens": [
+        "fusion_task",
+        "control_task",
+        "radio_task",
+        "storage_task",
+        "diagnostics_task"
+      ],
+      "review": "RES-02"
+    },
+    {
+      "id": "complex_embassy_variant",
+      "status": "integrated",
+      "closure_path": "core/baselines/embassy-complex",
+      "closure_path_state": "present",
+      "evidence_path": "core/baselines/embassy-complex/src/main.rs",
+      "required_tokens": [
+        "async fn fusion",
+        "async fn control",
+        "async fn radio",
+        "async fn storage",
+        "async fn diagnostics"
+      ],
       "review": "RES-02"
     },
     {

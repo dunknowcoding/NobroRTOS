@@ -19,5 +19,13 @@
   "baremetal-complex": {
     "flash": 2048,
     "static_ram": 256
+  },
+  "embassy-complex": {
+    "flash": 16000,
+    "static_ram": 8192
+  },
+  "freertos-complex": {
+    "flash": 24000,
+    "static_ram": 8192
   }
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build and size the RES-01 baseline suite: NobroRTOS vs bare metal vs Embassy.
+"""Build and size the RES-01/02 baseline suite across four execution models.
 
-One identical workload (see core/baselines/README.md), three implementations,
-pinned build settings. Reports flash (text+data), static RAM (data+bss), and
-source line counts; attributes nobro-min's flash to crates so the cost of each
+Equivalent observable workloads (see core/baselines/README.md), pinned build
+settings. Reports flash (text+data), static RAM (data+bss), and local source
+line counts; attributes nobro-min's flash to crates so the cost of each
 enabled service is machine-readable; enforces regression thresholds for
 nobro-min from tools/baseline_budgets.json.
 
@@ -31,7 +31,8 @@ OUT = ROOT / "_work" / "evidence" / "baselines.json"
 BUDGETS = ROOT / "tools" / "baseline_budgets.json"
 TARGET = "thumbv7em-none-eabihf"
 IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "nobro-graph-min", "embassy-min",
-                   "baremetal-complex", "nobro-graph-complex")
+                   "baremetal-complex", "nobro-graph-complex", "embassy-complex",
+                   "freertos-complex")
 
 
 def find_llvm_tool(name: str) -> str:
@@ -107,7 +108,11 @@ def elf_sizes(elf: pathlib.Path) -> dict:
 
 def source_lines(directory: pathlib.Path) -> int:
     count = 0
-    for path in (directory / "src").rglob("*.rs"):
+    source_paths = (
+        path for path in (directory / "src").rglob("*")
+        if path.suffix in {".rs", ".c", ".h"}
+    )
+    for path in source_paths:
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped and not stripped.startswith("//"):
@@ -225,7 +230,7 @@ def main() -> int:
         ok, stderr = build(directory)
         if not ok:
             offline = "failed to get" in stderr or "network" in stderr or "download" in stderr
-            if name == "embassy-min" and offline:
+            if name.startswith("embassy-") and offline:
                 report["results"][name] = {"skipped": "registry_unreachable"}
                 continue
             report["results"][name] = {"failed": True}
