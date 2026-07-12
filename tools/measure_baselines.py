@@ -30,7 +30,8 @@ BASE = ROOT / "core" / "baselines"
 OUT = ROOT / "_work" / "evidence" / "baselines.json"
 BUDGETS = ROOT / "tools" / "baseline_budgets.json"
 TARGET = "thumbv7em-none-eabihf"
-IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "nobro-graph-min", "embassy-min")
+IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "nobro-graph-min", "embassy-min",
+                   "baremetal-complex", "nobro-graph-complex")
 
 
 def find_llvm_tool(name: str) -> str:

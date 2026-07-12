@@ -1,0 +1,24 @@
+[package]
+name = "nobro-graph-complex"
+version = "0.1.0"
+edition = "2021"
+
+# The COMPLEX workload (Wave 59), NobroRTOS graph API: a five-stage pipeline
+# (fusion -> control -> radio / storage, plus diagnostics) with channel-derived
+# capabilities and backpressure - declared once, by name, with safe defaults.
+# Directly answers "can't handle complex multi-task workloads": this IS one.
+
+[workspace]
+
+[dependencies]
+nobro-kernel = { path = "../../crates/nobro_kernel" }
+nobro-power = { path = "../../crates/nobro_power" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = false

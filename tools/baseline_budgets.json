@@ -11,5 +11,13 @@
   "nobro-graph-min": {
     "flash": 22000,
     "static_ram": 1024
+  },
+  "nobro-graph-complex": {
+    "flash": 26000,
+    "static_ram": 1024
+  },
+  "baremetal-complex": {
+    "flash": 2048,
+    "static_ram": 256
   }
 }

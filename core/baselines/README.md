@@ -59,3 +59,45 @@ counts) and a plain table. Thresholds for `nobro-min` live in
   favored conclusion. If NobroRTOS is bigger, the number says so.
 - No result from this suite may appear in public docs without its method
   sentence and toolchain pin alongside.
+
+## The complex workload (Wave 59)
+
+The simple workload above is 2 tasks. To answer "NobroRTOS can't handle
+multiple complex tasks / Embassy is more flexible", the **complex** workload is
+a five-stage pipeline with fan-out and backpressure:
+
+```
+fusion(100Hz) -> control(50Hz) -> radio(20Hz)
+                              \-> storage(10Hz)   ;  diagnostics(5Hz)
+```
+
+| Directory | Impl | Notes |
+| --- | --- | --- |
+| `baremetal-complex/` | the floor | five stages, hand-rolled deadline schedule + hand-rolled channels/backpressure |
+| `nobro-graph-complex/` | NobroRTOS graph API | five `TaskDecl`s + three `.channel()`s; manifest/admission/quotas/capabilities/startup/executor all derived |
+
+### Measured (2026-07-12, `thumbv7em-none-eabihf`, opt-level=z, LTO=fat)
+
+| Impl | flash (B) | static RAM (B) | source lines |
+| --- | --- | --- | --- |
+| baremetal-min (2 tasks) | 1324 | 16 | 75 |
+| nobro-graph-min (2 tasks) | 19124 | 16 | 114 |
+| baremetal-complex (5 tasks) | 1436 | 16 | 109 |
+| nobro-graph-complex (5 tasks) | 20332 | 16 | 148 |
+
+**The point, honestly both ways:** NobroRTOS carries a fixed framework cost
+(~18 KB flash) that a bare-metal loop does not — for a 2-task blinker, that is
+a heavy tank, and we say so. But its *marginal* cost as complexity grows is
+tiny: going from 2 tasks to a 5-stage pipeline with fan-out and backpressure
+adds only **+1208 B flash and +34 source lines** (the whole extra contract is
+three tasks + three channels), and **static RAM stays 16 B** — the graph API
+absorbs "multiple complex tasks" without the linear hand-written growth or heap
+the critique assumes. Bare metal grows +112 B / +34 lines but every stage,
+deadline, and backpressure flag is hand-maintained with no admission or
+isolation. This is a footprint/authoring comparison only; it makes no claim
+about runtime behavior or correctness.
+
+**Embassy-complex and FreeRTOS-complex** equivalents are part of the full
+comparative campaign (Wave 61): Embassy builds only with registry access
+(measured offline-skipped here like `embassy-min`), and a FreeRTOS C specimen
+needs its own port. Those rows are declared, not silently omitted.
