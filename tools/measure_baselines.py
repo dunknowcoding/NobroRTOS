@@ -234,7 +234,7 @@ def main() -> int:
         elf = directory / "target" / TARGET / "release" / name
         sizes = elf_sizes(elf)
         sizes["source_lines"] = source_lines(directory)
-        if name in ("nobro-min", "nobro-graph-min"):
+        if name in ("nobro-min", "nobro-graph-min", "nobro-graph-complex"):
             breakdown = crate_breakdown(find_llvm_tool("llvm-nm"), elf)
             if args.breakdown:
                 sizes["flash_by_crate"] = breakdown

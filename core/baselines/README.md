@@ -101,3 +101,22 @@ about runtime behavior or correctness.
 comparative campaign (Wave 61): Embassy builds only with registry access
 (measured offline-skipped here like `embassy-min`), and a FreeRTOS C specimen
 needs its own port. Those rows are declared, not silently omitted.
+
+## Profile isolation, symbol-attributed (Wave 60)
+
+Footprint is attributed to crates at the symbol level (`llvm-nm --size-sort`),
+and profiles are **dependency sets enforced by that attribution**, not feature
+flags that could drift. The `minimal` profile forbids the service crates
+(`nobro_secure`, `nobro_crypto`, `nobro_net`, `nobro_storage`,
+`nobro_database`, `nobro_ai`, `nobro_ml`, `nobro_nn`) from appearing in flash
+at all — selecting a service = adding its crate; not selecting it = it does not
+exist in the binary.
+
+The check now covers the COMPLEX build too. `nobro-graph-complex` (the 5-stage
+fan-out+backpressure pipeline) is `minimal_profile_clean: true`: its 20,332 B
+attribute to `nobro_kernel` (7,106 B) + application code (10,192 B) +
+compiler-builtins/core only — **zero** accidental service-crate linkage. Adding
+tasks does not drag in unselected services, so the "minimal profile" claim
+survives complexity. `managed` (+secure/storage/database) and `assured`
+(+net/fleet/ai) are the larger dependency sets, each provable by the same
+symbol-level attribution rather than by trusting a feature flag.
