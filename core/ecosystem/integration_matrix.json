@@ -63,11 +63,13 @@
     },
     {
       "id": "multicore_graph",
-      "status": "heartbeat_only",
+      "status": "integrated",
       "evidence_path": "core/ports/rp2350/src/main.rs",
-      "required_tokens": ["CORE1_TICKS"],
+      "required_tokens": ["XCORE_WORK", "ReactorExecutor::bind", "CORE1_PROCESSED"],
+      "forbidden_tokens": ["CORE1_TICKS"],
       "closure_path": "core/crates/nobro_kernel/src/multicore.rs",
-      "closure_path_state": "absent",
+      "closure_path_state": "present",
+      "note": "Wave 57 placement contract (plan_placement, per-core admission) + Wave 58 real core1 reactor draining a cross-core MpmcChannel; compile-verified for thumbv8m + host/Miri cross-core stall model. Physical dual-core throughput/isolation on real RP2350 silicon is bench-gated (no board on the primary bench).",
       "review": "MC-01"
     },
     {

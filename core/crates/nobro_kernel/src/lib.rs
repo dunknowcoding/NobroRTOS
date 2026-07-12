@@ -56,6 +56,7 @@ pub use admission::{
 pub use admission_analysis::{AdmissionAnalysis, ModuleCost, ShedError, ShedPlan};
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
+pub use async_mpmc::{MpmcChannel, TaskGroup, WaitError, WaitQueue};
 pub use async_rt::{
     join2, select2, AsyncCore, CancelToken, Channel, Either, ReactorError, ReactorExecutor,
     ReactorStats, Signal, Sleep, TimerQueue,
@@ -111,6 +112,7 @@ pub use module_ctx::ModuleCtx;
 pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
+pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{ImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};

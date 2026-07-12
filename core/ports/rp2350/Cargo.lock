@@ -393,6 +393,7 @@ dependencies = [
  "cortex-m-rt",
  "nobro-conformance",
  "nobro-hal",
+ "nobro-kernel",
  "panic-halt",
  "rp235x-hal",
  "usb-device",

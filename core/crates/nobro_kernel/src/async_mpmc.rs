@@ -490,6 +490,72 @@ mod tests {
     }
 
     #[test]
+    fn cross_core_transport_survives_a_consumer_core_stall(/* Wave 58 model */) {
+        // Model two cores as two independent reactors sharing one MpmcChannel:
+        // core A produces work, core B consumes it. We inject a "core B stalled"
+        // fault by NOT running its reactor for several rounds while A keeps
+        // producing (the bounded channel backpressures A), then resume B and
+        // require every item delivered exactly once — cross-core transport +
+        // core-stall fault + bounded recovery, all deterministic under Miri.
+        static XCORE: MpmcChannel<u32, 2, 2> = MpmcChannel::new();
+        static DELIVERED: AtomicU32 = AtomicU32::new(0);
+        static SUM: AtomicU32 = AtomicU32::new(0);
+        let core_a = leak_core::<1>();
+        let core_b = leak_core::<1>();
+        let mut exec_a = ReactorExecutor::bind(core_a);
+        let mut exec_b = ReactorExecutor::bind(core_b);
+
+        let producer = pin!(async {
+            for i in 1..=5u32 {
+                XCORE.send(i).await.unwrap(); // parks when the 2-slot ring is full
+            }
+        });
+        let consumer = pin!(async {
+            for _ in 0..5 {
+                let v = XCORE.recv().await.unwrap();
+                SUM.fetch_add(v, Ordering::Relaxed);
+                DELIVERED.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        exec_a.spawn(producer).unwrap();
+        exec_b.spawn(consumer).unwrap();
+
+        // Phase 1: run ONLY core A. It fills the 2-slot channel and then parks
+        // (backpressure) — the stalled consumer cannot lose or duplicate items.
+        for _ in 0..5 {
+            exec_a.run_ready(4);
+        }
+        assert_eq!(exec_a.live(), 1, "producer parked on a full channel");
+        assert_eq!(
+            DELIVERED.load(Ordering::Relaxed),
+            0,
+            "consumer core stalled"
+        );
+        assert_eq!(XCORE.len(), 2, "exactly the ring capacity buffered");
+
+        // Phase 2: resume core B; drive both to completion.
+        for _ in 0..20 {
+            exec_a.run_ready(4);
+            exec_b.run_ready(4);
+            if exec_a.live() == 0 && exec_b.live() == 0 {
+                break;
+            }
+        }
+        assert_eq!(exec_a.live(), 0, "producer completed after B resumed");
+        assert_eq!(exec_b.live(), 0, "consumer drained every item");
+        assert_eq!(
+            DELIVERED.load(Ordering::Relaxed),
+            5,
+            "each item delivered once"
+        );
+        assert_eq!(
+            SUM.load(Ordering::Relaxed),
+            15,
+            "1+2+3+4+5, none lost/duplicated"
+        );
+    }
+
+    #[test]
     fn task_group_cancels_all_members_and_joins() {
         static GROUP: TaskGroup<3> = TaskGroup::new();
         static CANCELLED: AtomicU32 = AtomicU32::new(0);

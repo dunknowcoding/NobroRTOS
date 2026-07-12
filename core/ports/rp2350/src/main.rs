@@ -19,6 +19,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use hal::multicore::{Multicore, Stack};
 
 use nobro_conformance::run_all;
+use nobro_kernel::{AsyncCore, MpmcChannel, ReactorExecutor};
 
 mod portable;
 
@@ -29,15 +30,37 @@ pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 const XTAL_FREQ_HZ: u32 = 12_000_000;
 
-// M94: the second core runs an independent task; core0 watches its live tick counter to
-// prove both Cortex-M33 cores execute concurrently.
-static mut CORE1_STACK: Stack<2048> = Stack::new();
-static CORE1_TICKS: AtomicU32 = AtomicU32::new(0);
+// Wave 58: core1 runs a REAL bounded reactor (not a heartbeat counter). It drains
+// work items core0 sends over a cross-core `MpmcChannel`, computes a running
+// multiply-accumulate, and publishes the live result. The channel is the bounded
+// cross-core transport from Wave 56 (critical-section based, so a waker set on
+// core1's `AsyncCore` from core0's send is observed across the core boundary).
+static mut CORE1_STACK: Stack<4096> = Stack::new();
+static CORE1_ACC: AtomicU32 = AtomicU32::new(0); // live result core0 reports
+static CORE1_PROCESSED: AtomicU32 = AtomicU32::new(0);
+static XCORE_WORK: MpmcChannel<u32, 4, 2> = MpmcChannel::new();
+static CORE1_REACTOR: AsyncCore<1> = AsyncCore::new();
 
 fn core1_task() {
+    let mut exec = ReactorExecutor::bind(&CORE1_REACTOR);
+    // The worker never completes (a service loop), so this stack-pinned future is
+    // valid for the whole `-> !` lifetime of core1.
+    let worker = core::pin::pin!(async {
+        loop {
+            let item = XCORE_WORK.recv().await; // parks when empty; core0 wakes it
+            let Some(value) = item else { continue };
+            // Real work: a saturating multiply-accumulate fusion step.
+            let acc = CORE1_ACC
+                .load(Ordering::Relaxed)
+                .wrapping_add(value.wrapping_mul(3));
+            CORE1_ACC.store(acc, Ordering::Relaxed);
+            CORE1_PROCESSED.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    exec.spawn(worker).ok();
     loop {
-        CORE1_TICKS.fetch_add(1, Ordering::Relaxed);
-        cortex_m::asm::delay(2_000_000);
+        exec.run_ready(8);
+        cortex_m::asm::wfe(); // sleep until core0's send (or a timer) wakes us
     }
 }
 
@@ -120,11 +143,20 @@ fn main() -> ! {
     loop {
         let _ = usb_dev.poll(&mut [&mut serial]);
 
+        // Feed a work item to core1 over the cross-core channel each iteration
+        // (non-blocking; the 4-slot ring backpressures if core1 falls behind),
+        // then wake core1's reactor so it drains and computes.
+        let mut feed: u32 = 1;
+        if XCORE_WORK.try_send(feed).is_ok() {
+            feed = feed.wrapping_add(1);
+            cortex_m::asm::sev(); // wake core1's wfe
+        }
+
         // heartbeat once a second
         let now = timer.get_counter();
         if (now - last_report).to_millis() >= 1000 {
             last_report = now;
-            let mut msg = [0u8; 112];
+            let mut msg = [0u8; 128];
             let mut pos = 0;
             put_bytes(
                 &mut msg,
@@ -134,8 +166,12 @@ fn main() -> ! {
             put_u32(&mut msg, &mut pos, u32::from(timebase_ok));
             put_bytes(&mut msg, &mut pos, b" all_pass=");
             put_u32(&mut msg, &mut pos, u32::from(all));
-            put_bytes(&mut msg, &mut pos, b" cores=2 core1=");
-            put_u32(&mut msg, &mut pos, CORE1_TICKS.load(Ordering::Relaxed));
+            // Report the LIVE cross-core reactor result: how many work items
+            // core1 processed and its running accumulator.
+            put_bytes(&mut msg, &mut pos, b" cores=2 core1_processed=");
+            put_u32(&mut msg, &mut pos, CORE1_PROCESSED.load(Ordering::Relaxed));
+            put_bytes(&mut msg, &mut pos, b" core1_acc=");
+            put_u32(&mut msg, &mut pos, CORE1_ACC.load(Ordering::Relaxed));
             if pos + 2 <= msg.len() {
                 msg[pos] = b'\r';
                 msg[pos + 1] = b'\n';
