@@ -82,6 +82,27 @@ graph scaffold, simulates it, and decodes the resulting report. It can also impo
 and line-attribute Embassy or FreeRTOS task graphs; hardware mode delegates to the
 state-restoring HIL evaluator and is explicit about which repository app it flashes.
 
+For production nRF firmware, the one-file path uses the same small declaration to emit
+both the admission workload and a `no_std` firmware graph:
+
+```text
+app rover
+board nrf52840-s140
+control motor every 5ms
+sensor imu every 10ms -> motor
+service camera every 40ms
+```
+
+```bash
+python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
+python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
+```
+
+The board line is mandatory: it selects the SoftDevice or no-SoftDevice linker layout
+instead of guessing. Role defaults infer an initial budget and memory estimate; review
+`workload.json` before hardware use. This is a measured five-line authoring path, not a
+claim that every application or generated binary is smaller than another RTOS.
+
 ## Who It's For
 
 | You are a&hellip; | NobroRTOS gives you |

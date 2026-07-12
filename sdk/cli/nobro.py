@@ -15,6 +15,7 @@
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
 | contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
 | project  | create/import/explain/build/run/report apps   | tools/nobro_project.py |
+| firmware | generate/build nRF firmware from app.nobro   | tools/nobro_firmware_project.py |
 
 Each command accepts its underlying tool's flags unchanged - `nobro eval --help`
 shows exactly what `tools/nobro_hw_eval.py --help` shows. The mapping is data, so
@@ -38,6 +39,7 @@ COMMANDS = {
     "sign": "sign_firmware.py",
     "contract": "nobro_contract_tool.py",
     "project": "nobro_project.py",
+    "firmware": "nobro_firmware_project.py",
 }
 PACKAGE_KINDS = {
     "arduino": "package_arduino.py",

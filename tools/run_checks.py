@@ -119,6 +119,8 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
         ("ecosystem truth", [py, "tools/check_ecosystem_matrix.py"], ROOT),
+        ("firmware project", [py, "tools/nobro_firmware_project.py", "--selftest"], ROOT),
+        ("authoring comparison", [py, "tools/measure_authoring.py"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),

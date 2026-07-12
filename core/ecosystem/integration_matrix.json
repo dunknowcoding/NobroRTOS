@@ -14,11 +14,11 @@
   "integrations": [
     {
       "id": "project_firmware",
-      "status": "host_only",
-      "evidence_path": "tools/nobro_project.py",
-      "required_tokens": ["does not flash the host scaffold binary"],
+      "status": "integrated",
+      "evidence_path": "tools/nobro_firmware_project.py",
+      "required_tokens": ["Generate host-readable contracts and production firmware", "nrf52840-s140"],
       "closure_path": "tools/nobro_firmware_project.py",
-      "closure_path_state": "absent",
+      "closure_path_state": "present",
       "review": "UX-04"
     },
     {

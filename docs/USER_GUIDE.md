@@ -413,6 +413,18 @@ Embassy or FreeRTOS sources and generates an
 ignored scaffold plus a line-attributed adaptation report; it never silently guesses
 production budgets. `project run` combines explain, build, simulate, and report decode.
 
+If the desired output is production nRF firmware rather than a host scaffold, use one
+short `app.nobro` declaration:
+
+```bash
+python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
+python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
+```
+
+The generator emits `workload.json`, `generation.json`, and a compiling `no_std` Cargo
+crate from the same input. The explicit board profile selects the S140 or no-SoftDevice
+memory layout. Defaults reduce beginner boilerplate while keeping budget review visible.
+
 `gen-app` turns a declarative module spec into a **buildable NobroRTOS firmware app**.
 You describe the module (criticality + memory budget); the generator emits a workspace
 crate whose `main.rs` assembles the manifest via `BootAssembly`, admits it, and exports

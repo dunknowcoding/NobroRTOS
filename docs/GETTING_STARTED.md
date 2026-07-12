@@ -153,6 +153,21 @@ are placeholders that must be reviewed before hardware use.
 It evaluates the selected repository firmware app and does not pretend the host
 scaffold binary is directly flashable.
 
+### One-file production firmware
+
+The concise firmware path starts from `tutorials/rover-one-file/app.nobro` and generates
+a real `no_std` nRF crate plus the workload consumed by admission/explain:
+
+```bash
+python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
+python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
+```
+
+`board nrf52840-s140` and `board nrf52840-nosd` are deliberately distinct linker
+profiles. The generator never chooses between them from a connected endpoint. Generated
+files live in ignored `_work/projects` by default. Inferred role budgets are safe
+starting estimates, not measured WCET; inspect them before flashing an application.
+
 NobroRTOS is not tied to the Arduino IDE or VS Code. The core builds from a terminal on
 Linux, macOS, or Windows with Rust, Python, the selected target support, and any external
 flash utility required by that target.

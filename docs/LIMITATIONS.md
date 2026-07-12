@@ -16,7 +16,7 @@ including rows that are still absent.
 | Timing evidence | Admission uses declared or measured budgets and pessimistic interference | Blocking terms and unmeasured platform/compiler paths are not formal WCET proofs |
 | Async | No allocation; up to 32 reactor tasks per core; fixed timer/channel capacities | Channels retain one parked sender and receiver waker, so use them as single-producer/single-consumer primitives or add arbitration |
 | Composition | One graph derives manifest, startup, task metadata, labels, and unambiguous mailbox grants | Capability kinds remain a closed bit set, and stable numeric module codes remain on wire formats |
-| Project workflow | `nobro project` creates/imports, explains, builds, simulates, reports, and delegates HIL | Its generated Cargo program is a host graph. Hardware mode evaluates a selected repository firmware app; imports do not infer production budgets or interrupt/DMA ownership |
+| Project workflow | `nobro project` creates/imports, explains, builds, simulates, and reports; `nobro firmware` generates a real nRF `no_std` crate and admission workload from one declaration | Production generation currently covers explicit nRF52840 S140/no-SoftDevice layouts. It does not yet bind application behavior to arbitrary providers, flash generated firmware, or infer measured WCET/interrupt/DMA ownership |
 
 ## Resources
 

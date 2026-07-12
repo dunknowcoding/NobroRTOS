@@ -13,6 +13,8 @@ Every file here has one job. Users normally drive these through the SDK command
 | `ci_matrix.sh` | extended Rust build matrix (host tests, portability, ports) |
 | `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
 | `nobro_project.py` | create/import/explain/build/simulate/flash/report project flow |
+| `nobro_firmware_project.py` | generate an admitted workload and production nRF firmware from one short app declaration |
+| `measure_authoring.py` | reproduce the scoped three-periodic-task authoring comparison |
 
 ## Gates (each also runs standalone)
 

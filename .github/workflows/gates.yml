@@ -27,6 +27,10 @@ jobs:
         run: python tools/check_board_profiles.py
       - name: ecosystem integration truth
         run: python tools/check_ecosystem_matrix.py
+      - name: one-file firmware project
+        run: |
+          python tools/nobro_firmware_project.py --selftest
+          python tools/measure_authoring.py
       - name: sdk manifest
         run: python tools/check_sdk_manifest.py
       - name: arduino package drift
