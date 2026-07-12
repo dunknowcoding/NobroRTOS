@@ -144,9 +144,15 @@ pub trait HalDeadline {
     /// Caller must own the deadline timer's lease and call this once; it configures
     /// the timer peripheral's mode, prescaler, and compare registers.
     unsafe fn init();
+    /// # Safety
+    /// The deadline lease must be live and initialization complete.
     unsafe fn enable_interrupt();
+    /// # Safety
+    /// Call only from the configured deadline interrupt while its lease is live.
     unsafe fn on_interrupt();
     /// Polled compare path (used when NVIC path is disabled).
+    /// # Safety
+    /// The deadline timer must be initialized and protected by a live lease session.
     unsafe fn poll_compare(on_tick: impl FnOnce(u64));
 }
 

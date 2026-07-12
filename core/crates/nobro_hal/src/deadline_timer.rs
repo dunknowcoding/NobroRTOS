@@ -3,6 +3,8 @@
 use cortex_m::peripheral::NVIC;
 use nrf52840_pac::TIMER1;
 
+use crate::lease::LeaseError;
+
 const PRESCALER: u32 = 4;
 const TICKS_PER_PERIOD: u32 = 20_000;
 
@@ -24,6 +26,21 @@ impl DeadlineTimer {
         (*t).shorts.write(|w| w.compare0_clear().set_bit());
         (*t).intenset.write(|w| w.compare0().set_bit());
         (*t).tasks_start.write(|w| w.bits(1));
+    }
+
+    /// Reprogram the 1 MHz compare interval while the caller holds the live TIMER1
+    /// session. Stops/clears/restarts as one bounded register sequence.
+    pub(crate) unsafe fn set_period_us(period_us: u32) -> Result<(), LeaseError> {
+        if period_us == 0 {
+            return Err(LeaseError::Unsupported);
+        }
+        let t = TIMER1::ptr();
+        (*t).tasks_stop.write(|w| w.bits(1));
+        (*t).tasks_clear.write(|w| w.bits(1));
+        (*t).events_compare[0].reset();
+        (*t).cc[0].write(|w| w.bits(period_us));
+        (*t).tasks_start.write(|w| w.bits(1));
+        Ok(())
     }
 
     pub fn enable_irq() {

@@ -90,8 +90,6 @@ const SAL_DEMO_DEPENDENCIES: [StartupDependency; 2] = [
     StartupDependency::new(ModuleId::Sensor, ModuleId::Kernel),
 ];
 
-fn on_deadline_slot() {}
-
 #[cortex_m_rt::entry]
 fn main() -> ! {
     write_board_profile_report();
@@ -105,8 +103,12 @@ fn main() -> ! {
     let profile = Hal::servo_profile();
     let scheduling = unsafe { nobro_hal::NrfSchedulingSession::acquire(1, profile) }
         .unwrap_or_else(|_| defmt::panic!("scheduling session"));
+    let period_us = 1_000_000u32 / profile.frequency_hz;
+    Scheduler::reconfigure_tick_period(period_us, |period| {
+        scheduling.set_deadline_period_us(period)
+    })
+    .unwrap_or_else(|_| defmt::panic!("deadline cadence"));
     unsafe {
-        let _ = Scheduler::set_deadline_handler(on_deadline_slot);
         ppi::led_init_output();
     }
 
@@ -134,10 +136,10 @@ fn main() -> ! {
 
     loop {
         let now = scheduling.now_us().unwrap_or(0);
-        let _ = scheduling.poll_compare(|t| {
-            Scheduler::on_deadline_tick(t);
+        let _ = scheduling.poll_compare(|t| Scheduler::on_deadline_tick(t));
+        if Scheduler::take_pending_deadline_ticks(1) != 0 {
             try_servo_step(&mut servo, now);
-        });
+        }
 
         if let Ok(Some(sample)) = sensor.poll() {
             IMU_SAMPLES.fetch_add(1, Ordering::AcqRel);

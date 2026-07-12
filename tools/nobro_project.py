@@ -100,6 +100,8 @@ def render_host_main(workload: dict) -> str:
         expression += f".criticality(Criticality::{RUST_CRITICALITY[criticality]})"
         if int(task.get("budget_us", 0)):
             expression += f".budget_us({int(task['budget_us'])})"
+        if int(task.get("blocking_us", 0)):
+            expression += f".blocking_us({int(task['blocking_us'])})"
         for dependency in task.get("after", []):
             expression += f".after({json.dumps(dependency)})"
         chain += f"        .task({expression}).unwrap()\n"
@@ -208,11 +210,14 @@ def startup_order(workload: dict) -> list[str]:
         criticality = task.get("criticality", "best_effort")
         if criticality not in adm.CRITICALITY:
             raise ValueError(f"task {task['name']}: unknown criticality {criticality}")
-        for field in ("flash", "ram", "pool", "period_us", "budget_us"):
+        for field in ("flash", "ram", "pool", "period_us", "budget_us", "blocking_us"):
             if int(task.get(field, 0)) < 0:
                 raise ValueError(f"task {task['name']}: {field} must be non-negative")
         if int(task.get("budget_us", 0)) > int(task.get("period_us", 0)):
             raise ValueError(f"task {task['name']}: budget_us exceeds period_us")
+        if (int(task.get("budget_us", 0)) + int(task.get("blocking_us", 0))
+                > int(task.get("period_us", 0))):
+            raise ValueError(f"task {task['name']}: budget_us + blocking_us exceeds period_us")
         after = task.get("after", [])
         if not isinstance(after, list) or len(after) > 4 or len(set(after)) != len(after):
             raise ValueError(f"task {task['name']}: after must contain up to 4 unique names")

@@ -1,8 +1,5 @@
 //! Deadline slot scheduler (Phase 1): TIMER1 drives 50 Hz hard-real-time ticks.
 
-use core::cell::Cell;
-
-use critical_section::Mutex;
 use portable_atomic::{AtomicU32, Ordering};
 
 use crate::KernelError;
@@ -18,14 +15,12 @@ static DEADLINE_MISSES: AtomicU32 = AtomicU32::new(0);
 static JITTER_TOLERANCE_US: AtomicU32 = AtomicU32::new(DEFAULT_JITTER_TOLERANCE_US);
 static TICK_PERIOD_US: AtomicU32 = AtomicU32::new(DEADLINE_PERIOD_US as u32);
 static STATS_SEQUENCE: AtomicU32 = AtomicU32::new(0);
-
-pub type DeadlineHandler = fn();
-
-static DEADLINE_HANDLER: Mutex<Cell<Option<DeadlineHandler>>> = Mutex::new(Cell::new(None));
+static PENDING_DEADLINE_TICKS: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeadlineHandlerError {
-    AlreadyRegistered,
+pub enum TickConfigError<E> {
+    ZeroPeriod,
+    Provider(E),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -39,39 +34,17 @@ pub struct SchedulerStats {
 pub struct Scheduler;
 
 impl Scheduler {
-    /// # Safety
-    /// Must be set before the scheduler tick starts; the handler runs in interrupt
-    /// context and must be interrupt-safe.
-    pub unsafe fn set_deadline_handler(
-        handler: DeadlineHandler,
-    ) -> Result<(), DeadlineHandlerError> {
-        critical_section::with(|cs| {
-            let slot = DEADLINE_HANDLER.borrow(cs);
-            if slot.get().is_some() {
-                Err(DeadlineHandlerError::AlreadyRegistered)
-            } else {
-                slot.set(Some(handler));
-                Ok(())
-            }
-        })
-    }
-
-    /// # Safety
-    /// The caller must first quiesce the timer interrupt and ensure the previous
-    /// handler has returned.
-    pub unsafe fn clear_deadline_handler() {
-        critical_section::with(|cs| DEADLINE_HANDLER.borrow(cs).set(None));
-    }
-
     pub fn reset_stats() {
-        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-        EXPECTED_NEXT_US.store(0, Ordering::Release);
-        MAX_JITTER_US.store(0, Ordering::Release);
-        TICK_COUNT.store(0, Ordering::Release);
-        DEADLINE_MISSES.store(0, Ordering::Release);
-        JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
-        TICK_PERIOD_US.store(DEADLINE_PERIOD_US as u32, Ordering::Release);
-        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        critical_section::with(|_| {
+            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+            EXPECTED_NEXT_US.store(0, Ordering::Release);
+            MAX_JITTER_US.store(0, Ordering::Release);
+            TICK_COUNT.store(0, Ordering::Release);
+            DEADLINE_MISSES.store(0, Ordering::Release);
+            PENDING_DEADLINE_TICKS.store(0, Ordering::Release);
+            JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
+            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        });
     }
 
     pub fn max_jitter_us() -> u32 {
@@ -91,28 +64,40 @@ impl Scheduler {
     }
 
     pub fn set_jitter_tolerance_us(tolerance_us: u32) {
-        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-        JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
-        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        critical_section::with(|_| {
+            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+            JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
+            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        });
     }
 
     pub fn tick_period_us() -> u32 {
         TICK_PERIOD_US.load(Ordering::Acquire)
     }
 
-    /// Configure the deadline cadence (SCH-05). Must match the reprogrammed
-    /// hardware timer compare interval; call with the tick source quiesced,
-    /// then `reset_stats()` so jitter is measured against the new phase.
-    /// Zero periods are rejected (the previous cadence is kept).
-    pub fn set_tick_period_us(period_us: u32) -> bool {
+    /// Atomically reprogram the hardware tick source and publish its software cadence.
+    /// The callback executes inside the critical section and must perform only bounded
+    /// provider register work. On provider failure, the old period and phase remain.
+    pub fn reconfigure_tick_period<E>(
+        period_us: u32,
+        program_provider: impl FnOnce(u32) -> Result<(), E>,
+    ) -> Result<(), TickConfigError<E>> {
         if period_us == 0 {
-            return false;
+            return Err(TickConfigError::ZeroPeriod);
         }
-        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-        TICK_PERIOD_US.store(period_us, Ordering::Release);
-        EXPECTED_NEXT_US.store(0, Ordering::Release);
-        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
-        true
+        critical_section::with(|_| {
+            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+            let result = match program_provider(period_us) {
+                Ok(()) => {
+                    TICK_PERIOD_US.store(period_us, Ordering::Release);
+                    EXPECTED_NEXT_US.store(0, Ordering::Release);
+                    Ok(())
+                }
+                Err(error) => Err(TickConfigError::Provider(error)),
+            };
+            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+            result
+        })
     }
 
     pub fn stats() -> SchedulerStats {
@@ -137,32 +122,50 @@ impl Scheduler {
 
     /// Called from TIMER1 ISR or polled compare handler.
     pub fn on_deadline_tick(now_us: u64) {
-        STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-        let now_lo = now_us as u32;
-        let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
-        if expected != 0 {
-            let late = now_lo.wrapping_sub(expected);
-            let early = expected.wrapping_sub(now_lo);
-            let jitter = late.min(early);
-            MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
-            if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
-                DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
+        critical_section::with(|_| {
+            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+            let now_lo = now_us as u32;
+            let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
+            if expected != 0 {
+                let late = now_lo.wrapping_sub(expected);
+                let early = expected.wrapping_sub(now_lo);
+                let jitter = late.min(early);
+                MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
+                if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
+                    DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
+                }
             }
-        }
-        let period = TICK_PERIOD_US.load(Ordering::Acquire);
-        let next = if expected == 0 {
-            now_lo.wrapping_add(period)
-        } else {
-            expected.wrapping_add(period)
-        };
-        EXPECTED_NEXT_US.store(next, Ordering::Release);
-        TICK_COUNT.fetch_add(1, Ordering::AcqRel);
-        STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+            let period = TICK_PERIOD_US.load(Ordering::Acquire);
+            let next = if expected == 0 {
+                now_lo.wrapping_add(period)
+            } else {
+                expected.wrapping_add(period)
+            };
+            EXPECTED_NEXT_US.store(next, Ordering::Release);
+            TICK_COUNT.fetch_add(1, Ordering::AcqRel);
+            PENDING_DEADLINE_TICKS.store(
+                PENDING_DEADLINE_TICKS
+                    .load(Ordering::Relaxed)
+                    .saturating_add(1),
+                Ordering::Release,
+            );
+            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        });
+    }
 
-        let handler = critical_section::with(|cs| DEADLINE_HANDLER.borrow(cs).get());
-        if let Some(handler) = handler {
-            handler();
+    /// Claim at most `max_ticks` ISR releases for execution as ordinary admitted work.
+    /// The ISR never calls user code; consumers drain this counter under their executor
+    /// budget/priority domain. Excess releases remain pending (saturating at `u32::MAX`).
+    pub fn take_pending_deadline_ticks(max_ticks: u32) -> u32 {
+        if max_ticks == 0 {
+            return 0;
         }
+        critical_section::with(|_| {
+            let pending = PENDING_DEADLINE_TICKS.load(Ordering::Acquire);
+            let claimed = pending.min(max_ticks);
+            PENDING_DEADLINE_TICKS.store(pending - claimed, Ordering::Release);
+            claimed
+        })
     }
 
     pub fn note_error(err: KernelError) -> crate::Action {
@@ -216,9 +219,18 @@ pub fn default_action(err: &KernelError) -> crate::Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate std;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    fn lock() -> MutexGuard<'static, ()> {
+        TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+    }
 
     #[test]
     fn reset_clears_expected_deadline() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         Scheduler::reset_stats();
         Scheduler::on_deadline_tick(1_000);
         Scheduler::on_deadline_tick(1_000 + DEADLINE_PERIOD_US + 7);
@@ -238,6 +250,8 @@ mod tests {
 
     #[test]
     fn jitter_handles_u32_wraparound() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         Scheduler::reset_stats();
         let first = u32::MAX as u64 - 5;
         Scheduler::on_deadline_tick(first);
@@ -247,6 +261,8 @@ mod tests {
 
     #[test]
     fn jitter_tolerance_is_configurable() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         Scheduler::reset_stats();
         Scheduler::set_jitter_tolerance_us(25);
         Scheduler::on_deadline_tick(1_000);
@@ -262,6 +278,8 @@ mod tests {
 
     #[test]
     fn late_tick_does_not_shift_the_periodic_phase() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         Scheduler::reset_stats();
         Scheduler::on_deadline_tick(1_000);
         Scheduler::on_deadline_tick(21_007);
@@ -271,19 +289,45 @@ mod tests {
 
     #[test]
     fn tick_cadence_is_configurable_and_rejects_zero() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         Scheduler::reset_stats();
-        assert!(!Scheduler::set_tick_period_us(0));
+        assert_eq!(
+            Scheduler::reconfigure_tick_period(0, |_| Ok::<_, ()>(())),
+            Err(TickConfigError::ZeroPeriod)
+        );
         assert_eq!(Scheduler::tick_period_us(), DEADLINE_PERIOD_US as u32);
-        assert!(Scheduler::set_tick_period_us(1_000)); // 1 kHz control loop
+        assert_eq!(
+            Scheduler::reconfigure_tick_period(1_000, |_| Ok::<_, ()>(())),
+            Ok(())
+        );
         Scheduler::on_deadline_tick(10_000);
         Scheduler::on_deadline_tick(11_004);
         assert_eq!(Scheduler::max_jitter_us(), 4);
-        Scheduler::reset_stats(); // restores the default cadence
+        Scheduler::reset_stats(); // stats reset preserves the real provider cadence
+        assert_eq!(Scheduler::tick_period_us(), 1_000);
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
         assert_eq!(Scheduler::tick_period_us(), DEADLINE_PERIOD_US as u32);
     }
 
     #[test]
+    fn provider_failure_keeps_old_cadence_and_isr_never_calls_user_code() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(20_000, |_| Ok::<_, ()>(())).unwrap();
+        let error = Scheduler::reconfigure_tick_period(500, |_| Err("provider rejected"));
+        assert_eq!(error, Err(TickConfigError::Provider("provider rejected")));
+        assert_eq!(Scheduler::tick_period_us(), 20_000);
+        Scheduler::reset_stats();
+        Scheduler::on_deadline_tick(10);
+        Scheduler::on_deadline_tick(20_010);
+        assert_eq!(Scheduler::take_pending_deadline_ticks(1), 1);
+        assert_eq!(Scheduler::take_pending_deadline_ticks(8), 1);
+        assert_eq!(Scheduler::take_pending_deadline_ticks(8), 0);
+    }
+
+    #[test]
     fn millisecond_timer_saturates_before_addition() {
+        let _lock = lock();
         let timer = Timer::after_ms(u64::MAX, 10);
         assert!(timer.is_ready(u64::MAX));
         assert!(!timer.is_ready(u64::MAX - 1));

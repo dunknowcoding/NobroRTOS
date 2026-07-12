@@ -465,7 +465,7 @@ fn response_time<const N: usize>(
     task: TaskMeta,
     metas: &[Option<TaskMeta>; N],
 ) -> Result<u64, ExecError> {
-    let cost = u64::from(task.budget_us);
+    let cost = u64::from(task.budget_us).saturating_add(u64::from(task.blocking_us));
     let mut response = cost;
     // The response never needs more iterations than it has microseconds below
     // the period bound; cap defensively to stay bounded on pathological input.
@@ -807,5 +807,27 @@ mod tests {
             ),
             Err(ExecError::Sealed)
         );
+    }
+
+    #[test]
+    fn measured_blocking_term_participates_in_response_time_admission() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1000, 100).with_blocking_us(750),
+            0,
+        )
+        .unwrap();
+        exec.add_task(
+            TaskMeta::new(ModuleId::Actuator, Criticality::System, 2000, 200),
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            exec.seal(),
+            Err(ExecError::Unschedulable {
+                module: ModuleId::Sensor,
+                ..
+            })
+        ));
     }
 }

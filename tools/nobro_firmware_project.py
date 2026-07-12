@@ -29,6 +29,7 @@ LINE = re.compile(
     r"^(control|sensor|service)\s+([a-z][a-z0-9_-]{0,47})\s+"
     r"every\s+([1-9][0-9]*)(us|ms|s)(?:\s*->\s*([a-z][a-z0-9_-]{0,47}))?"
     r"(?:\s+budget\s+([1-9][0-9]*)(us|ms|s))?"
+    r"(?:\s+blocking\s+([1-9][0-9]*)(us|ms|s))?"
     r"(?:\s+memory\s+([1-9][0-9]*)/([1-9][0-9]*))?$"
 )
 BOARDS = {
@@ -73,17 +74,19 @@ def parse(text: str) -> dict:
         if not match:
             raise ValueError(f"line {number}: expected '<role> <name> every <duration> [-> <task>]' ")
         (role, name, value, unit, destination, budget_value, budget_unit,
-         flash_override, ram_override) = match.groups()
+         blocking_value, blocking_unit, flash_override, ram_override) = match.groups()
         criticality, flash, ram, divisor = ROLE[role]
         period = parse_duration(value, unit)
         budget = (parse_duration(budget_value, budget_unit)
                   if budget_value else max(1, period // divisor))
-        if budget > period:
-            raise ValueError(f"line {number}: budget exceeds period")
+        blocking = (parse_duration(blocking_value, blocking_unit)
+                    if blocking_value else 0)
+        if budget + blocking > period:
+            raise ValueError(f"line {number}: budget + blocking exceeds period")
         tasks.append({"name": name, "role": role, "criticality": criticality,
                       "flash": int(flash_override or flash),
                       "ram": int(ram_override or ram), "period_us": period,
-                      "budget_us": budget})
+                      "budget_us": budget, "blocking_us": blocking})
         if destination:
             channels.append([name, destination])
     names = [task["name"] for task in tasks]
@@ -112,7 +115,9 @@ def rust_main(spec: dict) -> str:
     constructor = {"control": "control", "sensor": "periodic", "service": "service"}
     for task in tasks:
         chain += (f'        .task(TaskDecl::{constructor[task["role"]]}('
-                  f'"{task["name"]}", {task["period_us"]})).unwrap()\n')
+                  f'"{task["name"]}", {task["period_us"]})'
+                  f'.budget_us({task["budget_us"]})'
+                  f'.blocking_us({task["blocking_us"]})).unwrap()\n')
     for source, destination in spec["workload"]["channels"]:
         chain += f'        .channel("{source}", "{destination}").unwrap()\n'
     chain += f"        .build_for::<{len(tasks) + 1}>(SystemProfile::NRF52840_CORE).unwrap()"
@@ -214,8 +219,10 @@ service camera every 40ms
     assert spec["workload"]["channels"] == [["imu", "motor"]]
     assert spec["workload"]["tasks"][1]["budget_us"] == 1000
     overridden = parse(sample.replace(
-        "control motor every 5ms", "control motor every 5ms budget 400us memory 3072/640"))
+        "control motor every 5ms",
+        "control motor every 5ms budget 400us blocking 100us memory 3072/640"))
     assert overridden["workload"]["tasks"][1]["budget_us"] == 400
+    assert overridden["workload"]["tasks"][1]["blocking_us"] == 100
     assert overridden["workload"]["tasks"][1]["ram"] == 640
     with tempfile.TemporaryDirectory() as tmp:
         source = pathlib.Path(tmp) / "app.nobro"
@@ -223,7 +230,8 @@ service camera every 40ms
         result = generate(source, pathlib.Path(tmp) / "out")
         assert result["memory_profile"] == "s140" and result["user_lines"] == 5
         assert (result["project"] / "src" / "main.rs").is_file()
-        assert "AppGraph::<3>" in (result["project"] / "src" / "main.rs").read_text()
+        generated = (result["project"] / "src" / "main.rs").read_text()
+        assert "AppGraph::<3>" in generated and ".budget_us(1000).blocking_us(0)" in generated
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown")):

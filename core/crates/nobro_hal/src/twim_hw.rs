@@ -106,10 +106,14 @@ impl Twim0 {
         configure_open_drain(u32::from(scl));
     }
 
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole transaction.
     pub unsafe fn probe(addr: u8) -> bool {
         Self::write(addr, &[], true).is_ok()
     }
 
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole scan.
     pub unsafe fn scan<F: FnMut(u8)>(mut found: F) -> u8 {
         let mut count = 0u8;
         for addr in [0x68u8, 0x69] {
@@ -127,16 +131,22 @@ impl Twim0 {
         count
     }
 
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole transaction.
     pub unsafe fn write_reg(addr: u8, reg_addr: u8, val: u8) -> Result<(), BusError> {
         Self::write(addr, &[reg_addr, val], true)
     }
 
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole transaction.
     pub unsafe fn read_reg(addr: u8, reg_addr: u8) -> Result<u8, BusError> {
         let mut buf = [0u8; 1];
         unsafe { Self::write_read(addr, &[reg_addr], &mut buf)? };
         Ok(buf[0])
     }
 
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for both transaction phases.
     pub unsafe fn write_read(addr: u8, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
         if tx.is_empty() || rx.is_empty() {
             return Err(BusError::Timeout);
@@ -148,12 +158,16 @@ impl Twim0 {
 
     /// Raw bus write of arbitrary bytes (STOP at the end). The general primitive an
     /// `embedded-hal` I2C adapter needs for `Operation::Write`.
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole transaction.
     pub unsafe fn write_bytes(addr: u8, data: &[u8]) -> Result<(), BusError> {
         Self::write(addr, data, true)
     }
 
     /// Raw bus read of `buf.len()` bytes (STOP at the end). The general primitive an
     /// `embedded-hal` I2C adapter needs for `Operation::Read`.
+    /// # Safety
+    /// Caller must hold a live initialized TWIM0 lease for the whole transaction.
     pub unsafe fn read_bytes(addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
         if buf.is_empty() {
             return Ok(());

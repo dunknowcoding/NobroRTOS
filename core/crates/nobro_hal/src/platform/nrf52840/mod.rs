@@ -58,6 +58,12 @@ impl NrfSchedulingSession {
         Ok(())
     }
 
+    /// Bounded provider half for `Scheduler::reconfigure_tick_period`.
+    pub fn set_deadline_period_us(&self, period_us: u32) -> Result<(), LeaseError> {
+        self.deadline.ensure_live()?;
+        unsafe { DeadlineTimer::set_period_us(period_us) }
+    }
+
     pub fn trigger_and_latency_us(&self) -> Result<Option<u32>, LeaseError> {
         self.timer.ensure_live()?;
         self.software_event.ensure_live()?;

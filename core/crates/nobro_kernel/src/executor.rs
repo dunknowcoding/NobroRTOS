@@ -19,6 +19,8 @@ pub struct TaskMeta {
     pub criticality: Criticality,
     pub period_us: u32,
     pub budget_us: u32,
+    /// Measured upper bound for lower-priority non-preemptible/critical-section delay.
+    pub blocking_us: u32,
 }
 
 impl TaskMeta {
@@ -33,7 +35,13 @@ impl TaskMeta {
             criticality,
             period_us,
             budget_us,
+            blocking_us: 0,
         }
+    }
+
+    pub const fn with_blocking_us(mut self, blocking_us: u32) -> Self {
+        self.blocking_us = blocking_us;
+        self
     }
 }
 
@@ -74,6 +82,7 @@ pub enum TaskTableError {
     DuplicateTask(ModuleId),
     InvalidPeriod(ModuleId),
     InvalidBudget(ModuleId),
+    InvalidBlocking(ModuleId),
 }
 
 pub struct TaskTable<const N: usize> {
@@ -91,6 +100,9 @@ impl<const N: usize> TaskTable<N> {
         }
         if meta.budget_us == 0 || meta.budget_us > meta.period_us {
             return Err(TaskTableError::InvalidBudget(meta.module));
+        }
+        if meta.blocking_us > meta.period_us.saturating_sub(meta.budget_us) {
+            return Err(TaskTableError::InvalidBlocking(meta.module));
         }
         if self
             .slots
@@ -357,5 +369,17 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(err, TaskTableError::InvalidBudget(ModuleId::App(1)));
+    }
+
+    #[test]
+    fn blocking_term_must_fit_beside_execution_budget() {
+        let mut table = TaskTable::<1>::new();
+        let err = table
+            .add(
+                TaskMeta::new(ModuleId::App(1), Criticality::User, 100, 60).with_blocking_us(41),
+                0,
+            )
+            .unwrap_err();
+        assert_eq!(err, TaskTableError::InvalidBlocking(ModuleId::App(1)));
     }
 }

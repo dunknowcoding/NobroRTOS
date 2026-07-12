@@ -44,6 +44,7 @@ pub struct TaskDecl {
     pub period_us: u32,
     pub max_jitter_us: u32,
     pub execution_budget_us: u32,
+    pub blocking_us: u32,
     pub memory: MemoryBudget,
     pub objects: ObjectQuota,
     pub requires: CapabilitySet,
@@ -63,6 +64,7 @@ impl TaskDecl {
             period_us,
             max_jitter_us: (period_us / 100).max(10),
             execution_budget_us: (period_us / 10).max(10),
+            blocking_us: 0,
             memory: MemoryBudget::new(1024, 256, 0),
             objects: ObjectQuota::DEFAULT,
             requires: CapabilitySet::empty(),
@@ -106,6 +108,12 @@ impl TaskDecl {
 
     pub const fn budget_us(mut self, execution_budget_us: u32) -> Self {
         self.execution_budget_us = execution_budget_us;
+        self
+    }
+
+    /// Measured non-preemptible lower-priority/critical-section blocking bound.
+    pub const fn blocking_us(mut self, blocking_us: u32) -> Self {
+        self.blocking_us = blocking_us;
         self
     }
 
@@ -173,6 +181,12 @@ pub enum GraphError {
         endpoint: &'static str,
     },
     TooManyChannels,
+    InvalidBlocking {
+        task: &'static str,
+        budget_us: u32,
+        blocking_us: u32,
+        period_us: u32,
+    },
     /// The derived manifest failed validation; the offending task is named.
     Manifest {
         task: &'static str,
@@ -349,6 +363,14 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         let mut tasks: [Option<TaskMeta>; TASKS] = [None; TASKS];
 
         for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
+            if decl.blocking_us > decl.period_us.saturating_sub(decl.execution_budget_us) {
+                return Err(GraphError::InvalidBlocking {
+                    task: decl.name,
+                    budget_us: decl.execution_budget_us,
+                    blocking_us: decl.blocking_us,
+                    period_us: decl.period_us,
+                });
+            }
             let (_, module) = labels[index].expect("allocated above");
             let mut requires = decl.requires;
             if mailbox_users[index] {
@@ -382,12 +404,15 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                 depends = depends.with_index(dep_index + 1);
             }
             startup[index + 1] = StartupNode::new(module, depends);
-            tasks[index] = Some(TaskMeta::new(
-                module,
-                decl.criticality,
-                decl.period_us,
-                decl.execution_budget_us,
-            ));
+            tasks[index] = Some(
+                TaskMeta::new(
+                    module,
+                    decl.criticality,
+                    decl.period_us,
+                    decl.execution_budget_us,
+                )
+                .with_blocking_us(decl.blocking_us),
+            );
         }
 
         // Cycle/consistency check with attribution: the planner sees the same
@@ -636,5 +661,28 @@ mod tests {
         assert!(spec.deadline.is_none());
         assert_eq!(built.module_of("bus"), Some(ModuleId::Bus));
         assert_eq!(built.label_of(ModuleId::Bus), Some("bus"));
+    }
+
+    #[test]
+    fn blocking_override_is_attributed_to_task_label() {
+        let err = AppGraph::<1>::new()
+            .task(
+                TaskDecl::control("motor", 1000)
+                    .budget_us(600)
+                    .blocking_us(401),
+            )
+            .unwrap()
+            .build_for::<2>(SystemProfile::NRF52840_CORE)
+            .err()
+            .unwrap();
+        assert_eq!(
+            err,
+            GraphError::InvalidBlocking {
+                task: "motor",
+                budget_us: 600,
+                blocking_us: 401,
+                period_us: 1000,
+            }
+        );
     }
 }
