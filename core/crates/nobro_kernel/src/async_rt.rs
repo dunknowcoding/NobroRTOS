@@ -97,6 +97,14 @@ impl<const N: usize> AsyncCore<N> {
         // WakeCell it is; clone/wake/drop never free anything.
         unsafe { Waker::from_raw(RawWaker::new(data, &VTABLE)) }
     }
+
+    /// The waker for task slot `index` — wake it to re-poll that task (e.g. from
+    /// an ISR, or when parking it in a [`WaitQueue`](crate::async_mpmc)).
+    /// Panics if `index >= N`.
+    pub fn waker_for(&'static self, index: usize) -> Waker {
+        assert!(index < N, "task slot out of range");
+        self.waker(index)
+    }
 }
 
 impl<const N: usize> Default for AsyncCore<N> {

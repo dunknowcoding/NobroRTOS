@@ -110,7 +110,7 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks
         run: >-
           cargo miri test --target x86_64-unknown-linux-gnu
-          -p nobro-kernel async_rt::tests
+          -p nobro-kernel async_rt::tests async_mpmc::tests
       - name: persistent fuzz corpus smoke
         working-directory: core
         run: |

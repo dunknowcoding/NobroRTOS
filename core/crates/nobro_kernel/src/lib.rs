@@ -9,6 +9,7 @@ pub mod admission;
 pub mod admission_analysis;
 pub mod alarm;
 pub mod async_exec;
+pub mod async_mpmc;
 pub mod async_rt;
 pub mod boot;
 pub mod capability;
