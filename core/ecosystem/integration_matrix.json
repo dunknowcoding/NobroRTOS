@@ -1,0 +1,130 @@
+{
+  "schema": "nobro-ecosystem-matrix-v1",
+  "status_model": {
+    "absent": "no tracked integration exists",
+    "c_abi_only": "raw cross-language ABI is packaged; no friendly facade",
+    "host_only": "host scaffold/simulation exists; production firmware is separate",
+    "heartbeat_only": "a second core runs, but no application placement/executor contract",
+    "conformance": "portable-core self-test exists; no portable provider claim",
+    "physical_ad_hoc": "physical evidence exists, but no reusable restoring command",
+    "integrated": "tracked build integration exists",
+    "provider": "portable provider implementation and target build exist",
+    "physical_hil": "reusable state-restoring physical evidence exists"
+  },
+  "integrations": [
+    {
+      "id": "project_firmware",
+      "status": "host_only",
+      "evidence_path": "tools/nobro_project.py",
+      "required_tokens": ["does not flash the host scaffold binary"],
+      "closure_path": "tools/nobro_firmware_project.py",
+      "closure_path_state": "absent",
+      "review": "UX-04"
+    },
+    {
+      "id": "arduino_cpp_facade",
+      "status": "c_abi_only",
+      "evidence_path": "packages/arduino/src/NobroRTOS.h",
+      "required_tokens": ["#include \"nobro_rtos.h\""],
+      "forbidden_tokens": ["class NobroApp"],
+      "review": "UX-05"
+    },
+    {
+      "id": "nius_imu",
+      "status": "absent",
+      "closure_path": "core/adapters/nius-imu",
+      "closure_path_state": "absent",
+      "upstream_surface": "NiusIMU",
+      "review": "ECO-01"
+    },
+    {
+      "id": "nius_wireless",
+      "status": "absent",
+      "closure_path": "core/adapters/nius-wireless",
+      "closure_path_state": "absent",
+      "upstream_surface": "NiusWireless",
+      "review": "ECO-01"
+    },
+    {
+      "id": "nius_cam",
+      "status": "absent",
+      "closure_path": "core/adapters/nius-cam",
+      "closure_path_state": "absent",
+      "upstream_surface": "NiusCam",
+      "review": "ECO-01"
+    },
+    {
+      "id": "multicore_graph",
+      "status": "heartbeat_only",
+      "evidence_path": "core/ports/rp2350/src/main.rs",
+      "required_tokens": ["CORE1_TICKS"],
+      "closure_path": "core/crates/nobro_kernel/src/multicore.rs",
+      "closure_path_state": "absent",
+      "review": "MC-01"
+    },
+    {
+      "id": "esp32s3_application_provider",
+      "status": "conformance",
+      "evidence_path": "core/ports/esp32s3/src/main.rs",
+      "required_tokens": ["run_all"],
+      "closure_path": "core/ports/esp32s3/src/portable.rs",
+      "closure_path_state": "absent",
+      "review": "ECO-02"
+    },
+    {
+      "id": "ra4m1_application_provider",
+      "status": "conformance",
+      "evidence_path": "core/ports/ra4m1/src/main.rs",
+      "required_tokens": ["run_all"],
+      "closure_path": "core/ports/ra4m1/src/portable.rs",
+      "closure_path_state": "absent",
+      "review": "ECO-02"
+    },
+    {
+      "id": "provider_hil",
+      "status": "physical_ad_hoc",
+      "evidence_path": "core/boards/platform_tiers.json",
+      "required_tokens": ["local physical smoke passed"],
+      "closure_path": "tools/provider_hil.py",
+      "closure_path_state": "absent",
+      "review": "HIL-02"
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "simple_equivalent",
+      "status": "integrated",
+      "evidence_path": "core/baselines/README.md",
+      "required_tokens": ["The workload (identical in all three)"],
+      "review": "RES-01"
+    },
+    {
+      "id": "complex_equivalent",
+      "status": "absent",
+      "closure_path": "core/baselines/complex",
+      "closure_path_state": "absent",
+      "review": "RES-02"
+    },
+    {
+      "id": "complex_freertos_variant",
+      "status": "absent",
+      "closure_path": "core/baselines/complex/freertos",
+      "closure_path_state": "absent",
+      "review": "RES-02"
+    },
+    {
+      "id": "cpu_energy_equivalence",
+      "status": "absent",
+      "closure_path": "tools/measure_complex_hil.py",
+      "closure_path_state": "absent",
+      "review": "RES-02"
+    },
+    {
+      "id": "embassy_tuned_and_static_variants",
+      "status": "absent",
+      "closure_path": "core/baselines/embassy-tuned",
+      "closure_path_state": "absent",
+      "review": "RES-03"
+    }
+  ]
+}

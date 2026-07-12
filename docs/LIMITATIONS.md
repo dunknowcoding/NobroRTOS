@@ -4,6 +4,9 @@ This matrix is part of the product contract. “Builds” does not mean “deepl
 supported,” declared timing is not a WCET proof, and a host simulation is not hardware
 evidence. The machine-readable platform truth is
 [`core/boards/platform_tiers.json`](../core/boards/platform_tiers.json).
+Application/library/benchmark integration status is separately gated by
+[`core/ecosystem/integration_matrix.json`](../core/ecosystem/integration_matrix.json),
+including rows that are still absent.
 
 ## Application model
 

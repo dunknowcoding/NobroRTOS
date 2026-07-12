@@ -25,6 +25,8 @@ jobs:
         run: python tools/check_public_docs.py
       - name: board profiles
         run: python tools/check_board_profiles.py
+      - name: ecosystem integration truth
+        run: python tools/check_ecosystem_matrix.py
       - name: sdk manifest
         run: python tools/check_sdk_manifest.py
       - name: arduino package drift
