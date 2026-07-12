@@ -157,7 +157,7 @@
       "closure_path": "tools/measure_complex_hil.py",
       "closure_path_state": "absent",
       "review": "RES-02",
-      "note": "Energy/CPU campaign CANCELLED 2026-07-12 (no power meters on the bench); stays absent by design, not oversight."
+      "note": "Wave 61 reopened after audit: CPU time, latency, deadline, throughput, memory, residency, and software-estimate comparisons do not require a power meter and remain open. Only calibrated current/joule measurement is equipment-gated; estimates must stay visibly separate."
     },
     {
       "id": "embassy_tuned_and_static_variants",

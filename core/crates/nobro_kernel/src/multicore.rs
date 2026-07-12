@@ -28,7 +28,10 @@ fn task_util(decl: &TaskDecl) -> u32 {
     if !decl.has_deadline || decl.period_us == 0 {
         return 0;
     }
-    ((decl.execution_budget_us as u64 * 10_000) / decl.period_us as u64) as u32
+    let demand = decl.execution_budget_us.saturating_add(decl.blocking_us);
+    let scaled = u64::from(demand).saturating_mul(10_000);
+    let period = u64::from(decl.period_us);
+    (scaled.saturating_add(period - 1) / period) as u32
 }
 
 /// One core's assignment: which task labels run on it and the total utilization.
@@ -50,12 +53,14 @@ impl<const T: usize> CorePlan<T> {
         }
     }
 
-    fn push(&mut self, label: &'static str, util: u32) {
-        if self.task_len < T {
-            self.tasks[self.task_len] = Some(label);
-            self.task_len += 1;
+    fn try_push(&mut self, label: &'static str, util: u32) -> bool {
+        if self.task_len >= T {
+            return false;
         }
+        self.tasks[self.task_len] = Some(label);
+        self.task_len += 1;
         self.utilization_permyriad = self.utilization_permyriad.saturating_add(util);
+        true
     }
 
     pub fn labels(&self) -> impl Iterator<Item = &'static str> + '_ {
@@ -69,6 +74,16 @@ impl<const T: usize> CorePlan<T> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlacementError {
+    /// All per-core task slots were exhausted during automatic placement.
+    TaskCapacity { required: usize, capacity: usize },
+    /// Explicit affinity placed more tasks on one core than its plan can retain.
+    CoreTaskCapacity {
+        task: &'static str,
+        core: u8,
+        capacity: usize,
+    },
+    /// The requested plan cannot retain every detected cross-core link.
+    CrossCoreCapacity { required: usize, capacity: usize },
     /// A task pinned to a core index that does not exist.
     UnknownCore { task: &'static str, core: u8 },
     /// A core's assigned utilization exceeds 100%.
@@ -132,7 +147,13 @@ pub fn plan_placement<const CORES: usize, const T: usize, const TASKS: usize>(
                     core,
                 });
             }
-            cores[core as usize].push(decl.name, task_util(decl));
+            if !cores[core as usize].try_push(decl.name, task_util(decl)) {
+                return Err(PlacementError::CoreTaskCapacity {
+                    task: decl.name,
+                    core,
+                    capacity: T,
+                });
+            }
         }
     }
 
@@ -158,13 +179,14 @@ pub fn plan_placement<const CORES: usize, const T: usize, const TASKS: usize>(
     for entry in auto.iter().flatten() {
         let (label, util) = *entry;
         // Pick the least-loaded core.
-        let mut best = 0usize;
-        for c in 1..CORES {
-            if cores[c].utilization_permyriad < cores[best].utilization_permyriad {
-                best = c;
-            }
-        }
-        cores[best].push(label, util);
+        let best = (0..CORES)
+            .filter(|&core| cores[core].task_len < T)
+            .min_by_key(|&core| (cores[core].utilization_permyriad, core))
+            .ok_or(PlacementError::TaskCapacity {
+                required: graph.task_decls().count(),
+                capacity: CORES.saturating_mul(T),
+            })?;
+        debug_assert!(cores[best].try_push(label, util));
     }
 
     // Per-core admission: no core may exceed 100%.
@@ -190,7 +212,13 @@ pub fn plan_placement<const CORES: usize, const T: usize, const TASKS: usize>(
         let to_core = placement
             .core_of(to)
             .ok_or(PlacementError::UnknownEndpoint { endpoint: to })?;
-        if from_core != to_core && placement.cross_core_len < T {
+        if from_core != to_core {
+            if placement.cross_core_len >= T {
+                return Err(PlacementError::CrossCoreCapacity {
+                    required: placement.cross_core_len.saturating_add(1),
+                    capacity: T,
+                });
+            }
             placement.cross_core[placement.cross_core_len] = Some(CrossCoreLink {
                 from,
                 from_core,
@@ -278,6 +306,81 @@ mod tests {
             Err(PlacementError::CoreOverloaded {
                 core: 0,
                 utilization_permyriad: 14_000,
+            })
+        );
+    }
+
+    #[test]
+    fn blocking_time_participates_in_per_core_admission() {
+        let graph = AppGraph::<2>::new()
+            .task(t("x", 10_000, 4_000).blocking_us(2_000).core(0))
+            .unwrap()
+            .task(t("y", 10_000, 4_000).blocking_us(2_000).core(0))
+            .unwrap();
+        assert_eq!(
+            plan_placement::<2, 2, 2>(&graph),
+            Err(PlacementError::CoreOverloaded {
+                core: 0,
+                utilization_permyriad: 12_000,
+            })
+        );
+    }
+
+    #[test]
+    fn undersized_plan_capacity_is_rejected_before_labels_are_lost() {
+        let graph = AppGraph::<3>::new()
+            .task(t("x", 10_000, 1_000))
+            .unwrap()
+            .task(t("y", 10_000, 1_000))
+            .unwrap()
+            .task(t("z", 10_000, 1_000))
+            .unwrap();
+        assert_eq!(
+            plan_placement::<2, 1, 3>(&graph),
+            Err(PlacementError::TaskCapacity {
+                required: 3,
+                capacity: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn pinned_core_capacity_is_attributed_to_the_task() {
+        let graph = AppGraph::<2>::new()
+            .task(t("x", 10_000, 1_000).core(0))
+            .unwrap()
+            .task(t("y", 10_000, 1_000).core(0))
+            .unwrap();
+        assert_eq!(
+            plan_placement::<2, 1, 2>(&graph),
+            Err(PlacementError::CoreTaskCapacity {
+                task: "y",
+                core: 0,
+                capacity: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn cross_core_link_capacity_is_never_silently_truncated() {
+        let graph = AppGraph::<3>::new()
+            .task(t("a", 10_000, 1_000).core(0))
+            .unwrap()
+            .task(t("b", 10_000, 1_000).core(1))
+            .unwrap()
+            .task(t("c", 10_000, 1_000).core(1))
+            .unwrap()
+            .channel("a", "b")
+            .unwrap()
+            .channel("a", "c")
+            .unwrap()
+            .channel("b", "a")
+            .unwrap();
+        assert_eq!(
+            plan_placement::<2, 2, 3>(&graph),
+            Err(PlacementError::CrossCoreCapacity {
+                required: 3,
+                capacity: 2,
             })
         );
     }
