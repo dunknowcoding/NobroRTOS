@@ -138,6 +138,10 @@ jobs:
         with:
           targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
           components: llvm-tools-preview
+      - name: install ARM C compiler for the FreeRTOS baseline
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gcc-arm-none-eabi
       - name: full reproducible cross-MCU matrix
         run: bash tools/ci_matrix.sh
 

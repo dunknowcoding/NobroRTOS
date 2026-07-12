@@ -13,12 +13,16 @@ total=0
 gate() {
   total=$((total + 1))
   local name="$1"; shift
-  if "$@" >/dev/null 2>&1; then
+  local log
+  log="$(mktemp)"
+  if "$@" >"$log" 2>&1; then
     echo "[ OK ] $name"
   else
     echo "[FAIL] $name"
+    cat "$log"
     fails=$((fails + 1))
   fi
+  rm -f "$log"
 }
 
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/_work/ct-ci}"
