@@ -4,8 +4,8 @@
 //! NobroRTOS's `Spim0`, so unmodified `embedded-hal` SPI device drivers (IMUs, flash,
 //! displays, ADCs, ...) run under NobroRTOS without change. The whole transaction is
 //! framed by one software chip-select (with the setup/recovery delays `Spim0` needs),
-//! and every operation is a bounded, no-heap EasyDMA transfer. The caller owns the
-//! `Resource::Spim0` lease. Verified against an MPU-9250 over SPI.
+//! and every operation is a bounded, no-heap EasyDMA transfer. The device owns a live,
+//! generation-tagged lease session. Verified against an MPU-9250 over SPI.
 #![no_std]
 
 use embedded_hal::spi::{Error, ErrorKind, ErrorType, Operation, SpiDevice};
@@ -37,12 +37,17 @@ impl NobroSpiDevice {
     /// Configure SPIM0 on the given raw nRF pins (mode 3, software CS).
     ///
     /// # Safety
-    /// The caller must own the `Resource::Spim0` lease; the pins must be the board's
-    /// wired SPI pins.
-    pub unsafe fn new(sck: u8, mosi: u8, miso: u8, cs: u8) -> Self {
-        NobroSpiDevice {
-            spim: Spim0::init(sck, mosi, miso, cs),
-        }
+    /// The pins must be the board's wired SPI pins.
+    pub unsafe fn new(
+        owner: u8,
+        sck: u8,
+        mosi: u8,
+        miso: u8,
+        cs: u8,
+    ) -> Result<Self, NobroSpiError> {
+        Spim0::acquire(owner, sck, mosi, miso, cs)
+            .map(|spim| NobroSpiDevice { spim })
+            .map_err(|_| NobroSpiError(BusError::LeaseDenied))
     }
 }
 
@@ -54,7 +59,7 @@ impl SpiDevice<u8> for NobroSpiDevice {
     fn transaction(&mut self, operations: &mut [Operation<'_, u8>]) -> Result<(), Self::Error> {
         // One chip-select around the whole transaction, with the slave's setup/recovery
         // time (the MPU-9250 needs it between the address and data phases).
-        self.spim.select();
+        self.spim.select().map_err(NobroSpiError)?;
         spin(2_000);
         let mut outcome: Result<(), BusError> = Ok(());
         for op in operations.iter_mut() {
@@ -118,7 +123,7 @@ impl SpiDevice<u8> for NobroSpiDevice {
             }
         }
         spin(2_000);
-        self.spim.deselect();
+        self.spim.deselect().map_err(NobroSpiError)?;
         spin(2_000);
         outcome.map_err(NobroSpiError)
     }

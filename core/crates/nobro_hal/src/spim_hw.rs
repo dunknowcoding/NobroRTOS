@@ -3,6 +3,7 @@
 //! a GPIO output (idle high) so a whole register burst stays under one chip-select.
 
 use crate::bus::BusError;
+use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 
 const SPIM0_BASE: u32 = 0x4000_3000; // shared peripheral block with TWIM0
 const GPIO_PORT0_BASE: u32 = 0x5000_0000;
@@ -52,6 +53,7 @@ fn spin(cycles: u32) {
 /// SPIM0 master with a software-driven chip-select.
 pub struct Spim0 {
     cs: u8,
+    lease: LeaseGuard,
 }
 
 impl Spim0 {
@@ -61,7 +63,14 @@ impl Spim0 {
     /// # Safety
     /// Pins must be the board's wired SPI pins and not muxed to another peripheral;
     /// reprograms SPIM0's PSEL/ENABLE and the CS pin's GPIO config.
-    pub unsafe fn init(sck: u8, mosi: u8, miso: u8, cs: u8) -> Self {
+    pub unsafe fn acquire(
+        owner: u8,
+        sck: u8,
+        mosi: u8,
+        miso: u8,
+        cs: u8,
+    ) -> Result<Self, LeaseError> {
+        let lease = ResourceLease::acquire_guard(Resource::Spim0, owner)?;
         let base = SPIM0_BASE;
         *reg(base, SPIM_ENABLE) = SPIM_ENABLE_DISABLED;
 
@@ -86,29 +95,34 @@ impl Spim0 {
         *reg(base, SPIM_CONFIG) = SPIM_CONFIG_MODE3;
         *reg(base, SPIM_ENABLE) = SPIM_ENABLE_ENABLED;
 
-        Spim0 { cs }
+        Ok(Spim0 { cs, lease })
     }
 
     /// Assert chip-select (active low).
-    pub fn select(&self) {
+    pub fn select(&self) -> Result<(), BusError> {
+        self.ensure_live()?;
         let (port, bit) = gpio(u32::from(self.cs));
         unsafe {
             *reg(port, GPIO_OUTCLR) = 1 << bit;
         }
+        Ok(())
     }
 
     /// Release chip-select.
-    pub fn deselect(&self) {
+    pub fn deselect(&self) -> Result<(), BusError> {
+        self.ensure_live()?;
         let (port, bit) = gpio(u32::from(self.cs));
         unsafe {
             *reg(port, GPIO_OUTSET) = 1 << bit;
         }
+        Ok(())
     }
 
     /// One full-duplex EasyDMA transfer of equally sized buffers, WITHOUT
     /// touching chip-select (caller brackets with select()/deselect()). EasyDMA needs
     /// RAM buffers, so the bytes are staged through stack buffers.
     pub fn transfer_held(&self, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
+        self.ensure_live()?;
         if tx.len() != rx.len() {
             return Err(BusError::LengthMismatch);
         }
@@ -149,10 +163,10 @@ impl Spim0 {
     /// the inter-transaction time it needs - without them, rapid back-to-back register
     /// reads on the MPU-9250 return stale/garbage data even though isolated reads work.
     pub fn transfer(&self, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
-        self.select();
+        self.select()?;
         spin(2_000); // ~CS-to-clock setup
         let r = self.transfer_held(tx, rx);
-        self.deselect();
+        self.deselect()?;
         spin(2_000); // ~CS recovery before the next transaction
         r
     }
@@ -183,5 +197,9 @@ impl Spim0 {
         self.transfer(&tx[..n + 1], &mut rx[..n + 1])?;
         buf.copy_from_slice(&rx[1..n + 1]);
         Ok(())
+    }
+
+    fn ensure_live(&self) -> Result<(), BusError> {
+        self.lease.ensure_live().map_err(|_| BusError::LeaseDenied)
     }
 }

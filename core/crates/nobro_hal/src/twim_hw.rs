@@ -106,20 +106,20 @@ impl Twim0 {
         configure_open_drain(u32::from(scl));
     }
 
-    pub fn probe(addr: u8) -> bool {
+    pub unsafe fn probe(addr: u8) -> bool {
         Self::write(addr, &[], true).is_ok()
     }
 
-    pub fn scan<F: FnMut(u8)>(mut found: F) -> u8 {
+    pub unsafe fn scan<F: FnMut(u8)>(mut found: F) -> u8 {
         let mut count = 0u8;
         for addr in [0x68u8, 0x69] {
-            if Self::read_reg(addr, 0x75).is_ok() {
+            if unsafe { Self::read_reg(addr, 0x75) }.is_ok() {
                 found(addr);
                 count = count.saturating_add(1);
             }
         }
         for addr in [0x76u8, 0x77] {
-            if Self::read_reg(addr, 0xD0).is_ok() {
+            if unsafe { Self::read_reg(addr, 0xD0) }.is_ok() {
                 found(addr);
                 count = count.saturating_add(1);
             }
@@ -127,17 +127,17 @@ impl Twim0 {
         count
     }
 
-    pub fn write_reg(addr: u8, reg_addr: u8, val: u8) -> Result<(), BusError> {
+    pub unsafe fn write_reg(addr: u8, reg_addr: u8, val: u8) -> Result<(), BusError> {
         Self::write(addr, &[reg_addr, val], true)
     }
 
-    pub fn read_reg(addr: u8, reg_addr: u8) -> Result<u8, BusError> {
+    pub unsafe fn read_reg(addr: u8, reg_addr: u8) -> Result<u8, BusError> {
         let mut buf = [0u8; 1];
-        Self::write_read(addr, &[reg_addr], &mut buf)?;
+        unsafe { Self::write_read(addr, &[reg_addr], &mut buf)? };
         Ok(buf[0])
     }
 
-    pub fn write_read(addr: u8, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
+    pub unsafe fn write_read(addr: u8, tx: &[u8], rx: &mut [u8]) -> Result<(), BusError> {
         if tx.is_empty() || rx.is_empty() {
             return Err(BusError::Timeout);
         }
@@ -148,13 +148,13 @@ impl Twim0 {
 
     /// Raw bus write of arbitrary bytes (STOP at the end). The general primitive an
     /// `embedded-hal` I2C adapter needs for `Operation::Write`.
-    pub fn write_bytes(addr: u8, data: &[u8]) -> Result<(), BusError> {
+    pub unsafe fn write_bytes(addr: u8, data: &[u8]) -> Result<(), BusError> {
         Self::write(addr, data, true)
     }
 
     /// Raw bus read of `buf.len()` bytes (STOP at the end). The general primitive an
     /// `embedded-hal` I2C adapter needs for `Operation::Read`.
-    pub fn read_bytes(addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
+    pub unsafe fn read_bytes(addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
         if buf.is_empty() {
             return Ok(());
         }

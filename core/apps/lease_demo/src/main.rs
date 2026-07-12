@@ -10,9 +10,9 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_hal::{
-    lease::{LeaseError, Resource},
+    lease::{LeaseError, Resource, ResourceLease},
     traits::HalLease,
-    ActivePlatform as Hal,
+    ActivePlatform as Hal, BusError, TwimBus,
 };
 
 #[repr(C)]
@@ -56,16 +56,38 @@ fn test_resource(r: Resource) -> bool {
     acquired && conflict && wrong && released && reacquired && freed
 }
 
+fn test_generation_recovery() -> bool {
+    const OWNER: u8 = 21;
+    let stale = ResourceLease::acquire_guard(Resource::Twim0, OWNER).unwrap();
+    let released = ResourceLease::release_all_for_owner(OWNER) == 1;
+    let current = ResourceLease::acquire_guard(Resource::Twim0, OWNER).unwrap();
+    let stale_denied = stale.ensure_live() == Err(LeaseError::NotHeld);
+    drop(stale); // must not release `current`, despite the same numeric owner
+    let current_alive = current.ensure_live().is_ok();
+    drop(current);
+    released && stale_denied && current_alive
+}
+
+fn test_safe_bus_denial() -> bool {
+    const OWNER: u8 = 22;
+    let bus = TwimBus::new_twim0(OWNER).unwrap();
+    let released = ResourceLease::release_all_for_owner(OWNER) == 1;
+    let mut bytes = [0u8; 2];
+    released && bus.read_stub(0x52, &mut bytes) == Err(BusError::LeaseDenied)
+}
+
 #[entry]
 fn main() -> ! {
     let resources = [Resource::Pwm0, Resource::Egu0, Resource::Ppi];
-    let tested = resources.len() as u32;
+    let tested = resources.len() as u32 + 2;
     let mut passed = 0u32;
     for r in resources {
         if test_resource(r) {
             passed += 1;
         }
     }
+    passed += u32::from(test_generation_recovery());
+    passed += u32::from(test_safe_bus_denial());
 
     let pass = passed == tested;
     let ap = u32::from(pass);

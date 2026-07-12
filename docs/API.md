@@ -681,6 +681,12 @@ guard release the resource. Recovery supervisors can inspect the current owner
 and release every lease held by a faulted owner without disturbing other
 modules.
 
+Guards are generation-tagged and non-clonable. Safe I2C, SPI, radio, PWM, and nRF
+scheduling-session operations revalidate the exact acquisition before touching hardware;
+owner-scoped recovery invalidates stale sessions, quiesces the peripheral, clears nRF
+interrupt/DMA routing state, and only then publishes the slot as free. Raw low-level
+register APIs are `unsafe` and exist for gated compatibility integrations.
+
 ```rust
 let guard = nobro_hal::ResourceLease::acquire_guard(nobro_hal::Resource::Twim0, module_id)?;
 assert_eq!(nobro_hal::ResourceLease::owner(nobro_hal::Resource::Twim0), Some(module_id));

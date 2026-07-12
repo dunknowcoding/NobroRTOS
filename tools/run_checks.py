@@ -90,7 +90,7 @@ def gate_specs(quick, rust_only=False, extended=False):
                 ("Miri portable safety", ["cargo", "+nightly", "miri", "test",
                  "--target", host_target(),
                  "-p", "nobro-database", "-p", "nobro-storage", "-p", "nobro-net",
-                 "-p", "nobro-secure"], CORE),
+                 "-p", "nobro-secure", "-p", "nobro-hal"], CORE),
                 ("Miri bounded async", [py, "tools/check_async_miri.py"], ROOT),
             ]
     if rust_only:

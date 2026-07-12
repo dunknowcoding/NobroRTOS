@@ -9,6 +9,11 @@ name = "lease_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
+[[bin]]
+name = "lease_demo_s140"
+path = "src/main.rs"
+required-features = ["board-nicenano-s140"]
+
 [dependencies]
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }

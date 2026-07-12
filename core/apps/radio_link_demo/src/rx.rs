@@ -6,7 +6,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_hal::Radio;
+use nobro_hal::RadioSession;
 use panic_halt as _;
 
 #[path = "common.rs"]
@@ -20,15 +20,14 @@ static mut NOBRO_RADIO_REPORT: RadioReport = RadioReport::zero();
 #[entry]
 fn main() -> ! {
     start_hfxo();
-    unsafe {
-        Radio::init();
-    }
+    let radio =
+        unsafe { RadioSession::acquire(5) }.unwrap_or_else(|_| defmt::panic!("radio session"));
 
     let mut rx_received: u32 = 0;
     let mut last_seq: u32 = 0;
     loop {
         let mut buf = [0u8; 32];
-        if let Some(n) = Radio::recv(&mut buf, 1_000_000) {
+        if let Ok(Some(n)) = radio.recv(&mut buf, 1_000_000) {
             // Payload: 0xA5 marker + 4-byte little-endian sequence.
             if n >= 5 && buf[0] == 0xA5 {
                 rx_received = rx_received.wrapping_add(1);

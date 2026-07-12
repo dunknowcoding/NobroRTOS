@@ -1,6 +1,6 @@
 //! Peripheral exclusive lease (ArduinoNRF PeripheralLease equivalent).
 
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 use crate::traits::LeaseId;
 
@@ -12,7 +12,7 @@ pub enum Resource {
     Spim0,
     Radio,
     Rtc2,
-    Timer3,
+    Timer1,
     Pwm0,
     Egu0,
     Ppi,
@@ -26,7 +26,7 @@ impl Resource {
         Self::Spim0,
         Self::Radio,
         Self::Rtc2,
-        Self::Timer3,
+        Self::Timer1,
         Self::Pwm0,
         Self::Egu0,
         Self::Ppi,
@@ -42,7 +42,7 @@ impl Resource {
             Self::Spim0 => "SPIM0",
             Self::Radio => "RADIO",
             Self::Rtc2 => "RTC2",
-            Self::Timer3 => "TIMER3",
+            Self::Timer1 => "TIMER1",
             Self::Pwm0 => "PWM0",
             Self::Egu0 => "EGU0",
             Self::Ppi => "PPI",
@@ -59,7 +59,7 @@ impl From<Resource> for LeaseId {
             Resource::Spim0 => Self::PRIMARY_SPI,
             Resource::Radio => Self::PRIMARY_RADIO,
             Resource::Rtc2 => Self::LOW_POWER_TIMER,
-            Resource::Timer3 => Self::DEADLINE_TIMER,
+            Resource::Timer1 => Self::DEADLINE_TIMER,
             Resource::Pwm0 => Self::PRIMARY_PWM,
             Resource::Egu0 => Self::SOFTWARE_EVENT,
             Resource::Ppi => Self::EVENT_ROUTER,
@@ -78,6 +78,7 @@ pub enum LeaseError {
 struct LeaseSlot {
     taken: AtomicBool,
     owner: AtomicU8,
+    generation: AtomicU32,
 }
 
 impl LeaseSlot {
@@ -85,6 +86,7 @@ impl LeaseSlot {
         Self {
             taken: AtomicBool::new(false),
             owner: AtomicU8::new(0),
+            generation: AtomicU32::new(1),
         }
     }
 }
@@ -110,7 +112,7 @@ fn idx(r: Resource) -> usize {
         Resource::Spim0 => 3,
         Resource::Radio => 4,
         Resource::Rtc2 => 5,
-        Resource::Timer3 => 6,
+        Resource::Timer1 => 6,
         Resource::Pwm0 => 7,
         Resource::Egu0 => 8,
         Resource::Ppi => 9,
@@ -141,8 +143,13 @@ impl ResourceLease {
             if slot.owner.load(Ordering::Acquire) != owner {
                 return Err(LeaseError::WrongOwner);
             }
+            crate::quiesce::resource(resource);
             slot.taken.store(false, Ordering::Release);
             slot.owner.store(0, Ordering::Release);
+            slot.generation.store(
+                slot.generation.load(Ordering::Relaxed).wrapping_add(1),
+                Ordering::Release,
+            );
             Ok(())
         })
     }
@@ -169,11 +176,16 @@ impl ResourceLease {
     pub fn release_all_for_owner(owner: u8) -> usize {
         critical_section::with(|_| {
             let mut released = 0;
-            for slot in &SLOTS {
+            for (index, slot) in SLOTS.iter().enumerate() {
                 if slot.taken.load(Ordering::Acquire) && slot.owner.load(Ordering::Acquire) == owner
                 {
+                    crate::quiesce::resource(Resource::ALL[index]);
                     slot.taken.store(false, Ordering::Release);
                     slot.owner.store(0, Ordering::Release);
+                    slot.generation.store(
+                        slot.generation.load(Ordering::Relaxed).wrapping_add(1),
+                        Ordering::Release,
+                    );
                     released += 1;
                 }
             }
@@ -182,18 +194,71 @@ impl ResourceLease {
     }
 
     pub fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
-        Self::acquire(resource, owner)?;
-        Ok(LeaseGuard {
-            resource,
-            owner,
-            active: true,
+        critical_section::with(|_| {
+            let slot = &SLOTS[idx(resource)];
+            if slot.taken.load(Ordering::Acquire) {
+                return Err(LeaseError::AlreadyHeld);
+            }
+            let generation = slot.generation.load(Ordering::Acquire);
+            slot.owner.store(owner, Ordering::Release);
+            slot.taken.store(true, Ordering::Release);
+            Ok(LeaseGuard {
+                resource,
+                owner,
+                generation,
+                active: true,
+            })
+        })
+    }
+
+    fn token_is_live(resource: Resource, owner: u8, generation: u32) -> bool {
+        critical_section::with(|_| {
+            let slot = &SLOTS[idx(resource)];
+            slot.taken.load(Ordering::Acquire)
+                && slot.owner.load(Ordering::Acquire) == owner
+                && slot.generation.load(Ordering::Acquire) == generation
+        })
+    }
+
+    fn release_token(resource: Resource, owner: u8, generation: u32) -> Result<(), LeaseError> {
+        critical_section::with(|_| {
+            let slot = &SLOTS[idx(resource)];
+            if !slot.taken.load(Ordering::Acquire)
+                || slot.generation.load(Ordering::Acquire) != generation
+            {
+                return Err(LeaseError::NotHeld);
+            }
+            if slot.owner.load(Ordering::Acquire) != owner {
+                return Err(LeaseError::WrongOwner);
+            }
+            crate::quiesce::resource(resource);
+            slot.taken.store(false, Ordering::Release);
+            slot.owner.store(0, Ordering::Release);
+            slot.generation.store(
+                slot.generation.load(Ordering::Relaxed).wrapping_add(1),
+                Ordering::Release,
+            );
+            Ok(())
         })
     }
 }
 
+/// An acquisition-generation proof; fields are private and the token is not clonable.
+///
+/// ```compile_fail
+/// use nobro_hal::{LeaseGuard, Resource};
+/// let forged = LeaseGuard { resource: Resource::Twim0, owner: 1, generation: 1, active: true };
+/// ```
+///
+/// ```compile_fail
+/// # use nobro_hal::{Resource, ResourceLease};
+/// let guard = ResourceLease::acquire_guard(Resource::Twim0, 1).unwrap();
+/// let duplicate = guard.clone();
+/// ```
 pub struct LeaseGuard {
     resource: Resource,
     owner: u8,
+    generation: u32,
     active: bool,
 }
 
@@ -206,8 +271,16 @@ impl LeaseGuard {
         self.owner
     }
 
+    /// Prove this exact acquisition is still live. Recovery invalidates all extant
+    /// guards by advancing the slot generation, even if the same owner reacquires it.
+    pub fn ensure_live(&self) -> Result<(), LeaseError> {
+        ResourceLease::token_is_live(self.resource, self.owner, self.generation)
+            .then_some(())
+            .ok_or(LeaseError::NotHeld)
+    }
+
     pub fn release(mut self) -> Result<(), LeaseError> {
-        ResourceLease::release(self.resource, self.owner)?;
+        ResourceLease::release_token(self.resource, self.owner, self.generation)?;
         self.active = false;
         Ok(())
     }
@@ -216,7 +289,7 @@ impl LeaseGuard {
 impl Drop for LeaseGuard {
     fn drop(&mut self) {
         if self.active {
-            let _ = ResourceLease::release(self.resource, self.owner);
+            let _ = ResourceLease::release_token(self.resource, self.owner, self.generation);
             self.active = false;
         }
     }
@@ -231,6 +304,7 @@ mod invariant_tests {
     //! critical_section (interrupt masking, not threads) is a poor fit for loom; this
     //! exhaustive-ish randomized check is the practical formal-invariant coverage.
     use super::*;
+    extern crate std;
     use core::hint::spin_loop;
     use core::sync::atomic::AtomicBool;
 
@@ -258,6 +332,7 @@ mod invariant_tests {
         for s in &SLOTS {
             s.taken.store(false, Ordering::Release);
             s.owner.store(0, Ordering::Release);
+            s.generation.store(1, Ordering::Release);
         }
     }
 
@@ -273,7 +348,10 @@ mod invariant_tests {
             *r
         };
 
-        for _ in 0..30_000 {
+        // Miri exhaustively interprets each atomic/critical-section operation; keep a
+        // substantial deterministic sequence there while retaining the 30k native gate.
+        let operations = if cfg!(miri) { 2_000 } else { 30_000 };
+        for _ in 0..operations {
             let ri = (next(&mut rng) % Resource::COUNT as u32) as usize;
             let res = Resource::ALL[ri];
             let owner = 1 + (next(&mut rng) % 4) as u8; // owners 1..=4 exercise WrongOwner
@@ -338,7 +416,11 @@ mod invariant_tests {
         assert_eq!(ResourceLease::acquire(Resource::Radio, 8), Ok(()));
         assert_eq!(ResourceLease::owner(Resource::Twim0), Some(7));
 
+        let twim_before = crate::quiesce::count(Resource::Twim0);
+        let spim_before = crate::quiesce::count(Resource::Spim0);
         assert_eq!(ResourceLease::release_all_for_owner(7), 2);
+        assert_eq!(crate::quiesce::count(Resource::Twim0), twim_before + 1);
+        assert_eq!(crate::quiesce::count(Resource::Spim0), spim_before + 1);
         assert!(!ResourceLease::is_held(Resource::Twim0));
         assert!(!ResourceLease::is_held(Resource::Spim0));
         assert_eq!(ResourceLease::owner(Resource::Radio), Some(8));
@@ -356,6 +438,66 @@ mod invariant_tests {
             assert_eq!(ResourceLease::owner(Resource::Pwm0), Some(3));
         }
         assert_eq!(ResourceLease::owner(Resource::Pwm0), None);
+        reset_all();
+    }
+
+    #[test]
+    fn recovery_invalidates_stale_guard_even_after_same_owner_reacquires() {
+        let _lock = test_lock();
+        reset_all();
+        let stale = ResourceLease::acquire_guard(Resource::Twim0, 7).unwrap();
+        assert_eq!(stale.ensure_live(), Ok(()));
+        assert_eq!(ResourceLease::release_all_for_owner(7), 1);
+        assert_eq!(stale.ensure_live(), Err(LeaseError::NotHeld));
+        let current = ResourceLease::acquire_guard(Resource::Twim0, 7).unwrap();
+        assert_eq!(current.ensure_live(), Ok(()));
+        assert_eq!(stale.ensure_live(), Err(LeaseError::NotHeld));
+        drop(current);
+        drop(stale);
+        reset_all();
+    }
+
+    #[test]
+    fn recovery_denies_safe_bus_use_before_touching_hardware() {
+        let _lock = test_lock();
+        reset_all();
+        let bus = crate::bus::TwimBus::new_twim0(41).unwrap();
+        let mut bytes = [0u8; 2];
+        assert_eq!(bus.read_stub(0x52, &mut bytes), Ok(()));
+        assert_eq!(ResourceLease::release_all_for_owner(41), 1);
+        assert_eq!(
+            bus.read_stub(0x52, &mut bytes),
+            Err(crate::bus::BusError::LeaseDenied)
+        );
+        assert_eq!(bytes, [0x52, 0x53]);
+        drop(bus);
+        reset_all();
+    }
+
+    #[test]
+    fn concurrent_recovery_and_reacquire_cannot_revive_old_authority() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let _lock = test_lock();
+        reset_all();
+        let stale = ResourceLease::acquire_guard(Resource::Spim0, 12).unwrap();
+        let ready = Arc::new(Barrier::new(2));
+        let released = Arc::new(Barrier::new(2));
+        let worker_ready = Arc::clone(&ready);
+        let worker_released = Arc::clone(&released);
+        let worker = thread::spawn(move || {
+            worker_ready.wait();
+            worker_released.wait();
+            stale.ensure_live()
+        });
+        ready.wait();
+        assert_eq!(ResourceLease::release_all_for_owner(12), 1);
+        let current = ResourceLease::acquire_guard(Resource::Spim0, 12).unwrap();
+        released.wait();
+        assert_eq!(worker.join().unwrap(), Err(LeaseError::NotHeld));
+        assert_eq!(current.ensure_live(), Ok(()));
+        drop(current);
         reset_all();
     }
 }

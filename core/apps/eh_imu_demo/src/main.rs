@@ -14,7 +14,6 @@ use panic_halt as _;
 use embedded_hal::i2c::I2c;
 use nobro_eh_i2c::NobroI2c;
 use nobro_hal::{
-    bus::TwimBus,
     lease::Resource,
     traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
@@ -58,15 +57,13 @@ fn main() -> ! {
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, 3).unwrap_or_else(|_| defmt::panic!("I2C lease"));
-    TwimBus::init_pins(I2C_SDA_PIN, I2C_SCL_PIN);
-
     unsafe {
         NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
         NOBRO_IMU_HW_EVAL_REPORT.version = IMU_HW_EVAL_VERSION;
     }
 
-    let mut i2c = NobroI2c::new();
+    let mut i2c =
+        NobroI2c::new(3, I2C_SDA_PIN, I2C_SCL_PIN).unwrap_or_else(|_| defmt::panic!("I2C session"));
 
     // Discover the IMU through the embedded-hal trait.
     let mut addr = 0u8;

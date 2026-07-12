@@ -35,6 +35,7 @@ pub mod inspect;
 pub mod ppi;
 #[cfg(feature = "platform-nrf52840")]
 pub mod pwm;
+mod quiesce;
 #[cfg(feature = "platform-nrf52840")]
 pub mod radio_hw;
 #[cfg(feature = "platform-nrf52840")]
@@ -57,6 +58,8 @@ pub use board_fixtures::{
 };
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]
+pub use platform::nrf52840::NrfSchedulingSession;
+#[cfg(feature = "platform-nrf52840")]
 pub use platform::ActivePlatform;
 pub use snapshots::{
     BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,
@@ -78,9 +81,9 @@ pub use deadline_timer::DeadlineTimer;
 #[cfg(feature = "platform-nrf52840")]
 pub use inspect::scene_d_pass;
 #[cfg(feature = "platform-nrf52840")]
-pub use pwm::{PwmBank, PwmServo, SERVO_PIN};
+pub use pwm::{PwmBank, PwmBankSession, PwmServo, PwmSession, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]
-pub use radio_hw::{Radio, RadioError};
+pub use radio_hw::{Radio, RadioError, RadioSession};
 #[cfg(feature = "platform-nrf52840")]
 pub use radio_sim::RadioRxSim;
 #[cfg(feature = "platform-nrf52840")]

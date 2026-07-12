@@ -22,6 +22,15 @@
       "review": "UX-04"
     },
     {
+      "id": "lease_sessions",
+      "status": "integrated",
+      "evidence_path": "core/crates/nobro_hal/src/lease.rs",
+      "required_tokens": ["generation", "ensure_live", "release_token"],
+      "closure_path": "core/crates/nobro_hal/src/quiesce.rs",
+      "closure_path_state": "present",
+      "review": "CON-03"
+    },
+    {
       "id": "arduino_cpp_facade",
       "status": "integrated",
       "evidence_path": "packages/arduino/src/NobroRTOS.h",

@@ -111,7 +111,7 @@ impl LeaseId {
 
     pub const SYSTEM_TIMER: Self = Self::new(LeaseClass::Timer, 0);
     pub const LOW_POWER_TIMER: Self = Self::new(LeaseClass::Timer, 2);
-    pub const DEADLINE_TIMER: Self = Self::new(LeaseClass::Timer, 3);
+    pub const DEADLINE_TIMER: Self = Self::new(LeaseClass::Timer, 1);
     pub const PRIMARY_I2C: Self = Self::new(LeaseClass::I2c, 0);
     pub const SECONDARY_I2C: Self = Self::new(LeaseClass::I2c, 1);
     pub const PRIMARY_SPI: Self = Self::new(LeaseClass::Spi, 0);
@@ -144,10 +144,10 @@ pub trait HalDeadline {
     /// Caller must own the deadline timer's lease and call this once; it configures
     /// the timer peripheral's mode, prescaler, and compare registers.
     unsafe fn init();
-    fn enable_interrupt();
-    fn on_interrupt();
+    unsafe fn enable_interrupt();
+    unsafe fn on_interrupt();
     /// Polled compare path (used when NVIC path is disabled).
-    fn poll_compare(on_tick: impl FnOnce(u64));
+    unsafe fn poll_compare(on_tick: impl FnOnce(u64));
 }
 
 /// Servo-style PWM backend.

@@ -16,7 +16,7 @@ piece actually guarantees, and where the boundaries are.
 | --- | --- | --- |
 | **Capability grants** | admission derives grants; protected runtime operations are crate-private and `ModuleCtx`/foreign-host dispatch checks authority while recording trace evidence | `nobro_kernel` |
 | **Quota and energy accounting** | admission seeds bounded object quotas; protected dispatch charges objects and executor poll duration feeds per-module energy accounting | `nobro_kernel`, `nobro_power` |
-| **Peripheral leases** | exclusive, owner-checked access to buses/timers/radios; wrong-owner release is an error, verified by a 30k-op property test | `nobro_hal::lease` |
+| **Peripheral sessions** | generation-tagged, non-clonable authority for I2C/SPI/radio/PWM/scheduling operations; recovery quiesces nRF DMA/interrupt state before reuse; verified by a 30k-op model, concurrent ABA test, compile-fail tests, Miri, and restoring HIL | `nobro_hal::lease`, `quiesce` |
 | **Bounded everything** | fixed-capacity mailboxes, pools, bridges; no heap = no heap exploits, no fragmentation | whole tree (`no_std`, no alloc) |
 
 ### The update trust chain

@@ -48,6 +48,13 @@ RELEASE = os.path.join(TARGET_DIR, "thumbv7em-none-eabihf", "release")
 # app -> build + report metadata. Field lists mirror nobro_kernel::eval structs.
 COMMON_HEAD = ["magic", "version", "completed", "all_pass"]
 APPS = {
+    "lease": {
+        "package": "lease-demo",
+        "bin": {"nosd": "lease_demo", "s140": "lease_demo_s140"},
+        "symbol": "NOBRO_LEASE_REPORT",
+        "magic": 0x4E4C4553,
+        "fields": COMMON_HEAD + ["tested", "passed", "checksum"],
+    },
     "imu": {
         "package": "imu-i2c-demo",
         "bin": {"nosd": "imu_i2c_demo", "s140": "imu_i2c_demo_s140"},

@@ -17,10 +17,7 @@ use nobro_hal::{
     inspect,
     lease::{LeaseError, Resource},
     ppi,
-    traits::{
-        HalBus, HalClock, HalDeadline, HalEventCapture, HalLease, HalSchedulingProvider,
-        PlatformHal,
-    },
+    traits::{HalBus, HalEventCapture, HalLease, HalSchedulingProvider, PlatformHal},
     ActivePlatform as Hal,
 };
 use nobro_kernel::{
@@ -51,12 +48,12 @@ fn main() -> ! {
         Board::BOARD_ID
     );
 
-    Hal::acquire(Resource::Timer0, OWNER_TIMER).unwrap_or_else(|_| defmt::panic!("Timer0"));
     Hal::acquire(Resource::Radio, OWNER_RADIO).unwrap_or_else(|_| defmt::panic!("Radio"));
 
     let profile = Hal::servo_profile();
+    let scheduling = unsafe { nobro_hal::NrfSchedulingSession::acquire(OWNER_TIMER, profile) }
+        .unwrap_or_else(|_| defmt::panic!("scheduling session"));
     unsafe {
-        Hal::init_scheduling_demo(profile);
         let _ = Scheduler::set_deadline_handler(on_deadline_slot);
         ppi::led_init_output();
         defmt::info!(
@@ -70,7 +67,7 @@ fn main() -> ! {
     let twim0 = TwimBus::acquire_twim0(OWNER_I2C).unwrap_or_else(|_| defmt::panic!("TWIM0"));
     scene_b_check_once();
 
-    let now = Hal::now_us();
+    let now = scheduling.now_us().unwrap_or(0);
     let mut i2c_task = I2cPollTask::new(OWNER_I2C, now);
     let mut stats = StatsTask::new(now);
     let mut i2c_buf = [0u8; 16];
@@ -83,8 +80,8 @@ fn main() -> ! {
     }
 
     loop {
-        let now = Hal::now_us();
-        Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
+        let now = scheduling.now_us().unwrap_or(0);
+        let _ = scheduling.poll_compare(|t| Scheduler::on_deadline_tick(t));
 
         if i2c_task.poll(now) == Poll::Ready {
             if twim0.read_stub(0x68, &mut i2c_buf).is_ok() {
@@ -93,13 +90,11 @@ fn main() -> ! {
         }
 
         if stats.poll(now) == Poll::Ready {
-            Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
+            let _ = scheduling.poll_compare(|t| Scheduler::on_deadline_tick(t));
             for _ in 0..4 {
-                unsafe {
-                    let _ = Hal::trigger_and_latency_us();
-                }
+                let _ = scheduling.trigger_and_latency_us();
             }
-            Hal::poll_compare(|t| Scheduler::on_deadline_tick(t));
+            let _ = scheduling.poll_compare(|t| Scheduler::on_deadline_tick(t));
             try_finalize_eval();
         }
 

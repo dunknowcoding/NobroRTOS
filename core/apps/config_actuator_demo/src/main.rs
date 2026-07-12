@@ -12,7 +12,7 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_device::catalog::SERVO_SG90;
-use nobro_hal::{lease::Resource, traits::HalLease, ActivePlatform as Hal, PwmBank};
+use nobro_hal::PwmBankSession;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -54,21 +54,26 @@ fn main() -> ! {
     let pulse_max = u32::from(servo.angle_to_pulse(180));
 
     // Drive channel 0 of the leased PWM bank at each angle and read the live pulse back.
-    let _ = Hal::acquire(Resource::Pwm0, OWNER);
-    let mut bank =
-        unsafe { PwmBank::init_50hz([Some(24), None, None, None], u32::from(servo.center_us)) };
+    let mut bank = unsafe {
+        PwmBankSession::acquire(
+            OWNER,
+            [Some(24), None, None, None],
+            u32::from(servo.center_us),
+        )
+    }
+    .unwrap_or_else(|_| defmt::panic!("PWM session"));
 
     let mut readback_ok = 1u32;
     for &a in &angles {
         let want = servo.angle_to_pulse(a);
-        unsafe { bank.set_pulse_us(0, u32::from(want)) };
+        bank.set_pulse_us(0, u32::from(want))
+            .unwrap_or_else(|_| defmt::panic!("stale PWM session"));
         cortex_m::asm::delay(1_600_000); // let a period elapse
-        if PwmBank::read_pulse_us(0) != u32::from(want) {
+        if bank.read_pulse_us(0).unwrap_or(0) != u32::from(want) {
             readback_ok = 0;
         }
     }
-    let freq_ok = bank.frequency_hz() == 50;
-    let _ = Hal::release(Resource::Pwm0, OWNER);
+    let freq_ok = bank.frequency_hz().unwrap_or(0) == 50;
 
     // SG90 spec sanity: 0deg=500us, 90deg~1450us, 180deg=2400us.
     let pass = readback_ok == 1

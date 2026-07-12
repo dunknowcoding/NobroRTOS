@@ -80,7 +80,7 @@ pub extern "C" fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i32 {
         ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
             .args(u32::from(addr), len)
             .bytes(len),
-        || match Twim0::write_bytes(addr, bytes) {
+        || match unsafe { Twim0::write_bytes(addr, bytes) } {
             Ok(()) => 0,
             Err(_) => -1,
         },
@@ -107,7 +107,7 @@ pub extern "C" fn nobro_i2c_write_read(
         ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
             .args(u32::from(addr), tx_len.saturating_add(rx_len))
             .bytes(tx_len.saturating_add(rx_len)),
-        || match Twim0::write_read(addr, t, r) {
+        || match unsafe { Twim0::write_read(addr, t, r) } {
             Ok(()) => 0,
             Err(_) => -1,
         },
@@ -233,7 +233,7 @@ fn main() -> ! {
         Hal::init_timebase();
     }
     Hal::acquire(Resource::Twim0, 3).ok();
-    TwimBus::init_pins(I2C_SDA_PIN, I2C_SCL_PIN);
+    unsafe { TwimBus::init_pins_unchecked(I2C_SDA_PIN, I2C_SCL_PIN) };
 
     unsafe {
         NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;

@@ -10,7 +10,7 @@
 #![no_std]
 
 use embedded_hal::i2c::{Error, ErrorKind, ErrorType, I2c, Operation};
-use nobro_hal::{BusError, Twim0};
+use nobro_hal::{BusError, TwimBus};
 
 /// Error wrapper so the HAL's `BusError` satisfies `embedded_hal::i2c::Error`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -25,12 +25,15 @@ impl Error for NobroI2cError {
 }
 
 /// `embedded-hal` I2C bus backed by NobroRTOS TWIM0.
-#[derive(Default)]
-pub struct NobroI2c;
+pub struct NobroI2c {
+    bus: TwimBus,
+}
 
 impl NobroI2c {
-    pub fn new() -> Self {
-        NobroI2c
+    pub fn new(owner: u8, sda: u8, scl: u8) -> Result<Self, NobroI2cError> {
+        let bus = TwimBus::new_twim0(owner).map_err(|_| NobroI2cError(BusError::LeaseDenied))?;
+        bus.init_pins(sda, scl).map_err(NobroI2cError)?;
+        Ok(Self { bus })
     }
 }
 
@@ -49,10 +52,10 @@ impl I2c for NobroI2c {
         for op in operations {
             match op {
                 Operation::Write(bytes) => {
-                    Twim0::write_bytes(address, bytes).map_err(NobroI2cError)?;
+                    self.bus.write(address, bytes).map_err(NobroI2cError)?;
                 }
                 Operation::Read(buffer) => {
-                    Twim0::read_bytes(address, buffer).map_err(NobroI2cError)?;
+                    self.bus.read(address, buffer).map_err(NobroI2cError)?;
                 }
             }
         }

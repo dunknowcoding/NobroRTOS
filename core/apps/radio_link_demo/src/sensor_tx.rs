@@ -9,7 +9,7 @@ use cortex_m_rt::entry;
 use defmt_rtt as _;
 use embedded_hal::spi::SpiDevice as _;
 use nobro_eh_spi::NobroSpiDevice;
-use nobro_hal::{board, Radio};
+use nobro_hal::{board, RadioSession};
 use panic_halt as _;
 
 #[path = "common.rs"]
@@ -49,11 +49,13 @@ fn main() -> ! {
     start_hfxo();
     let mut dev = unsafe {
         NobroSpiDevice::new(
+            4,
             board::SPI_SCK_PIN,
             board::SPI_MOSI_PIN,
             board::SPI_MISO_PIN,
             board::SPI_CS_PIN,
         )
+        .unwrap_or_else(|_| defmt::panic!("SPI session"))
     };
     // MPU-9250 bring-up over SPI (reset, wake, SPI-only, +/-2 g).
     wr(&mut dev, 0x6B, 0x80);
@@ -67,9 +69,8 @@ fn main() -> ! {
     for _ in 0..400_000u32 {
         cortex_m::asm::nop();
     }
-    unsafe {
-        Radio::init();
-    }
+    let radio =
+        unsafe { RadioSession::acquire(5) }.unwrap_or_else(|_| defmt::panic!("radio session"));
 
     let mut seq: u32 = 0;
     let mut tx_sent: u32 = 0;
@@ -88,7 +89,7 @@ fn main() -> ! {
         pkt[0] = 0x5A;
         pkt[1..5].copy_from_slice(&seq.to_le_bytes());
         pkt[5..9].copy_from_slice(&accel_mag_mg.to_le_bytes());
-        if Radio::send(&pkt).is_ok() {
+        if radio.send(&pkt).is_ok() {
             tx_sent = tx_sent.wrapping_add(1);
         }
 

@@ -7,11 +7,7 @@
 //! pairs with `Capability::Radio` for capability-gated access.
 #![no_std]
 
-use nobro_hal::{
-    lease::{LeaseError, Resource},
-    traits::HalLease,
-    ActivePlatform as Hal, Radio,
-};
+use nobro_hal::{lease::LeaseError, RadioSession};
 use nobro_sal::StreamSal;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -24,7 +20,7 @@ pub enum RadioCommsError {
 
 /// Owns the `Resource::Radio` lease and frames the radio as a `StreamSal`.
 pub struct RadioComms {
-    owner: u8,
+    radio: RadioSession,
     rx: [u8; 32],
     rx_len: usize,
 }
@@ -33,12 +29,9 @@ impl RadioComms {
     /// Acquire the radio as a managed resource (takes the `Resource::Radio` lease),
     /// then bring up the RADIO peripheral. Fails if another owner holds the radio.
     pub fn acquire(owner: u8) -> Result<Self, RadioCommsError> {
-        Hal::acquire(Resource::Radio, owner).map_err(RadioCommsError::Lease)?;
-        unsafe {
-            Radio::init();
-        }
+        let radio = unsafe { RadioSession::acquire(owner) }.map_err(RadioCommsError::Lease)?;
         Ok(RadioComms {
-            owner,
+            radio,
             rx: [0; 32],
             rx_len: 0,
         })
@@ -46,7 +39,8 @@ impl RadioComms {
 
     /// Release the radio lease back to the kernel.
     pub fn release(self) -> Result<(), RadioCommsError> {
-        Hal::release(Resource::Radio, self.owner).map_err(RadioCommsError::Lease)
+        drop(self);
+        Ok(())
     }
 }
 
@@ -54,7 +48,11 @@ impl StreamSal for RadioComms {
     type Error = RadioCommsError;
 
     fn poll(&mut self) -> Result<Option<usize>, Self::Error> {
-        match Radio::recv(&mut self.rx, 50_000) {
+        match self
+            .radio
+            .recv(&mut self.rx, 50_000)
+            .map_err(|_| RadioCommsError::TxTimeout)?
+        {
             Some(n) => {
                 self.rx_len = n;
                 Ok(Some(n))
@@ -70,10 +68,12 @@ impl StreamSal for RadioComms {
             self.rx_len = 0;
             return Ok(Some(n));
         }
-        Ok(Radio::recv(buf, 200_000))
+        self.radio
+            .recv(buf, 200_000)
+            .map_err(|_| RadioCommsError::TxTimeout)
     }
 
     fn write_frame(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        Radio::send(buf).map_err(|_| RadioCommsError::TxTimeout)
+        self.radio.send(buf).map_err(|_| RadioCommsError::TxTimeout)
     }
 }

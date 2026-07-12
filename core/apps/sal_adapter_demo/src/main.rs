@@ -14,9 +14,8 @@ use panic_probe as _;
 use nobro_adapter_robo_servo::{module_spec as robo_servo_spec, RoboServoAdapter};
 use nobro_adapter_sensor_stub::{module_spec as sensor_stub_spec, stub_imu_plausible, SensorStub};
 use nobro_hal::{
-    lease::Resource,
     ppi,
-    traits::{HalClock, HalDeadline, HalLease, HalSchedulingProvider, HalServoPwm, PlatformHal},
+    traits::{HalSchedulingProvider, HalServoPwm, PlatformHal},
     ActivePlatform as Hal, BoardPackageReport, BoardProfileReport, ACTIVE_BOARD_PACKAGE,
 };
 use nobro_kernel::{
@@ -103,11 +102,10 @@ fn main() -> ! {
         Hal::PLATFORM_ID
     );
 
-    Hal::acquire(Resource::Timer0, 1).unwrap_or_else(|_| defmt::panic!("Timer0"));
-
     let profile = Hal::servo_profile();
+    let scheduling = unsafe { nobro_hal::NrfSchedulingSession::acquire(1, profile) }
+        .unwrap_or_else(|_| defmt::panic!("scheduling session"));
     unsafe {
-        Hal::init_scheduling_demo(profile);
         let _ = Scheduler::set_deadline_handler(on_deadline_slot);
         ppi::led_init_output();
     }
@@ -126,7 +124,7 @@ fn main() -> ! {
         sensor.stub_i2c_addr()
     );
 
-    let mut stats = StatsTask::new(Hal::now_us());
+    let mut stats = StatsTask::new(scheduling.now_us().unwrap_or(0));
     Scheduler::reset_stats();
 
     unsafe {
@@ -135,8 +133,8 @@ fn main() -> ! {
     }
 
     loop {
-        let now = Hal::now_us();
-        Hal::poll_compare(|t| {
+        let now = scheduling.now_us().unwrap_or(0);
+        let _ = scheduling.poll_compare(|t| {
             Scheduler::on_deadline_tick(t);
             try_servo_step(&mut servo, now);
         });

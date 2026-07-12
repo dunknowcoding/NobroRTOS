@@ -88,7 +88,7 @@ fn settle() {
 #[cfg(feature = "backend-native")]
 mod backend {
     use super::*;
-    use nobro_hal::{board, lease::Resource, traits::HalLease, ActivePlatform as Hal, Spim0};
+    use nobro_hal::{board, Spim0};
 
     pub const BACKEND_ID: u32 = 1; // native HAL SPI driver
 
@@ -97,14 +97,14 @@ mod backend {
     }
 
     pub fn mount() -> Mpu9250Native {
-        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let spim = unsafe {
-            Spim0::init(
+            Spim0::acquire(
+                4,
                 board::SPI_SCK_PIN,
                 board::SPI_MOSI_PIN,
                 board::SPI_MISO_PIN,
                 board::SPI_CS_PIN,
-            )
+            ).unwrap_or_else(|_| defmt::panic!("SPI session"))
         };
         spim.write_reg(0x6B, 0x80)
             .unwrap_or_else(|_| defmt::panic!("IMU reset"));
@@ -165,14 +165,14 @@ mod backend {
     }
 
     pub fn mount() -> Mpu9250Eh {
-        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let mut dev = unsafe {
             NobroSpiDevice::new(
+                4,
                 board::SPI_SCK_PIN,
                 board::SPI_MOSI_PIN,
                 board::SPI_MISO_PIN,
                 board::SPI_CS_PIN,
-            )
+            ).unwrap_or_else(|_| defmt::panic!("SPI session"))
         };
         wr(&mut dev, 0x6B, 0x80); // device reset
         settle();
@@ -259,14 +259,14 @@ mod backend {
     pub struct Mpu9250Arduino;
 
     pub fn mount() -> Mpu9250Arduino {
-        Hal::acquire(Resource::Spim0, 4).unwrap_or_else(|_| defmt::panic!("SPI lease"));
         let spim = unsafe {
-            Spim0::init(
+            Spim0::acquire(
+                4,
                 board::SPI_SCK_PIN,
                 board::SPI_MOSI_PIN,
                 board::SPI_MISO_PIN,
                 board::SPI_CS_PIN,
-            )
+            ).unwrap_or_else(|_| defmt::panic!("SPI session"))
         };
         unsafe { *core::ptr::addr_of_mut!(SHIM_SPIM) = Some(spim) };
         let _ = unsafe { arduino_imu_begin() }; // the LIBRARY does the bring-up

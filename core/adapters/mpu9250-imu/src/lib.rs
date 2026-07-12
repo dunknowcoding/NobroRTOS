@@ -2,9 +2,7 @@
 
 #![no_std]
 
-use nobro_hal::{
-    bus::TwimBus, traits::HalClock, twim_hw::Twim0, ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
-};
+use nobro_hal::{bus::TwimBus, traits::HalClock, ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN};
 use nobro_kernel::{
     pool::{ImuPayload, SamplePool},
     Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
@@ -32,6 +30,7 @@ pub enum Mpu9250Error {
 }
 
 pub struct Mpu9250Imu {
+    bus: TwimBus,
     addr: u8,
     who_am_i: u8,
     owner: u8,
@@ -43,11 +42,13 @@ pub struct Mpu9250Imu {
 
 impl Mpu9250Imu {
     pub fn probe_and_init(owner: u8) -> Result<Self, Mpu9250Error> {
-        TwimBus::init_pins(I2C_SDA_PIN, I2C_SCL_PIN);
+        let bus = TwimBus::new_twim0(owner).map_err(|_| Mpu9250Error::Bus)?;
+        bus.init_pins(I2C_SDA_PIN, I2C_SCL_PIN)
+            .map_err(|_| Mpu9250Error::Bus)?;
 
         let mut found = None;
         for addr in [0x68u8, 0x69] {
-            if let Ok(id) = Twim0::read_reg(addr, REG_WHO_AM_I) {
+            if let Ok(id) = bus.read_reg(addr, REG_WHO_AM_I) {
                 if matches!(id, WHO_MPU6050 | WHO_MPU6500 | WHO_MPU9250 | WHO_MPU9255) {
                     found = Some((addr, id));
                     break;
@@ -56,17 +57,23 @@ impl Mpu9250Imu {
         }
         let (addr, who_am_i) = found.ok_or(Mpu9250Error::NotFound)?;
 
-        Twim0::write_reg(addr, REG_PWR_MGMT_1, 0x01).map_err(|_| Mpu9250Error::Bus)?;
+        bus.write_reg(addr, REG_PWR_MGMT_1, 0x01)
+            .map_err(|_| Mpu9250Error::Bus)?;
         spin_wait(500_000);
-        Twim0::write_reg(addr, 0x1A, 0x03).map_err(|_| Mpu9250Error::Bus)?;
-        Twim0::write_reg(addr, 0x1B, 0x00).map_err(|_| Mpu9250Error::Bus)?;
-        Twim0::write_reg(addr, 0x1C, 0x00).map_err(|_| Mpu9250Error::Bus)?;
+        bus.write_reg(addr, 0x1A, 0x03)
+            .map_err(|_| Mpu9250Error::Bus)?;
+        bus.write_reg(addr, 0x1B, 0x00)
+            .map_err(|_| Mpu9250Error::Bus)?;
+        bus.write_reg(addr, 0x1C, 0x00)
+            .map_err(|_| Mpu9250Error::Bus)?;
 
-        let bmp280_present = Twim0::read_reg(BMP280_ADDR, REG_BMP280_ID)
+        let bmp280_present = bus
+            .read_reg(BMP280_ADDR, REG_BMP280_ID)
             .map(|id| id == 0x58)
             .unwrap_or(false);
 
         Ok(Self {
+            bus,
             addr,
             who_am_i,
             owner,
@@ -103,9 +110,11 @@ impl Mpu9250Imu {
         self.owner
     }
 
-    pub fn scan_device_count() -> u8 {
-        TwimBus::init_pins(I2C_SDA_PIN, I2C_SCL_PIN);
-        Twim0::scan(|_| {})
+    pub fn scan_device_count(owner: u8) -> Result<u8, Mpu9250Error> {
+        let bus = TwimBus::new_twim0(owner).map_err(|_| Mpu9250Error::Bus)?;
+        bus.init_pins(I2C_SDA_PIN, I2C_SCL_PIN)
+            .map_err(|_| Mpu9250Error::Bus)?;
+        bus.scan(|_| {}).map_err(|_| Mpu9250Error::Bus)
     }
 
     fn read_burst(&mut self) -> Result<([f32; 3], [f32; 3]), Mpu9250Error> {
@@ -115,7 +124,8 @@ impl Mpu9250Imu {
         // One burst from ACCEL_XOUT_H covers accel (6), temperature (2), gyro (6):
         // the MPU register map is contiguous, so a 14-byte read gets all three.
         let mut raw = [0u8; 14];
-        Twim0::write_read(self.addr, &[REG_ACCEL_XOUT_H], &mut raw)
+        self.bus
+            .write_read(self.addr, &[REG_ACCEL_XOUT_H], &mut raw)
             .map_err(|_| Mpu9250Error::Bus)?;
 
         let ax = i16::from_be_bytes([raw[0], raw[1]]);

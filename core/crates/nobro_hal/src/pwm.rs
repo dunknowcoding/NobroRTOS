@@ -3,6 +3,7 @@
 use core::ptr;
 
 use crate::board;
+use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 
 const PWM0_BASE: u32 = 0x4001C000;
 const PWM_TASKS_SEQSTART0: u32 = 0x008;
@@ -123,6 +124,38 @@ impl Default for PwmServo {
     }
 }
 
+/// Safe PWM operations coupled to the exact live PWM0 acquisition.
+pub struct PwmSession {
+    lease: LeaseGuard,
+    pwm: PwmServo,
+}
+
+impl PwmSession {
+    /// # Safety
+    /// `pin` must be a wired PWM output that no other pin-mux owner drives.
+    pub unsafe fn acquire(owner: u8, pin: u8, pulse_us: u32) -> Result<Self, LeaseError> {
+        let lease = ResourceLease::acquire_guard(Resource::Pwm0, owner)?;
+        let pwm = PwmServo::init_50hz(pin, pulse_us);
+        Ok(Self { lease, pwm })
+    }
+
+    pub fn set_pulse_us(&mut self, pulse_us: u32) -> Result<(), LeaseError> {
+        self.lease.ensure_live()?;
+        unsafe { self.pwm.set_pulse_us(pulse_us) };
+        Ok(())
+    }
+
+    pub fn pulse_us(&self) -> Result<u32, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(self.pwm.pulse_us())
+    }
+
+    pub fn frequency_hz(&self) -> Result<u32, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(self.pwm.frequency_hz())
+    }
+}
+
 const PWM_PSEL_OUT: [u32; 4] = [0x560, 0x564, 0x568, 0x56C];
 const PIN_DISCONNECTED: u32 = 0x8000_0000;
 
@@ -191,5 +224,41 @@ impl PwmBank {
 
     pub fn frequency_hz(&self) -> u32 {
         (PWM_BASE_CLOCK_HZ >> 4) / (u32::from(self.counter_top) + 1)
+    }
+}
+
+/// Four-channel counterpart to [`PwmSession`], retaining one live PWM0 lease.
+pub struct PwmBankSession {
+    lease: LeaseGuard,
+    bank: PwmBank,
+}
+
+impl PwmBankSession {
+    /// # Safety
+    /// Every present pin must be a wired output free of other pin-mux owners.
+    pub unsafe fn acquire(
+        owner: u8,
+        pins: [Option<u8>; 4],
+        center_us: u32,
+    ) -> Result<Self, LeaseError> {
+        let lease = ResourceLease::acquire_guard(Resource::Pwm0, owner)?;
+        let bank = PwmBank::init_50hz(pins, center_us);
+        Ok(Self { lease, bank })
+    }
+
+    pub fn set_pulse_us(&mut self, channel: usize, pulse_us: u32) -> Result<(), LeaseError> {
+        self.lease.ensure_live()?;
+        unsafe { self.bank.set_pulse_us(channel, pulse_us) };
+        Ok(())
+    }
+
+    pub fn read_pulse_us(&self, channel: usize) -> Result<u32, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(PwmBank::read_pulse_us(channel))
+    }
+
+    pub fn frequency_hz(&self) -> Result<u32, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(self.bank.frequency_hz())
     }
 }

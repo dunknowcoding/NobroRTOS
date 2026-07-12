@@ -4,6 +4,8 @@
 //! address, 2-byte CRC, length-prefixed payload. Half-duplex: send() or recv(), not
 //! both at once.
 
+use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+
 const RADIO_BASE: u32 = 0x4000_1000;
 
 const TASKS_TXEN: u32 = 0x000;
@@ -39,6 +41,7 @@ pub const RADIO_MAX_PAYLOAD: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RadioError {
+    LeaseDenied,
     TooLarge,
     Timeout,
 }
@@ -50,13 +53,54 @@ fn reg(off: u32) -> *mut u32 {
 /// nRF 2.4 GHz RADIO, proprietary 1 Mbps. Caller must have HFXO running.
 pub struct Radio;
 
+/// Generation-checked radio authority. Recovery invalidates the session before another
+/// owner can acquire the peripheral, and every safe packet operation revalidates it.
+pub struct RadioSession {
+    lease: LeaseGuard,
+}
+
+impl RadioSession {
+    /// # Safety
+    /// HFXO must be running and a SoftDevice must not own the radio peripheral.
+    pub unsafe fn acquire(owner: u8) -> Result<Self, LeaseError> {
+        let lease = ResourceLease::acquire_guard(Resource::Radio, owner)?;
+        Radio::init();
+        Ok(Self { lease })
+    }
+
+    pub fn send(&self, payload: &[u8]) -> Result<(), RadioError> {
+        self.lease
+            .ensure_live()
+            .map_err(|_| RadioError::LeaseDenied)?;
+        Radio::send(payload)
+    }
+
+    pub fn recv(&self, buf: &mut [u8], timeout_spins: u32) -> Result<Option<usize>, RadioError> {
+        self.lease
+            .ensure_live()
+            .map_err(|_| RadioError::LeaseDenied)?;
+        Ok(Radio::recv(buf, timeout_spins))
+    }
+
+    /// Reapply proprietary-mode registers after a deliberately multiplexed mode.
+    /// # Safety
+    /// The caller must ensure the radio is idle before reconfiguration.
+    pub unsafe fn reconfigure(&self) -> Result<(), RadioError> {
+        self.lease
+            .ensure_live()
+            .map_err(|_| RadioError::LeaseDenied)?;
+        Radio::init();
+        Ok(())
+    }
+}
+
 impl Radio {
     /// Configure the radio: 1 Mbps, channel 40, fixed address, 2-byte CRC, 1-byte
     /// length field. Idempotent.
     ///
     /// # Safety
     /// HFXO must be started; the radio peripheral must not be owned by a SoftDevice.
-    pub unsafe fn init() {
+    pub(crate) unsafe fn init() {
         *reg(MODE) = MODE_NRF_1MBIT;
         *reg(FREQUENCY) = CHANNEL_FREQ;
         *reg(TXPOWER) = 0; // 0 dBm
@@ -74,7 +118,7 @@ impl Radio {
     }
 
     /// Send one complete payload without truncation.
-    pub fn send(payload: &[u8]) -> Result<(), RadioError> {
+    fn send(payload: &[u8]) -> Result<(), RadioError> {
         if payload.len() > RADIO_MAX_PAYLOAD {
             return Err(RadioError::TooLarge);
         }
@@ -108,7 +152,7 @@ impl Radio {
 
     /// Receive one CRC-valid packet into `buf` within `timeout_spins`. Returns the
     /// payload length on success, or None on timeout / CRC error.
-    pub fn recv(buf: &mut [u8], timeout_spins: u32) -> Option<usize> {
+    fn recv(buf: &mut [u8], timeout_spins: u32) -> Option<usize> {
         let mut pkt = [0u8; RADIO_MAX_PAYLOAD + 1];
         unsafe {
             *reg(EVENTS_END) = 0;

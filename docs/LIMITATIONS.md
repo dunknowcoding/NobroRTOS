@@ -52,9 +52,10 @@ mapping. Physical smoke evidence does not promote either provider port to deep s
 - The signed boot/update state machine is fail-closed and persistent, but a production
   board bootloader, slot writer, protected-key implementation, and factory provisioning
   transport remain platform integration work.
-- Kernel-object cleanup is reconciled and leak-checked. DMA state, interrupt handlers,
-  driver-owned statics, and hardware leases still require their platform adapters to
-  quiesce and release them correctly.
+- Kernel-object cleanup is reconciled and leak-checked. The deep nRF HAL now invalidates
+  generation-tagged sessions and stops peripheral DMA/interrupt routing before a lease
+  is reassigned. Equivalent quiescence is not yet implemented on provider/conformance
+  ports, and arbitrary module-owned static state still needs lifecycle-hook cleanup.
 - Stack and MPU fault paths have deep-platform negative HIL. That evidence does not
   imply equivalent isolation on provider or conformance ports.
 

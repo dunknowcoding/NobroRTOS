@@ -13,7 +13,7 @@
 
 use cortex_m_rt::entry;
 use defmt_rtt as _;
-use nobro_hal::Radio;
+use nobro_hal::RadioSession;
 use nobro_iot::BleAdvBuilder;
 use panic_halt as _;
 
@@ -96,9 +96,11 @@ fn ble_send(pdu: &[u8], freq: u32, white_iv: u32) {
 }
 
 /// Hand the RADIO back to the proprietary link: full reconfig + reset whitening seed.
-fn proprietary_config() {
+fn proprietary_config(radio: &RadioSession) {
     unsafe {
-        Radio::init();
+        radio
+            .reconfigure()
+            .unwrap_or_else(|_| defmt::panic!("radio session"));
         DATAWHITEIV.write_volatile(0x40); // hardware reset value; BLE left a channel iv
         SHORTS.write_volatile(0); // Radio::send drives tasks explicitly
     }
@@ -239,6 +241,8 @@ fn start_hfxo() {
 #[entry]
 fn main() -> ! {
     start_hfxo();
+    let radio =
+        unsafe { RadioSession::acquire(5) }.unwrap_or_else(|_| defmt::panic!("radio session"));
     uart_init();
     cortex_m::asm::delay(3_200_000);
     for _ in 0..140 {
@@ -277,11 +281,11 @@ fn main() -> ! {
         }
 
         // (b) proprietary packet over the same RADIO, reconfigured
-        proprietary_config();
+        proprietary_config(&radio);
         let mut pkt = [0u8; 5];
         pkt[0] = 0xA5;
         pkt[1..5].copy_from_slice(&beat.to_le_bytes());
-        if Radio::send(&pkt).is_ok() {
+        if radio.send(&pkt).is_ok() {
             radio_tx += 1;
         }
 

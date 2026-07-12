@@ -44,14 +44,12 @@ fn main() -> ! {
         Hal::init_timebase();
         ppi::led_init_output();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("TWIM0"));
-
     unsafe {
         NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
         NOBRO_IMU_HW_EVAL_REPORT.version = nobro_kernel::eval::IMU_HW_EVAL_VERSION;
     }
 
-    let device_count = Mpu9250Imu::scan_device_count();
+    let device_count = Mpu9250Imu::scan_device_count(OWNER_TWIM).unwrap_or(0);
     defmt::info!("I2C scan: {} device(s)", device_count);
     unsafe {
         NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = u32::from(device_count);
@@ -60,12 +58,6 @@ fn main() -> ! {
     let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
         Ok(imu) => imu,
         Err(_) => {
-            if let Ok(raw) = nobro_hal::Twim0::read_reg(0x68, 0x75) {
-                unsafe {
-                    NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(raw);
-                    NOBRO_IMU_HW_EVAL_REPORT.dev_addr = 0x68;
-                }
-            }
             defmt::warn!("MPU probe failed; check SDA/SCL wiring");
             idle_fail_loop();
         }

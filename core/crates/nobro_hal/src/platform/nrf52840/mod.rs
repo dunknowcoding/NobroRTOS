@@ -4,7 +4,7 @@ use crate::board;
 use crate::board_desc::{BusLayout, ServoProfile};
 use crate::bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 use crate::deadline_timer::DeadlineTimer;
-use crate::lease::{LeaseError, Resource, ResourceLease};
+use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 use crate::radio_sim::RadioRxSim;
 use crate::snapshots::EventCaptureSnapshot;
 use crate::timer::MicroTimer;
@@ -17,6 +17,60 @@ use crate::traits::{
 pub mod inspect;
 
 pub struct Nrf52840;
+
+/// Coherent scheduling-demo authority: clock, deadline, PWM, software event, and
+/// event router are acquired as one all-or-nothing generation-checked session.
+pub struct NrfSchedulingSession {
+    timer: LeaseGuard,
+    deadline: LeaseGuard,
+    pwm: LeaseGuard,
+    software_event: LeaseGuard,
+    event_router: LeaseGuard,
+}
+
+impl NrfSchedulingSession {
+    /// # Safety
+    /// The profile pin must match the board wiring and the peripherals must be idle.
+    pub unsafe fn acquire(owner: u8, profile: ServoProfile) -> Result<Self, LeaseError> {
+        let timer = ResourceLease::acquire_guard(Resource::Timer0, owner)?;
+        let deadline = ResourceLease::acquire_guard(Resource::Timer1, owner)?;
+        let pwm = ResourceLease::acquire_guard(Resource::Pwm0, owner)?;
+        let software_event = ResourceLease::acquire_guard(Resource::Egu0, owner)?;
+        let event_router = ResourceLease::acquire_guard(Resource::Ppi, owner)?;
+        Nrf52840::init_scheduling_demo(profile);
+        Ok(Self {
+            timer,
+            deadline,
+            pwm,
+            software_event,
+            event_router,
+        })
+    }
+
+    pub fn now_us(&self) -> Result<u64, LeaseError> {
+        self.timer.ensure_live()?;
+        Ok(MicroTimer::now_us())
+    }
+
+    pub fn poll_compare(&self, on_tick: impl FnOnce(u64)) -> Result<(), LeaseError> {
+        self.deadline.ensure_live()?;
+        unsafe { Nrf52840::poll_compare(on_tick) };
+        Ok(())
+    }
+
+    pub fn trigger_and_latency_us(&self) -> Result<Option<u32>, LeaseError> {
+        self.timer.ensure_live()?;
+        self.software_event.ensure_live()?;
+        self.event_router.ensure_live()?;
+        Ok(unsafe { Nrf52840::trigger_and_latency_us() })
+    }
+
+    pub fn set_servo_pulse_us(&self, pulse_us: u32) -> Result<(), LeaseError> {
+        self.pwm.ensure_live()?;
+        unsafe { Nrf52840::set_active_pulse_us(pulse_us) };
+        Ok(())
+    }
+}
 
 pub const fn bus_layout() -> BusLayout {
     BusLayout {
@@ -96,7 +150,7 @@ fn map_lease(resource: LeaseId) -> Result<Resource, LeaseError> {
     match (resource.class, resource.instance) {
         (LeaseClass::Timer, 0) => Ok(Resource::Timer0),
         (LeaseClass::Timer, 2) => Ok(Resource::Rtc2),
-        (LeaseClass::Timer, 3) => Ok(Resource::Timer3),
+        (LeaseClass::Timer, 1) => Ok(Resource::Timer1),
         (LeaseClass::I2c, 0) => Ok(Resource::Twim0),
         (LeaseClass::I2c, 1) => Ok(Resource::Twim1),
         (LeaseClass::Spi, 0) => Ok(Resource::Spim0),
@@ -113,21 +167,19 @@ impl HalDeadline for Nrf52840 {
         DeadlineTimer::init();
     }
 
-    fn enable_interrupt() {
+    unsafe fn enable_interrupt() {
         DeadlineTimer::enable_irq();
     }
 
-    fn on_interrupt() {
+    unsafe fn on_interrupt() {
         DeadlineTimer::on_isr();
     }
 
-    fn poll_compare(on_tick: impl FnOnce(u64)) {
-        unsafe {
-            let t = nrf52840_pac::TIMER1::ptr();
-            if (*t).events_compare[0].read().bits() != 0 {
-                (*t).events_compare[0].reset();
-                on_tick(MicroTimer::now_us());
-            }
+    unsafe fn poll_compare(on_tick: impl FnOnce(u64)) {
+        let t = nrf52840_pac::TIMER1::ptr();
+        if (*t).events_compare[0].read().bits() != 0 {
+            (*t).events_compare[0].reset();
+            on_tick(MicroTimer::now_us());
         }
     }
 }

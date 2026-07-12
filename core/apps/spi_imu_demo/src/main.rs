@@ -90,14 +90,15 @@ fn main() -> ! {
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Spim0, OWNER_SPI).unwrap_or_else(|_| defmt::panic!("SPI lease"));
     let mut dev = unsafe {
         NobroSpiDevice::new(
+            OWNER_SPI,
             board::SPI_SCK_PIN,
             board::SPI_MOSI_PIN,
             board::SPI_MISO_PIN,
             board::SPI_CS_PIN,
         )
+        .unwrap_or_else(|_| defmt::panic!("SPI session"))
     };
 
     // MPU-9250 SPI bring-up: reset, wake, force SPI-only (disable the aux I2C slave),
