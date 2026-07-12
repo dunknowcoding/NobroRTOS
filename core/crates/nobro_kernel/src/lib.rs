@@ -33,6 +33,7 @@ pub mod mailbox;
 pub mod manifest;
 pub mod module_ctx;
 pub mod module_runtime;
+pub mod multicore;
 pub mod objects;
 pub mod pool;
 pub mod quota;

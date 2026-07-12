@@ -53,6 +53,9 @@ pub struct TaskDecl {
     pub role: Option<ModuleId>,
     /// Deadline contract participation (services opt out).
     pub has_deadline: bool,
+    /// Optional explicit core placement (Wave 57). `None` = let the placement
+    /// planner assign a core by balancing utilization (beginner-safe default).
+    pub core_affinity: Option<u8>,
     after: [Option<&'static str>; MAX_DEPS],
 }
 
@@ -71,6 +74,7 @@ impl TaskDecl {
             owns: CapabilitySet::empty(),
             role: None,
             has_deadline: true,
+            core_affinity: None,
             after: [None; MAX_DEPS],
         }
     }
@@ -140,6 +144,13 @@ impl TaskDecl {
     /// Use a readable well-known role instead of an opaque slot.
     pub const fn role(mut self, role: ModuleId) -> Self {
         self.role = Some(role);
+        self
+    }
+
+    /// Pin this task to a specific core (Wave 57). Omit to let the placement
+    /// planner balance it automatically.
+    pub const fn core(mut self, core: u8) -> Self {
+        self.core_affinity = Some(core);
         self
     }
 
@@ -253,6 +264,16 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         self.kernel_memory = memory;
         self.kernel_deadline = deadline;
         self
+    }
+
+    /// The declared tasks (for placement planning and inspection).
+    pub fn task_decls(&self) -> impl Iterator<Item = &TaskDecl> + '_ {
+        self.tasks.iter().flatten()
+    }
+
+    /// The declared channels as `(from, to)` label pairs.
+    pub fn channel_pairs(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
+        self.channels.iter().flatten().copied()
     }
 
     pub fn task(mut self, decl: TaskDecl) -> Result<Self, GraphError> {
