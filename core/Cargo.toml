@@ -84,7 +84,7 @@ exclude = ["fuzz"]
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
-license = "Apache-2.0"
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 authors = ["dunknowcoding (YouTube NiusRobotLab)"]
 
 [profile.release]

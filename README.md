@@ -17,7 +17,7 @@
   <img alt="Language" src="https://img.shields.io/badge/core-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white">
   <img alt="Target" src="https://img.shields.io/badge/MCU-nRF52840-2563eb?style=for-the-badge">
   <img alt="Support tiers" src="https://img.shields.io/badge/HAL-1%20deep%20%C2%B7%207%20ports%20%C2%B7%206%20families-475569?style=for-the-badge">
-  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-0f766e?style=for-the-badge">
+  <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0f766e?style=for-the-badge">
 </p>
 <p align="center">
   <img alt="Hardware verified" src="https://img.shields.io/badge/hardware-verified%20on%20board-22c55e?style=for-the-badge">
@@ -52,7 +52,7 @@ abstraction layer for hardware, communication, and edge intelligence.
 
 **Repository:** https://github.com/dunknowcoding/NobroRTOS
 **Author:** dunknowcoding (YouTube NiusRobotLab)
-**License:** Apache-2.0
+**License:** PolyForm Noncommercial 1.0.0 (noncommercial use; source-available)
 
 ## Start In 60 Seconds
 

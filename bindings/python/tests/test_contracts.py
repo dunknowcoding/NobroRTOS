@@ -142,7 +142,7 @@ class ContractBuilderTests(unittest.TestCase):
         )
 
         self.assertEqual(sdk_manifest["name"], "NobroRTOS Standalone SDK")
-        self.assertEqual(sdk_manifest["license"], "Apache-2.0")
+        self.assertEqual(sdk_manifest["license"], "LicenseRef-PolyForm-Noncommercial-1.0.0")
         self.assertEqual(
             sdk_manifest["canonical_contract"],
             "host/nobro-host-contract.json",
@@ -163,7 +163,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(arduino_properties["includes"], "NobroRTOS.h")
 
         self.assertEqual(platformio["name"], "NobroRTOS")
-        self.assertEqual(platformio["license"], "Apache-2.0")
+        self.assertEqual(platformio["license"], "LicenseRef-PolyForm-Noncommercial-1.0.0")
         self.assertEqual(
             platformio["repository"]["url"],
             "https://github.com/dunknowcoding/NobroRTOS.git",

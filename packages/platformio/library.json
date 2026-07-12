@@ -20,7 +20,7 @@
       "maintainer": true
     }
   ],
-  "license": "Apache-2.0",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "frameworks": "*",
   "platforms": "*",
   "headers": [

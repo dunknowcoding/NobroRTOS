@@ -14,7 +14,7 @@ from .host_contract import find_repo_root
 
 EXPECTED_REPOSITORY = "https://github.com/dunknowcoding/NobroRTOS"
 EXPECTED_REPOSITORY_GIT = f"{EXPECTED_REPOSITORY}.git"
-EXPECTED_LICENSE = "Apache-2.0"
+EXPECTED_LICENSE = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 EXPECTED_INCLUDE = "NobroRTOS.h"
 EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
 EXPECTED_PYTHON_PACKAGE = "bindings/python"

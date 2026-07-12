@@ -3,7 +3,7 @@
   "name": "NobroRTOS Standalone SDK",
   "package_id": "nobro-rtos-sdk",
   "repository": "https://github.com/dunknowcoding/NobroRTOS",
-  "license": "Apache-2.0",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "author": "dunknowcoding",
   "canonical_contract": "host/nobro-host-contract.json",
   "core_workspace": "core",
