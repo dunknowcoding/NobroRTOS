@@ -55,6 +55,12 @@ def validate() -> list[str]:
         errors.append(f"internal comparison inventory drift: {sorted(actual)}")
     if list((ROOT / "tools").glob("measure_*.py")):
         errors.append("comparison tools must not live on the public tools root")
+    workflow = (ROOT / ".github" / "workflows" / "gates.yml").read_text(encoding="utf-8")
+    for name in ("measure_authoring.py", "measure_baselines.py", "measure_complex_runtime.py", "measure_embassy_variants.py"):
+        if f"tools/{name}" in workflow:
+            errors.append(f"hosted workflow uses stale public comparison path: tools/{name}")
+    if "arduino-cli core install arduinonrf:nrf52" in workflow:
+        errors.append("hosted Linux workflow cannot install the Windows-only ArduinoNRF toolchain")
     for surface in [ROOT / "packages", ROOT / "sdk" / "cli"]:
         for path in surface.rglob("*"):
             if not path.is_file() or path.suffix.lower() in {".png", ".jpg", ".uf2", ".zip"}:

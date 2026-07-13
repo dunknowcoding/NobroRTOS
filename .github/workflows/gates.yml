@@ -32,7 +32,7 @@ jobs:
       - name: one-file firmware project
         run: |
           python tools/nobro_firmware_project.py --selftest
-          python tools/measure_authoring.py
+          python tools/internal/comparison/measure_authoring.py
       - name: sdk manifest
         run: python tools/check_sdk_manifest.py
       - name: user release boundary
@@ -160,7 +160,6 @@ jobs:
           arduino-cli core install arduino:avr
           arduino-cli core install arduino:renesas_uno
           arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core install arduinonrf:nrf52 --additional-urls https://raw.githubusercontent.com/dunknowcoding/ArduinoNRF/main/package_arduinonrf_index.json
       - name: compile public package examples
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
@@ -169,4 +168,5 @@ jobs:
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
           git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
-          python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn arduinonrf:nrf52:promicro_nrf52840
+          python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
+          python tools/check_niusimu_adapter.py --selftest

@@ -192,11 +192,23 @@ def selftest() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--inventory-only", action="store_true",
+                        help="verify the pinned upstream checkout without compiling a board target")
     parser.add_argument("--library", type=pathlib.Path)
     parser.add_argument("--fqbn", action="append")
     args = parser.parse_args()
     if args.selftest:
         return selftest()
+    if args.inventory_only:
+        if args.library is None:
+            parser.error("--inventory-only requires --library")
+        try:
+            verify_checkout(args.library.resolve(strict=True))
+        except (OSError, RuntimeError) as error:
+            print(f"NIUSIMU INVENTORY: FAIL ({error})")
+            return 1
+        print(f"NIUSIMU INVENTORY: PASS (37 sensor drivers + 25 board modules; pin {PIN[:12]})")
+        return 0
     if args.library is None or not args.fqbn:
         parser.error("--library and at least one --fqbn are required unless --selftest is used")
     cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
