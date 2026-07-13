@@ -166,3 +166,8 @@ jobs:
           python tools/check_wireless_ecosystem.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
+      - name: pinned camera ecosystem member
+        run: |
+          git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
+          git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
+          python tools/check_camera_ecosystem.py --library _work/NiusCam --compile

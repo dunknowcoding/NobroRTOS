@@ -38,6 +38,8 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
                           "pub struct ImuCalibration", "pub struct ImuDiagnostics"),
             "nobro_wireless": ("pub trait WirelessBackend", "pub struct Packet",
                                "pub struct ManagedLink", "pub struct LinkBudget"),
+            "nobro_camera": ("pub trait CameraBackend", "pub trait CameraFrame",
+                             "pub struct CameraPipeline", "pub struct StreamBudget"),
         }.get(domain_id, ())
         for token in contract_tokens:
             if token not in source_text:
@@ -55,6 +57,10 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
                                "nobro_wireless_protocol_t",
                                "nobro_wireless_state_t",
                                "nobro_wireless_diagnostics_t"),
+            "nobro_camera": ("NOBRO_CAMERA_API_VERSION 0x0100u",
+                             "nobro_camera_frame_metadata_t",
+                             "nobro_camera_state_t",
+                             "nobro_camera_diagnostics_t"),
         }.get(domain_id, ())
         for token in c_tokens:
             if token not in c_text:

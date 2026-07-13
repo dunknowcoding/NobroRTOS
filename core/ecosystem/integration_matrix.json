@@ -104,6 +104,26 @@
           "known_boundary": "the pinned library surface and compile are verified; a friendly Nobro Arduino facade is not yet present"
         }
       ]
+    },
+    {
+      "id": "nobro_camera",
+      "contract_crate": "core/crates/nobro_camera",
+      "c_contract": "bindings/c/include/nobro_camera.h",
+      "ownership_rule": "shared frame, admission, backpressure, and accounting contracts live in crates; sensor/DMA libraries remain external members or categorized adapters; applications compose camera, AI, storage, and transport",
+      "adapter_families": [],
+      "library_members": [
+        {
+          "id": "niuscam",
+          "upstream": "https://github.com/dunknowcoding/NiusCam",
+          "version": "0.2.0",
+          "commit": "b03560adf4da07e4a16b4d9e658a01d74ccb9340",
+          "adapter": "packages/arduino/src/NobroNiusCam.h",
+          "status": "integrated",
+          "sensor_profiles": ["OV2640", "OV3660", "OV5640"],
+          "verified_architectures": ["esp32:esp32:esp32cam", "esp32:esp32:XIAO_ESP32S3:PSRAM=opi", "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M"],
+          "known_boundary": "clean pinned compile on all three profiles; Nobro physical adapter evidence currently covers OV3660 only, with full pre-test flash restoration"
+        }
+      ]
     }
   ],
   "integrations": [
@@ -177,10 +197,18 @@
     },
     {
       "id": "nius_cam",
-      "status": "absent",
-      "closure_path": "core/adapters/camera/nius-cam",
-      "closure_path_state": "absent",
+      "status": "integrated",
+      "evidence_path": "packages/arduino/src/NobroNiusCam.h",
+      "required_tokens": [
+        "class NiusCamAdapter",
+        "capture(uint64_t nowUs, uint64_t deadlineUs)",
+        "resetWindow()",
+        "recover()"
+      ],
+      "closure_path": "packages/arduino/src/NobroNiusCam.h",
+      "closure_path_state": "present",
       "upstream_surface": "NiusCam",
+      "note": "Pinned 0.2.0 compiles with the Nobro adapter for OV2640/AI-Thinker, OV3660/XIAO ESP32-S3 Sense, and OV5640/ESP32-S3-CAM profiles. A state-restoring OV3660 run captured 5/5 valid JPEG frames with no drops; OV2640/OV5640 Nobro physical runs remain open.",
       "review": "ECO-01"
     },
     {

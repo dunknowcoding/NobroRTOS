@@ -25,6 +25,7 @@ and diagnosable recovery.
 | ----- | ------------- | -------------- |
 | App | `core/apps/<use-case>/*` | Compose board, adapters, manifest, startup graph, and runtime |
 | Adapter | `core/adapters/<domain>/*` | Translate devices or libraries into SAL traits |
+| Domain | `core/crates/nobro_<domain>` | Shared bounded contracts; no board or external-library ownership |
 | SAL | `nobro-sal` | Stable service traits for hardware, communication, AI, and edge services |
 | Kernel | `nobro-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
 | HAL | `nobro-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |

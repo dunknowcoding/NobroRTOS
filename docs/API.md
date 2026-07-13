@@ -29,6 +29,7 @@ applications, adapters, and host tooling.
 | `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
 | `nobro-net` | Mesh routing, secure links, OTA chunking, store-forward queues, fleet OTA rollout planning |
 | `nobro-wireless` | Bounded wireless contracts and mountable BLE, WiFi, Zigbee, Thread, RFID, and proprietary backends |
+| `nobro-camera` | Frame leases, capture admission, stream backpressure, recovery, and diagnostics |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
 ### Neural Network API
@@ -85,6 +86,15 @@ assert!(!uid.is_empty());
 The backend allocates no heap memory, bounds polling, validates ISO 14443A BCC,
 and returns explicit `RfidError` values for bus, timeout, collision, protocol,
 and buffer failures.
+
+### Camera Domain API
+
+`nobro-camera` keeps camera code small and composable: a backend lends a frame,
+while `CameraPipeline` enforces the caller's deadline, maximum frame size,
+frames/bytes per window, and in-flight limit. Storage, AI, and transport share the
+same diagnostics without owning the sensor driver. The matching C ABI is
+`nobro_camera.h`; Arduino users mount NiusCam through `NobroNiusCam.h`.
+
 ### Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,

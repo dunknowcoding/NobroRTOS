@@ -74,6 +74,13 @@ AI deployment + cloud-API management for NobroRTOS.
 - **enum**: `WeightFormat`, `DeployError`, `LinkState`, `LinkEvent`
 - **fn**: `fnv1a`, `validate`, `dequant`, `new`, `state`, `key`, `backoff_ms`, `on_event`, `tick`, `take_request`, `reset_budget`
 
+## `nobro-camera`
+Allocation-free camera contracts with explicit deadline and memory admission.
+- **trait**: `CameraFrame`, `CameraBackend`
+- **struct**: `FrameMetadata`, `CaptureContract`, `StreamBudget`, `CameraDiagnostics`, `AdmittedFrame`, `CameraPipeline`, `WorkflowBudget`, `WorkflowUsage`, `WorkflowAccountant`
+- **enum**: `PixelFormat`, `CameraState`, `CameraError`, `WorkflowError`
+- **fn**: `capture_at`, `reset_window`, `recover`, `backend`, `sampled_mean`, `admit`, `reset_window`
+
 ## `nobro-classic`
 FreeRTOS-familiar RTOS primitives, re-imagined without FreeRTOS's costs.
 - **struct**: `Queue`, `Semaphore`, `Mutex`, `SoftwareTimer`, `EventFlags`
