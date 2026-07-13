@@ -229,6 +229,13 @@ impl SamplePool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_POOL: Mutex<()> = Mutex::new(());
+
+    fn isolated_pool() -> MutexGuard<'static, ()> {
+        TEST_POOL.lock().unwrap_or_else(|error| error.into_inner())
+    }
 
     fn release_all_slots() {
         with_slots(|slots| {
@@ -244,6 +251,7 @@ mod tests {
 
     #[test]
     fn imu_payload_requires_live_typed_handle() {
+        let _guard = isolated_pool();
         release_all_slots();
         assert!(CompactImuPayload::read_from_handle(PoolHandle::INVALID).is_none());
 
@@ -270,6 +278,7 @@ mod tests {
 
     #[test]
     fn stale_handle_cannot_release_reused_slot() {
+        let _guard = isolated_pool();
         release_all_slots();
         let first = SamplePool::alloc(SampleKind::Raw, 4, 0, 0).unwrap();
         let stale = first.handle;
@@ -285,6 +294,7 @@ mod tests {
 
     #[test]
     fn retain_requires_matching_releases_and_zeroes_on_last_release() {
+        let _guard = isolated_pool();
         release_all_slots();
         let sample = SamplePool::alloc(SampleKind::Raw, 4, 0, 0).unwrap();
         assert!(
@@ -310,6 +320,7 @@ mod tests {
 
     #[test]
     fn typed_access_rejects_kind_and_length_mismatch() {
+        let _guard = isolated_pool();
         release_all_slots();
         let raw = SamplePool::alloc(SampleKind::Raw, CompactImuPayload::LEN, 0, 0).unwrap();
         assert!(!CompactImuPayload::write_to_handle(
@@ -326,6 +337,7 @@ mod tests {
 
     #[test]
     fn invalid_handles_are_rejected_without_state_change() {
+        let _guard = isolated_pool();
         release_all_slots();
         assert!(!SamplePool::retain(PoolHandle::INVALID));
         assert!(!SamplePool::release(PoolHandle::INVALID));
@@ -334,6 +346,7 @@ mod tests {
 
     #[test]
     fn isr_main_handoff_keeps_slot_live_until_consumer_release() {
+        let _guard = isolated_pool();
         release_all_slots();
         let sample = SamplePool::alloc(SampleKind::Raw, 1, 0, 0).unwrap();
         assert!(SamplePool::retain(sample.handle));
@@ -357,6 +370,7 @@ mod tests {
 
     #[test]
     fn multicore_release_order_model_never_frees_with_outstanding_reference() {
+        let _guard = isolated_pool();
         for order in [
             [0, 1, 2],
             [0, 2, 1],
