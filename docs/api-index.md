@@ -63,7 +63,7 @@ SensorSal stub with synthetic IMU samples when no NiusIMU hardware is connected.
 - **fn**: `new`, `with_profile`, `owner`, `stub_i2c_addr`, `profile`, `set_mode`, `tick_count`, `poll_at`, `module_spec`, `stub_imu_plausible`
 
 ## `nobro-adapter-radio-comms`
-Framed radio comms as a **managed resource** (`StreamSal` over the nRF RADIO).
+Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **struct**: `RadioComms`
 - **enum**: `RadioCommsError`
 - **fn**: `acquire`, `release`
@@ -123,13 +123,6 @@ Canonical, allocation-free IMU domain contracts for NobroRTOS.
 - **struct**: `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`
 - **enum**: `ImuEvent`
 - **fn**: `magnitude3`
-
-## `nobro-iot`
-IoT capsule: wireless-communication apps and APIs behind one surface.
-- **trait**: `IotTransport`, `SpiIo`, `ByteIo`
-- **struct**: `LinkDescriptor`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
-- **enum**: `Protocol`, `IotLinkState`, `AdvKind`, `RfidError`, `MacFrameType`
-- **fn**: `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `join`, `poll_frame`
 
 ## `nobro-kernel`
 NobroRTOS kernel: Sample envelope, error policy, and scheduling hooks.
@@ -192,3 +185,10 @@ Modular, mountable USB device stack for NobroRTOS.
 - **struct**: `UsbConfig`
 - **enum**: `CdcState`
 - **fn**: `mount`, `mount`, `mount`
+
+## `nobro-wireless`
+Allocation-free wireless domain: bounded link contracts, admission, and helpers.
+- **trait**: `WirelessBackend`, `SpiIo`, `ByteIo`
+- **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
+- **enum**: `Protocol`, `LinkState`, `LinkError`, `AdvKind`, `RfidError`, `MacFrameType`
+- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `join`, `poll_frame`

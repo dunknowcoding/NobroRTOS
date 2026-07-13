@@ -157,3 +157,12 @@ jobs:
           git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
           python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
           python tools/check_niusimu_adapter.py --selftest
+      - name: pinned wireless ecosystem members
+        run: |
+          git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
+          git -C _work/NiusWireless checkout f40e76cccbcb0b5d0597f784ae5be1e6a52d46cb
+          git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
+          git -C _work/ArduinoNRF-Zigbee checkout 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          python tools/check_wireless_ecosystem.py \
+            --niuswireless _work/NiusWireless \
+            --niuszigbee _work/ArduinoNRF-Zigbee --compile

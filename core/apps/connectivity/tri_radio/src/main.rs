@@ -14,7 +14,7 @@
 use cortex_m_rt::entry;
 use defmt_rtt as _;
 use nobro_hal::RadioSession;
-use nobro_iot::BleAdvBuilder;
+use nobro_wireless::BleAdvBuilder;
 use panic_halt as _;
 
 #[repr(C)]

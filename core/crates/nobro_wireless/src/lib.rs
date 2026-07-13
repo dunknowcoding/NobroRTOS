@@ -1,7 +1,7 @@
-//! IoT capsule: wireless-communication apps and APIs behind one surface.
+//! Allocation-free wireless domain: bounded link contracts, admission, and helpers.
 //!
 //! Follows the nobro_usb mountable-backend pattern: a radio implements
-//! [`IotTransport`], apps talk bytes + link state, and protocol identity/limits are
+//! [`WirelessBackend`], apps talk bytes + link state, and protocol identity/limits are
 //! **data** ([`LinkDescriptor`]) so schedulers and the collector reason about any radio
 //! uniformly. Pure-logic protocol helpers live here too: [`BleAdvBuilder`] constructs
 //! the advertising PDU format `ble_adv_demo` proved on air (M123), and the `rfid`
@@ -88,7 +88,7 @@ pub mod link_catalog {
 
 /// Link liveness a transport reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum IotLinkState {
+pub enum LinkState {
     Down,
     Joining,
     Up,
@@ -96,14 +96,232 @@ pub enum IotLinkState {
 
 /// The mountable radio surface. One backend per physical radio, chosen per board -
 /// the same pattern as `nobro_usb::UsbStack`.
-pub trait IotTransport {
+pub trait WirelessBackend {
     fn descriptor(&self) -> LinkDescriptor;
-    fn link_state(&mut self) -> IotLinkState;
+    fn link_state(&mut self) -> LinkState;
     /// Send one payload (<= mtu); returns true when the radio accepted it.
     fn send(&mut self, payload: &[u8]) -> bool;
     /// Receive into `buf`; returns bytes delivered (0 = nothing pending).
     fn recv(&mut self, buf: &mut [u8]) -> usize;
+
+    /// Reinitialize the same physical transport. Backends that cannot recover
+    /// without board-specific intervention return false explicitly.
+    fn recover(&mut self) -> bool {
+        false
+    }
 }
+
+/// Bounded packet owned by the caller; no allocator or hidden global queue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Packet<const N: usize> {
+    bytes: [u8; N],
+    len: u16,
+}
+
+impl<const N: usize> Default for Packet<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> Packet<N> {
+    pub const fn new() -> Self {
+        Self {
+            bytes: [0; N],
+            len: 0,
+        }
+    }
+
+    pub fn copy_from(payload: &[u8]) -> Option<Self> {
+        if payload.len() > N || payload.len() > usize::from(u16::MAX) {
+            return None;
+        }
+        let mut packet = Self::new();
+        packet.bytes[..payload.len()].copy_from_slice(payload);
+        packet.len = payload.len() as u16;
+        Some(packet)
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.bytes[..usize::from(self.len)]
+    }
+
+    pub const fn len(&self) -> u16 {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TxContract {
+    pub deadline_us: u64,
+    pub priority: u8,
+    pub max_attempts: u8,
+}
+
+impl TxContract {
+    pub const fn by(deadline_us: u64) -> Self {
+        Self {
+            deadline_us,
+            priority: 0,
+            max_attempts: 1,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinkBudget {
+    pub max_payload_bytes: u16,
+    pub max_tx_per_window: u16,
+    pub max_bytes_per_window: u32,
+}
+
+impl LinkBudget {
+    pub const fn new(
+        max_payload_bytes: u16,
+        max_tx_per_window: u16,
+        max_bytes_per_window: u32,
+    ) -> Self {
+        Self {
+            max_payload_bytes,
+            max_tx_per_window,
+            max_bytes_per_window,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LinkDiagnostics {
+    pub tx_accepted: u32,
+    pub tx_rejected: u32,
+    pub rx_packets: u32,
+    pub deadline_rejections: u32,
+    pub budget_rejections: u32,
+    pub recoveries: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkError {
+    LinkDown,
+    PayloadTooLarge,
+    DeadlineElapsed,
+    WindowExhausted,
+    BackendRejected,
+}
+
+/// Deadline and resource-accounting wrapper shared by every backend. Resetting a
+/// window is an explicit scheduler action, so no backend owns a private clock.
+pub struct ManagedLink<B> {
+    backend: B,
+    budget: LinkBudget,
+    window_tx: u16,
+    window_bytes: u32,
+    diagnostics: LinkDiagnostics,
+}
+
+impl<B: WirelessBackend> ManagedLink<B> {
+    pub const fn new(backend: B, budget: LinkBudget) -> Self {
+        Self {
+            backend,
+            budget,
+            window_tx: 0,
+            window_bytes: 0,
+            diagnostics: LinkDiagnostics {
+                tx_accepted: 0,
+                tx_rejected: 0,
+                rx_packets: 0,
+                deadline_rejections: 0,
+                budget_rejections: 0,
+                recoveries: 0,
+            },
+        }
+    }
+
+    pub fn send_at(
+        &mut self,
+        now_us: u64,
+        contract: TxContract,
+        payload: &[u8],
+    ) -> Result<(), LinkError> {
+        if self.backend.link_state() != LinkState::Up {
+            self.diagnostics.tx_rejected = self.diagnostics.tx_rejected.saturating_add(1);
+            return Err(LinkError::LinkDown);
+        }
+        let limit = self
+            .budget
+            .max_payload_bytes
+            .min(self.backend.descriptor().mtu);
+        if payload.len() > usize::from(limit) {
+            self.diagnostics.tx_rejected = self.diagnostics.tx_rejected.saturating_add(1);
+            return Err(LinkError::PayloadTooLarge);
+        }
+        if now_us > contract.deadline_us {
+            self.diagnostics.tx_rejected = self.diagnostics.tx_rejected.saturating_add(1);
+            self.diagnostics.deadline_rejections =
+                self.diagnostics.deadline_rejections.saturating_add(1);
+            return Err(LinkError::DeadlineElapsed);
+        }
+        let bytes = payload.len() as u32;
+        if self.window_tx >= self.budget.max_tx_per_window
+            || self.window_bytes.saturating_add(bytes) > self.budget.max_bytes_per_window
+        {
+            self.diagnostics.tx_rejected = self.diagnostics.tx_rejected.saturating_add(1);
+            self.diagnostics.budget_rejections =
+                self.diagnostics.budget_rejections.saturating_add(1);
+            return Err(LinkError::WindowExhausted);
+        }
+        if !self.backend.send(payload) {
+            self.diagnostics.tx_rejected = self.diagnostics.tx_rejected.saturating_add(1);
+            return Err(LinkError::BackendRejected);
+        }
+        self.window_tx = self.window_tx.saturating_add(1);
+        self.window_bytes = self.window_bytes.saturating_add(bytes);
+        self.diagnostics.tx_accepted = self.diagnostics.tx_accepted.saturating_add(1);
+        Ok(())
+    }
+
+    pub fn recv(&mut self, destination: &mut [u8]) -> usize {
+        let received = self.backend.recv(destination);
+        if received != 0 {
+            self.diagnostics.rx_packets = self.diagnostics.rx_packets.saturating_add(1);
+        }
+        received
+    }
+
+    pub fn reset_window(&mut self) {
+        self.window_tx = 0;
+        self.window_bytes = 0;
+    }
+
+    pub fn recover(&mut self) -> bool {
+        let recovered = self.backend.recover();
+        if recovered {
+            self.diagnostics.recoveries = self.diagnostics.recoveries.saturating_add(1);
+        }
+        recovered
+    }
+
+    pub const fn diagnostics(&self) -> LinkDiagnostics {
+        self.diagnostics
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+/// Mesh primitives retain their focused implementation crate, while the domain
+/// facade gives applications one import path for link and mesh composition.
+pub use nobro_net::{PrioQueue, Route, RoutingTable, SeenSet, TimeSync};
 
 // ---------------------------------------------------------------- BLE advertising
 
@@ -445,16 +663,16 @@ impl<S: SpiIo> Mfrc522<S> {
     }
 }
 
-impl<S: SpiIo> IotTransport for Mfrc522<S> {
+impl<S: SpiIo> WirelessBackend for Mfrc522<S> {
     fn descriptor(&self) -> LinkDescriptor {
         link_catalog::RFID_14443A
     }
 
-    fn link_state(&mut self) -> IotLinkState {
+    fn link_state(&mut self) -> LinkState {
         if self.initialized {
-            IotLinkState::Up
+            LinkState::Up
         } else {
-            IotLinkState::Down
+            LinkState::Down
         }
     }
 
@@ -564,7 +782,7 @@ pub fn mac_frame_type(psdu: &[u8]) -> Option<MacFrameType> {
 
 /// Modular CC2530 802.15.4 backend (M199): drives the NiusZigbee SDCC firmware protocol
 /// (`FE LEN CMD DATA FCS`, LEN counts CMD, FCS = XOR of LEN..DATA) over any [`ByteIo`],
-/// and presents the common [`IotTransport`] surface - so 802.15.4 is a mountable radio
+/// and presents the common [`WirelessBackend`] surface - so 802.15.4 is mountable
 /// like BLE or WiFi. Verified against the live firmware in the cc2530_gateway app (M122).
 pub struct Cc2530<U: ByteIo> {
     io: U,
@@ -696,15 +914,15 @@ impl<U: ByteIo> Cc2530<U> {
     }
 }
 
-impl<U: ByteIo> IotTransport for Cc2530<U> {
+impl<U: ByteIo> WirelessBackend for Cc2530<U> {
     fn descriptor(&self) -> LinkDescriptor {
         link_catalog::ZIGBEE_APS
     }
-    fn link_state(&mut self) -> IotLinkState {
+    fn link_state(&mut self) -> LinkState {
         if self.joined {
-            IotLinkState::Up
+            LinkState::Up
         } else {
-            IotLinkState::Down
+            LinkState::Down
         }
     }
     fn send(&mut self, payload: &[u8]) -> bool {
@@ -928,7 +1146,7 @@ mod tests {
         };
         let mut radio = Cc2530::new(uart);
         assert!(radio.join(11, 10_000));
-        assert_eq!(radio.link_state(), IotLinkState::Up);
+        assert_eq!(radio.link_state(), LinkState::Up);
         assert_eq!(radio.descriptor().protocol, Protocol::Zigbee);
 
         // the join should have transmitted PING, SET_CHANNEL(11), SET_PROMISC(0)
@@ -1063,12 +1281,12 @@ mod tests {
     }
 
     #[test]
-    fn mfrc522_backend_polls_uid_and_mounts_as_iot_transport() {
+    fn mfrc522_backend_polls_uid_and_mounts_as_wireless_backend() {
         let spi = FakeSpi::default();
         let mut reader = Mfrc522::new(spi);
-        assert_eq!(reader.link_state(), IotLinkState::Down);
+        assert_eq!(reader.link_state(), LinkState::Down);
         assert!(reader.init().is_ok());
-        assert_eq!(reader.link_state(), IotLinkState::Up);
+        assert_eq!(reader.link_state(), LinkState::Up);
         assert_eq!(reader.descriptor().protocol, Protocol::Rfid);
         assert_eq!(reader.reader_descriptor(), rfid_readers::MFRC522_SPI);
 
@@ -1084,12 +1302,12 @@ mod tests {
         buf: [u8; 64],
         len: usize,
     }
-    impl IotTransport for LoopbackRadio {
+    impl WirelessBackend for LoopbackRadio {
         fn descriptor(&self) -> LinkDescriptor {
             link_catalog::NRF_PROPRIETARY
         }
-        fn link_state(&mut self) -> IotLinkState {
-            IotLinkState::Up
+        fn link_state(&mut self) -> LinkState {
+            LinkState::Up
         }
         fn send(&mut self, payload: &[u8]) -> bool {
             if payload.len() > usize::from(self.descriptor().mtu) {
@@ -1113,12 +1331,38 @@ mod tests {
             buf: [0; 64],
             len: 0,
         };
-        assert_eq!(radio.link_state(), IotLinkState::Up);
-        assert!(radio.send(b"nobro-iot"));
+        assert_eq!(radio.link_state(), LinkState::Up);
+        assert!(radio.send(b"nobro-wireless"));
         assert!(!radio.send(&[0u8; 61])); // over the proprietary MTU
         let mut rx = [0u8; 64];
-        assert_eq!(radio.recv(&mut rx), 9);
-        assert_eq!(&rx[..9], b"nobro-iot");
+        assert_eq!(radio.recv(&mut rx), 14);
+        assert_eq!(&rx[..14], b"nobro-wireless");
         assert_eq!(radio.recv(&mut rx), 0); // drained
+    }
+
+    #[test]
+    fn managed_link_enforces_deadline_mtu_and_window() {
+        let backend = LoopbackRadio {
+            buf: [0; 64],
+            len: 0,
+        };
+        let mut link = ManagedLink::new(backend, LinkBudget::new(32, 1, 8));
+        assert_eq!(
+            link.send_at(11, TxContract::by(10), b"late"),
+            Err(LinkError::DeadlineElapsed)
+        );
+        assert_eq!(
+            link.send_at(1, TxContract::by(10), &[0; 33]),
+            Err(LinkError::PayloadTooLarge)
+        );
+        assert!(link.send_at(1, TxContract::by(10), b"12345678").is_ok());
+        assert_eq!(
+            link.send_at(1, TxContract::by(10), b"x"),
+            Err(LinkError::WindowExhausted)
+        );
+        link.reset_window();
+        assert!(link.send_at(2, TxContract::by(10), b"x").is_ok());
+        assert_eq!(link.diagnostics().tx_accepted, 2);
+        assert_eq!(link.diagnostics().tx_rejected, 3);
     }
 }

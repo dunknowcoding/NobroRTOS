@@ -1,28 +1,24 @@
-//! Framed radio comms as a **managed resource** (`StreamSal` over the nRF RADIO).
+//! Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 //!
 //! Creating a `RadioComms` takes the `Resource::Radio` exclusive lease, so the kernel
 //! arbitrates radio ownership exactly like TWIM/SPIM; dropping/`release`-ing returns it.
-//! `write_frame`/`read_frame`/`poll` map onto the radio HAL's send/recv. This closes the
+//! The wireless domain supplies deadline/budget accounting around HAL send/recv. This closes the
 //! M26 radio's integration into NobroRTOS's resource management (lease + SAL trait), and
 //! pairs with `Capability::Radio` for capability-gated access.
 #![no_std]
 
 use nobro_hal::{lease::LeaseError, RadioSession};
-use nobro_sal::StreamSal;
+use nobro_wireless::{LinkDescriptor, LinkState, Protocol, WirelessBackend};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum RadioCommsError {
     /// The radio lease could not be acquired/released (e.g. already held).
     Lease(LeaseError),
-    /// The radio did not complete a transmission within its window.
-    TxTimeout,
 }
 
-/// Owns the `Resource::Radio` lease and frames the radio as a `StreamSal`.
+/// Owns the `Resource::Radio` lease and mounts it as a wireless backend.
 pub struct RadioComms {
     radio: RadioSession,
-    rx: [u8; 32],
-    rx_len: usize,
 }
 
 impl RadioComms {
@@ -30,11 +26,7 @@ impl RadioComms {
     /// then bring up the RADIO peripheral. Fails if another owner holds the radio.
     pub fn acquire(owner: u8) -> Result<Self, RadioCommsError> {
         let radio = unsafe { RadioSession::acquire(owner) }.map_err(RadioCommsError::Lease)?;
-        Ok(RadioComms {
-            radio,
-            rx: [0; 32],
-            rx_len: 0,
-        })
+        Ok(RadioComms { radio })
     }
 
     /// Release the radio lease back to the kernel.
@@ -44,36 +36,30 @@ impl RadioComms {
     }
 }
 
-impl StreamSal for RadioComms {
-    type Error = RadioCommsError;
-
-    fn poll(&mut self) -> Result<Option<usize>, Self::Error> {
-        match self
-            .radio
-            .recv(&mut self.rx, 50_000)
-            .map_err(|_| RadioCommsError::TxTimeout)?
-        {
-            Some(n) => {
-                self.rx_len = n;
-                Ok(Some(n))
-            }
-            None => Ok(None),
+impl WirelessBackend for RadioComms {
+    fn descriptor(&self) -> LinkDescriptor {
+        LinkDescriptor {
+            name: "nRF proprietary managed radio",
+            protocol: Protocol::Proprietary,
+            mtu: 32,
+            requires_join: false,
+            broadcast_only: true,
         }
     }
 
-    fn read_frame(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        if self.rx_len > 0 {
-            let n = self.rx_len.min(buf.len());
-            buf[..n].copy_from_slice(&self.rx[..n]);
-            self.rx_len = 0;
-            return Ok(Some(n));
-        }
+    fn link_state(&mut self) -> LinkState {
+        LinkState::Up
+    }
+
+    fn send(&mut self, payload: &[u8]) -> bool {
+        payload.len() <= 32 && self.radio.send(payload).is_ok()
+    }
+
+    fn recv(&mut self, destination: &mut [u8]) -> usize {
         self.radio
-            .recv(buf, 200_000)
-            .map_err(|_| RadioCommsError::TxTimeout)
-    }
-
-    fn write_frame(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        self.radio.send(buf).map_err(|_| RadioCommsError::TxTimeout)
+            .recv(destination, 200_000)
+            .ok()
+            .flatten()
+            .unwrap_or(0)
     }
 }

@@ -3,14 +3,13 @@ name = "nobro-adapter-radio-comms"
 version.workspace = true
 edition.workspace = true
 
-# Framed radio comms as a MANAGED resource: implements the SAL StreamSal trait over the
-# nRF RADIO HAL driver, and takes the Resource::Radio exclusive lease on creation so the
-# kernel arbitrates ownership. This wires the M26 radio into NobroRTOS's resource
-# management (lease + capability + SAL), closing its integration gap.
+# Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO HAL.
+# Construction takes the exclusive radio lease; the domain wrapper adds bounded payload,
+# deadline, and packet/byte-window accounting without another transport abstraction.
 
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
-nobro-sal = { path = "../../../crates/nobro_sal" }
+nobro-wireless = { path = "../../../crates/nobro_wireless" }
 
 [features]
 default = ["board-promicro-nosd"]

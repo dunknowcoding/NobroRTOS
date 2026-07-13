@@ -1,6 +1,6 @@
 //! Radio as a managed hardware resource: verify the Resource::Radio exclusive
 //! lease (acquire, conflict rejected, wrong-owner release), Capability::Radio
-//! authorization, and StreamSal frame TX via the radio-comms adapter. Self-certifies via
+//! authorization, and deadline/budget-accounted frame TX via the wireless domain. Self-certifies via
 //! NOBRO_RADIO_COMMS_REPORT (J-Link mem32) - proof NobroRTOS distributes/manages the
 //! radio peripheral, closing the M26 radio's integration into the kernel.
 #![no_std]
@@ -17,7 +17,7 @@ use nobro_hal::{
     ActivePlatform as Hal,
 };
 use nobro_kernel::{Capability, CapabilityGrantTable, CapabilitySet, ModuleId};
-use nobro_sal::StreamSal;
+use nobro_wireless::{LinkBudget, ManagedLink, TxContract};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -92,20 +92,21 @@ fn main() -> ! {
     let lease_ok = test_lease();
     let capability_ok = test_capability();
 
-    // StreamSal frame TX through the managed radio (takes + releases the lease).
+    // Domain-accounted frame TX through the managed radio (takes + releases the lease).
     let mut frames_sent: u32 = 0;
     let mut release_ok = false;
-    if let Ok(mut comms) = RadioComms::acquire(7) {
+    if let Ok(comms) = RadioComms::acquire(7) {
+        let mut link = ManagedLink::new(comms, LinkBudget::new(32, 20, 60));
         for i in 0..20u32 {
             let pkt = [0xC2u8, (i & 0xFF) as u8, ((i >> 8) & 0xFF) as u8];
-            if comms.write_frame(&pkt).is_ok() {
+            if link.send_at(i as u64, TxContract::by(100), &pkt).is_ok() {
                 frames_sent = frames_sent.wrapping_add(1);
             }
             for _ in 0..100_000u32 {
                 cortex_m::asm::nop();
             }
         }
-        release_ok = comms.release().is_ok();
+        release_ok = link.into_backend().release().is_ok();
     }
 
     let pass = lease_ok && capability_ok && frames_sent >= 10 && release_ok;

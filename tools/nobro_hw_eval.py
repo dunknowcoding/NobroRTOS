@@ -157,6 +157,16 @@ APPS = {
                                  "checksum"],
         "reset_cycles": 3,
     },
+    # CC2530 co-processor link: bounded UART framing and firmware PING/PONG.
+    # Air traffic is reported but is deliberately not required for PASS.
+    "cc2530": {
+        "package": "cc2530-link",
+        "bin": {"nosd": "cc2530_link", "s140": "cc2530_link"},
+        "symbol": "NOBRO_CC2530_REPORT",
+        "magic": 0x4E433235,
+        "fields": COMMON_HEAD + ["fw_version", "pings", "pongs", "rx_frames",
+                                 "rx_bytes", "checksum"],
+    },
 }
 PROFILE_FLASH = {"nosd": 0x1000, "s140": 0x26000}
 PROFILE_FEATURES = {"nosd": [], "s140": ["board-nicenano-s140"]}

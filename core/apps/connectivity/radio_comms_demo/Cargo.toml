@@ -14,7 +14,7 @@ required-features = ["board-promicro-nosd"]
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-adapter-radio-comms = { path = "../../../adapters/wireless/radio-comms", default-features = false }
-nobro-sal = { path = "../../../crates/nobro_sal" }
+nobro-wireless = { path = "../../../crates/nobro_wireless" }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"

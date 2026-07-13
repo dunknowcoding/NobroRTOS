@@ -5,7 +5,7 @@ members = [
     "crates/nobro_database",
     "crates/nobro_nn",
     "crates/nobro_ai",
-    "crates/nobro_iot",
+    "crates/nobro_wireless",
     "crates/nobro_imu",
     "crates/nobro_crypto",
     "crates/nobro_ml",

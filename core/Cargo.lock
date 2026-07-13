@@ -94,7 +94,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
- "nobro-iot",
+ "nobro-wireless",
  "panic-halt",
 ]
 
@@ -132,7 +132,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
- "nobro-iot",
+ "nobro-wireless",
  "panic-halt",
 ]
 
@@ -714,7 +714,7 @@ name = "nobro-adapter-radio-comms"
 version = "0.2.0"
 dependencies = [
  "nobro-hal",
- "nobro-sal",
+ "nobro-wireless",
 ]
 
 [[package]]
@@ -833,10 +833,6 @@ name = "nobro-imu"
 version = "0.2.0"
 
 [[package]]
-name = "nobro-iot"
-version = "0.2.0"
-
-[[package]]
 name = "nobro-kernel"
 version = "0.2.0"
 dependencies = [
@@ -915,6 +911,13 @@ dependencies = [
  "portable-atomic",
  "usb-device",
  "usbd-serial",
+]
+
+[[package]]
+name = "nobro-wireless"
+version = "0.2.0"
+dependencies = [
+ "nobro-net",
 ]
 
 [[package]]
@@ -1038,7 +1041,7 @@ dependencies = [
  "nobro-adapter-radio-comms",
  "nobro-hal",
  "nobro-kernel",
- "nobro-sal",
+ "nobro-wireless",
  "panic-halt",
 ]
 
@@ -1293,7 +1296,7 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
- "nobro-iot",
+ "nobro-wireless",
  "panic-halt",
 ]
 

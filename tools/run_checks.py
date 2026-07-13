@@ -28,7 +28,7 @@ HOST_CRATES = [
     "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
     "nobro-sal", "nobro-kernel", "nobro-classic", "nobro-control",
     "nobro-conformance", "nobro-database", "nobro-secure", "nobro-storage",
-    "nobro-device", "nobro-iot", "nobro-nn", "nobro-ai", "nobro-host",
+    "nobro-device", "nobro-wireless", "nobro-nn", "nobro-ai", "nobro-host",
     "nobro-usb", "nobro-hal", "nobro-adapter-bmp280",
     "nobro-adapter-icm45686", "nobro-adapter-ina3221", "nobro-adapter-motion-ai",
     "nobro-adapter-mpu9250-imu", "nobro-adapter-nn-motion-ai",

@@ -1,15 +1,16 @@
 [package]
-name = "nobro-iot"
+name = "nobro-wireless"
 version.workspace = true
 edition.workspace = true
 
-# IoT capsule for NobroRTOS: one place for wireless-comm apps and APIs - BLE, WiFi,
+# Wireless domain for NobroRTOS: one place for link contracts and helpers - BLE, WiFi,
 # Zigbee, Thread, RFID, and proprietary radio - behind a common transport surface
 # (mirroring nobro_usb's mountable-backend pattern). Ships protocol descriptors as data,
-# an IotTransport trait radios implement, and pure-logic protocol helpers (the BLE
+# a WirelessBackend trait radios implement, and pure-logic protocol helpers (the BLE
 # advertising PDU builder proven on air by ble_adv_demo, ISO 14443A UID checks). No heap.
 
 [dependencies]
+nobro-net = { path = "../nobro_net" }
 
 [features]
 default = []

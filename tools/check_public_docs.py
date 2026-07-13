@@ -33,11 +33,14 @@ def tracked_text_files() -> list[pathlib.Path]:
     result = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
     )
-    return [
+    paths = [
         ROOT / raw.decode("utf-8")
         for raw in result.stdout.split(b"\0")
         if raw and pathlib.Path(raw.decode("utf-8")).suffix.lower() in TEXT_SUFFIXES
     ]
+    # A pre-commit run may intentionally delete a tracked file. Validate the working
+    # tree that will be committed instead of crashing while the deletion is unstaged.
+    return [path for path in paths if path.is_file()]
 
 
 def main() -> int:

@@ -66,6 +66,44 @@
           "representative_compile_cases": ["mpu6050_i2c", "mpu9250_spi", "gy91_composite"]
         }
       ]
+    },
+    {
+      "id": "nobro_wireless",
+      "contract_crate": "core/crates/nobro_wireless",
+      "c_contract": "bindings/c/include/nobro_wireless.h",
+      "ownership_rule": "shared link contracts and protocol arithmetic live in crates; hardware and external-library implementations live in categorized adapters; applications live in categorized apps",
+      "adapter_families": [
+        {
+          "id": "nrf_proprietary_radio",
+          "adapter": "core/adapters/wireless/radio-comms",
+          "status": "integrated",
+          "scope": "exclusive HAL lease, bounded payload, link state, deadline and window-budget accounting"
+        }
+      ],
+      "library_members": [
+        {
+          "id": "niuswireless",
+          "upstream": "https://github.com/dunknowcoding/NiusWireless",
+          "version": "0.1.0",
+          "commit": "f40e76cccbcb0b5d0597f784ae5be1e6a52d46cb",
+          "adapter": "packages/arduino/src/NobroNiusWireless.h",
+          "status": "integrated",
+          "implemented_modules": ["RC522", "LoRa"],
+          "stub_modules": ["HC06", "HC12", "NRF24L01", "PN532"],
+          "verified_architectures": ["arduino:renesas_uno", "esp32:esp32"],
+          "known_portability_boundary": "0.1.0 does not compile on ArduinoNRF because upstream RC522 and SX127x String(uint8_t, HEX) calls are ambiguous"
+        },
+        {
+          "id": "niuszigbee",
+          "upstream": "https://github.com/dunknowcoding/ArduinoNRF-Zigbee",
+          "version": "1.0.0",
+          "commit": "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9",
+          "status": "conformance",
+          "support_evidence": "tools/check_wireless_ecosystem.py",
+          "verified_architectures": ["arduinonrf:nrf52"],
+          "known_boundary": "the pinned library surface and compile are verified; a friendly Nobro Arduino facade is not yet present"
+        }
+      ]
     }
   ],
   "integrations": [
@@ -124,10 +162,17 @@
     },
     {
       "id": "nius_wireless",
-      "status": "absent",
-      "closure_path": "core/adapters/wireless/nius-wireless",
-      "closure_path_state": "absent",
+      "status": "integrated",
+      "evidence_path": "packages/arduino/src/NobroNiusWireless.h",
+      "required_tokens": [
+        "class NiusWirelessHealthAdapter",
+        "class NiusLoRaAdapter",
+        "recover()"
+      ],
+      "closure_path": "packages/arduino/src/NobroNiusWireless.h",
+      "closure_path_state": "present",
       "upstream_surface": "NiusWireless",
+      "note": "Pinned 0.1.0: RC522 compiles on UNO R4 and LoRa compiles on ESP32-S3; HC06, HC12, NRF24L01, and PN532 remain explicit upstream stubs. ArduinoNRF has an upstream String-constructor portability error.",
       "review": "ECO-01"
     },
     {

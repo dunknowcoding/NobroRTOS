@@ -33,7 +33,13 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
             errors.append(f"{domain_id}: contract_crate must be an existing core/crates module")
         source = root / contract / "src" / "lib.rs"
         source_text = source.read_text(encoding="utf-8") if source.is_file() else ""
-        for token in ("pub trait ImuBackend", "pub struct ImuSample", "pub struct ImuCalibration", "pub struct ImuDiagnostics"):
+        contract_tokens = {
+            "nobro_imu": ("pub trait ImuBackend", "pub struct ImuSample",
+                          "pub struct ImuCalibration", "pub struct ImuDiagnostics"),
+            "nobro_wireless": ("pub trait WirelessBackend", "pub struct Packet",
+                               "pub struct ManagedLink", "pub struct LinkBudget"),
+        }.get(domain_id, ())
+        for token in contract_tokens:
             if token not in source_text:
                 errors.append(f"{domain_id}: contract lacks {token}")
         for token in ("embedded_hal", "write_read(", "REG_WHO_AM_I"):
@@ -41,21 +47,34 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
                 errors.append(f"{domain_id}: hardware implementation leaked into the domain contract: {token}")
         c_contract = root / domain.get("c_contract", "")
         c_text = c_contract.read_text(encoding="utf-8") if c_contract.is_file() else ""
-        for token in ("NOBRO_IMU_API_VERSION 0x0100u", "NOBRO_IMU_CALIBRATION_MAGIC 0x4D49u", "nobro_imu_sample_t", "nobro_imu_diagnostics_t"):
+        c_tokens = {
+            "nobro_imu": ("NOBRO_IMU_API_VERSION 0x0100u",
+                          "NOBRO_IMU_CALIBRATION_MAGIC 0x4D49u",
+                          "nobro_imu_sample_t", "nobro_imu_diagnostics_t"),
+            "nobro_wireless": ("NOBRO_WIRELESS_API_VERSION 0x0100u",
+                               "nobro_wireless_protocol_t",
+                               "nobro_wireless_state_t",
+                               "nobro_wireless_diagnostics_t"),
+        }.get(domain_id, ())
+        for token in c_tokens:
             if token not in c_text:
                 errors.append(f"{domain_id}: C contract lacks {token}")
         family_ids: list[str] = []
-        for family in domain.get("sensor_families", []):
+        families = domain.get("sensor_families", []) if domain_id == "nobro_imu" \
+            else domain.get("adapter_families", [])
+        for family in families:
             family_ids.append(family.get("id"))
             adapter = family.get("adapter", "")
             if family.get("status") not in VALID_STATUS:
                 errors.append(f"{domain_id}/{family.get('id')}: invalid family status")
             if not adapter.startswith("core/adapters/") or not (root / adapter / "Cargo.toml").is_file():
                 errors.append(f"{domain_id}/{family.get('id')}: adapter must be an existing core/adapters module")
-            elif "nobro-imu" not in (root / adapter / "Cargo.toml").read_text(encoding="utf-8"):
-                errors.append(f"{domain_id}/{family.get('id')}: adapter does not depend on the domain crate")
+            else:
+                dependency = domain_id.replace("_", "-")
+                if dependency not in (root / adapter / "Cargo.toml").read_text(encoding="utf-8"):
+                    errors.append(f"{domain_id}/{family.get('id')}: adapter does not depend on the domain crate")
         if len(family_ids) != len(set(family_ids)) or any(not item for item in family_ids):
-            errors.append(f"{domain_id}: sensor-family ids must be non-empty and unique")
+            errors.append(f"{domain_id}: adapter-family ids must be non-empty and unique")
         library_ids: list[str] = []
         for library in domain.get("library_members", []):
             library_ids.append(library.get("id"))
@@ -63,10 +82,10 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
             adapter = library.get("adapter", "")
             if status not in VALID_STATUS:
                 errors.append(f"{domain_id}/{library.get('id')}: invalid library status")
-            exists = (root / adapter).exists()
+            exists = bool(adapter) and (root / adapter).exists()
             if status == "absent" and exists:
                 errors.append(f"{domain_id}/{library.get('id')}: absent adapter exists")
-            if status != "absent" and not exists:
+            if status in {"integrated", "provider", "physical_hil"} and not exists:
                 errors.append(f"{domain_id}/{library.get('id')}: integrated adapter is missing")
         if len(library_ids) != len(set(library_ids)) or any(not item for item in library_ids):
             errors.append(f"{domain_id}: library-member ids must be non-empty and unique")

@@ -556,7 +556,7 @@ The mountable-backend shape extends to wireless and proximity links, each behind
 - **Zigbee / 802.15.4**: a `RadioCoprocessor` trait with backends such as UART
   co-processors and, later, the nRF on-chip RADIO running Nordic's official
   Zigbee sidecar firmware.
-- **RFID / NFC**: `SpiIo` adapts a board SPI driver to the no-heap `Mfrc522` backend, which exposes ISO 14443A UID polling through `IotTransport`.
+- **RFID / NFC**: `SpiIo` adapts a board SPI driver to the no-heap `Mfrc522` backend, which exposes ISO 14443A UID polling through `WirelessBackend`.
 
 Each backend is `no_std`, feature-selected, and swappable per
 `core/boards/<platform>/*/board.json`, so a board's wireless identity is data plus one

@@ -10,7 +10,6 @@ edition.workspace = true
 [[bin]]
 name = "cc2530_link"
 path = "src/main.rs"
-required-features = ["board-promicro-nosd"]
 
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }

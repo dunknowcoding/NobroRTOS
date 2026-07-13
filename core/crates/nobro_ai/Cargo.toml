@@ -8,7 +8,7 @@ edition.workspace = true
 # a validated manifest the device can trust before binding a runtime; (2) cloud-API
 # session management - API-key handles (never raw keys), connect/reconnect state machine
 # with bounded exponential backoff, request budgeting. No heap; transports plug in via
-# nobro_net/nobro_iot and secrets stay in nobro_secure's KeyStore.
+# nobro_net/nobro_wireless and secrets stay in nobro_secure's KeyStore.
 
 [dependencies]
 

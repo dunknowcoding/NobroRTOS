@@ -134,11 +134,11 @@ fn uart_rx() -> Option<u8> {
 
 // ------------------------------------------------------------------ ByteIo adapter
 
-/// Adapts the board's legacy UART0 to nobro_iot::ByteIo, so the hardware-agnostic
+/// Adapts the board's legacy UART0 to nobro_wireless::ByteIo, so the hardware-agnostic
 /// Cc2530 802.15.4 backend (M199) drives this module unchanged.
 struct Uart0;
 
-impl nobro_iot::ByteIo for Uart0 {
+impl nobro_wireless::ByteIo for Uart0 {
     fn write(&mut self, b: u8) {
         uart_tx(b);
     }
@@ -176,14 +176,14 @@ fn seal(fw: u32, pongs: u32, c: Counts, last: &[u8], last_len: u32) {
 
 #[entry]
 fn main() -> ! {
-    use nobro_iot::{IotTransport, MacFrameType};
+    use nobro_wireless::{MacFrameType, WirelessBackend};
 
     uart_init();
     cortex_m::asm::delay(3_200_000); // ~50 ms boot settle
 
     // Mount the modular 802.15.4 backend (M199) over this board's UART and join it:
     // join() flushes the firmware parser, PINGs, and sets channel 11 + promiscuous RX.
-    let mut radio = nobro_iot::Cc2530::new(Uart0);
+    let mut radio = nobro_wireless::Cc2530::new(Uart0);
     let joined = radio.join(11, 4_000_000);
     let pongs = u32::from(joined);
     // fw version isn't surfaced by the trait; a probe read keeps the report field alive.
