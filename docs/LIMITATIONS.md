@@ -30,8 +30,8 @@ hardware and are not inferred from software coefficients alone.
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
 | Deep | nRF52840 | Portable core plus board-specific time, deadline, event, PWM, I2C, SPI, and lease providers | USB parity and broader board families |
-| Provider | RP2350, ESP32-C3, ESP32-S3 | Selected typed providers; ESP32-S3 includes time, deadline, I2C, SPI, PWM, and USB adapters | Full lease/event/fault parity and unimplemented peripherals |
-| Core | RA4M1, SAMD21, AVR subset | Target startup and status integration | Portable peripheral providers |
+| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-S3 and RA4M1 include time, deadline, I2C, SPI, PWM, and USB paths (RA4M1 peripheral paths use the Arduino Renesas core) | Full lease/event/fault parity and unimplemented peripherals |
+| Core | SAMD21, AVR subset | Target startup and status integration | Portable peripheral providers |
 
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs

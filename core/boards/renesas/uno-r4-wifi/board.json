@@ -1,0 +1,20 @@
+{
+  "board_id": "uno_r4_wifi",
+  "platform_id": "ra4m1",
+  "feature": "port-ra4m1",
+  "description": "Arduino UNO R4 WiFi (RA4M1, Cortex-M4), stock 16 KiB DFU layout and Arduino Renesas provider layer",
+  "boot": {
+    "layout": "Custom",
+    "app_flash_start": "0x4000",
+    "app_flash_len_bytes": 245760,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 32768
+  },
+  "capacity": {
+    "flash_budget_bytes": 98304,
+    "ram_budget_bytes": 16384,
+    "sample_pool_slots": 8,
+    "max_modules": 12
+  },
+  "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": 14 }
+}

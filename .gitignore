@@ -70,5 +70,6 @@ docs/roadmap.md
 docs/VS_*.md
 docs/*_INTERNAL.md
 docs/rtos_review.md
+docs/optimization.md
 
 tools/leak_needles.local.txt

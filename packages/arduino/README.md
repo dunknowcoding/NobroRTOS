@@ -7,11 +7,13 @@ Current contents:
 - `library.properties` for Arduino Library Manager compatible metadata.
 - `src/NobroRTOS.h` with an allocation-free `NobroApp` task/channel facade and the
   canonical report ABI.
-- beginner, complex robot/IoT, and report-reader examples compile-gated across AVR,
+- `src/NobroArduinoProviders.h` with bounded clock/deadline/ADC/PWM/I2C/SPI/byte-I/O
+  wrappers that delegate hardware ownership to the selected Arduino board package.
+- beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
-The Arduino package should remain a thin compatibility surface over the core
-contracts rather than a separate implementation.
+The Arduino package remains a thin compatibility surface over the core contracts. The
+installed board package continues to own register setup, interrupts, and pin routing.
 
 Repository-local use:
 

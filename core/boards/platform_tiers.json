@@ -55,8 +55,16 @@
     },
     "ra4m1": {
       "arch": "thumbv7em",
-      "tier": "core",
-      "implements": []
+      "tier": "provider",
+      "implements": [
+        "timebase",
+        "deadline",
+        "servo_pwm",
+        "i2c",
+        "spi",
+        "usb"
+      ],
+      "limitations": "native Rust owns time/deadline/USB; ADC/PWM/I2C/SPI delegate to the installed Arduino Renesas core"
     },
     "samd21": {
       "arch": "thumbv6m",

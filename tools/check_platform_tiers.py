@@ -83,6 +83,18 @@ def validate(matrix: dict) -> list[str]:
             if not implementation:
                 errors.append(f"{name}: timebase claim lacks implementation/report wiring")
 
+        if name == "ra4m1" and spec["tier"] == "provider":
+            provider = PORTS / "ra4m1" / "src" / "providers.rs"
+            facade = ROOT / "packages" / "arduino" / "src" / "NobroArduinoProviders.h"
+            provider_text = provider.read_text(encoding="utf-8") if provider.is_file() else ""
+            facade_text = facade.read_text(encoding="utf-8") if facade.is_file() else ""
+            for token in ("Ra4m1Clock", "Ra4m1Alarm", "Ra4m1Usb"):
+                if token not in provider_text:
+                    errors.append(f"ra4m1: native provider missing {token}")
+            for token in ("ArduinoAdc", "ArduinoPwm", "ArduinoI2c", "ArduinoSpi"):
+                if token not in facade_text:
+                    errors.append(f"ra4m1: Arduino provider facade missing {token}")
+
         # Declared platforms must have a real port (except the nRF deep HAL).
         port = PORT_DIR.get(name, "MISSING")
         if port == "MISSING":

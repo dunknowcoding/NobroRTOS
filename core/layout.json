@@ -15,6 +15,6 @@
     "ai", "connectivity", "control", "imu", "interop", "kernel", "storage"
   ],
   "board_categories": [
-    "esp32", "generic", "nrf52", "rp2", "samd", "stm32", "teensy"
+    "esp32", "generic", "nrf52", "renesas", "rp2", "samd", "stm32", "teensy"
   ]
 }

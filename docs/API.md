@@ -17,6 +17,15 @@ the host contract. The generated per-crate index is [api-index.md](api-index.md)
 This manual summarizes the public crates and the core contracts used by
 applications, adapters, and host tooling.
 
+### Arduino provider facade
+
+`NobroArduinoProviders.h` supplies fixed-state wrappers for the selected Arduino board
+package: `ArduinoClock`, `ArduinoDeadline`, `ArduinoAdc`, `ArduinoPwm`, `ArduinoI2c`,
+`ArduinoSpi`, and `ArduinoByteIo`. These wrappers do not replace a vendor core or copy
+its register drivers; they give applications one bounded call shape while the installed
+board package continues to own pin routing, interrupts, and peripheral setup. The UNO R4
+uses this path for ADC/PWM/I2C/SPI and the native RA4M1 port owns Rust time/deadline/USB.
+
 ### Crate Overview
 
 | Crate | Purpose |

@@ -166,3 +166,7 @@ private:
 #endif
 
 #endif /* NOBRO_RTOS_ARDUINO_H */
+
+#ifdef ARDUINO
+#include "NobroArduinoProviders.h"
+#endif

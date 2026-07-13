@@ -9,6 +9,7 @@ boards/
     nrf52840-nosd/    board.json   # no-SoftDevice layout (app @ 0x1000)
     nrf52840-s140/    board.json   # S140 v6 layout (app @ 0x26000)
   esp32/esp32c3-supermini/board.json
+  renesas/uno-r4-wifi/board.json
   rp2/rp2350-pico2w/board.json
   samd/samd21-uf2/board.json
   stm32/stm32f4-generic/board.json

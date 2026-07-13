@@ -313,8 +313,8 @@ target gets. The machine-readable capability matrix is `core/boards/platform_tie
 | Tier | What it means | Targets today |
 | --- | --- | --- |
 | **Deep HAL** | portable contracts plus board-specific peripheral providers | nRF52840 |
-| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
-| **Core ports** | target startup and status path available; peripheral providers are incomplete | RA4M1, SAMD21 (+ an 8-bit AVR kernel-lite subset) |
+| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7), RA4M1/UNO R4 |
+| **Core ports** | target startup and status path available; peripheral providers are incomplete | SAMD21 (+ an 8-bit AVR kernel-lite subset) |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 

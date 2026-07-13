@@ -7,12 +7,14 @@ use crate::{
 
 pub const NRF52840_PLATFORM_ID: &str = "nrf52840";
 pub const SAMD21_PLATFORM_ID: &str = "samd21";
+pub const RA4M1_PLATFORM_ID: &str = "ra4m1";
 pub const STM32F4_PLATFORM_ID: &str = "stm32f4";
 pub const IMXRT1062_PLATFORM_ID: &str = "imxrt1062";
 pub const CORTEX_M_PLATFORM_ID: &str = "cortex_m";
 pub const PROMICRO_NRF52840_NOSD_ID: &str = "promicro_nrf52840_nosd";
 pub const PROMICRO_NRF52840_S140_ID: &str = "promicro_nrf52840_s140";
 pub const SAMD21_UF2_ID: &str = "samd21_uf2_generic";
+pub const UNO_R4_WIFI_ID: &str = "uno_r4_wifi";
 pub const STM32F4_GENERIC_ID: &str = "stm32f4_generic";
 pub const TEENSY4_GENERIC_ID: &str = "teensy4_generic";
 pub const CORTEX_M_GENERIC_ID: &str = "cortex_m_generic";
@@ -22,6 +24,8 @@ pub const NRF52840_BOARD_PINS: BoardPins = BoardPins::new(15, 24, 17);
 pub const NRF52840_SERVO_CENTER_US: u32 = 1500;
 pub const SAMD21_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(48 * 1024, 12 * 1024, 4, 8);
 pub const SAMD21_BOARD_PINS: BoardPins = BoardPins::new(13, 5, 6);
+pub const RA4M1_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(96 * 1024, 16 * 1024, 8, 12);
+pub const RA4M1_BOARD_PINS: BoardPins = BoardPins::new(13, 5, 14);
 pub const STM32F4_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(128 * 1024, 64 * 1024, 8, 16);
 pub const STM32F4_BOARD_PINS: BoardPins = BoardPins::new(13, 6, 7);
 pub const TEENSY4_BOARD_CAPACITY: BoardCapacity =
@@ -70,6 +74,20 @@ pub const SAMD21_UF2_PACKAGE: BoardPackage = BoardPackage::new(
     ),
     SAMD21_BOARD_CAPACITY,
     SAMD21_BOARD_PINS,
+);
+
+pub const UNO_R4_WIFI_PACKAGE: BoardPackage = BoardPackage::new(
+    RA4M1_PLATFORM_ID,
+    UNO_R4_WIFI_ID,
+    BootProfile::new(
+        BootLayout::Custom,
+        0x4000,
+        240 * 1024,
+        0x2000_0000,
+        32 * 1024,
+    ),
+    RA4M1_BOARD_CAPACITY,
+    RA4M1_BOARD_PINS,
 );
 
 pub const STM32F4_GENERIC_PACKAGE: BoardPackage = BoardPackage::new(
@@ -150,7 +168,7 @@ impl BoardProfileDefinition {
     }
 }
 
-pub const BOARD_PACKAGES: [BoardPackageDefinition; 6] = [
+pub const BOARD_PACKAGES: [BoardPackageDefinition; 7] = [
     BoardPackageDefinition {
         feature: "board-promicro-nosd",
         package: PROMICRO_NRF52840_NOSD_PACKAGE,
@@ -162,6 +180,10 @@ pub const BOARD_PACKAGES: [BoardPackageDefinition; 6] = [
     BoardPackageDefinition {
         feature: "board-samd21-uf2",
         package: SAMD21_UF2_PACKAGE,
+    },
+    BoardPackageDefinition {
+        feature: "port-ra4m1",
+        package: UNO_R4_WIFI_PACKAGE,
     },
     BoardPackageDefinition {
         feature: "board-stm32f4-generic",
@@ -177,7 +199,7 @@ pub const BOARD_PACKAGES: [BoardPackageDefinition; 6] = [
     },
 ];
 
-pub const BOARD_PROFILES: [BoardProfileDefinition; 6] = [
+pub const BOARD_PROFILES: [BoardProfileDefinition; 7] = [
     BoardProfileDefinition {
         feature: "board-promicro-nosd",
         platform_id: NRF52840_PLATFORM_ID,
@@ -203,6 +225,15 @@ pub const BOARD_PROFILES: [BoardProfileDefinition; 6] = [
         app_flash_start: 0x2000,
         capacity: SAMD21_BOARD_CAPACITY,
         pins: SAMD21_BOARD_PINS,
+        servo_center_us: NRF52840_SERVO_CENTER_US,
+    },
+    BoardProfileDefinition {
+        feature: "port-ra4m1",
+        platform_id: RA4M1_PLATFORM_ID,
+        board_id: UNO_R4_WIFI_ID,
+        app_flash_start: 0x4000,
+        capacity: RA4M1_BOARD_CAPACITY,
+        pins: RA4M1_BOARD_PINS,
         servo_center_us: NRF52840_SERVO_CENTER_US,
     },
     BoardProfileDefinition {

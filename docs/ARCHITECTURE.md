@@ -493,7 +493,7 @@ hard-real-time code.
 
 `PlatformHal` identifies a platform and board package; it does not require a
 monolithic set of peripherals. Timebase, scheduling, deadline, capture, PWM,
-lease, I2C, SPI, and self-test behavior are independent provider traits.
+lease, I2C, and SPI behavior are independent provider traits.
 Portable leases use a neutral class plus instance number, and each platform
 adapter performs the concrete peripheral mapping. Bus providers also declare
 whether transfers are polling or DMA.

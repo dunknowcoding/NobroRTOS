@@ -14,6 +14,10 @@
 #![no_main]
 
 use cortex_m_rt::entry;
+use nobro_hal::{
+    HalAlarm, HalByteIo, HalClock, HalCompatibility, HardwareCapability, HardwareCapabilitySet,
+};
+use nobro_port_ra4m1::providers::{Ra4m1Alarm, Ra4m1Clock, Ra4m1Providers, Ra4m1Usb};
 use panic_halt as _;
 
 // ---------------------------------------------------------------- system (own driver)
@@ -299,16 +303,33 @@ fn drive_loopback() {
 
 #[entry]
 fn main() -> ! {
-    use nobro_usb::{RaUsbfsCdc, UsbConfig, UsbStack};
+    use nobro_usb::UsbConfig;
 
     system_init();
+    let mut core = cortex_m::Peripherals::take().unwrap();
+    Ra4m1Clock::init(&mut core.DCB, &mut core.DWT);
+    let mut alarm = Ra4m1Alarm::new(core.SYST);
     pins_init();
     SCI2.init();
     SCI1.init();
     SCI9.init();
     drive_loopback();
 
-    let line = "NOBRO-RA4M1 arch=thumbv7em port_ready=1\r\n";
+    let required = HardwareCapabilitySet::EMPTY
+        .with(HardwareCapability::Timebase)
+        .with(HardwareCapability::DeadlineTimer)
+        .with(HardwareCapability::Usb);
+    let providers_ok = Ra4m1Providers::supports(required);
+    let started = Ra4m1Clock::now_us();
+    let armed = alarm.arm_after_us(2_000).is_ok();
+    while armed && !alarm.poll_due(Ra4m1Clock::now_us()) {}
+    let elapsed = Ra4m1Clock::now_us().saturating_sub(started);
+    let deadline_ok = armed && (2_000..20_000).contains(&elapsed);
+    let line = if providers_ok && deadline_ok {
+        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=1 deadline=1 usb=1 all_pass=1\r\n"
+    } else {
+        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=0 deadline=0 usb=1 all_pass=0\r\n"
+    };
 
     // Keep the UNO R4 WiFi connector on the stock ESP32-S3 bridge. The bridge
     // firmware tunnels COM traffic to SCI9/P109-P110 at 115200 by default and
@@ -319,8 +340,8 @@ fn main() -> ! {
 
     // Native RA4M1 USBFS is available on request; it is not the boot default on
     // UNO R4 WiFi because the board's normal upload/debug path is the ESP bridge.
-    let cfg = UsbConfig::new(0x1209, 0x0004, "NiusRobotLab", "NobroRTOS RA4M1", "NBROR4");
-    let mut usb: Option<RaUsbfsCdc> = None; // concrete type exposes stage() for LED debug
+    let cfg = UsbConfig::new(0x1209, 0x0004, "NobroRTOS", "NobroRTOS RA4M1", "NOBRORA4");
+    let mut usb: Option<Ra4m1Usb> = None;
 
     let mut ticks: u32 = 0;
     let mut native_route = false;
@@ -342,7 +363,7 @@ fn main() -> ! {
                     Some(LinkCommand::NativeUsb) => {
                         SCI9.print("NOBRO-RA4M1 native_usb=enable\r\n");
                         route_usb_to_ra4(true);
-                        usb = Some(RaUsbfsCdc::mount(&cfg));
+                        usb = Some(Ra4m1Usb::mount(&cfg));
                         native_route = true;
                         ticks = 0;
                     }
@@ -351,10 +372,10 @@ fn main() -> ! {
             }
             let mut usb_bytes = [0u8; 32];
             if let Some(active_usb) = usb.as_mut() {
-                let count = active_usb.read(&mut usb_bytes);
+                let count = active_usb.read_available(&mut usb_bytes).unwrap_or(0);
                 for &byte in &usb_bytes[..count] {
                     if host_command.push(byte) {
-                        let _ = active_usb.write(b"NOBRO-RA4M1 boot=native\r\n");
+                        let _ = active_usb.write_all(b"NOBRO-RA4M1 boot=native\r\n");
                         enter_bootloader();
                     }
                 }
@@ -364,7 +385,7 @@ fn main() -> ! {
         ticks += 1;
         if let Some(active_usb) = usb.as_mut() {
             if active_usb.configured() {
-                let _ = active_usb.write(line.as_bytes()); // report over native USB
+                let _ = active_usb.write_all(line.as_bytes()); // report over native USB
             }
         }
         // Keep the bridge/header UARTs alive and use a non-blocking LED cadence.
@@ -373,7 +394,7 @@ fn main() -> ! {
         SCI2.print(line);
         let usb_stage = usb
             .as_ref()
-            .map(RaUsbfsCdc::stage)
+            .map(Ra4m1Usb::stage)
             .unwrap_or(nobro_usb::Stage::PoweredOff);
         let blink_divisor = match usb_stage {
             nobro_usb::Stage::Configured => 64,
@@ -388,7 +409,7 @@ fn main() -> ! {
         // native route long enough for Windows to enumerate a fresh CDC device,
         // then restore the upload-visible route if enumeration still failed.
         if native_route
-            && !usb.as_ref().map(RaUsbfsCdc::configured).unwrap_or(false)
+            && !usb.as_ref().map(Ra4m1Usb::configured).unwrap_or(false)
             && ticks >= NATIVE_USB_FALLBACK_TICKS
         {
             route_usb_to_ra4(false);
