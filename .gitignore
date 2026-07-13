@@ -1,15 +1,6 @@
-# NobroRTOS local-only references and transient artifacts
-technique_route.md
-MILESTONES.md
-roadmap.md
-ROADMAP.md
+# Local and transient workspaces
 _work/
-_maintainer/
-core/baselines/
-core/fuzz/
-core/internal/
-tools/internal/
-tools/dev/
+*.local.*
 
 # Rust build outputs
 target/
@@ -61,15 +52,3 @@ tools/.nobro-work/
 Thumbs.db
 *.swp
 .agents/
-
-# Internal-only docs (competitive/strategy analysis - not public)
-docs/DEVELOPER_EXPERIENCE.md
-docs/HARDWARE_BRINGUP.md
-docs/MILESTONES.md
-docs/roadmap.md
-docs/VS_*.md
-docs/*_INTERNAL.md
-docs/rtos_review.md
-docs/optimization.md
-
-tools/leak_needles.local.txt

@@ -19,6 +19,7 @@
     "core/Cargo.toml",
     "core/Cargo.lock",
     "core/README.md",
+    "core/.cargo",
     "core/crates",
     "core/adapters",
     "core/apps",
@@ -30,16 +31,15 @@
     "core/memory-s140.x"
   ],
   "release_excludes": [
-    "_maintainer",
-    "core/target",
+    "_work",
     "core/_work",
-    "core/baselines",
-    "core/fuzz",
-    "core/internal",
-    "tools/internal",
-    "tools/dev",
-    "_work"
+    "core/target"
   ],
+  "distribution_policy": {
+    "source": "tracked_files",
+    "allow_untracked": false,
+    "allow_symlinks": false
+  },
   "python_package": "bindings/python",
   "package_surfaces": {
     "arduino": "packages/arduino",

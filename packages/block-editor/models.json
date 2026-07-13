@@ -20,7 +20,7 @@
     },
     "label": "Motion NN (idle/active)",
     "preset": "nn_motion",
-    "source": "tools/train_motion_nn.py",
+    "source": "core/adapters/ai/nn-motion-ai/src/nn_weights.rs",
     "train_acc_milli": 1000
   }
 }

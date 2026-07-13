@@ -21,10 +21,12 @@ Adding one contributes an `ai_models[]` entry to `app.json` whose fields match t
 `arena_bytes`, `timeout_us`, `stale_after_us`), so the generated app validates with
 `tools/nobro_app.py` and drops straight into a contract bundle.
 
-The model catalog lives in `models.json`, which the training pipeline writes:
+The checked-in model catalog lives in `models.json`. Each card names the public,
+checked-in model artifact that implements its contract. To add or update a card,
+update that artifact and the catalog together, then validate them with:
 
 ```powershell
-python tools\train_motion_nn.py   # trains the int8 MLP, updates models.json
+python tools/check_block_editor.py
 ```
 
 The editor loads `models.json` at startup (when served over HTTP) and falls back to a

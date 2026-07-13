@@ -18,6 +18,13 @@ def rel(p):
 
 def main():
     man = json.load(open(os.path.join(ROOT, "sdk", "sdk-manifest.json")))
+    if man.get("distribution_policy") != {
+        "source": "tracked_files",
+        "allow_untracked": False,
+        "allow_symlinks": False,
+    }:
+        print("[MISS] distribution_policy    regular tracked files only")
+        return 1
     checks = []
     checks.append(("canonical_contract", man["canonical_contract"]))
     checks.append(("core_workspace", man["core_workspace"]))

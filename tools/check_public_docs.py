@@ -16,18 +16,30 @@ DOCS = [
     )),
 ]
 LINK = re.compile(r"\[[^]]*\]\(([^)]+)\)")
-TOOL = re.compile(r"(?:python3?|py)\s+(tools/[A-Za-z0-9_./-]+\.py)\b")
-DOC_REFERENCE = re.compile(r"\bdocs/[A-Za-z0-9_.-]+\.md\b")
+TOOL = re.compile(
+    r"(?:python(?:3(?:\.\d+)?)?|py)(?:\.exe)?"
+    r"(?:\s+-[A-Za-z0-9_.=-]+)*\s+"
+    r"(tools[\\/][A-Za-z0-9_.\\/-]+\.py)\b",
+    re.IGNORECASE,
+)
+DOC_REFERENCE = re.compile(r"\bdocs[\\/][A-Za-z0-9_.-]+\.md\b")
 DOC_REFERENCE_EXEMPT = {
     pathlib.PurePosixPath("tools/check_public_docs.py"),
     pathlib.PurePosixPath("tools/check_release_boundary.py"),
 }
 PRIVATE = {
-    "internal plan reference": re.compile(
-        r"(?:_INTERNAL\.md|REMODELING_PLAN_" r"INTERNAL)"
+    "non-public document reference": re.compile(
+        r"(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]*_"
+        r"(?:INTERNAL|PRIVATE)(?:\.[A-Za-z0-9_.-]+)?",
+        re.IGNORECASE,
     ),
-    "lab board label": re.compile(r"\bboard[1-9][0-9]*\b", re.IGNORECASE),
-    "local serial port": re.compile(r"\bCOM[0-9]+\b", re.IGNORECASE),
+    "lab board label": re.compile(
+        r"(?<![A-Za-z0-9])board[1-9][0-9]*(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    ),
+    "local serial port": re.compile(
+        r"(?<![A-Za-z0-9])COM[0-9]+(?![A-Za-z0-9])", re.IGNORECASE
+    ),
     "Windows machine path": re.compile(r"\b[A-Za-z]:\\"),
     "local environment": re.compile(r"\b(?:conda|venv)\s+(?:activate|env)\b", re.IGNORECASE),
 }
@@ -55,7 +67,7 @@ def tracked_text_files() -> list[pathlib.Path]:
 def main() -> int:
     errors: list[str] = []
     tracked = {
-        pathlib.Path(raw.decode("utf-8"))
+        pathlib.PurePosixPath(raw.decode("utf-8").replace("\\", "/"))
         for raw in subprocess.run(
             ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
         ).stdout.split(b"\0")
@@ -74,15 +86,22 @@ def main() -> int:
     for path in text_files:
         text = path.read_text(encoding="utf-8", errors="replace")
         relative = path.relative_to(ROOT)
+        relative_folded = relative.as_posix().casefold()
+        path_is_sensitive = any(
+            needle.casefold() in relative_folded for needle in local_needles
+        )
+        display = "<redacted tracked path>" if path_is_sensitive else str(relative)
+        if path_is_sensitive:
+            errors.append("tracked path contains a local privacy marker")
         patterns = {} if path == pathlib.Path(__file__).resolve() else PRIVATE
         for label, pattern in patterns.items():
             for match in pattern.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1
-                errors.append(f"{relative}:{line}: {label}: {match.group(0)!r}")
+                errors.append(f"{display}:{line}: {label}")
         folded = text.casefold()
         for needle in local_needles:
             if needle.casefold() in folded:
-                errors.append(f"{relative}: local privacy needle present")
+                errors.append(f"{display}: local privacy needle present")
 
         # Generator templates and source comments can publish documentation paths without
         # using Markdown-link syntax. Discover every such tracked literal automatically so
@@ -90,19 +109,35 @@ def main() -> int:
         # checkers are the exception: by design they name deliberately absent retired paths.
         if pathlib.PurePosixPath(relative.as_posix()) not in DOC_REFERENCE_EXEMPT:
             for match in DOC_REFERENCE.finditer(text):
-                target = pathlib.Path(match.group(0))
-                if not (ROOT / target).is_file():
+                target = pathlib.PurePosixPath(match.group(0).replace("\\", "/"))
+                target_file = ROOT / pathlib.Path(*target.parts)
+                if not target_file.is_file():
                     line = text.count("\n", 0, match.start()) + 1
                     errors.append(
-                        f"{relative}:{line}: public documentation reference is missing: "
-                        f"{target}"
+                        f"{display}:{line}: public documentation reference is missing"
                     )
                 elif target not in tracked:
                     line = text.count("\n", 0, match.start()) + 1
                     errors.append(
-                        f"{relative}:{line}: public documentation reference is not tracked: "
-                        f"{target}"
+                        f"{display}:{line}: public documentation reference is not tracked"
                     )
+
+        # A command in any tracked Markdown file is part of the user experience, not
+        # only commands in the primary documentation set. Require its tool to be a
+        # safe, existing, tracked repository path on both POSIX and Windows examples.
+        if path.suffix.lower() == ".md":
+            for match in TOOL.finditer(text):
+                target = pathlib.PurePosixPath(match.group(1).replace("\\", "/"))
+                target_file = ROOT / pathlib.Path(*target.parts)
+                safe = (
+                    target.parts[:1] == ("tools",)
+                    and all(part not in ("", ".", "..") for part in target.parts)
+                )
+                line = text.count("\n", 0, match.start()) + 1
+                if not safe or not target_file.is_file():
+                    errors.append(f"{display}:{line}: missing public CLI tool")
+                elif target not in tracked:
+                    errors.append(f"{display}:{line}: public CLI tool is not tracked")
 
     for path in DOCS:
         if not path.is_file():
@@ -115,26 +150,28 @@ def main() -> int:
             if not target or "://" in target or target.startswith(("mailto:", "#")):
                 continue
             resolved = (path.parent / target).resolve()
+            try:
+                tracked_target = resolved.relative_to(ROOT.resolve())
+            except ValueError:
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(f"{relative}:{line}: link leaves the repository")
+                continue
             if not resolved.exists():
                 line = text.count("\n", 0, match.start()) + 1
-                errors.append(f"{relative}:{line}: broken link: {target}")
-                continue
-            try:
-                tracked_target = resolved.relative_to(ROOT)
-            except ValueError:
+                errors.append(f"{relative}:{line}: broken local link")
                 continue
             if not (
-                tracked_target in tracked
-                or (resolved.is_dir() and any(p.is_relative_to(tracked_target) for p in tracked))
+                pathlib.PurePosixPath(tracked_target.as_posix()) in tracked
+                or (
+                    resolved.is_dir()
+                    and any(
+                        p.is_relative_to(pathlib.PurePosixPath(tracked_target.as_posix()))
+                        for p in tracked
+                    )
+                )
             ):
                 line = text.count("\n", 0, match.start()) + 1
-                errors.append(f"{relative}:{line}: link target is not tracked: {target}")
-        for match in TOOL.finditer(text):
-            target = ROOT / match.group(1)
-            if not target.is_file():
-                line = text.count("\n", 0, match.start()) + 1
-                errors.append(f"{relative}:{line}: missing CLI tool: {match.group(1)}")
-
+                errors.append(f"{relative}:{line}: local link target is not tracked")
     generated = subprocess.run(
         [sys.executable, "tools/gen_api_index.py", "--check"], cwd=ROOT
     )

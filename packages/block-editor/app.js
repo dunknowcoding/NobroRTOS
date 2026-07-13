@@ -8,11 +8,10 @@ const catalog = {
   },
 };
 
-// Trained ML models offered as inference blocks. Seeded with the on-device motion NN
-// (kept in lockstep with tools/train_motion_nn.py + the nn-motion-ai firmware adapter);
-// refreshed at load from models.json, which train_motion_nn.py writes on every run.
-// Each contract mirrors AiModelContract.to_dict() so an ML block emits app.json that the
-// host contract tooling accepts unchanged.
+// Checked-in model cards offered as inference blocks. models.json is authoritative when
+// served over HTTP; this seed preserves the motion-NN block when opened from file:// or
+// when the catalog cannot be fetched. Each contract mirrors AiModelContract.to_dict() so
+// an ML block emits app.json that the host contract tooling accepts unchanged.
 const mlModels = {
   nn_motion: {
     label: "Motion NN (idle/active)",

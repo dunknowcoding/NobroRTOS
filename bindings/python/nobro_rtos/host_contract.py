@@ -12,6 +12,80 @@ from .contracts import AiBackendKind, AiRoutePreference, AiRouteTarget, Capabili
 
 
 DEFAULT_CONTRACT_RELATIVE_PATH = Path("host") / "nobro-host-contract.json"
+EXPECTED_TOP_LEVEL_KEYS = frozenset(
+    {
+        "cdc",
+        "upload",
+        "ina_monitor",
+        "boot_diagnostics",
+        "module_tags",
+        "capability_bits",
+        "ai_contracts",
+        "ros_bridge_contracts",
+        "health_report",
+        "event_log_report",
+        "module_runtime_report",
+        "degrade_application_report",
+        "runtime_report",
+        "board_profile_report",
+        "board_package_report",
+        "manifest_report",
+        "adapter_compat_report",
+        "admission_report",
+    }
+)
+EXPECTED_SECTION_KEYS = {
+    "cdc": {"maintenance_mi", "user_mi"},
+    "upload": {"touch_baud", "lock_per_port"},
+    "ina_monitor": {"jsonl_line_rate_hz_max"},
+    "boot_diagnostics": {
+        "stage_order",
+        "status_labels",
+        "diagnostic_code",
+        "first_non_pass",
+        "summary_fields",
+    },
+    "health_report": {"symbol", "magic", "version", "layout"},
+    "event_log_report": {
+        "symbol",
+        "magic",
+        "version",
+        "layout",
+        "event_kind_codes",
+        "payload_kind_codes",
+        "severity_codes",
+    },
+    "module_runtime_report": {"symbol", "magic", "version", "layout", "state_codes"},
+    "degrade_application_report": {
+        "symbol",
+        "magic",
+        "version",
+        "layout",
+        "reason_codes",
+    },
+    "runtime_report": {"symbol", "magic", "version", "layout", "state_codes"},
+    "board_profile_report": {"symbol", "magic", "version", "layout", "catalog", "status"},
+    "board_package_report": {
+        "symbol",
+        "magic",
+        "version",
+        "layout",
+        "catalog",
+        "status",
+        "boot_layout_codes",
+        "error_codes",
+    },
+    "manifest_report": {"symbol", "magic", "version", "layout", "status", "error_codes"},
+    "adapter_compat_report": {
+        "symbol",
+        "magic",
+        "version",
+        "layout",
+        "status",
+        "error_codes",
+    },
+    "admission_report": {"symbol", "magic", "version", "layout", "status", "error_codes"},
+}
 EXPECTED_BOOT_STAGES = (
     "board_profile",
     "board_package",
@@ -131,8 +205,13 @@ class HostContract:
         return contract
 
     def validate(self) -> None:
-        self._require_object("module_tags")
-        self._require_object("capability_bits")
+        if not isinstance(self.payload, dict) or set(self.payload) != EXPECTED_TOP_LEVEL_KEYS:
+            raise ValueError("unexpected host-contract top-level schema")
+        for key in EXPECTED_TOP_LEVEL_KEYS:
+            self._require_object(key)
+        for key, expected in EXPECTED_SECTION_KEYS.items():
+            self._require_exact_keys(key, expected)
+        self._validate_basic_sections()
         boot = self._require_object("boot_diagnostics")
 
         stages = tuple(boot.get("stage_order", ()))
@@ -204,6 +283,36 @@ class HostContract:
             raise ValueError(f"missing object: {key}")
         return value
 
+    def _require_exact_keys(self, key: str, expected: set[str]) -> None:
+        if set(self._require_object(key)) != expected:
+            raise ValueError(f"unexpected {key} schema")
+
+    def _validate_basic_sections(self) -> None:
+        cdc = self.payload["cdc"]
+        if not all(
+            isinstance(cdc[key], str) and cdc[key]
+            for key in ("maintenance_mi", "user_mi")
+        ):
+            raise ValueError("unexpected CDC contract")
+        upload = self.payload["upload"]
+        if type(upload["touch_baud"]) is not int or upload["touch_baud"] <= 0:
+            raise ValueError("unexpected upload baud contract")
+        if type(upload["lock_per_port"]) is not bool:
+            raise ValueError("unexpected upload lock contract")
+        monitor = self.payload["ina_monitor"]
+        rate = monitor["jsonl_line_rate_hz_max"]
+        if type(rate) is not int or rate <= 0:
+            raise ValueError("unexpected monitor rate contract")
+        boot = self.payload["boot_diagnostics"]
+        if not isinstance(boot["diagnostic_code"], str):
+            raise ValueError("unexpected diagnostic-code contract")
+        if type(boot["first_non_pass"]) is not bool:
+            raise ValueError("unexpected diagnostic selection contract")
+        if not isinstance(boot["summary_fields"], list) or not all(
+            isinstance(item, str) and item for item in boot["summary_fields"]
+        ):
+            raise ValueError("unexpected diagnostic summary contract")
+
     def _validate_capability_bits(self) -> None:
         capability_bits = self.payload["capability_bits"]
         for capability in Capability:
@@ -224,18 +333,29 @@ class HostContract:
             if magic != expected_magic:
                 raise ValueError(f"unexpected {key} magic: {magic}")
             version = report.get("version")
-            if version != 1:
+            if type(version) is not int or version != 1:
                 raise ValueError(f"unexpected {key} version: {version}")
 
     def _validate_ai_contracts(self) -> None:
         ai_contracts = self._require_object("ai_contracts")
+        if set(ai_contracts) != {
+            "backend_codes",
+            "report",
+            "route_preferences",
+            "route_targets",
+        }:
+            raise ValueError("unexpected AI contract schema")
         report = ai_contracts.get("report")
         if not isinstance(report, dict):
             raise ValueError("missing AI model report contract")
+        if set(report) != {"symbol", "magic", "version", "layout"}:
+            raise ValueError("unexpected AI report schema")
         if report.get("symbol") != "NOBRO_AI_MODEL_REPORT":
             raise ValueError(f"unexpected AI model report symbol: {report.get('symbol')}")
         if report.get("magic") != "0x4E424149":
             raise ValueError(f"unexpected AI model report magic: {report.get('magic')}")
+        if type(report.get("version")) is not int or report.get("version") != 1:
+            raise ValueError("unexpected AI model report version")
         self._validate_enum_codes(
             ai_contracts.get("backend_codes"),
             AiBackendKind,
@@ -254,13 +374,19 @@ class HostContract:
 
     def _validate_ros_bridge_contracts(self) -> None:
         bridge = self._require_object("ros_bridge_contracts")
+        if set(bridge) != {"entity_kinds", "hash", "report", "transport_codes"}:
+            raise ValueError("unexpected ROS bridge contract schema")
         report = bridge.get("report")
         if not isinstance(report, dict):
             raise ValueError("missing ROS bridge report contract")
+        if set(report) != {"symbol", "magic", "version", "layout"}:
+            raise ValueError("unexpected ROS bridge report schema")
         if report.get("symbol") != "NOBRO_ROS_BRIDGE_REPORT":
             raise ValueError(f"unexpected ROS bridge report symbol: {report.get('symbol')}")
         if report.get("magic") != "0x4E425253":
             raise ValueError(f"unexpected ROS bridge report magic: {report.get('magic')}")
+        if type(report.get("version")) is not int or report.get("version") != 1:
+            raise ValueError("unexpected ROS bridge report version")
         if bridge.get("hash") != "fnv1a32_utf8":
             raise ValueError(f"unexpected ROS bridge hash: {bridge.get('hash')}")
         transports = bridge.get("transport_codes")

@@ -2043,6 +2043,37 @@ class ContractBuilderTests(unittest.TestCase):
             1,
         )
 
+    def test_host_contract_rejects_unregistered_top_level_sections(self) -> None:
+        contract = load_repo_host_contract()
+        mutations = {
+            "new top-level section": lambda payload: payload.update(
+                {"unexpected_extension": {}}
+            ),
+            "missing CDC object": lambda payload: payload.update({"cdc": None}),
+            "wrong upload type": lambda payload: payload.update({"upload": []}),
+            "wrong monitor type": lambda payload: payload.update({"ina_monitor": "opaque"}),
+            "new nested key": lambda payload: payload["cdc"].update(
+                {"unexpected_extension": True}
+            ),
+            "boolean report version": lambda payload: payload["runtime_report"].update(
+                {"version": True}
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                payload = json.loads(json.dumps(contract.payload))
+                mutate(payload)
+                with self.assertRaises(ValueError):
+                    type(contract)(payload).validate()
+
+    def test_host_contract_allows_extensible_public_code_tables(self) -> None:
+        contract = load_repo_host_contract()
+        payload = json.loads(json.dumps(contract.payload))
+        payload["admission_report"]["error_codes"]["99"] = "future_public_code"
+        payload["module_tags"]["10"] = "future_public_module"
+
+        type(contract)(payload).validate()
+
     def test_boot_diagnostic_decoder_preserves_error_label(self) -> None:
         contract = load_repo_host_contract()
         diagnostic = BootDiagnostic.decode(0x0404_0003, contract)

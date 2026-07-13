@@ -111,13 +111,13 @@ def gate_specs(quick, rust_only=False, extended=False):
     if rust_only:
         return specs
     specs += [
+        ("release boundary", [py, "tools/check_release_boundary.py"], ROOT),
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "tools/nobro_contract_tool.py", "check-software-surface"], ROOT),
         ("public docs", [py, "tools/check_public_docs.py"], ROOT),
         ("board profiles", [py, "tools/check_board_profiles.py"], ROOT),
         ("core layout", [py, "tools/check_core_layout.py"], ROOT),
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
-        ("release boundary", [py, "tools/check_release_boundary.py"], ROOT),
         ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),

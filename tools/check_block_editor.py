@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "packages" / "block-editor"
@@ -67,8 +68,8 @@ def main() -> int:
     require(not nobro_app.validate(json.loads(json.dumps(sample))),
             "sample ML app.json fails nobro_app.validate", errors)
 
-    # models.json is the ML-block catalog train_motion_nn.py emits; verify it is present
-    # and each card carries a contract-shaped entry (mirrors AiModelContract fields).
+    # models.json is the checked-in ML-block catalog. Verify that every card names a
+    # tracked public model artifact and carries an AiModelContract-shaped entry.
     models_path = PKG / "models.json"
     if not models_path.is_file():
         errors.append("missing models.json (regenerate the checked-in model assets)")
@@ -78,8 +79,46 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             cards = {}
             errors.append(f"models.json invalid JSON: {exc}")
+        if not isinstance(cards, dict):
+            errors.append("models.json must contain an object of model cards")
+            cards = {}
+        tracked = set(subprocess.run(
+            ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.splitlines())
         for preset, card in cards.items():
-            contract = (card or {}).get("contract")
+            require(isinstance(card, dict), f"model {preset}: card must be an object", errors)
+            if not isinstance(card, dict):
+                continue
+            require(card.get("preset") == preset,
+                    f"model {preset}: preset must match its catalog key", errors)
+            require(isinstance(card.get("label"), str) and bool(card["label"].strip()),
+                    f"model {preset}: label must be a non-empty string", errors)
+            source = card.get("source")
+            source_is_text = isinstance(source, str) and bool(source.strip())
+            require(source_is_text, f"model {preset}: source must be a repo-relative path", errors)
+            if source_is_text:
+                source_path = PurePosixPath(source)
+                source_is_safe = (
+                    not source_path.is_absolute()
+                    and bool(source_path.parts)
+                    and "\\" not in source
+                    and "\0" not in source
+                    and not re.match(r"^[A-Za-z]:", source)
+                    and all(part not in ("", ".", "..") for part in source_path.parts)
+                )
+                require(source_is_safe,
+                        f"model {preset}: source must be a safe repo-relative path", errors)
+                if source_is_safe:
+                    normalized = source_path.as_posix()
+                    source_file = ROOT / Path(*source_path.parts)
+                    source_is_contained = source_file.resolve().is_relative_to(ROOT.resolve())
+                    require(source_is_contained,
+                            f"model {preset}: source resolves outside the repository", errors)
+                    require(normalized in tracked,
+                            f"model {preset}: source is not tracked: {normalized}", errors)
+                    require(source_is_contained and source_file.is_file(),
+                            f"model {preset}: source is missing: {normalized}", errors)
+            contract = card.get("contract")
             require(isinstance(contract, dict), f"model {preset}: missing contract", errors)
             if isinstance(contract, dict):
                 probe = {"board": "nrf52840", "ai_models": [contract]}

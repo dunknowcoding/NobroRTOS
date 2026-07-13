@@ -12,6 +12,7 @@ use nobro_sal::{
 };
 
 mod nn_weights;
+/// Accuracy recorded by the offline model-generation run (x1000); not a runtime guarantee.
 pub use nn_weights::TRAIN_ACC_MILLI;
 use nn_weights::{B1, B2, FEAT, FEAT_MAX, HIDDEN, SHIFT1, W1, W2, WINDOW};
 
@@ -36,7 +37,7 @@ impl NnMotionClassifier {
     }
 }
 
-/// The 3 integer features the model was trained on (must match train_motion_nn.py).
+/// The three integer features consumed by the checked-in model weights.
 fn features(samples: &[u16]) -> [i32; FEAT] {
     let n = samples.len() as i64;
     let mut sum: i64 = 0;
@@ -66,7 +67,7 @@ fn features(samples: &[u16]) -> [i32; FEAT] {
     ]
 }
 
-/// Normalize features to int8 [0,127] exactly as the trainer does.
+/// Normalize features to int8 [0,127] with the checked-in model's quantization bounds.
 fn normalize(f: [i32; FEAT]) -> [i32; FEAT] {
     let mut x = [0i32; FEAT];
     for i in 0..FEAT {
@@ -138,6 +139,7 @@ impl AiInferenceSal for NnMotionClassifier {
 // ---- 3-class variant: idle / walk / shake ------------------------------------
 
 mod nn3_weights;
+/// Accuracy recorded by the offline model-generation run (x1000); not a runtime guarantee.
 pub use nn3_weights::TRAIN_ACC_MILLI as TRAIN_ACC_MILLI_3;
 
 /// 3-class model identity ("NNM3").
