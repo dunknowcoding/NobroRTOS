@@ -25,13 +25,17 @@ The pinned minimal-workload baseline currently measures NobroRTOS at 15,992 byte
 flash and 16 bytes of static RAM, versus 3,708/4,644 for Embassy and 1,324/16 for the
 bare-metal baseline. The graph API reduces contract boilerplate but adds about 3.1 KiB
 of flash in that baseline. These numbers are regression-gated, not universal forecasts;
-re-run `python tools/measure_baselines.py` for the pinned targets and settings.
+re-run `python tools/measure_baselines.py` for the pinned targets and settings. Static
+RAM is not total RAM: the Wave-61 complex run measured a 9,460-byte NobroRTOS main-stack
+peak versus 208 bytes for Embassy and 160 bytes for FreeRTOS (whose statically reserved
+task stacks are already included in its 3,828-byte static-RAM result).
 
 NobroRTOS deliberately spends more flash on admission, identity, quotas, recovery, and
 evidence. Small applications for which those controls are unnecessary will usually be
-smaller and simpler in Embassy or bare metal. Cross-platform CPU and energy comparisons
-are not yet published because equivalent provider-level hardware measurements are not
-available.
+smaller and simpler in Embassy or bare metal. On the equivalent five-stage hardware
+run, NobroRTOS used about 19% more instrumented task-work cycles than Embassy and 42%
+more than FreeRTOS. Direct electrical energy/current is still unavailable without
+calibrated equipment; the coefficient-based software index is explicitly an estimate.
 
 ## Platform support
 

@@ -5,6 +5,11 @@ edition = "2021"
 
 [workspace]
 
+[features]
+runtime-trace = ["embassy-executor/trace"]
+arena-1024 = ["embassy-executor/task-arena-size-1024"]
+nightly-static = ["embassy-executor/nightly"]
+
 [dependencies]
 embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
 embassy-time = "0.4"

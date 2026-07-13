@@ -32,7 +32,7 @@ BUDGETS = ROOT / "tools" / "baseline_budgets.json"
 TARGET = "thumbv7em-none-eabihf"
 IMPLEMENTATIONS = ("baremetal-min", "nobro-min", "nobro-graph-min", "embassy-min",
                    "baremetal-complex", "nobro-graph-complex", "embassy-complex",
-                   "freertos-complex")
+                   "embassy-complex-tuned", "freertos-complex")
 
 
 def find_llvm_tool(name: str) -> str:
@@ -113,8 +113,17 @@ def source_lines(directory: pathlib.Path) -> int:
         if path.suffix in {".rs", ".c", ".h"}
     )
     for path in source_paths:
+        instrumentation = False
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
+            if "BENCH_INSTRUMENTATION_BEGIN" in stripped:
+                instrumentation = True
+                continue
+            if "BENCH_INSTRUMENTATION_END" in stripped:
+                instrumentation = False
+                continue
+            if instrumentation:
+                continue
             if stripped and not stripped.startswith("//"):
                 count += 1
     return count
@@ -176,14 +185,17 @@ def check_budgets(measure: dict, budgets: dict) -> list[str]:
     return failures
 
 
-def build(directory: pathlib.Path) -> tuple[bool, str]:
+def build(directory: pathlib.Path, features: tuple[str, ...] = ()) -> tuple[bool, str]:
     env = os.environ.copy()
     # CI orchestrators (ci_matrix.sh) export a global CARGO_TARGET_DIR; the
     # baselines must build into their own tree so the ELF paths and the
     # per-implementation lockfiles stay deterministic everywhere.
     env["CARGO_TARGET_DIR"] = str(directory / "target")
+    command = ["cargo", "build", "--release"]
+    if features:
+        command += ["--features", ",".join(features)]
     completed = subprocess.run(
-        ["cargo", "build", "--release"], cwd=directory,
+        command, cwd=directory,
         capture_output=True, text=True, env=env,
     )
     return completed.returncode == 0, completed.stderr[-2000:]
@@ -226,8 +238,11 @@ def main() -> int:
     ).stdout.strip()
     failures: list[str] = []
     for name in IMPLEMENTATIONS:
-        directory = BASE / name
-        ok, stderr = build(directory)
+        directory_name = "embassy-complex" if name == "embassy-complex-tuned" else name
+        binary_name = directory_name
+        directory = BASE / directory_name
+        features = ("arena-1024",) if name == "embassy-complex-tuned" else ()
+        ok, stderr = build(directory, features)
         if not ok:
             offline = "failed to get" in stderr or "network" in stderr or "download" in stderr
             if name.startswith("embassy-") and offline:
@@ -236,7 +251,7 @@ def main() -> int:
             report["results"][name] = {"failed": True}
             failures.append(f"{name}: build failed")
             continue
-        elf = directory / "target" / TARGET / "release" / name
+        elf = directory / "target" / TARGET / "release" / binary_name
         sizes = elf_sizes(elf)
         sizes["source_lines"] = source_lines(directory)
         if name in ("nobro-min", "nobro-graph-min", "nobro-graph-complex"):

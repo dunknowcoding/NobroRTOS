@@ -117,6 +117,8 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
         ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
         ("baseline measure", [py, "tools/measure_baselines.py", "--selftest"], ROOT),
+        ("complex runtime", [py, "tools/measure_complex_runtime.py", "--selftest"], ROOT),
+        ("embassy variants", [py, "tools/measure_embassy_variants.py", "--selftest"], ROOT),
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
         ("ecosystem truth", [py, "tools/check_ecosystem_matrix.py"], ROOT),

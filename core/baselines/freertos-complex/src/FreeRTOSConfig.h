@@ -47,7 +47,24 @@
 #define INCLUDE_vTaskSuspend                    0
 #define INCLUDE_vTaskDelete                     0
 #define INCLUDE_xTaskGetSchedulerState          0
+#ifdef NOBRO_RAM_RUN
+#define INCLUDE_xTaskGetCurrentTaskHandle       1
+#define INCLUDE_xTaskGetIdleTaskHandle          1
+#define INCLUDE_uxTaskGetStackHighWaterMark     1
+#else
 #define INCLUDE_xTaskGetCurrentTaskHandle       0
+#define INCLUDE_xTaskGetIdleTaskHandle          0
+#define INCLUDE_uxTaskGetStackHighWaterMark     0
+#endif
+
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+void nobro_trace_switch_in(void);
+void nobro_trace_switch_out(void);
+#define traceTASK_SWITCHED_IN()  nobro_trace_switch_in()
+#define traceTASK_SWITCHED_OUT() nobro_trace_switch_out()
+#endif
+/* BENCH_INSTRUMENTATION_END */
 
 #define configASSERT(condition) do { if (!(condition)) { __asm volatile("bkpt #0"); for (;;) {} } } while (0)
 

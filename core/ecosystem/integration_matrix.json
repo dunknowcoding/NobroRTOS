@@ -176,17 +176,31 @@
     },
     {
       "id": "cpu_energy_equivalence",
-      "status": "absent",
-      "closure_path": "tools/measure_complex_hil.py",
-      "closure_path_state": "absent",
+      "status": "integrated",
+      "closure_path": "tools/measure_complex_runtime.py",
+      "closure_path_state": "present",
+      "evidence_path": "tools/measure_complex_runtime.py",
+      "required_tokens": [
+        "RAM-only J-Link run",
+        "RUNTIME_BUSY_CYCLES",
+        "electrical_energy_measured",
+        "restored_dfu"
+      ],
       "review": "RES-02",
-      "note": "Wave 61 reopened after audit: CPU time, latency, deadline, throughput, memory, residency, and software-estimate comparisons do not require a power meter and remain open. Only calibrated current/joule measurement is equipment-gated; estimates must stay visibly separate."
+      "note": "Wave 61 meter-independent campaign is implemented and physically run from RAM with state restoration. Direct calibrated current/joules remain equipment-gated and are never inferred from the software energy index."
     },
     {
       "id": "embassy_tuned_and_static_variants",
-      "status": "absent",
-      "closure_path": "core/baselines/embassy-tuned",
-      "closure_path_state": "absent",
+      "status": "integrated",
+      "closure_path": "tools/measure_embassy_variants.py",
+      "closure_path_state": "present",
+      "evidence_path": "tools/measure_embassy_variants.py",
+      "required_tokens": [
+        "default-stable",
+        "tuned-stable-1024",
+        "nightly-static",
+        "nightly_or_target_missing"
+      ],
       "review": "RES-03"
     }
   ]

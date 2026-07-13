@@ -1,6 +1,7 @@
 //! Embassy implementation of the Wave-59 five-stage workload.
 #![no_std]
 #![no_main]
+#![cfg_attr(feature = "nightly-static", feature(impl_trait_in_assoc_type))]
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -18,6 +19,45 @@ static BASELINE_REPORT: [AtomicU32; 4] = [
     AtomicU32::new(0),
     AtomicU32::new(0),
 ];
+
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+#[used]
+static RUNTIME_BUSY_CYCLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "runtime-trace")]
+static TRACE_START: AtomicU32 = AtomicU32::new(0);
+
+#[cfg(feature = "runtime-trace")]
+fn runtime_cycles() -> u32 {
+    unsafe { core::ptr::read_volatile(0xE000_1004 as *const u32) }
+}
+
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+fn _embassy_trace_task_exec_begin(_executor: u32, _task: u32) {
+    TRACE_START.store(runtime_cycles(), Ordering::Relaxed);
+}
+
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+fn _embassy_trace_task_exec_end(_executor: u32, _task: u32) {
+    let elapsed = runtime_cycles().wrapping_sub(TRACE_START.load(Ordering::Relaxed));
+    RUNTIME_BUSY_CYCLES.fetch_add(elapsed, Ordering::Relaxed);
+}
+
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+fn _embassy_trace_task_new(_executor: u32, _task: u32) {}
+
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+fn _embassy_trace_task_ready_begin(_executor: u32, _task: u32) {}
+
+#[cfg(feature = "runtime-trace")]
+#[no_mangle]
+fn _embassy_trace_executor_idle(_executor: u32) {}
+// BENCH_INSTRUMENTATION_END
 
 const GPIO_P0: u32 = 0x5000_0000;
 const PIN: u32 = 15;

@@ -86,18 +86,18 @@ fusion(100Hz) -> control(50Hz) -> radio(20Hz)
 | baremetal-min (2 tasks) | 1324 | 16 | 75 |
 | nobro-graph-min (2 tasks) | 19124 | 16 | 114 |
 | baremetal-complex (5 tasks) | 1436 | 16 | 109 |
-| nobro-graph-complex (5 tasks) | 20332 | 16 | 148 |
-| embassy-complex (5 tasks) | 4328 | 4724 | 112 |
-| freertos-complex (5 tasks) | 6724 | 3828 | 175 |
+| nobro-graph-complex (5 tasks) | 19588 | 16 | 170 |
+| embassy-complex (5 tasks) | 4328 | 4724 | 113 |
+| embassy-complex-tuned (5 tasks, 1 KiB arena) | 4320 | 1652 | 113 |
+| freertos-complex (5 tasks) | 6724 | 3828 | 183 |
 
 **The point, honestly both ways:** NobroRTOS carries a fixed framework cost
 (~18 KB flash) that a bare-metal loop does not — for a 2-task blinker, that is
 a heavy tank, and we say so. But its *marginal* cost as complexity grows is
-tiny: going from 2 tasks to a 5-stage pipeline with fan-out and backpressure
-adds only **+1208 B flash and +34 source lines** (the whole extra contract is
-three tasks + three channels), and **static RAM stays 16 B** — the graph API
-absorbs "multiple complex tasks" without the linear hand-written growth or heap
-the critique assumes. Bare metal grows +112 B / +34 lines but every stage,
+bounded: going from 2 tasks to a 5-stage pipeline with fan-out and one-slot
+backpressure adds **+464 B flash and +56 source lines** (three tasks, three
+channels, and explicit one-slot edge state), while ELF static RAM stays 16 B.
+Bare metal grows +112 B / +34 lines but every stage,
 deadline, and backpressure flag is hand-maintained with no admission or
 isolation. This is a footprint/authoring comparison only; it makes no claim
 about runtime behavior or correctness.
@@ -106,9 +106,34 @@ The Embassy and FreeRTOS rows are now real builds, not declarations. The FreeRTO
 specimen vendors the exact official V11.3.0 kernel subset and records its commit and
 MIT license; only the benchmark's own `src/` C/Rust/configuration lines count as user
 source. Static RAM includes each framework's statically reserved task/channel storage.
-These figures still establish only build footprint and authoring size. Equivalent CPU
-busy time, latency, misses, throughput, stack high-water, and residency belong to the
-Wave-61 runtime campaign; the multi-device physical workflow belongs to Wave 68.
+Instrumentation-only lines bracketed by `BENCH_INSTRUMENTATION` are excluded from
+authoring counts. The multi-device physical workflow remains Wave 68.
+
+### Runtime/resource campaign (Wave 61)
+
+The five RAM-linked ELFs were loaded through J-Link without writing application flash,
+run for the same 5-second host interval, and the protected target was returned to UF2
+DFU. All five met release counts; observable spreads were control=2, fusion=3,
+radio=1, drops=4. Task-work cycles are DWT-instrumented at each framework's task/poll
+boundary; main-stack peak uses a debugger-loaded canary.
+
+| Impl | task-work cycles | busy/elapsed | main-stack peak |
+| --- | ---: | ---: | ---: |
+| bare metal | 16,300 | 0.0051% | 56 B |
+| NobroRTOS | 1,406,582 | 0.4360% | 9,460 B |
+| Embassy | 1,183,189 | 0.3667% | 208 B |
+| Embassy, tuned 1 KiB arena | 1,183,229 | 0.3666% | 208 B |
+| FreeRTOS | 991,733 | 0.3073% | 160 B |
+
+FreeRTOS additionally measured a 156 B peak among its five task stacks, from 2,944 B
+reserved for task+idle stacks (already represented in its static RAM). The result does
+**not** show NobroRTOS using fewer resources: it used about 19% more task-work cycles
+than Embassy, 42% more than FreeRTOS, and much more peak main stack. The reproducible
+software energy index uses explicit arbitrary coefficients (active=1.0, idle=0.1) and
+therefore is an estimate, not measured current or joules. Direct electrical energy
+remains equipment-gated. Runtime instrumentation adds 4 B of static RAM to bare metal
+and NobroRTOS, and 8 B to each Embassy/FreeRTOS image; the footprint table deliberately
+reports the uninstrumented production-shaped builds.
 
 ## Profile isolation, symbol-attributed (Wave 60)
 
@@ -121,8 +146,8 @@ at all — selecting a service = adding its crate; not selecting it = it does no
 exist in the binary.
 
 The check now covers the COMPLEX build too. `nobro-graph-complex` (the 5-stage
-fan-out+backpressure pipeline) is `minimal_profile_clean: true`: its 20,332 B
-attribute to `nobro_kernel` (7,106 B) + application code (10,192 B) +
+fan-out+backpressure pipeline) is `minimal_profile_clean: true`: its 19,588 B
+attribute to `nobro_kernel` (7,314 B) + application/misc code (9,238 B) +
 compiler-builtins/core only — **zero** accidental service-crate linkage. Adding
 tasks does not drag in unselected services, so the "minimal profile" claim
 survives complexity. `managed` (+secure/storage/database) and `assured`

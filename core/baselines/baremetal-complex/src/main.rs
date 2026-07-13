@@ -12,6 +12,13 @@ use panic_halt as _;
 #[used]
 static mut BASELINE_REPORT: [u32; 4] = [0; 4];
 
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(nobro_ram_run)]
+#[no_mangle]
+#[used]
+static mut RUNTIME_BUSY_CYCLES: u32 = 0;
+// BENCH_INSTRUMENTATION_END
+
 const TIMER0: u32 = 0x4000_8000;
 const GPIO_P0: u32 = 0x5000_0000;
 const PIN: u32 = 15;
@@ -38,6 +45,24 @@ fn micros() -> u32 {
         rd(TIMER0 + 0x540)
     }
 }
+
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(nobro_ram_run)]
+fn runtime_cycles() -> u32 {
+    unsafe { rd(0xE000_1004) }
+}
+
+#[cfg(nobro_ram_run)]
+fn account_runtime(start: u32) {
+    unsafe {
+        let current = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_BUSY_CYCLES));
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(RUNTIME_BUSY_CYCLES),
+            current.wrapping_add(runtime_cycles().wrapping_sub(start)),
+        );
+    }
+}
+// BENCH_INSTRUMENTATION_END
 
 /// A hand-rolled one-slot channel with a full-flag, so backpressure is counted
 /// exactly like the framework mailboxes.
@@ -77,6 +102,10 @@ fn main() -> ! {
         let now = micros();
         // fusion @ 100 Hz
         if now.wrapping_sub(nf) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             nf = nf.wrapping_add(10_000);
             report[1] = report[1].wrapping_add(1);
             let a = report[1].wrapping_mul(3).wrapping_add(7);
@@ -85,9 +114,17 @@ fn main() -> ! {
             if !fusion_out.push(fused) {
                 report[3] = report[3].wrapping_add(1);
             }
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
         }
         // control @ 50 Hz: consume fusion, toggle GPIO, fan out
         if now.wrapping_sub(nc) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             nc = nc.wrapping_add(20_000);
             report[0] = report[0].wrapping_add(1);
             unsafe {
@@ -105,25 +142,53 @@ fn main() -> ! {
                     report[3] = report[3].wrapping_add(1);
                 }
             }
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
         }
         // radio @ 20 Hz
         if now.wrapping_sub(nr) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             nr = nr.wrapping_add(50_000);
             if radio_in.pop().is_some() {
                 report[2] = report[2].wrapping_add(1);
             }
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
         }
         // storage @ 10 Hz
         if now.wrapping_sub(ns) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             ns = ns.wrapping_add(100_000);
             if let Some(v) = storage_in.pop() {
                 ring[ring_head] = v;
                 ring_head = (ring_head + 1) % ring.len();
             }
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
         }
         // diagnostics @ 5 Hz
         if now.wrapping_sub(nd) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             nd = nd.wrapping_add(200_000);
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
         }
         unsafe {
             core::ptr::write_volatile(core::ptr::addr_of_mut!(BASELINE_REPORT), report);

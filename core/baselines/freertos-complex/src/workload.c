@@ -6,6 +6,43 @@
 
 volatile uint32_t BASELINE_REPORT[4] = { 0, 0, 0, 0 };
 
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+volatile uint32_t RUNTIME_BUSY_CYCLES = 0;
+volatile uint32_t RUNTIME_PEAK_TASK_STACK_BYTES = 0;
+static uint32_t runtime_switch_start;
+static uint32_t runtime_non_idle;
+static TaskHandle_t runtime_task_handles[5];
+
+static inline uint32_t runtime_cycles(void) {
+    return *(volatile uint32_t *) 0xE0001004UL;
+}
+
+void nobro_trace_switch_in(void) {
+    runtime_non_idle = (xTaskGetCurrentTaskHandle() != xTaskGetIdleTaskHandle());
+    runtime_switch_start = runtime_cycles();
+}
+
+void nobro_trace_switch_out(void) {
+    if (runtime_non_idle != 0U) {
+        RUNTIME_BUSY_CYCLES += runtime_cycles() - runtime_switch_start;
+    }
+}
+
+static void nobro_measure_task_stacks(void) {
+    uint32_t peak = 0;
+    for (uint32_t index = 0; index < 5U; ++index) {
+        uint32_t remaining = uxTaskGetStackHighWaterMark(runtime_task_handles[index]);
+        uint32_t used = (128U - remaining) * sizeof(StackType_t);
+        if (used > peak) {
+            peak = used;
+        }
+    }
+    RUNTIME_PEAK_TASK_STACK_BYTES = peak;
+}
+#endif
+/* BENCH_INSTRUMENTATION_END */
+
 #define GPIO_P0 ((volatile uint32_t *) 0x50000000UL)
 #define PIN 15U
 #define STACK_WORDS 128U
@@ -102,6 +139,13 @@ static void diagnostics_task(void *argument) {
     for (;;) {
         vTaskDelayUntil(&next, pdMS_TO_TICKS(200));
         __asm volatile("" : : "r"(BASELINE_REPORT[3]) : "memory");
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+        nobro_trace_switch_out();
+        nobro_measure_task_stacks();
+        nobro_trace_switch_in();
+#endif
+/* BENCH_INSTRUMENTATION_END */
     }
 }
 
@@ -114,16 +158,41 @@ void freertos_complex_start(void) {
     storage_queue = xQueueCreateStatic(1, sizeof(uint32_t), storage_queue_storage,
                                        &storage_queue_buffer);
 
-    xTaskCreateStatic(fusion_task, "fusion", STACK_WORDS, 0, 5,
-                      task_stacks[0], &task_buffers[0]);
-    xTaskCreateStatic(control_task, "control", STACK_WORDS, 0, 4,
-                      task_stacks[1], &task_buffers[1]);
-    xTaskCreateStatic(radio_task, "radio", STACK_WORDS, 0, 3,
-                      task_stacks[2], &task_buffers[2]);
-    xTaskCreateStatic(storage_task, "storage", STACK_WORDS, 0, 2,
-                      task_stacks[3], &task_buffers[3]);
-    xTaskCreateStatic(diagnostics_task, "diagnostics", STACK_WORDS, 0, 1,
-                      task_stacks[4], &task_buffers[4]);
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+    runtime_task_handles[0] =
+#endif
+/* BENCH_INSTRUMENTATION_END */
+        xTaskCreateStatic(fusion_task, "fusion", STACK_WORDS, 0, 5,
+                          task_stacks[0], &task_buffers[0]);
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+    runtime_task_handles[1] =
+#endif
+/* BENCH_INSTRUMENTATION_END */
+        xTaskCreateStatic(control_task, "control", STACK_WORDS, 0, 4,
+                          task_stacks[1], &task_buffers[1]);
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+    runtime_task_handles[2] =
+#endif
+/* BENCH_INSTRUMENTATION_END */
+        xTaskCreateStatic(radio_task, "radio", STACK_WORDS, 0, 3,
+                          task_stacks[2], &task_buffers[2]);
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+    runtime_task_handles[3] =
+#endif
+/* BENCH_INSTRUMENTATION_END */
+        xTaskCreateStatic(storage_task, "storage", STACK_WORDS, 0, 2,
+                          task_stacks[3], &task_buffers[3]);
+/* BENCH_INSTRUMENTATION_BEGIN */
+#ifdef NOBRO_RAM_RUN
+    runtime_task_handles[4] =
+#endif
+/* BENCH_INSTRUMENTATION_END */
+        xTaskCreateStatic(diagnostics_task, "diagnostics", STACK_WORDS, 0, 1,
+                          task_stacks[4], &task_buffers[4]);
     vTaskStartScheduler();
     for (;;) {}
 }

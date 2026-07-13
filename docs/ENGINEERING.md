@@ -135,9 +135,9 @@ Honest reading, both directions:
   admission with schedulability analysis, capability grants, object quotas,
   health/recovery, and the traced module context. If you do not want those,
   Embassy is the lighter executor - the numbers say so and we will not argue.
-- The RAM trade runs the other way: NobroRTOS holds **16 B** of static RAM to
-  Embassy's **4,644 B** (executor arenas, timer driver, task statics). On
-  RAM-starved parts the tank is the lean one.
+- The ELF static-RAM column alone runs the other way (16 B versus Embassy's
+  4,644 B), but it excludes ordinary call-stack peak. Wave 61 demonstrated that
+  treating 16 B as total RAM was misleading; stack evidence must accompany it.
 - Verbosity is real and now measured twice: 152 lines hand-written vs 72 for
   Embassy. The graph API (`AppGraph` + typed task builders with safe defaults
   and channel-derived capabilities) cuts the same app to 114 lines - the
@@ -156,9 +156,21 @@ Honest reading, both directions:
 The Wave-59 complex specimen adds a five-stage fusion/control/radio/storage/
 diagnostic graph with three one-slot backpressure edges. Under the same profile,
 bare metal measures 1,436 B flash / 16 B static RAM / 109 local source lines;
-Embassy 4,328 / 4,724 / 112; official FreeRTOS 11.3.0 6,724 / 3,828 / 175;
-and NobroRTOS 20,332 / 16 / 148. These are real builds with common observable
-semantics, not declarations, but remain footprint/authoring evidence only.
+Embassy 4,328 / 4,724 / 113 (or 4,320 / 1,652 / 113 with its stable 1 KiB arena);
+official FreeRTOS 11.3.0 6,724 / 3,828 / 183;
+and NobroRTOS 19,588 / 16 / 170. These are real builds with common observable
+semantics; instrumentation-only lines are excluded from authoring counts.
+
+The state-restoring Wave-61 RAM-only hardware run adds runtime context. Over the
+same 5-second interval, with equivalent output spreads bounded and no release
+shortfalls, task-work cycles/busy ratio/main-stack peak were: bare metal
+16,300/0.0051%/56 B; NobroRTOS 1,406,582/0.4360%/9,460 B; Embassy
+1,183,189/0.3667%/208 B (the tuned-arena variant was effectively identical at
+1,183,229/0.3666%/208 B); FreeRTOS 991,733/0.3073%/160 B (plus a measured
+156 B peak across 2,944 B reserved task+idle stacks). This result is unfavorable
+to NobroRTOS on CPU work and peak stack and is retained as such. The software
+energy index is an explicitly coefficient-based estimate; current and joules
+were not measured.
 
 ## Measured kernel-op latencies
 

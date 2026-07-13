@@ -12,17 +12,45 @@
 #![no_main]
 
 use cortex_m_rt::entry;
+#[cfg(not(nobro_ram_run))]
 use panic_halt as _;
 
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(nobro_ram_run)]
+#[panic_handler]
+fn runtime_panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    let (line, column) = info
+        .location()
+        .map(|location| (location.line(), location.column()))
+        .unwrap_or((0, 0));
+    unsafe {
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(BASELINE_REPORT),
+            [0xE000_0001, line, column, 0],
+        );
+    }
+    loop {
+        core::hint::spin_loop();
+    }
+}
+// BENCH_INSTRUMENTATION_END
+
 use nobro_kernel::{
-    AppGraph, ContainmentPolicy, FaultThresholds, KernelExecutor, MessageKind, ModuleCtx, Poll,
-    Runtime, SystemProfile, TaskDecl,
+    AppGraph, ContainmentPolicy, Criticality, FaultThresholds, KernelExecutor, MessageKind,
+    ModuleCtx, Poll, Runtime, SystemProfile, TaskDecl,
 };
 use nobro_power::{PowerHookError, PowerMode, PowerPlatform};
 
 #[no_mangle]
 #[used]
 static mut BASELINE_REPORT: [u32; 4] = [0; 4];
+
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(nobro_ram_run)]
+#[no_mangle]
+#[used]
+static mut RUNTIME_BUSY_CYCLES: u32 = 0;
+// BENCH_INSTRUMENTATION_END
 
 const TIMER0: u32 = 0x4000_8000;
 const GPIO_P0: u32 = 0x5000_0000;
@@ -51,6 +79,24 @@ fn micros() -> u64 {
     }
 }
 
+// BENCH_INSTRUMENTATION_BEGIN
+#[cfg(nobro_ram_run)]
+fn runtime_cycles() -> u32 {
+    unsafe { rd(0xE000_1004) }
+}
+
+#[cfg(nobro_ram_run)]
+fn account_runtime(start: u32) {
+    unsafe {
+        let current = core::ptr::read_volatile(core::ptr::addr_of!(RUNTIME_BUSY_CYCLES));
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!(RUNTIME_BUSY_CYCLES),
+            current.wrapping_add(runtime_cycles().wrapping_sub(start)),
+        );
+    }
+}
+// BENCH_INSTRUMENTATION_END
+
 struct AlwaysOn;
 impl PowerPlatform for AlwaysOn {
     fn program_wake(&mut self, _d: Option<u64>) -> Result<(), PowerHookError> {
@@ -67,8 +113,8 @@ impl PowerPlatform for AlwaysOn {
     }
 }
 
-type Rt = Runtime<8, 8, 16, 8, 16, 8, 32>;
-type Ctx<'a> = ModuleCtx<'a, 8, 8, 16, 8, 16, 8, 32>;
+type Rt = Runtime<6, 6, 4, 1, 1, 6, 8>;
+type Ctx<'a> = ModuleCtx<'a, 6, 6, 4, 1, 1, 6, 8>;
 
 #[entry]
 fn main() -> ! {
@@ -80,7 +126,7 @@ fn main() -> ! {
     // The whole complex contract: five tasks, three channels. Everything else
     // (manifest, admission, quotas, capabilities, startup, executor) derives.
     let built = AppGraph::<5>::new()
-        .task(TaskDecl::periodic("fusion", 10_000))
+        .task(TaskDecl::periodic("fusion", 10_000).criticality(Criticality::System))
         .unwrap()
         .task(TaskDecl::control("control", 20_000))
         .unwrap()
@@ -112,7 +158,7 @@ fn main() -> ! {
     .unwrap();
     runtime.boot_to_running(micros()).unwrap();
     let mut exec =
-        KernelExecutor::<8, 8, 8, 16, 8, 16, 8, 32>::new(runtime, ContainmentPolicy::Cooperative);
+        KernelExecutor::<5, 6, 6, 4, 1, 1, 6, 8>::new(runtime, ContainmentPolicy::Cooperative);
     for meta in built.tasks.iter().flatten() {
         exec.add_task(*meta, 0).unwrap();
     }
@@ -122,9 +168,16 @@ fn main() -> ! {
     let mut fused: u32 = 0;
     let mut ring = [0u32; 8];
     let mut ring_head = 0usize;
+    let mut fusion_pending = false;
+    let mut radio_pending = false;
+    let mut storage_pending = false;
     let mut power = AlwaysOn;
     loop {
         exec.run_cycle(micros, &mut power, |ctx: &mut Ctx<'_>| {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            let runtime_start = runtime_cycles();
+            // BENCH_INSTRUMENTATION_END
             let m = ctx.module();
             if m == fusion {
                 // Fold two synthetic streams into a fixed-point estimate.
@@ -132,8 +185,15 @@ fn main() -> ! {
                 let a = report[1].wrapping_mul(3).wrapping_add(7);
                 let b = report[1].wrapping_mul(5).wrapping_add(11);
                 fused = fused - (fused >> 3) + ((a ^ b) >> 3);
-                if ctx.send(control, MessageKind::SampleReady, fused, 0).is_err() {
+                if fusion_pending {
                     report[3] = report[3].wrapping_add(1);
+                } else if ctx
+                    .send(control, MessageKind::SampleReady, fused, 0)
+                    .is_err()
+                {
+                    report[3] = report[3].wrapping_add(1);
+                } else {
+                    fusion_pending = true;
                 }
             } else if m == control {
                 report[0] = report[0].wrapping_add(1);
@@ -145,28 +205,43 @@ fn main() -> ! {
                     }
                 }
                 while let Ok(Some(msg)) = ctx.recv() {
+                    fusion_pending = false;
                     let cmd = msg.arg0;
                     // Fan out a command to the radio and a sample to storage;
                     // a full downstream mailbox is counted as backpressure.
-                    if ctx.send(radio, MessageKind::Command, cmd, 0).is_err() {
+                    if radio_pending {
                         report[3] = report[3].wrapping_add(1);
+                    } else if ctx.send(radio, MessageKind::Command, cmd, 0).is_err() {
+                        report[3] = report[3].wrapping_add(1);
+                    } else {
+                        radio_pending = true;
                     }
-                    if ctx.send(storage, MessageKind::SampleReady, cmd, 0).is_err() {
+                    if storage_pending {
                         report[3] = report[3].wrapping_add(1);
+                    } else if ctx.send(storage, MessageKind::SampleReady, cmd, 0).is_err() {
+                        report[3] = report[3].wrapping_add(1);
+                    } else {
+                        storage_pending = true;
                     }
                 }
             } else if m == radio {
                 while let Ok(Some(_msg)) = ctx.recv() {
+                    radio_pending = false;
                     report[2] = report[2].wrapping_add(1); // tx counter
                 }
             } else if m == storage {
                 while let Ok(Some(msg)) = ctx.recv() {
+                    storage_pending = false;
                     ring[ring_head] = msg.arg0; // bounded ring "storage"
                     ring_head = (ring_head + 1) % ring.len();
                 }
             } else {
                 // diagnostics: best-effort health fold, no channel.
             }
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            account_runtime(runtime_start);
+            // BENCH_INSTRUMENTATION_END
             Ok(Poll::Ready)
         })
         .unwrap();
