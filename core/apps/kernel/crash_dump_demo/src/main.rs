@@ -1,4 +1,4 @@
-//! Crash-dump capture to flash (M184). Boot A (dump page erased): install the HardFault
+//! Crash-dump capture to flash. Boot A (dump page erased): install the HardFault
 //! handler, deliberately read unmapped memory; the handler persists {PC, LR, xPSR, CFSR,
 //! HFSR} to flash over NVMC and reboots. Boot B (dump present): validate the record - the
 //! dumped PC must land inside the app's flash and the fault-status bits must show a bus
@@ -39,7 +39,7 @@ static mut NOBRO_CRASH_REPORT: Report = Report {
 
 const DUMP_PAGE: u32 = 0x8_2000;
 
-/// Deliberate-crash target: MPU-protected read-only block (the M167-proven fault
+/// Deliberate-crash target: MPU-protected read-only block (the fault
 /// source). With MEMFAULTENA off, the MemManage violation escalates to HardFault.
 #[repr(align(256))]
 struct Guarded([u32; 64]);

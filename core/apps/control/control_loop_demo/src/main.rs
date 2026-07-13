@@ -1,8 +1,8 @@
-//! Control primitives on real hardware (M148/M149): read the live SPI MPU-9250, derive a
+//! Control primitives on real hardware: read the live SPI MPU-9250, derive a
 //! tilt angle from the accelerometer, fuse it with the gyro rate through the
 //! complementary filter, and drive a PID toward level (setpoint 0), emitting a servo
-//! pulse command. On a stationary bench board the filter must settle to a small tilt and
-//! the PID must hold the pulse near center. NOBRO_CONTROL_REPORT (J-Link mem32).
+//! pulse command. On a stationary device the filter must settle to a small tilt and
+//! the PID must hold the pulse near center. NOBRO_CONTROL_REPORT.
 #![no_std]
 #![no_main]
 
@@ -166,7 +166,7 @@ fn main() -> ! {
     let deviation_mdeg = ((angle - baseline) * 1000.0) as i32;
     let angle_mdeg = deviation_mdeg; // report the deviation from the held attitude
     let pulse_us = pulse as u32;
-    // Stationary bench board: fused angle holds the baseline within 5 deg and the PID
+    // Stationary device: fused angle holds the baseline within 5 deg and the PID
     // keeps the pulse near center (small correction only).
     let pass = loops == LOOPS
         && who_am_i != 0

@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn capability_gated_multi_module_admission() {
         // Two modules admitted with different grants: each may use what it owns and is
-        // denied what it does not; an unregistered module is denied outright. (M67)
+        // denied what it does not; an unregistered module is denied outright.
         let mut table = CapabilityGrantTable::<2>::new();
         table
             .register(

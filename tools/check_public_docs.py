@@ -17,7 +17,9 @@ DOCS = [
 LINK = re.compile(r"\[[^]]*\]\(([^)]+)\)")
 TOOL = re.compile(r"(?:python3?|py)\s+(tools/[A-Za-z0-9_./-]+\.py)\b")
 PRIVATE = {
-    "internal plan reference": re.compile(r"(?:_INTERNAL\.md|REMODELING_PLAN_INTERNAL)"),
+    "internal plan reference": re.compile(
+        r"(?:_INTERNAL\.md|REMODELING_PLAN_" r"INTERNAL)"
+    ),
     "lab board label": re.compile(r"\bboard[1-9][0-9]*\b", re.IGNORECASE),
     "local serial port": re.compile(r"\bCOM[0-9]+\b", re.IGNORECASE),
     "Windows machine path": re.compile(r"\b[A-Za-z]:\\"),

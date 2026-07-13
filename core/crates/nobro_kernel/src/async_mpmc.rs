@@ -1,4 +1,4 @@
-//! Fair multi-waiter async composition (Wave 56): MPMC channel + task group.
+//! Fair multi-waiter async composition: MPMC channel and task group.
 //!
 //! [`async_rt::Channel`](crate::async_rt) parks ONE waker per side — correct for
 //! a single producer and single consumer. This module adds the general case with
@@ -17,12 +17,8 @@
 //!   reports when the members have finished, giving structured join/cancel
 //!   without an allocator or a nursery task.
 //!
-//! Complexity vs Embassy: an Embassy `Channel<M, T, N>` is MPMC but pulls in
-//! `embassy-sync` and a `RawMutex`, and its `Sender`/`Receiver` clones carry the
-//! channel reference. Here the channel is one `'static` value, waiters are a
-//! fixed `W`-slot array (no per-clone state), and the whole thing is
-//! `critical-section` only — the same MPMC ergonomics with a declared,
-//! auditable waiter bound instead of an unbounded intrusive list.
+//! The channel is one static value. Waiters use a fixed W-slot array with no
+//! per-clone allocation, so the waiter bound remains explicit and auditable.
 
 use core::cell::RefCell;
 use core::future::Future;
@@ -490,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn cross_core_transport_survives_a_consumer_core_stall(/* Wave 58 model */) {
+    fn cross_core_transport_survives_a_consumer_core_stall() {
         // Model two cores as two independent reactors sharing one MpmcChannel:
         // core A produces work, core B consumes it. We inject a "core B stalled"
         // fault by NOT running its reactor for several rounds while A keeps

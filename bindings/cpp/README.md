@@ -63,7 +63,7 @@ callbacks. Build with `--features cpp-source`: `build.rs` compiles the `.cpp` wi
 `arm-none-eabi-g++` (`-fno-exceptions -fno-rtti`, no libstdc++) and links it - the
 same `extern "C"` `nobro_app_*` symbols as the C and Rust providers. Verified on
 hardware (nRF52840 + an IMU): the kernel admits the C++ module and it reads the IMU
-to a passing `NOBRO_IMU_HW_EVAL_REPORT`. See `examples/imu_module.cpp`.
+to a passing `NOBRO_IMU_HEALTH_REPORT`. See `examples/imu_module.cpp`.
 
 ## Scope
 

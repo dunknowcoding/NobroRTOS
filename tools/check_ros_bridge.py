@@ -3,7 +3,7 @@
 
 Validates that tools/ros_msg_gen.py emits RosTopic fragments compatible with
 nobro_rtos.RosTopic and that the generated type hash matches the device/host
-FNV-1a32. This ties the Wave 3 ROS on-ramp to the bounded RosBridgeSal layer
+FNV-1a32. This ties ROS message generation to the bounded RosBridgeSal layer
 without requiring hardware.
 
     python tools/check_ros_bridge.py

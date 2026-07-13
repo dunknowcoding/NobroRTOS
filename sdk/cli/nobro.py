@@ -7,8 +7,6 @@
 | -------- | ---- | ----------- |
 | app      | validate / generate firmware from an app.json | tools/nobro_app.py |
 | flash    | flash an image (jlink / uf2 / arduino)        | tools/flash.py |
-| verify   | run every software gate -> Evidence Pack      | tools/run_checks.py |
-| fleet    | fold all evidence into a fleet verdict        | tools/fleet_evidence.py |
 | budget   | price worst-case stack/RAM/flash of an ELF    | tools/static_budget.py |
 | sign     | measure + sign a firmware image               | tools/sign_firmware.py |
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
@@ -30,8 +28,6 @@ TOOLS = ROOT / "tools"
 COMMANDS = {
     "app": "nobro_app.py",
     "flash": "flash.py",
-    "verify": "run_checks.py",
-    "fleet": "fleet_evidence.py",
     "budget": "static_budget.py",
     "sign": "sign_firmware.py",
     "contract": "nobro_contract_tool.py",

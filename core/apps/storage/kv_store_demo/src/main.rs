@@ -1,7 +1,7 @@
-//! Wear-leveled KV flash store on real hardware (M181): back nobro-storage's KvStore
+//! Wear-leveled KV flash store on real hardware: back nobro-storage's KvStore
 //! with the nRF52840 NVMC over two dedicated 4 KB pages, drive enough puts to force
 //! compactions (page switches + erases on both pages), then verify the latest values and
-//! remount persistence. Self-certifies via NOBRO_KV_REPORT (J-Link mem32).
+//! remount persistence. Publishes NOBRO_KV_REPORT.
 #![no_std]
 #![no_main]
 
@@ -44,7 +44,7 @@ const NVMC: u32 = 0x4001_E000;
 const NVMC_READY: u32 = NVMC + 0x400;
 const NVMC_CONFIG: u32 = NVMC + 0x504;
 const NVMC_ERASEPAGE: u32 = NVMC + 0x508;
-// Two dedicated pages, clear of the app image and the M50 log page (0x80000).
+// Two dedicated pages, clear of the app image and the log page (0x80000).
 const PAGE_ADDR: [u32; 2] = [0x8_2000, 0x8_3000];
 
 struct NvmcFlash;

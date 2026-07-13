@@ -1,4 +1,4 @@
-//! Liveness supervision on real hardware time (M166): the sensor task goes silent and
+//! Liveness supervision on real hardware time: the sensor task goes silent and
 //! must escalate Restart -> Degrade -> Reboot on the live microsecond clock while the
 //! radio task keeps checking in; the sensor then recovers to Healthy.
 #![no_std]

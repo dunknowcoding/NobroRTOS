@@ -1,28 +1,21 @@
 #!/usr/bin/env python3
-"""One-command project + diagnostic experience for NobroRTOS (Wave 49 / UX-03).
+"""One-command project and diagnostic experience for NobroRTOS.
 
 A single flow from "I have an idea" to a running, self-explaining app:
 
   nobro project new <name>            scaffold a workload + graph skeleton
-  nobro project import --from embassy|freertos <source> --name <name>
-                                       scan + scaffold a task graph for migration
   nobro project explain <workload>    explain the DERIVED contract in plain words
                                        (tasks, derived capabilities, startup order,
                                         marginal cost, schedulability, shed advice)
-  nobro project migrate --from embassy <file.rs>
-  nobro project migrate --from freertos <file.c>
-                                       report, line-attributed, exactly what needs
-                                       async / global-interrupt / platform adaptation
   nobro project run <project>         explain + real build + simulate + report
-  nobro project report <report.json>  decode project or sanitized HIL evidence
+  nobro project report <report.json>  decode a project report
 
 Everything generated lands under an ignored work root (`_work/projects/<name>`)
 unless `--out` says otherwise, so a scaffold never dirties the tree.
 
     python tools/nobro_project.py new blinky
     python tools/nobro_project.py explain _work/projects/blinky/workload.json
-    python tools/nobro_project.py migrate --from embassy app.rs
-    python tools/nobro_project.py --selftest    # golden sessions (gate)
+    python tools/nobro_project.py --selftest
 
 Exit 0 on success; explain exits 1 only when the workload is INFEASIBLE.
 """
@@ -284,12 +277,6 @@ def read_report(path: pathlib.Path) -> tuple[str, bool]:
         ok = bool(record.get("ok"))
         return (f"HARDWARE REPORT: {'PASS' if ok else 'FAIL'} "
                 f"app={record.get('app')} completed={record.get('fields', {}).get('completed', 0)}"), ok
-    if record.get("schema") == "nobro-hil-fleet-v1":
-        runs = record.get("deep_hal", [])
-        ok = bool(runs) and all(run.get("ok") for run in runs) and bool(record.get("restored"))
-        return (f"HIL REPORT: {'PASS' if ok else 'FAIL'} runs={len(runs)} "
-                f"passed={sum(bool(run.get('ok')) for run in runs)} "
-                f"restored={bool(record.get('restored'))}"), ok
     raise ValueError("unknown report schema")
 
 
@@ -336,147 +323,6 @@ def explain(workload: dict) -> tuple[str, bool]:
                  "deadline-critical core does not fit. Cut task budgets or choose a "
                  "bigger board profile — safety-critical work is never dropped.")
     return "\n".join(lines), False
-
-
-# ------------------------------------------------------------------- migrate
-
-# Each pattern: (regex, adaptation note). Line-attributed so the report points
-# at the exact code that needs a human decision.
-EMBASSY_PATTERNS = [
-    (r"#\[embassy_executor::task\]",
-     "async task -> NobroRTOS ReactorExecutor task (spawn on a bound AsyncCore); "
-     "budgets/admission apply, so declare it in the AppGraph"),
-    (r"\bSpawner\b",
-     "Embassy Spawner -> ReactorExecutor::spawn (fixed-capacity, no alloc)"),
-    (r"embassy_time::(Timer|Ticker|Duration)",
-     "embassy-time -> nobro_kernel::async_rt::TimerQueue (bounded, drop-releases)"),
-    (r"embassy_sync::channel::Channel",
-     "embassy-sync Channel -> nobro_kernel::async_rt::Channel (bounded backpressure)"),
-    (r"#\[embassy_executor::main\]",
-     "entry -> a KernelExecutor run loop driving the reactor as one admitted module"),
-]
-FREERTOS_PATTERNS = [
-    (r"\bxTaskCreate\b",
-     "xTaskCreate -> AppGraph TaskDecl (declare period/budget/criticality; admission "
-     "checks schedulability up front)"),
-    (r"\bvTaskDelay\b",
-     "vTaskDelay -> a periodic TaskDecl cadence or async_rt TimerQueue sleep"),
-    (r"\bxQueue(Create|Send|Receive)\b",
-     "FreeRTOS queue -> runtime Mailbox (per-module quota) or async_rt Channel"),
-    (r"\bxSemaphore(CreateMutex|Take|Give)\b",
-     "semaphore/mutex -> nobro_classic nonblocking token or a capability grant"),
-    (r"\bportENTER_CRITICAL\b|\btaskENTER_CRITICAL\b",
-     "critical section -> critical_section::with (portable, ISR-safe)"),
-]
-# Cross-cutting flags that always need a human decision.
-UNIVERSAL_FLAGS = [
-    (r"#\[interrupt\]|#\[handler\]|ISR|__vector",
-     "global interrupt handler: NobroRTOS routes hardware events through the executor/"
-     "capture provider — confirm this maps to a deadline handler or a provider, not a "
-     "free-floating ISR"),
-    (r"\bembedded_hal(?:_async)?\b|\bembedded-hal(?:-async)?\b",
-     "embedded-hal driver: compatible synchronous device logic is usually reusable "
-     "as a UDI backend; async traits or global interrupt/DMA ownership need adaptation"),
-    (r"\balloc::|Box::new|Vec::new|String::new",
-     "heap allocation: NobroRTOS is no-alloc — replace with a fixed-capacity structure"),
-]
-
-
-def migrate(source: str, framework: str) -> dict:
-    patterns = EMBASSY_PATTERNS if framework == "embassy" else FREERTOS_PATTERNS
-    findings = []
-    for lineno, line in enumerate(source.splitlines(), 1):
-        for pattern, note in patterns + UNIVERSAL_FLAGS:
-            if re.search(pattern, line):
-                findings.append({"line": lineno, "code": line.strip()[:70], "note": note})
-    return {
-        "framework": framework,
-        "findings": findings,
-        "needs_adaptation": len(findings),
-    }
-
-
-def render_migration(report: dict) -> str:
-    lines = [f"Migration scan ({report['framework']}): "
-             f"{report['needs_adaptation']} item(s) need adaptation."]
-    for f in report["findings"]:
-        lines.append(f"  L{f['line']:<4} {f['code']}")
-        lines.append(f"        -> {f['note']}")
-    if not report["findings"]:
-        lines.append("  (nothing framework-specific found; a plain port may just compile)")
-    return "\n".join(lines)
-
-
-def imported_task_names(source: str, framework: str) -> list[str]:
-    if framework == "embassy":
-        names = re.findall(
-            r"#\[embassy_executor::task(?:\([^]]*\))?\]\s*"
-            r"(?:pub\s+)?async\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)",
-            source,
-        )
-    else:
-        names = re.findall(
-            r"\bxTaskCreate(?:Static)?\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)",
-            source,
-        )
-    return list(dict.fromkeys(names))
-
-
-def safe_imported_names(names: list[str]) -> list[str]:
-    result = []
-    for index, original in enumerate(names[:8], 1):
-        candidate = re.sub(r"[^a-z0-9_-]", "_", original.lower()).strip("_-")
-        if not candidate or not candidate[0].isalpha():
-            candidate = f"task_{candidate or index}"
-        candidate = candidate[:48]
-        base = candidate
-        suffix = 2
-        while candidate in result:
-            tail = f"_{suffix}"
-            candidate = base[:48 - len(tail)] + tail
-            suffix += 1
-        result.append(candidate)
-    return result
-
-
-def import_project(source_path: pathlib.Path, framework: str, name: str,
-                   out_dir: pathlib.Path) -> dict:
-    source = source_path.read_text(encoding="utf-8")
-    info = scaffold(name, out_dir)
-    project = pathlib.Path(info["dir"])
-    report = migrate(source, framework)
-    task_names = imported_task_names(source, framework)
-    graph_names = safe_imported_names(task_names)
-    workload = json.loads(json.dumps(WORKLOAD_TEMPLATE))
-    if graph_names:
-        workload["tasks"] = [workload["tasks"][0]] + [
-            {"name": task, "criticality": "driver",
-             "flash": 2048, "ram": 512, "period_us": 20_000,
-             "budget_us": 2_000, "review_required": True}
-            for task in graph_names
-        ]
-        workload["channels"] = []
-    (project / "workload.json").write_text(
-        json.dumps(workload, indent=2) + "\n", encoding="utf-8"
-    )
-    migration = {
-        **report,
-        "imported_tasks": task_names[:8],
-        "graph_tasks": graph_names,
-        "note": "Imported task budgets are placeholders and require review before hardware use.",
-    }
-    (project / "migration.json").write_text(
-        json.dumps(migration, indent=2) + "\n", encoding="utf-8"
-    )
-    (project / "MIGRATION.txt").write_text(
-        render_migration(migration) + "\n\n" + migration["note"] + "\n",
-        encoding="utf-8",
-    )
-    (project / "src" / "main.rs").write_text(
-        render_host_main(workload), encoding="utf-8")
-    info["files"] += ["migration.json", "MIGRATION.txt"]
-    info["migration"] = migration
-    return info
 
 
 # ------------------------------------------------------------------- selftest
@@ -533,37 +379,7 @@ def selftest() -> int:
         except ValueError as error:
             assert "kernel task cannot depend" in str(error)
 
-    # Golden session 4 — migration attribution (Embassy + FreeRTOS + universal).
-    embassy_src = (
-        "#[embassy_executor::task]\n"
-        "async fn run(spawner: Spawner) {\n"
-        "    let mut t = embassy_time::Ticker::every(D);\n"
-        "    let v = Box::new(0u8);\n"
-        "}\n"
-    )
-    report = migrate(embassy_src, "embassy")
-    notes = " ".join(f["note"] for f in report["findings"])
-    assert "ReactorExecutor" in notes and "TimerQueue" in notes and "no-alloc" in notes
-    assert any(f["line"] == 1 for f in report["findings"])
-    with tempfile.TemporaryDirectory() as tmp:
-        source = pathlib.Path(tmp) / "app.rs"
-        source.write_text(embassy_src, encoding="utf-8")
-        info = import_project(source, "embassy", "imported", pathlib.Path(tmp) / "out")
-        assert info["migration"]["imported_tasks"] == ["run"]
-        assert pathlib.Path(info["dir"], "MIGRATION.txt").is_file()
-        imported_build = build_project(pathlib.Path(info["dir"]))
-        assert imported_build["ok"], "\n".join(imported_build["detail"])
-
-    freertos_src = (
-        "xTaskCreate(vBlink, \"blink\", 128, NULL, 1, NULL);\n"
-        "vTaskDelay(pdMS_TO_TICKS(500));\n"
-        "portENTER_CRITICAL();\n"
-    )
-    report = migrate(freertos_src, "freertos")
-    notes = " ".join(f["note"] for f in report["findings"])
-    assert "AppGraph TaskDecl" in notes and "critical_section" in notes
-
-    print("NOBRO PROJECT SELFTEST: PASS (scaffold/build/simulate/report/import/migrate)")
+    print("NOBRO PROJECT SELFTEST: PASS (scaffold/build/simulate/report)")
     return 0
 
 
@@ -579,13 +395,6 @@ def main() -> int:
     p_new.add_argument("name")
     p_new.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
 
-    p_import = sub.add_parser("import", help="scan and scaffold a migrated task graph")
-    p_import.add_argument("--from", dest="framework", required=True,
-                          choices=["embassy", "freertos"])
-    p_import.add_argument("source", type=pathlib.Path)
-    p_import.add_argument("--name", required=True)
-    p_import.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
-
     p_explain = sub.add_parser("explain", help="explain a workload's derived contract")
     p_explain.add_argument("workload", type=pathlib.Path)
 
@@ -595,16 +404,11 @@ def main() -> int:
     p_sim = sub.add_parser("simulate", help="run bounded host admission simulation")
     p_sim.add_argument("project", type=pathlib.Path)
 
-    p_report = sub.add_parser("report", help="read a project or sanitized HIL report")
+    p_report = sub.add_parser("report", help="read a project report")
     p_report.add_argument("report", type=pathlib.Path)
 
     p_run = sub.add_parser("run", help="explain, build, then simulate")
     p_run.add_argument("project", type=pathlib.Path)
-
-    p_migrate = sub.add_parser("migrate", help="report what needs adaptation")
-    p_migrate.add_argument("--from", dest="framework", required=True,
-                           choices=["embassy", "freertos"])
-    p_migrate.add_argument("source", type=pathlib.Path)
 
     args = parser.parse_args()
     if args.selftest:
@@ -620,17 +424,6 @@ def main() -> int:
         print(f"  files: {', '.join(info['files'])}")
         print(f"  next:  python tools/nobro_project.py explain "
               f"{pathlib.Path(info['dir']) / 'workload.json'}")
-        return 0
-
-    if args.command == "import":
-        try:
-            info = import_project(args.source, args.framework, args.name, args.out)
-        except (OSError, ValueError) as error:
-            print(f"cannot import project: {error}")
-            return 1
-        print(f"imported {len(info['migration']['imported_tasks'])} task(s) into {info['dir']}")
-        print(render_migration(info["migration"]))
-        print("Review placeholder budgets in workload.json before hardware use.")
         return 0
 
     if args.command == "explain":
@@ -695,11 +488,6 @@ def main() -> int:
         print(rendered)
         print(f"PROJECT RUN: {'PASS' if ok else 'FAIL'}")
         return 0 if ok else 1
-
-    if args.command == "migrate":
-        report = migrate(args.source.read_text(encoding="utf-8"), args.framework)
-        print(render_migration(report))
-        return 0
 
     parser.print_help()
     return 2

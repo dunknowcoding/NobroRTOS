@@ -1,4 +1,4 @@
-//! Liveness task supervision (M166): the escalation layer above [`crate::Watchdog`].
+//! Liveness task supervision: the escalation layer above [`crate::Watchdog`].
 //!
 //! The error-driven [`crate::Supervisor`] reacts to *reported* failures; this one reacts
 //! to *silence*. Each poll in which a registered task stays past its check-in deadline

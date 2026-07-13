@@ -1,7 +1,7 @@
-//! Sensor data logging to on-chip flash (M50) on a development board: erase a dedicated
+//! Sensor data logging to on-chip flash on a development board: erase a dedicated
 //! flash page via NVMC, log a run of synthetic sensor samples, read them back, and
-//! verify integrity (count + sum). Persists across reset. Self-certifies via
-//! NOBRO_FLASH_LOG_REPORT (J-Link mem32).
+//! verify integrity (count + sum). Persists across reset. Publishes
+//! NOBRO_FLASH_LOG_REPORT.
 #![no_std]
 #![no_main]
 

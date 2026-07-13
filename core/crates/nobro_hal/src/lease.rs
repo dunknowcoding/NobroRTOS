@@ -297,7 +297,7 @@ impl Drop for LeaseGuard {
 
 #[cfg(test)]
 mod invariant_tests {
-    //! Property-based verification of the lease invariants (M172): thousands of random
+    //! Property-based verification of the lease invariants: thousands of random
     //! acquire/release operations are checked against a reference model, proving the
     //! lease state machine never violates mutual exclusion, ownership, or the acquire/
     //! release rules. A model checker (kani/loom) would be stronger for concurrency, but

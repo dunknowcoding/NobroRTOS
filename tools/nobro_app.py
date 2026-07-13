@@ -4,7 +4,7 @@
 A beginner (or a non-Rust user, or a config generator) writes an app.json naming a board
 and the actuators/sensors to mount from the built-in catalog. This tool validates every
 choice against the catalog, prints a plain-language bring-up plan, and generates a Rust
-`main.rs` skeleton that mounts exactly those modules (M191/M192/M194). The catalog here
+`main.rs` skeleton that mounts exactly those modules. The catalog here
 mirrors the Rust `nobro-device` catalog, so JSON stays in lock-step with the firmware.
 
   python3 tools/nobro_app.py tutorials/hello-device/app.json           # validate + plan

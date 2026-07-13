@@ -7,19 +7,6 @@
     "touch_baud": 1200,
     "lock_per_port": true
   },
-  "debug": {
-    "gdb_incompatible_with": [
-      "deadline_benchmark",
-      "radio_soak"
-    ]
-  },
-  "ironengine": {
-    "default_baud": 115200,
-    "frame_headers": [
-      170,
-      85
-    ]
-  },
   "ina_monitor": {
     "jsonl_line_rate_hz_max": 50
   },
@@ -131,51 +118,6 @@
       "parameter"
     ]
   },
-  "lab": {
-    "default_board": "nrf52840_no_softdevice",
-    "bootloader_policy": "do-not-reflash",
-    "app_start_no_softdevice": "0x1000",
-    "app_start_s140": "0x26000"
-  },
-  "phase1_eval": {
-    "symbol": "NOBRO_EVAL_REPORT",
-    "magic": "0x4E424E31",
-    "runner": "project-local phase1 eval runner",
-    "warmup_sec": 8,
-    "hal": {
-      "active_platform_trait": "nobro_hal::PlatformHal",
-      "board_trait": "nobro_hal::BoardDesc",
-      "platform_feature": "platform-nrf52840",
-      "portable_contract_feature": "contract-only"
-    },
-    "thresholds": {
-      "max_jitter_us": 10,
-      "min_deadline_ticks": 150,
-      "min_i2c_reads": 10,
-      "max_radio_latency_us": 10,
-      "min_radio_samples": 16
-    },
-    "scene_d_golden": {
-      "flash_start": "0x1000",
-      "pwm_hz": 50,
-      "servo_pin": 24,
-      "servo_center_us": 1500,
-      "twim0_base": "0x40003000"
-    }
-  },
-  "phase2_eval": {
-    "symbol": "NOBRO_SAL_EVAL_REPORT",
-    "magic": "0x4E424E32",
-    "runner": "project-local phase2 eval runner",
-    "warmup_sec": 8,
-    "sensor_backend": "adapters/virtual/sensor-stub",
-    "note": "Synthetic IMU fixture via SensorSal stub",
-    "thresholds": {
-      "min_servo_steps": 20,
-      "min_imu_samples": 3,
-      "servo_readback_tol_us": 50
-    }
-  },
   "health_report": {
     "symbol": "NOBRO_HEALTH_REPORT",
     "magic": "0x4E42484C",
@@ -259,7 +201,7 @@
     "magic": "0x4E424250",
     "version": 1,
     "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
-    "review_fixtures": "nobro-hal::BOARD_PROFILE_FIXTURES",
+    "catalog": "nobro-hal::BOARD_PROFILES",
     "status": {
       "missing": "magic/version/checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
@@ -272,7 +214,7 @@
     "magic": "0x4E42424B",
     "version": 1,
     "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
-    "review_fixtures": "nobro-hal::BOARD_PACKAGE_FIXTURES",
+    "catalog": "nobro-hal::BOARD_PACKAGES",
     "boot_layout_codes": {
       "1": "no_softdevice",
       "2": "softdevice_s140_v6",
@@ -364,34 +306,6 @@
       "4": "capability",
       "5": "missing_startup_node",
       "6": "unknown_startup_node"
-    }
-  },
-  "build_budgets": {
-    "_doc": "Per-app build-time ceilings enforced by nobro verify (Wave 15). worst_total_ram_b = static RAM + worst-case stack from the call-graph analyzer; worst_cycles = statically-priced worst path. Exceeding any ceiling fails the Evidence Pack.",
-    "udi_imu_demo_s140": {
-      "max_flash_b": 8192,
-      "max_worst_total_ram_b": 2048,
-      "max_worst_cycles": 1600
-    },
-    "udi_imu_demo": {
-      "max_flash_b": 8192,
-      "max_worst_total_ram_b": 2048,
-      "max_worst_cycles": 1600
-    },
-    "imu_i2c_demo": {
-      "max_flash_b": 14336,
-      "max_worst_total_ram_b": 2560,
-      "max_worst_cycles": 3000
-    },
-    "resource_sched_demo": {
-      "max_flash_b": 12288,
-      "max_worst_total_ram_b": 2304,
-      "max_worst_cycles": 3000
-    },
-    "async_exec_demo": {
-      "max_flash_b": 6144,
-      "max_worst_total_ram_b": 1792,
-      "max_worst_cycles": 1600
     }
   }
 }

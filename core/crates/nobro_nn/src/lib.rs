@@ -120,7 +120,7 @@ pub fn dense(input: &[f32], weights: &[f32], bias: &[f32], out: &mut [f32]) {
     }
 }
 
-/// Integer dense layer - our own CMSIS-NN-style int8 kernel (M137), no vendor lib.
+/// Integer dense layer - our own CMSIS-NN-style int8 kernel, no vendor lib.
 /// `input` and `weights` (`[OUT][IN]` row-major) are int8; accumulation is int32 and
 /// `bias` is already in accumulator units (`bias_real / (scale_in * scale_w)`).
 ///
@@ -155,7 +155,7 @@ pub fn quantize_i8(values: &[f32], out: &mut [i8]) -> f32 {
 }
 
 /// One online SGD step for a dense + softmax classifier on a single labelled example -
-/// the primitive for **on-device incremental learning** (M140). Runs a forward pass,
+/// the primitive for **on-device incremental learning**. Runs a forward pass,
 /// then applies the cross-entropy gradient `(p - onehot(label))` to `weights`/`bias`
 /// in place. `scratch` is caller-owned output space of length = number of classes.
 /// Returns the cross-entropy loss on this example *before* the update (so a caller can
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn sgd_learns_a_linear_boundary_on_device_style() {
         // 2-in, 2-out classifier learns sign(x0 - x1) by online SGD - the exact loop an
-        // MCU would run over a labelled stream (M140). Start from zero weights.
+        // MCU would run over a labelled stream. Start from zero weights.
         let mut w = [0.0f32; 4];
         let mut b = [0.0f32; 2];
         let mut scratch = [0.0f32; 2];

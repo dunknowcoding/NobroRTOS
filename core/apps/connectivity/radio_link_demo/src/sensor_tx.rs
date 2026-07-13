@@ -1,7 +1,7 @@
 //! Data-collection source node: read the reference SPI MPU-9250 and broadcast its accel
 //! magnitude over the radio for a peer to collect. Seals NOBRO_RADIO_REPORT (role=3)
 //! with the live accel in `last_seq`, so one node verifies the whole sensor ->
-//! radio pipeline (M23 + M26 combined).
+//! radio pipeline.
 #![no_std]
 #![no_main]
 

@@ -5,8 +5,8 @@ edition.workspace = true
 
 # AI runtime on a development board: a ModelRegistry multiplexes three models (on-device
 # NN, hybrid LLM, edge-sidecar vision) and AiRoutePolicy picks where each runs across a
-# scenario matrix (M35/M36) - on real silicon. Then the trained NN's inference is timed
-# for deadline compliance (M41). Self-certifies via NOBRO_AI_RUNTIME_REPORT (J-Link mem32).
+# scenario matrix - on real silicon. Then the trained NN's inference is timed
+# for deadline compliance. Publishes NOBRO_AI_RUNTIME_REPORT.
 [[bin]]
 name = "ai_runtime_demo"
 path = "src/main.rs"

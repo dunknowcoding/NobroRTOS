@@ -1,7 +1,7 @@
-//! More managed resources (M63): verify the kernel arbitrates the newly-leased PWM, EGU,
+//! More managed resources: verify the kernel arbitrates the newly-leased PWM, EGU,
 //! and PPI peripherals exactly like the bus/radio resources - exclusive acquire, conflict
-//! rejection, wrong-owner protection, release, and re-acquire. Self-certifies via
-//! NOBRO_LEASE_REPORT (J-Link mem32).
+//! rejection, wrong-owner protection, release, and re-acquire. Publishes
+//! NOBRO_LEASE_REPORT.
 #![no_std]
 #![no_main]
 

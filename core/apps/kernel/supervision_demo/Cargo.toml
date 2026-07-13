@@ -3,7 +3,7 @@ name = "supervision-demo"
 version.workspace = true
 edition.workspace = true
 
-# Liveness task supervision on real time (M166): two supervised tasks on the live
+# Liveness task supervision on real time: two supervised tasks on the live
 # microsecond clock - one keeps checking in (stays Healthy), one goes silent and
 # escalates Restart -> Degrade -> Reboot, then recovers. NOBRO_SUPERVISION_REPORT.
 [[bin]]

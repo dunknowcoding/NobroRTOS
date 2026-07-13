@@ -1,7 +1,7 @@
-//! Declarative multicore placement and per-core admission (Wave 57).
+//! Declarative multicore placement and per-core admission.
 //!
 //! A single [`AppGraph`](crate::AppGraph) declaration is placed onto `CORES`
-//! cores here, before any dual-core *execution* (that is Wave 58). Placement is
+//! cores here before dual-core execution. Placement is
 //! beginner-safe by default — a task with no `.core(n)` affinity is assigned
 //! automatically by balancing CPU utilization — while explicit `.core(n)`
 //! affinity is always honored. The output is one [`CorePlan`] per core plus

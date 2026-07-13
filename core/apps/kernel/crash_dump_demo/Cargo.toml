@@ -3,9 +3,9 @@ name = "crash-dump-demo"
 version.workspace = true
 edition.workspace = true
 
-# Crash-dump capture to flash (M184): first boot deliberately hard-faults; the handler
+# Crash-dump capture to flash: first boot deliberately hard-faults; the handler
 # writes a crash record (stacked PC/LR/xPSR + CFSR/HFSR) to a flash page via NVMC and
-# reboots; the second boot validates the persisted dump. NOBRO_CRASH_REPORT (mem32).
+# reboots; the second boot validates the persisted dump. NOBRO_CRASH_REPORT.
 [[bin]]
 name = "crash_dump_demo"
 path = "src/main.rs"

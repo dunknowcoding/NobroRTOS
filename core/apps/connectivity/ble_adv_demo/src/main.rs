@@ -1,4 +1,4 @@
-//! BLE peripheral telemetry without a SoftDevice (M123).
+//! BLE peripheral telemetry without a SoftDevice.
 //!
 //! Drives the nRF52840 RADIO directly in Ble1Mbit mode and broadcasts legacy
 //! ADV_NONCONN_IND packets on the three advertising channels. The advertisement
@@ -86,7 +86,7 @@ fn ble_send(pdu: &[u8], freq: u32, white_iv: u32) {
     }
 }
 
-/// The nRF52840 BLE-advertising backend of `nobro_wireless::WirelessBackend` (M219): mounting
+/// The nRF52840 BLE-advertising backend of `nobro_wireless::WirelessBackend`: mounting
 /// it owns the RADIO; `send` broadcasts one manufacturer-data payload on all three
 /// advertising channels through the crate's PDU builder. Broadcast-only, so `recv`
 /// never delivers.

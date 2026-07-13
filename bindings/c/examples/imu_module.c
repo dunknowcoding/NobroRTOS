@@ -5,7 +5,7 @@
  * the two module callbacks the kernel drives. This is the entire authoring surface
  * for a C module: no kernel headers, no linker scripts, no Rust. NobroRTOS's
  * c_abi_demo compiles + links this (feature `c-source`) and runs it on hardware;
- * a passing NOBRO_IMU_HW_EVAL_REPORT proves a C-authored module works end to end.
+ * a passing NOBRO_IMU_HEALTH_REPORT proves a C-authored module works end to end.
  */
 #include "nobro_app.h"
 

@@ -3,9 +3,9 @@ name = "stack-guard-demo"
 version.workspace = true
 edition.workspace = true
 
-# Stack-overflow detection on a development board (M168): plant a canary region below
+# Stack-overflow detection on a development board: plant a canary region below
 # the live stack pointer, verify it survives shallow recursion (no false positive), then
-# verify deep recursion trips it (true positive). NOBRO_STACK_REPORT (mem32).
+# verify deep recursion trips it (true positive). NOBRO_STACK_REPORT.
 [[bin]]
 name = "stack_guard_demo"
 path = "src/main.rs"

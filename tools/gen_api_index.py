@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an API index for NobroRTOS crates (M81).
+"""Generate an API index for NobroRTOS crates.
 
 Scans core/crates/*/src/lib.rs and categorized core/adapters/*/*/src/lib.rs for each crate's doc
 comment and its public items (fn / struct / enum / trait), and writes docs/api-index.md.

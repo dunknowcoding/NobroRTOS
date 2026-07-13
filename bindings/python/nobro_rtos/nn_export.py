@@ -1,4 +1,4 @@
-"""Host-side NN training + export for the nobro-nn / nobro-ai device crates (M216).
+"""Host-side NN training + export for the nobro-nn / nobro-ai device crates.
 
 The division of labor: the device runs `nobro-nn` inference blocks over flat weight
 arrays; this module is where those arrays come from. It trains small dense models in

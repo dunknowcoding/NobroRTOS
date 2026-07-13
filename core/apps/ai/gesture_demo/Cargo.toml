@@ -3,9 +3,9 @@ name = "gesture-demo"
 version.workspace = true
 edition.workspace = true
 
-# IMU gesture recognition (M143): the nobro-ml GestureDetector runs on-target against
+# IMU gesture recognition: the nobro-ml GestureDetector runs on-target against
 # synthetic tap/shake/tilt/idle windows AND the live SPI MPU-9250 at rest (expect None).
-# NOBRO_GESTURE_REPORT (mem32).
+# NOBRO_GESTURE_REPORT.
 [[bin]]
 name = "gesture_demo"
 path = "src/main.rs"

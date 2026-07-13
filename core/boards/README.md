@@ -18,7 +18,7 @@ boards/
 
 Each `board.json` carries the boot memory layout, capacity budgets, and critical pins.
 These mirror the compiled `BoardDesc`/`BoardPackage` fixtures in
-`crates/nobro_hal/src/board.rs` and `crates/nobro_hal/src/board_fixtures.rs`, and are
+`crates/nobro_hal/src/board.rs` and `crates/nobro_hal/src/board_catalog.rs`, and are
 checked for internal consistency by `tools/check_board_profiles.py`.
 
 An application crate selects exactly one board via its `feature` (for example,

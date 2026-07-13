@@ -13,7 +13,7 @@
 //! against the C ABI (bindings/c/include/nobro_app.h) and provided either by the
 //! Rust reference crate (feature `rust-module`, default) or compiled from C
 //! (feature `c-source`, build.rs + arm-none-eabi-gcc) - the linked object is
-//! byte-identical either way. A passing NOBRO_IMU_HW_EVAL_REPORT proves a module
+//! byte-identical either way. A passing NOBRO_IMU_HEALTH_REPORT proves a module
 //! authored outside Rust reads the IMU through the kernel's C ABI.
 #![no_std]
 
@@ -27,8 +27,10 @@ use nobro_hal::{
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, Twim0, I2C_SCL_PIN, I2C_SDA_PIN,
 };
+use nobro_imu::{
+    ImuHealthReport, IMU_HEALTH_REPORT_MAGIC, IMU_HEALTH_REPORT_VERSION, MIN_HEALTH_SAMPLES,
+};
 use nobro_kernel::{
-    eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS},
     kernel_module_spec, AdmissionReport, BootAssembly, Capability, CapabilitySet,
     CapabilityTraceOp, Criticality, DeadlineContract, FaultThresholds, ForeignHostCall,
     ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignModuleRunner, KernelError,
@@ -124,7 +126,7 @@ static mut READS: u32 = 0;
 #[no_mangle]
 pub extern "C" fn nobro_publish_imu(
     who: u8,
-    dev_addr: u8,
+    device_address: u8,
     ax: i16,
     ay: i16,
     az: i16,
@@ -139,7 +141,7 @@ pub extern "C" fn nobro_publish_imu(
             CapabilityTraceOp::Write,
             Hal::now_us(),
         )
-        .args(u32::from(who), u32::from(dev_addr))
+        .args(u32::from(who), u32::from(device_address))
         .bytes(18),
         || {
             let (axf, ayf, azf) = (
@@ -154,14 +156,14 @@ pub extern "C" fn nobro_publish_imu(
             let temp_centi = if tc > 0.0 { (tc * 100.0) as u32 } else { 0 };
             unsafe {
                 READS += 1;
-                NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
-                NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(dev_addr);
-                NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;
-                NOBRO_IMU_HW_EVAL_REPORT.imu_reads = READS;
-                NOBRO_IMU_HW_EVAL_REPORT.imu_errors = 0;
-                NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = accel_mg;
-                NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = gyro_mdps;
-                NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = temp_centi;
+                NOBRO_IMU_HEALTH_REPORT.who_am_i = u32::from(who);
+                NOBRO_IMU_HEALTH_REPORT.device_address = u32::from(device_address);
+                NOBRO_IMU_HEALTH_REPORT.devices_seen = 1;
+                NOBRO_IMU_HEALTH_REPORT.samples = READS;
+                NOBRO_IMU_HEALTH_REPORT.read_errors = 0;
+                NOBRO_IMU_HEALTH_REPORT.accel_mag_mg = accel_mg;
+                NOBRO_IMU_HEALTH_REPORT.gyro_mag_mdps = gyro_mdps;
+                NOBRO_IMU_HEALTH_REPORT.temperature_centi_c = temp_centi;
             }
             0
         },
@@ -176,7 +178,7 @@ extern "C" {
 
 #[no_mangle]
 #[used]
-static mut NOBRO_IMU_HW_EVAL_REPORT: ImuHwEvalReport = ImuHwEvalReport::zeroed();
+static mut NOBRO_IMU_HEALTH_REPORT: ImuHealthReport = ImuHealthReport::zeroed();
 #[no_mangle]
 #[used]
 static mut NOBRO_MANIFEST_REPORT: ManifestReport = ManifestReport::zeroed();
@@ -235,8 +237,8 @@ fn main() -> ! {
     unsafe { TwimBus::init_pins_unchecked(I2C_SDA_PIN, I2C_SCL_PIN) };
 
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
-        NOBRO_IMU_HW_EVAL_REPORT.version = IMU_HW_EVAL_VERSION;
+        NOBRO_IMU_HEALTH_REPORT.magic = IMU_HEALTH_REPORT_MAGIC;
+        NOBRO_IMU_HEALTH_REPORT.version = IMU_HEALTH_REPORT_VERSION;
     }
 
     let Some(mut boot) = admit() else { idle() };
@@ -267,11 +269,11 @@ fn main() -> ! {
             );
             idle();
         }
-        if unsafe { READS } >= MIN_IMU_HW_READS {
-            let mut report = unsafe { NOBRO_IMU_HW_EVAL_REPORT };
+        if unsafe { READS } >= MIN_HEALTH_SAMPLES {
+            let mut report = unsafe { NOBRO_IMU_HEALTH_REPORT };
             report.seal();
             unsafe {
-                NOBRO_IMU_HW_EVAL_REPORT = report;
+                NOBRO_IMU_HEALTH_REPORT = report;
             }
         }
         asm::delay(400_000);

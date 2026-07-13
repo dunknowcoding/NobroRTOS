@@ -18,6 +18,7 @@ required-features = ["board-nicenano-s140"]
 nobro-adapter-mpu9250-imu = { path = "../../../adapters/imu/mpu9250-imu", default-features = false }
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }
+nobro-imu = { path = "../../../crates/nobro_imu" }
 nobro-sal = { path = "../../../crates/nobro_sal" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"

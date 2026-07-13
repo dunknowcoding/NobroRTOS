@@ -1,8 +1,8 @@
 //! Radio as a managed hardware resource: verify the Resource::Radio exclusive
 //! lease (acquire, conflict rejected, wrong-owner release), Capability::Radio
-//! authorization, and deadline/budget-accounted frame TX via the wireless domain. Self-certifies via
-//! NOBRO_RADIO_COMMS_REPORT (J-Link mem32) - proof NobroRTOS distributes/manages the
-//! radio peripheral, closing the M26 radio's integration into the kernel.
+//! authorization, and deadline/budget-accounted frame TX via the wireless domain. Publishes
+//! NOBRO_RADIO_COMMS_REPORT, showing the runtime manages the
+//! radio peripheral, closing the radio's integration into the kernel.
 #![no_std]
 #![no_main]
 

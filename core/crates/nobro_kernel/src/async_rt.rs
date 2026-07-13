@@ -1,6 +1,6 @@
 //! First-class bounded async (UX-02): a real reactor, still no-alloc.
 //!
-//! [`BoundedExecutor`](crate::BoundedExecutor) (Wave 3) re-polls every pending
+//! [`BoundedExecutor`](crate::BoundedExecutor) re-polls every pending
 //! task with a no-op waker — honest, but an escape hatch. This module is the
 //! application model that replaces it:
 //!

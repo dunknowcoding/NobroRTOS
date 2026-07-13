@@ -3,17 +3,14 @@ name = "nobro-port-samd21"
 version = "0.1.0"
 edition = "2021"
 
-# NobroRTOS portable core on the SAMD21 (Cortex-M0+) - M87. All drivers are our own,
+# NobroRTOS portable core on the SAMD21 (Cortex-M0+) . All drivers are our own,
 # written from the SAMD21 datasheet: clock bring-up (OSC8M at /1) and a SERCOM0 USART
-# for the report line. BUILD-VERIFIED ONLY - no SAMD board is on the bench, so this
-# port compiles clean for thumbv6m but has never executed on silicon; treat every
-# register sequence as unproven until a board arrives.
+# for the report line. This target does not claim portable peripheral-provider coverage.
 
 [dependencies]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
-nobro-conformance = { path = "../../crates/nobro_conformance" } # M0+ needs portable-atomic-cs (default)
 
 [profile.release]
 debug = 2

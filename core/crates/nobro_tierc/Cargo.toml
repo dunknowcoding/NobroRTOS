@@ -12,6 +12,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 nobro-hal = { path = "../nobro_hal", default-features = false }
 nobro-kernel = { path = "../nobro_kernel" }
+nobro-imu = { path = "../nobro_imu" }
 libm = "0.2"
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"

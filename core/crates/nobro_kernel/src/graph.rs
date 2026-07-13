@@ -53,7 +53,7 @@ pub struct TaskDecl {
     pub role: Option<ModuleId>,
     /// Deadline contract participation (services opt out).
     pub has_deadline: bool,
-    /// Optional explicit core placement (Wave 57). `None` = let the placement
+    /// Optional explicit core placement. `None` = let the placement
     /// planner assign a core by balancing utilization (beginner-safe default).
     pub core_affinity: Option<u8>,
     after: [Option<&'static str>; MAX_DEPS],
@@ -147,7 +147,7 @@ impl TaskDecl {
         self
     }
 
-    /// Pin this task to a specific core (Wave 57). Omit to let the placement
+    /// Pin this task to a specific core. Omit to let the placement
     /// planner balance it automatically.
     pub const fn core(mut self, core: u8) -> Self {
         self.core_affinity = Some(core);

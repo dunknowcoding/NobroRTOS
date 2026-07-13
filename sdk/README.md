@@ -1,58 +1,40 @@
 # NobroRTOS SDK
 
-Everything a user consumes, in one place — the command surface, the C headers, the
-prebuilt firmware, and the language packages. The implementation lives in `core/`;
-this folder is the *product*.
+The SDK collects the user-facing command, C headers, prepared firmware, and package
+metadata. The implementation lives in `core/`.
 
-```
+```text
 sdk/
-├── cli/nobro.py        the SDK command (project · app · eval · flash · verify ·
-│                       fleet · budget · sign · package · contract)
-├── include/            the C ABI headers, drift-gated copies of the canonical
-│                       bindings/c/include (regenerate: nobro package arduino --sync)
-├── firmware/           prebuilt, committed firmware images
-│   ├── nobrortos-starter-s140.uf2   drag-drop starter (S140 layout, app @0x26000)
-│   └── starter-app.json             the declarative app it runs
-├── python/             the pip-installable host package (install pointer)
-└── sdk-manifest.json   machine-readable SDK contract (validated in CI)
+|-- cli/nobro.py       project, app, flash, budget, sign, package, and contract commands
+|-- include/           drift-gated copies of the canonical C headers
+|-- firmware/          prepared firmware images and their app metadata
+|-- python/            installation pointer for the Python host package
+`-- sdk-manifest.json  machine-readable distribution contract
 ```
 
-## The one command
+## Common commands
 
 ```bash
-python sdk/cli/nobro.py verify            # every software gate -> Evidence Pack
-python sdk/cli/nobro.py eval imu          # build+flash+run+grade on hardware
-python sdk/cli/nobro.py app my-app.json   # validate a declarative app
-python sdk/cli/nobro.py project new rover # buildable graph scaffold under _work
+python sdk/cli/nobro.py app my-app.json
+python sdk/cli/nobro.py project new rover
 python sdk/cli/nobro.py project run _work/projects/rover
+python sdk/cli/nobro.py flash --help
 python sdk/cli/nobro.py package arduino --zip
 ```
 
-Every subcommand forwards to a stable tool under `tools/` and accepts that tool's
-flags unchanged (`nobro eval --help` = the real help).
+`project` creates a graph-declared application, explains its derived admission
+contract and marginal costs, builds the generated host scaffold, simulates it, and
+decodes its report. Flashing is explicit because a host scaffold is not a device image.
 
-`project` is the end-to-end application path: create or import an Embassy/FreeRTOS
-task graph, explain the derived admission contract and marginal costs, compile the
-graph regenerated from the same workload, simulate it, decode its report, or invoke
-the state-restoring HIL evaluator. Hardware mode clearly evaluates a selected
-repository firmware app; it does not claim that the host scaffold itself is flashable.
+## Package selection
 
-## What consumes what
-
-| You are building… | Take |
+| You are building | Use |
 | --- | --- |
-| An Arduino sketch | the library zip (`nobro package arduino --zip`) — headers included |
-| A C module, no Rust | the Tier C bundle (`nobro package tierc --build`) + `include/` |
-| A Python host tool | `pip install ./bindings/python` (see [python/README.md](python/README.md)) |
-| A first experience | drag `firmware/nobrortos-starter-s140.uf2` onto the board's UF2 drive — [tutorial 01](../tutorials/README.md) |
-| Rust firmware | the workspace itself ([docs/GETTING_STARTED.md](../docs/GETTING_STARTED.md)) |
+| Arduino sketch | the Arduino library zip (`nobro package arduino --zip`) |
+| C module without Rust sources | the Tier C bundle plus `include/` |
+| Python host application | `pip install ./bindings/python` |
+| First device application | `firmware/nobrortos-starter-s140.uf2` and tutorial 01 |
+| Rust firmware | the workspace and [getting-started guide](../docs/GETTING_STARTED.md) |
 
-## Guarantees
-
-- `include/` never drifts from the canonical headers — a CI gate fails on mismatch.
-- The committed UF2 is bootloader-safe (app region only) and verified by the
-  `prebuilt uf2 loop` gate, which re-parses the container on every run.
-- The whole surface is contract-checked: `python tools/nobro_contract_tool.py
-  check-software-surface` (part of `nobro verify`).
-- Generated archives and build outputs go to `_work/`, never committed — the only
-  committed binaries are the intentional `firmware/` images.
+Generated archives, compiler output, caches, and logs belong under ignored `_work/`.
+The committed firmware directory contains only intentional SDK images.

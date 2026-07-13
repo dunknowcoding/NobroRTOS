@@ -135,7 +135,7 @@ impl AiInferenceSal for NnMotionClassifier {
     }
 }
 
-// ---- 3-class variant: idle / walk / shake (M33) ------------------------------------
+// ---- 3-class variant: idle / walk / shake ------------------------------------
 
 mod nn3_weights;
 pub use nn3_weights::TRAIN_ACC_MILLI as TRAIN_ACC_MILLI_3;

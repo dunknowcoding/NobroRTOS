@@ -129,31 +129,31 @@ mod tests {
     }
 
     #[test]
-    fn active_board_package_matches_fixture() {
+    fn active_board_package_matches_entry() {
         #[cfg(feature = "board-nicenano-s140")]
-        let fixture = crate::board_fixtures::fixture_for_feature("board-nicenano-s140")
-            .expect("s140 fixture");
+        let entry =
+            crate::board_catalog::package_for_feature("board-nicenano-s140").expect("s140 entry");
 
         #[cfg(not(feature = "board-nicenano-s140"))]
-        let fixture = crate::board_fixtures::fixture_for_feature("board-promicro-nosd")
-            .expect("nosd fixture");
+        let entry =
+            crate::board_catalog::package_for_feature("board-promicro-nosd").expect("nosd entry");
 
-        assert_eq!(Board::package(), fixture.package);
+        assert_eq!(Board::package(), entry.package);
     }
 
     #[test]
-    fn active_board_profile_matches_fixture() {
+    fn active_board_profile_matches_entry() {
         #[cfg(feature = "board-nicenano-s140")]
-        let fixture = crate::board_fixtures::profile_fixture_for_feature("board-nicenano-s140")
-            .expect("s140 fixture");
+        let entry =
+            crate::board_catalog::profile_for_feature("board-nicenano-s140").expect("s140 entry");
 
         #[cfg(not(feature = "board-nicenano-s140"))]
-        let fixture = crate::board_fixtures::profile_fixture_for_feature("board-promicro-nosd")
-            .expect("nosd fixture");
+        let entry =
+            crate::board_catalog::profile_for_feature("board-promicro-nosd").expect("nosd entry");
 
         assert_eq!(
             crate::snapshots::BoardProfileReport::from_board::<Board>(),
-            fixture.report()
+            entry.report()
         );
     }
 }

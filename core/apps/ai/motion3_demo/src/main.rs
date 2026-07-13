@@ -1,7 +1,7 @@
-//! 3-class motion NN on a development board (M33): run the trained int8 idle/walk/shake
+//! 3-class motion NN on a development board: run the trained int8 idle/walk/shake
 //! classifier (nn-motion-ai `Nn3MotionClassifier`) on synthetic |accel| windows for each
-//! class and verify each is classified correctly. Self-certifies via NOBRO_NN3_REPORT
-//! (J-Link mem32).
+//! class and verify each is classified correctly. Publishes NOBRO_NN3_REPORT
+//!.
 #![no_std]
 #![no_main]
 

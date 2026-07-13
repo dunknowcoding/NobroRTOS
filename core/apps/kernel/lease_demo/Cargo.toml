@@ -3,7 +3,7 @@ name = "lease-demo"
 version.workspace = true
 edition.workspace = true
 
-# More managed resources (M63): verify the kernel arbitrates PWM/EGU/PPI leases.
+# More managed resources: verify the kernel arbitrates PWM/EGU/PPI leases.
 [[bin]]
 name = "lease_demo"
 path = "src/main.rs"

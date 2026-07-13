@@ -12,10 +12,10 @@ use nobro_hal::{
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, Board,
 };
-use nobro_kernel::{
-    eval::{ImuHwEvalReport, IMU_HW_EVAL_MAGIC, MIN_IMU_HW_READS},
-    pool::SamplePool,
+use nobro_imu::{
+    ImuHealthReport, IMU_HEALTH_REPORT_MAGIC, IMU_HEALTH_REPORT_VERSION, MIN_HEALTH_SAMPLES,
 };
+use nobro_kernel::pool::SamplePool;
 use nobro_sal::SensorSal;
 
 static IMU_READS: AtomicU32 = AtomicU32::new(0);
@@ -23,13 +23,13 @@ static IMU_ERRORS: AtomicU32 = AtomicU32::new(0);
 static LAST_MAG_MG: AtomicU32 = AtomicU32::new(0);
 static LAST_TEMP_CENTI: AtomicU32 = AtomicU32::new(0);
 static LAST_GYRO_MDPS: AtomicU32 = AtomicU32::new(0);
-static EVAL_DONE: AtomicU32 = AtomicU32::new(0);
+static HEALTH_READY: AtomicU32 = AtomicU32::new(0);
 
 const OWNER_TWIM: u8 = 3;
 
 #[no_mangle]
 #[used]
-static mut NOBRO_IMU_HW_EVAL_REPORT: ImuHwEvalReport = ImuHwEvalReport::zeroed();
+static mut NOBRO_IMU_HEALTH_REPORT: ImuHealthReport = ImuHealthReport::zeroed();
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -45,14 +45,14 @@ fn main() -> ! {
         ppi::led_init_output();
     }
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
-        NOBRO_IMU_HW_EVAL_REPORT.version = nobro_kernel::eval::IMU_HW_EVAL_VERSION;
+        NOBRO_IMU_HEALTH_REPORT.magic = IMU_HEALTH_REPORT_MAGIC;
+        NOBRO_IMU_HEALTH_REPORT.version = IMU_HEALTH_REPORT_VERSION;
     }
 
     let device_count = Mpu9250Imu::scan_device_count(OWNER_TWIM).unwrap_or(0);
     defmt::info!("I2C scan: {} device(s)", device_count);
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = u32::from(device_count);
+        NOBRO_IMU_HEALTH_REPORT.devices_seen = u32::from(device_count);
     }
 
     let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
@@ -67,14 +67,14 @@ fn main() -> ! {
         "IMU addr=0x{:02X} WHO_AM_I=0x{:02X} bmp280={}",
         imu.addr(),
         imu.who_am_i(),
-        imu.bmp280_present()
+        imu.companion_present()
     );
 
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(imu.who_am_i());
-        NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(imu.addr());
-        NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = u32::from(device_count);
-        NOBRO_IMU_HW_EVAL_REPORT.bmp280_present = u32::from(imu.bmp280_present());
+        NOBRO_IMU_HEALTH_REPORT.who_am_i = u32::from(imu.who_am_i());
+        NOBRO_IMU_HEALTH_REPORT.device_address = u32::from(imu.addr());
+        NOBRO_IMU_HEALTH_REPORT.devices_seen = u32::from(device_count);
+        NOBRO_IMU_HEALTH_REPORT.companion_present = u32::from(imu.companion_present());
     }
 
     let mut last_report_ms = 0u64;
@@ -115,7 +115,7 @@ fn main() -> ! {
             );
         }
 
-        if EVAL_DONE.load(Ordering::Acquire) != 0 {
+        if HEALTH_READY.load(Ordering::Acquire) != 0 {
             unsafe {
                 ppi::led_toggle();
             }
@@ -127,20 +127,20 @@ fn main() -> ! {
 }
 
 fn write_progress_report() {
-    if EVAL_DONE.load(Ordering::Acquire) != 0 {
+    if HEALTH_READY.load(Ordering::Acquire) != 0 {
         return;
     }
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.imu_reads = IMU_READS.load(Ordering::Acquire);
-        NOBRO_IMU_HW_EVAL_REPORT.imu_errors = IMU_ERRORS.load(Ordering::Acquire);
-        NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = LAST_MAG_MG.load(Ordering::Acquire);
-        NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = LAST_GYRO_MDPS.load(Ordering::Acquire);
-        NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = LAST_TEMP_CENTI.load(Ordering::Acquire);
+        NOBRO_IMU_HEALTH_REPORT.samples = IMU_READS.load(Ordering::Acquire);
+        NOBRO_IMU_HEALTH_REPORT.read_errors = IMU_ERRORS.load(Ordering::Acquire);
+        NOBRO_IMU_HEALTH_REPORT.accel_mag_mg = LAST_MAG_MG.load(Ordering::Acquire);
+        NOBRO_IMU_HEALTH_REPORT.gyro_mag_mdps = LAST_GYRO_MDPS.load(Ordering::Acquire);
+        NOBRO_IMU_HEALTH_REPORT.temperature_centi_c = LAST_TEMP_CENTI.load(Ordering::Acquire);
     }
 }
 
 fn try_finalize_eval() {
-    if EVAL_DONE.load(Ordering::Acquire) != 0 {
+    if HEALTH_READY.load(Ordering::Acquire) != 0 {
         return;
     }
 
@@ -148,34 +148,34 @@ fn try_finalize_eval() {
     let errors = IMU_ERRORS.load(Ordering::Acquire);
     let mag = LAST_MAG_MG.load(Ordering::Acquire);
 
-    if reads < MIN_IMU_HW_READS || errors * 100 > reads {
+    if reads < MIN_HEALTH_SAMPLES || errors * 100 > reads {
         return;
     }
 
-    let mut report = ImuHwEvalReport {
-        who_am_i: unsafe { NOBRO_IMU_HW_EVAL_REPORT.who_am_i },
-        dev_addr: unsafe { NOBRO_IMU_HW_EVAL_REPORT.dev_addr },
-        i2c_devices: unsafe { NOBRO_IMU_HW_EVAL_REPORT.i2c_devices },
-        bmp280_present: unsafe { NOBRO_IMU_HW_EVAL_REPORT.bmp280_present },
-        imu_reads: reads,
-        imu_errors: errors,
+    let mut report = ImuHealthReport {
+        who_am_i: unsafe { NOBRO_IMU_HEALTH_REPORT.who_am_i },
+        device_address: unsafe { NOBRO_IMU_HEALTH_REPORT.device_address },
+        devices_seen: unsafe { NOBRO_IMU_HEALTH_REPORT.devices_seen },
+        companion_present: unsafe { NOBRO_IMU_HEALTH_REPORT.companion_present },
+        samples: reads,
+        read_errors: errors,
         accel_mag_mg: mag,
         gyro_mag_mdps: LAST_GYRO_MDPS.load(Ordering::Acquire),
-        temp_centi_c: LAST_TEMP_CENTI.load(Ordering::Acquire),
-        ..ImuHwEvalReport::zeroed()
+        temperature_centi_c: LAST_TEMP_CENTI.load(Ordering::Acquire),
+        ..ImuHealthReport::zeroed()
     };
     report.seal();
 
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT = report;
+        NOBRO_IMU_HEALTH_REPORT = report;
     }
-    EVAL_DONE.store(1, Ordering::Release);
+    HEALTH_READY.store(1, Ordering::Release);
 
     defmt::info!(
-        "NOBRO_IMU_HW_EVAL_FINAL ALL=1 reads={} mag={}mg bmp={}",
+        "NOBRO_IMU_HEALTH_READY samples={} accel={}mg companion={}",
         reads,
         mag,
-        report.bmp280_present
+        report.companion_present
     );
 }
 

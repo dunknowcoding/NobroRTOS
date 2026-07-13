@@ -2,5 +2,5 @@
 name = "nobro-control"
 version.workspace = true
 edition.workspace = true
-# No-heap control primitives: PID with anti-windup + output clamp (M148), and a
-# complementary orientation filter fusing an accel-derived angle with gyro rate (M149).
+# No-heap control primitives: PID with anti-windup + output clamp, and a
+# complementary orientation filter fusing an accel-derived angle with gyro rate.

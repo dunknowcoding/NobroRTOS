@@ -3,7 +3,7 @@
 //! Creating a `RadioComms` takes the `Resource::Radio` exclusive lease, so the kernel
 //! arbitrates radio ownership exactly like TWIM/SPIM; dropping/`release`-ing returns it.
 //! The wireless domain supplies deadline/budget accounting around HAL send/recv. This closes the
-//! M26 radio's integration into NobroRTOS's resource management (lease + SAL trait), and
+//! radio's integration into NobroRTOS's resource management (lease + SAL trait), and
 //! pairs with `Capability::Radio` for capability-gated access.
 #![no_std]
 

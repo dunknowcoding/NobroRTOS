@@ -173,7 +173,7 @@ impl Scheduler {
     }
 }
 
-/// Cooperative async sleep helper (Embassy-style subset).
+/// Cooperative async sleep helper.
 pub struct Timer {
     deadline_us: u64,
 }

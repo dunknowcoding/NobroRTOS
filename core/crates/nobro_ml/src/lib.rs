@@ -1,9 +1,9 @@
 //! No-heap embedded ML / DSP primitives (f32, no sqrt - FPU-friendly, bounded).
-//! - [`RunningStats`] streaming mean/variance + z^2 anomaly test (M34)
-//! - [`Ewma`] online adaptive baseline (M40)
-//! - [`reject`] confidence-threshold reject option (M42)
-//! - [`complementary`] two-source sensor fusion (M46)
-//! - [`kws_log_energy_features`] fixed-size keyword-spotting audio features (M115)
+//! - [`RunningStats`] streaming mean/variance + z^2 anomaly test
+//! - [`Ewma`] online adaptive baseline
+//! - [`reject`] confidence-threshold reject option
+//! - [`complementary`] two-source sensor fusion
+//! - [`kws_log_energy_features`] fixed-size keyword-spotting audio features
 //!
 //! **ROLE (vs sibling crates):** `nobro_ml` = classic/TinyML *utilities* (quantization, filters, anomaly, federated
 //! averaging) used inside firmware feature pipelines. Neural-net *inference blocks*
@@ -334,7 +334,7 @@ mod tests {
     }
 }
 
-/// One node's prediction in a distributed inference round (M60).
+/// One node's prediction in a distributed inference round.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Vote {
     pub class: u8,
@@ -343,7 +343,7 @@ pub struct Vote {
 
 /// Confidence-weighted majority vote across mesh nodes: each node runs the model locally
 /// and reports (class, confidence); the coordinator fuses them into one decision plus an
-/// overall confidence (winning mass / total mass, in milli). (M60)
+/// overall confidence (winning mass / total mass, in milli).
 pub fn ensemble_vote(votes: &[Vote], max_classes: usize) -> Option<(u8, u16)> {
     if votes.is_empty() {
         return None;
@@ -398,7 +398,7 @@ mod ensemble_tests {
     }
 }
 
-/// Gesture classes recognized by [`GestureDetector`] (M143).
+/// Gesture classes recognized by [`GestureDetector`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Gesture {
     None,
@@ -568,9 +568,9 @@ mod gesture_tests {
     }
 }
 
-// ---- TinyML building blocks (M138/M139/M141/M142/M144/M145) ----
+// ---- TinyML building blocks ----
 
-/// Symmetric int8 quantization helper (M139): map a float to int8 with a given scale,
+/// Symmetric int8 quantization helper: map a float to int8 with a given scale,
 /// and back. `scale` = max_abs / 127. Round-half-to-even-ish via +0.5 on magnitude.
 pub fn quantize_i8(x: f32, scale: f32) -> i8 {
     if scale <= 0.0 {
@@ -584,7 +584,7 @@ pub fn dequantize_i8(q: i8, scale: f32) -> f32 {
     q as f32 * scale
 }
 
-/// Choose a symmetric scale for a tensor so its max magnitude maps to 127 (M139).
+/// Choose a symmetric scale for a tensor so its max magnitude maps to 127.
 pub fn choose_scale(values: &[f32]) -> f32 {
     let m = values.iter().fold(0.0f32, |a, &v| a.max(v.abs()));
     if m <= 0.0 {
@@ -594,7 +594,7 @@ pub fn choose_scale(values: &[f32]) -> f32 {
     }
 }
 
-/// Depthwise 3x1 conv over an int8 channel (M138): the core op of a depthwise-separable
+/// Depthwise 3x1 conv over an int8 channel: the core op of a depthwise-separable
 /// block, integer MAC with a requantizing right shift. `pad`-with-zeros at the ends.
 pub fn depthwise_conv3(input: &[i8], kernel: [i8; 3], shift: u32, out: &mut [i8]) {
     let n = input.len();
@@ -607,7 +607,7 @@ pub fn depthwise_conv3(input: &[i8], kernel: [i8; 3], shift: u32, out: &mut [i8]
     }
 }
 
-/// Federated averaging of model weights across nodes (M141): element-wise mean of each
+/// Federated averaging of model weights across nodes: element-wise mean of each
 /// node's weight vector, sample-count weighted (FedAvg).
 pub fn fed_average(node_weights: &[&[f32]], node_samples: &[u32], out: &mut [f32]) -> bool {
     if node_weights.is_empty() || node_weights.len() != node_samples.len() {
@@ -631,7 +631,7 @@ pub fn fed_average(node_weights: &[&[f32]], node_samples: &[u32], out: &mut [f32
     true
 }
 
-/// Magnitude pruning (M144): zero the weights whose |value| falls below the `keep`-th
+/// Magnitude pruning: zero the weights whose |value| falls below the `keep`-th
 /// percentile so only the largest survive; returns the count pruned. `sparsity` in [0,1].
 pub fn prune_magnitude(weights: &mut [f32], sparsity: f32) -> usize {
     let n = weights.len();
@@ -673,7 +673,7 @@ fn last_below(_w: &[f32], t: f32) -> f32 {
     }
 }
 
-/// Minimal GRU cell (M142): single-unit gated recurrent update for sequence features.
+/// Minimal GRU cell: single-unit gated recurrent update for sequence features.
 /// Weights packed as (wz, uz, bz, wr, ur, br, wh, uh, bh). f32, FPU-friendly.
 #[derive(Clone, Copy, Debug)]
 pub struct GruCell {
@@ -717,7 +717,7 @@ impl GruCell {
     }
 }
 
-/// Multi-model RAM-budget scheduler (M145): pick which models can be co-resident given a
+/// Multi-model RAM-budget scheduler: pick which models can be co-resident given a
 /// total arena, choosing greedily by priority then by smallest footprint. Returns a bit
 /// mask of admitted models.
 pub fn schedule_models(footprints: &[u32], priorities: &[u8], arena: u32) -> u32 {
@@ -834,7 +834,7 @@ mod tinyml_tests {
     }
 }
 
-/// Object/blob counting on a downscaled binary image (M106): threshold each pixel and
+/// Object/blob counting on a downscaled binary image: threshold each pixel and
 /// count 4-connected components above it - the tiny-vision "how many things are in view".
 /// `w`*`h` must equal `pixels.len()`; `visited` scratch is caller-provided (no heap).
 pub fn count_blobs(pixels: &[u8], w: usize, h: usize, threshold: u8, visited: &mut [bool]) -> u32 {
@@ -888,7 +888,7 @@ pub fn count_blobs(pixels: &[u8], w: usize, h: usize, threshold: u8, visited: &m
     blobs
 }
 
-/// Vision model A/B router (M112): deterministically route each frame id to model A or B
+/// Vision model A/B router: deterministically route each frame id to model A or B
 /// by a rollout percentage, so a new vision model is canaried on a fraction of traffic.
 pub fn ab_route(frame_id: u32, rollout_b_percent: u8) -> u8 {
     // stable hash of the frame id -> [0,99]; < rollout -> B(1) else A(0)

@@ -1,53 +1,47 @@
-# 05 — Rust Deep Dive 🦀
+# 05 — Rust deep dive
 
-*The professional surface: swap driver backends by feature flag, price your firmware
-before flashing, and ship evidence instead of promises.*
+This tier covers backend substitution, static resource pricing, and the complete
+portable source/package check.
 
 ## What you need
 
-| Thing | Where |
+| Item | Setup |
 | --- | --- |
-| Rust + the embedded target | `rustup target add thumbv7em-none-eabihf` and `rustup component add llvm-tools-preview` ([rustup.rs](https://rustup.rs)) |
-| Python 3.10+ | for the public SDK and verification tooling |
-| A supported board and upload tool | see the support tiers table in the README; conformance does not imply deep peripheral support |
+| Rust and the embedded target | `rustup target add thumbv7em-none-eabihf` |
+| LLVM tools | `rustup component add llvm-tools-preview` |
+| Python 3.10+ | SDK and source utilities |
+| Supported board and upload tool | Choose from the support tiers in the main README |
 
-## Exercise 1 — One app, three transports (the UDI)
+## Exercise 1 — one app, multiple backends
 
-`udi_imu_demo` reads the same physical IMU through three interchangeable backends
-behind one `ImuSal` trait — the app's evaluation code never names a transport:
+`udi_imu_demo` keeps the application body behind one `ImuSal` contract while the
+selected feature supplies the native, `embedded-hal`, or Arduino-style backend.
+Build each feature variant and confirm that it exposes the same status layout with a
+different `backend_id`. Then add another backend without forking the application.
 
-Build the `backend-native`, `backend-eh`, and `backend-arduino` feature variants. Each
-must seal the same report shape; `backend_id` identifies the selected transport.
-Read the pattern in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) (UDI
-section), then add a fourth backend for a sensor you own — the whole point is that
-this takes a feature flag and an impl block, not a fork.
-
-## Exercise 2 — Know your worst case before you flash
+## Exercise 2 — price the firmware
 
 ```bash
 python tools/static_budget.py core/target/thumbv7em-none-eabihf/release/udi_imu_demo
 ```
 
-Call-graph-priced worst-case stack, static RAM, flash, and cycles. Ceilings live in
-`host/nobro-host-contract.json` (`build_budgets`) and the Evidence Pack **fails** if
-you exceed them. Treat this as a static bound; deployment timing still requires
-target-specific measurement.
+The tool reports static RAM, flash, call-graph stack depth, and a conservative static
+cycle envelope. Treat these as review inputs; deployment timing still depends on the
+target, compiler, interrupts, buses, and workload.
 
-## Exercise 3 — Ship evidence
+## Exercise 3 — run the portable checks
 
 ```bash
-python tools/run_checks.py          # every software gate → one ALL PASS + Evidence Pack
-python tools/fleet_evidence.py      # fold software + OTA + hardware runs into a fleet verdict
+python tools/run_checks.py
 ```
 
-Open `_work/evidence/evidence_pack.html`. That artifact — gates, budgets, commit —
-is the deliverable that distinguishes this RTOS: the claim and its proof travel
-together.
+The command should end with `RESULT: ALL PASS`. Build outputs remain under ignored
+`_work/` or Cargo target directories.
 
-## ✔ Verify
+## Verify
 
-- [ ] Two different `backend_id`s sealed PASS on the same board
-- [ ] A deliberately tightened budget ceiling flips the Evidence Pack to FAIL (then restore it)
-- [ ] `run_checks.py` ends `RESULT: ALL PASS`
+- [ ] Two backend variants preserve the same public status layout
+- [ ] The static budget tool reports the expected ELF sections
+- [ ] `run_checks.py` ends with `RESULT: ALL PASS`
 
-You're now past the tutorials. The map of everything: [docs/README.md](../../docs/README.md).
+Continue with the [documentation index](../../docs/README.md).

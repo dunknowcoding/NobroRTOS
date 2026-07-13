@@ -2,8 +2,7 @@
 //!
 //! Brings up the IMU, runs the on-device MotionClassifier (AiInferenceSal) over a
 //! window of accel-magnitude samples, and (1) records the result in
-//! NOBRO_AI_USB_REPORT - written during a warm-up BEFORE USB, so it is J-Link
-//! readable even if USB enumeration stalls - and (2) streams idle/active + a Q15
+//! `NOBRO_AI_USB_REPORT` before USB startup and (2) streams idle/active plus a Q15
 //! confidence over a COM port once the host configures the device. no_std / no-alloc.
 #![no_std]
 #![no_main]

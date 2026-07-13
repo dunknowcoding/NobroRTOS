@@ -4,7 +4,7 @@
 # Builds the platform-agnostic crates (kernel, SAL, net, crypto, ML, sensor, power, and
 # the embedded-hal sensor adapters) for each supported MCU family's bare-metal Rust
 # target. These map to MCU families reachable via the Arduino board packages on the
-# bench (SAMD/RP2040 M0+, SAM M3, nRF52840/UNO-R4 M4F, RP2350 M33, ESP32-C3/C6 RISC-V).
+# matrix (SAMD/RP2040 M0+, SAM M3, nRF52840/UNO-R4 M4F, RP2350 M33, ESP32-C3/C6 RISC-V).
 # Requires the targets: rustup target add <t> (skipped with a hint if missing).
 set -u
 cd "$(dirname "$0")/../core" || exit 1

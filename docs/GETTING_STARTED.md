@@ -56,7 +56,7 @@ not a passing result.
 ### Performance notes (facts, not folklore)
 
 - SPI transfers use EasyDMA. The current portable I2C provider uses bounded CPU-polled
-  legacy TWI and reports `TransferMode::Polling`; conformance tests prevent it from being
+  legacy TWI and reports `TransferMode::Polling`; contract checks prevent it from being
   advertised as DMA.
 - Sensor samples move through the kernel as **zero-copy tickets** (`SamplePool`):
   producers publish a slot, consumers borrow it - payloads are not copied through
@@ -134,17 +134,9 @@ python sdk/cli/nobro.py project run _work/projects/rover
 python sdk/cli/nobro.py project report _work/projects/rover/reports/simulation.json
 ```
 
-`run` explains the graph-derived contract and admission headroom, compiles a real
-host graph regenerated from the same `workload.json`, runs the bounded simulation,
-and decodes its report. To bring an existing task graph across, use
-`project import --from embassy ...` or
-`--from freertos ...`; the generated migration report points to async, global
-interrupt/DMA, allocation, and platform assumptions line by line. Imported budgets
-are placeholders that must be reviewed before hardware use.
-
-`project run --mode hardware --app <eval-app>` invokes the state-restoring HIL path.
-It evaluates the selected repository firmware app and does not pretend the host
-scaffold binary is directly flashable.
+`run` explains the graph-derived contract and admission headroom, compiles a host
+graph regenerated from the same `workload.json`, runs the bounded simulation, and
+decodes its report. The generated scaffold is a host model, not a flashable image.
 
 ### One-file production firmware
 
@@ -193,7 +185,7 @@ bash tools/lint_gate.sh           # clippy -D warnings gate
 
 - **Any editor + rust-analyzer** (Neovim, Helix, Zed, Emacs, IntelliJ-Rust, VS Code).
 - **No editor at all**: the CLI above is complete.
-- **Arduino IDE / PlatformIO**: only needed for the ESP32/AVR *bench nodes* (which run
+- **Arduino IDE / PlatformIO**: needed for ESP32/AVR Arduino applications (which run
   vendor firmware), via `arduino-cli` - not for the NobroRTOS Rust core.
 
 ### Config-driven, no Rust knowledge

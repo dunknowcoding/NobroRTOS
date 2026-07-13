@@ -1,4 +1,4 @@
-"""TFLite -> NobroRTOS model import (M136): adapt an EXISTING tool's model to run on
+"""TFLite -> NobroRTOS model import: adapt an EXISTING tool's model to run on
 NobroRTOS, rather than reimplement it.
 
 `nobro_ai` is the device runtime for already-trained, quantized models; this host-side

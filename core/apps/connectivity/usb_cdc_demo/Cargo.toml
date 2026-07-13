@@ -3,7 +3,7 @@ name = "usb-cdc-demo"
 version.workspace = true
 edition.workspace = true
 
-# USB-CDC diagnostics: print the IMU eval report over USB serial so boards without a
+# USB-CDC diagnostics: print the IMU health report over USB serial so boards without a
 # debug probe can be verified by reading a COM port. Isolated app - the
 # kernel and its no-heap principles are untouched; the USB stack is no_std/no-alloc.
 [[bin]]

@@ -15,10 +15,8 @@ pub mod boot;
 pub mod capability;
 pub mod degrade;
 pub mod error;
-pub mod eval;
 pub mod event_log;
 pub mod executor;
-pub mod fault_inject;
 pub mod foreign_host;
 pub mod foreign_module;
 pub mod graph;
@@ -71,16 +69,10 @@ pub use capability::{
 };
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, FaultContext, FaultSource, HealthFault, KernelError};
-pub use eval::{
-    EvalGate, EvalReport, ImuHwEvalReport, SalEvalReport, EVAL_MAGIC, IMU_HW_EVAL_MAGIC,
-    MAX_JITTER_US, MIN_DEADLINE_TICKS, MIN_IMU_HW_READS, MIN_IMU_SAMPLES, MIN_SERVO_STEPS,
-    SAL_EVAL_MAGIC, SERVO_READBACK_TOL_US,
-};
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{
     I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable, TaskTableError,
 };
-pub use fault_inject::{FaultInjectError, FaultInjector, FaultMode, FaultRule};
 pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
 };
@@ -158,7 +150,7 @@ pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};
 
 #[cfg(test)]
 mod property_tests {
-    //! Property-based tests (M171): a deterministic xorshift generator drives thousands
+    //! Property-based tests: a deterministic xorshift generator drives thousands
     //! of random operation sequences against kernel data structures, asserting
     //! invariants hold for every sequence. No external proptest dependency.
     use crate::quota::{QuotaError, QuotaLedger};

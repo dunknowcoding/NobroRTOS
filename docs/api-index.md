@@ -82,14 +82,10 @@ Allocation-free camera contracts with explicit deadline and memory admission.
 - **fn**: `capture_at`, `reset_window`, `recover`, `backend`, `sampled_mean`, `admit`, `reset_window`
 
 ## `nobro-classic`
-FreeRTOS-familiar RTOS primitives, re-imagined without FreeRTOS's costs.
+Familiar fixed-capacity RTOS primitives for small applications.
 - **struct**: `Queue`, `Semaphore`, `Mutex`, `SoftwareTimer`, `EventFlags`
 - **enum**: `Ready`
 - **fn**: `send`, `send_to_front`, `receive`, `peek`, `messages_waiting`, `spaces_available`, `is_full`, `is_empty`, `give`, `take`, `count`, `take`, `give`, `holder`, `start`, `stop`, `tick`, `is_active`, `set`, `clear`, `get`, `wait_any`, `wait_all`, `select2`
-
-## `nobro-conformance`
-Cross-MCU conformance suite (M92): the same portable-core subsystem tests on every
-- **fn**: `test_quota`, `test_capability`, `test_supervision`, `test_mesh`, `test_ml`, `test_crypto`, `test_power`, `run_all`
 
 ## `nobro-control`
 No-heap control primitives (f32, FPU-friendly).
@@ -127,9 +123,9 @@ Host-side contract constants shared by scripts, tools, and documentation.
 ## `nobro-imu`
 Canonical, allocation-free IMU domain contracts for NobroRTOS.
 - **trait**: `ImuBackend`
-- **struct**: `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`
+- **struct**: `ImuHealthReport`, `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`
 - **enum**: `ImuEvent`
-- **fn**: `magnitude3`
+- **fn**: `seal`, `verify_checksum`, `magnitude3`
 
 ## `nobro-kernel`
 NobroRTOS kernel: Sample envelope, error policy, and scheduling hooks.
@@ -152,7 +148,7 @@ Neural-network building blocks from scratch, scoped for MCUs (inference side).
 - **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
 
 ## `nobro-power`
-No-heap power management policy (M62): pick a sleep mode from activity + a deadline,
+No-heap power management policy: pick a sleep mode from activity + a deadline,
 - **trait**: `PowerPlatform`
 - **struct**: `PowerHookError`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
 - **enum**: `PowerMode`
@@ -166,7 +162,7 @@ NobroRTOS service abstraction layer with portable capability traits.
 - **fn**: `from_result`, `seal`, `verify_checksum`, `add`, `add_manifest`, `validate_profile`, `compatibility_report`, `descriptor`, `copy_descriptors`, `total_budget`, `owned_capabilities`, `required_capabilities`, `len`, `is_empty`, `add`, `add_manifest`, `compatibility_report`, `descriptor`, `copy_descriptors`, `buffer_bytes`, `buffer_bytes`, `buffer_bytes`, `from_parts`, `preflight_ros_topic`, `preflight_ros_service`, `preflight_ros_action`, `preflight_ros_parameter`, `from_contract`, `seal`, `verify_checksum`, `decide`, `register`, `resolve`, `len`, `is_empty`, `route`, `from_contract`, `from_contract_and_policy`, `seal`, `verify_checksum`, `preflight_ai_invocation`, `default_action`
 
 ## `nobro-secure`
-Security + data-integrity primitives (M174/M176/M177/M179/M180/M185).
+Security + data-integrity primitives.
 - **struct**: `KeyStore`, `RollbackGuard`, `TamperSeal`, `AuditLog`, `ConfigStore`, `OtaAgent`, `BootImageManifest`, `BootVectorPolicy`, `VerifiedBootPlan`, `SecureBoot`
 - **enum**: `Slot`, `OtaError`, `BootVerdict`, `BootPlanError`
 - **fn**: `attest`, `verify_tag`, `provision`, `get`, `deprovision`, `accept`, `min_version`, `seal`, `intact`, `new`, `append`, `head`, `count`, `store`, `load`, `active`, `stage`, `boot_staged`, `confirm`, `revert`, `measure`, `sign`, `verify`, `commit`, `min_version`, `boot_plan`

@@ -25,7 +25,6 @@
     "core/boards",
     "core/ports",
     "core/vendor",
-    "core/ecosystem",
     "core/layout.json",
     "core/memory-nosd.x",
     "core/memory-s140.x"

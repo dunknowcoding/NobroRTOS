@@ -1,10 +1,10 @@
-//! NiusZigbee gateway: 802.15.4 capture + classify for the host contract (M122).
+//! NiusZigbee gateway: 802.15.4 capture + classify for the host contract.
 //!
-//! Builds on the verified M121 CC2530 link (same `FE LEN CMD DATA FCS` @115200 driver):
+//! Builds on the verified CC2530 link (same `FE LEN CMD DATA FCS` @115200 driver):
 //! after PING/PONG it puts the module in promiscuous RX on channel 11, then for every
 //! captured frame it reads the MAC frame-control field and classifies the frame by type
 //! (beacon / data / ack / MAC-command), keeping per-type counts and stashing the most
-//! recent raw PSDU. `NOBRO_CC2530_GATEWAY_REPORT` (J-Link mem32) carries the counts plus
+//! recent raw PSDU. `NOBRO_CC2530_GATEWAY_REPORT` carries the counts plus
 //! the captured frame's bytes, which the host decodes with the nobro_rtos.zigbee contract
 //! into collector records - the gateway->host-contract path end to end.
 #![no_std]
@@ -81,9 +81,7 @@ const TXD: *mut u32 = (UART0 + 0x51C) as *mut u32;
 const BAUDRATE: *mut u32 = (UART0 + 0x524) as *mut u32;
 const CONFIG: *mut u32 = (UART0 + 0x56C) as *mut u32;
 
-/// Board pins. The ProMicro/nice!nano edge order maps D0=P0.06, D1=P0.08 (bench-
-/// verified against the same board's D2=P0.17/D3=P0.20 SPI map); the wiring doc has
-/// D0 as the host-TX line (CC2530 RX) and D1 as host-RX.
+/// ProMicro/nice!nano edge mapping: D0=P0.06 is host TX and D1=P0.08 is host RX.
 const TX_PIN: u32 = 6;
 const RX_PIN: u32 = 8;
 
@@ -135,7 +133,7 @@ fn uart_rx() -> Option<u8> {
 // ------------------------------------------------------------------ ByteIo adapter
 
 /// Adapts the board's legacy UART0 to nobro_wireless::ByteIo, so the hardware-agnostic
-/// Cc2530 802.15.4 backend (M199) drives this module unchanged.
+/// Cc2530 802.15.4 backend drives this module unchanged.
 struct Uart0;
 
 impl nobro_wireless::ByteIo for Uart0 {
@@ -181,7 +179,7 @@ fn main() -> ! {
     uart_init();
     cortex_m::asm::delay(3_200_000); // ~50 ms boot settle
 
-    // Mount the modular 802.15.4 backend (M199) over this board's UART and join it:
+    // Mount the modular 802.15.4 backend over this board's UART and join it:
     // join() flushes the firmware parser, PINGs, and sets channel 11 + promiscuous RX.
     let mut radio = nobro_wireless::Cc2530::new(Uart0);
     let joined = radio.join(11, 4_000_000);

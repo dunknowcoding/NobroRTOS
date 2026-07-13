@@ -4,7 +4,7 @@
 record (seq, at_us, module, capability, op, args, result). Exported to the host, those
 records turn "the module did something wrong at some point" into an auditable,
 replayable file: order by sequence, filter by module/capability/op (the host mirror of
-`CapabilityReplayScope`), and emit JSON for the evidence pack.
+`CapabilityReplayScope`), and emit JSON for host inspection.
 
 Export wire format (little-endian, 28 bytes per record):
 

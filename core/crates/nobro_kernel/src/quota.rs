@@ -224,7 +224,7 @@ mod tests {
     fn multi_module_memory_budget_enforced_across_modules() {
         // Three modules share the system, each with its own budget. In-budget
         // reservations succeed and aggregate; one module overrunning its RAM limit is
-        // rejected without disturbing the others' usage (M65).
+        // rejected without disturbing the others' usage.
         let mut ledger = QuotaLedger::<3>::new();
         ledger
             .register(ModuleId::Sensor, SystemBudget::new(2048, 512, 4))
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn quota_holds_under_repeated_reservation_load() {
         // Many small reservations are admitted until the budget is exactly exhausted; the
-        // next is rejected and usage never exceeds the limit. (M66)
+        // next is rejected and usage never exceeds the limit.
         let mut ledger = QuotaLedger::<1>::new();
         ledger
             .register(ModuleId::Sensor, SystemBudget::new(10_000, 1_000, 0))
@@ -292,7 +292,7 @@ mod tests {
     fn freed_quota_is_reallocated() {
         // One module reserves heavily then releases; the freed capacity drops from the
         // aggregate and becomes available again, so another module can claim fresh
-        // capacity - dynamic reallocation over time. (M68)
+        // capacity - dynamic reallocation over time.
         let mut ledger = QuotaLedger::<2>::new();
         ledger
             .register(ModuleId::Sensor, SystemBudget::new(4_096, 2_048, 4))

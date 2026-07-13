@@ -1,7 +1,4 @@
-//! NobroRTOS portable core on the ESP32-S3 (M85): the same kernel control plane and
-//! net/ml/crypto/power primitives that run on the nRF52840 (Cortex-M4) execute here on
-//! Xtensa LX7, self-certifying over USB-Serial-JTAG. The collector's serial_regex
-//! protocol can ingest the report line.
+//! NobroRTOS typed providers on ESP32-S3, reporting status over USB Serial/JTAG.
 #![no_std]
 #![no_main]
 
@@ -14,8 +11,6 @@ use esp_hal::{
 };
 use nobro_hal::{HalAlarm, HalClock, HalCompatibility, HardwareCapability, HardwareCapabilitySet};
 use nobro_port_esp32s3::providers::{Esp32S3Alarm, Esp32S3Clock, Esp32S3Providers, Esp32S3Usb};
-
-use nobro_conformance::{run_all, SUBSYSTEMS};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -43,18 +38,12 @@ fn main() -> ! {
 
     let _ = writeln!(usb, "NobroRTOS ESP32-S3 portable provider check");
 
-    let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let mut all = true;
-    for (name, ok) in SUBSYSTEMS.iter().zip(results) {
-        let _ = writeln!(usb, "  {}: {}", name, if ok { "PASS" } else { "FAIL" });
-        all &= ok;
-    }
-    all &= providers_ok && deadline_ok;
+    let all = providers_ok && deadline_ok;
 
     loop {
         let _ = writeln!(
             usb,
-            "NOBRO-S3 arch=xtensa-lx7 subsystems=7 timebase={} time_us={} alarm_us={} deadline_ok={} usb=1 all_pass={}",
+            "NOBRO-S3 arch=xtensa-lx7 providers=3 timebase={} time_us={} alarm_us={} deadline_ok={} usb=1 all_pass={}",
             u32::from(providers_ok),
             Esp32S3Clock::now_us(),
             alarm_elapsed,

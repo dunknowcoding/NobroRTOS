@@ -61,12 +61,11 @@ a prepared image and a safe flash path for the selected board profile.
 
 ```powershell
 git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
-python tools/run_checks.py --quick --no-evidence
+python tools/run_checks.py --quick
 ```
 
 That checks public contracts, packages, tutorials, bindings, and documentation without
-touching hardware. Use `python sdk/cli/nobro.py flash --help` for public image deployment;
-lab endpoint discovery, restoration policy, and raw logs are not distributed.
+touching hardware. Use `python sdk/cli/nobro.py flash --help` for image deployment.
 
 Create and run a graph-declared application without hand-writing the expanded
 manifest, startup, capability, quota, and executor inputs:
@@ -77,9 +76,8 @@ python sdk/cli/nobro.py project run _work/projects/rover
 ```
 
 The project command prints the derived contract and marginal costs, compiles the
-graph scaffold, simulates it, and decodes the resulting report. It can also import
-and line-attribute Embassy or FreeRTOS task graphs. Flashing remains a separate,
-explicit step so a generated host scaffold is never mistaken for a device image.
+graph scaffold, simulates it, and decodes the resulting report. Flashing remains a
+separate, explicit step so a generated host scaffold is never mistaken for a device image.
 
 For production nRF firmware, the one-file path uses the same small declaration to emit
 both the admission workload and a `no_std` firmware graph:
@@ -223,13 +221,11 @@ quota, degraded-mode, scheduler, event-log, recovery, sensor, actuator, combined
 runtime-drill flows, and safely materialized plus validated contract-first project
 templates with VS Code task metadata and Python board bridge onboarding.
 
-That control plane is now **verified on real hardware** (nRF52840 + an IMU),
+That control plane runs on **real hardware** (nRF52840 + an IMU),
 and module **logic can be authored in Rust, C, or C++** over one kernel and one
 `extern "C"` C ABI - all three providers admitted by the kernel and reading a sensor
-end to end on the development board (see [bindings/c/README.md](bindings/c/README.md)). On-hardware results: the deadline
-scheduler holds **2 us jitter / 0 misses**, the EGU->PPI->CAPTURE path **1 us
-latency**, and `usb_cdc_demo` streams diagnostics over USB serial so probe-less
-boards self-verify by opening a COM port.
+end to end on the development board (see [bindings/c/README.md](bindings/c/README.md)).
+`usb_cdc_demo` exposes diagnostics over USB serial on boards that provide native USB.
 
 ```mermaid
 mindmap
@@ -278,7 +274,7 @@ NobroRTOS/
 |   |   |-- nobro_sal/      # portable service traits
 |   |   `-- nobro_host/     # host report decoders and stable labels
 |   |-- adapters/<domain>/  # thin device/library implementations
-|   |-- apps/<use-case>/    # firmware compositions and evaluation apps
+|   |-- apps/<use-case>/    # reusable firmware compositions and examples
 |   |-- boards/<platform>/  # data-only real-board profiles
 |   `-- ports/              # flat MCU-family provider implementations
 |-- sdk/                    # standalone SDK packaging surface
@@ -293,20 +289,17 @@ NobroRTOS/
 The Rust crate package names use the `nobro-*` API prefix, while repository
 folders use the `nobro_*` project prefix.
 
-## Hardware Evidence Boundary
+## Hardware Support Boundary
 
-nRF52840 is the deep-HAL profile; other rows in the support matrix may be provider or
-compile conformance only. Hardware claims are accepted only from fixed `NOBRO_*` reports
-with explicit completion and checksum fields. Public source contains the firmware and
-report contracts, while endpoint manifests, restoration scripts, raw serial/probe logs,
-and performance campaigns remain in ignored maintainer storage. Users can deploy a
-prepared image with `nobro flash` and inspect serial reports where that application
-exposes them; a missing or quiet endpoint is never treated as a pass.
+nRF52840 is the deep-HAL profile; other rows in the support matrix may implement only
+selected providers or the portable core. Fixed `NOBRO_*` reports expose explicit
+completion and checksum fields. Users can deploy a prepared image with `nobro flash`
+and inspect serial reports where the application exposes them.
 
 **No hardware on your desk?** The software side grades itself the same way:
 
 ```bash
-python tools/run_checks.py    # bindings + contracts + packages + chaos -> "RESULT: ALL PASS"
+python tools/run_checks.py    # bindings + contracts + packages -> "RESULT: ALL PASS"
 ```
 
 ### Hardware support, honestly tiered
@@ -319,9 +312,9 @@ target gets. The machine-readable capability matrix is `core/boards/platform_tie
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | leased peripherals, drivers, and every claim in the table above verified on the board with automated HIL | nRF52840 |
-| **Provider ports** | implement portable `nobro_hal` provider traits and compile against the real target. ESP32-S3 additionally has owned deadline/I2C/SPI/PWM/USB providers and a real dual-core bounded pipeline; its time/deadline/USB/multicore scopes passed restoring physical runs. Unexercised peripherals remain compile-provider claims | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
-| **Conformance ports** | the portable core's shared self-test suite runs on the silicon and reports `all_pass` | RA4M1, SAMD21 (+ an 8-bit AVR kernel-lite subset) |
+| **Deep HAL** | portable contracts plus board-specific peripheral providers | nRF52840 |
+| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
+| **Core ports** | target startup and status path available; peripheral providers are incomplete | RA4M1, SAMD21 (+ an 8-bit AVR kernel-lite subset) |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
@@ -340,18 +333,18 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Runtime control plane | Present | Mailbox, alarms, KV, quotas, watchdog, health, recovery |
 | Boot assembly facade | Present | No-heap app startup helper preserving manifest/admission reports |
 | Board package validation | Present | Boot layout, flash/RAM region, capacity, critical pins |
-| Board package fixtures | Present | Host-reviewable package list for current boot layouts |
+| Board package catalog | Present | Host-reviewable package list for current boot layouts |
 | Host ABI contract | Present | JSON contract plus `nobro-host` layouts and status helpers |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
-| On-device inference (verified) | Present | Bounded `AiInferenceSal` motion classifier runs on the development board &mdash; IDLE at 99.7% confidence in 9 us, inside its 2 ms timeout |
-| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` (validated by `tools/check_board_profiles.py`) mirror the `BoardDesc`/`BoardPackage` fixtures; the HAL targets nRF52840, and the portable core (kernel/SAL/net/crypto/ML/sensor + drivers) cross-compiles for 6 MCU families - Cortex-M0+/M3/M4F/M33 and RISC-V rv32imc/imac - via `tools/check_portability.sh` |
+| On-device inference | Present | Bounded `AiInferenceSal` motion classifier with explicit memory and timeout contracts |
+| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
-| ROS bridge (verified) | Present | Bounded topic/service/action/parameter contracts + SAL bridge trait; a `RosBridgeSal` IMU bridge runs on the development board &mdash; 2148 messages published and transmitted, 0 dropped, peak depth 1/8 |
+| ROS bridge | Present | Bounded topic/service/action/parameter contracts plus a SAL bridge trait |
 | SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/check_sdk_manifest.py`) |
-| Hardware bring-up | Present | An nRF52840 development board verified: IMU, scheduler (2 us jitter), PPI capture (1 us), PWM, USB-CDC diagnostics |
-| Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); kernel admits + drives it. All three verified on hardware |
+| Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
+| Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 
@@ -394,9 +387,7 @@ python tools/nobro_contract_tool.py check-distribution-metadata
 python tools/nobro_contract_tool.py check-public-headers
 ```
 
-Board-facing examples are kept as library and contract references. Lab bring-up
-notes, one-off wiring combinations, and board-specific evaluation scripts stay
-outside the public package surface.
+Board-facing examples are kept as reusable library and contract references.
 
 ## Documentation
 
@@ -410,13 +401,8 @@ outside the public package surface.
 | [Host Contract](docs/API.md) | `NOBRO_*` ABI, checksum rules, stage order |
 | [Operations Guide](docs/USER_GUIDE.md) | Maintenance habits and validation gates |
 
-## Design Influences
+## Design Principles
 
-NobroRTOS borrows carefully from proven embedded systems ideas:
-
-- hardware description as data, inspired by Zephyr devicetree
-- static async direction, inspired by Embassy
-- isolation through Rust boundaries, inspired by Tock
-- bounded mixed-criticality discipline, inspired by seL4 MCS
-
-The project keeps those ideas small enough for approachable robotics firmware.
+NobroRTOS keeps hardware descriptions data-driven, async work statically bounded,
+module boundaries explicit, and mixed-criticality scheduling reviewable without
+turning common robotics firmware into a large configuration exercise.

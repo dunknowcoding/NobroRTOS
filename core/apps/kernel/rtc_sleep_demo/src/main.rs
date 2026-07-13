@@ -1,4 +1,4 @@
-//! Low-power idle + RTC wake (M158): RTC2 fires every ~50 ms off the LFCLK while the CPU
+//! Low-power idle + RTC wake: RTC2 fires every ~50 ms off the LFCLK while the CPU
 //! WFE-idles; the nobro-power policy selects the mode each cycle. Verifies 40 wakes and
 //! that the measured mean interval matches the programmed period within 20%.
 #![no_std]

@@ -1,4 +1,4 @@
-//! HW proof of the nobro-usb `backend-usb-serial-jtag` backend on a real ESP32-C3.
+//! USB Serial/JTAG backend example for ESP32-C3.
 //!
 //! Deliberately avoids esp-println: every byte on the wire goes through
 //! `nobro_usb::mount()` -> `UsbSerialJtagCdc` raw-register writes, so seeing the

@@ -3,7 +3,7 @@ name = "config-actuator-demo"
 version.workspace = true
 edition.workspace = true
 
-# Config-driven actuator bring-up (M191): drive a catalog servo brand via nobro-device's
+# Config-driven actuator bring-up: drive a catalog servo brand via nobro-device's
 # angle_to_pulse over the leased PwmBank, verified on a development board.
 [[bin]]
 name = "config_actuator_demo"

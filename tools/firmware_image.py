@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Safe, platform-neutral helpers for building nRF52840 application images.
 
-The helpers retain only ELF-to-flash and UF2 packaging behavior. Lab discovery,
-probe control, report grading, endpoint names, and local hardware policy belong in
-ignored maintainer tooling.
+The helpers retain only endpoint-neutral ELF-to-flash and UF2 packaging behavior.
+Device selection, flashing policy, and report collection are outside this utility.
 """
 
 import glob

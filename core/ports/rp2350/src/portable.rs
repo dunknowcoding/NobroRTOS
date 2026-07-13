@@ -1,4 +1,4 @@
-//! Portable HAL provider contract on the RP2350 (Wave 48 / PORT-01).
+//! Portable HAL provider contract on the RP2350.
 //!
 //! This implements the SAME portable `nobro_hal` provider traits the nRF52840
 //! deep HAL implements — a real Cortex-M33 backend, not an nRF-shaped
@@ -6,12 +6,8 @@
 //! is implemented here against the RP2350 TIMER0 block, so kernel code that is
 //! generic over `HalClock`/`HalTimebaseProvider` runs unchanged on this chip.
 //!
-//! Honest scope: the timebase and compatibility/identity providers are
-//! implemented and self-checked live (the clock must advance). The deeper
-//! peripheral providers (deadline capture, servo PWM, I2C/SPI transactions,
-//! leases) remain provider gaps, and automated on-hardware HIL has not yet
-//! been integrated. The platform tier matrix states that boundary rather than
-//! presenting compile verification as physical evidence.
+//! Scope: timebase and compatibility/identity providers are implemented. Deadline
+//! capture, servo PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
@@ -81,7 +77,7 @@ impl PlatformHal for Rp2350 {
 
 /// Live self-check of the portable timebase provider: the monotonic clock must
 /// be advancing. Returns true when a second sample is strictly greater than the
-/// first across a short busy wait — proof the provider is wired to real silicon.
+/// first across a short busy wait, rejecting a constant-returning stub.
 pub fn verify_timebase_provider() -> bool {
     let t0 = Rp2350::now_us();
     // Busy-wait on the un-latched raw low word so the compiler cannot elide it.

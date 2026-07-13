@@ -1,22 +1,18 @@
 # Wireless support
 
-`nobro-wireless` is the system-wide wireless domain. It provides allocation-free
-link contracts, deadlines, resource budgets, diagnostics, and mesh re-exports. It
-does not replace device libraries: hardware implementations remain categorized
-under `core/adapters/wireless/`, and Arduino libraries are ecosystem members.
+`nobro-wireless` defines allocation-free link contracts, deadline and resource
+accounting, diagnostics, mesh records, and RFID health records. Device-specific
+implementations stay under `core/adapters/wireless/`; external Arduino libraries
+remain independently selectable members exposed through small Nobro facades.
 
-| Member or backend | Verified scope | Current boundary |
-|---|---|---|
-| nRF proprietary radio adapter | Nobro HAL lease, 32-byte frames, deadline and window-budget enforcement | nRF HAL only |
-| NiusWireless 0.1.0 RC522 | UNO R4 compile with the Nobro health adapter | Physical restoring HIL remains pending |
-| NiusWireless 0.1.0 LoRa | ESP32-S3 compile with bounded send/receive adapter | Physical radio-pair HIL remains pending |
-| NiusWireless HC06, HC12, NRF24L01, PN532 | Inventory audited | These modules are explicit upstream stubs; Nobro does not claim support |
-| NiusZigbee 1.0.0 / CC2530 | Pinned API inventory and ArduinoNRF compile | Friendly Nobro Arduino facade and restoring HIL remain pending |
+| Member or backend | Public integration | Current boundary |
+| --- | --- | --- |
+| nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
+| NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
+| NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
+| NiusWireless HC06, HC12, NRF24L01, PN532 | Upstream inventory only | Upstream modules are currently stubs |
+| NiusZigbee 1.0.0 / CC2530 | ArduinoNRF library integration | Friendly Nobro facade is not yet complete |
 
-NiusWireless 0.1.0 currently fails to compile with ArduinoNRF because its RC522
-and SX127x sources call an ambiguous `String(uint8_t, HEX)` constructor. Nobro's
-adapter does not hide or patch that upstream portability limitation.
-
-The authoritative machine-readable inventory and exact pins are in
-`core/ecosystem/integration_matrix.json`; CI recompiles the representative UNO R4
-and ESP32-S3 cases from clean pinned checkouts.
+NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
+and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream
+boundary. The machine-readable member tree is in `core/adapters/catalog.json`.

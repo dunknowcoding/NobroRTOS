@@ -402,6 +402,7 @@ dependencies = [
  "libm",
  "nobro-eh-i2c",
  "nobro-hal",
+ "nobro-imu",
  "nobro-kernel",
  "panic-halt",
 ]
@@ -505,6 +506,7 @@ dependencies = [
  "defmt-rtt",
  "nobro-adapter-mpu9250-imu",
  "nobro-hal",
+ "nobro-imu",
  "nobro-kernel",
  "nobro-sal",
  "panic-probe",
@@ -727,17 +729,6 @@ name = "nobro-classic"
 version = "0.2.0"
 
 [[package]]
-name = "nobro-conformance"
-version = "0.2.0"
-dependencies = [
- "nobro-crypto",
- "nobro-kernel",
- "nobro-ml",
- "nobro-net",
- "nobro-power",
-]
-
-[[package]]
 name = "nobro-control"
 version = "0.2.0"
 
@@ -861,6 +852,7 @@ dependencies = [
  "defmt-rtt",
  "libm",
  "nobro-hal",
+ "nobro-imu",
  "nobro-kernel",
  "panic-halt",
 ]
@@ -1035,20 +1027,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "resource-sched-demo"
-version = "0.2.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "nobro-hal",
- "nobro-kernel",
- "nrf52840-pac",
- "panic-probe",
-]
-
-[[package]]
 name = "ros-imu-demo"
 version = "0.2.0"
 dependencies = [
@@ -1093,22 +1071,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver 1.0.28",
-]
-
-[[package]]
-name = "sal-adapter-demo"
-version = "0.2.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "nobro-adapter-robo-servo",
- "nobro-adapter-sensor-stub",
- "nobro-hal",
- "nobro-kernel",
- "nobro-sal",
- "panic-probe",
 ]
 
 [[package]]

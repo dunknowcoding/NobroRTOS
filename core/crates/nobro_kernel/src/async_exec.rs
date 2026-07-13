@@ -1,8 +1,8 @@
-//! Bounded, no-alloc cooperative async executor (optional, Wave 3).
+//! Bounded, no-allocation cooperative async executor.
 //!
 //! NobroRTOS is poll-first: modules implement [`crate::executor::Task`] and are dispatched
-//! by the deadline [`crate::scheduler`]. Users arriving from Embassy often expect `async
-//! fn`. This module offers that ergonomic wrapper *without* giving up the guarantees that
+//! by the deadline [`crate::scheduler`]. This module offers an `async fn` wrapper without
+//! giving up the guarantees that
 //! make the RTOS auditable:
 //!
 //! * **Bounded** - a fixed-capacity table (`const N`); [`BoundedExecutor::spawn`] returns an

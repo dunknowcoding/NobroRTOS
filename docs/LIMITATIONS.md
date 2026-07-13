@@ -1,65 +1,55 @@
 # Limitations and support boundaries
 
-This matrix is part of the product contract. “Builds” does not mean “deeply
-supported,” declared timing is not a WCET proof, and a host simulation is not hardware
-evidence. The machine-readable platform truth is
-[`core/boards/platform_tiers.json`](../core/boards/platform_tiers.json).
-Application and library integration status is separately gated by
-[`core/ecosystem/integration_matrix.json`](../core/ecosystem/integration_matrix.json),
-including rows that are still absent.
+A successful build does not imply full peripheral support, declared timing is not a
+formal WCET proof, and host simulation is not device execution. The machine-readable
+platform matrix is `core/boards/platform_tiers.json`; adapter/library membership is
+listed separately in `core/adapters/catalog.json`.
 
 ## Application model
 
 | Boundary | Current behavior | Practical consequence |
 | --- | --- | --- |
-| Scheduling | Cooperative, fixed-priority execution with response-time admission, measured budgets, fuel-bounded async, and containment after overruns | A callback that never yields still needs the deadline/watchdog interrupt to reset or recover it; there is no preemptive time-slicing profile |
-| Timing evidence | Admission uses declared or measured budgets and pessimistic interference | Blocking terms and unmeasured platform/compiler paths are not formal WCET proofs |
-| Async | No allocation; up to 32 reactor tasks per core; fixed timer/channel capacities | Channels retain one parked sender and receiver waker, so use them as single-producer/single-consumer primitives or add arbitration |
-| Composition | One graph derives manifest, startup, task metadata, labels, and unambiguous mailbox grants | Capability kinds remain a closed bit set, and stable numeric module codes remain on wire formats |
-| Project workflow | `nobro project` creates/imports, explains, builds, simulates, and reports; `nobro firmware` generates a real nRF `no_std` crate and admission workload from one declaration | Production generation currently covers explicit nRF52840 S140/no-SoftDevice layouts. It does not yet bind application behavior to arbitrary providers, flash generated firmware, or infer measured WCET/interrupt/DMA ownership |
-| Arduino authoring | Fixed-capacity `NobroApp` declares tasks/channels and previews admission with plain errors; all examples compile on AVR, RA4M1, ESP32-S3, and ArduinoNRF | The facade does not embed the Rust executor or prove timing; production execution and physical behavior still require generated/core firmware, providers, and HIL |
+| Scheduling | Cooperative fixed-priority execution with response-time admission, fuel-bounded async, and overrun containment | A callback that never yields still needs a deadline/watchdog path to recover it; there is no general preemptive time-slicing profile |
+| Timing | Admission uses declared or measured budgets and pessimistic interference | Blocking terms and unmeasured compiler/platform paths are not formal WCET bounds |
+| Async | No allocation; fixed task, timer, waiter, and channel capacities | Capacity is explicit and exhaustion is reported instead of allocating dynamically |
+| Composition | One graph derives manifest, startup, task metadata, labels, and mailbox grants | Capability kinds remain a closed bit set and stable numeric module codes remain on wire formats |
+| Project workflow | `nobro project` creates, explains, builds, simulates, and reports; `nobro firmware` emits nRF firmware from one declaration | Firmware generation currently covers explicit nRF52840 layouts and does not infer WCET or interrupt/DMA ownership |
+| Arduino authoring | `NobroApp` declares fixed-capacity tasks/channels and previews admission | The facade does not embed the Rust executor or prove device timing |
 
 ## Resources
 
-Admission, identity, quotas, recovery, and evidence have real flash, RAM, stack, and CPU
-costs. Small applications that do not need those controls may be smaller with a simpler
-executor or a direct loop. Size and timing depend on the selected profile, toolchain,
-target, and workload; measure the final application rather than treating a specimen as a
-universal forecast. Static RAM is not total RAM, so deployment review must include stack
-high-water and bounded dynamic arenas. Direct current or energy claims require calibrated
-equipment; software coefficients are estimates only.
+Admission, identity, quotas, recovery, and diagnostics consume flash, RAM, stack, and
+CPU. Small applications that do not need those controls may be smaller with a direct
+loop. Size and timing depend on the selected profile, compiler, target, and workload;
+measure the final application. Static RAM is not total RAM, so deployment review must
+also include stacks and bounded arenas. Current or energy estimates require calibrated
+hardware and are not inferred from software coefficients alone.
 
 ## Platform support
 
-| Tier | Platforms | What is verified | Missing |
+| Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
-| Deep | nRF52840 | Portable core, granular providers, drivers, faults, reports, and state-restoring automated HIL | A scheduled lab runner is not attached to hosted CI |
-| Provider | RP2350, ESP32-C3, ESP32-S3 | Real monotonic providers and target builds. ESP32-S3 additionally has owned deadline, I2C/SPI/PWM adapter, USB Serial/JTAG, and real dual-core pipeline implementations; time/deadline/USB/multicore passed a restoring physical run | RP2350/ESP32-C3 peripheral parity; ESP32-S3 physical I2C/SPI/PWM application evidence; reusable private fleet HIL; deep lease/event/fault parity |
-| Conformance | RA4M1, SAMD21, AVR subset | Shared portable-core suite and target/package build where the toolchain is available | Portable HAL providers and deep fault/peripheral evidence |
+| Deep | nRF52840 | Portable core plus board-specific time, deadline, event, PWM, I2C, SPI, and lease providers | USB parity and broader board families |
+| Provider | RP2350, ESP32-C3, ESP32-S3 | Selected typed providers; ESP32-S3 includes time, deadline, I2C, SPI, PWM, and USB adapters | Full lease/event/fault parity and unimplemented peripherals |
+| Core | RA4M1, SAMD21, AVR subset | Target startup and status integration | Portable peripheral providers |
 
-A provider row is not interchangeable with the deep HAL. ESP32-C3/S3 have no claimed
-PPI-equivalent event router, PWM construction remains platform-specific, and target-build
-adapters are not physical peripheral evidence. Physical provider evidence does not promote
-a port to deep support.
+A provider row is not interchangeable with deep support. In particular, event routing
+and PWM construction differ between MCU families, and a generic bus adapter still needs
+a concrete board application to exercise the selected pins and peripheral instance.
 
 ## Isolation, boot, and recovery
 
-- Rust module identity is dispatcher-owned, but modules still share one privileged
-  address space. Per-module MPU switching and unprivileged execution are not present.
-- The signed boot/update state machine is fail-closed and persistent, but a production
-  board bootloader, slot writer, protected-key implementation, and factory provisioning
-  transport remain platform integration work.
-- Kernel-object cleanup is reconciled and leak-checked. The deep nRF HAL now invalidates
-  generation-tagged sessions and stops peripheral DMA/interrupt routing before a lease
-  is reassigned. Equivalent quiescence is not yet implemented on provider/conformance
-  ports, and arbitrary module-owned static state still needs lifecycle-hook cleanup.
-- Stack and MPU fault paths have deep-platform negative HIL. That evidence does not
-  imply equivalent isolation on provider or conformance ports.
+- Rust module identity is dispatcher-owned, but modules share one privileged address
+  space. Per-module MPU switching and unprivileged execution are not present.
+- The signed boot/update state machine is fail-closed and persistent, but production
+  bootloader slots, protected keys, and provisioning transports are board integrations.
+- Kernel-object cleanup is reconciled and leak-checked. The nRF HAL invalidates
+  generation-tagged sessions and quiesces peripheral activity before lease reassignment;
+  equivalent behavior is incomplete on other ports.
+- Application-owned static state still needs explicit lifecycle cleanup.
 
-## Evidence interpretation
+## Validation boundary
 
-Hosted CI covers host tests, format/lint, dependency policy, Miri, sanitizer, coverage,
-package builds, and cross-compilation. It cannot access the
-lab. Hardware evidence is generated under ignored work roots and is never committed;
-public claims report only sanitized verdicts. A quiet or absent endpoint is not converted
-into a passing result.
+Hosted checks cover portable tests, formatting, dependency policy, package builds, and
+cross-compilation. Device behavior remains target- and application-specific; a quiet or
+absent device is never interpreted as success.

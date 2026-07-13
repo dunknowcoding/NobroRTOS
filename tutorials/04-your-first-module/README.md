@@ -49,7 +49,7 @@ That's `gcc → firmware.elf`, linking your object against the whole prebuilt ru
 ## Step 3 — Run it (if you have hardware)
 
 Flash `firmware.elf` per [docs/GETTING_STARTED.md](../../docs/GETTING_STARTED.md).
-Your module's health lands in `NOBRO_IMU_HW_EVAL_REPORT`, readable over the probe or
+Your module's health lands in `NOBRO_IMU_HEALTH_REPORT`, readable over the probe or
 a serial monitor — the same PASS/FAIL story as every tier.
 
 ## ✔ Verify

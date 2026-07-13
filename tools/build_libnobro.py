@@ -114,7 +114,7 @@ def check() -> int:
             print(f"RESULT: FAIL (link {source})")
             return 1
         syms = subprocess.run([nm, elf], capture_output=True, text=True).stdout
-        need = ["Reset", "nobro_app_init", "nobro_app_poll", "NOBRO_IMU_HW_EVAL_REPORT"]
+        need = ["Reset", "nobro_app_init", "nobro_app_poll", "NOBRO_IMU_HEALTH_REPORT"]
         missing = [s for s in need if s not in syms]
         if missing:
             print("missing symbols:", missing)

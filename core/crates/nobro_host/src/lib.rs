@@ -9,10 +9,6 @@ pub const UPLOAD_TOUCH_BAUD: u32 = 1200;
 pub const APP_START_NO_SOFTDEVICE: u32 = 0x1000;
 pub const APP_START_S140_V6: u32 = 0x26000;
 
-pub const PHASE1_EVAL_SYMBOL: &str = "NOBRO_EVAL_REPORT";
-pub const PHASE1_EVAL_MAGIC: u32 = 0x4E42_4E31;
-pub const PHASE2_EVAL_SYMBOL: &str = "NOBRO_SAL_EVAL_REPORT";
-pub const PHASE2_EVAL_MAGIC: u32 = 0x4E42_4E32;
 pub const HEALTH_REPORT_SYMBOL: &str = "NOBRO_HEALTH_REPORT";
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4E42_484C;
 pub const EVENT_LOG_REPORT_SYMBOL: &str = "NOBRO_EVENT_LOG_REPORT";
@@ -1989,11 +1985,7 @@ mod tests {
     }
 
     #[test]
-    fn eval_contracts_are_stable() {
-        assert_eq!(PHASE1_EVAL_SYMBOL, "NOBRO_EVAL_REPORT");
-        assert_eq!(PHASE1_EVAL_MAGIC, 0x4E42_4E31);
-        assert_eq!(PHASE2_EVAL_SYMBOL, "NOBRO_SAL_EVAL_REPORT");
-        assert_eq!(PHASE2_EVAL_MAGIC, 0x4E42_4E32);
+    fn report_contracts_are_stable() {
         assert_eq!(HEALTH_REPORT_SYMBOL, "NOBRO_HEALTH_REPORT");
         assert_eq!(HEALTH_REPORT_MAGIC, 0x4E42_484C);
         assert_eq!(EVENT_LOG_REPORT_SYMBOL, "NOBRO_EVENT_LOG_REPORT");
@@ -2030,8 +2022,6 @@ mod tests {
 
     #[test]
     fn json_contract_mentions_host_report_symbols() {
-        assert!(HOST_CONTRACT_JSON.contains(PHASE1_EVAL_SYMBOL));
-        assert!(HOST_CONTRACT_JSON.contains(PHASE2_EVAL_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(EVENT_LOG_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MODULE_RUNTIME_REPORT_SYMBOL));
@@ -2058,8 +2048,8 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains("\"boot_diagnostics\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_profile\""));
         assert!(HOST_CONTRACT_JSON.contains("\"board_package\""));
-        assert!(HOST_CONTRACT_JSON.contains("BOARD_PROFILE_FIXTURES"));
-        assert!(HOST_CONTRACT_JSON.contains("BOARD_PACKAGE_FIXTURES"));
+        assert!(HOST_CONTRACT_JSON.contains("BOARD_PROFILES"));
+        assert!(HOST_CONTRACT_JSON.contains("BOARD_PACKAGES"));
         assert!(HOST_CONTRACT_JSON.contains("\"adapter_compatibility\""));
         assert!(HOST_CONTRACT_JSON.contains("\"diagnostic_code\""));
         assert!(HOST_CONTRACT_JSON.contains("\"first_non_pass\""));

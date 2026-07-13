@@ -140,9 +140,9 @@ assert!(failure.manifest_report.verify_checksum());
 Both successful assemblies and `BootAssemblyFailure` expose `reports()`, so
 firmware can publish the manifest and admission reports through one helper.
 
-The `sal_adapter_demo` app follows this pattern: it assembles the manifest,
-startup graph, admission plan, and runtime through `BootAssembly`, then writes
-the adapter compatibility report before entering hardware-facing demo code.
+An application can assemble the manifest, startup graph, admission plan, and runtime
+through `BootAssembly`, then publish adapter compatibility before entering
+hardware-facing code.
 
 ### Working With SAL
 
@@ -391,10 +391,8 @@ python sdk/cli/nobro.py project simulate _work/projects/rover
 ```
 
 The concise `workload.json` task/channel graph regenerates the build input and is
-expanded into the same low-level contract the kernel admits. `project import` scans
-Embassy or FreeRTOS sources and generates an
-ignored scaffold plus a line-attributed adaptation report; it never silently guesses
-production budgets. `project run` combines explain, build, simulate, and report decode.
+expanded into the same low-level contract the kernel admits. `project run` combines
+contract explanation, build, simulation, and report decoding.
 
 If the desired output is production nRF firmware rather than a host scaffold, use one
 short `app.nobro` declaration:
@@ -598,8 +596,8 @@ references it by symbol, so the linker must keep every member.
 
 The ELF targets the no-SoftDevice layout (app at `0x1000`). Flash it with a compatible
 SWD tool (`docs/GETTING_STARTED.md`) or convert it to UF2 for drag-and-drop. The firmware
-seals `NOBRO_IMU_HW_EVAL_REPORT`; consume it through a transport exposed by the selected
-application. Lab probe scripts and endpoint settings are maintainer-private.
+seals `NOBRO_IMU_HEALTH_REPORT`; consume it through a transport exposed by the selected
+application. Machine-specific probe scripts and endpoint settings are not distributed.
 
 ### Current scope, honestly
 

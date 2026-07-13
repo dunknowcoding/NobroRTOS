@@ -113,67 +113,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
-name = "nobro-conformance"
-version = "0.2.0"
-dependencies = [
- "nobro-crypto",
- "nobro-kernel",
- "nobro-ml",
- "nobro-net",
- "nobro-power",
-]
-
-[[package]]
-name = "nobro-crypto"
-version = "0.2.0"
-dependencies = [
- "nobro-sal",
-]
-
-[[package]]
-name = "nobro-kernel"
-version = "0.2.0"
-dependencies = [
- "portable-atomic",
-]
-
-[[package]]
-name = "nobro-ml"
-version = "0.2.0"
-
-[[package]]
-name = "nobro-net"
-version = "0.2.0"
-dependencies = [
- "nobro-crypto",
-]
-
-[[package]]
 name = "nobro-port-ra4m1"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
- "nobro-conformance",
  "nobro-usb",
  "panic-halt",
-]
-
-[[package]]
-name = "nobro-power"
-version = "0.2.0"
-
-[[package]]
-name = "nobro-sal"
-version = "0.2.0"
-dependencies = [
- "nobro-kernel",
 ]
 
 [[package]]
 name = "nobro-usb"
 version = "0.2.0"
 dependencies = [
+ "portable-atomic",
  "usb-device",
  "usbd-serial",
 ]

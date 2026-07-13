@@ -83,9 +83,9 @@ def main() -> int:
                          "--library", str(library), str(sketch)])
                     print(f"  PASS {fqbn} {name}")
     except (OSError, RuntimeError) as error:
-        print(f"CAMERA ECOSYSTEM: FAIL ({error})")
+        print(f"CAMERA INTEGRATIONS: FAIL ({error})")
         return 1
-    print("CAMERA ECOSYSTEM: PASS (NiusCam 0.2.0; OV2640/OV3660/OV5640 profiles)")
+    print("CAMERA INTEGRATIONS: PASS (NiusCam 0.2.0; OV2640/OV3660/OV5640 profiles)")
     return 0
 
 

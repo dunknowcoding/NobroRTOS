@@ -1,8 +1,8 @@
-"""6LoWPAN / Thread frame contract for NobroRTOS interop with NiusThread (M127).
+"""6LoWPAN / Thread frame contract for NobroRTOS interop with NiusThread.
 
 NiusThread runs an OpenThread stack on the nRF's 802.15.4 radio; Thread traffic is IEEE
 802.15.4 MAC frames whose payload is 6LoWPAN (RFC 4944 / 6282: mesh + fragment + IPHC
-headers wrapping IPv6). NobroRTOS's CC2530 gateway (M122) captures those frames off the
+headers wrapping IPv6). NobroRTOS's CC2530 gateway captures those frames off the
 air, and this host contract classifies the 6LoWPAN stack on top of the 802.15.4 MAC
 decode from `nobro_rtos.zigbee` - so a NiusThread node's traffic surfaces as structured
 collector records, the same way the NiusZigbee gateway does.

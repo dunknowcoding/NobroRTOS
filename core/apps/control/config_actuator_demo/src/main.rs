@@ -1,9 +1,9 @@
-//! Config-driven actuator bring-up on real hardware (M191). No servo-specific code: the
+//! Config-driven actuator bring-up on real hardware. No servo-specific code: the
 //! app picks a servo BRAND from the nobro-device catalog (SG90), asks the shared
 //! `angle_to_pulse` driver for the pulse at each angle, drives it on the leased PwmBank
-//! (M150), and reads the live pulse back. Swapping the brand is a one-line catalog change.
+//!, and reads the live pulse back. Swapping the brand is a one-line catalog change.
 //! Proves the data-first device-module framework actuates real hardware.
-//! NOBRO_CFG_ACTUATOR_REPORT (J-Link mem32).
+//! NOBRO_CFG_ACTUATOR_REPORT.
 #![no_std]
 #![no_main]
 

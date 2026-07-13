@@ -1,6 +1,6 @@
-//! IMU gesture recognition on hardware (M143): the streaming GestureDetector classifies
+//! IMU gesture recognition on hardware: the streaming GestureDetector classifies
 //! synthetic tap/shake/tilt/idle windows on-target, then watches the live SPI MPU-9250
-//! at rest for 200 samples (must stay None). NOBRO_GESTURE_REPORT (mem32).
+//! at rest for 200 samples (must stay None). NOBRO_GESTURE_REPORT.
 #![no_std]
 #![no_main]
 

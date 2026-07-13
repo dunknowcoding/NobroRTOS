@@ -1,10 +1,10 @@
-//! Flash-backed circular telemetry log on real NVMC (M182). A ring of fixed-size records
+//! Flash-backed circular telemetry log on real NVMC. A ring of fixed-size records
 //! across N flash pages with a monotonically increasing sequence number in each record's
 //! header; readback finds the newest record by max sequence and walks the ring backward.
 //! When the ring wraps, the oldest page is erased and reused - bounded flash, newest-wins.
 //! Verified: write 200 records into a 4-page ring (so it wraps ~3x), then confirm the
 //! last 64 recovered records are exactly the last 64 written, in order.
-//! NOBRO_TELERING_REPORT (J-Link mem32).
+//! NOBRO_TELERING_REPORT.
 #![no_std]
 #![no_main]
 

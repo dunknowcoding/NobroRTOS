@@ -1,4 +1,4 @@
-//! Tri-radio node (M124): one board drives three radios concurrently.
+//! Tri-radio node: one board drives three radios concurrently.
 //!
 //! Each 1-second cycle the node (a) broadcasts a BLE advertisement carrying its beat
 //! (any phone/PC scanner receives it), (b) sends a proprietary-1Mbps packet over the
@@ -121,7 +121,7 @@ const U_TXD: *mut u32 = (UART0 + 0x51C) as *mut u32;
 const U_BAUD: *mut u32 = (UART0 + 0x524) as *mut u32;
 const U_CONFIG: *mut u32 = (UART0 + 0x56C) as *mut u32;
 
-/// D0=P0.06 (host TX -> CC2530 RX), D1=P0.08 (host RX) - bench-verified in M121.
+/// D0=P0.06 (host TX -> CC2530 RX), D1=P0.08 (host RX).
 const TX_PIN: u32 = 6;
 const RX_PIN: u32 = 8;
 const GPIO_BASE: u32 = 0x5000_0000;

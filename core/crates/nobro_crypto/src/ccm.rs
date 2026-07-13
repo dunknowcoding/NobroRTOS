@@ -1,4 +1,4 @@
-//! AES-CCM authenticated encryption (M175): CTR encryption + CBC-MAC over the in-tree
+//! AES-CCM authenticated encryption: CTR encryption + CBC-MAC over the in-tree
 //! AES-128, with a 13-byte nonce, 2-byte length field (L=2) and an 8-byte tag (M=8) -
 //! the RFC 3610 parameterization used by 802.15.4/Zigbee-class mesh security. Verified
 //! against the RFC 3610 Packet Vector #1.

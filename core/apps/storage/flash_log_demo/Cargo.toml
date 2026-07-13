@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 # Sensor data logging to on-chip flash (NVMC) on a development board: erase a page, log
-# synthetic sensor samples, read back + verify integrity. Self-certifies via
-# NOBRO_FLASH_LOG_REPORT (J-Link mem32).
+# synthetic sensor samples, read back + verify integrity. Publishes
+# NOBRO_FLASH_LOG_REPORT.
 [[bin]]
 name = "flash_log_demo"
 path = "src/main.rs"

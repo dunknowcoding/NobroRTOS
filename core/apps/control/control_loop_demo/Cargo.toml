@@ -3,10 +3,10 @@ name = "control-loop-demo"
 version.workspace = true
 edition.workspace = true
 
-# Control primitives on real hardware (M148/M149): live SPI IMU tilt -> complementary
+# Control primitives on real hardware: live SPI IMU tilt -> complementary
 # filter (accel angle + gyro rate) -> PID -> servo pulse command. Verifies the filter
-# settles to a plausible bench tilt and the PID holds the pulse near center for a
-# stationary board. Self-certifies via NOBRO_CONTROL_REPORT (J-Link mem32).
+# settles to a plausible stationary tilt and the PID holds the pulse near center for a
+# stationary board. Publishes NOBRO_CONTROL_REPORT.
 [[bin]]
 name = "control_loop_demo"
 path = "src/main.rs"

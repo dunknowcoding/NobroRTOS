@@ -3,10 +3,10 @@ name = "db-persist-demo"
 version.workspace = true
 edition.workspace = true
 
-# nobro-database persistence on real flash (M217): a typed Table is recovered from an
+# nobro-database persistence on real flash: a typed Table is recovered from an
 # NVMC flash page at boot, mutated (boot counter + one row per boot), and written back
 # as a checksummed image. Across a reset the table comes back intact - recovered=1 and
-# boot_count climbing in NOBRO_DB_PERSIST_REPORT is the hardware evidence.
+# `boot_count` is exposed in `NOBRO_DB_PERSIST_REPORT`.
 [[bin]]
 name = "db_persist"
 path = "src/main.rs"

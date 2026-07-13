@@ -3,9 +3,9 @@ name = "kv-store-demo"
 version.workspace = true
 edition.workspace = true
 
-# Wear-leveled KV flash store on real hardware (M181): nobro-storage's KvStore backed by
+# Wear-leveled KV flash store on real hardware: nobro-storage's KvStore backed by
 # the nRF NVMC over two 4 KB pages; 1200 puts force compactions, then latest-value and
-# remount-persistence checks. NOBRO_KV_REPORT (J-Link mem32).
+# remount-persistence checks. NOBRO_KV_REPORT.
 [[bin]]
 name = "kv_store_demo"
 path = "src/main.rs"

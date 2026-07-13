@@ -1,6 +1,6 @@
 //! SPI IMU bring-up: read the GY-9250 (MPU-9250) through the **embedded-hal
-//! SPI adapter** (`NobroSpiDevice` -> SPIM0) and self-certify via NOBRO_SPI_IMU_REPORT
-//! (read over J-Link `mem32`). The reference sensor is wired for SPI (SCK=P0.17, MISO=P0.20,
+//! SPI adapter** (`NobroSpiDevice` -> SPIM0) and report status via NOBRO_SPI_IMU_REPORT
+//! as a fixed-layout status record. The reference sensor uses SPI (SCK=P0.17, MISO=P0.20,
 //! MOSI=P0.22, CS=P0.24); this proves the SPIM driver, the embedded-hal SPI adapter,
 //! and the SPI signal path on real hardware.
 #![no_std]
@@ -167,7 +167,7 @@ fn main() -> ! {
             }
 
             // who_am_i: 0x71 MPU-9250 / 0x70 MPU-6500 / 0x73 MPU-9255 - accept any of
-            // these (clone GY-9250 boards vary); the accel magnitude is the real proof.
+            // these (clone GY-9250 boards vary); accel magnitude remains the health signal.
             let who_ok = matches!(who_am_i, 0x70 | 0x71 | 0x73 | 0x68);
             let pass = who_ok && reads >= 10 && (800..1200).contains(&accel_mag_mg);
             let ap = u32::from(pass);

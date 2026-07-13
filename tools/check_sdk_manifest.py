@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the standalone SDK manifest (M77).
+"""Validate the standalone SDK manifest.
 
 Loads sdk/sdk-manifest.json and confirms every path it references actually resolves in
 the repo (canonical contract, core workspace, include roots, host tools, python package,

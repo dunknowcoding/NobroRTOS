@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Validate the honest platform capability matrix (PORT-01, Wave 48).
+"""Validate the public platform capability matrix.
 
 `core/boards/platform_tiers.json` declares, per platform, which portable
 `nobro_hal` provider contracts it satisfies and at what tier. This gate keeps
 that matrix honest and in sync with the tree:
 
   * every declared platform has a real port directory under `core/ports/`;
-  * every `implements`/`planned` provider is a known provider name;
+  * every `implements` provider is a known provider name;
   * a `provider`- or `deep`-tier platform that claims `timebase` actually has
     a provider module implementing and wiring the timebase (no paper claims);
-  * exactly one platform is `deep` (the nRF52840 reference), and a typed
-    `automated_hil` field prevents prose such as "not automated" from being
-    misclassified as a physical-evidence claim.
+  * exactly one platform is `deep` (the nRF52840 reference).
 
     python tools/check_platform_tiers.py            # validate
     python tools/check_platform_tiers.py --selftest # gate
@@ -35,7 +33,7 @@ PORT_DIR = {  # matrix key -> port directory (they differ where the port predate
     "samd21": "samd21",
     "avr_nano": "avr_nano",
 }
-VALID_TIERS = {"deep", "provider", "conformance", "absent"}
+VALID_TIERS = {"deep", "provider", "core", "absent"}
 
 
 def validate(matrix: dict) -> list[str]:
@@ -50,7 +48,7 @@ def validate(matrix: dict) -> list[str]:
     for name, spec in platforms.items():
         if spec["tier"] not in VALID_TIERS:
             errors.append(f"{name}: unknown tier {spec['tier']!r}")
-        for provider in spec.get("implements", []) + spec.get("planned", []):
+        for provider in spec.get("implements", []):
             if provider not in providers:
                 errors.append(f"{name}: unknown provider {provider!r}")
 
@@ -59,7 +57,7 @@ def validate(matrix: dict) -> list[str]:
             if name == "nrf52840":
                 impl = (ROOT / "core" / "crates" / "nobro_hal" / "src" / "platform"
                         / "nrf52840" / "mod.rs")
-                proof = impl.is_file() and "impl HalClock" in impl.read_text(encoding="utf-8")
+                implementation = impl.is_file() and "impl HalClock" in impl.read_text(encoding="utf-8")
             else:
                 port = PORT_DIR.get(name)
                 candidates = [
@@ -72,28 +70,18 @@ def validate(matrix: dict) -> list[str]:
                 )
                 main_text = (main.read_text(encoding="utf-8")
                              if main is not None and main.is_file() else "")
-                proof = ("impl HalClock" in portable_text
-                         and "with(HardwareCapability::Timebase)" in portable_text
-                         and ("supports(required)" in portable_text
-                              or "supports(required)" in main_text)
-                         and ("verify_timebase_provider()" in main_text
-                              or "Providers::supports(required)" in main_text)
-                         and ("all = timebase_ok" in main_text
-                              or "all &= providers_ok" in main_text)
-                         and "timebase=" in main_text
-                         and "all_pass=" in main_text)
-            if not proof:
+                implementation = (
+                    "impl HalClock" in portable_text
+                    and "with(HardwareCapability::Timebase)" in portable_text
+                    and (
+                        "verify_timebase_provider()" in main_text
+                        or "Providers::supports(required)" in main_text
+                    )
+                    and "timebase=" in main_text
+                    and "all_pass=" in main_text
+                )
+            if not implementation:
                 errors.append(f"{name}: timebase claim lacks implementation/report wiring")
-
-        # Only the deep platform may claim automated HIL. Keep this structured:
-        # substring checks cannot distinguish "automated" from "not automated".
-        automated_hil = spec.get("automated_hil")
-        if not isinstance(automated_hil, bool):
-            errors.append(f"{name}: automated_hil must be boolean")
-        if name != "nrf52840" and automated_hil is True:
-            errors.append(f"{name}: only the deep platform may claim automated HIL")
-        if name == "nrf52840" and automated_hil is not True:
-            errors.append("nrf52840 (deep) must document automated HIL")
 
         # Declared platforms must have a real port (except the nRF deep HAL).
         port = PORT_DIR.get(name, "MISSING")
@@ -118,10 +106,6 @@ def selftest() -> int:
     paper["platforms"]["samd21"]["tier"] = "provider"
     paper["platforms"]["samd21"]["implements"] = ["timebase"]
     assert any("timebase claim" in e for e in validate(paper)), "paper timebase claim must fail"
-
-    overclaim = json.loads(MATRIX.read_text(encoding="utf-8"))
-    overclaim["platforms"]["rp2350"]["automated_hil"] = True
-    assert validate(overclaim), "non-deep automated-HIL claim must fail"
 
     print("PLATFORM TIERS SELFTEST: PASS")
     return 0

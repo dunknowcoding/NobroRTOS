@@ -3,7 +3,7 @@ name = "udi-imu-demo"
 version.workspace = true
 edition.workspace = true
 
-# Universal Driver Interface proof: the SAME app drives the SAME physical IMU through
+# Universal Driver Interface example: the same app drives one IMU through
 # two different backends selected only by cargo feature - the native HAL SPI driver or
 # an embedded-hal SpiDevice driver - behind the one ImuSal category trait. Both builds
 # must seal the same PASS in NOBRO_UDI_IMU_REPORT on real hardware; the report carries

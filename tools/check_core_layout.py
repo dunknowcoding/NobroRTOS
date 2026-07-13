@@ -73,8 +73,9 @@ def validate() -> list[str]:
         errors.append(
             f"workspace membership drift: missing={sorted(expected_members-declared)}, extra={sorted(declared-expected_members)}"
         )
-    if (CORE / "ecosystems").exists():
-        errors.append("core/ecosystems is a duplicate ownership hierarchy")
+    for duplicate in ("ecosystem", "ecosystems"):
+        if (CORE / duplicate).exists():
+            errors.append(f"core/{duplicate} is a duplicate ownership hierarchy")
     return errors
 
 

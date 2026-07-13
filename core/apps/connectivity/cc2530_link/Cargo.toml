@@ -3,10 +3,10 @@ name = "cc2530-link"
 version.workspace = true
 edition.workspace = true
 
-# Raw 802.15.4 co-processor link (M121): NobroRTOS drives the board's CC2530 over UART
+# Raw 802.15.4 co-processor link: NobroRTOS drives the board's CC2530 over UART
 # using the NiusZigbee SDCC transceiver firmware protocol (FE LEN CMD DATA FCS @115200).
 # PING/PONG proves the link + reads the firmware version; promiscuous RX then counts
-# real 802.15.4 frames off the air. Evidence in NOBRO_CC2530_REPORT (J-Link mem32).
+# real 802.15.4 frames off the air and reports them in NOBRO_CC2530_REPORT.
 [[bin]]
 name = "cc2530_link"
 path = "src/main.rs"

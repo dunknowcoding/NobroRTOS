@@ -1,44 +1,30 @@
-# tools/ — user and contributor utilities
+# Tools
 
-Every tracked file here has one job. Maintainer comparisons, lab configurations,
-fuzz corpora, and private bench utilities are not stored in this repository.
+This directory contains portable utilities used by the SDK and reproducible hosted
+checks. Machine-specific hardware automation, raw logs, comparison programs, fuzz
+corpora, and private reports are intentionally not tracked.
 
-## Orchestrators
+## User utilities
 
-| Tool | Job |
+| Tool | Purpose |
 | --- | --- |
-| `run_checks.py` | THE gate suite → one `ALL PASS` + Evidence Pack |
-| `nobro_verify.py` | Evidence Pack builder (public gates + budgets → JSON/HTML) |
-| `fleet_evidence.py` | fold software/OTA/hardware/replay evidence → fleet verdict |
-| `ci_matrix.sh` | extended Rust build matrix (host tests, portability, ports) |
-| `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
-| `nobro_project.py` | create/import/explain/build/simulate/flash/report project flow |
-| `nobro_firmware_project.py` | generate an admitted workload and production nRF firmware from one short app declaration |
-| `check_arduino_facade.py` | compile/run positive and negative allocation-free C++ facade contracts |
+| `nobro_project.py` | Create, explain, build, simulate, and report a Nobro project |
+| `nobro_firmware_project.py` | Generate admitted firmware from a short app declaration |
+| `nobro_app.py` | Validate and generate an `app.json` application |
+| `nobro_contract_tool.py` | Inspect and decode public host contracts |
+| `flash.py` | Flash through supported J-Link, UF2, or Arduino backends |
+| `static_budget.py` | Report stack, RAM, flash, and static cycle bounds from an ELF |
+| `sign_firmware.py` | Measure and sign a firmware image |
+| `ros_msg_gen.py` | Generate bounded Rust records from ROS message definitions |
+| `import_dts.py` | Convert a limited DeviceTree input into a board-profile draft |
 
-## Gates (each also runs standalone)
+## Build and package utilities
 
-`check_block_editor.py` · `check_board_profiles.py` · `check_portability.sh` ·
-`check_async_miri.py` · `check_platform_tiers.py` ·
-`check_ecosystem_matrix.py` ·
-`check_release_versions.py` · `check_ros_bridge.py` · `check_sdk_manifest.py` ·
-`check_udi.py` · `check_web_flasher.py` · `chaos_test.py` · `tutorial_runner.py` ·
-`verify_timing_lease.py` · `ota_preflight_demo.py`
+`build_libnobro.py`, `bin2uf2.py`, `firmware_image.py`, `gen_memory_x.py`,
+`package_arduino.py`, and `package_prebuilt_uf2.py` produce public SDK artifacts.
 
-## Build / flash / package
+## Reproducible checks
 
-| Tool | Job |
-| --- | --- |
-| `flash.py` | flash an image via jlink / uf2 / arduino backends |
-| `firmware_image.py` | extract guarded application bytes and build an nRF52840 UF2 |
-| `bin2uf2.py` / `gen_memory_x.py` | image + linker-script utilities |
-| `package_arduino.py` | Arduino library packaging + header drift gate (also syncs `sdk/include`) |
-| `package_prebuilt_uf2.py` | the committed starter UF2 + its manifest gate |
-| `build_libnobro.py` | Tier C `libnobro.a` bundle + gcc link gate |
-| `sign_firmware.py` | measure + sign images (host side of SecureBoot) |
-| `static_budget.py` | worst-case stack/RAM/flash/cycles from an ELF |
-
-## Codegen / contracts
-
-`nobro_app.py` (app.json → validate/generate) · `nobro_contract_tool.py` (the
-contract multi-tool) · `ros_msg_gen.py` · `import_dts.py` · `gen_api_index.py`
+`run_checks.py` runs the portable source/package suite. The narrower `check_*.py`,
+`ci_matrix.sh`, and `lint_gate.sh` entry points are kept small so contributors and
+hosted CI can run the same checks without private configuration.

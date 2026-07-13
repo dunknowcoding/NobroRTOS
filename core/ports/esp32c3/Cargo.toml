@@ -3,15 +3,13 @@ name = "nobro-port-esp32c3"
 version = "0.1.0"
 edition = "2021"
 
-# NobroRTOS portable-core bring-up on the ESP32-C3 (RISC-V rv32imc) - M84. Runs the
-# kernel control plane + net/ml/crypto/power primitives on a third MCU architecture and
-# prints a NOBRO self-test report over the C3's USB-Serial-JTAG. Standalone workspace:
+# NobroRTOS portable-core bring-up on the ESP32-C3 (RISC-V rv32imc) . Runs the
+# typed HAL provider status over the C3's USB-Serial-JTAG. Standalone workspace:
 # the esp-hal dependency tree is independent of the thumbv7em core workspace.
 
 [dependencies]
 esp-hal = { version = "=0.23.1", features = ["esp32c3"] }
 esp-println = { version = "=0.13.0", default-features = false, features = ["esp32c3", "jtag-serial", "critical-section"] }
-nobro-conformance = { path = "../../crates/nobro_conformance", default-features = false }
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 # The mountable USB framework's C3 backend (fixed-function USB-Serial-JTAG data path);
 # exercised on real hardware by src/bin/usb_sj_demo.rs.

@@ -1,6 +1,6 @@
-//! PWM bank under leases (M150): Resource::Pwm0 gates a four-channel 50 Hz servo/ESC
+//! PWM bank under leases: Resource::Pwm0 gates a four-channel 50 Hz servo/ESC
 //! bank; a second owner is rejected; four distinct pulses are set and read back from
-//! the live SEQ RAM the hardware fetches. NOBRO_PWM_BANK_REPORT (mem32).
+//! the live SEQ RAM the hardware fetches. NOBRO_PWM_BANK_REPORT.
 #![no_std]
 #![no_main]
 

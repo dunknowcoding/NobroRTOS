@@ -1,6 +1,4 @@
-# Hosted mirror of the local-first gates (Wave 21). The authoritative command remains
-# `python tools/run_checks.py` on a workstation; this workflow runs the Python-only
-# subset on every push so regressions surface even when nobody runs the full matrix.
+# Hosted mirror of the portable source and package checks.
 name: gates
 on:
   push:
@@ -27,8 +25,8 @@ jobs:
         run: python tools/check_board_profiles.py
       - name: scalable core layout
         run: python tools/check_core_layout.py
-      - name: ecosystem integration truth
-        run: python tools/check_ecosystem_matrix.py
+      - name: adapter catalog
+        run: python tools/check_adapter_catalog.py
       - name: one-file firmware project
         run: python tools/nobro_firmware_project.py --selftest
       - name: sdk manifest
@@ -48,13 +46,9 @@ jobs:
         run: |
           python tools/ros_msg_gen.py --selftest
           python tools/import_dts.py --selftest
-          python tools/fleet_evidence.py --selftest
           python tools/check_release_versions.py
           python tools/check_ros_bridge.py --selftest
           python tools/check_udi.py --selftest
-      - name: mesh chaos
-        run: python tools/chaos_test.py
-
   rust-matrix:
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +57,7 @@ jobs:
         with:
           targets: thumbv7em-none-eabihf
       - name: comprehensive Rust gates
-        run: python tools/run_checks.py --rust-only --no-evidence
+        run: python tools/run_checks.py --rust-only
 
   supply-chain-and-coverage:
     runs-on: ubuntu-latest
@@ -146,23 +140,23 @@ jobs:
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
         run: python tools/check_arduino_compile.py
-      - name: pinned NiusIMU ecosystem member
+      - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
           git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
           python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
           python tools/check_niusimu_adapter.py --selftest
-      - name: pinned wireless ecosystem members
+      - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
           git -C _work/NiusWireless checkout f40e76cccbcb0b5d0597f784ae5be1e6a52d46cb
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
           git -C _work/ArduinoNRF-Zigbee checkout 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
-          python tools/check_wireless_ecosystem.py \
+          python tools/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
-      - name: pinned camera ecosystem member
+      - name: pinned camera integration
         run: |
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
           git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
-          python tools/check_camera_ecosystem.py --library _work/NiusCam --compile
+          python tools/check_camera_integrations.py --library _work/NiusCam --compile

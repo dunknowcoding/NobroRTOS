@@ -325,7 +325,7 @@ impl<const N: usize> SensorRegistry<N> {
     }
 }
 
-// ------------------------------------------------------- more device categories (M203)
+// ------------------------------------------------------- more device categories
 
 /// A stepper motor brand as data: geometry + limits; `angle_to_steps` is the shared
 /// generic conversion every stepper driver uses.
@@ -456,7 +456,7 @@ impl RangerProfile {
     }
 }
 
-/// Built-in catalog for the M203 categories. Extend by adding a `pub const`.
+/// Built-in catalog for the categories. Extend by adding a `pub const`.
 pub mod device_catalog {
     use super::*;
 
@@ -617,7 +617,7 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------- board modules (M190)
+// ---------------------------------------------------------------- board modules
 
 /// A dev board as a mountable module: identity + capacity + the platform feature the HAL
 /// needs. Mirrors core/boards/<platform>/<id>/board.json so third parties extend the board list by a

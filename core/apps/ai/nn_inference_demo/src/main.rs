@@ -2,8 +2,8 @@
 //! (nn-motion-ai) on synthetic idle/active windows and on the LIVE SPI MPU-9250, and
 //! admit the model through the kernel's preflight_ai_invocation (enforcing its
 //! arena/timeout/RAM budget). Proves NobroRTOS runs a real on-device neural network
-//! against live hardware while managing the AI's resource contract. Self-certifies via
-//! NOBRO_NN_REPORT (J-Link mem32).
+//! against live hardware while managing the AI's resource contract. Publishes
+//! NOBRO_NN_REPORT.
 #![no_std]
 #![no_main]
 

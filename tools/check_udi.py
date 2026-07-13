@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """UDI surface gate: ImuSal demo must expose exactly three mutually exclusive backends.
 
-Checks that the Universal Driver Interface proof app (udi_imu_demo) carries the
+Checks that the Universal Driver Interface example (`udi_imu_demo`) carries the
 expected backend features, compile-time exclusivity guards, and the public UDI rule
-doc. Lab registration and endpoints are intentionally private. No hardware required.
+documentation. No hardware or machine-specific configuration is required.
 
     python tools/check_udi.py
     python tools/check_udi.py --selftest

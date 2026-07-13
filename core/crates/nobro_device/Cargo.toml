@@ -7,5 +7,4 @@ edition.workspace = true
 # described as DATA (profiles + descriptors), so adding a new brand or a new sensor
 # category is a config drop - no core edits. Config-driven generic drivers make common
 # hardware work out of the box (beginner-friendly), while the trait + registry let pros
-# add custom drivers (Embassy-style safety, Arduino-style approachability, devicetree-
-# style data - without Kconfig/DSL).
+# add custom drivers while keeping board description data separate from driver code.

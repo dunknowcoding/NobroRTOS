@@ -1,4 +1,4 @@
-//! Admission cost analysis and deadline/best-effort balance (Wave 47).
+//! Admission cost analysis and deadline/best-effort balance.
 //!
 //! Given a derived contract (a [`SystemManifest`]) and a platform
 //! [`SystemProfile`], this reports the **marginal** cost of every module —
@@ -244,7 +244,7 @@ mod tests {
     /// A representative robotics workload built entirely through the graph API:
     /// concurrent sensing, control, an audio pipeline, a camera/AI sidecar,
     /// storage, radio, OTA, and diagnostics — roles substituted freely, never
-    /// hard-coded. This is the Wave 47 complex-workload compile proof.
+    /// hard-coded. This keeps the complex workload derived from its declaration.
     fn robotics_graph() -> AppGraph<10> {
         AppGraph::<10>::new()
             .kernel(

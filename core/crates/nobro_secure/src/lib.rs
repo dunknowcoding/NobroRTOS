@@ -1,4 +1,4 @@
-//! Security + data-integrity primitives (M174/M176/M177/M179/M180/M185).
+//! Security + data-integrity primitives.
 #![cfg_attr(not(test), no_std)]
 
 use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
@@ -6,7 +6,7 @@ use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 mod security_v2;
 pub use security_v2::*;
 
-/// Device attestation (M174): prove firmware identity by HMAC over a nonce + the
+/// Device attestation: prove firmware identity by HMAC over a nonce + the
 /// firmware measurement, keyed by a per-device secret. A verifier that shares the key
 /// and knows the expected measurement recomputes and compares.
 pub fn attest(device_key: &[u8; 32], firmware_measurement: &[u8; 32], nonce: &[u8]) -> [u8; 32] {
@@ -26,7 +26,7 @@ pub fn verify_tag(a: &[u8; 32], b: &[u8; 32]) -> bool {
     diff == 0
 }
 
-/// Bounded key store (M176): fixed slots of (key_id -> 32-byte key), no heap. A slot can
+/// Bounded key store: fixed slots of (key_id -> 32-byte key), no heap. A slot can
 /// be provisioned once and looked up; re-provisioning a used id is rejected.
 pub struct KeyStore<const N: usize> {
     ids: [u32; N],
@@ -79,7 +79,7 @@ impl<const N: usize> KeyStore<N> {
     }
 }
 
-/// OTA rollback protection (M177): accept an image only if its version is strictly
+/// OTA rollback protection: accept an image only if its version is strictly
 /// greater than the highest ever installed (monotonic anti-rollback counter).
 pub struct RollbackGuard {
     min_version: u32,
@@ -104,7 +104,7 @@ impl RollbackGuard {
     }
 }
 
-/// Tamper detection (M179): a baseline measurement (hash of a critical region) captured
+/// Tamper detection: a baseline measurement (hash of a critical region) captured
 /// at provisioning; `check` recomputes and flags any drift.
 pub struct TamperSeal {
     baseline: [u8; 32],
@@ -121,7 +121,7 @@ impl TamperSeal {
     }
 }
 
-/// Hash-chained signed audit log (M180): each entry commits to the previous entry's tag,
+/// Hash-chained signed audit log: each entry commits to the previous entry's tag,
 /// so any deletion or reordering breaks the chain. Entries are HMAC'd with a log key.
 pub struct AuditLog {
     prev_tag: [u8; 32],
@@ -156,7 +156,7 @@ impl AuditLog {
     }
 }
 
-/// Versioned config store with an integrity tag (M185): store a small config blob with a
+/// Versioned config store with an integrity tag: store a small config blob with a
 /// version; `load` verifies the stored tag before returning the bytes.
 pub struct ConfigStore<const N: usize> {
     version: u32,
@@ -296,7 +296,7 @@ mod tests {
     }
 }
 
-/// OTA A/B partition agent (M183): two firmware slots; installs new images into the
+/// OTA A/B partition agent: two firmware slots; installs new images into the
 /// inactive slot, only boots a slot whose version passes anti-rollback, and can revert to
 /// the last-known-good slot. Bounded state, no heap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -397,7 +397,7 @@ impl OtaAgent {
     }
 }
 
-// ---------------------------------------------------------------- secure boot (M173)
+// ---------------------------------------------------------------- secure boot
 
 /// The verdict from checking a firmware image before it is allowed to run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -472,13 +472,13 @@ pub enum BootPlanError {
     InvalidStack,
 }
 
-/// Secure-boot verification (M173): gate a firmware image on a signature over its
+/// Secure-boot verification: gate a firmware image on a signature over its
 /// SHA-256 measurement plus a monotonic version, using our own HMAC-SHA256 - no vendor
 /// secure-boot infra. The signing authority holds the boot key and emits
 /// `sig = HMAC(boot_key, sha256(image) || version_le)`; the device (sharing the key via
 /// [`KeyStore`]) recomputes and refuses to run an image that is tampered, forged, or
 /// rolled back. This is the verification core; the jump-to-image step is a bootloader's
-/// job (out of scope for a probe-less bench, but the security decision lives here).
+/// job; the security decision itself lives here.
 pub struct SecureBoot {
     min_version: u32,
 }

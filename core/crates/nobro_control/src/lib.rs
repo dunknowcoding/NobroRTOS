@@ -1,6 +1,6 @@
 //! No-heap control primitives (f32, FPU-friendly).
-//! - [`Pid`] proportional-integral-derivative controller with anti-windup + output clamp (M148)
-//! - [`ComplementaryFilter`] fuse an accel-derived angle with integrated gyro rate (M149)
+//! - [`Pid`] proportional-integral-derivative controller with anti-windup + output clamp
+//! - [`ComplementaryFilter`] fuse an accel-derived angle with integrated gyro rate
 #![cfg_attr(not(test), no_std)]
 
 /// PID controller with integral anti-windup and output saturation.
@@ -122,7 +122,7 @@ mod tests {
     }
 }
 
-/// Differential-drive kinematics (M151): convert body velocities to wheel speeds and
+/// Differential-drive kinematics: convert body velocities to wheel speeds and
 /// back. `wheel_base` is the distance between wheels; units are consistent (e.g. m, m/s,
 /// rad/s).
 #[derive(Clone, Copy, Debug)]
@@ -166,9 +166,9 @@ mod diff_drive_tests {
     }
 }
 
-// ---- Trajectory, actuator mixing, safety envelope (M152-M156) ----
+// ---- Trajectory, actuator mixing, safety envelope ----
 
-/// A 1-D trapezoidal-velocity trajectory follower (M153): given start, goal, cruise
+/// A 1-D trapezoidal-velocity trajectory follower: given start, goal, cruise
 /// velocity and acceleration, sample position/velocity along a smooth profile.
 #[derive(Clone, Copy, Debug)]
 pub struct Trajectory {
@@ -238,7 +238,7 @@ impl Trajectory {
     }
 }
 
-/// Differential-drive actuator mixer (M154): map a (linear, angular) command to left and
+/// Differential-drive actuator mixer: map a (linear, angular) command to left and
 /// right wheel efforts, saturating symmetrically so turning authority is preserved when
 /// the linear term already saturates a side.
 pub fn diff_drive_mix(linear: f32, angular: f32, limit: f32) -> (f32, f32) {
@@ -253,7 +253,7 @@ pub fn diff_drive_mix(linear: f32, angular: f32, limit: f32) -> (f32, f32) {
     (l, r)
 }
 
-/// Safety envelope / e-stop (M156): latches a fault when any monitored signal leaves its
+/// Safety envelope / e-stop: latches a fault when any monitored signal leaves its
 /// bound or a heartbeat goes stale, and forces the actuator command to the safe value
 /// until explicitly reset.
 #[derive(Clone, Copy, Debug)]
@@ -305,7 +305,7 @@ impl SafetyEnvelope {
     }
 }
 
-/// Wheel odometry integrator (M155): accumulate pose (x, y, heading) from left/right
+/// Wheel odometry integrator: accumulate pose (x, y, heading) from left/right
 /// wheel travel over a differential-drive base of track width `w`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Odometry {
@@ -360,7 +360,7 @@ fn cos_approx(x: f32) -> f32 {
     sin_approx(x + core::f32::consts::FRAC_PI_2)
 }
 
-/// Balance/inverted-pendulum controller (M152): a PD law on tilt error that outputs a
+/// Balance/inverted-pendulum controller: a PD law on tilt error that outputs a
 /// wheel effort to keep the body upright. Thin wrapper over [`Pid`] with the derivative
 /// term fed by the measured angular rate (cleaner than differencing angle).
 #[derive(Clone, Copy, Debug)]

@@ -1,9 +1,9 @@
-//! nobro-database persistence on real flash (M217).
+//! nobro-database persistence on real flash.
 //!
 //! Boot sequence: read the table image from a dedicated NVMC flash page; a valid image
 //! recovers the table (recovered=1), an invalid/blank page starts fresh. The app then
 //! bumps the boot-counter row, appends one row for this boot, and writes the image
-//! back. `NOBRO_DB_PERSIST_REPORT` (J-Link mem32) carries the proof: across a reset,
+//! back. `NOBRO_DB_PERSIST_REPORT` carries the result across a reset:
 //! `recovered` flips to 1 and `boot_count` climbs while the row set stays intact.
 #![no_std]
 #![no_main]

@@ -6,7 +6,7 @@ edition.workspace = true
 # Board-to-board 2.4 GHz link over the nRF RADIO (no SoftDevice, no CC2530), for
 # multi-board data collection. Two binaries: radio_tx streams a sequence counter; a
 # peer running radio_rx receives + counts it. Each seals a NOBRO_RADIO_REPORT
-# (J-Link mem32). A single transmitter verifies the TX state machine; a peer running
+#. A single transmitter verifies the TX state machine; a peer running
 # radio_rx verifies over-the-air delivery.
 [[bin]]
 name = "radio_tx"

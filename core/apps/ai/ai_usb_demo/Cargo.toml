@@ -5,7 +5,7 @@ edition.workspace = true
 
 # Edge AI you can watch: streams live motion classifications (idle/active +
 # confidence) from the on-device MotionClassifier (AiInferenceSal) over USB serial.
-# Any board with native USB self-reports its inference on a COM port - no J-Link.
+# Boards with native USB expose inference status through a serial endpoint.
 [[bin]]
 name = "ai_usb_demo"
 path = "src/main.rs"

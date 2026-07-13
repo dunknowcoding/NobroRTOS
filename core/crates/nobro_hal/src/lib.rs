@@ -6,8 +6,8 @@
 
 #![no_std]
 
+pub mod board_catalog;
 pub mod board_desc;
-pub mod board_fixtures;
 pub mod lease;
 pub mod mpu;
 pub mod platform;
@@ -29,8 +29,6 @@ pub mod board;
 pub mod bus;
 #[cfg(feature = "platform-nrf52840")]
 pub mod deadline_timer;
-#[cfg(feature = "platform-nrf52840")]
-pub mod inspect;
 #[cfg(feature = "platform-nrf52840-rt")]
 pub mod power_nrf;
 #[cfg(feature = "platform-nrf52840")]
@@ -49,14 +47,14 @@ pub mod timer;
 #[cfg(feature = "platform-nrf52840")]
 pub mod twim_hw;
 
+pub use board_catalog::{
+    package_for_feature, profile_for_feature, BoardPackageDefinition, BoardProfileDefinition,
+    BOARD_PACKAGES, BOARD_PROFILES, NRF52840_BOARD_CAPACITY, NRF52840_BOARD_PINS,
+    NRF52840_SERVO_CENTER_US, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
+};
 pub use board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPackageError, BoardPins, BootLayout, BootProfile,
     BusLayout, ServoProfile,
-};
-pub use board_fixtures::{
-    fixture_for_feature, profile_fixture_for_feature, BoardPackageFixture, BoardProfileFixture,
-    BOARD_PACKAGE_FIXTURES, BOARD_PROFILE_FIXTURES, NRF52840_BOARD_CAPACITY, NRF52840_BOARD_PINS,
-    NRF52840_SERVO_CENTER_US, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
 };
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]
@@ -70,9 +68,8 @@ pub use snapshots::{
 };
 pub use traits::{
     HalAlarm, HalBus, HalByteIo, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalI2c,
-    HalLease, HalPwmChannel, HalSchedulingProvider, HalSelfTest, HalServoPwm, HalSpi,
-    HalTimebaseProvider, HardwareCapability, HardwareCapabilitySet, LeaseClass, LeaseId,
-    PlatformHal, TransferMode,
+    HalLease, HalPwmChannel, HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider,
+    HardwareCapability, HardwareCapabilitySet, LeaseClass, LeaseId, PlatformHal, TransferMode,
 };
 
 #[cfg(feature = "platform-nrf52840")]
@@ -81,8 +78,6 @@ pub use board::{Board, ACTIVE_BOARD_PACKAGE, I2C_SCL_PIN, I2C_SDA_PIN};
 pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 #[cfg(feature = "platform-nrf52840")]
 pub use deadline_timer::DeadlineTimer;
-#[cfg(feature = "platform-nrf52840")]
-pub use inspect::scene_d_pass;
 #[cfg(feature = "platform-nrf52840-rt")]
 pub use power_nrf::NrfTimerPower;
 #[cfg(feature = "platform-nrf52840")]
@@ -98,6 +93,6 @@ pub use timer::MicroTimer;
 #[cfg(feature = "platform-nrf52840")]
 pub use twim_hw::Twim0;
 
-/// Type alias kept for eval / docs that refer to PPI wiring checks.
+/// Event-capture snapshot produced by the nRF52840 PPI provider.
 #[cfg(feature = "platform-nrf52840")]
 pub type PpiRadioSnapshot = EventCaptureSnapshot;

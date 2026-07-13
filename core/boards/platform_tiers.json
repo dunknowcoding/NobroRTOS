@@ -1,5 +1,5 @@
 {
-  "_comment": "Honest per-platform capability matrix (PORT-01, Waves 48/50). Each platform declares which portable nobro_hal provider contracts it satisfies, at what tier, so 'platform breadth' is machine-checkable and never an nRF-shaped placeholder. Tiers: deep = implemented + automated on-hardware HIL evidence; provider = portable trait implemented + compile-verified against the real target, with physical evidence stated separately; conformance = shared portable-core suite available; absent = not implemented. validated_by names the current automated gate.",
+  "schema": "nobro-platform-support-v1",
   "providers": [
     "timebase",
     "deadline",
@@ -8,9 +8,14 @@
     "i2c",
     "spi",
     "usb",
-    "lease",
-    "self_test"
+    "lease"
   ],
+  "tiers": {
+    "deep": "portable contracts plus board-specific peripheral providers",
+    "provider": "one or more portable provider traits implemented for the target",
+    "core": "target startup and status path available; portable peripheral providers are incomplete",
+    "absent": "no maintained target integration"
+  },
   "platforms": {
     "nrf52840": {
       "arch": "thumbv7em",
@@ -22,45 +27,19 @@
         "servo_pwm",
         "i2c",
         "spi",
-        "lease",
-        "self_test"
-      ],
-      "automated_hil": true,
-      "hil": "maintainer automation and endpoints stay outside the repository",
-      "validated_by": "sanitized deep-HAL verdicts"
+        "lease"
+      ]
     },
     "rp2350": {
       "arch": "thumbv8m",
       "tier": "provider",
-      "implements": [
-        "timebase"
-      ],
-      "planned": [
-        "deadline",
-        "servo_pwm",
-        "i2c",
-        "spi",
-        "lease"
-      ],
-      "automated_hil": false,
-      "hil": "not yet integrated into the automated HIL collector",
-      "validated_by": "portable timebase provider compile-verified for thumbv8m; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed 2026-07-11; conformance suite (7 subsystems) + dual-core; Wave 58 cross-core reactor PHYSICALLY VERIFIED on real Pico 2 W 2026-07-12 (core1 drains a cross-core MpmcChannel, core1_acc==core1_processed*3)"
+      "implements": ["timebase"]
     },
     "esp32c3": {
       "arch": "riscv32imc",
       "tier": "provider",
-      "implements": [
-        "timebase"
-      ],
-      "planned": [
-        "deadline",
-        "i2c",
-        "spi"
-      ],
-      "automated_hil": false,
-      "limitations": "no PPI-equivalent hardware event router; servo PWM via LEDC/MCPWM differs from the nRF model",
-      "hil": "not yet integrated into the automated HIL collector",
-      "validated_by": "portable timebase provider compile-verified for riscv32imc; firmware calls verify_timebase_provider() and includes it in all_pass; local physical smoke passed and prior app restored 2026-07-11; conformance suite (7 subsystems)"
+      "implements": ["timebase"],
+      "limitations": "event routing and PWM use target-specific peripherals"
     },
     "esp32s3": {
       "arch": "xtensa",
@@ -72,39 +51,22 @@
         "i2c",
         "spi",
         "usb"
-      ],
-      "planned": [
-        "event_capture",
-        "lease",
-        "self_test"
-      ],
-      "automated_hil": false,
-      "hil": "state-restoring maintainer run completed; reusable private fleet runner remains open",
-      "validated_by": "Xtensa build covers owned alarm and embedded-hal I2C/SPI/PWM adapters; physical provider report passed monotonic time, hardware one-shot deadline (2115 us for 2000 us request), USB Serial/JTAG, and seven conformance subsystems; physical dual-core pipeline processed 80/80 bounded audio/camera work items with attributed backpressure, zero deadline misses, and 630 us maximum observed latency; exact pre-test 8 MiB image restored and full verify-flash digest matched"
+      ]
     },
     "ra4m1": {
       "arch": "thumbv7em",
-      "tier": "conformance",
-      "implements": [],
-      "automated_hil": false,
-      "hil": "bench-gated",
-      "validated_by": "conformance suite"
+      "tier": "core",
+      "implements": []
     },
     "samd21": {
       "arch": "thumbv6m",
-      "tier": "conformance",
-      "implements": [],
-      "automated_hil": false,
-      "hil": "bench-gated",
-      "validated_by": "conformance suite"
+      "tier": "core",
+      "implements": []
     },
     "avr_nano": {
       "arch": "avr",
-      "tier": "conformance",
-      "implements": [],
-      "automated_hil": false,
-      "hil": "bench-gated",
-      "validated_by": "conformance suite"
+      "tier": "core",
+      "implements": []
     }
   }
 }

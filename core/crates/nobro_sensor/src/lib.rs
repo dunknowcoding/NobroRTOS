@@ -1,7 +1,7 @@
 //! No-heap sensor utilities, transport-agnostic.
-//! - [`SensorHealth`] stale / stuck / out-of-range fault detection (M47)
-//! - [`Calibration`] streaming bias (offset) calibration (M48)
-//! - [`Decimator`] sample-rate decimation / downsampling (M49)
+//! - [`SensorHealth`] stale / stuck / out-of-range fault detection
+//! - [`Calibration`] streaming bias (offset) calibration
+//! - [`Decimator`] sample-rate decimation / downsampling
 #![cfg_attr(not(test), no_std)]
 
 /// Detects sensor faults: a stuck value, a stale stream, or out-of-range readings.
@@ -136,7 +136,7 @@ mod tests {
     }
 }
 
-/// Triple-modular-redundancy vote (M165): given three redundant readings, return the
+/// Triple-modular-redundancy vote: given three redundant readings, return the
 /// median (tolerates one arbitrary fault) and whether the sources agree within `tol`.
 pub fn tmr_vote(a: i32, b: i32, c: i32, tol: i32) -> (i32, bool) {
     // median of three

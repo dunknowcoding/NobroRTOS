@@ -14,9 +14,25 @@ use crate::traits::{
     HardwareCapabilitySet, LeaseClass, LeaseId, PlatformHal, TransferMode,
 };
 
-pub mod inspect;
-
 pub struct Nrf52840;
+
+const PPI_BASE: u32 = 0x4001_F000;
+const PPI_CHEN: u32 = 0x500;
+const PPI_CH0_EEP: u32 = 0x510;
+const PPI_CH0_TEP: u32 = 0x514;
+const TIMER0_CAPTURE2_TASK: u32 = 0x4000_8048;
+
+unsafe fn capture_event_channel(channel: usize) -> EventCaptureSnapshot {
+    let read = |offset: u32| unsafe { core::ptr::read_volatile((PPI_BASE + offset) as *const u32) };
+    let channel_enabled = read(PPI_CHEN) & (1 << channel) != 0;
+    let source = read(PPI_CH0_EEP + channel as u32 * 8);
+    let sink = read(PPI_CH0_TEP + channel as u32 * 8);
+    EventCaptureSnapshot {
+        channel_enabled,
+        source_wired: source != 0,
+        sink_wired: sink == TIMER0_CAPTURE2_TASK,
+    }
+}
 
 /// Coherent scheduling-demo authority: clock, deadline, PWM, software event, and
 /// event router are acquired as one all-or-nothing generation-checked session.
@@ -94,8 +110,7 @@ impl HalCompatibility for Nrf52840 {
         .with(HardwareCapability::ServoPwm)
         .with(HardwareCapability::Bus)
         .with(HardwareCapability::I2c)
-        .with(HardwareCapability::Spi)
-        .with(HardwareCapability::SelfTest);
+        .with(HardwareCapability::Spi);
 }
 
 impl PlatformHal for Nrf52840 {
@@ -218,7 +233,7 @@ impl HalEventCapture for Nrf52840 {
     }
 
     unsafe fn capture_snapshot(channel: usize) -> EventCaptureSnapshot {
-        EventCaptureSnapshot::capture_radio_channel(channel)
+        capture_event_channel(channel)
     }
 }
 
@@ -282,8 +297,7 @@ mod tests {
             .with(HardwareCapability::ServoPwm)
             .with(HardwareCapability::Bus)
             .with(HardwareCapability::I2c)
-            .with(HardwareCapability::Spi)
-            .with(HardwareCapability::SelfTest);
+            .with(HardwareCapability::Spi);
 
         assert!(Nrf52840::supports(required));
         assert_eq!(Nrf52840::CAPABILITIES.missing(required).bits(), 0);

@@ -3,10 +3,10 @@ name = "mpu-guard-demo"
 version.workspace = true
 edition.workspace = true
 
-# MPU memory-protection regions (M167): an MPU region makes a RAM block read-only; a
+# MPU memory-protection regions: an MPU region makes a RAM block read-only; a
 # write to it raises MemManage, the handler records the fault and disables the region,
 # and the retried write succeeds - hardware-enforced isolation with recovery.
-# NOBRO_MPU_REPORT (mem32).
+# NOBRO_MPU_REPORT.
 [[bin]]
 name = "mpu_guard_demo"
 path = "src/main.rs"

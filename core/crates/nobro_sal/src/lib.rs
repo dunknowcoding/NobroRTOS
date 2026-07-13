@@ -400,7 +400,7 @@ pub trait BusSal {
     fn write(&mut self, addr: u8, buf: &[u8]) -> Result<(), Self::Error>;
 }
 
-/// Host-facing byte streams (IronEngine, INA JSONL, debug).
+/// Host-facing bounded byte streams.
 pub trait StreamSal {
     type Error;
 
@@ -1093,7 +1093,7 @@ pub enum AiRegistryError {
 
 /// Fixed-capacity registry of AI models keyed by `model_id`. Multiplexes inference
 /// routing: resolve a request's model to its contract, then apply an [`AiRoutePolicy`]
-/// to choose where it runs (on-device / remote / fallback). (M36)
+/// to choose where it runs (on-device / remote / fallback).
 pub struct ModelRegistry<const N: usize> {
     contracts: [Option<AiModelContract>; N],
 }

@@ -135,7 +135,7 @@ from one source of truth:
   `arm-none-eabi-gcc` and links it.
 
 Both paths are verified on hardware (nRF52840 + an IMU): the kernel admits the
-module and it reads the IMU to a passing `NOBRO_IMU_HW_EVAL_REPORT`. See
+module and it reads the IMU to a passing `NOBRO_IMU_HEALTH_REPORT`. See
 `examples/imu_module.c` for the complete reference module.
 
 ## Scope

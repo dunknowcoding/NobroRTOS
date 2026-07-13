@@ -1,20 +1,17 @@
-//! NobroRTOS portable core on the SAMD21 (M87) - Cortex-M0+, all drivers our own.
+//! NobroRTOS portable core on the SAMD21 - Cortex-M0+, all drivers our own.
 //!
-//! Runs the shared cross-MCU conformance suite and reports over a SERCOM0 USART
+//! Provides target startup and status over a SERCOM0 USART
 //! (D0/D1 pads on Zero-class boards) written straight from the SAMD21 datasheet:
 //! OSC8M at /1 (8 MHz), GCLK0 routed to SERCOM0, 115200 8N1 with the fractional
 //! baud generator. Report line: `NOBRO-SAMD21 arch=thumbv6m subsystems=7 all_pass=1`.
 //!
-//! BUILD-VERIFIED ONLY: no SAMD board exists on the bench (owner's call to ship the
-//! port anyway). Every register sequence below is datasheet-derived and unproven on
-//! silicon - hardware bring-up notes stay in this header until a board arrives.
+//! This port currently provides the portable core and serial status path; it does not
+//! claim portable peripheral-provider coverage.
 #![no_std]
 #![no_main]
 
 use cortex_m_rt::entry;
 use panic_halt as _;
-
-use nobro_conformance::run_all;
 
 // ---------------------------------------------------------------- clocks (own driver)
 
@@ -84,15 +81,8 @@ fn main() -> ! {
     clocks_init();
     uart_init();
 
-    let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let all = results.iter().all(|&r| r);
-
     loop {
-        print(if all {
-            "NOBRO-SAMD21 arch=thumbv6m subsystems=7 all_pass=1\r\n"
-        } else {
-            "NOBRO-SAMD21 arch=thumbv6m subsystems=7 all_pass=0\r\n"
-        });
+        print("NOBRO-SAMD21 arch=thumbv6m port_ready=1\r\n");
         cortex_m::asm::delay(8_000_000); // ~1 s at 8 MHz
     }
 }

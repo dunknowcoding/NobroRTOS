@@ -2,6 +2,6 @@
 name = "nobro-storage"
 version.workspace = true
 edition.workspace = true
-# Wear-leveled KV flash store (M181): append-only record log over two alternating pages
+# Wear-leveled KV flash store: append-only record log over two alternating pages
 # with compaction. Generic over a Flash trait - host-tested on a RAM mock with real
 # flash semantics (erase-to-0xFF, program-blank-only); the nRF NVMC backs it on hardware.

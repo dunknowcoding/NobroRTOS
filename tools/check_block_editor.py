@@ -20,7 +20,7 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 
 
 def _local_leak_needles() -> list[str]:
-    """Bench-private identifiers that must never appear in shipped package text.
+    """Machine-local identifiers that must never appear in shipped package text.
     Loaded from an untracked file so the identifiers themselves stay out of the
     public tree; absent file = no extra needles (public clones skip this)."""
     from pathlib import Path
@@ -51,7 +51,7 @@ def main() -> int:
         require(token in js, f"missing editor token {token}", errors)
     require("@media" in css, "responsive CSS missing", errors)
     for needle in _local_leak_needles():
-        require(needle not in html + js + css, "local-bench identifier leaked", errors)
+        require(needle not in html + js + css, "machine-local identifier leaked", errors)
 
     sample = {
         "name": "hello_device",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release-version alignment gate (Wave 9, publish prep).
+"""Release-version alignment gate.
 
 Every distribution surface must carry the SAME semver before anything ships:
 packages/arduino/library.properties, packages/platformio/library.json, and

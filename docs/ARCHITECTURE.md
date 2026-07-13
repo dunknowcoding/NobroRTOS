@@ -33,11 +33,10 @@ and diagnosable recovery.
 
 ### Compatibility Strategy
 
-NobroRTOS follows the same broad lesson as Zephyr devicetree: hardware should be
-described as structured data that can be validated before driver code relies on
-it. The current implementation starts with `BoardDesc`, board features, memory
+Hardware is described as structured data that can be validated before driver code
+relies on it. The current implementation starts with `BoardDesc`, board features, memory
 scripts, and host-readable board profile reports.
-`BOARD_PROFILE_FIXTURES` and `BOARD_PACKAGE_FIXTURES` keep the current board
+`BOARD_PROFILES` and `BOARD_PACKAGES` keep the current board
 features reviewable from one host build, which makes new board ports easier to
 compare before hardware-specific validation begins.
 
@@ -108,12 +107,10 @@ agent is contacted.
 
 ### Static Async Direction
 
-Embassy demonstrates that embedded async can stay allocation-free and efficient.
-NobroRTOS currently offers a bounded executor plus fixed task tables, explicit periods,
-deadline budgets, mailbox backpressure, and no allocator on critical paths. Its async
-authoring surface is less composable and more verbose than Embassy's: users often must
-spell out manifest, admission, capability, and budget objects separately. Future work must
-preserve bounded admission while making common async task graphs concise and flexible.
+NobroRTOS offers a bounded executor plus fixed task tables, explicit periods,
+deadline budgets, mailbox backpressure, and no allocator on critical paths. The graph
+builder derives the repetitive manifest, admission, capability, and budget wiring while
+keeping bounded admission visible.
 
 ### Isolation And Mixed Criticality
 
@@ -225,34 +222,20 @@ Default rules:
 Any future allocator must be feature-gated, documented, and excluded from
 hard-realtime paths.
 
-### References
-
-- Zephyr devicetree documentation: https://docs.zephyrproject.org/latest/build/dts/index.html
-- Embassy project: https://embassy.dev/
-- Tock design documentation: https://www.tockos.org/documentation/design/
-- seL4 MCS tutorial: https://docs.sel4.systems/Tutorials/mcs.html
-
 ## Design principles
 
 This document turns the project route into engineering rules that can survive
 new boards, new adapters, and long maintenance windows.
 
-### External Lessons
+### Core rules
 
-NobroRTOS borrows selectively from established and modern embedded systems:
-
-- Zephyr uses devicetree to describe hardware and provide initial device
-  configuration. NobroRTOS keeps the same lesson, but starts smaller with
-  `BoardDesc`, `BusLayout`, and explicit Cargo board features.
-- Embassy shows that embedded async can be no-heap and statically allocated.
-  NobroRTOS follows the same direction: no allocator on hot paths, static sample
-  pools, and compile-time feature selection.
-- Tock uses Rust isolation boundaries to keep kernel components mutually
-  distrustful with low overhead. NobroRTOS applies that idea at crate and trait
-  boundaries: kernel, HAL, SAL, adapters, and apps do not share private state.
-- seL4 mixed-criticality work emphasizes bounded kernel operations and clear
-  criticality separation. NobroRTOS keeps deadline slots and recovery policy in the
-  kernel instead of scattering them across drivers.
+- Board configuration is data: `BoardDesc`, `BusLayout`, and Cargo features are
+  validated before applications depend on them.
+- Hot paths avoid allocation through static pools and fixed-capacity structures.
+- Kernel, HAL, SAL, adapters, and apps exchange public contracts rather than private
+  state.
+- Deadline slots, admission, and recovery policy stay in the kernel instead of being
+  duplicated in drivers.
 
 ### Layer Boundaries
 
@@ -261,7 +244,7 @@ NobroRTOS borrows selectively from established and modern embedded systems:
 | App | Assembles features and owns policy wiring; it should not touch registers directly. |
 | Adapter | Translates one device or library into SAL traits; no private scheduler or heap. |
 | SAL | Stable capability surface: bus, stream, radio, actuator, sensor, crypto. |
-| Kernel | Deadline slots, health, sample tickets, error policy, and eval gates. |
+| Kernel | Deadline slots, health, sample tickets, error policy, and admission gates. |
 | HAL | Board layout, register access, event capture, PWM, bus, and leases. |
 
 ### Multi-Board Compatibility
@@ -356,8 +339,6 @@ Fault handling is intentionally small:
   lower-criticality modules to fit board-class budgets.
 - `RetryPolicy` and `RetryState` make bounded retry behavior explicit instead
   of embedding ad hoc loops in adapters.
-- `FaultInjector` provides deterministic host-side failure scenarios for
-  recovery tests without requiring hardware faults.
 - `StartupGraph` and `StartupPlanner` make module dependency order explicit,
   map module IDs to compact dependency bits, and reject duplicate dependency
   edges or cycles before firmware boot logic is involved.
@@ -401,7 +382,7 @@ Fault handling is intentionally small:
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
-  records with the same checksum discipline as eval and admission reports.
+  records with the same checksum discipline as health and admission reports.
 - `EventLogReport` summarizes the fixed event ring for host tools, including
   capacity, drops, and the latest event's module, severity, kind, and payload.
 - `ModuleRuntimeReport` summarizes module runtime states for host tools,
@@ -492,8 +473,8 @@ The next step is not a larger kernel; it is stronger contracts:
   without hardware-specific probes
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
 - optional async executors with static task allocation
-- health reports exported through the same host contract as eval reports
-- fixed-layout health reports with checksums for J-Link, CDC, or future stream
+- health reports exported through the same host contract as runtime reports
+- fixed-layout health reports with checksums for CDC, memory inspection, or another stream
   readers
 - app assembly patterns that connect adapter preflight, board package reports,
   and `BootAssembly` without adding runtime plugin registries
@@ -578,7 +559,7 @@ category, one trait, many mountable backends.** A part is catalog data; a backen
 is a compile-time feature that plugs a concrete library or transport behind the
 same SAL trait.
 
-This is the public rule behind the `ImuSal` hardware proof (`udi_imu_demo`) and
+This is the public rule behind the `ImuSal` backend example (`udi_imu_demo`) and
 the pattern to extend to other sensor categories.
 
 ### The rule
@@ -595,9 +576,9 @@ Every backend:
 
 1. Implements the **same category trait** (`ImuSal`, `TempSal`, more to come).
 2. Is selected by **exactly one** `backend-*` Cargo feature (mutual exclusion).
-3. Carries a stable **`backend_id`** in the hardware eval report so you can prove
-   which transport sealed the PASS without the evaluation function naming a driver.
-4. Runs through the **same eval body** — only the mount changes.
+3. Carries a stable **`backend_id`** in the health report so the selected transport
+   remains visible without the diagnostic function naming a driver.
+4. Runs through the **same diagnostic body** — only the mount changes.
 
 ### What transfers vs what you re-express
 
@@ -611,7 +592,7 @@ Every backend:
 
 ### Proven today: `ImuSal`
 
-`core/apps/imu/udi_imu_demo` shares one `app.rs` evaluation across three binaries:
+`core/apps/imu/udi_imu_demo` shares one `app.rs` diagnostic body across three binaries:
 
 | Backend | Feature | `backend_id` | Transport |
 | --- | --- | --- | --- |
@@ -620,16 +601,15 @@ Every backend:
 | Arduino shim | `backend-arduino` | 3 | SPI via `NobroArduinoShim` + stock MPU9250 class |
 
 The three feature-selected binaries share the same application body and report contract.
-Maintainer HIL must obtain `all_pass=1` with the expected `backend_id`; endpoint and
-restoration details are intentionally not part of the public repository.
+Each backend must preserve the same public status fields and backend identifier.
 
 ### Adding a new category
 
 1. Define a **category trait** in `nobro_sal` with bounded return types (no heap).
 2. Add a **catalog entry** in `nobro_device` (part id, bus, who-am-i, ranges).
-3. Ship at least **two backends** (native + eh is the minimum credible proof).
+3. Ship at least **two backends** to preserve the swappable contract.
 4. Add a **swap demo app** with one shared diagnostic body and feature-gated mounts.
-5. Add portable contract tests; request maintainer HIL before claiming physical support.
+5. Add portable contract checks and exercise the selected backend before claiming support.
 
 ### Adding a new backend to an existing category
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Cross-MCU CI matrix (M93): one command running every build + test gate.
-#   1. host tests for all portable crates (includes the conformance suite)
+# Cross-MCU CI matrix: one command running every build + test gate.
+#   1. host tests for all portable crates
 #   2. cross-compilation of the portable core for all 6 MCU families
-#   3. the ESP32-C3 and RP2350 port binaries
+#   3. maintained standalone port binaries
 #   4. board-profile + SDK-manifest validators
 # Exit 0 = the whole matrix is green.
 set -u
@@ -31,7 +31,7 @@ export HOST_TARGET
 
 gate "host tests (portable crates)" \
   bash -c 'cd core && cargo test -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
-    -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control -p nobro-conformance \
+    -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
     --target "$HOST_TARGET"'
 
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
@@ -58,6 +58,12 @@ fi
 
 gate "rp2350 port build" \
   bash -c 'cd core/ports/rp2350 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-rp" cargo build --release'
+
+gate "ra4m1 port build" \
+  bash -c 'cd core/ports/ra4m1 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-ra" cargo build --release'
+
+gate "samd21 port build" \
+  bash -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --release'
 
 gate "board profiles" python tools/check_board_profiles.py
 gate "sdk manifest" python tools/check_sdk_manifest.py

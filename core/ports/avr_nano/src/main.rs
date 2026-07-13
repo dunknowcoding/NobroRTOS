@@ -1,4 +1,4 @@
-//! NobroRTOS kernel-lite on the ATmega328P (M88): the first 8-bit port.
+//! NobroRTOS kernel-lite on the ATmega328P: the first 8-bit port.
 //!
 //! 2 KB of RAM rules out the full portable core, so this runs a reduced but honest
 //! subset of the same subsystem checks - quota ledger arithmetic, a mailbox ring,
@@ -122,7 +122,11 @@ fn crc8(data: &[u8]) -> u8 {
     for &b in data {
         crc ^= b;
         for _ in 0..8 {
-            crc = if crc & 0x80 != 0 { (crc << 1) ^ 0x07 } else { crc << 1 };
+            crc = if crc & 0x80 != 0 {
+                (crc << 1) ^ 0x07
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -137,7 +141,12 @@ fn check_crc() -> bool {
 pub extern "C" fn main() -> ! {
     uart_init();
 
-    let results = [check_quota(), check_mailbox(), check_watchdog(), check_crc()];
+    let results = [
+        check_quota(),
+        check_mailbox(),
+        check_watchdog(),
+        check_crc(),
+    ];
     let all = results.iter().all(|&r| r);
 
     loop {

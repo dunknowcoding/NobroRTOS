@@ -309,7 +309,7 @@ compile_error!("mount exactly one IMU backend: backend-native, backend-eh, or ba
 #[cfg(not(any(feature = "backend-native", feature = "backend-eh", feature = "backend-arduino")))]
 compile_error!("mount one IMU backend: backend-native, backend-eh, or backend-arduino");
 
-// ============================ backend-agnostic evaluation ===========================
+// ============================ backend-agnostic diagnostics ===========================
 
 /// Everything below this line is the actual app - written against `ImuSal` only.
 fn evaluate(imu: &mut (impl ImuSal + TempSal<Error = ()>)) -> (u32, u32, u32, u32, u32) {
@@ -339,7 +339,7 @@ fn main() -> ! {
     let (who, mag, reads, errors, temp) = evaluate(&mut imu);
 
     // PASS: right silicon, all reads landed, magnitude ~1 g at rest (750..1250 mg),
-    // die temperature plausible for a powered bench part (10..60 C via TempSal).
+    // Die temperature plausible for a powered part (10..60 C via TempSal).
     let ok = who == 0x71
         && reads == 50
         && errors == 0

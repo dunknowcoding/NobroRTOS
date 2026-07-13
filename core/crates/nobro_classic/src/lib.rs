@@ -1,21 +1,11 @@
-//! FreeRTOS-familiar RTOS primitives, re-imagined without FreeRTOS's costs.
+//! Familiar fixed-capacity RTOS primitives for small applications.
 //!
-//! | FreeRTOS | nobro-classic | what changed |
-//! |---|---|---|
-//! | `xQueueCreate` + heap | [`Queue<T, N>`] (const N) | fixed capacity, **no heap**, no fragmentation |
-//! | `xQueueSend/Receive` | [`Queue::send`]/[`Queue::receive`] | same FIFO semantics, bounded |
-//! | `xSemaphoreCreate*` | [`Semaphore`] | binary + counting, no alloc |
-//! | `xSemaphoreCreateMutex` | [`Mutex`] | ownership-checked; peripherals use kernel leases (no priority inversion) |
-//! | `xTimerCreate` | [`SoftwareTimer`] | tick-driven, one-shot / auto-reload |
-//! | `xEventGroupCreate/Set/Clear/WaitBits` | [`EventFlags`] | 32 flags, poll-style wait_any/wait_all |
-//! | block on N objects (queue sets) | [`select2`] | bounded multi-event wait, idle hook between polls |
-//!
-//! Everything here is `no_std`, `#![forbid(unsafe_code)]`, and sized at compile time - a
-//! FreeRTOS user migrates the API surface while gaining bounded RAM and safety.
+//! Everything is `no_std`, `#![forbid(unsafe_code)]`, allocation-free, and sized at
+//! compile time. Peripheral ownership remains in kernel capability and lease contracts.
 #![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
 
-/// Fixed-capacity FIFO queue (FreeRTOS `xQueue`) - no heap, no fragmentation.
+/// Fixed-capacity FIFO queue with no heap or fragmentation.
 pub struct Queue<T: Copy, const N: usize> {
     buf: [Option<T>; N],
     head: usize,
@@ -86,7 +76,7 @@ impl<T: Copy, const N: usize> Queue<T, N> {
     }
 }
 
-/// Counting/binary semaphore (FreeRTOS `xSemaphore`).
+/// Counting or binary semaphore.
 #[derive(Clone, Copy, Debug)]
 pub struct Semaphore {
     count: u32,
@@ -129,7 +119,7 @@ impl Semaphore {
     }
 }
 
-/// Non-recursive ownership token (FreeRTOS-style `xMutex`). This is deliberately
+/// Non-recursive ownership token. This is deliberately
 /// non-blocking and contains no protected data; it is not a Rust data mutex. Peripheral
 /// access should use the kernel's
 /// resource leases instead - those are priority-inversion-free because the kernel
@@ -168,7 +158,7 @@ impl Mutex {
     }
 }
 
-/// Software timer (FreeRTOS `xTimer`): tick-driven, one-shot or auto-reload.
+/// Tick-driven one-shot or auto-reload software timer.
 #[derive(Clone, Copy, Debug)]
 pub struct SoftwareTimer {
     period: u64,
@@ -294,7 +284,7 @@ mod tests {
     }
 }
 
-/// Event flag group (FreeRTOS `xEventGroup*`): up to 32 flags in one word, no heap,
+/// Event flag group: up to 32 flags in one word, no heap,
 /// non-blocking like everything else in this crate. `wait_*` are polls - combine with
 /// [`select2`] for bounded multi-event waiting instead of busy loops.
 #[derive(Clone, Copy, Debug, Default)]

@@ -3,8 +3,8 @@ name = "watchdog-demo"
 version.workspace = true
 edition.workspace = true
 
-# Watchdog recovery on real hardware (M70): arm the nRF WDT, let it reset the chip, then
-# detect the watchdog reset cause on reboot and self-certify recovery.
+# Watchdog recovery on real hardware: arm the nRF WDT, let it reset the chip, then
+# detect the watchdog reset cause on reboot and report status recovery.
 [[bin]]
 name = "watchdog_demo"
 path = "src/main.rs"

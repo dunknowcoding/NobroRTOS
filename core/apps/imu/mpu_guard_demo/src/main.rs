@@ -1,10 +1,10 @@
-//! MPU protection as a kernel profile on real silicon (M167, upgraded for
+//! MPU protection as a kernel profile on real silicon (upgraded for
 //! MEM-02): `nobro_hal::mpu::KernelMpuPlan` turns a 256-byte RAM block
 //! read-only; writing it raises MemManage; the handler decodes an attributable
 //! `MpuFaultRecord` (CFSR/MMFAR/stacked PC + the in-flight module code),
 //! disables the MPU, and the retried store completes. Proves hardware-enforced
 //! memory isolation with clean recovery AND fault attribution.
-//! NOBRO_MPU_REPORT (mem32).
+//! NOBRO_MPU_REPORT.
 #![no_std]
 #![no_main]
 

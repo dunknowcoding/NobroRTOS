@@ -236,10 +236,9 @@ let reports = failure.reports();
 assert!(reports.manifest.verify_checksum());
 ```
 
-`sal_adapter_demo` uses this path as the reference app assembly pattern. Adapter
-preflight still writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
-demo work begins, so host tools can stop at the adapter stage when descriptors
-do not match the selected board profile.
+Adapter preflight writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
+application work begins, so host tools can stop at the adapter stage when
+descriptors do not match the selected board profile.
 
 #### Admission
 
@@ -632,12 +631,12 @@ paths should call `stage_verified_wave`, which accepts only the private-field
 
 Host-facing board data can be exported through `BoardProfileReport`.
 
-Board profile fixtures make identity, capacity, critical pins, and servo
+Board profile catalog entries make identity, capacity, critical pins, and servo
 defaults reviewable without switching Cargo features:
 
 ```rust
-for fixture in nobro_hal::BOARD_PROFILE_FIXTURES {
-    let report = fixture.report();
+for entry in nobro_hal::BOARD_PROFILES {
+    let report = entry.report();
     assert!(report.verify_checksum());
 }
 ```
@@ -670,13 +669,13 @@ let report = nobro_hal::BoardPackageReport::from_package(&nobro_hal::ACTIVE_BOAR
 assert!(report.verify_checksum());
 ```
 
-Board package fixtures make current board layouts reviewable without switching
+Board package catalog entries make current board layouts reviewable without switching
 Cargo features:
 
 ```rust
-for fixture in nobro_hal::BOARD_PACKAGE_FIXTURES {
-    assert_eq!(fixture.package.validate(), Ok(()));
-    assert!(fixture.report().verify_checksum());
+for entry in nobro_hal::BOARD_PACKAGES {
+    assert_eq!(entry.package.validate(), Ok(()));
+    assert!(entry.report().verify_checksum());
 }
 ```
 
@@ -708,7 +707,7 @@ nobro_hal::ResourceLease::release_all_for_owner(module_id);
 
 `HalI2c` exposes write, read, and repeated-start write/read operations;
 `HalSpi` exposes bounded full-duplex transfers. Each provider declares
-`TRANSFER_MODE`, so scheduling and evaluation code can distinguish polling from
+`TRANSFER_MODE`, so scheduling and diagnostic code can distinguish polling from
 DMA instead of assuming one platform-wide behavior. The current deep backend
 reports polling I2C and DMA SPI.
 
@@ -1008,8 +1007,6 @@ report, AI inference, and AI endpoint ownership.
 | `NOBRO_EVENT_LOG_REPORT` | Fixed event-ring summary |
 | `NOBRO_MODULE_RUNTIME_REPORT` | Module state counts and latest state transition |
 | `NOBRO_DEGRADE_APPLICATION_REPORT` | Latest degraded-mode application result |
-| `NOBRO_EVAL_REPORT` | Phase 1 resource scheduling evaluation record |
-| `NOBRO_SAL_EVAL_REPORT` | SAL adapter evaluation record |
 
 ### Status Model
 

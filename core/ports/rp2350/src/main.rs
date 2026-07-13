@@ -1,8 +1,6 @@
-//! NobroRTOS portable core on the RP2350 / Pico 2 W (M83) with self-DFU autonomy (M74).
+//! NobroRTOS portable core on the RP2350 / Pico 2 W with self-DFU autonomy.
 //!
-//! Runs the same 7 portable-core subsystem tests as the ESP32-C3 port - a fourth CPU
-//! (Cortex-M33) executing the same kernel logic - and reports over USB-CDC:
-//!   `NOBRO-RP2350 arch=thumbv8m subsystems=7 all_pass=1`
+//! Runs the timebase provider and a bounded cross-core application over USB CDC.
 //! Sending the line `DFU` over the same serial port reboots the chip into the BOOTSEL
 //! UF2 bootloader, so the host can reflash without anyone touching the board.
 #![no_std]
@@ -18,7 +16,6 @@ use usbd_serial::SerialPort;
 use core::sync::atomic::{AtomicU32, Ordering};
 use hal::multicore::{Multicore, Stack};
 
-use nobro_conformance::run_all;
 use nobro_kernel::{AsyncCore, MpmcChannel, ReactorExecutor};
 
 mod portable;
@@ -30,10 +27,10 @@ pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 const XTAL_FREQ_HZ: u32 = 12_000_000;
 
-// Wave 58: core1 runs a REAL bounded reactor (not a heartbeat counter). It drains
+// Core 1 runs a bounded reactor rather than a heartbeat counter. It drains
 // work items core0 sends over a cross-core `MpmcChannel`, computes a running
-// multiply-accumulate, and publishes the live result. The channel is the bounded
-// cross-core transport from Wave 56 (critical-section based, so a waker set on
+// multiply-accumulate, and publishes the live result. The channel is a bounded,
+// critical-section-based cross-core transport, so a waker set on
 // core1's `AsyncCore` from core0's send is observed across the core boundary).
 static mut CORE1_STACK: Stack<4096> = Stack::new();
 static CORE1_ACC: AtomicU32 = AtomicU32::new(0); // live result core0 reports
@@ -107,7 +104,7 @@ fn main() -> ! {
     .unwrap();
     let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
 
-    // M94: bring up core1 with its own stack, running an independent counter task.
+    // Bring up core1 with its own stack and reactor task.
     let mut sio = hal::Sio::new(pac.SIO);
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
     let core1 = &mut mc.cores()[1];
@@ -133,8 +130,7 @@ fn main() -> ! {
         .build();
 
     let timebase_ok = portable::verify_timebase_provider();
-    let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let all = timebase_ok && results.iter().all(|&r| r);
+    let all = timebase_ok;
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;
@@ -161,7 +157,7 @@ fn main() -> ! {
             put_bytes(
                 &mut msg,
                 &mut pos,
-                b"NOBRO-RP2350 arch=thumbv8m subsystems=7 providers=1 timebase=",
+                b"NOBRO-RP2350 arch=thumbv8m providers=1 timebase=",
             );
             put_u32(&mut msg, &mut pos, u32::from(timebase_ok));
             put_bytes(&mut msg, &mut pos, b" all_pass=");

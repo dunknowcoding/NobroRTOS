@@ -1,8 +1,8 @@
-//! Watchdog recovery on real hardware (M70): on first boot, arm the nRF52840 WDT and stop
+//! Watchdog recovery on real hardware: on first boot, arm the nRF52840 WDT and stop
 //! feeding it so it actually resets the chip; on the reboot, detect the watchdog reset
-//! cause (RESETREAS.DOG) and self-certify the recovery. The flash script clears RESETREAS
+//! cause (RESETREAS.DOG) and report status the recovery. The flash script clears RESETREAS
 //! first, so the DOG bit can only come from our own watchdog. Reports via NOBRO_WDT_REPORT
-//! (J-Link mem32).
+//!.
 #![no_std]
 #![no_main]
 

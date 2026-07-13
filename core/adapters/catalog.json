@@ -1,0 +1,94 @@
+{
+  "schema": "nobro-adapter-catalog-v1",
+  "ownership": {
+    "contracts": "core/crates",
+    "implementations": "core/adapters/<domain>/<implementation>",
+    "applications": "core/apps/<use-case>/<application>",
+    "board_profiles": "core/boards/<platform>/<board>",
+    "mcu_ports": "core/ports/<mcu-family>"
+  },
+  "domains": [
+    {
+      "id": "imu",
+      "contract": "core/crates/nobro_imu",
+      "adapters": [
+        "core/adapters/imu/icm45686",
+        "core/adapters/imu/mpu9250-imu"
+      ],
+      "library_members": [
+        {
+          "name": "NiusIMU",
+          "version": "0.3.0",
+          "facade": "packages/arduino/src/NobroNiusIMU.h",
+          "surface": "nimu::IMUSensor"
+        }
+      ]
+    },
+    {
+      "id": "wireless",
+      "contract": "core/crates/nobro_wireless",
+      "adapters": [
+        "core/adapters/wireless/radio-comms"
+      ],
+      "library_members": [
+        {
+          "name": "NiusWireless",
+          "version": "0.1.0",
+          "facade": "packages/arduino/src/NobroNiusWireless.h"
+        },
+        {
+          "name": "NiusZigbee",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    {
+      "id": "camera",
+      "contract": "core/crates/nobro_camera",
+      "adapters": [],
+      "library_members": [
+        {
+          "name": "NiusCam",
+          "version": "0.2.0",
+          "facade": "packages/arduino/src/NobroNiusCam.h"
+        }
+      ]
+    },
+    {
+      "id": "actuator",
+      "adapters": ["core/adapters/actuator/robo-servo"]
+    },
+    {
+      "id": "ai",
+      "contract": "core/crates/nobro_ai",
+      "adapters": [
+        "core/adapters/ai/motion-ai",
+        "core/adapters/ai/nn-motion-ai"
+      ]
+    },
+    {
+      "id": "bus",
+      "adapters": [
+        "core/adapters/bus/embedded-hal-i2c",
+        "core/adapters/bus/embedded-hal-spi"
+      ]
+    },
+    {
+      "id": "environment",
+      "adapters": ["core/adapters/environment/bmp280"]
+    },
+    {
+      "id": "power",
+      "contract": "core/crates/nobro_power",
+      "adapters": ["core/adapters/power/ina3221"]
+    },
+    {
+      "id": "protocol",
+      "adapters": ["core/adapters/protocol/ros-imu-bridge"]
+    },
+    {
+      "id": "virtual",
+      "adapters": ["core/adapters/virtual/sensor-stub"]
+    }
+  ]
+}

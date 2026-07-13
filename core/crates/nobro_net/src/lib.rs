@@ -4,9 +4,9 @@
 //! TCP/UDP/DHCP/socket layer here; IP-facing nodes pair a NobroRTOS radio node with
 //! a bounded bridge adapter or an IP-capable co-processor.
 //!
-//! - [`RoutingTable`] - bounded distance-vector routing (next hop by lowest cost) (M52)
-//! - [`TimeSync`] - round-trip clock offset/delay estimation (NTP-style) (M53)
-//! - [`Aggregator`] - bounded rollup of node readings (count/sum/min/max/mean) (M54)
+//! - [`RoutingTable`] - bounded distance-vector routing (next hop by lowest cost)
+//! - [`TimeSync`] - round-trip clock offset/delay estimation (NTP-style)
+//! - [`Aggregator`] - bounded rollup of node readings (count/sum/min/max/mean)
 #![cfg_attr(not(test), no_std)]
 
 /// One routing entry: reach `dest` via `next_hop` at `cost` hops, freshness `seq`.
@@ -195,7 +195,7 @@ mod tests {
 }
 
 /// Broadcast/gossip dedup: a bounded set of recently-seen message ids, so a relay
-/// forwards each broadcast at most once (loop suppression). (M58)
+/// forwards each broadcast at most once (loop suppression).
 pub struct SeenSet<const N: usize> {
     ids: [u32; N],
     head: usize,
@@ -230,7 +230,7 @@ impl<const N: usize> SeenSet<N> {
     }
 }
 
-/// Bounded priority queue for outgoing frames - higher `prio` leaves first (M59 QoS).
+/// Bounded priority queue for outgoing frames; higher `prio` leaves first.
 pub struct PrioQueue<T: Copy, const N: usize> {
     items: [Option<(u8, T)>; N],
     len: usize,
@@ -307,7 +307,7 @@ mod net_extra_tests {
     }
 }
 
-/// Link-liveness events for mesh partition/reconnect handling (M57).
+/// Link-liveness events for mesh partition/reconnect handling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkEvent {
     None,
@@ -323,7 +323,7 @@ struct LinkState {
 }
 
 /// Per-neighbor link monitor: a neighbor is up while heard within `timeout_us`; missing
-/// it past the timeout is a partition, and hearing it again is a reconnect. (M57)
+/// it past the timeout is a partition, and hearing it again is a reconnect.
 pub struct LinkMonitor<const N: usize> {
     nodes: [Option<LinkState>; N],
     timeout_us: u64,
@@ -415,7 +415,7 @@ mod link_tests {
 }
 
 /// A unified reading from any node type, so heterogeneous boards (power, motion,
-/// pressure, temperature) fuse into one schema. (M56)
+/// pressure, temperature) fuse into one schema.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeReading {
     Power { milliwatts: u32 },
@@ -424,7 +424,7 @@ pub enum NodeReading {
     Temperature { milli_c: i32 },
 }
 
-/// Fused view of a heterogeneous mesh: a single rollup over mixed node readings. (M56)
+/// Fused view of a heterogeneous mesh: a single rollup over mixed node readings.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MeshSnapshot {
     pub node_count: u32,
@@ -484,7 +484,7 @@ mod fault_injection_tests {
     fn mesh_reroutes_around_injected_node_fault_and_recovers() {
         // reach dest 5 cheaply via node 2; inject a fault on node 2 (a fresher advert
         // installs a costlier backup via node 9); then node 2 recovers and is preferred
-        // again. (M69)
+        // again.
         let mut rt = RoutingTable::<8>::new();
         rt.update(5, 2, 1, 1);
         assert_eq!(rt.next_hop(5), Some(2));
@@ -498,7 +498,7 @@ mod fault_injection_tests {
     }
 }
 
-/// Link-key secured mesh frames (M133): AES-CCM authenticated encryption per link, with
+/// Link-key secured mesh frames: AES-CCM authenticated encryption per link, with
 /// a monotonically increasing sequence number folded into the nonce for anti-replay.
 /// Wire layout: [src:2][dst:2][seq:4][ciphertext][tag:8]; src/dst/seq ride as AAD.
 pub mod secure_link {
@@ -587,7 +587,7 @@ pub mod secure_link {
     }
 }
 
-/// Telemetry compression (M186): delta + zigzag + LEB128 varint packing for sample
+/// Telemetry compression: delta + zigzag + LEB128 varint packing for sample
 /// streams - typical slowly-varying sensor series compress 3-5x losslessly.
 pub mod telemetry_pack {
     fn zigzag(v: i32) -> u32 {
@@ -698,7 +698,7 @@ mod secure_and_pack_tests {
     }
 }
 
-/// Synchronized capture across time-synced nodes (M129): given a node's clock offset
+/// Synchronized capture across time-synced nodes: given a node's clock offset
 /// (from [`TimeSync`]) and a shared capture instant in coordinator time, compute the
 /// local time at which this node should sample so all nodes capture together.
 pub fn synced_capture_local_us(coordinator_capture_us: i64, clock_offset_us: i64) -> i64 {
@@ -706,7 +706,7 @@ pub fn synced_capture_local_us(coordinator_capture_us: i64, clock_offset_us: i64
     coordinator_capture_us - clock_offset_us
 }
 
-/// Multi-hop latency estimate (M134): sum the per-hop one-way delays along a path, plus a
+/// Multi-hop latency estimate: sum the per-hop one-way delays along a path, plus a
 /// per-hop processing budget. Returns total microseconds (saturating).
 pub fn path_latency_us(per_hop_delay_us: &[u32], hop_processing_us: u32) -> u64 {
     let mut total = 0u64;
@@ -717,7 +717,7 @@ pub fn path_latency_us(per_hop_delay_us: &[u32], hop_processing_us: u32) -> u64 
     total
 }
 
-/// Tele-operation over the mesh (M157): an authenticated, replay-protected actuator
+/// Tele-operation over the mesh: an authenticated, replay-protected actuator
 /// command sealed exactly like a secure link frame. A tele-op command is (channel, value)
 /// which we pack and seal so only a peer holding the link key can drive the actuator, and
 /// stale commands are rejected by sequence.
@@ -811,9 +811,9 @@ mod final_net_tests {
     }
 }
 
-// ---- wireless protocol layer (M130/M131/M132/M135) ----
+// ---- wireless protocol layer ----
 
-/// RSSI/LQI-aware next-hop selection (M130): among candidate neighbors that can reach the
+/// RSSI/LQI-aware next-hop selection: among candidate neighbors that can reach the
 /// destination, pick the one with the best link quality, breaking ties by hop cost. Link
 /// quality is a 0..255 score (higher = better); returns the chosen neighbor id.
 pub fn rssi_best_next_hop(candidates: &[(u16, u8, u8)]) -> Option<u16> {
@@ -828,7 +828,7 @@ pub fn rssi_best_next_hop(candidates: &[(u16, u8, u8)]) -> Option<u16> {
         .map(|(id, _, _)| id)
 }
 
-/// OTA image chunking for mesh delivery (M131): split by fixed chunk size, track which
+/// OTA image chunking for mesh delivery: split by fixed chunk size, track which
 /// chunks a receiver has, and report completion. Fixed capacity, no heap.
 pub struct OtaReassembler<const CHUNKS: usize> {
     have: [bool; CHUNKS],
@@ -1309,7 +1309,7 @@ impl<const N: usize> FleetOtaOrchestrator<N> {
     }
 }
 
-/// Store-and-forward buffer for a sleepy child (M132): hold messages destined for a node
+/// Store-and-forward buffer for a sleepy child: hold messages destined for a node
 /// that is asleep, deliver them when it polls. Bounded ring; oldest dropped when full.
 pub struct StoreForward<T: Copy, const N: usize> {
     dst: [u16; N],
@@ -1381,7 +1381,7 @@ impl<T: Copy, const N: usize> StoreForward<T, N> {
     }
 }
 
-/// Network formation (M135): a coordinator assigns the next short address and builds a
+/// Network formation: a coordinator assigns the next short address and builds a
 /// parent map from join requests, forming a self-healing tree. Fixed capacity.
 pub struct NetworkFormation<const N: usize> {
     next_addr: u16,

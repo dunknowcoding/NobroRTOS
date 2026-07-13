@@ -2,5 +2,5 @@
 name = "nobro-sensor"
 version.workspace = true
 edition.workspace = true
-# No-heap sensor utilities: health/fault detection (M47), offset calibration (M48),
-# and sample-rate decimation (M49).
+# No-heap sensor utilities: health/fault detection, offset calibration,
+# and sample-rate decimation.

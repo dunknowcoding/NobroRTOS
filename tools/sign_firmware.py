@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Secure-boot firmware signer (M173) - the authority side of nobro_secure::SecureBoot.
+"""Secure-boot firmware signer - the authority side of nobro_secure::SecureBoot.
 
 Produces the signature the device verifies before booting an image:
   measurement = SHA-256(image)

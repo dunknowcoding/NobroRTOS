@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a linker memory.x from a data-first board profile (M91).
+"""Generate a linker memory.x from a data-first board profile.
 
 Finds a unique core/boards/<platform>/<board>/board.json by board directory name
 and emits the MEMORY block (plus the RP2350

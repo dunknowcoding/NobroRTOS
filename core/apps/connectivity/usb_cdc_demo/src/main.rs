@@ -1,4 +1,4 @@
-//! USB-CDC diagnostics demo: bring up the IMU and stream its eval summary over a USB
+//! USB-CDC diagnostics demo: bring up the IMU and stream its health summary over a USB
 //! serial port. This lets boards without a debug probe be verified by
 //! opening a COM port - no debug probe or RTT needed. The USB stack is no_std /
 //! no-alloc and lives entirely in this app; the kernel is not involved.

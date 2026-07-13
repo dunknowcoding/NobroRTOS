@@ -1,4 +1,4 @@
-"""Live NobroRTOS node control over a serial link (the M200 host binding).
+"""Live NobroRTOS node control over a serial link (the host binding).
 
 Drive and monitor a running NobroRTOS board from Python:
 

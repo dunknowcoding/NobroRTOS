@@ -113,9 +113,9 @@ def main() -> int:
                     compile_sketch(cli, zigbee, "zigbee", "arduinonrf:nrf52:promicro_nrf52840",
                                    ZIGBEE_CASE, base)
     except (OSError, RuntimeError) as error:
-        print(f"WIRELESS ECOSYSTEM: FAIL ({error})")
+        print(f"WIRELESS INTEGRATIONS: FAIL ({error})")
         return 1
-    print("WIRELESS ECOSYSTEM: PASS (RC522 + LoRa implemented; four stubs explicit; "
+    print("WIRELESS INTEGRATIONS: PASS (RC522 + LoRa implemented; four stubs explicit; "
           "NiusZigbee CC2530 surface pinned)")
     return 0
 

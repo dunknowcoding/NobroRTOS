@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified flashing abstraction (M90): one command for every flashing path on the bench.
+"""Unified flashing abstraction for supported image-deployment backends.
 
 Backends:
   jlink    - SEGGER J-Link SWD load of a raw .bin at an address (nRF52840 dev board)

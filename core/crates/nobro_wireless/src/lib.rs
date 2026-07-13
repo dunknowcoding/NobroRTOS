@@ -4,7 +4,7 @@
 //! [`WirelessBackend`], apps talk bytes + link state, and protocol identity/limits are
 //! **data** ([`LinkDescriptor`]) so schedulers and the collector reason about any radio
 //! uniformly. Pure-logic protocol helpers live here too: [`BleAdvBuilder`] constructs
-//! the advertising PDU format `ble_adv_demo` proved on air (M123), and the `rfid`
+//! the advertising PDU format `ble_adv_demo` proved on air, and the `rfid`
 //! module carries ISO 14443A anticollision arithmetic.
 #![cfg_attr(not(test), no_std)]
 
@@ -359,7 +359,7 @@ impl AdvKind {
 }
 
 impl<'a> BleAdvBuilder<'a> {
-    /// Assemble a non-connectable (beacon) PDU - the shape verified on air in M123.
+    /// Assemble a non-connectable beacon PDU.
     pub fn build(&self, payload: &[u8], out: &mut [u8]) -> Option<usize> {
         self.build_as(AdvKind::NonConnectable, payload, out)
     }
@@ -780,10 +780,10 @@ pub fn mac_frame_type(psdu: &[u8]) -> Option<MacFrameType> {
     })
 }
 
-/// Modular CC2530 802.15.4 backend (M199): drives the NiusZigbee SDCC firmware protocol
+/// Modular CC2530 802.15.4 backend: drives the NiusZigbee SDCC firmware protocol
 /// (`FE LEN CMD DATA FCS`, LEN counts CMD, FCS = XOR of LEN..DATA) over any [`ByteIo`],
 /// and presents the common [`WirelessBackend`] surface - so 802.15.4 is mountable
-/// like BLE or WiFi. Verified against the live firmware in the cc2530_gateway app (M122).
+/// like BLE or WiFi. Verified against the live firmware in the cc2530_gateway app.
 pub struct Cc2530<U: ByteIo> {
     io: U,
     joined: bool,
@@ -955,7 +955,7 @@ mod tests {
 
     #[test]
     fn adv_builder_reproduces_the_on_air_format() {
-        // Same identity ble_adv_demo used on air (M123).
+        // Same identity ble_adv_demo used on air.
         let addr = [0x4E, 0x42, 0x52, 0x4F, 0x01, 0xC3];
         let b = BleAdvBuilder {
             adv_addr: &addr,
@@ -988,7 +988,7 @@ mod tests {
         };
         let mut pdu = [0u8; 39];
         let payload = [1u8, 0, 0, 0, 1];
-        // non-connectable (default) keeps the M123-verified 0x42 header
+        // non-connectable (default) keeps the verified 0x42 header
         assert_eq!(b.build(&payload, &mut pdu).unwrap(), 24);
         assert_eq!(pdu[0], 0x42);
         // connectable ADV_IND

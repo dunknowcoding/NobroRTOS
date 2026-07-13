@@ -3,7 +3,7 @@ name = "ble-adv-demo"
 version.workspace = true
 edition.workspace = true
 
-# BLE peripheral telemetry with no SoftDevice (M123): the nRF RADIO is driven raw in
+# BLE peripheral telemetry with no SoftDevice: the nRF RADIO is driven raw in
 # Ble1Mbit mode to broadcast standards-compliant ADV_NONCONN_IND frames on channels
 # 37/38/39. Any phone or PC BLE scanner sees a "NOBRO" device whose manufacturer data
 # carries live telemetry - no pairing, no connection, no stack.

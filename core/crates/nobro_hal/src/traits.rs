@@ -5,7 +5,7 @@
 
 use crate::board_desc::{BoardDesc, ServoProfile};
 use crate::lease::LeaseError;
-use crate::snapshots::{BoardParity, EventCaptureSnapshot, PwmSnapshot};
+use crate::snapshots::EventCaptureSnapshot;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HardwareCapability {
@@ -15,7 +15,6 @@ pub enum HardwareCapability {
     EventCapture,
     ServoPwm,
     Bus,
-    SelfTest,
     I2c,
     Spi,
     Usb,
@@ -30,10 +29,9 @@ impl HardwareCapability {
             Self::EventCapture => 1 << 3,
             Self::ServoPwm => 1 << 4,
             Self::Bus => 1 << 5,
-            Self::SelfTest => 1 << 6,
-            Self::I2c => 1 << 7,
-            Self::Spi => 1 << 8,
-            Self::Usb => 1 << 9,
+            Self::I2c => 1 << 6,
+            Self::Spi => 1 << 7,
+            Self::Usb => 1 << 8,
         }
     }
 }
@@ -226,14 +224,6 @@ pub trait HalByteIo {
     fn flush(&mut self) -> Result<(), Self::Error>;
 }
 
-/// Register readback self-test (replaces scope for CI / autonomous eval).
-pub trait HalSelfTest<B: BoardDesc> {
-    /// # Safety
-    /// Reconfigures live peripherals (PWM/timers) for the self-test scene; caller
-    /// must hold the relevant leases and accept the outputs toggling on real pins.
-    unsafe fn scene_d_pass(profile: ServoProfile) -> (bool, PwmSnapshot, BoardParity);
-}
-
 /// Exclusive peripheral lease with semantics shared across platforms.
 pub trait HalLease {
     fn acquire(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError>;
@@ -260,7 +250,7 @@ pub trait HalSchedulingProvider:
     HalTimebaseProvider + HalDeadline + HalEventCapture + HalServoPwm
 {
     fn servo_profile() -> ServoProfile;
-    /// One-shot bring-up: deadline timer, event capture, servo PWM for eval demos.
+    /// One-shot bring-up for deadline timer, event capture, and servo PWM examples.
     /// # Safety
     /// Combines the init methods above - same lease and call-once requirements.
     unsafe fn init_scheduling_demo(profile: ServoProfile);

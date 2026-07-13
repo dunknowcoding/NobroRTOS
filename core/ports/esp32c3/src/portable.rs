@@ -1,4 +1,4 @@
-//! Portable HAL provider contract on the ESP32-C3 (Wave 48 / PORT-01).
+//! Portable HAL provider contract on the ESP32-C3.
 //!
 //! Implements the SAME portable `nobro_hal` provider traits as the nRF52840
 //! deep HAL — a real RISC-V (rv32imc) backend, not an nRF-shaped placeholder.
@@ -6,10 +6,8 @@
 //! systimer (`esp_hal::time::now()`, a 1 MHz monotonic instant), so kernel
 //! code generic over `HalClock`/`HalTimebaseProvider` runs unchanged here.
 //!
-//! Honest scope: timebase + compatibility/identity providers are implemented
-//! and self-checked live. Deeper peripheral providers (deadline capture, PWM,
-//! I2C/SPI, leases) remain provider gaps, and automated on-hardware HIL has
-//! not yet been integrated. The platform tier matrix states that boundary.
+//! Scope: timebase and compatibility/identity providers are implemented. Deadline
+//! capture, PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
@@ -59,8 +57,7 @@ impl PlatformHal for Esp32C3 {
 }
 
 /// Live self-check of the portable timebase provider: the monotonic clock must
-/// advance across a short busy wait — proof the provider is wired to real
-/// silicon and satisfies the compatibility contract.
+/// advance across a short busy wait and satisfy the compatibility contract.
 pub fn verify_timebase_provider() -> bool {
     let t0 = Esp32C3::now_us();
     while Esp32C3::now_us().wrapping_sub(t0) < 50 {

@@ -3,10 +3,10 @@ name = "rtc-sleep-demo"
 version.workspace = true
 edition.workspace = true
 
-# Low-power idle + RTC wake on a development board (M158): start the LFCLK, program RTC2
+# Low-power idle + RTC wake on a development board: start the LFCLK, program RTC2
 # compare ticks, take the Resource::Rtc2 lease, pick the power mode via the nobro-power
 # policy, and WFE-idle between wakes. Verifies the wake count and the measured average
-# wake interval against the programmed RTC period. NOBRO_RTC_SLEEP_REPORT (mem32).
+# wake interval against the programmed RTC period. NOBRO_RTC_SLEEP_REPORT.
 [[bin]]
 name = "rtc_sleep_demo"
 path = "src/main.rs"

@@ -3,9 +3,9 @@ name = "nobro-port-rp2350"
 version = "0.1.0"
 edition = "2021"
 
-# NobroRTOS portable-core bring-up on the RP2350 (Pico 2 W, Cortex-M33) - M83 - with
-# self-DFU autonomy (serial 'DFU' command reboots to BOOTSEL) - M74. Self-certifies the
-# same 7 portable-core subsystems as the ESP32-C3 port, over USB-CDC. Standalone
+# NobroRTOS portable-core bring-up on the RP2350 (Pico 2 W, Cortex-M33)  - with
+# self-DFU autonomy (serial 'DFU' command reboots to BOOTSEL). Reports provider and
+# multicore application status over USB-CDC. Standalone
 # workspace: the rp235x-hal tree is independent of the thumbv7em core workspace.
 
 [dependencies]
@@ -15,7 +15,6 @@ usbd-serial = "0.2"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
-nobro-conformance = { path = "../../crates/nobro_conformance" }
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 nobro-kernel = { path = "../../crates/nobro_kernel" }
 

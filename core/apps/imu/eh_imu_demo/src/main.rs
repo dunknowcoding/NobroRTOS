@@ -1,6 +1,6 @@
 //! embedded-hal IMU demo: reads an MPU-9250-class IMU using ONLY the
 //! `embedded_hal::i2c::I2c` trait (through the nobro-eh-i2c adapter), then writes the
-//! standard NOBRO_IMU_HW_EVAL_REPORT. The `imu_*` helpers below take `impl I2c` -
+//! standard NOBRO_IMU_HEALTH_REPORT. The `imu_*` helpers below take `impl I2c` -
 //! exactly the signature an off-the-shelf embedded-hal driver uses - so a passing
 //! report proves unmodified embedded-hal drivers run on NobroRTOS.
 #![no_std]
@@ -18,13 +18,13 @@ use nobro_hal::{
     traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN,
 };
-use nobro_kernel::eval::{
-    ImuHwEvalReport, IMU_HW_EVAL_MAGIC, IMU_HW_EVAL_VERSION, MIN_IMU_HW_READS,
+use nobro_imu::{
+    ImuHealthReport, IMU_HEALTH_REPORT_MAGIC, IMU_HEALTH_REPORT_VERSION, MIN_HEALTH_SAMPLES,
 };
 
 #[no_mangle]
 #[used]
-static mut NOBRO_IMU_HW_EVAL_REPORT: ImuHwEvalReport = ImuHwEvalReport::zeroed();
+static mut NOBRO_IMU_HEALTH_REPORT: ImuHealthReport = ImuHealthReport::zeroed();
 
 const REG_WHO_AM_I: u8 = 0x75;
 const REG_PWR_MGMT_1: u8 = 0x6B;
@@ -58,8 +58,8 @@ fn main() -> ! {
         Hal::init_timebase();
     }
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.magic = IMU_HW_EVAL_MAGIC;
-        NOBRO_IMU_HW_EVAL_REPORT.version = IMU_HW_EVAL_VERSION;
+        NOBRO_IMU_HEALTH_REPORT.magic = IMU_HEALTH_REPORT_MAGIC;
+        NOBRO_IMU_HEALTH_REPORT.version = IMU_HEALTH_REPORT_VERSION;
     }
 
     let mut i2c =
@@ -109,21 +109,21 @@ fn main() -> ! {
         }
 
         unsafe {
-            NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
-            NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(addr);
-            NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;
-            NOBRO_IMU_HW_EVAL_REPORT.imu_reads = reads;
-            NOBRO_IMU_HW_EVAL_REPORT.imu_errors = errors;
-            NOBRO_IMU_HW_EVAL_REPORT.accel_mag_mg = accel_mg;
-            NOBRO_IMU_HW_EVAL_REPORT.gyro_mag_mdps = gyro_mdps;
-            NOBRO_IMU_HW_EVAL_REPORT.temp_centi_c = temp_centi;
+            NOBRO_IMU_HEALTH_REPORT.who_am_i = u32::from(who);
+            NOBRO_IMU_HEALTH_REPORT.device_address = u32::from(addr);
+            NOBRO_IMU_HEALTH_REPORT.devices_seen = 1;
+            NOBRO_IMU_HEALTH_REPORT.samples = reads;
+            NOBRO_IMU_HEALTH_REPORT.read_errors = errors;
+            NOBRO_IMU_HEALTH_REPORT.accel_mag_mg = accel_mg;
+            NOBRO_IMU_HEALTH_REPORT.gyro_mag_mdps = gyro_mdps;
+            NOBRO_IMU_HEALTH_REPORT.temperature_centi_c = temp_centi;
         }
 
-        if reads >= MIN_IMU_HW_READS && errors * 100 <= reads {
-            let mut report = unsafe { NOBRO_IMU_HW_EVAL_REPORT };
-            report.seal(); // computes all_pass + checksum
+        if reads >= MIN_HEALTH_SAMPLES && errors * 100 <= reads {
+            let mut report = unsafe { NOBRO_IMU_HEALTH_REPORT };
+            report.seal();
             unsafe {
-                NOBRO_IMU_HW_EVAL_REPORT = report;
+                NOBRO_IMU_HEALTH_REPORT = report;
             }
         }
         asm::delay(400_000);

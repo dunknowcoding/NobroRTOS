@@ -1,4 +1,4 @@
-//! On-device incremental learning (M140): the ESP32-S3 trains a classifier by online
+//! On-device incremental learning: the ESP32-S3 trains a classifier by online
 //! SGD over a stream it generates itself - no host, no pre-trained weights. It measures
 //! accuracy on a held-out set before training (from zero weights ~ chance), runs
 //! `nobro_nn::sgd_update` over a labelled stream, then measures again, reporting:

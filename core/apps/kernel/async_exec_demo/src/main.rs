@@ -1,4 +1,4 @@
-//! Bounded async executor hardware proof: runs the same checks as the host unit tests
+//! Bounded async executor hardware example: runs the same checks as the host unit tests
 //! on the MCU and records the outcome in NOBRO_ASYNC_EXEC_REPORT. No HAL - pure kernel.
 #![no_std]
 #![no_main]

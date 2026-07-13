@@ -1,7 +1,7 @@
 //! AI runtime on a development board: a `ModelRegistry` multiplexes three models and
-//! `AiRoutePolicy` routes each across a scenario matrix on real silicon (M35/M36); then
-//! the trained NN's inference latency is measured against its deadline (M41). Reports
-//! via J-Link mem32.
+//! `AiRoutePolicy` routes each across a scenario matrix on real silicon; then
+//! the trained NN's inference latency is measured against its deadline. Reports
+//! in a fixed-layout host-readable report.
 #![no_std]
 #![no_main]
 
@@ -66,7 +66,7 @@ fn main() -> ! {
 
     let mut clf = NnMotionClassifier::new();
 
-    // --- M36: register three models, multiplexed by model_id ---
+    // Register three models, multiplexed by model_id.
     let mut reg = ModelRegistry::<4>::new();
     let _ = reg.register(clf.contract()); // on-device NN
     let _ = reg.register(AiModelContract::new(
@@ -87,7 +87,7 @@ fn main() -> ! {
     ));
     let registry_len = reg.len() as u32;
 
-    // --- M35: route each across a scenario matrix on real silicon ---
+    // Route each model across the bounded scenario matrix.
     let policy = AiRoutePolicy::new(AiRoutePreference::HybridFallback, 50_000, 2);
     let mut routes_ok = 0u32;
 
@@ -142,7 +142,7 @@ fn main() -> ! {
         routes_ok += 1;
     }
 
-    // --- M41: time the on-device NN inference (avg of 100) vs its 2 ms deadline ---
+    // Check repeated on-device inference against its declared deadline.
     let mut active = [0u8; 64];
     let mut i = 0;
     while i < 64 {

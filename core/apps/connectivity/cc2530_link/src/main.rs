@@ -1,10 +1,10 @@
-//! CC2530 802.15.4 co-processor raw link (M121).
+//! CC2530 802.15.4 co-processor raw link.
 //!
 //! Speaks the NiusZigbee SDCC transceiver firmware's UART protocol from NobroRTOS:
 //! `FE LEN CMD DATA.. FCS` at 115200 (LEN counts CMD+DATA, FCS = XOR of LEN..DATA).
 //! The app PINGs the module (PONG carries the firmware version), switches it to
 //! promiscuous RX on channel 11, and counts real 802.15.4 frames heard off the air.
-//! `NOBRO_CC2530_REPORT` (J-Link mem32) carries pongs/version/rx_frames; all_pass
+//! `NOBRO_CC2530_REPORT` carries pongs/version/rx_frames; all_pass
 //! requires a valid PONG - frames heard depends on what else is transmitting.
 #![no_std]
 #![no_main]
@@ -59,9 +59,7 @@ const TXD: *mut u32 = (UART0 + 0x51C) as *mut u32;
 const BAUDRATE: *mut u32 = (UART0 + 0x524) as *mut u32;
 const CONFIG: *mut u32 = (UART0 + 0x56C) as *mut u32;
 
-/// Board pins. The ProMicro/nice!nano edge order maps D0=P0.06, D1=P0.08 (bench-
-/// verified against the same board's D2=P0.17/D3=P0.20 SPI map); the wiring doc has
-/// D0 as the host-TX line (CC2530 RX) and D1 as host-RX.
+/// ProMicro/nice!nano edge mapping: D0=P0.06 is host TX and D1=P0.08 is host RX.
 const TX_PIN: u32 = 6;
 const RX_PIN: u32 = 8;
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Admission cost analysis for a NobroRTOS workload (host mirror of Wave 47).
+"""Admission cost analysis for a NobroRTOS workload.
 
 Given a workload description (tasks with criticality / period / execution
 budget / memory, plus a platform profile), this reports the MARGINAL cost of
@@ -147,7 +147,7 @@ def render(result: dict) -> str:
 
 
 def robotics_workload() -> dict:
-    """The Wave 47 reference workload, mirroring the Rust test's graph."""
+    """Reference workload that mirrors the Rust graph declaration."""
     return {
         "profile": {"flash": 128 * 1024, "ram": 8 * 1024, "pool": 8},
         "tasks": [

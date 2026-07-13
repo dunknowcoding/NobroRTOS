@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn aes_throughput_benchmark() {
-        // Host perf gate (M80): measure AES-128 block throughput and assert a floor.
+        // Host perf gate: measure AES-128 block throughput and assert a floor.
         use std::time::Instant;
         let key = [0u8; 16];
         let aes = Aes128::new(&key);

@@ -1,4 +1,4 @@
-"""IEEE 802.15.4 MAC frame contract for the NobroRTOS Zigbee gateway (M122).
+"""IEEE 802.15.4 MAC frame contract for the NobroRTOS Zigbee gateway.
 
 A NobroRTOS node with a CC2530 co-processor (the cc2530_gateway app) captures raw
 802.15.4 PSDUs off the air. This module is the host-side contract that decodes those

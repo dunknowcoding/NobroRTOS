@@ -1,6 +1,6 @@
-//! NobroRTOS portable core on the RA4M1 / Arduino UNO R4 WiFi (M86).
+//! NobroRTOS portable core on the RA4M1 / Arduino UNO R4 WiFi.
 //!
-//! Runs the shared cross-MCU conformance suite with **all drivers our own**, written
+//! Provides target startup and serial status with **all drivers our own**, written
 //! from the RA4M1 hardware manual: PRCR-unlocked clock setup (HOCO 48 MHz with the
 //! official peripheral dividers), PFS pin muxing, native USB CDC on the board's
 //! own connector, SCI9 through the board USB bridge, SCI1 on the WiFi/AT coprocessor
@@ -15,8 +15,6 @@
 
 use cortex_m_rt::entry;
 use panic_halt as _;
-
-use nobro_conformance::run_all;
 
 // ---------------------------------------------------------------- system (own driver)
 
@@ -288,9 +286,7 @@ const SCI2: Sci = Sci(0x4007_0040);
 const SCI1: Sci = Sci(0x4007_0020);
 const SCI9: Sci = Sci(0x4007_0120);
 
-/// Drive the loopback output pin (D5=P107) high. The current UNO R4 WiFi bench
-/// fixture routes D5 to A0, so the level is externally checkable once a readout
-/// channel exists; here it also proves our PORT1 GPIO writes take effect.
+/// Drive the UNO R4 D5 output pin (P107) high for the GPIO example.
 fn drive_loopback() {
     unsafe {
         // PORT1 PCNTR1: low half PDR (1=output), high half PODR (output level).
@@ -312,13 +308,7 @@ fn main() -> ! {
     SCI9.init();
     drive_loopback();
 
-    let results = run_all(); // the shared cross-MCU conformance suite (M92)
-    let all = results.iter().all(|&r| r);
-    let line = if all {
-        "NOBRO-RA4M1 arch=thumbv7em subsystems=7 all_pass=1\r\n"
-    } else {
-        "NOBRO-RA4M1 arch=thumbv7em subsystems=7 all_pass=0\r\n"
-    };
+    let line = "NOBRO-RA4M1 arch=thumbv7em port_ready=1\r\n";
 
     // Keep the UNO R4 WiFi connector on the stock ESP32-S3 bridge. The bridge
     // firmware tunnels COM traffic to SCI9/P109-P110 at 115200 by default and

@@ -3,10 +3,10 @@ name = "cc2530-gateway"
 version.workspace = true
 edition.workspace = true
 
-# NiusZigbee gateway (M122): capture + classify 802.15.4 frames for the host contract.
+# NiusZigbee gateway: capture + classify 802.15.4 frames for the host contract.
 # using the NiusZigbee SDCC transceiver firmware protocol (FE LEN CMD DATA FCS @115200).
 # PING/PONG proves the link + reads the firmware version; promiscuous RX then counts
-# real 802.15.4 frames off the air. Evidence in NOBRO_CC2530_REPORT (J-Link mem32).
+# real 802.15.4 frames off the air and reports them in NOBRO_CC2530_REPORT.
 [[bin]]
 name = "cc2530_gateway"
 path = "src/main.rs"

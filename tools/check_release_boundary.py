@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Ensure maintainer comparisons and lab material cannot enter user packages."""
+"""Keep private automation, machine details, and planning metadata untracked."""
 
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -14,6 +15,7 @@ FORBIDDEN_REFERENCES = (
     "core/baselines/",
     "core/fuzz/",
     "core/internal/",
+    "core/ecosystem/",
     "measure_baselines.py",
     "measure_complex_runtime.py",
     "measure_embassy_variants.py",
@@ -24,7 +26,35 @@ FORBIDDEN_REFERENCES = (
     "kernel_wcet_demo",
     "kernel_selftest",
     "hil_fault_demo",
+    "nobro_verify.py",
+    "fleet_evidence.py",
+    "chaos_test.py",
+    "ota_preflight_demo.py",
+    "multicore_pipeline.rs",
+    "nn_latency.rs",
+    "resource_sched_demo",
+    "sal_adapter_demo",
+    "nobro_kernel/src/eval.rs",
+    "nobro_kernel/src/fault_inject.rs",
+    "board_fixtures.rs",
 )
+FORBIDDEN_PATTERNS = {
+    "local serial endpoint": re.compile(r"\bCOM[0-9]+\b", re.IGNORECASE),
+    "local board alias": re.compile(r"\bboard[1-9][0-9]*\b", re.IGNORECASE),
+    "local environment name": re.compile(r"\bIronEngine(?:World)?\b", re.IGNORECASE),
+    "internal wave tag": re.compile(r"\bWave\s+[0-9]+\b", re.IGNORECASE),
+    "internal milestone tag": re.compile(r"\(M[0-9]+(?:[/,-][^)]*)?\)"),
+    "Windows machine path": re.compile(r"\b[A-Za-z]:\\"),
+    "internal document": re.compile(r"(?:_INTERNAL\.md|REMODELING_PLAN_" r"INTERNAL)"),
+    "private hardware report": re.compile(
+        r"(?:nobro-hil-fleet-v1|state-restor|physical_hil|pre-test flash)",
+        re.IGNORECASE,
+    ),
+    "private host-contract section": re.compile(
+        r'"(?:lab|phase1_eval|phase2_eval|build_budgets|ironengine)"\s*:',
+        re.IGNORECASE,
+    ),
+}
 
 
 def overlaps(left: pathlib.PurePosixPath, right: pathlib.PurePosixPath) -> bool:
@@ -50,10 +80,20 @@ def validate() -> list[str]:
         errors.append(f"missing release excludes: {sorted(map(str, required_excludes-excludes))}")
     forbidden_tracked = (
         "_maintainer/", "core/baselines/", "core/fuzz/", "core/internal/",
+        "core/ecosystem/", "core/ecosystems/",
         "tools/internal/", "tools/dev/", "docs/ENGINEERING.md",
         "tools/nobro_hw_eval.py", "tools/hil_matrix.py", "tools/wasm_slot_spike.py",
         "core/apps/kernel/kernel_wcet_demo/", "core/apps/kernel/kernel_selftest/",
         "core/apps/kernel/hil_fault_demo/",
+        "core/apps/kernel/resource_sched_demo/",
+        "core/apps/interop/sal_adapter_demo/",
+        "core/ports/esp32s3/src/bin/multicore_pipeline.rs",
+        "core/ports/esp32s3/src/bin/nn_latency.rs",
+        "core/crates/nobro_kernel/src/eval.rs",
+        "core/crates/nobro_kernel/src/fault_inject.rs",
+        "tools/nobro_verify.py", "tools/fleet_evidence.py", "tools/chaos_test.py",
+        "tools/ota_preflight_demo.py", "tools/check_ecosystem_matrix.py",
+        "tools/check_camera_ecosystem.py", "tools/check_wireless_ecosystem.py",
     )
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
@@ -97,6 +137,11 @@ def validate() -> list[str]:
         for token in FORBIDDEN_REFERENCES:
             if token in text:
                 errors.append(f"{relative} exposes maintainer-only token {token}")
+        for label, pattern in FORBIDDEN_PATTERNS.items():
+            match = pattern.search(text)
+            if match:
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(f"{relative}:{line} exposes {label}: {match.group(0)!r}")
     return errors
 
 

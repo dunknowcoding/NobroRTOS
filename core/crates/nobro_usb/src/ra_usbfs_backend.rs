@@ -145,7 +145,7 @@ impl RaUsbfsCdc {
             // Force a disconnect edge first: the bootloader may have left its own CDC
             // enumerated, so drop the D+ pull-up and hold long enough for the host to
             // notice the unplug before we re-enumerate as our device. (This drop is also
-            // the decisive proof-of-execution signal - if the host's port vanishes, our
+            // the execution signal; if the host's port vanishes, our
             // code is definitely running on the RA4M1.)
             SYSCFG.write_volatile(SYSCFG_USBE); // USBE on, DPRPU off
             let mut spin = 0u32; // ~600 ms hold at 8 MHz so the host sees the unplug

@@ -1,4 +1,4 @@
-//! Stack-overflow detection as a kernel service (M168, upgraded for MEM-01):
+//! Stack-overflow detection as a kernel service:
 //! the portable `nobro_kernel::StackGuardTable` guards a region planted below
 //! the live stack pointer, attributed to a module identity. Shallow recursion
 //! must leave the canary intact (no false positive); deep recursion that

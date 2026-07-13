@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 # 3-class motion NN (idle/walk/shake) on a development board: run the trained int8
-# classifier on synthetic per-class windows and verify each. NOBRO_NN3_REPORT (mem32).
+# classifier on synthetic per-class windows and verify each. NOBRO_NN3_REPORT.
 [[bin]]
 name = "motion3_demo"
 path = "src/main.rs"

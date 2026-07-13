@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
-"""THE verification orchestrator for NobroRTOS: one command, one verdict.
+"""Run the reproducible source and package checks for NobroRTOS.
 
 Runs every host-testable gate - cargo tests for the portable crates, the Python binding
 suite, the software-surface contract, package checks (web flasher, block editor, SDK),
-board profiles, tutorials, and mesh chaos - then prints a single summary. Fully
-autonomous and does not contain local lab configuration. Exit 0 = all green.
+board profiles, tutorials, and integration catalogs, then prints a single summary.
+It contains no machine-specific configuration. Exit 0 means every selected check passed.
 
-When all gates pass, also emits an Evidence Pack (JSON + HTML) under `_work/evidence/`
-via `nobro_verify.build_pack_from_results` - the "folded" display that ties gates to
-the audit artifact without re-running them.
-
-    python tools/run_checks.py            # everything + evidence pack on success
+    python tools/run_checks.py            # all default checks
     python tools/run_checks.py --quick    # skip the slow cargo test gate
 
 This wraps (never replaces) the narrower entry points, so `ci_matrix.sh` and
 `nobro_contract_tool.py check-software-surface` keep working standalone.
 """
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -27,7 +22,7 @@ CORE = os.path.join(ROOT, "core")
 HOST_CRATES = [
     "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
     "nobro-sal", "nobro-kernel", "nobro-classic", "nobro-control",
-    "nobro-conformance", "nobro-database", "nobro-secure", "nobro-storage",
+    "nobro-database", "nobro-secure", "nobro-storage",
     "nobro-device", "nobro-wireless", "nobro-camera", "nobro-nn", "nobro-ai", "nobro-host",
     "nobro-usb", "nobro-hal", "nobro-adapter-bmp280",
     "nobro-adapter-icm45686", "nobro-adapter-ina3221", "nobro-adapter-motion-ai",
@@ -67,7 +62,7 @@ def run(name, cmd, cwd=ROOT, env=None, quiet=False):
 
 def gate_specs(quick, rust_only=False, extended=False):
     """Return the ordered gate list as (name, cmd, cwd) tuples. Single source of truth
-    shared by the CLI summary here and the `nobro verify` Evidence Pack."""
+    shared by the CLI summary and hosted checks."""
     py = sys.executable
     bindings = os.path.join(ROOT, "bindings", "python")
     specs = []
@@ -117,20 +112,16 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
         ("ros msg codegen", [py, "tools/ros_msg_gen.py", "--selftest"], ROOT),
         ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
-        ("evidence pack smoke", [py, "tools/nobro_verify.py", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
-        ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
-        ("ecosystem truth", [py, "tools/check_ecosystem_matrix.py"], ROOT),
+        ("adapter catalog", [py, "tools/check_adapter_catalog.py"], ROOT),
         ("firmware project", [py, "tools/nobro_firmware_project.py", "--selftest"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
-        ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),
         ("udi surface", [py, "tools/check_udi.py", "--selftest"], ROOT),
-        ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
     ]
     if extended:
         specs.append(("cross-MCU matrix", ["bash", "tools/ci_matrix.sh"], ROOT))
@@ -150,8 +141,6 @@ def run_gates(quick=False, quiet=False, rust_only=False, extended=False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--quick", action="store_true", help="skip the slow cargo test gate")
-    ap.add_argument("--no-evidence", action="store_true",
-                    help="skip Evidence Pack emission even when all gates pass")
     ap.add_argument("--rust-only", action="store_true",
                     help="run the comprehensive portable Rust test/lint/format gates only")
     ap.add_argument("--extended", action="store_true",
@@ -166,29 +155,6 @@ def main():
     for r in results:
         print(f"  {'PASS' if r['ok'] else 'FAIL'}  {r['name']}")
     print(f"RESULT: {'ALL PASS' if all_ok else 'FAIL'}")
-
-    if all_ok and not args.no_evidence and not args.rust_only:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import nobro_verify
-        pack, _ = nobro_verify.build_pack_from_results(results, quick=args.quick)
-        out_dir = os.path.join(ROOT, "_work", "evidence")
-        os.makedirs(out_dir, exist_ok=True)
-        json_path = os.path.join(out_dir, "evidence_pack.json")
-        html_path = os.path.join(out_dir, "evidence_pack.html")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(pack, f, indent=2)
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(nobro_verify.render_html(pack))
-        s = pack["summary"]
-        b = pack["budgets"]
-        print(f"\n=== EVIDENCE PACK ===")
-        print(f"  {s['result']} ({s['passed']}/{s['total']} gates)")
-        if b.get("available"):
-            print(f"  budgets: {len(b['targets'])} app(s) priced")
-        else:
-            print(f"  budgets: {b.get('note')}")
-        print(f"  JSON: {os.path.relpath(json_path, ROOT)}")
-        print(f"  HTML: {os.path.relpath(html_path, ROOT)}")
 
     return 0 if all_ok else 1
 

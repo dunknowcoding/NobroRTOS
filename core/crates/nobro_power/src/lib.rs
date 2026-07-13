@@ -1,4 +1,4 @@
-//! No-heap power management policy (M62): pick a sleep mode from activity + a deadline,
+//! No-heap power management policy: pick a sleep mode from activity + a deadline,
 //! and track an active-time duty budget. Pure policy; the HAL applies the mode.
 #![cfg_attr(not(test), no_std)]
 
@@ -96,7 +96,7 @@ mod tests {
     }
 }
 
-/// Per-task energy ledger (M161): charge each task's active time at a measured power
+/// Per-task energy ledger: charge each task's active time at a measured power
 /// draw (uW) and report energy in uJ. Fixed capacity, no heap.
 pub struct EnergyLedger<const N: usize> {
     entries: [(u16, u64); N], // (task id, energy uJ)
@@ -284,7 +284,7 @@ mod energy_tests {
     }
 }
 
-/// Adaptive sampling by battery level (M162): map a state-of-charge (percent) to a
+/// Adaptive sampling by battery level: map a state-of-charge (percent) to a
 /// decimation factor for the sensor pipeline - full rate when charged, progressively
 /// heavier downsampling as the battery drains, minimum duty when critical.
 ///
@@ -321,7 +321,7 @@ mod adaptive_sampling_tests {
     }
 }
 
-/// Energy-harvest-aware scheduling (M163): decide the work budget for the next window
+/// Energy-harvest-aware scheduling: decide the work budget for the next window
 /// from harvested income vs. battery reserve. Energy-neutral operation: spend at most
 /// (harvest income + an affordable battery draw that keeps SoC above the reserve floor).
 pub fn harvest_work_budget_uj(
@@ -358,7 +358,7 @@ mod harvest_tests {
     }
 }
 
-/// Duty-cycle scheduler (M159): drive a periodic task toward a target active fraction.
+/// Duty-cycle scheduler: drive a periodic task toward a target active fraction.
 /// Each tick reports whether to run (active) or sleep, keeping the long-run active time
 /// within the target duty using a leaky accumulator - robust to jittery tick spacing.
 #[derive(Clone, Copy, Debug)]

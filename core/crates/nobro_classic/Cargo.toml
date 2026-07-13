@@ -3,7 +3,5 @@ name = "nobro-classic"
 version.workspace = true
 edition.workspace = true
 
-# FreeRTOS-familiar primitives (Queue, Semaphore, Mutex, SoftwareTimer) with a migration-
-# friendly API - but no heap, fixed capacity, and bounded by construction. The adoption
-# bridge: FreeRTOS users keep their mental model and gain compile-time RAM bounds, no heap
-# fragmentation, and (via the kernel) lease-arbitrated peripherals with no data races.
+# Fixed-capacity queue, semaphore, mutex, timer, and event primitives. The crate uses no
+# heap; peripheral ownership remains lease-arbitrated by the kernel.
