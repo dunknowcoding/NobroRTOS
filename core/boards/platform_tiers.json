@@ -25,8 +25,8 @@
         "self_test"
       ],
       "automated_hil": true,
-      "hil": "automated with tools/hil_matrix.py; private endpoints stay outside the repository",
-      "validated_by": "hil_matrix deep-HAL 10/10 with firmware hashes"
+      "hil": "maintainer automation and endpoints stay outside the repository",
+      "validated_by": "sanitized deep-HAL verdicts"
     },
     "rp2350": {
       "arch": "thumbv8m",

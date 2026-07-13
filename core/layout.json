@@ -5,8 +5,7 @@
     "ports": "flat MCU-family providers",
     "adapters": "one domain category, then implementation",
     "apps": "one use-case category, then composition",
-    "boards": "one platform-family category, then data-only board profile",
-    "baselines": "flat framework-workload specimens"
+    "boards": "one platform-family category, then data-only board profile"
   },
   "adapter_categories": [
     "actuator", "ai", "bus", "environment", "imu", "power", "protocol",

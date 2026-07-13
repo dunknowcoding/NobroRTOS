@@ -10,18 +10,17 @@
   channels, signals, cancellation, and composition under normal kernel admission.
 - `nobro project`: create/import, explain marginal costs and schedulability, compile the
   workload-derived graph, simulate, decode reports, or delegate state-restoring HIL.
-- Measured NobroRTOS/Embassy/bare-metal baselines with regression budgets and an honest
-  public limitations matrix.
+- Added profile-aware resource accounting and an explicit public limitations matrix.
 - RP2350 and ESP32-C3 timebase-provider ports, plus a typed support-tier gate.
 
 ### Verification
 
-- Added dedicated bounded-async Miri tests and a persistent async service fuzz target.
+- Added dedicated bounded-async Miri tests.
 - Provider firmware now executes the timebase check and folds it into `all_pass`;
   physical provider smoke was run locally without publishing endpoint evidence, and the
   pre-existing ESP32-C3 application was restored afterward.
 - The closure gate includes host tests, format/lint, dependency audit, coverage, Miri,
-  fuzz, sanitizer, cross-MCU builds, package validation, privacy checks, and deep-HAL HIL.
+  sanitizer, cross-MCU builds, package validation, and privacy checks.
 
 ### Known boundaries
 

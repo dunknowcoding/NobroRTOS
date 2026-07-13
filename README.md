@@ -56,8 +56,8 @@ abstraction layer for hardware, communication, and edge intelligence.
 
 ## Start In 60 Seconds
 
-The fastest portable start is the host gate. Hardware evaluation additionally needs
-a locally configured target profile and a safe flash/readback path.
+The fastest portable start is the host gate. Hardware deployment additionally needs
+a prepared image and a safe flash path for the selected board profile.
 
 ```powershell
 git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
@@ -65,9 +65,8 @@ python tools/run_checks.py --quick --no-evidence
 ```
 
 That checks public contracts, packages, tutorials, bindings, and documentation without
-touching hardware. For a configured nRF deep-HAL target, `python tools/nobro_hw_eval.py
-imu` performs build, flash, report readback, and grading; it is not a generic command for
-every advertised compile target.
+touching hardware. Use `python sdk/cli/nobro.py flash --help` for public image deployment;
+lab endpoint discovery, restoration policy, and raw logs are not distributed.
 
 Create and run a graph-declared application without hand-writing the expanded
 manifest, startup, capability, quota, and executor inputs:
@@ -79,8 +78,8 @@ python sdk/cli/nobro.py project run _work/projects/rover
 
 The project command prints the derived contract and marginal costs, compiles the
 graph scaffold, simulates it, and decodes the resulting report. It can also import
-and line-attribute Embassy or FreeRTOS task graphs; hardware mode delegates to the
-state-restoring HIL evaluator and is explicit about which repository app it flashes.
+and line-attribute Embassy or FreeRTOS task graphs. Flashing remains a separate,
+explicit step so a generated host scaffold is never mistaken for a device image.
 
 For production nRF firmware, the one-file path uses the same small declaration to emit
 both the admission workload and a `no_std` firmware graph:
@@ -294,29 +293,15 @@ NobroRTOS/
 The Rust crate package names use the `nobro-*` API prefix, while repository
 folders use the `nobro_*` project prefix.
 
-## Verified On Hardware
+## Hardware Evidence Boundary
 
-The rows below are snapshots from the nRF52840 deep-HAL profile, checked through fixed
-`NOBRO_*` reports. They do not imply the same runtime depth on compile-only targets.
-
-| Area | On-board result | Verify with |
-| --- | --- | --- |
-| **Real-time scheduler** | 2 us deadline jitter, 0 misses; EGU to PPI to CAPTURE 1 us latency; 50 Hz PWM | `nobro_hw_eval.py sched` |
-| **Kernel-op latency** | measured max over 1000 runs: mailbox IPC 125 ns, capability check 219 ns, lease pair 2.0 us, longest interrupt-masked window 2.4 us ([table](docs/ENGINEERING.md)) | `nobro_hw_eval.py wcet` |
-| **Kernel control plane** | 13 subsystems: quota, event log, mailbox, KV, alarms, watchdog, degrade, admission, capability, retry, lifecycle, health, and sample pool all pass | `kernel_selftest` report |
-| **SAL admission** | AI route policy (local/edge/remote/hybrid + stale-snapshot fallback) and AI invocation preflight all pass | `nobro_hw_eval.py sal` |
-| **Recovery** | watchdog expiry to Degraded/Notify; repeated errors to Recovering/RebootModule | `recovery_demo` report |
-| **Edge AI** | bounded `AiInferenceSal` motion model: IDLE at 99.6% in its 2 ms budget; live over USB-CDC | `ai_imu_demo` report |
-| **ROS bridge** | bounded topic bridge: 2148 messages published and transmitted, 0 dropped, peak depth 1/8 | `ros_imu_demo` report |
-| **Robot closed loop** | IMU to servo pulse to PWM to readback, 1373/1373 readbacks exact | `closed_loop_demo` report |
-| **Sensors** | MPU-9250 over the TWIM HAL (accel+temp+gyro in one burst), including 9-pulse stuck-bus recovery | `nobro_hw_eval.py imu` |
-| **Module authoring** | the same module admitted + run in **Rust, C, and C++** over one `extern "C"` ABI | `c_abi_demo` report |
-| **Driver ecosystem** | unmodified `embedded-hal` I2C drivers run via the adapter | `nobro_hw_eval.py eh` |
-| **Diagnostics** | `usb_cdc_demo` streams reports over USB serial so probe-less boards self-verify on a COM port; verified on an nRF52840 development board and a clone-silicon nRF52840 board with a patched `nrf-usbd` plus a self-DFU watchdog | any serial monitor |
-
-The `nobro_hw_eval.py` rows are fully automated (build → flash → run → read → grade,
-see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)); the `*_demo` rows flash the named
-app and read its fixed `NOBRO_*` report over J-Link or USB serial.
+nRF52840 is the deep-HAL profile; other rows in the support matrix may be provider or
+compile conformance only. Hardware claims are accepted only from fixed `NOBRO_*` reports
+with explicit completion and checksum fields. Public source contains the firmware and
+report contracts, while endpoint manifests, restoration scripts, raw serial/probe logs,
+and performance campaigns remain in ignored maintainer storage. Users can deploy a
+prepared image with `nobro flash` and inspect serial reports where that application
+exposes them; a missing or quiet endpoint is never treated as a pass.
 
 **No hardware on your desk?** The software side grades itself the same way:
 

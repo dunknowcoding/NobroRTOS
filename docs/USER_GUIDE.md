@@ -596,10 +596,10 @@ references it by symbol, so the linker must keep every member.
 
 ### 4. Flash + verify
 
-The ELF targets the no-SoftDevice layout (app at `0x1000`). Flash it with any SWD
-probe (`docs/GETTING_STARTED.md`) or convert to UF2 for drag-and-drop. Verification is
-the usual story: the firmware seals `NOBRO_IMU_HW_EVAL_REPORT`, and
-`tools/nobro_hw_eval.py` or a serial monitor grades it PASS/FAIL.
+The ELF targets the no-SoftDevice layout (app at `0x1000`). Flash it with a compatible
+SWD tool (`docs/GETTING_STARTED.md`) or convert it to UF2 for drag-and-drop. The firmware
+seals `NOBRO_IMU_HW_EVAL_REPORT`; consume it through a transport exposed by the selected
+application. Lab probe scripts and endpoint settings are maintainer-private.
 
 ### Current scope, honestly
 

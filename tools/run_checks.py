@@ -4,7 +4,7 @@
 Runs every host-testable gate - cargo tests for the portable crates, the Python binding
 suite, the software-surface contract, package checks (web flasher, block editor, SDK),
 board profiles, tutorials, and mesh chaos - then prints a single summary. Fully
-autonomous (no hardware); the board gates live in `nobro_hw_eval.py`. Exit 0 = all green.
+autonomous and does not contain local lab configuration. Exit 0 = all green.
 
 When all gates pass, also emits an Evidence Pack (JSON + HTML) under `_work/evidence/`
 via `nobro_verify.build_pack_from_results` - the "folded" display that ties gates to
@@ -117,12 +117,10 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
         ("ros msg codegen", [py, "tools/ros_msg_gen.py", "--selftest"], ROOT),
         ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
-        ("wasm slot spike", [py, "tools/wasm_slot_spike.py", "--selftest"], ROOT),
         ("evidence pack smoke", [py, "tools/nobro_verify.py", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
         ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
-        ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
         ("ecosystem truth", [py, "tools/check_ecosystem_matrix.py"], ROOT),

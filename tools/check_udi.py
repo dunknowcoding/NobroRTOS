@@ -2,8 +2,8 @@
 """UDI surface gate: ImuSal demo must expose exactly three mutually exclusive backends.
 
 Checks that the Universal Driver Interface proof app (udi_imu_demo) carries the
-expected backend features, compile-time exclusivity guards, hw_eval registration,
-and the public UDI rule doc. No hardware required.
+expected backend features, compile-time exclusivity guards, and the public UDI rule
+doc. Lab registration and endpoints are intentionally private. No hardware required.
 
     python tools/check_udi.py
     python tools/check_udi.py --selftest
@@ -18,7 +18,6 @@ UDI_APP = os.path.join(ROOT, "core", "apps", "imu", "udi_imu_demo")
 CARGO = os.path.join(UDI_APP, "Cargo.toml")
 APP_RS = os.path.join(UDI_APP, "src", "app.rs")
 UDI_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE.md")
-HW_EVAL = os.path.join(ROOT, "tools", "nobro_hw_eval.py")
 
 BACKENDS = ("backend-native", "backend-eh", "backend-arduino")
 
@@ -27,7 +26,6 @@ def check():
     errs = []
     cargo = open(CARGO, encoding="utf-8").read()
     app = open(APP_RS, encoding="utf-8").read()
-    hw = open(HW_EVAL, encoding="utf-8").read()
 
     for b in BACKENDS:
         if f"{b} =" not in cargo and f'{b} = [' not in cargo:
@@ -45,9 +43,6 @@ def check():
         for token in ("ImuSal", "backend-native", "backend-arduino", "category, one trait"):
             if token not in doc:
                 errs.append(f"docs/ARCHITECTURE.md missing '{token}'")
-
-    if '"udi"' not in hw or "NOBRO_UDI_IMU_REPORT" not in hw:
-        errs.append("nobro_hw_eval.py missing udi entry")
 
     return errs
 

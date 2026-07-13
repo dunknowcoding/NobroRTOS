@@ -18,6 +18,12 @@ FORBIDDEN_REFERENCES = (
     "measure_complex_runtime.py",
     "measure_embassy_variants.py",
     "measure_authoring.py",
+    "nobro_hw_eval.py",
+    "hil_matrix.py",
+    "wasm_slot_spike.py",
+    "kernel_wcet_demo",
+    "kernel_selftest",
+    "hil_fault_demo",
 )
 
 
@@ -33,15 +39,29 @@ def validate() -> list[str]:
     includes = {pathlib.PurePosixPath(item) for item in manifest.get("core_distribution_roots", [])}
     required_excludes = {
         pathlib.PurePosixPath("_work"),
+        pathlib.PurePosixPath("_maintainer"),
+        pathlib.PurePosixPath("core/baselines"),
+        pathlib.PurePosixPath("core/fuzz"),
+        pathlib.PurePosixPath("core/internal"),
+        pathlib.PurePosixPath("tools/internal"),
+        pathlib.PurePosixPath("tools/dev"),
     }
     if not required_excludes <= excludes:
         errors.append(f"missing release excludes: {sorted(map(str, required_excludes-excludes))}")
-    forbidden_tracked = ("core/baselines/", "core/fuzz/", "core/internal/",
-                         "tools/internal/", "tools/dev/")
+    forbidden_tracked = (
+        "_maintainer/", "core/baselines/", "core/fuzz/", "core/internal/",
+        "tools/internal/", "tools/dev/", "docs/ENGINEERING.md",
+        "tools/nobro_hw_eval.py", "tools/hil_matrix.py", "tools/wasm_slot_spike.py",
+        "core/apps/kernel/kernel_wcet_demo/", "core/apps/kernel/kernel_selftest/",
+        "core/apps/kernel/hil_fault_demo/",
+    )
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.splitlines()
-    leaked = [path for path in tracked if path.startswith(forbidden_tracked)]
+    leaked = [
+        path for path in tracked
+        if path.startswith(forbidden_tracked) and (ROOT / path).exists()
+    ]
     if leaked:
         errors.append(f"maintainer-only files are tracked: {leaked[:5]}")
     for public in map(pathlib.PurePosixPath, public_tools):
@@ -64,7 +84,9 @@ def validate() -> list[str]:
         errors.append("hosted Linux workflow cannot install the Windows-only ArduinoNRF toolchain")
     for relative in tracked:
         path = ROOT / relative
-        if relative == "tools/check_release_boundary.py" or not path.is_file():
+        if relative in {
+            ".gitignore", "sdk/sdk-manifest.json", "tools/check_release_boundary.py"
+        } or not path.is_file():
             continue
         if path.suffix.lower() in {".png", ".jpg", ".uf2", ".zip"}:
             continue

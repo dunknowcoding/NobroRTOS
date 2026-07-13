@@ -4,7 +4,7 @@ This matrix is part of the product contract. “Builds” does not mean “deepl
 supported,” declared timing is not a WCET proof, and a host simulation is not hardware
 evidence. The machine-readable platform truth is
 [`core/boards/platform_tiers.json`](../core/boards/platform_tiers.json).
-Application/library/benchmark integration status is separately gated by
+Application and library integration status is separately gated by
 [`core/ecosystem/integration_matrix.json`](../core/ecosystem/integration_matrix.json),
 including rows that are still absent.
 
@@ -21,22 +21,13 @@ including rows that are still absent.
 
 ## Resources
 
-The pinned minimal-workload baseline currently measures NobroRTOS at 15,992 bytes of
-flash and 16 bytes of static RAM, versus 3,708/4,644 for Embassy and 1,324/16 for the
-bare-metal baseline. The graph API reduces contract boilerplate but adds about 3.1 KiB
-of flash in that baseline. These numbers are regression-gated, not universal forecasts;
-the internal pinned comparison suite must be rerun for the same targets and settings. Static
-RAM is not total RAM: the Wave-61 complex run measured a 9,492-byte NobroRTOS main-stack
-peak versus 216 bytes for Embassy and 168 bytes for FreeRTOS (whose statically reserved
-task stacks are already included in its 3,828-byte static-RAM result).
-
-NobroRTOS deliberately spends more flash on admission, identity, quotas, recovery, and
-evidence. Small applications for which those controls are unnecessary will usually be
-smaller and simpler in Embassy or bare metal. On the equivalent five-stage hardware
-run, NobroRTOS used about 15% more instrumented task-work cycles than Embassy and 40%
-more than FreeRTOS. Its deadline-WFI residence reached 98.36%, but maximum jitter and residence
-were both worse than Embassy/FreeRTOS on this specimen. Direct electrical energy/current is still unavailable without
-calibrated equipment; the coefficient-based software index is explicitly an estimate.
+Admission, identity, quotas, recovery, and evidence have real flash, RAM, stack, and CPU
+costs. Small applications that do not need those controls may be smaller with a simpler
+executor or a direct loop. Size and timing depend on the selected profile, toolchain,
+target, and workload; measure the final application rather than treating a specimen as a
+universal forecast. Static RAM is not total RAM, so deployment review must include stack
+high-water and bounded dynamic arenas. Direct current or energy claims require calibrated
+equipment; software coefficients are estimates only.
 
 ## Platform support
 
@@ -66,8 +57,8 @@ mapping. Physical smoke evidence does not promote either provider port to deep s
 
 ## Evidence interpretation
 
-Hosted CI covers host tests, format/lint, dependency policy, Miri, persistent fuzz
-smoke, sanitizer, coverage, package builds, and cross-compilation. It cannot access the
+Hosted CI covers host tests, format/lint, dependency policy, Miri, sanitizer, coverage,
+package builds, and cross-compilation. It cannot access the
 lab. Hardware evidence is generated under ignored work roots and is never committed;
 public claims report only sanitized verdicts. A quiet or absent endpoint is not converted
 into a passing result.

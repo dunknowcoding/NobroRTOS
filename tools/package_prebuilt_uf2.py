@@ -6,7 +6,7 @@ drag-and-drop, opens the web-flasher report console, and watches the board expla
 itself in plain sentences - zero toolchain. This tool builds that bundle and gates it.
 
   --build   cargo-build usb_cdc_demo_s140, extract a bootloader-safe flash image from
-            the ELF (reusing nobro_hw_eval's IHEX/clamp logic), wrap it as UF2
+            the ELF with the public image helpers, wrap it as UF2
             (family 0xADA52840, app @ 0x26000), and bundle it with the starter
             app.json + a README into _work/prebuilt/
   --check   validate the committed reference manifest (packages/block-editor/
@@ -29,7 +29,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import nobro_hw_eval as hw  # elf_flash_bytes / flash_image / make_uf2 + constants
+import firmware_image as image
 
 MANIFEST = os.path.join(ROOT, "packages", "block-editor", "prebuilt.json")
 OUT_DIR = os.path.join(ROOT, "_work", "prebuilt")
@@ -43,16 +43,16 @@ def load_manifest():
 
 def build() -> int:
     man = load_manifest()
-    env = dict(os.environ, CARGO_TARGET_DIR=hw.TARGET_DIR)
+    env = dict(os.environ, CARGO_TARGET_DIR=image.TARGET_DIR)
     cmd = ["cargo", "build", "-p", man["package"], "--bin", man["binary"], "--release",
            "--no-default-features", "--features", ",".join(man["features"])]
     print("+", " ".join(cmd))
-    if subprocess.run(cmd, cwd=hw.CORE, env=env).returncode:
+    if subprocess.run(cmd, cwd=image.CORE, env=env).returncode:
         return 1
-    elf = os.path.join(hw.RELEASE, man["binary"])
-    mem = hw.elf_flash_bytes(elf, hw.llvm_bin())
-    base, image = hw.flash_image(mem, APP_BASE_S140)  # guard: never below app base
-    uf2 = hw.make_uf2(mem)
+    elf = os.path.join(image.RELEASE, man["binary"])
+    mem = image.elf_flash_bytes(elf, image.llvm_bin())
+    base, app_image = image.flash_image(mem, APP_BASE_S140)
+    uf2 = image.make_uf2(mem)
     os.makedirs(OUT_DIR, exist_ok=True)
     uf2_path = os.path.join(OUT_DIR, man["uf2_name"])
     with open(uf2_path, "wb") as f:
@@ -72,7 +72,7 @@ def build() -> int:
     digest = hashlib.sha256(uf2).hexdigest()
     print(f"bundle: {OUT_DIR}")
     print(f"  {man['uf2_name']}: {len(uf2)} bytes ({len(uf2)//512} UF2 blocks), sha256={digest[:16]}..")
-    print(f"  image: {len(image)} bytes @ 0x{base:X}")
+    print(f"  image: {len(app_image)} bytes @ 0x{base:X}")
     print("RESULT: PASS")
     return 0
 
@@ -80,8 +80,11 @@ def build() -> int:
 def check() -> int:
     errors = []
     man = load_manifest()
-    if man.get("uf2_family") != hw.UF2_FAMILY:
-        errors.append(f"manifest uf2_family 0x{man.get('uf2_family', 0):08X} != 0x{hw.UF2_FAMILY:08X}")
+    if man.get("uf2_family") != image.UF2_FAMILY:
+        errors.append(
+            f"manifest uf2_family 0x{man.get('uf2_family', 0):08X} "
+            f"!= 0x{image.UF2_FAMILY:08X}"
+        )
     if man.get("app_base") != APP_BASE_S140:
         errors.append(f"manifest app_base != 0x{APP_BASE_S140:X}")
     if "s140" not in " ".join(man.get("features", [])):
@@ -104,13 +107,13 @@ def check() -> int:
             errors.append("UF2 size not block-aligned")
         for off in range(0, len(data), 512):
             m0, m1, _fl, addr, _len, _i, _n, fam = struct.unpack_from("<8I", data, off)
-            if (m0, m1) != (hw.UF2_MAGIC0, hw.UF2_MAGIC1):
+            if (m0, m1) != (image.UF2_MAGIC0, image.UF2_MAGIC1):
                 errors.append(f"bad UF2 magic at block {off//512}")
                 break
-            if fam != hw.UF2_FAMILY:
+            if fam != image.UF2_FAMILY:
                 errors.append("wrong UF2 family")
                 break
-            if not (APP_BASE_S140 <= addr < hw.FLASH_END - 0xC000):
+            if not (APP_BASE_S140 <= addr < image.FLASH_END - 0xC000):
                 errors.append(f"block addr 0x{addr:X} outside the safe app window")
                 break
 

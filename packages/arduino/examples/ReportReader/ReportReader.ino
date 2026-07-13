@@ -41,7 +41,7 @@ void setup() {
 }
 
 void loop() {
-  // Decode pass: the same checks tools/nobro_hw_eval.py applies to live hardware.
+  // Decode pass: validate the public fixed-layout report contract.
   bool magic_ok = demo_report[0] == NOBRO_RUNTIME_REPORT_MAGIC;
   bool sum_ok =
       demo_report[WORDS - 1] == nobro_report_checksum_words(demo_report, WORDS - 1);

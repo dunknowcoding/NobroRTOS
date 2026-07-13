@@ -11,7 +11,7 @@ DOCS = [
     ROOT / "README.md",
     *(ROOT / "docs" / name for name in (
         "README.md", "GETTING_STARTED.md", "USER_GUIDE.md", "API.md",
-        "ARCHITECTURE.md", "PORTING.md", "ENGINEERING.md", "api-index.md",
+        "ARCHITECTURE.md", "PORTING.md", "api-index.md",
     )),
 ]
 LINK = re.compile(r"\[[^]]*\]\(([^)]+)\)")

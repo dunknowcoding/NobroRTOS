@@ -70,14 +70,7 @@ fn main() -> ! {
         imu.bmp280_present()
     );
 
-    let board_tag = if Board::APP_FLASH_START == 0x26000 {
-        5u32
-    } else {
-        1u32
-    };
-
     unsafe {
-        NOBRO_IMU_HW_EVAL_REPORT.board_id_tag = board_tag;
         NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(imu.who_am_i());
         NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(imu.addr());
         NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = u32::from(device_count);
@@ -160,7 +153,6 @@ fn try_finalize_eval() {
     }
 
     let mut report = ImuHwEvalReport {
-        board_id_tag: unsafe { NOBRO_IMU_HW_EVAL_REPORT.board_id_tag },
         who_am_i: unsafe { NOBRO_IMU_HW_EVAL_REPORT.who_am_i },
         dev_addr: unsafe { NOBRO_IMU_HW_EVAL_REPORT.dev_addr },
         i2c_devices: unsafe { NOBRO_IMU_HW_EVAL_REPORT.i2c_devices },

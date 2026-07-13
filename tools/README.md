@@ -8,7 +8,7 @@ fuzz corpora, and private bench utilities are not stored in this repository.
 | Tool | Job |
 | --- | --- |
 | `run_checks.py` | THE gate suite → one `ALL PASS` + Evidence Pack |
-| `nobro_verify.py` | Evidence Pack builder (gates + budgets → JSON/HTML) |
+| `nobro_verify.py` | Evidence Pack builder (public gates + budgets → JSON/HTML) |
 | `fleet_evidence.py` | fold software/OTA/hardware/replay evidence → fleet verdict |
 | `ci_matrix.sh` | extended Rust build matrix (host tests, portability, ports) |
 | `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
@@ -23,14 +23,14 @@ fuzz corpora, and private bench utilities are not stored in this repository.
 `check_ecosystem_matrix.py` ·
 `check_release_versions.py` · `check_ros_bridge.py` · `check_sdk_manifest.py` ·
 `check_udi.py` · `check_web_flasher.py` · `chaos_test.py` · `tutorial_runner.py` ·
-`verify_timing_lease.py` · `wasm_slot_spike.py` · `ota_preflight_demo.py`
+`verify_timing_lease.py` · `ota_preflight_demo.py`
 
 ## Build / flash / package
 
 | Tool | Job |
 | --- | --- |
-| `nobro_hw_eval.py` | build+flash+run+read+grade a hardware eval app (bootloader-safe) |
 | `flash.py` | flash an image via jlink / uf2 / arduino backends |
+| `firmware_image.py` | extract guarded application bytes and build an nRF52840 UF2 |
 | `bin2uf2.py` / `gen_memory_x.py` | image + linker-script utilities |
 | `package_arduino.py` | Arduino library packaging + header drift gate (also syncs `sdk/include`) |
 | `package_prebuilt_uf2.py` | the committed starter UF2 + its manifest gate |

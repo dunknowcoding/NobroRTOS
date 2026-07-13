@@ -41,6 +41,15 @@ gate "esp32c3 port build" \
 
 # The Xtensa port needs the espup toolchain; skip (not fail) where it is absent.
 if rustup toolchain list 2>/dev/null | grep -q "^esp"; then
+  rustup_home="$(rustup show home 2>/dev/null | tr -d '\r')"
+  if command -v cygpath >/dev/null 2>&1; then
+    rustup_home="$(cygpath -u "$rustup_home")"
+  fi
+  xtensa_bin="$rustup_home/toolchains/esp/xtensa-esp-elf/bin"
+  if [ -d "$xtensa_bin" ]; then
+    PATH="$xtensa_bin:$PATH"
+    export PATH
+  fi
   gate "esp32s3 port build (xtensa)" \
     bash -c 'cd core/ports/esp32s3 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-s3" cargo +esp build --release'
 else

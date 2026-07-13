@@ -8,22 +8,17 @@ before flashing, and ship evidence instead of promises.*
 | Thing | Where |
 | --- | --- |
 | Rust + the embedded target | `rustup target add thumbv7em-none-eabihf` and `rustup component add llvm-tools-preview` ([rustup.rs](https://rustup.rs)) |
-| Python 3.10+ | for the eval/verify tooling |
-| An nRF52840 board + J-Link (deep-HAL tier) | see the support tiers table in the README — conformance ports (ESP32-C3/S3, RP2350) work for the portable core |
+| Python 3.10+ | for the public SDK and verification tooling |
+| A supported board and upload tool | see the support tiers table in the README; conformance does not imply deep peripheral support |
 
 ## Exercise 1 — One app, three transports (the UDI)
 
 `udi_imu_demo` reads the same physical IMU through three interchangeable backends
 behind one `ImuSal` trait — the app's evaluation code never names a transport:
 
-```bash
-python tools/nobro_hw_eval.py udi --profile s140 --backend native   # HAL register driver
-python tools/nobro_hw_eval.py udi --profile s140 --backend eh       # embedded-hal driver
-python tools/nobro_hw_eval.py udi --profile s140 --backend arduino  # an Arduino-style C++ lib via the shim
-```
-
-All three must seal the same PASS; the report's `backend_id` proves which transport
-ran. Read the pattern in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) (UDI
+Build the `backend-native`, `backend-eh`, and `backend-arduino` feature variants. Each
+must seal the same report shape; `backend_id` identifies the selected transport.
+Read the pattern in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) (UDI
 section), then add a fourth backend for a sensor you own — the whole point is that
 this takes a feature flag and an impl block, not a fork.
 
@@ -35,9 +30,8 @@ python tools/static_budget.py core/target/thumbv7em-none-eabihf/release/udi_imu_
 
 Call-graph-priced worst-case stack, static RAM, flash, and cycles. Ceilings live in
 `host/nobro-host-contract.json` (`build_budgets`) and the Evidence Pack **fails** if
-you exceed them. Kernel-op costs are measured, not folklore:
-`python tools/nobro_hw_eval.py wcet --profile s140` reproduces the numbers in
-[docs/ENGINEERING.md](../../docs/ENGINEERING.md).
+you exceed them. Treat this as a static bound; deployment timing still requires
+target-specific measurement.
 
 ## Exercise 3 — Ship evidence
 

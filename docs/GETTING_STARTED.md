@@ -12,27 +12,22 @@ simulator) explaining itself through `NOBRO_*` reports.
 
 ## Hardware quick start
 
-The configured nRF deep-HAL path funnels through **one command**: flash an eval app, let it
-run, then read its fixed `NOBRO_*` report back over the debug probe and grade it PASS
-or FAIL. No serial console required.
+Build or obtain an image for the exact board profile, flash it explicitly, then read its
+fixed `NOBRO_*` report over the transport that application exposes.
 
 ### Prerequisites
 
-- An nRF52840 dev board wired to a SEGGER J-Link (SWD). Other probes work with
-  `probe-rs`; the tool flag below assumes J-Link.
+- A supported board and its normal upload mechanism (UF2, Arduino, or a debug probe).
 - Rust (`rustup target add thumbv7em-none-eabihf`) and Python 3.10+.
-- `arm-none-eabi-objcopy` on PATH (any GNU Arm toolchain provides it).
+- The compiler and image tools required by the selected port.
 
-### One command
+### Public flash command
 
 ```bash
-python tools/nobro_hw_eval.py imu            # build + flash + run + read + grade
-python tools/nobro_hw_eval.py sal            # servo + sensor SAL round-trip
-python tools/nobro_hw_eval.py eh             # embedded-hal driver path
-python tools/nobro_hw_eval.py sched          # scheduler / PPI / PWM timing
+python sdk/cli/nobro.py flash --help
 ```
 
-Each run ends with an explicit verdict:
+Applications that expose a serial report end with an explicit verdict:
 
 ```
 === imu on nosd ===
@@ -41,15 +36,14 @@ Each run ends with an explicit verdict:
 PASS: all_pass=1
 ```
 
-Options: `--profile` picks the flash layout (`nosd` at 0x1000 or `s140` at 0x26000 for
-SoftDevice boards), `--jlink <path>` points at a non-default J-Link CLI, `--no-build`
-reuses the last binary.
+Image generation and upload settings are board-specific. Do not reuse an address, image,
+or boot layout from another profile.
 
 ### What "PASS" means
 
-The app seals a fixed-layout report struct in RAM (`NOBRO_*_REPORT`); the tool reads it
-via the probe and checks `magic`, `completed`, and `all_pass`. If a target is silent or
-a required peripheral is unavailable, the bounded run returns a pointed failure.
+The app seals a fixed-layout report (`NOBRO_*_REPORT`) and consumers check `magic`,
+`completed`, `all_pass`, and its checksum. A silent target or unavailable peripheral is
+not a passing result.
 
 ### No probe? No board?
 
@@ -67,8 +61,7 @@ a required peripheral is unavailable, the bounded run returns a pointed failure.
 - Sensor samples move through the kernel as **zero-copy tickets** (`SamplePool`):
   producers publish a slot, consumers borrow it - payloads are not copied through
   queues.
-- Kernel-op costs are measured, not guessed: see
-  [ENGINEERING.md](ENGINEERING.md).
+- Resource and timing claims must be measured for the final target and workload.
 
 ## Zero-code path (no toolchain)
 

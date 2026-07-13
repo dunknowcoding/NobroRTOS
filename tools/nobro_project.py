@@ -14,7 +14,6 @@ A single flow from "I have an idea" to a running, self-explaining app:
                                        report, line-attributed, exactly what needs
                                        async / global-interrupt / platform adaptation
   nobro project run <project>         explain + real build + simulate + report
-  nobro project flash <eval-app>      state-restoring hardware evaluation
   nobro project report <report.json>  decode project or sanitized HIL evidence
 
 Everything generated lands under an ignored work root (`_work/projects/<name>`)
@@ -294,12 +293,6 @@ def read_report(path: pathlib.Path) -> tuple[str, bool]:
     raise ValueError("unknown report schema")
 
 
-def hardware_command(app: str, profile: str, backend: str) -> list[str]:
-    spec = f"{app}:{backend}" if app == "udi" else app
-    return [sys.executable, str(ROOT / "tools" / "hil_matrix.py"),
-            "--apps", spec, "--profile", profile, "--restore-dfu"]
-
-
 # ------------------------------------------------------------------- explain
 
 def explain(workload: dict) -> tuple[str, bool]:
@@ -570,10 +563,7 @@ def selftest() -> int:
     notes = " ".join(f["note"] for f in report["findings"])
     assert "AppGraph TaskDecl" in notes and "critical_section" in notes
 
-    command = hardware_command("udi", "s140", "eh")
-    assert "--restore-dfu" in command and "udi:eh" in command
-
-    print("NOBRO PROJECT SELFTEST: PASS (scaffold/build/simulate/report/import/migrate/flash-plan)")
+    print("NOBRO PROJECT SELFTEST: PASS (scaffold/build/simulate/report/import/migrate)")
     return 0
 
 
@@ -608,17 +598,8 @@ def main() -> int:
     p_report = sub.add_parser("report", help="read a project or sanitized HIL report")
     p_report.add_argument("report", type=pathlib.Path)
 
-    p_flash = sub.add_parser("flash", help="run a safe state-restoring hardware evaluation")
-    p_flash.add_argument("app")
-    p_flash.add_argument("--profile", choices=["nosd", "s140"], default="s140")
-    p_flash.add_argument("--backend", choices=["native", "eh", "arduino"], default="native")
-
-    p_run = sub.add_parser("run", help="explain, build, then simulate or evaluate hardware")
+    p_run = sub.add_parser("run", help="explain, build, then simulate")
     p_run.add_argument("project", type=pathlib.Path)
-    p_run.add_argument("--mode", choices=["simulate", "hardware"], default="simulate")
-    p_run.add_argument("--app", default="async")
-    p_run.add_argument("--profile", choices=["nosd", "s140"], default="s140")
-    p_run.add_argument("--backend", choices=["native", "eh", "arduino"], default="native")
 
     p_migrate = sub.add_parser("migrate", help="report what needs adaptation")
     p_migrate.add_argument("--from", dest="framework", required=True,
@@ -693,9 +674,6 @@ def main() -> int:
         print(rendered)
         return 0 if ok else 1
 
-    if args.command == "flash":
-        return subprocess.run(hardware_command(args.app, args.profile, args.backend), cwd=ROOT).returncode
-
     if args.command == "run":
         project = args.project.resolve()
         try:
@@ -712,12 +690,6 @@ def main() -> int:
         if not built["ok"]:
             print("\n".join(built["detail"]))
             return 1
-        if args.mode == "hardware":
-            print("Hardware mode evaluates the selected repository app through the "
-                  "state-restoring HIL path; it does not flash the host scaffold binary.")
-            return subprocess.run(
-                hardware_command(args.app, args.profile, args.backend), cwd=ROOT
-            ).returncode
         path, _ = simulate(project)
         rendered, ok = read_report(path)
         print(rendered)

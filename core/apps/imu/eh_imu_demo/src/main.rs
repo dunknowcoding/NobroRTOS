@@ -109,7 +109,6 @@ fn main() -> ! {
         }
 
         unsafe {
-            NOBRO_IMU_HW_EVAL_REPORT.board_id_tag = 1;
             NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
             NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(addr);
             NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;

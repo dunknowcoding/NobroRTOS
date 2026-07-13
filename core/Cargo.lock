@@ -487,19 +487,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hil-fault-demo"
-version = "0.2.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "nobro-hal",
- "nobro-kernel",
- "panic-halt",
-]
-
-[[package]]
 name = "hybrid-array"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -521,34 +508,6 @@ dependencies = [
  "nobro-kernel",
  "nobro-sal",
  "panic-probe",
-]
-
-[[package]]
-name = "kernel-selftest"
-version = "0.2.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "nobro-adapter-ros-imu-bridge",
- "nobro-kernel",
- "nobro-sal",
- "panic-halt",
-]
-
-[[package]]
-name = "kernel-wcet-demo"
-version = "0.2.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "defmt 0.3.100",
- "defmt-rtt",
- "nobro-classic",
- "nobro-hal",
- "nobro-kernel",
- "panic-halt",
 ]
 
 [[package]]

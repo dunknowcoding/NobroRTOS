@@ -48,7 +48,6 @@ members = [
     "apps/imu/ros_imu_demo",
     "apps/ai/ai_usb_demo",
     "apps/kernel/recovery_demo",
-    "apps/kernel/kernel_selftest",
     "apps/control/closed_loop_demo",
     "apps/imu/spi_imu_demo",
     "apps/connectivity/radio_link_demo",
@@ -57,7 +56,6 @@ members = [
     "apps/ai/ai_runtime_demo",
     "apps/storage/flash_log_demo",
     "apps/storage/telemetry_ring_demo",
-    "apps/kernel/hil_fault_demo",
     "apps/connectivity/usb_stack_demo",
     "apps/kernel/watchdog_demo",
     "apps/ai/motion3_demo",
@@ -78,7 +76,6 @@ members = [
     "apps/connectivity/cc2530_gateway",
     "apps/connectivity/tri_radio",
     "apps/imu/udi_imu_demo",
-    "apps/kernel/kernel_wcet_demo",
     "apps/kernel/async_exec_demo",
 ]
 

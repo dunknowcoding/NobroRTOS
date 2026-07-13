@@ -184,7 +184,6 @@ pub struct ImuHwEvalReport {
     pub version: u32,
     pub completed: u32,
     pub all_pass: u32,
-    pub board_id_tag: u32,
     pub who_am_i: u32,
     pub dev_addr: u32,
     pub i2c_devices: u32,
@@ -204,7 +203,6 @@ impl ImuHwEvalReport {
             version: 0,
             completed: 0,
             all_pass: 0,
-            board_id_tag: 0,
             who_am_i: 0,
             dev_addr: 0,
             i2c_devices: 0,
@@ -240,7 +238,6 @@ impl ImuHwEvalReport {
             ^ self.version
             ^ self.completed
             ^ self.all_pass
-            ^ self.board_id_tag
             ^ self.who_am_i
             ^ self.dev_addr
             ^ self.i2c_devices

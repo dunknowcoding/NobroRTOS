@@ -619,24 +619,17 @@ Every backend:
 | embedded-hal | `backend-eh` | 2 | SPI via `SpiDevice` |
 | Arduino shim | `backend-arduino` | 3 | SPI via `NobroArduinoShim` + stock MPU9250 class |
 
-Hardware eval:
-
-```bash
-python tools/nobro_hw_eval.py udi --profile s140 --backend arduino
-python tools/nobro_hw_eval.py udi --profile s140 --backend native
-python tools/nobro_hw_eval.py udi --profile s140 --backend eh
-```
-
-All three must report `all_pass=1` with the expected `backend_id`. The eval
-function never names a transport.
+The three feature-selected binaries share the same application body and report contract.
+Maintainer HIL must obtain `all_pass=1` with the expected `backend_id`; endpoint and
+restoration details are intentionally not part of the public repository.
 
 ### Adding a new category
 
 1. Define a **category trait** in `nobro_sal` with bounded return types (no heap).
 2. Add a **catalog entry** in `nobro_device` (part id, bus, who-am-i, ranges).
 3. Ship at least **two backends** (native + eh is the minimum credible proof).
-4. Add a **swap demo app** with one shared eval body and feature-gated mounts.
-5. Gate it in `nobro_hw_eval.py` and `run_checks.py`.
+4. Add a **swap demo app** with one shared diagnostic body and feature-gated mounts.
+5. Add portable contract tests; request maintainer HIL before claiming physical support.
 
 ### Adding a new backend to an existing category
 
@@ -648,8 +641,7 @@ function never names a transport.
 ### Related docs
 
 - [PORTING.md](PORTING.md) — migration cookbooks and board-port workflow
-- [GETTING_STARTED.md](GETTING_STARTED.md) — one-command hardware and host evaluation
-- [ENGINEERING.md](ENGINEERING.md) — measured behavior and internal evidence
+- [GETTING_STARTED.md](GETTING_STARTED.md) — public host and image-deployment workflow
 
 
 ### Second category: `TempSal` (hardware-proven)

@@ -154,7 +154,6 @@ pub extern "C" fn nobro_publish_imu(
             let temp_centi = if tc > 0.0 { (tc * 100.0) as u32 } else { 0 };
             unsafe {
                 READS += 1;
-                NOBRO_IMU_HW_EVAL_REPORT.board_id_tag = 1;
                 NOBRO_IMU_HW_EVAL_REPORT.who_am_i = u32::from(who);
                 NOBRO_IMU_HW_EVAL_REPORT.dev_addr = u32::from(dev_addr);
                 NOBRO_IMU_HW_EVAL_REPORT.i2c_devices = 1;

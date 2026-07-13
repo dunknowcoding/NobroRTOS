@@ -6,7 +6,6 @@
 | Command  | Does | Forwards to |
 | -------- | ---- | ----------- |
 | app      | validate / generate firmware from an app.json | tools/nobro_app.py |
-| eval     | build+flash+run+grade a hardware eval app     | tools/nobro_hw_eval.py |
 | flash    | flash an image (jlink / uf2 / arduino)        | tools/flash.py |
 | verify   | run every software gate -> Evidence Pack      | tools/run_checks.py |
 | fleet    | fold all evidence into a fleet verdict        | tools/fleet_evidence.py |
@@ -17,8 +16,7 @@
 | project  | create/import/explain/build/run/report apps   | tools/nobro_project.py |
 | firmware | generate/build nRF firmware from app.nobro   | tools/nobro_firmware_project.py |
 
-Each command accepts its underlying tool's flags unchanged - `nobro eval --help`
-shows exactly what `tools/nobro_hw_eval.py --help` shows. The mapping is data, so
+Each command accepts its underlying tool's flags unchanged. The mapping is data, so
 adding a command is one table row.
 """
 import runpy
@@ -31,7 +29,6 @@ TOOLS = ROOT / "tools"
 
 COMMANDS = {
     "app": "nobro_app.py",
-    "eval": "nobro_hw_eval.py",
     "flash": "flash.py",
     "verify": "run_checks.py",
     "fleet": "fleet_evidence.py",

@@ -31,8 +31,14 @@
     "core/memory-s140.x"
   ],
   "release_excludes": [
+    "_maintainer",
     "core/target",
     "core/_work",
+    "core/baselines",
+    "core/fuzz",
+    "core/internal",
+    "tools/internal",
+    "tools/dev",
     "_work"
   ],
   "python_package": "bindings/python",

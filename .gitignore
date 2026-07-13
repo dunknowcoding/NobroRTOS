@@ -5,6 +5,11 @@ roadmap.md
 ROADMAP.md
 _work/
 _maintainer/
+core/baselines/
+core/fuzz/
+core/internal/
+tools/internal/
+tools/dev/
 
 # Rust build outputs
 target/
