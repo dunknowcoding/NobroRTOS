@@ -179,39 +179,22 @@ feedback, and result state, and parameters should map to fixed-capacity
 configuration.
 
 For low-power mesh interop, the host contracts decode IEEE 802.15.4 MAC frames
-and classify Thread-style 6LoWPAN payloads. `tools/dev/zigbee_gateway.py` keeps the
-base MAC record and adds a Thread rollup/last-frame record when a captured PSDU
-contains IPHC or IPv6 6LoWPAN traffic.
+and classify Thread-style 6LoWPAN payloads. A gateway adapter can retain the
+base MAC record and add a bounded Thread rollup when a captured PSDU contains
+IPHC or IPv6 6LoWPAN traffic.
 
 AI model contracts and ROS bridge contracts can be exported as fixed reports, so
 host tools can inspect model memory, timeout, stale-result policy, bridge entity
 counts, total buffer demand, and transport choice without running a hardware
 probe.
 
-For camera-oriented edge AI, `tools/dev/train_face_pipeline.py` can train the small
-16x16 person-presence model and optionally export a JSON copy for live host
-frame validation:
-
-```powershell
-python tools/dev/train_face_pipeline.py --json-out _work\person_model.json
-python tools/dev/vision_node.py --port <YOUR_SERIAL_PORT> --person-model _work\person_model.json
-```
-
-The vision tool keeps scene/liveness analytics and person detection separate:
+Camera adapters should keep scene/liveness analytics and person detection separate:
 liveness proves the camera stream is real, while the optional person model turns
 the latest frame into a bounded inference result. Multi-board manifests can pass
 the same file with the `person_model` key on a `vision` node.
 
-For audio-oriented edge AI, `tools/dev/train_kws_pipeline.py` can train the small
-yes/no keyword spotter and export the same dense model for live PCM validation:
-
-```powershell
-python tools/dev/train_kws_pipeline.py --data _work\datasets\speech --json-out _work\kws_model.json
-python tools/dev/audio_kws_node.py --wav _work\sample.wav --model _work\kws_model.json
-```
-
-Serial audio adapters can stream little-endian PCM16 using the marker protocol
-documented in `tools/dev/audio_kws_node.py`. The feature contract is fixed at
+Audio adapters can stream little-endian PCM16 through a bounded marker protocol.
+The keyword-spotting feature contract is fixed at
 16 kHz mono, one second, 15 frames, and 8 log-energy bands, so a PDM or I2S
 adapter only has to supply bounded PCM windows.
 

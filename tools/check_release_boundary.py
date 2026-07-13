@@ -3,13 +3,17 @@
 
 import json
 import pathlib
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "sdk" / "sdk-manifest.json"
 FORBIDDEN_REFERENCES = (
     "tools/internal/",
+    "tools/dev/",
     "core/baselines/",
+    "core/fuzz/",
+    "core/internal/",
     "measure_baselines.py",
     "measure_complex_runtime.py",
     "measure_embassy_variants.py",
@@ -28,13 +32,18 @@ def validate() -> list[str]:
     excludes = {pathlib.PurePosixPath(item) for item in manifest.get("release_excludes", [])}
     includes = {pathlib.PurePosixPath(item) for item in manifest.get("core_distribution_roots", [])}
     required_excludes = {
-        pathlib.PurePosixPath("core/baselines"),
-        pathlib.PurePosixPath("tools/internal"),
-        pathlib.PurePosixPath("tools/dev"),
         pathlib.PurePosixPath("_work"),
     }
     if not required_excludes <= excludes:
         errors.append(f"missing release excludes: {sorted(map(str, required_excludes-excludes))}")
+    forbidden_tracked = ("core/baselines/", "core/fuzz/", "core/internal/",
+                         "tools/internal/", "tools/dev/")
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    leaked = [path for path in tracked if path.startswith(forbidden_tracked)]
+    if leaked:
+        errors.append(f"maintainer-only files are tracked: {leaked[:5]}")
     for public in map(pathlib.PurePosixPath, public_tools):
         if any(overlaps(public, excluded) for excluded in excludes):
             errors.append(f"public tool overlaps excluded path: {public}")
@@ -45,14 +54,6 @@ def validate() -> list[str]:
             errors.append(f"core distribution root overlaps excluded path: {included}")
         if not (ROOT / included).exists():
             errors.append(f"core distribution root is missing: {included}")
-    comparison = ROOT / "tools" / "internal" / "comparison"
-    expected = {
-        "measure_authoring.py", "measure_baselines.py", "measure_complex_runtime.py",
-        "measure_embassy_variants.py", "baseline_budgets.json",
-    }
-    actual = {item.name for item in comparison.iterdir() if item.is_file()}
-    if actual != expected:
-        errors.append(f"internal comparison inventory drift: {sorted(actual)}")
     if list((ROOT / "tools").glob("measure_*.py")):
         errors.append("comparison tools must not live on the public tools root")
     workflow = (ROOT / ".github" / "workflows" / "gates.yml").read_text(encoding="utf-8")
@@ -61,17 +62,19 @@ def validate() -> list[str]:
             errors.append(f"hosted workflow uses stale public comparison path: tools/{name}")
     if "arduino-cli core install arduinonrf:nrf52" in workflow:
         errors.append("hosted Linux workflow cannot install the Windows-only ArduinoNRF toolchain")
-    for surface in [ROOT / "packages", ROOT / "sdk" / "cli"]:
-        for path in surface.rglob("*"):
-            if not path.is_file() or path.suffix.lower() in {".png", ".jpg", ".uf2", ".zip"}:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                continue
-            for token in FORBIDDEN_REFERENCES:
-                if token in text:
-                    errors.append(f"{path.relative_to(ROOT)} exposes internal comparison token {token}")
+    for relative in tracked:
+        path = ROOT / relative
+        if relative == "tools/check_release_boundary.py" or not path.is_file():
+            continue
+        if path.suffix.lower() in {".png", ".jpg", ".uf2", ".zip"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for token in FORBIDDEN_REFERENCES:
+            if token in text:
+                errors.append(f"{relative} exposes maintainer-only token {token}")
     return errors
 
 

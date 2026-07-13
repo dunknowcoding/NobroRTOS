@@ -1,7 +1,7 @@
-# tools/ — developer & CI surface
+# tools/ — user and contributor utilities
 
-Every file here has one job. Only tools allowlisted by `sdk/sdk-manifest.json` ship
-to users; gates, comparisons, HIL, and developer utilities are repository/CI-only.
+Every tracked file here has one job. Maintainer comparisons, lab configurations,
+fuzz corpora, and private bench utilities are not stored in this repository.
 
 ## Orchestrators
 
@@ -14,13 +14,12 @@ to users; gates, comparisons, HIL, and developer utilities are repository/CI-onl
 | `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
 | `nobro_project.py` | create/import/explain/build/simulate/flash/report project flow |
 | `nobro_firmware_project.py` | generate an admitted workload and production nRF firmware from one short app declaration |
-| `internal/comparison/` | non-shipped RTOS authoring/resource comparison suite |
 | `check_arduino_facade.py` | compile/run positive and negative allocation-free C++ facade contracts |
 
 ## Gates (each also runs standalone)
 
 `check_block_editor.py` · `check_board_profiles.py` · `check_portability.sh` ·
-`check_async_miri.py` · `check_fuzz_targets.py` · `check_platform_tiers.py` ·
+`check_async_miri.py` · `check_platform_tiers.py` ·
 `check_ecosystem_matrix.py` ·
 `check_release_versions.py` · `check_ros_bridge.py` · `check_sdk_manifest.py` ·
 `check_udi.py` · `check_web_flasher.py` · `chaos_test.py` · `tutorial_runner.py` ·
@@ -43,10 +42,3 @@ to users; gates, comparisons, HIL, and developer utilities are repository/CI-onl
 
 `nobro_app.py` (app.json → validate/generate) · `nobro_contract_tool.py` (the
 contract multi-tool) · `ros_msg_gen.py` · `import_dts.py` · `gen_api_index.py`
-
-## `dev/` — lab & maintainer material
-
-Bench collectors, model-training pipelines, radio/vision/audio experiments, board
-provisioning, the publish checklist, and `bench/` sketches. Nothing in `dev/` is
-needed to *use* NobroRTOS; see `dev/` file headers for their individual stories.
-Local-only files (`boards.json`, `leak_needles.local.txt`) stay gitignored.

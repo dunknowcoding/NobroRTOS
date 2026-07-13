@@ -30,9 +30,7 @@ jobs:
       - name: ecosystem integration truth
         run: python tools/check_ecosystem_matrix.py
       - name: one-file firmware project
-        run: |
-          python tools/nobro_firmware_project.py --selftest
-          python tools/internal/comparison/measure_authoring.py
+        run: python tools/nobro_firmware_project.py --selftest
       - name: sdk manifest
         run: python tools/check_sdk_manifest.py
       - name: user release boundary
@@ -92,16 +90,13 @@ jobs:
           name: rust-coverage
           path: coverage.lcov
 
-  miri-fuzz-sanitizer:
+  miri-sanitizer:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri,rust-src
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-fuzz
       - name: Miri portable safety boundary
         working-directory: core
         run: >-
@@ -117,14 +112,6 @@ jobs:
         run: |
           cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
           cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
-      - name: persistent fuzz corpus smoke
-        working-directory: core
-        run: |
-          cargo fuzz run --target x86_64-unknown-linux-gnu wire_inputs -- -max_total_time=15
-          cargo fuzz run --target x86_64-unknown-linux-gnu database_images -- -max_total_time=15
-          cargo fuzz run --target x86_64-unknown-linux-gnu control_state -- -max_total_time=15
-          cargo fuzz run --target x86_64-unknown-linux-gnu abi_lengths -- -max_total_time=15
-          cargo fuzz run --target x86_64-unknown-linux-gnu async_reactor -- -max_total_time=15
       - name: address sanitizer smoke
         working-directory: core
         env:

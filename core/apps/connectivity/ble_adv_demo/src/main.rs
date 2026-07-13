@@ -4,7 +4,7 @@
 //! ADV_NONCONN_IND packets on the three advertising channels. The advertisement
 //! carries the device name "NOBRO" plus manufacturer-specific data with live
 //! telemetry (a beat counter + status), so any standard BLE scanner - a phone app or
-//! `tools/dev/ble_scan.py` on a PC - receives NobroRTOS telemetry with no pairing, no
+//! a standard BLE scanner - receives NobroRTOS telemetry with no pairing, no
 //! connection, and no BLE stack on either side of the firmware.
 //!
 //! Advertising PHY facts used below (Bluetooth Core Spec, LE 1M uncoded):

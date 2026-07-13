@@ -15,7 +15,7 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DEFAULT_MANIFEST = ROOT / "tools" / "dev" / "boards.json"
+DEFAULT_MANIFEST = ROOT / "_work" / "hil-boards.json"
 DEFAULT_OUT = ROOT / "_work" / "evidence" / "hil" / "fleet.json"
 DEFAULT_APPS = ("sal", "sched", "udi:native", "udi:eh", "udi:arduino", "wcet",
                 "stack", "mpu", "async", "database")

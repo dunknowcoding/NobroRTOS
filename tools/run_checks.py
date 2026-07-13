@@ -83,7 +83,6 @@ def gate_specs(quick, rust_only=False, extended=False):
         specs.append(("cargo clippy", lint, CORE))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
         specs.append(("dependency source/license policy", [py, "tools/check_dependency_policy.py"], ROOT))
-        specs.append(("fuzz harnesses + corpora", [py, "tools/check_fuzz_targets.py"], ROOT))
         if extended:
             specs += [
                 ("cargo advisory audit", ["cargo", "audit"], CORE),
@@ -124,14 +123,10 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("tier-c link", [py, "tools/build_libnobro.py", "--check"], ROOT),
         ("fleet evidence", [py, "tools/fleet_evidence.py", "--selftest"], ROOT),
         ("hil matrix", [py, "tools/hil_matrix.py", "--selftest"], ROOT),
-        ("baseline measure", [py, "tools/internal/comparison/measure_baselines.py", "--selftest"], ROOT),
-        ("complex runtime", [py, "tools/internal/comparison/measure_complex_runtime.py", "--selftest"], ROOT),
-        ("embassy variants", [py, "tools/internal/comparison/measure_embassy_variants.py", "--selftest"], ROOT),
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
         ("ecosystem truth", [py, "tools/check_ecosystem_matrix.py"], ROOT),
         ("firmware project", [py, "tools/nobro_firmware_project.py", "--selftest"], ROOT),
-        ("authoring comparison", [py, "tools/internal/comparison/measure_authoring.py"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
         ("release versions", [py, "tools/check_release_versions.py"], ROOT),
         ("ota preflight", [py, "tools/ota_preflight_demo.py"], ROOT),
@@ -140,24 +135,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("mesh chaos", [py, "tools/chaos_test.py"], ROOT),
     ]
     if extended:
-        specs += [
-            ("cross-MCU matrix", ["bash", "tools/ci_matrix.sh"], ROOT),
-            ("fuzz wire smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
-             host_target(), "wire_inputs", "--",
-             "-max_total_time=10"], CORE),
-            ("fuzz database smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
-             host_target(), "database_images", "--",
-             "-max_total_time=10"], CORE),
-            ("fuzz control smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
-             host_target(), "control_state", "--",
-             "-max_total_time=10"], CORE),
-            ("fuzz abi-length smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
-             host_target(), "abi_lengths", "--",
-             "-max_total_time=10"], CORE),
-            ("fuzz async smoke", ["cargo", "+nightly", "fuzz", "run", "--target",
-             host_target(), "async_reactor", "--",
-             "-max_total_time=10"], CORE),
-        ]
+        specs.append(("cross-MCU matrix", ["bash", "tools/ci_matrix.sh"], ROOT))
     return specs
 
 
@@ -179,7 +157,7 @@ def main():
     ap.add_argument("--rust-only", action="store_true",
                     help="run the comprehensive portable Rust test/lint/format gates only")
     ap.add_argument("--extended", action="store_true",
-                    help="also require audit, coverage, Miri, fuzz smoke, and cross-MCU gates")
+                    help="also require audit, coverage, Miri, and cross-MCU gates")
     args = ap.parse_args()
 
     results, all_ok = run_gates(

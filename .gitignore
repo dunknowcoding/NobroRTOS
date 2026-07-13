@@ -4,6 +4,7 @@ MILESTONES.md
 roadmap.md
 ROADMAP.md
 _work/
+_maintainer/
 
 # Rust build outputs
 target/
@@ -14,8 +15,6 @@ core/**/target/
 *.bin
 *.elf
 *.hex
-# Standalone baseline workspaces build into their own target dirs
-core/baselines/*/target/
 *.uf2
 # The one intentional, owner-approved firmware artifact users drag onto the board:
 !sdk/firmware/nobrortos-starter-s140.uf2
@@ -58,9 +57,6 @@ Thumbs.db
 *.swp
 .agents/
 
-# Private bench manifest (users copy boards.example.json)
-tools/dev/boards.json
-
 # Internal-only docs (competitive/strategy analysis - not public)
 docs/DEVELOPER_EXPERIENCE.md
 docs/HARDWARE_BRINGUP.md
@@ -70,7 +66,4 @@ docs/VS_*.md
 docs/*_INTERNAL.md
 docs/rtos_review.md
 
-# Arduino bench sketch build outputs
-tools/dev/bench/*/build/
 tools/leak_needles.local.txt
-tools/dev/*_INTERNAL.py

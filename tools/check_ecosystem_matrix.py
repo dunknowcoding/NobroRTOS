@@ -2,7 +2,7 @@
 """Gate the post-Wave-50 ecosystem/resource truth matrix.
 
 The matrix records what is absent as deliberately as what exists. A future wave that
-adds an adapter/provider/benchmark must update the row in the same commit; otherwise
+adds an adapter/provider must update the row in the same commit; otherwise
 this gate fails instead of allowing prose and source to drift apart.
 """
 
@@ -74,7 +74,9 @@ def validate(matrix: dict, root: pathlib.Path = ROOT) -> list[str]:
         errors.append("domain ids must be non-empty and unique")
     if (root / "core" / "ecosystems").exists():
         errors.append("core/ecosystems duplicates crates/adapters/apps ownership")
-    rows = matrix.get("integrations", []) + matrix.get("benchmarks", [])
+    if "benchmarks" in matrix:
+        errors.append("maintainer comparisons must not appear in the public ecosystem matrix")
+    rows = matrix.get("integrations", [])
     ids = [row.get("id") for row in rows]
     if any(not isinstance(item, str) or not item for item in ids):
         errors.append("every row needs a non-empty id")
@@ -121,7 +123,7 @@ def selftest() -> int:
     good = json.loads(MATRIX.read_text(encoding="utf-8"))
     assert not validate(good), validate(good)
     duplicate = copy.deepcopy(good)
-    duplicate["benchmarks"][0]["id"] = duplicate["integrations"][0]["id"]
+    duplicate["integrations"][1]["id"] = duplicate["integrations"][0]["id"]
     assert any("unique" in error for error in validate(duplicate))
     bad_status = copy.deepcopy(good)
     bad_status["integrations"][0]["status"] = "marketing-complete"
@@ -143,7 +145,7 @@ def main() -> int:
     errors = validate(matrix)
     for error in errors:
         print(f"ECOSYSTEM MATRIX: {error}")
-    rows = matrix.get("integrations", []) + matrix.get("benchmarks", [])
+    rows = matrix.get("integrations", [])
     counts = {status: sum(row.get("status") == status for row in rows)
               for status in sorted(VALID_STATUS)}
     counts = {status: count for status, count in counts.items() if count}
