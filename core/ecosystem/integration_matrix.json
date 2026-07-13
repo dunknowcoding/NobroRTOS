@@ -230,14 +230,37 @@
     },
     {
       "id": "esp32s3_application_provider",
-      "status": "conformance",
-      "evidence_path": "core/ports/esp32s3/src/main.rs",
+      "status": "provider",
+      "evidence_path": "core/ports/esp32s3/src/providers.rs",
       "required_tokens": [
-        "run_all"
+        "Esp32S3Clock",
+        "Esp32S3Alarm",
+        "I2cProvider",
+        "SpiProvider",
+        "PwmProvider",
+        "Esp32S3Usb"
       ],
-      "closure_path": "core/ports/esp32s3/src/portable.rs",
-      "closure_path_state": "absent",
+      "closure_path": "core/ports/esp32s3/src/providers.rs",
+      "closure_path_state": "present",
+      "note": "Time/deadline/USB and the seven portable subsystems passed a state-restoring physical run. I2C/SPI/PWM are real embedded-hal provider adapters and target-build clean, but remain physically unpromoted until a connected application exercises each. Event capture, lease parity, and deep self-test are absent.",
       "review": "ECO-02"
+    },
+    {
+      "id": "esp32s3_multicore_pipeline",
+      "status": "physical_hil",
+      "evidence_path": "core/ports/esp32s3/src/bin/multicore_pipeline.rs",
+      "required_tokens": [
+        "start_app_core",
+        "MpmcChannel",
+        "AUDIO_ITEMS",
+        "CAMERA_ITEMS",
+        "BACKPRESSURE",
+        "DEADLINE_MISSES"
+      ],
+      "closure_path": "core/ports/esp32s3/src/bin/multicore_pipeline.rs",
+      "closure_path_state": "present",
+      "note": "Real silicon used both LX7 cores and processed 80/80 bounded synthetic audio/camera envelopes through deterministic AI work: 64 audio, 16 camera, attributed queue backpressure, zero misses, 630 us maximum observed latency, and all_pass=1. This is not physical audio capture or camera capture; those remain separate ecosystem/HIL scopes.",
+      "review": "MC-01"
     },
     {
       "id": "ra4m1_application_provider",
@@ -255,10 +278,9 @@
       "status": "physical_ad_hoc",
       "evidence_path": "core/boards/platform_tiers.json",
       "required_tokens": [
-        "local physical smoke passed"
+        "maintainer"
       ],
-      "closure_path": "tools/provider_hil.py",
-      "closure_path_state": "absent",
+      "note": "Reusable capture/flash/grade/restore orchestration is maintainer-only and must never be added to the public tools tree. This row records sanitized status only.",
       "review": "HIL-02"
     }
   ]

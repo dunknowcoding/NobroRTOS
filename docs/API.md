@@ -707,10 +707,15 @@ nobro_hal::ResourceLease::release_all_for_owner(module_id);
 #### Portable Bus Transactions
 
 `HalI2c` exposes write, read, and repeated-start write/read operations;
-`HalSpi` exposes equal-length full-duplex transfers. Each provider declares
+`HalSpi` exposes bounded full-duplex transfers. Each provider declares
 `TRANSFER_MODE`, so scheduling and evaluation code can distinguish polling from
 DMA instead of assuming one platform-wide behavior. The current deep backend
 reports polling I2C and DMA SPI.
+
+Owned-peripheral ports use `HalAlarm`, `HalPwmChannel`, and `HalByteIo` for a
+one-shot deadline, a constructed PWM channel, and bounded USB/serial byte I/O.
+This avoids global singleton APIs on MCUs whose HAL carries ownership and pin
+lifetimes in the provider type.
 
 #### Event Capture
 

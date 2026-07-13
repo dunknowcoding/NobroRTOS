@@ -34,12 +34,13 @@ equipment; software coefficients are estimates only.
 | Tier | Platforms | What is verified | Missing |
 | --- | --- | --- | --- |
 | Deep | nRF52840 | Portable core, granular providers, drivers, faults, reports, and state-restoring automated HIL | A scheduled lab runner is not attached to hosted CI |
-| Provider | RP2350, ESP32-C3 | Real microsecond timebase implementation, target build, on-device provider check included in `all_pass`; local physical smoke recorded during Wave 50 | Deadline/PWM/bus/lease parity and integration into the reusable HIL collector |
-| Conformance | ESP32-S3, RA4M1, SAMD21, AVR subset | Shared portable-core suite and target/package build where the toolchain is available | Portable HAL providers and deep fault/peripheral evidence |
+| Provider | RP2350, ESP32-C3, ESP32-S3 | Real monotonic providers and target builds. ESP32-S3 additionally has owned deadline, I2C/SPI/PWM adapter, USB Serial/JTAG, and real dual-core pipeline implementations; time/deadline/USB/multicore passed a restoring physical run | RP2350/ESP32-C3 peripheral parity; ESP32-S3 physical I2C/SPI/PWM application evidence; reusable private fleet HIL; deep lease/event/fault parity |
+| Conformance | RA4M1, SAMD21, AVR subset | Shared portable-core suite and target/package build where the toolchain is available | Portable HAL providers and deep fault/peripheral evidence |
 
-A provider row is not interchangeable with the deep HAL. In particular, ESP32-C3 has
-no PPI-equivalent event router and its PWM peripherals require a platform-specific
-mapping. Physical smoke evidence does not promote either provider port to deep support.
+A provider row is not interchangeable with the deep HAL. ESP32-C3/S3 have no claimed
+PPI-equivalent event router, PWM construction remains platform-specific, and target-build
+adapters are not physical peripheral evidence. Physical provider evidence does not promote
+a port to deep support.
 
 ## Isolation, boot, and recovery
 

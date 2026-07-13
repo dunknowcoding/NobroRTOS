@@ -620,6 +620,7 @@ dependencies = [
  "critical-section",
  "esp-build",
  "log",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -873,6 +874,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-hal"
+version = "0.2.0"
+dependencies = [
+ "critical-section",
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "nobro-imu"
 version = "0.2.0"
 
@@ -906,9 +915,13 @@ version = "0.2.0"
 name = "nobro-port-esp32s3"
 version = "0.1.0"
 dependencies = [
+ "embedded-hal 1.0.0",
  "esp-hal",
  "esp-println",
+ "nb 1.1.0",
  "nobro-conformance",
+ "nobro-hal",
+ "nobro-kernel",
  "nobro-nn",
 ]
 

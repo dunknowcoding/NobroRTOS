@@ -459,6 +459,7 @@ A platform port implements the HAL traits needed by apps and adapters:
 - resource leases
 - bus access
 - PWM or actuator backend
+- USB or another bounded diagnostic byte stream
 - board inspection snapshots
 
 Use platform-specific names only inside the platform module. App and adapter
@@ -467,7 +468,7 @@ APIs should use portable HAL terms.
 Each platform also implements `HalCompatibility` and declares a
 `HardwareCapabilitySet`. This metadata lets host-side tests and app assembly
 check whether a backend advertises required services such as timebase, resource
-leases, deadline timer, event capture, PWM, bus access, and self-test snapshots
+leases, deadline timer, event capture, PWM, bus access, USB, and self-test snapshots
 before board-specific validation begins.
 
 ### Board Descriptor

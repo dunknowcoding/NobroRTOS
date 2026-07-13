@@ -8,7 +8,7 @@ that matrix honest and in sync with the tree:
   * every declared platform has a real port directory under `core/ports/`;
   * every `implements`/`planned` provider is a known provider name;
   * a `provider`- or `deep`-tier platform that claims `timebase` actually has
-    a `portable.rs` implementing the timebase provider (no paper claims);
+    a provider module implementing and wiring the timebase (no paper claims);
   * exactly one platform is `deep` (the nRF52840 reference), and a typed
     `automated_hil` field prevents prose such as "not automated" from being
     misclassified as a physical-evidence claim.
@@ -62,17 +62,24 @@ def validate(matrix: dict) -> list[str]:
                 proof = impl.is_file() and "impl HalClock" in impl.read_text(encoding="utf-8")
             else:
                 port = PORT_DIR.get(name)
-                portable = PORTS / port / "src" / "portable.rs" if port else None
+                candidates = [
+                    PORTS / port / "src" / "portable.rs",
+                    PORTS / port / "src" / "providers.rs",
+                ] if port else []
                 main = PORTS / port / "src" / "main.rs" if port else None
-                portable_text = (portable.read_text(encoding="utf-8")
-                                 if portable is not None and portable.is_file() else "")
+                portable_text = "\n".join(
+                    item.read_text(encoding="utf-8") for item in candidates if item.is_file()
+                )
                 main_text = (main.read_text(encoding="utf-8")
                              if main is not None and main.is_file() else "")
                 proof = ("impl HalClock" in portable_text
                          and "with(HardwareCapability::Timebase)" in portable_text
-                         and "supports(required)" in portable_text
-                         and "let timebase_ok = portable::verify_timebase_provider()" in main_text
-                         and "all = timebase_ok" in main_text
+                         and ("supports(required)" in portable_text
+                              or "supports(required)" in main_text)
+                         and ("verify_timebase_provider()" in main_text
+                              or "Providers::supports(required)" in main_text)
+                         and ("all = timebase_ok" in main_text
+                              or "all &= providers_ok" in main_text)
                          and "timebase=" in main_text
                          and "all_pass=" in main_text)
             if not proof:

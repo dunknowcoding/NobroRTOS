@@ -18,6 +18,7 @@ pub enum HardwareCapability {
     SelfTest,
     I2c,
     Spi,
+    Usb,
 }
 
 impl HardwareCapability {
@@ -32,6 +33,7 @@ impl HardwareCapability {
             Self::SelfTest => 1 << 6,
             Self::I2c => 1 << 7,
             Self::Spi => 1 << 8,
+            Self::Usb => 1 << 9,
         }
     }
 }
@@ -195,6 +197,35 @@ pub trait HalSpi {
     fn transfer(&mut self, write: &[u8], read: &mut [u8]) -> Result<(), Self::Error>;
 }
 
+/// Owned one-shot alarm used by ports whose timer peripherals cannot be represented by
+/// the legacy static [`HalDeadline`] interface.
+pub trait HalAlarm {
+    type Error;
+
+    fn arm_after_us(&mut self, delay_us: u64) -> Result<u64, Self::Error>;
+    fn cancel(&mut self);
+    fn deadline_us(&self) -> Option<u64>;
+    fn poll_due(&mut self, now_us: u64) -> bool;
+}
+
+/// Owned PWM channel. Frequency/timer selection belongs to construction; application
+/// code changes only the bounded duty value.
+pub trait HalPwmChannel {
+    type Error;
+
+    fn max_duty(&self) -> u16;
+    fn set_duty(&mut self, duty: u16) -> Result<(), Self::Error>;
+}
+
+/// Bounded byte-stream transport for USB CDC or USB Serial/JTAG providers.
+pub trait HalByteIo {
+    type Error;
+
+    fn read_available(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error>;
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
+    fn flush(&mut self) -> Result<(), Self::Error>;
+}
+
 /// Register readback self-test (replaces scope for CI / autonomous eval).
 pub trait HalSelfTest<B: BoardDesc> {
     /// # Safety
@@ -280,6 +311,37 @@ mod tests {
         }
     }
 
+    struct Alarm {
+        deadline: Option<u64>,
+    }
+
+    impl HalAlarm for Alarm {
+        type Error = ();
+
+        fn arm_after_us(&mut self, delay_us: u64) -> Result<u64, Self::Error> {
+            let deadline = 10 + delay_us;
+            self.deadline = Some(deadline);
+            Ok(deadline)
+        }
+
+        fn cancel(&mut self) {
+            self.deadline = None;
+        }
+
+        fn deadline_us(&self) -> Option<u64> {
+            self.deadline
+        }
+
+        fn poll_due(&mut self, now_us: u64) -> bool {
+            if self.deadline.is_some_and(|deadline| now_us >= deadline) {
+                self.cancel();
+                true
+            } else {
+                false
+            }
+        }
+    }
+
     #[test]
     fn capability_sets_report_missing_bits() {
         let platform = HardwareCapabilitySet::EMPTY
@@ -313,5 +375,14 @@ mod tests {
         assert_eq!(spi, [1, 2, 3]);
         assert_eq!(<LoopbackBus as HalSpi>::TRANSFER_MODE, TransferMode::Dma);
         assert!(HalSpi::transfer(&mut bus, &[1], &mut spi).is_err());
+    }
+
+    #[test]
+    fn owned_alarm_releases_after_deadline() {
+        let mut alarm = Alarm { deadline: None };
+        assert_eq!(alarm.arm_after_us(25), Ok(35));
+        assert!(!alarm.poll_due(34));
+        assert!(alarm.poll_due(35));
+        assert_eq!(alarm.deadline_us(), None);
     }
 }

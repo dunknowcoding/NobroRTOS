@@ -7,6 +7,7 @@
     "servo_pwm",
     "i2c",
     "spi",
+    "usb",
     "lease",
     "self_test"
   ],
@@ -63,11 +64,23 @@
     },
     "esp32s3": {
       "arch": "xtensa",
-      "tier": "conformance",
-      "implements": [],
+      "tier": "provider",
+      "implements": [
+        "timebase",
+        "deadline",
+        "servo_pwm",
+        "i2c",
+        "spi",
+        "usb"
+      ],
+      "planned": [
+        "event_capture",
+        "lease",
+        "self_test"
+      ],
       "automated_hil": false,
-      "hil": "bench-gated",
-      "validated_by": "conformance suite + USB-Serial-JTAG self-report"
+      "hil": "state-restoring maintainer run completed; reusable private fleet runner remains open",
+      "validated_by": "Xtensa build covers owned alarm and embedded-hal I2C/SPI/PWM adapters; physical provider report passed monotonic time, hardware one-shot deadline (2115 us for 2000 us request), USB Serial/JTAG, and seven conformance subsystems; physical dual-core pipeline processed 80/80 bounded audio/camera work items with attributed backpressure, zero deadline misses, and 630 us maximum observed latency; exact pre-test 8 MiB image restored and full verify-flash digest matched"
     },
     "ra4m1": {
       "arch": "thumbv7em",
