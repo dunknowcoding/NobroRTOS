@@ -49,6 +49,7 @@ jobs:
           python tools/check_release_versions.py
           python tools/check_ros_bridge.py --selftest
           python tools/check_udi.py --selftest
+          python tools/nobro_shrink.py --selftest
   rust-matrix:
     runs-on: ubuntu-latest
     steps:
