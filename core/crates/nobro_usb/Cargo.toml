@@ -13,14 +13,17 @@ usbd-serial = "0.2"
 portable-atomic = "1"
 nrf-usbd = { path = "../../vendor/nrf-usbd", optional = true }
 cortex-m = { version = "0.7", optional = true }
+nrf52840-pac = { version = "0.12", optional = true }
 
 [features]
 # Default backend for the nRF52840 dev boards (matches ArduinoNRF Layer-0 native NrfUsbd).
 default = ["backend-nrf-usbd"]
-backend-nrf-usbd = ["dep:nrf-usbd", "dep:cortex-m"]
-# ESP32-C3/S3 fixed-function USB-Serial-JTAG: a real register-level data path (the
-# peripheral enumerates itself in silicon; poll/read/write hit EP1/EP1_CONF directly).
-backend-usb-serial-jtag = []
+backend-nrf-usbd = ["dep:nrf-usbd", "dep:cortex-m", "dep:nrf52840-pac"]
+# ESP32-C3/S3 fixed-function USB-Serial-JTAG. The register block is at a different
+# address on each chip, so callers must select the exact map instead of an ambiguous
+# family-wide feature.
+backend-usb-serial-jtag-esp32c3 = []
+backend-usb-serial-jtag-esp32s3 = []
 # RA4M1 (Arduino UNO R4) USBFS: our own raw-register CDC-ACM device stack (pipe-based
 # enumeration + bulk data), ported from the RA manual / cross-checked vs TinyUSB rusb2.
 backend-ra-usbfs = []

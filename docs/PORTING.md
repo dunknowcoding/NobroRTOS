@@ -63,12 +63,20 @@ Ports live in `core/ports/<mcu-family>/` as isolated target workspaces.
 4. Keep board pin selection outside reusable provider types.
 5. Return explicit unsupported/capacity errors; do not substitute a software stub for a
    hardware capability.
-6. Add the platform and implemented providers to
-   `core/boards/platform_tiers.json`.
-7. Add the target build to `tools/ci_matrix.sh`.
+6. Add a repository-contained implementation directory, a named composition, and only
+   implemented claims to `core/boards/platform_tiers.json`.
+7. Scope every host/target gate to the exact platform, composition, and capabilities it
+   exercises. Bind its runner to a hosted workflow job and receipt driver; the validator
+   rejects a required gate that the driver does not invoke.
+8. Begin a clean receipt session, execute the matrix argv through
+   `tools/check_platform_tiers.py --run-gate`, and assert all runner receipts. Receipts
+   bind the current matrix and session to Git HEAD, the tracked diff, and every
+   nonignored untracked source path and its content. Ignored `_work` output is excluded.
+   This is local freshness bookkeeping, not signed or physical attestation.
 
 The public provider traits are in `nobro_hal::traits`. A provider tier means at least
-one real trait implementation exists for the target. It does not imply deep parity.
+one real trait implementation exists for the target. A deep tier requires one native
+composition to implement every capability in the current provider vocabulary.
 
 ## Boot layout rules
 

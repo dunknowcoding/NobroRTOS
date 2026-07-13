@@ -1,22 +1,29 @@
 //! Allocation-free wireless domain: bounded link contracts, admission, and helpers.
 //!
-//! Follows the nobro_usb mountable-backend pattern: a radio implements
-//! [`WirelessBackend`], apps talk bytes + link state, and protocol identity/limits are
-//! **data** ([`LinkDescriptor`]) so schedulers and the collector reason about any radio
-//! uniformly. Pure-logic protocol helpers live here too: [`BleAdvBuilder`] constructs
-//! the advertising PDU format `ble_adv_demo` proved on air, and the `rfid`
-//! module carries ISO 14443A anticollision arithmetic.
+//! Concrete transports can implement [`WirelessBackend`], apps talk bytes + link state,
+//! and protocol identity/limits are **data** ([`LinkDescriptor`]) so schedulers can
+//! reason about different links uniformly. Implementations are constructed explicitly;
+//! unlike `nobro_usb`, this crate does not yet provide feature-selected WiFi/BLE
+//! lifecycle stacks. Future vendor-stack selection extends this domain beneath
+//! [`ManagedLink`] instead of creating a second link crate. Pure-logic helpers live here
+//! too: [`BleAdvBuilder`] constructs advertising PDUs, and the RFID code carries ISO
+//! 14443A anticollision arithmetic.
 #![cfg_attr(not(test), no_std)]
 
-/// Wireless protocol families the capsule speaks.
+/// Protocol identities a link descriptor can carry.
+///
+/// A variant describes scheduling and diagnostic data; it does not claim that a board
+/// or a complete protocol stack is implemented.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Protocol {
     /// BLE (advertising or connection-based).
     Ble,
     /// WiFi carrying TCP/UDP (e.g. the telemetry JSONL link).
     WifiTcp,
-    /// Zigbee (802.15.4 + NWK/APS, e.g. via a CC2530 co-processor).
+    /// Zigbee network/APS payload (a complete Zigbee stack is required).
     Zigbee,
+    /// Raw IEEE 802.15.4 MAC PSDU, without a Zigbee/Thread network-stack claim.
+    Ieee802154Raw,
     /// Thread (802.15.4 + 6LoWPAN mesh).
     Thread,
     /// Proximity RFID/NFC (ISO 14443 family).
@@ -25,12 +32,15 @@ pub enum Protocol {
     Proprietary,
 }
 
+/// IEEE 802.15.4 maximum PHY service data unit carried as one raw PSDU.
+pub const IEEE802154_MAX_PSDU_BYTES: usize = 127;
+
 /// A wireless link as data: what it is and what it can carry.
 #[derive(Clone, Copy, Debug)]
 pub struct LinkDescriptor {
     pub name: &'static str,
     pub protocol: Protocol,
-    /// Largest application payload one frame carries.
+    /// Largest payload or raw protocol data unit one frame carries.
     pub mtu: u16,
     /// True when the link must join/associate before payload flows.
     pub requires_join: bool,
@@ -38,7 +48,9 @@ pub struct LinkDescriptor {
     pub broadcast_only: bool,
 }
 
-/// Built-in link catalog (extend with a `pub const`, like every other catalog).
+/// Built-in link descriptors (extend with a `pub const`, like every other catalog).
+///
+/// Catalog membership is metadata, not a backend- or board-support claim.
 pub mod link_catalog {
     use super::*;
 
@@ -61,6 +73,13 @@ pub mod link_catalog {
         protocol: Protocol::Zigbee,
         mtu: 82,
         requires_join: true,
+        broadcast_only: false,
+    };
+    pub const IEEE802154_RAW: LinkDescriptor = LinkDescriptor {
+        name: "IEEE 802.15.4 raw PSDU",
+        protocol: Protocol::Ieee802154Raw,
+        mtu: IEEE802154_MAX_PSDU_BYTES as u16,
+        requires_join: false,
         broadcast_only: false,
     };
     pub const THREAD_UDP: LinkDescriptor = LinkDescriptor {
@@ -94,8 +113,10 @@ pub enum LinkState {
     Up,
 }
 
-/// The mountable radio surface. One backend per physical radio, chosen per board -
-/// the same pattern as `nobro_usb::UsbStack`.
+/// Bounded data-plane surface implemented by an explicitly constructed transport.
+///
+/// This trait does not select a board or vendor stack. Future WiFi/BLE lifecycle and
+/// backend-selection contracts will compose beneath it and [`ManagedLink`].
 pub trait WirelessBackend {
     fn descriptor(&self) -> LinkDescriptor;
     fn link_state(&mut self) -> LinkState;
@@ -155,20 +176,19 @@ impl<const N: usize> Packet<N> {
     }
 }
 
+/// Admission contract for one immediate send attempt.
+///
+/// Priority belongs to the scheduler and retries belong to explicit caller-owned
+/// retry state; this synchronous wrapper does not pretend to enforce either.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TxContract {
+    /// Latest time at which an immediate, single-attempt send may be submitted.
     pub deadline_us: u64,
-    pub priority: u8,
-    pub max_attempts: u8,
 }
 
 impl TxContract {
     pub const fn by(deadline_us: u64) -> Self {
-        Self {
-            deadline_us,
-            priority: 0,
-            max_attempts: 1,
-        }
+        Self { deadline_us }
     }
 }
 
@@ -198,6 +218,8 @@ pub struct LinkDiagnostics {
     pub tx_accepted: u32,
     pub tx_rejected: u32,
     pub rx_packets: u32,
+    /// Backend receive counts rejected because they exceeded caller capacity.
+    pub rx_rejected: u32,
     pub deadline_rejections: u32,
     pub budget_rejections: u32,
     pub recoveries: u32,
@@ -233,6 +255,7 @@ impl<B: WirelessBackend> ManagedLink<B> {
                 tx_accepted: 0,
                 tx_rejected: 0,
                 rx_packets: 0,
+                rx_rejected: 0,
                 deadline_rejections: 0,
                 budget_rejections: 0,
                 recoveries: 0,
@@ -285,6 +308,10 @@ impl<B: WirelessBackend> ManagedLink<B> {
 
     pub fn recv(&mut self, destination: &mut [u8]) -> usize {
         let received = self.backend.recv(destination);
+        if received > destination.len() {
+            self.diagnostics.rx_rejected = self.diagnostics.rx_rejected.saturating_add(1);
+            return 0;
+        }
         if received != 0 {
             self.diagnostics.rx_packets = self.diagnostics.rx_packets.saturating_add(1);
         }
@@ -528,6 +555,11 @@ impl<S: SpiIo> Mfrc522<S> {
 
     /// Reset and configure the reader for ISO 14443A polling.
     pub fn init(&mut self) -> Result<(), RfidError> {
+        // Re-initialization is fail-closed. A failed register sequence must not
+        // preserve prior liveness or expose a response from the old session.
+        self.initialized = false;
+        self.rx_cache = [0; 18];
+        self.rx_len = 0;
         self.write_reg(reg::COMMAND, cmd::SOFT_RESET)?;
         self.write_reg(reg::MODE, 0x3D)?;
         self.write_reg(reg::TIMER_MODE, 0x8D)?;
@@ -677,6 +709,9 @@ impl<S: SpiIo> WirelessBackend for Mfrc522<S> {
     }
 
     fn send(&mut self, payload: &[u8]) -> bool {
+        if !self.initialized || payload.len() > usize::from(self.descriptor().mtu) {
+            return false;
+        }
         let mut tmp = [0u8; 18];
         match self.transceive(payload, 0, &mut tmp) {
             Ok(n) => {
@@ -689,6 +724,9 @@ impl<S: SpiIo> WirelessBackend for Mfrc522<S> {
     }
 
     fn recv(&mut self, buf: &mut [u8]) -> usize {
+        if !self.initialized {
+            return 0;
+        }
         if self.rx_len == 0 {
             if let Ok(uid) = self.poll_uid(1) {
                 let n = uid.len().min(self.rx_cache.len());
@@ -696,7 +734,12 @@ impl<S: SpiIo> WirelessBackend for Mfrc522<S> {
                 self.rx_len = n;
             }
         }
-        let n = self.rx_len.min(buf.len());
+        // Preserve packet atomicity: a caller can retry with a sufficiently sized
+        // destination instead of silently losing a cached suffix.
+        if self.rx_len > buf.len() {
+            return 0;
+        }
+        let n = self.rx_len;
         buf[..n].copy_from_slice(&self.rx_cache[..n]);
         self.rx_len = 0;
         n
@@ -757,6 +800,8 @@ pub trait ByteIo {
     fn read(&mut self) -> Option<u8>;
 }
 
+const CC2530_UART_MAX_DATA_BYTES: usize = u8::MAX as usize - 1;
+
 /// 802.15.4 MAC frame types (low 3 bits of the frame-control field).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MacFrameType {
@@ -782,11 +827,11 @@ pub fn mac_frame_type(psdu: &[u8]) -> Option<MacFrameType> {
 
 /// Modular CC2530 802.15.4 backend: drives the NiusZigbee SDCC firmware protocol
 /// (`FE LEN CMD DATA FCS`, LEN counts CMD, FCS = XOR of LEN..DATA) over any [`ByteIo`],
-/// and presents the common [`WirelessBackend`] surface - so 802.15.4 is mountable
-/// like BLE or WiFi. Verified against the live firmware in the cc2530_gateway app.
+/// and presents the common [`WirelessBackend`] data plane. The implemented firmware
+/// surface carries raw IEEE 802.15.4 PSDUs; it is not a Zigbee NWK/APS stack.
 pub struct Cc2530<U: ByteIo> {
     io: U,
-    joined: bool,
+    initialized: bool,
     dec: Cc2530Decoder,
 }
 
@@ -850,13 +895,16 @@ impl<U: ByteIo> Cc2530<U> {
     pub fn new(io: U) -> Self {
         Cc2530 {
             io,
-            joined: false,
+            initialized: false,
             dec: Cc2530Decoder::new(),
         }
     }
 
     /// Send a raw command frame (`FE LEN CMD DATA FCS`).
-    fn send_cmd(&mut self, cmd: u8, data: &[u8]) {
+    fn send_cmd(&mut self, cmd: u8, data: &[u8]) -> bool {
+        if data.len() > CC2530_UART_MAX_DATA_BYTES {
+            return false;
+        }
         let len = (data.len() + 1) as u8;
         let mut fcs = len ^ cmd;
         self.io.write(0xFE);
@@ -867,29 +915,46 @@ impl<U: ByteIo> Cc2530<U> {
             fcs ^= b;
         }
         self.io.write(fcs);
+        true
     }
 
-    /// Bring the module up: flush its parser, PING, then set channel + promiscuous RX.
+    /// Initialize the raw radio: flush its parser, PING, then set channel + RX filtering.
     /// Returns true once a PONG is seen. `poll_budget` bounds the byte-poll wait.
-    pub fn join(&mut self, channel: u8, poll_budget: u32) -> bool {
+    pub fn initialize(&mut self, channel: u8, poll_budget: u32) -> bool {
+        // Re-initialization is fail-closed: neither prior liveness nor a partial
+        // host-side frame may survive a new handshake attempt.
+        self.initialized = false;
+        self.dec = Cc2530Decoder::new();
         for _ in 0..140 {
             self.io.write(0x00); // flush any partial frame in the firmware parser
         }
-        self.send_cmd(0x01, &[]); // PING
+        // PING
+        if !self.send_cmd(0x01, &[]) {
+            return false;
+        }
         for _ in 0..poll_budget {
             if let Some(b) = self.io.read() {
                 if let Some(_len) = self.dec.feed(b) {
                     if self.dec.buf[0] == 0x81 {
                         // PONG
-                        self.send_cmd(0x02, &[channel]); // SET_CHANNEL
-                        self.send_cmd(0x04, &[0]); // SET_PROMISC (filter off)
-                        self.joined = true;
+                        // SET_CHANNEL + SET_PROMISC (filter off)
+                        if !self.send_cmd(0x02, &[channel]) || !self.send_cmd(0x04, &[0]) {
+                            return false;
+                        }
+                        self.initialized = true;
                         return true;
                     }
                 }
             }
         }
         false
+    }
+
+    /// Compatibility alias for callers written before the raw-link contract was named
+    /// precisely. This initializes the co-processor; it does not join a Zigbee network.
+    #[doc(hidden)]
+    pub fn join(&mut self, channel: u8, poll_budget: u32) -> bool {
+        self.initialize(channel, poll_budget)
     }
 
     /// Poll for one captured 802.15.4 PSDU into `out`; returns (len, frame_type) once a
@@ -916,21 +981,24 @@ impl<U: ByteIo> Cc2530<U> {
 
 impl<U: ByteIo> WirelessBackend for Cc2530<U> {
     fn descriptor(&self) -> LinkDescriptor {
-        link_catalog::ZIGBEE_APS
+        link_catalog::IEEE802154_RAW
     }
     fn link_state(&mut self) -> LinkState {
-        if self.joined {
+        if self.initialized {
             LinkState::Up
         } else {
             LinkState::Down
         }
     }
     fn send(&mut self, payload: &[u8]) -> bool {
-        if !self.joined {
+        if payload.len() > usize::from(self.descriptor().mtu)
+            || payload.len() > IEEE802154_MAX_PSDU_BYTES
+            || payload.len() > CC2530_UART_MAX_DATA_BYTES
+            || !self.initialized
+        {
             return false;
         }
-        self.send_cmd(0x03, payload); // TX raw PSDU
-        true
+        self.send_cmd(0x03, payload) // TX raw PSDU
     }
     fn recv(&mut self, buf: &mut [u8]) -> usize {
         self.poll_frame(buf).map(|(n, _)| n).unwrap_or(0)
@@ -943,10 +1011,17 @@ mod tests {
 
     #[test]
     fn catalog_distinguishes_link_shapes() {
-        assert!(link_catalog::BLE_ADV.broadcast_only);
-        assert!(!link_catalog::BLE_ADV.requires_join);
-        assert!(link_catalog::WIFI_TCP.requires_join);
-        assert!(link_catalog::ZIGBEE_APS.mtu < link_catalog::WIFI_TCP.mtu);
+        let ble_adv = core::hint::black_box(link_catalog::BLE_ADV);
+        let wifi_tcp = core::hint::black_box(link_catalog::WIFI_TCP);
+        let zigbee_aps = core::hint::black_box(link_catalog::ZIGBEE_APS);
+        let ieee802154_raw = core::hint::black_box(link_catalog::IEEE802154_RAW);
+        assert!(ble_adv.broadcast_only);
+        assert!(!ble_adv.requires_join);
+        assert!(wifi_tcp.requires_join);
+        assert!(zigbee_aps.mtu < wifi_tcp.mtu);
+        assert_eq!(ieee802154_raw.protocol, Protocol::Ieee802154Raw);
+        assert_eq!(ieee802154_raw.mtu, 127);
+        assert!(!ieee802154_raw.requires_join);
         assert_eq!(link_catalog::RFID_14443A.protocol, Protocol::Rfid);
         assert_eq!(link_catalog::RFID_14443A.mtu, 18);
         assert_eq!(rfid_readers::MFRC522_SPI.host_bus, "spi");
@@ -1111,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn cc2530_backend_joins_and_captures_a_frame() {
+    fn cc2530_backend_initializes_and_captures_a_raw_frame() {
         let mut rx = HeaplessVec::default();
         // firmware replies PONG [ver_hi ver_lo], then an RX_FRAME with a beacon-request PSDU
         let (pong, pn) = frame(0x81, &[0, 8]);
@@ -1145,17 +1220,57 @@ mod tests {
             tx: HeaplessVec::default(),
         };
         let mut radio = Cc2530::new(uart);
-        assert!(radio.join(11, 10_000));
+        assert!(radio.initialize(11, 10_000));
         assert_eq!(radio.link_state(), LinkState::Up);
-        assert_eq!(radio.descriptor().protocol, Protocol::Zigbee);
+        assert_eq!(radio.descriptor().protocol, Protocol::Ieee802154Raw);
+        assert!(!radio.descriptor().requires_join);
 
-        // the join should have transmitted PING, SET_CHANNEL(11), SET_PROMISC(0)
+        // Initialization transmits PING, SET_CHANNEL(11), SET_PROMISC(0).
         assert!(radio.io.tx.data[..radio.io.tx.len].contains(&11));
 
         let mut buf = [0u8; 32];
         let (n, ft) = radio.poll_frame(&mut buf).expect("captured frame");
         assert_eq!(ft, MacFrameType::MacCommand);
         assert_eq!(&buf[..n], &[0x03, 0x08, 0xEA, 0xFF, 0xFF, 0xFF, 0xFF, 0x07]);
+
+        radio.dec.state = 2;
+        radio.dec.idx = 3;
+        assert!(!radio.initialize(11, 0));
+        assert_eq!(radio.link_state(), LinkState::Down);
+        assert_eq!(radio.dec.state, 0);
+        assert_eq!(radio.dec.idx, 0);
+    }
+
+    #[test]
+    fn cc2530_rejects_payload_max_plus_one_before_writing_or_casting() {
+        let descriptor = core::hint::black_box(link_catalog::IEEE802154_RAW);
+        assert!(usize::from(descriptor.mtu) <= IEEE802154_MAX_PSDU_BYTES);
+        assert!(usize::from(descriptor.mtu) <= CC2530_UART_MAX_DATA_BYTES);
+        let uart = FakeUart {
+            rx: HeaplessVec::default(),
+            rx_pos: 0,
+            tx: HeaplessVec::default(),
+        };
+        let mut radio = Cc2530::new(uart);
+        radio.initialized = true;
+
+        let max_plus_one = [0u8; 128];
+        assert_eq!(max_plus_one.len(), usize::from(descriptor.mtu) + 1);
+        assert!(!radio.send(&max_plus_one));
+        assert_eq!(radio.io.tx.len, 0);
+
+        let max_payload = [0u8; 127];
+        assert!(radio.send(&max_payload));
+        assert_eq!(radio.io.tx.data[1], 128);
+
+        let mut raw = Cc2530::new(FakeUart {
+            rx: HeaplessVec::default(),
+            rx_pos: 0,
+            tx: HeaplessVec::default(),
+        });
+        let uart_max_plus_one = [0u8; 255];
+        assert!(!raw.send_cmd(0x03, &uart_max_plus_one));
+        assert_eq!(raw.io.tx.len, 0);
     }
 
     #[test]
@@ -1192,6 +1307,8 @@ mod tests {
         fifo_len: usize,
         wrote_request_a: bool,
         wrote_anticoll: bool,
+        transfer_calls: usize,
+        fail_on_call: usize,
     }
 
     impl Default for FakeSpi {
@@ -1202,6 +1319,8 @@ mod tests {
                 fifo_len: 0,
                 wrote_request_a: false,
                 wrote_anticoll: false,
+                transfer_calls: 0,
+                fail_on_call: 0,
             }
         }
     }
@@ -1229,6 +1348,10 @@ mod tests {
 
     impl SpiIo for FakeSpi {
         fn transfer(&mut self, write: &[u8], read: &mut [u8]) -> bool {
+            self.transfer_calls += 1;
+            if self.fail_on_call == self.transfer_calls {
+                return false;
+            }
             if write.len() != 2 || read.len() != 2 {
                 return false;
             }
@@ -1285,17 +1408,40 @@ mod tests {
         let spi = FakeSpi::default();
         let mut reader = Mfrc522::new(spi);
         assert_eq!(reader.link_state(), LinkState::Down);
+        let mut out = [0u8; 10];
+        assert!(!reader.send(&[0x26]));
+        assert_eq!(reader.recv(&mut out), 0);
+        assert_eq!(reader.spi.transfer_calls, 0);
         assert!(reader.init().is_ok());
         assert_eq!(reader.link_state(), LinkState::Up);
         assert_eq!(reader.descriptor().protocol, Protocol::Rfid);
         assert_eq!(reader.reader_descriptor(), rfid_readers::MFRC522_SPI);
+        let calls_before_oversized_send = reader.spi.transfer_calls;
+        assert!(!reader.send(&[0u8; 19]));
+        assert_eq!(reader.spi.transfer_calls, calls_before_oversized_send);
 
         let uid = reader.poll_uid(1).expect("uid");
         assert_eq!(uid.as_slice(), &[0xDE, 0xAD, 0xBE, 0xEF]);
 
-        let mut out = [0u8; 10];
+        let mut too_small = [0u8; 2];
+        assert_eq!(reader.recv(&mut too_small), 0);
+        assert_eq!(reader.rx_len, 4);
+        let calls_after_poll = reader.spi.transfer_calls;
         assert_eq!(reader.recv(&mut out), 4);
         assert_eq!(&out[..4], &[0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(reader.spi.transfer_calls, calls_after_poll);
+
+        reader.rx_cache[..3].copy_from_slice(&[1, 2, 3]);
+        reader.rx_len = 3;
+        reader.spi.fail_on_call = reader.spi.transfer_calls + 1;
+        assert_eq!(reader.init(), Err(RfidError::Bus));
+        assert_eq!(reader.link_state(), LinkState::Down);
+        assert_eq!(reader.rx_len, 0);
+        assert_eq!(reader.rx_cache, [0; 18]);
+        let calls_after_failed_init = reader.spi.transfer_calls;
+        assert!(!reader.send(&[0x26]));
+        assert_eq!(reader.recv(&mut out), 0);
+        assert_eq!(reader.spi.transfer_calls, calls_after_failed_init);
     }
     // A tiny in-memory transport proves the trait surface composes.
     struct LoopbackRadio {
@@ -1322,6 +1468,26 @@ mod tests {
             buf[..n].copy_from_slice(&self.buf[..n]);
             self.len = 0;
             n
+        }
+    }
+
+    struct HostileCountRadio;
+
+    impl WirelessBackend for HostileCountRadio {
+        fn descriptor(&self) -> LinkDescriptor {
+            link_catalog::NRF_PROPRIETARY
+        }
+
+        fn link_state(&mut self) -> LinkState {
+            LinkState::Up
+        }
+
+        fn send(&mut self, _payload: &[u8]) -> bool {
+            true
+        }
+
+        fn recv(&mut self, buf: &mut [u8]) -> usize {
+            buf.len().saturating_add(1)
         }
     }
 
@@ -1362,7 +1528,20 @@ mod tests {
         );
         link.reset_window();
         assert!(link.send_at(2, TxContract::by(10), b"x").is_ok());
+        let mut received = [0u8; 8];
+        assert_eq!(link.recv(&mut received), 1);
         assert_eq!(link.diagnostics().tx_accepted, 2);
         assert_eq!(link.diagnostics().tx_rejected, 3);
+        assert_eq!(link.diagnostics().rx_packets, 1);
+        assert_eq!(link.diagnostics().rx_rejected, 0);
+    }
+
+    #[test]
+    fn managed_link_rejects_hostile_receive_counts() {
+        let mut link = ManagedLink::new(HostileCountRadio, LinkBudget::new(8, 1, 8));
+        let mut destination = [0u8; 4];
+        assert_eq!(link.recv(&mut destination), 0);
+        assert_eq!(link.diagnostics().rx_packets, 0);
+        assert_eq!(link.diagnostics().rx_rejected, 1);
     }
 }

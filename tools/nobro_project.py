@@ -174,13 +174,30 @@ def build_project(project: pathlib.Path) -> dict:
     workload = json.loads((project / "workload.json").read_text(encoding="utf-8"))
     (project / "src" / "main.rs").write_text(
         render_host_main(workload), encoding="utf-8")
-    command = ["cargo", "build", "--manifest-path", str(manifest),
+    lockfile = project / "Cargo.lock"
+    lock_created = not lockfile.is_file()
+    if lock_created:
+        # A fresh standalone project cannot use --locked until this persistent
+        # lockfile exists. Resolution happens once; every actual build is locked.
+        lock_command = ["cargo", "generate-lockfile", "--manifest-path", str(manifest)]
+        resolved = subprocess.run(
+            lock_command, cwd=ROOT, capture_output=True, text=True
+        )
+        if resolved.returncode:
+            return {
+                "ok": False,
+                "command": lock_command,
+                "detail": (resolved.stdout + resolved.stderr).splitlines()[-5:],
+                "lock_created": False,
+            }
+    command = ["cargo", "build", "--locked", "--manifest-path", str(manifest),
                "--target", host_target()]
     completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
     return {
         "ok": completed.returncode == 0,
         "command": command,
         "detail": (completed.stdout + completed.stderr).splitlines()[-5:],
+        "lock_created": lock_created,
     }
 
 
@@ -341,6 +358,10 @@ def selftest() -> int:
         assert ok and "VERDICT: this admits" in text, text
         built = build_project(out / "blinky")
         assert built["ok"], "\n".join(built["detail"])
+        assert built["lock_created"] and "--locked" in built["command"]
+        lockfile = out / "blinky" / "Cargo.lock"
+        assert lockfile.is_file()
+        locked_graph = lockfile.read_bytes()
         workload["tasks"].append(
             {"name": "telemetry", "criticality": "best_effort", "flash": 512,
              "ram": 128, "period_us": 250_000, "budget_us": 1_000,
@@ -350,6 +371,8 @@ def selftest() -> int:
             json.dumps(workload, indent=2) + "\n", encoding="utf-8")
         rebuilt = build_project(out / "blinky")
         assert rebuilt["ok"], "\n".join(rebuilt["detail"])
+        assert not rebuilt["lock_created"] and "--locked" in rebuilt["command"]
+        assert lockfile.read_bytes() == locked_graph, "a locked rebuild changed Cargo.lock"
         generated = (out / "blinky" / "src" / "main.rs").read_text(encoding="utf-8")
         assert 'TaskDecl::service("telemetry"' in generated and '.after("sensor")' in generated
         report_path, report = simulate(out / "blinky")

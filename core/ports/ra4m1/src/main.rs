@@ -1,11 +1,9 @@
 //! NobroRTOS portable core on the RA4M1 / Arduino UNO R4 WiFi.
 //!
-//! Provides target startup and serial status with **all drivers our own**, written
-//! from the RA4M1 hardware manual: PRCR-unlocked clock setup (HOCO 48 MHz with the
-//! official peripheral dividers), PFS pin muxing, native USB CDC on the board's
-//! own connector, SCI9 through the board USB bridge, SCI1 on the WiFi/AT coprocessor
-//! UART, plus a header UART and a PORT1 LED heartbeat (D13/P102). Report line:
-//!   `NOBRO-RA4M1 arch=thumbv7em subsystems=7 all_pass=1`
+//! Provides target startup and serial status for the native Rust composition: clock,
+//! one-shot deadline timer, and the selected USB stack. Clock/pin/SCI setup is a small
+//! register-level port; Arduino ADC/PWM/I2C/SPI facades are a separate composition and
+//! are not counted here. A report reaches `usb=1 all_pass=1` only after CDC configures.
 //!
 //! The image links at 0x4000 behind the stock DFU bootloader; SCB->VTOR is pointed at
 //! our vector table first thing (the hard-won nRF lesson - the bootloader leaves VTOR
@@ -14,10 +12,14 @@
 #![no_main]
 
 use cortex_m_rt::entry;
-use nobro_hal::{
-    HalAlarm, HalByteIo, HalClock, HalCompatibility, HardwareCapability, HardwareCapabilitySet,
+use nobro_hal::{HalAlarm, HalByteIo, HalClock};
+use nobro_port_ra4m1::evidence::ProviderEvidence;
+use nobro_port_ra4m1::providers::{Ra4m1Alarm, Ra4m1Clock, Ra4m1Usb};
+use nobro_port_ra4m1::system::{
+    configure_system, SystemRegisters, MEMWAIT_48MHZ, SCI_BRR, SCKDIVCR_VALUE, SCKSCR_HOCO,
 };
-use nobro_port_ra4m1::providers::{Ra4m1Alarm, Ra4m1Clock, Ra4m1Providers, Ra4m1Usb};
+use nobro_port_ra4m1::usb_session::{HostCommand, UsbReportCursor};
+use nobro_usb::UsbIoError;
 use panic_halt as _;
 
 // ---------------------------------------------------------------- system (own driver)
@@ -27,36 +29,81 @@ const PRCR: *mut u16 = 0x4001_E3FE as *mut u16;
 const VBTBKR0: *mut u32 = 0x4001_E500 as *mut u32;
 const VBTBKR1: *mut u8 = 0x4001_E501 as *mut u8;
 const SCKDIVCR: *mut u32 = 0x4001_E020 as *mut u32;
+const SCKSCR: *mut u8 = 0x4001_E026 as *mut u8;
+const MEMWAIT: *mut u8 = 0x4001_E031 as *mut u8;
 const HOCOCR: *mut u8 = 0x4001_E036 as *mut u8;
 const OSCSF: *const u8 = 0x4001_E03C as *const u8;
-const USBCKCR: *mut u8 = 0x4001_E0D0 as *mut u8;
+const USBCKCR_ALT: *mut u8 = 0x4001_E0D0 as *mut u8;
 const MSTPCRB: *mut u32 = 0x4004_7000 as *mut u32;
 const USB_SYSCFG: *mut u16 = 0x4009_0000 as *mut u16;
 const USB_DPRPU: u16 = 1 << 4;
 const BOOT_DOUBLE_TAP_MAGIC: u32 = 0x0773_8135;
 const OSCSF_HOCOSF: u8 = 1 << 0;
-const USBCKCR_HOCO: u8 = 1 << 0;
+const USBCKCR_ALT_HOCO: u8 = 1 << 0;
 
-fn system_init() {
-    unsafe {
-        VTOR.write_volatile(0x4000);
-        PRCR.write_volatile(0xA503); // unlock clock + low-power registers
-                                     // Match the board's high-speed boot clock domain and explicitly feed USBFS
-                                     // from HOCO. The SCI baud divisor below is calibrated against the resulting
-                                     // 48 MHz peripheral clock observed on the UNO R4 WiFi bridge path.
-        HOCOCR.write_volatile(HOCOCR.read_volatile() & !1);
-        for _ in 0..100_000u32 {
-            if OSCSF.read_volatile() & OSCSF_HOCOSF != 0 {
-                break;
-            }
-            cortex_m::asm::nop();
-        }
-        SCKDIVCR.write_volatile(0x1001_0100);
-        USBCKCR.write_volatile(USBCKCR_HOCO);
-        PRCR.write_volatile(0xA500); // re-lock
-                                     // wake SCI1 WiFi UART, SCI2 header UART, and SCI9 USB-bridge UART from module-stop
-        MSTPCRB.write_volatile(MSTPCRB.read_volatile() & !((1 << 30) | (1 << 29) | (1 << 22)));
+struct RaSystemRegisters;
+
+impl SystemRegisters for RaSystemRegisters {
+    fn set_vector_table(&mut self) {
+        unsafe { VTOR.write_volatile(0x4000) };
     }
+
+    fn unlock_protected_registers(&mut self) {
+        unsafe { PRCR.write_volatile(0xA503) };
+    }
+
+    fn start_hoco(&mut self) {
+        unsafe { HOCOCR.write_volatile(HOCOCR.read_volatile() & !1) };
+    }
+
+    fn hoco_stable(&self) -> bool {
+        unsafe { OSCSF.read_volatile() & OSCSF_HOCOSF != 0 }
+    }
+
+    fn enable_flash_wait_state(&mut self) {
+        unsafe { MEMWAIT.write_volatile(MEMWAIT_48MHZ) };
+    }
+
+    fn program_clock_dividers(&mut self) {
+        // ICLK=48 MHz and PCLKB=24 MHz, matching the board core's clock plan.
+        unsafe { SCKDIVCR.write_volatile(SCKDIVCR_VALUE) };
+    }
+
+    fn select_hoco_as_system_clock(&mut self) {
+        unsafe { SCKSCR.write_volatile(SCKSCR_HOCO) };
+    }
+
+    fn clock_tree_matches(&self) -> bool {
+        unsafe {
+            MEMWAIT.read_volatile() & 1 == MEMWAIT_48MHZ
+                && SCKDIVCR.read_volatile() == SCKDIVCR_VALUE
+                && SCKSCR.read_volatile() & 0x07 == SCKSCR_HOCO
+        }
+    }
+
+    fn select_hoco_for_usb(&mut self) {
+        // RA4M1 uses the alternate USB clock selector at 0x4001_E0D0.
+        unsafe { USBCKCR_ALT.write_volatile(USBCKCR_ALT_HOCO) };
+    }
+
+    fn usb_hoco_selected(&self) -> bool {
+        unsafe { USBCKCR_ALT.read_volatile() & USBCKCR_ALT_HOCO != 0 }
+    }
+
+    fn wake_required_modules(&mut self) {
+        // PRCR.PRC1 remains unlocked until this write completes.
+        unsafe {
+            MSTPCRB.write_volatile(MSTPCRB.read_volatile() & !((1 << 30) | (1 << 29) | (1 << 22)))
+        };
+    }
+
+    fn lock_protected_registers(&mut self) {
+        unsafe { PRCR.write_volatile(0xA500) };
+    }
+}
+
+fn system_init() -> bool {
+    configure_system(&mut RaSystemRegisters).is_ok()
 }
 
 // ---------------------------------------------------------------- pins (own driver)
@@ -83,8 +130,6 @@ const PORT1_PCNTR1: *mut u32 = 0x4004_0020 as *mut u32;
 const PORT4_PCNTR1: *mut u32 = 0x4004_0080 as *mut u32;
 const LED_BIT: u32 = 1 << 2;
 const USB_MUX_BIT: u32 = 1 << 8;
-const NATIVE_USB_FALLBACK_TICKS: u32 = 180;
-
 fn pins_init() {
     unsafe {
         PWPR.write_volatile(0x00); // clear B0WI
@@ -145,6 +190,17 @@ fn led_toggle() {
     }
 }
 
+fn clock_failure_signal() -> ! {
+    // Do not touch SCI, DWT, SysTick, USB, or any peripheral whose clock assumptions
+    // failed validation. GPIO remains available from reset and gives a bounded visual
+    // fault signal without risking a wait on a stopped module.
+    unsafe { PORT1_PCNTR1.write_volatile(LED_BIT) };
+    loop {
+        led_toggle();
+        cortex_m::asm::delay(1_000_000);
+    }
+}
+
 // ---------------------------------------------------------------- SCI UARTs (own driver)
 
 /// SCIn register block (0x20 apart): SMR+0, BRR+1, SCR+2, TDR+3, SSR+4, SCMR+6, SEMR+7.
@@ -153,12 +209,13 @@ struct Sci(u32);
 const SCR_TE_RE: u8 = 0x30;
 const SSR_TDRE: u8 = 0x80;
 const SSR_RDRF: u8 = 0x40;
+const SSR_TEND: u8 = 0x04;
 const SSR_ERROR_MASK: u8 = 0x38; // ORER | FER | PER
 const SSR_CLEAR_ERROR: u8 = 0xC7; // keep TDRE/RDRF/TEND/MPB/MPBT, clear ORER/FER/PER
 
 impl Sci {
-    /// 115200 8N1 from the SCI peripheral clock at 48 MHz with BGDM=1:
-    /// BRR = 48e6 / (16 * 115200) - 1 = 25.
+    /// 115200 8N1 from PCLKB=HOCO/2=24 MHz with BGDM=1, ABCS=0, CKS=0.
+    /// The rounded divisor is BRR=12 (115384 baud, about +0.16%).
     fn init(&self) {
         unsafe {
             let b = self.0;
@@ -166,7 +223,7 @@ impl Sci {
             (b as *mut u8).write_volatile(0); // SMR: async 8N1, PCLK/1
             ((b + 6) as *mut u8).write_volatile(0xF2); // SCMR: not smart-card mode
             ((b + 7) as *mut u8).write_volatile(0x40); // SEMR.BGDM=1, Arduino/FSP-compatible mode
-            ((b + 1) as *mut u8).write_volatile(25); // BRR
+            ((b + 1) as *mut u8).write_volatile(SCI_BRR);
             for _ in 0..2_000u32 {
                 cortex_m::asm::nop(); // one-bit settle before enabling
             }
@@ -185,6 +242,26 @@ impl Sci {
         for &byte in s.as_bytes() {
             self.tx(byte);
         }
+    }
+
+    fn try_print_until(&self, s: &str, deadline_us: u64) -> bool {
+        unsafe {
+            let b = self.0;
+            for &byte in s.as_bytes() {
+                while ((b + 4) as *const u8).read_volatile() & SSR_TDRE == 0 {
+                    if Ra4m1Clock::now_us() >= deadline_us {
+                        return false;
+                    }
+                }
+                ((b + 3) as *mut u8).write_volatile(byte);
+            }
+            while ((b + 4) as *const u8).read_volatile() & SSR_TEND == 0 {
+                if Ra4m1Clock::now_us() >= deadline_us {
+                    return false;
+                }
+            }
+        }
+        true
     }
     fn read(&self) -> Option<u8> {
         unsafe {
@@ -258,37 +335,40 @@ impl BridgeCommand {
     }
 }
 
-struct HostCommand {
-    matched: usize,
-}
-
-impl HostCommand {
-    const ENTER_BOOTLOADER: &'static [u8] = b"NOBRO_BOOT";
-
-    fn new() -> Self {
-        Self { matched: 0 }
-    }
-
-    fn push(&mut self, byte: u8) -> bool {
-        if byte == Self::ENTER_BOOTLOADER[self.matched] {
-            self.matched += 1;
-            if self.matched == Self::ENTER_BOOTLOADER.len() {
-                self.matched = 0;
-                return true;
-            }
-        } else if byte == b'\r' || byte == b'\n' {
-            self.matched = 0;
-        } else {
-            self.matched = usize::from(byte == Self::ENTER_BOOTLOADER[0]);
-        }
-        false
-    }
-}
-
 /// SCI9 = the upload-visible USB bridge; SCI2 = D0/D1; SCI1 = WiFi/AT.
 const SCI2: Sci = Sci(0x4007_0040);
 const SCI1: Sci = Sci(0x4007_0020);
 const SCI9: Sci = Sci(0x4007_0120);
+
+const NATIVE_USB_FALLBACK_US: u64 = 3_000_000;
+const RESET_CONFIRMATION_US: u64 = 50_000;
+
+fn try_native_reset_confirmation(usb: &mut Ra4m1Usb) {
+    const CONFIRMATION: &[u8] = b"NOBRO-RA4M1 boot=native\r\n";
+    let deadline = Ra4m1Clock::now_us().saturating_add(RESET_CONFIRMATION_US);
+    let queued = loop {
+        usb.poll();
+        match usb.write_all(CONFIRMATION) {
+            Ok(()) => break true,
+            Err(UsbIoError::Backpressure) if Ra4m1Clock::now_us() < deadline => {}
+            Err(_) => break false,
+        }
+        if Ra4m1Clock::now_us() >= deadline {
+            break false;
+        }
+    };
+    if !queued {
+        return;
+    }
+    while Ra4m1Clock::now_us() < deadline {
+        usb.poll();
+        match usb.flush() {
+            Ok(()) => return,
+            Err(UsbIoError::Backpressure) => {}
+            Err(_) => return,
+        }
+    }
+}
 
 /// Drive the UNO R4 D5 output pin (P107) high for the GPIO example.
 fn drive_loopback() {
@@ -303,9 +383,10 @@ fn drive_loopback() {
 
 #[entry]
 fn main() -> ! {
-    use nobro_usb::UsbConfig;
-
-    system_init();
+    let system_ok = system_init();
+    if !system_ok {
+        clock_failure_signal();
+    }
     let mut core = cortex_m::Peripherals::take().unwrap();
     Ra4m1Clock::init(&mut core.DCB, &mut core.DWT);
     let mut alarm = Ra4m1Alarm::new(core.SYST);
@@ -315,17 +396,22 @@ fn main() -> ! {
     SCI9.init();
     drive_loopback();
 
-    let required = HardwareCapabilitySet::EMPTY
-        .with(HardwareCapability::Timebase)
-        .with(HardwareCapability::DeadlineTimer)
-        .with(HardwareCapability::Usb);
-    let providers_ok = Ra4m1Providers::supports(required);
     let started = Ra4m1Clock::now_us();
     let armed = alarm.arm_after_us(2_000).is_ok();
     while armed && !alarm.poll_due(Ra4m1Clock::now_us()) {}
     let elapsed = Ra4m1Clock::now_us().saturating_sub(started);
-    let deadline_ok = armed && (2_000..20_000).contains(&elapsed);
-    let line = if providers_ok && deadline_ok {
+    let core_evidence = ProviderEvidence::new(
+        system_ok,
+        elapsed != 0,
+        armed && (2_000..20_000).contains(&elapsed),
+        false,
+    );
+    let bridge_line = if core_evidence.core_passes() {
+        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=1 deadline=1 usb=0 all_pass=0\r\n"
+    } else {
+        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=0 deadline=0 usb=0 all_pass=0\r\n"
+    };
+    let native_line = if core_evidence.with_usb(true).all_passes() {
         "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=1 deadline=1 usb=1 all_pass=1\r\n"
     } else {
         "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=0 deadline=0 usb=1 all_pass=0\r\n"
@@ -335,16 +421,17 @@ fn main() -> ! {
     // firmware tunnels COM traffic to SCI9/P109-P110 at 115200 by default and
     // changes the RA-side baud when the host changes CDC line coding.
     route_usb_to_ra4(false);
-    SCI9.print(line);
+    SCI9.print(bridge_line);
     SCI1.print("NOBRO-RA4M1 wifi_uart=ready\r\n");
 
     // Native RA4M1 USBFS is available on request; it is not the boot default on
     // UNO R4 WiFi because the board's normal upload/debug path is the ESP bridge.
-    let cfg = UsbConfig::new(0x1209, 0x0004, "NobroRTOS", "NobroRTOS RA4M1", "NOBRORA4");
     let mut usb: Option<Ra4m1Usb> = None;
+    let mut native_report = UsbReportCursor::new();
 
     let mut ticks: u32 = 0;
     let mut native_route = false;
+    let mut native_fallback_deadline: Option<u64> = None;
     let mut bridge_command = BridgeCommand::new();
     let mut host_command = HostCommand::new();
     loop {
@@ -352,30 +439,71 @@ fn main() -> ! {
         // commands wait behind slow diagnostics.
         for _ in 0..2000 {
             if let Some(active_usb) = usb.as_mut() {
-                let _ = active_usb.poll();
+                active_usb.poll();
             }
             if let Some(byte) = SCI9.read() {
                 match bridge_command.push(byte) {
                     Some(LinkCommand::Bootloader) => {
-                        SCI9.print("NOBRO-RA4M1 boot=bridge\r\n");
+                        let deadline = Ra4m1Clock::now_us().saturating_add(RESET_CONFIRMATION_US);
+                        let _ = SCI9.try_print_until("NOBRO-RA4M1 boot=bridge\r\n", deadline);
                         enter_bootloader();
                     }
                     Some(LinkCommand::NativeUsb) => {
-                        SCI9.print("NOBRO-RA4M1 native_usb=enable\r\n");
-                        route_usb_to_ra4(true);
-                        usb = Some(Ra4m1Usb::mount(&cfg));
-                        native_route = true;
-                        ticks = 0;
+                        if system_ok {
+                            SCI9.print("NOBRO-RA4M1 native_usb=enable\r\n");
+                            route_usb_to_ra4(true);
+                            let mount_result = if let Some(active_usb) = usb.as_mut() {
+                                active_usb.reconnect_link();
+                                Ok(())
+                            } else {
+                                Ra4m1Usb::try_mount().map(|mounted| usb = Some(mounted))
+                            };
+                            match mount_result {
+                                Ok(()) => {
+                                    native_report.reset();
+                                    host_command.observe_link(false);
+                                    native_route = true;
+                                    native_fallback_deadline = Some(
+                                        Ra4m1Clock::now_us().saturating_add(NATIVE_USB_FALLBACK_US),
+                                    );
+                                    ticks = 0;
+                                }
+                                Err(nobro_usb::UsbMountError::AlreadyMounted) => {
+                                    route_usb_to_ra4(false);
+                                    SCI9.print("NOBRO-RA4M1 native_usb=already_mounted\r\n");
+                                }
+                                Err(nobro_usb::UsbMountError::UnsupportedConfig) => {
+                                    route_usb_to_ra4(false);
+                                    SCI9.print("NOBRO-RA4M1 native_usb=unsupported_config\r\n");
+                                }
+                                Err(_) => {
+                                    route_usb_to_ra4(false);
+                                    SCI9.print("NOBRO-RA4M1 native_usb=mount_error\r\n");
+                                }
+                            }
+                        } else {
+                            SCI9.print("NOBRO-RA4M1 native_usb=clock_error\r\n");
+                        }
                     }
                     None => {}
                 }
             }
             let mut usb_bytes = [0u8; 32];
             if let Some(active_usb) = usb.as_mut() {
-                let count = active_usb.read_available(&mut usb_bytes).unwrap_or(0);
+                let configured = active_usb.configured();
+                host_command.observe_link(configured);
+                let count = match active_usb.read_available(&mut usb_bytes) {
+                    Ok(count) => count,
+                    Err(_) => {
+                        // A failed read cannot contribute bytes to a command that a
+                        // later USB session completes.
+                        host_command.observe_link(false);
+                        0
+                    }
+                };
                 for &byte in &usb_bytes[..count] {
                     if host_command.push(byte) {
-                        let _ = active_usb.write_all(b"NOBRO-RA4M1 boot=native\r\n");
+                        try_native_reset_confirmation(active_usb);
                         enter_bootloader();
                     }
                 }
@@ -384,14 +512,24 @@ fn main() -> ! {
         }
         ticks += 1;
         if let Some(active_usb) = usb.as_mut() {
-            if active_usb.configured() {
-                let _ = active_usb.write_all(line.as_bytes()); // report over native USB
+            let configured = active_usb.configured();
+            if configured {
+                // Finish a short write promptly; otherwise emit at a bounded cadence.
+                if native_report.pending() || ticks.is_multiple_of(64) {
+                    native_report.service(true, native_line.as_bytes(), |packet| {
+                        active_usb.write_all(packet)
+                    });
+                }
+            } else {
+                native_report.service(false, native_line.as_bytes(), |_| {
+                    unreachable!("detached report callback")
+                });
             }
         }
         // Keep the bridge/header UARTs alive and use a non-blocking LED cadence.
         // Blocking blink delays can starve EP0 while native USB is enumerating.
-        SCI9.print(line);
-        SCI2.print(line);
+        SCI9.print(bridge_line);
+        SCI2.print(bridge_line);
         let usb_stage = usb
             .as_ref()
             .map(Ra4m1Usb::stage)
@@ -402,7 +540,7 @@ fn main() -> ! {
             nobro_usb::Stage::Reset => 16,
             _ => 8,
         };
-        if ticks % blink_divisor == 0 {
+        if ticks.is_multiple_of(blink_divisor) {
             led_toggle();
         }
         // A failed native stack must not strand a probe-less board. Keep the
@@ -410,13 +548,18 @@ fn main() -> ! {
         // then restore the upload-visible route if enumeration still failed.
         if native_route
             && !usb.as_ref().map(Ra4m1Usb::configured).unwrap_or(false)
-            && ticks >= NATIVE_USB_FALLBACK_TICKS
+            && native_fallback_deadline.is_some_and(|deadline| Ra4m1Clock::now_us() >= deadline)
         {
+            if let Some(active_usb) = usb.as_mut() {
+                active_usb.disconnect_link();
+            }
             route_usb_to_ra4(false);
+            native_report.reset();
+            host_command.observe_link(false);
             native_route = false;
-            usb = None;
+            native_fallback_deadline = None;
         }
-        if !native_route && ticks % 64 == 0 {
+        if !native_route && ticks.is_multiple_of(64) {
             SCI9.print("usb_stage=");
             SCI9.tx(b'0' + usb_stage as u8);
             SCI9.print("\r\n");

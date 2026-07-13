@@ -1,5 +1,6 @@
 {
-  "schema": "nobro-platform-support-v1",
+  "schema": "nobro-platform-support-v2",
+  "reference_platform": "nrf52840",
   "providers": [
     "timebase",
     "deadline",
@@ -10,71 +11,458 @@
     "usb",
     "lease"
   ],
+  "facade_offers": [
+    "clock",
+    "deadline",
+    "adc",
+    "pwm",
+    "i2c",
+    "spi",
+    "byte_io"
+  ],
   "tiers": {
-    "deep": "portable contracts plus board-specific peripheral providers",
+    "deep": "one native composition implements every currently declared provider capability",
     "provider": "one or more portable provider traits implemented for the target",
     "core": "target startup and status path available; portable peripheral providers are incomplete",
     "absent": "no maintained target integration"
+  },
+  "evidence_kinds": {
+    "host-test": "executable host-side contract or state-machine test",
+    "target-build": "successful compilation for the declared target; not physical behavior"
+  },
+  "maturities": {
+    "implemented": "the declared surface is present and has the cited non-physical evidence",
+    "experimental": "the declared surface is usable but may change incompatibly"
+  },
+  "runners": {
+    "rust-matrix": {
+      "workflow_job": "rust-matrix",
+      "receipt_driver": ".github/workflows/gates.yml"
+    },
+    "cross-mcu": {
+      "workflow_job": "cross-mcu",
+      "receipt_driver": "tools/ci_matrix.sh"
+    },
+    "arduino-package": {
+      "workflow_job": "arduino-package",
+      "receipt_driver": ".github/workflows/gates.yml"
+    },
+    "arduino-nrf-package": {
+      "workflow_job": "arduino-nrf-package",
+      "receipt_driver": ".github/workflows/gates.yml"
+    }
+  },
+  "evidence_gates": {
+    "nrf52840-hal-host": {
+      "kind": "host-test",
+      "runner": "rust-matrix",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "--target",
+        "{host_target}",
+        "--locked",
+        "-p",
+        "nobro-hal"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease"]
+        }
+      ]
+    },
+    "nrf52840-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "nobro-hal",
+        "--no-default-features",
+        "--features",
+        "board-promicro-nosd",
+        "--target",
+        "thumbv7em-none-eabihf",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease"]
+        }
+      ]
+    },
+    "nrf52840-usb-host": {
+      "kind": "host-test",
+      "runner": "rust-matrix",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "nobro-usb",
+        "--target",
+        "{host_target}"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "nrf52840-usb-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "check",
+        "--locked",
+        "-p",
+        "usb-stack-demo",
+        "--target",
+        "thumbv7em-none-eabihf"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "rp2350-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/rp2350",
+      "command": ["cargo", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "rp2350",
+          "composition": "native",
+          "capabilities": ["timebase"]
+        }
+      ]
+    },
+    "esp32c3-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/esp32c3",
+      "command": ["cargo", "build", "--locked", "--release", "--bins"],
+      "claim_scopes": [
+        {
+          "platform": "esp32c3",
+          "composition": "native",
+          "capabilities": ["timebase", "usb"]
+        }
+      ]
+    },
+    "esp32c3-usb-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "nobro-usb",
+        "--no-default-features",
+        "--features",
+        "backend-usb-serial-jtag-esp32c3",
+        "--target",
+        "{host_target}",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32c3",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "esp32s3-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/esp32s3",
+      "command": ["cargo", "+esp", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "esp32s3",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "servo_pwm", "i2c", "spi", "usb"]
+        }
+      ]
+    },
+    "esp32s3-usb-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "nobro-usb",
+        "--no-default-features",
+        "--features",
+        "backend-usb-serial-jtag-esp32s3",
+        "--target",
+        "{host_target}",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32s3",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "ra4m1-provider-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/ra4m1",
+      "command": ["cargo", "test", "--locked", "--lib", "--target", "{host_target}"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "usb"]
+        }
+      ]
+    },
+    "ra4m1-usb-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "nobro-usb",
+        "--no-default-features",
+        "--features",
+        "backend-ra-usbfs",
+        "--target",
+        "{host_target}",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "ra4m1-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/ra4m1",
+      "command": ["cargo", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "usb"]
+        }
+      ]
+    },
+    "arduino-facade-contract": {
+      "kind": "host-test",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_facade.py"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "arduino",
+          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        },
+        {
+          "platform": "nrf52840",
+          "composition": "arduino",
+          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        }
+      ]
+    },
+    "arduino-ra4m1-compile": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_compile.py"],
+      "environment": {
+        "NOBRO_ARDUINO_FQBNS": "arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3"
+      },
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "arduino",
+          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        }
+      ]
+    },
+    "arduino-nrf52840-compile": {
+      "kind": "target-build",
+      "runner": "arduino-nrf-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_compile.py"],
+      "environment": {
+        "NOBRO_ARDUINO_FQBNS": "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+      },
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "arduino",
+          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        }
+      ]
+    }
   },
   "platforms": {
     "nrf52840": {
       "arch": "thumbv7em",
       "tier": "deep",
-      "implements": [
-        "timebase",
-        "deadline",
-        "event_capture",
-        "servo_pwm",
-        "i2c",
-        "spi",
-        "lease"
-      ]
+      "implementation_root": "core/crates/nobro_hal/src/platform/nrf52840",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "event_capture": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "servo_pwm": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-usb-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]}
+          }
+        },
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "clock": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "adc": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "i2c": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]}
+          }
+        }
+      }
     },
     "rp2350": {
       "arch": "thumbv8m",
       "tier": "provider",
-      "implements": ["timebase"]
+      "implementation_root": "core/ports/rp2350",
+      "limitations": "the target build proves compilation only; physical timebase behavior remains outside this public matrix",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["rp2350-target-build"]}
+          }
+        }
+      }
     },
     "esp32c3": {
       "arch": "riscv32imc",
       "tier": "provider",
-      "implements": ["timebase"],
-      "limitations": "event routing and PWM use target-specific peripherals"
+      "implementation_root": "core/ports/esp32c3",
+      "limitations": "timebase evidence is target compilation only; USB Serial/JTAG has host state-machine coverage and a target build, while physical recovery remains pending",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["esp32c3-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["esp32c3-usb-host", "esp32c3-target-build"]}
+          }
+        }
+      }
     },
     "esp32s3": {
       "arch": "xtensa",
       "tier": "provider",
-      "implements": [
-        "timebase",
-        "deadline",
-        "servo_pwm",
-        "i2c",
-        "spi",
-        "usb"
-      ]
+      "implementation_root": "core/ports/esp32s3",
+      "limitations": "the required Xtensa target build and USB Serial/JTAG host state tests prove compilation and modeled contracts only; provider behavior and physical recovery are not inferred from them",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "deadline": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "servo_pwm": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["esp32s3-usb-host", "esp32s3-target-build"]}
+          }
+        }
+      }
     },
     "ra4m1": {
       "arch": "thumbv7em",
       "tier": "provider",
-      "implements": [
-        "timebase",
-        "deadline",
-        "servo_pwm",
-        "i2c",
-        "spi",
-        "usb"
-      ],
-      "limitations": "native Rust owns time/deadline/USB; ADC/PWM/I2C/SPI delegate to the installed Arduino Renesas core"
+      "implementation_root": "core/ports/ra4m1",
+      "limitations": "native Rust provides timebase/deadline/USB only; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap and SysTick one-shots are limited to approximately 349 milliseconds",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]}
+          }
+        },
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "clock": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "adc": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "i2c": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]}
+          }
+        }
+      }
     },
     "samd21": {
       "arch": "thumbv6m",
       "tier": "core",
-      "implements": []
+      "implementation_root": "core/ports/samd21",
+      "compositions": {}
     },
     "avr_nano": {
       "arch": "avr",
       "tier": "core",
-      "implements": []
+      "implementation_root": "core/ports/avr_nano",
+      "compositions": {}
     }
   }
 }

@@ -863,6 +863,7 @@ version = "0.2.0"
 dependencies = [
  "cortex-m",
  "nrf-usbd 0.3.0",
+ "nrf52840-pac",
  "portable-atomic",
  "usb-device",
  "usbd-serial",

@@ -6,15 +6,23 @@
 #   4. board-profile + SDK-manifest validators
 # Exit 0 = the whole matrix is green.
 set -u
+set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 fails=0
 total=0
+temp_logs=()
+
+cleanup() {
+  rm -f "${temp_logs[@]}"
+}
+trap cleanup EXIT INT TERM
 
 gate() {
   total=$((total + 1))
   local name="$1"; shift
   local log
   log="$(mktemp)"
+  temp_logs+=("$log")
   if "$@" >"$log" 2>&1; then
     echo "[ OK ] $name"
   else
@@ -30,43 +38,55 @@ HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')}"
 export HOST_TARGET
 
 gate "host tests (portable crates)" \
-  bash -c 'cd core && cargo test -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
+  bash -c 'cd core && cargo test --locked -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
     -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
     --target "$HOST_TARGET"'
 
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 
-gate "esp32c3 port build" \
-  bash -c 'cd core/ports/esp32c3 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-c3" cargo build --release'
+gate "reset platform evidence receipts" \
+  python tools/check_platform_tiers.py --begin-receipts cross-mcu
 
-# The Xtensa port needs the espup toolchain; skip (not fail) where it is absent.
-if rustup toolchain list 2>/dev/null | grep -q "^esp"; then
-  rustup_home="$(rustup show home 2>/dev/null | tr -d '\r')"
-  if command -v cygpath >/dev/null 2>&1; then
-    rustup_home="$(cygpath -u "$rustup_home")"
-  fi
-  xtensa_bin="$rustup_home/toolchains/esp/xtensa-esp-elf/bin"
-  if [ -d "$xtensa_bin" ]; then
-    PATH="$xtensa_bin:$PATH"
-    export PATH
-  fi
-  gate "esp32s3 port build (xtensa)" \
-    bash -c 'cd core/ports/esp32s3 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-s3" cargo +esp build --release'
-else
-  echo "SKIP esp32s3 port build (espup toolchain not installed)"
-fi
+gate "nRF52840 HAL target build" \
+  python tools/check_platform_tiers.py --run-gate nrf52840-target-build
+
+gate "nRF52840 USB target build" \
+  python tools/check_platform_tiers.py --run-gate nrf52840-usb-target-build
+
+gate "esp32c3 port and USB demo build" \
+  python tools/check_platform_tiers.py --run-gate esp32c3-target-build
+
+gate "esp32s3 port build (required Xtensa toolchain)" \
+  python tools/check_platform_tiers.py --run-gate esp32s3-target-build
 
 gate "rp2350 port build" \
-  bash -c 'cd core/ports/rp2350 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-rp" cargo build --release'
+  python tools/check_platform_tiers.py --run-gate rp2350-target-build
+
+gate "USB RA4M1 backend host tests" \
+  python tools/check_platform_tiers.py --run-gate ra4m1-usb-host
+
+gate "USB Serial/JTAG ESP32-C3 backend host tests" \
+  python tools/check_platform_tiers.py --run-gate esp32c3-usb-host
+
+gate "USB Serial/JTAG ESP32-S3 backend host tests" \
+  python tools/check_platform_tiers.py --run-gate esp32s3-usb-host
+
+gate "ra4m1 provider conformance" \
+  python tools/check_platform_tiers.py --run-gate ra4m1-provider-host
 
 gate "ra4m1 port build" \
-  bash -c 'cd core/ports/ra4m1 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-ra" cargo build --release'
+  python tools/check_platform_tiers.py --run-gate ra4m1-target-build
 
 gate "samd21 port build" \
-  bash -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --release'
+  bash -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --locked --release'
+
+gate "Tier-C prebuilt library and link" \
+  python tools/build_libnobro.py --build
 
 gate "board profiles" python tools/check_board_profiles.py
 gate "sdk manifest" python tools/check_sdk_manifest.py
+gate "platform evidence receipts" \
+  python tools/check_platform_tiers.py --assert-receipts cross-mcu
 
 echo "CI MATRIX: $((total - fails))/$total gates green"
 test "$fails" -eq 0

@@ -61,32 +61,48 @@ def run(name, cmd, cwd=ROOT, env=None, quiet=False):
 
 
 def gate_specs(quick, rust_only=False, extended=False):
-    """Return the ordered gate list as (name, cmd, cwd) tuples. Single source of truth
-    shared by the CLI summary and hosted checks."""
+    """Return the canonical local gate list as (name, cmd, cwd) tuples.
+
+    Hosted jobs reuse individual entry points where their toolchains differ; workflow
+    receipt bindings keep those selected commands explicit and fail closed on drift.
+    """
     py = sys.executable
     bindings = os.path.join(ROOT, "bindings", "python")
     specs = []
     if not quick:
-        cargo = ["cargo", "test", "--target", host_target()]
+        specs.append(("dependency source/license policy",
+                      [py, "tools/check_dependency_policy.py"], ROOT))
+        cargo = ["cargo", "test", "--locked", "--target", host_target()]
         for c in HOST_CRATES:
             cargo += ["-p", c]
         specs.append(("cargo host tests", cargo, CORE))
-        lint = ["cargo", "clippy", "--no-deps", "--target", host_target()]
+        lint = ["cargo", "clippy", "--locked", "--no-deps", "--target", host_target()]
         for c in HOST_CRATES:
             lint += ["-p", c]
         lint += ["--", "-D", "warnings"]
         specs.append(("cargo clippy", lint, CORE))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
-        specs.append(("dependency source/license policy", [py, "tools/check_dependency_policy.py"], ROOT))
+        specs += [
+            ("USB RA4M1 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-usb", "--no-default-features", "--features", "backend-ra-usbfs"], CORE),
+            ("USB Serial/JTAG ESP32-C3 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),
+              "-p", "nobro-usb", "--no-default-features", "--features",
+             "backend-usb-serial-jtag-esp32c3"], CORE),
+            ("USB Serial/JTAG ESP32-S3 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-usb", "--no-default-features", "--features",
+             "backend-usb-serial-jtag-esp32s3"], CORE),
+            ("RA4M1 provider conformance", ["cargo", "test", "--locked", "--lib", "--target",
+             host_target()], os.path.join(CORE, "ports", "ra4m1")),
+        ]
         if extended:
             specs += [
-                ("cargo advisory audit", ["cargo", "audit"], CORE),
-                ("Rust coverage", ["cargo", "llvm-cov", "--target", host_target(),
+                ("cargo advisory audit", ["cargo", "audit", "--file", "Cargo.lock"], CORE),
+                ("Rust coverage", ["cargo", "llvm-cov", "--locked", "--target", host_target(),
                  "-p", "nobro-kernel", "-p", "nobro-net", "-p", "nobro-secure",
                  "-p", "nobro-storage", "-p", "nobro-database", "-p", "nobro-power",
                  "-p", "nobro-sal", "--lcov", "--output-path",
                  os.path.join(ROOT, "_work", "coverage.lcov")], CORE),
-                ("Miri portable safety", ["cargo", "+nightly", "miri", "test",
+                ("Miri portable safety", ["cargo", "+nightly", "miri", "test", "--locked",
                  "--target", host_target(),
                  "-p", "nobro-database", "-p", "nobro-storage", "-p", "nobro-net",
                  "-p", "nobro-secure", "-p", "nobro-hal"], CORE),

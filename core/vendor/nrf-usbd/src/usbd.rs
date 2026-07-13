@@ -6,9 +6,9 @@
 //!   * Different events are used to initiate transfers.
 //!   * No notification when the status stage is ACK'd.
 
-use core::cell::Cell;
-use core::mem::MaybeUninit;
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::cell::{Cell, UnsafeCell};
+use core::mem::{offset_of, size_of};
+use core::sync::atomic::{compiler_fence, AtomicBool, Ordering};
 use critical_section::{CriticalSection, Mutex};
 use usb_device::{
     bus::{PollResult, UsbBus},
@@ -17,7 +17,160 @@ use usb_device::{
 };
 
 use crate::pac::usbd::RegisterBlock;
-use crate::{errata, UsbPeripheral};
+use crate::{errata, UsbPeripheral, UsbdFault};
+
+const DMA_BUFFER_SIZE: usize = 64;
+// These are deliberately iteration budgets rather than timing claims. On a normal
+// nRF52840 both events arrive orders of magnitude sooner; the limits only stop a broken
+// controller/handoff from trapping the whole application forever. These finite polls
+// still execute inside a critical section: the constants bound iteration count, while
+// the actual interrupt blackout remains dependent on target clock and silicon timing.
+const ENABLE_READY_POLL_BUDGET: usize = 100_000;
+const DMA_COMPLETE_POLL_BUDGET: usize = 2_048;
+
+const REGISTER_WORD_BYTES: usize = size_of::<u32>();
+const ENDEPIN_EVENT_BASE: usize = offset_of!(RegisterBlock, events_endepin);
+const ENDEPOUT_EVENT_BASE: usize = offset_of!(RegisterBlock, events_endepout);
+
+// Every latched event in the nRF52 USBD register block. The offsets are computed from
+// the vendored PAC layout so handoff cleanup cannot silently drift to a neighbouring
+// register when the raw register map is maintained.
+const HANDOFF_EVENT_CLEAR_OFFSETS: [usize; 25] = [
+    offset_of!(RegisterBlock, events_usbreset),
+    offset_of!(RegisterBlock, events_started),
+    ENDEPIN_EVENT_BASE,
+    ENDEPIN_EVENT_BASE + REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 2 * REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 3 * REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 4 * REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 5 * REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 6 * REGISTER_WORD_BYTES,
+    ENDEPIN_EVENT_BASE + 7 * REGISTER_WORD_BYTES,
+    offset_of!(RegisterBlock, events_ep0datadone),
+    offset_of!(RegisterBlock, events_endisoin),
+    ENDEPOUT_EVENT_BASE,
+    ENDEPOUT_EVENT_BASE + REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 2 * REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 3 * REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 4 * REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 5 * REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 6 * REGISTER_WORD_BYTES,
+    ENDEPOUT_EVENT_BASE + 7 * REGISTER_WORD_BYTES,
+    offset_of!(RegisterBlock, events_endisoout),
+    offset_of!(RegisterBlock, events_sof),
+    offset_of!(RegisterBlock, events_usbevent),
+    offset_of!(RegisterBlock, events_ep0setup),
+    offset_of!(RegisterBlock, events_epdata),
+];
+
+// Write-one-to-clear status registers that can otherwise replay a bootloader transfer.
+const HANDOFF_W1C_CLEAR_OFFSETS: [usize; 3] = [
+    offset_of!(RegisterBlock, eventcause),
+    offset_of!(RegisterBlock, epstatus),
+    offset_of!(RegisterBlock, epdatastatus),
+];
+
+// Persistent routing/configuration owned by the previous USB session. Command-style
+// DTOGGLE/EPSTALL registers are intentionally excluded; disabling the peripheral and
+// clearing endpoint enables is the defined session boundary.
+const HANDOFF_CONFIG_ZERO_OFFSETS: [usize; 6] = [
+    offset_of!(RegisterBlock, shorts),
+    offset_of!(RegisterBlock, epinen),
+    offset_of!(RegisterBlock, epouten),
+    offset_of!(RegisterBlock, isosplit),
+    offset_of!(RegisterBlock, lowpower),
+    offset_of!(RegisterBlock, isoinconfig),
+];
+
+fn apply_handoff_sanitization(mut write: impl FnMut(usize, u32)) {
+    // Disconnect first, then prevent a stale peripheral or NVIC source from observing
+    // partially sanitized state. The board layer separately masks/unpends the NVIC line.
+    write(offset_of!(RegisterBlock, usbpullup), 0);
+    write(offset_of!(RegisterBlock, intenclr), u32::MAX);
+    write(offset_of!(RegisterBlock, tasks_dpdmnodrive), 1);
+    write(offset_of!(RegisterBlock, enable), 0);
+
+    for offset in HANDOFF_CONFIG_ZERO_OFFSETS {
+        write(offset, 0);
+    }
+    for offset in HANDOFF_EVENT_CLEAR_OFFSETS {
+        write(offset, 0);
+    }
+    for offset in HANDOFF_W1C_CLEAR_OFFSETS {
+        write(offset, u32::MAX);
+    }
+}
+
+/// Disconnects, disables, and clears a bootloader-owned nRF52 USBD session.
+///
+/// # Safety
+///
+/// `T::REGISTERS` must identify the exclusive live nRF52 USBD register block, and the
+/// caller must prevent concurrent access while this handoff transaction runs.
+#[doc(hidden)]
+pub unsafe fn sanitize_handoff<T: UsbPeripheral>() {
+    let base = T::REGISTERS.cast::<u8>();
+    apply_handoff_sanitization(|offset, value| unsafe {
+        base.add(offset)
+            .cast_mut()
+            .cast::<u32>()
+            .write_volatile(value);
+    });
+}
+
+#[repr(align(4))]
+struct StaticDmaBuffer(UnsafeCell<[u8; DMA_BUFFER_SIZE]>);
+
+// Safety: all accesses occur inside the global critical section. USBD is a singleton
+// peripheral, and a fatal timeout permanently prevents this driver instance from issuing
+// another transfer. Static storage also remains valid if timed-out EasyDMA finishes late.
+unsafe impl Sync for StaticDmaBuffer {}
+
+static DMA_IN_BUFFER: StaticDmaBuffer = StaticDmaBuffer(UnsafeCell::new([0; DMA_BUFFER_SIZE]));
+static DMA_OUT_BUFFER: StaticDmaBuffer = StaticDmaBuffer(UnsafeCell::new([0; DMA_BUFFER_SIZE]));
+
+struct PermanentClaim(AtomicBool);
+
+impl PermanentClaim {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    fn try_claim(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+}
+
+// Permanent by design: after a timeout hardware may finish against the static buffers
+// later, so no subsequent bus instance may ever reuse them in the same process.
+static DMA_STORAGE_CLAIM: PermanentClaim = PermanentClaim::new();
+
+#[derive(Clone, Copy)]
+struct TerminalFault(Option<UsbdFault>);
+
+impl TerminalFault {
+    const fn new(fault: Option<UsbdFault>) -> Self {
+        Self(fault)
+    }
+
+    fn permits_operation(self) -> bool {
+        self.0.is_none()
+    }
+
+    fn fault(self) -> Option<UsbdFault> {
+        self.0
+    }
+
+    fn latch(self, fault: UsbdFault) -> (Self, bool) {
+        if self.permits_operation() {
+            (Self(Some(fault)), true)
+        } else {
+            (self, false)
+        }
+    }
+}
 
 fn dma_start() {
     compiler_fence(Ordering::Release);
@@ -27,17 +180,65 @@ fn dma_end() {
     compiler_fence(Ordering::Acquire);
 }
 
+fn poll_with_budget(limit: usize, mut ready: impl FnMut() -> bool) -> bool {
+    for _ in 0..limit {
+        if ready() {
+            return true;
+        }
+        core::hint::spin_loop();
+    }
+    false
+}
+
+fn validate_endpoint_request(
+    ep_type: EndpointType,
+    max_packet_size: u16,
+) -> usb_device::Result<()> {
+    if matches!(ep_type, EndpointType::Isochronous { .. }) {
+        // This driver only implements the regular EP0..EP7 register path. Advertising
+        // ISO endpoint 8 would make read/write index the shorter regular-endpoint arrays.
+        return Err(UsbError::Unsupported);
+    }
+    if usize::from(max_packet_size) > DMA_BUFFER_SIZE {
+        return Err(UsbError::EndpointMemoryOverflow);
+    }
+    Ok(())
+}
+
+fn endpoint_is_owned(used_in: u8, used_out: u8, ep: EndpointAddress) -> bool {
+    let index = ep.index();
+    if index >= 8 {
+        return false;
+    }
+    let used = if ep.is_in() { used_in } else { used_out };
+    used & (1 << index) != 0
+}
+
+fn link_restore_allowed(faulted: bool, vbus_present: bool) -> bool {
+    !faulted && vbus_present
+}
+
+fn publish_out_transfer(
+    completed_dma_buf: Option<&[u8]>,
+    caller_buf: &mut [u8],
+    count: usize,
+) -> usb_device::Result<usize> {
+    let dma_buf = completed_dma_buf.ok_or(UsbError::InvalidState)?;
+    caller_buf[..count].copy_from_slice(&dma_buf[..count]);
+    Ok(count)
+}
+
 struct Buffers {
     // Buffers can be up to 64 Bytes since this is a Full-Speed implementation.
-    in_lens: [u8; 9],
-    out_lens: [u8; 9],
+    in_lens: [u8; 8],
+    out_lens: [u8; 8],
 }
 
 impl Buffers {
     fn new() -> Self {
         Self {
-            in_lens: [0; 9],
-            out_lens: [0; 9],
+            in_lens: [0; 8],
+            out_lens: [0; 8],
         }
     }
 }
@@ -69,10 +270,9 @@ pub struct Usbd<T: UsbPeripheral> {
     bufs: Buffers,
     used_in: u8,
     used_out: u8,
-    iso_in_used: bool,
-    iso_out_used: bool,
     ep0_state: Mutex<Cell<EP0State>>,
     busy_in_endpoints: Mutex<Cell<u16>>,
+    fault: Mutex<Cell<TerminalFault>>,
 }
 
 impl<T: UsbPeripheral> Usbd<T> {
@@ -81,16 +281,26 @@ impl<T: UsbPeripheral> Usbd<T> {
     /// # Parameters
     ///
     /// * `periph`: The raw USBD peripheral.
+    ///
+    /// The first instance permanently claims the process-wide, EasyDMA-safe staging
+    /// buffers. A later instance is constructed in a faulted state and reports
+    /// [`UsbdFault::DmaStorageAlreadyClaimed`]; staging storage is never reused because a
+    /// timed-out transfer has no documented cancellation task and may complete late.
     #[inline]
     pub fn new(periph: T) -> Self {
+        let initial_fault = if DMA_STORAGE_CLAIM.try_claim() {
+            None
+        } else {
+            let fault = UsbdFault::DmaStorageAlreadyClaimed;
+            T::on_fault(fault);
+            Some(fault)
+        };
         Self {
             _periph: Mutex::new(periph),
             max_packet_size_0: 0,
             bufs: Buffers::new(),
             used_in: 0,
             used_out: 0,
-            iso_in_used: false,
-            iso_out_used: false,
             ep0_state: Mutex::new(Cell::new(EP0State {
                 direction: UsbDirection::Out,
                 remaining_size: 0,
@@ -98,6 +308,7 @@ impl<T: UsbPeripheral> Usbd<T> {
                 is_set_address: false,
             })),
             busy_in_endpoints: Mutex::new(Cell::new(0)),
+            fault: Mutex::new(Cell::new(TerminalFault::new(initial_fault))),
         }
     }
 
@@ -115,21 +326,28 @@ impl<T: UsbPeripheral> Usbd<T> {
     }
 
     fn is_used(&self, ep: EndpointAddress) -> bool {
-        if ep.index() == 8 {
-            // ISO
-            let flag = if ep.is_in() {
-                self.iso_in_used
-            } else {
-                self.iso_out_used
-            };
-            return flag;
-        }
+        endpoint_is_owned(self.used_in, self.used_out, ep)
+    }
 
-        if ep.is_in() {
-            self.used_in & (1 << ep.index()) != 0
-        } else {
-            self.used_out & (1 << ep.index()) != 0
+    fn has_fault(&self, cs: CriticalSection<'_>) -> bool {
+        !self.fault.borrow(cs).get().permits_operation()
+    }
+
+    fn latch_fault(&self, cs: CriticalSection<'_>, fault: UsbdFault) {
+        let current = self.fault.borrow(cs);
+        let (next, newly_latched) = current.get().latch(fault);
+        if newly_latched {
+            current.set(next);
+            T::on_fault(fault);
         }
+    }
+
+    /// Returns the fatal fault latched by this bus instance, if any.
+    ///
+    /// A fault is permanent for the lifetime of the instance because an EasyDMA timeout
+    /// cannot be cancelled safely by the nRF USBD register interface.
+    pub fn fault(&self) -> Option<UsbdFault> {
+        critical_section::with(|cs| self.fault.borrow(cs).get().fault())
     }
 
     fn read_control_setup(
@@ -182,6 +400,10 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         max_packet_size: u16,
         _interval: u8,
     ) -> usb_device::Result<EndpointAddress> {
+        if critical_section::with(|cs| self.has_fault(cs)) {
+            return Err(UsbError::InvalidState);
+        }
+        validate_endpoint_request(ep_type, max_packet_size)?;
         // Endpoint addresses are fixed in hardware:
         // - 0x80 / 0x00 - Control        EP0
         // - 0x81 / 0x01 - Bulk/Interrupt EP1
@@ -191,7 +413,8 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         // - 0x85 / 0x05 - Bulk/Interrupt EP5
         // - 0x86 / 0x06 - Bulk/Interrupt EP6
         // - 0x87 / 0x07 - Bulk/Interrupt EP7
-        // - 0x88 / 0x08 - Isochronous
+        // Isochronous endpoint 8 is intentionally not advertised until this driver has
+        // a dedicated 1024-byte ISO DMA path.
 
         // Endpoint directions are allocated individually.
 
@@ -206,20 +429,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         };
 
         let alloc_index = match ep_type {
-            EndpointType::Isochronous { .. } => {
-                let flag = match ep_dir {
-                    UsbDirection::In => &mut self.iso_in_used,
-                    UsbDirection::Out => &mut self.iso_out_used,
-                };
-
-                if *flag {
-                    return Err(UsbError::EndpointOverflow);
-                } else {
-                    *flag = true;
-                    lens[8] = max_packet_size as u8;
-                    return Ok(EndpointAddress::from_parts(0x08, ep_dir));
-                }
-            }
+            EndpointType::Isochronous { .. } => unreachable!("validated above"),
             EndpointType::Control => 0,
             EndpointType::Interrupt | EndpointType::Bulk => {
                 let leading = used.leading_zeros();
@@ -250,6 +460,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn enable(&mut self) {
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return;
+            }
             let regs = self.regs(&cs);
 
             errata::pre_enable();
@@ -257,7 +470,15 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             regs.enable.write(|w| w.enable().enabled());
 
             // Wait until the peripheral is ready.
-            while !regs.eventcause.read().ready().is_ready() {}
+            if !poll_with_budget(ENABLE_READY_POLL_BUDGET, || {
+                regs.eventcause.read().ready().is_ready()
+            }) {
+                regs.usbpullup.write(|w| w.connect().disabled());
+                regs.enable.write(|w| w.enable().disabled());
+                errata::post_enable();
+                self.latch_fault(cs, UsbdFault::EnableTimeout);
+                return;
+            }
             regs.eventcause.write(|w| w.ready().set_bit()); // Write 1 to clear.
 
             errata::post_enable();
@@ -270,6 +491,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn reset(&self) {
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return;
+            }
             let regs = self.regs(&cs);
 
             // TODO: Initialize ISO buffers
@@ -305,6 +529,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     }
 
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> usb_device::Result<usize> {
+        if critical_section::with(|cs| self.has_fault(cs)) {
+            return Err(UsbError::InvalidState);
+        }
         if !self.is_used(ep_addr) {
             return Err(UsbError::InvalidEndpoint);
         }
@@ -350,11 +577,14 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
         let i = ep_addr.index();
 
-        if usize::from(self.bufs.in_lens[i]) < buf.len() {
+        if usize::from(self.bufs.in_lens[i]) < buf.len() || buf.len() > DMA_BUFFER_SIZE {
             return Err(UsbError::BufferOverflow);
         }
 
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return Err(UsbError::InvalidState);
+            }
             let regs = self.regs(&cs);
             let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
 
@@ -380,12 +610,10 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 return Err(UsbError::WouldBlock);
             }
 
-            let mut ram_buf: MaybeUninit<[u8; 64]> = MaybeUninit::uninit();
-            unsafe {
-                let slice = &mut *ram_buf.as_mut_ptr();
-                slice[..buf.len()].copy_from_slice(buf);
-            }
-            let ram_buf = unsafe { ram_buf.assume_init() };
+            // EasyDMA may finish after a bounded timeout. A static staging buffer keeps
+            // its pointer valid even after this call returns with `InvalidState`.
+            let ram_buf = unsafe { &mut *DMA_IN_BUFFER.0.get() };
+            ram_buf[..buf.len()].copy_from_slice(buf);
 
             let epin = [
                 &regs.epin0,
@@ -446,11 +674,13 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             // Kick off device -> host transmission. This starts DMA, so a compiler fence is needed.
             dma_start();
             regs.tasks_startepin[i].write(|w| w.tasks_startepin().set_bit());
-            while regs.events_endepin[i]
-                .read()
-                .events_endepin()
-                .bit_is_clear()
-            {}
+            if !poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
+                regs.events_endepin[i].read().events_endepin().bit_is_set()
+            }) {
+                regs.usbpullup.write(|w| w.connect().disabled());
+                self.latch_fault(cs, UsbdFault::InDmaTimeout { endpoint: i as u8 });
+                return Err(UsbError::InvalidState);
+            }
             regs.events_endepin[i].reset();
             dma_end();
 
@@ -475,6 +705,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
         let i = ep_addr.index();
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return Err(UsbError::InvalidState);
+            }
             let regs = self.regs(&cs);
 
             // Control EP 0 is special
@@ -512,7 +745,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
             // Check that the packet fits into the buffer
             let size = regs.size.epout[i].read().bits();
-            if size as usize > buf.len() {
+            if size as usize > buf.len() || size as usize > DMA_BUFFER_SIZE {
                 return Err(UsbError::BufferOverflow);
             }
 
@@ -536,34 +769,53 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 &regs.epout6,
                 &regs.epout7,
             ];
+            // Receive into static storage so a late EasyDMA completion cannot write
+            // through the caller's expired mutable slice after a timeout return.
+            let dma_buf = unsafe { &mut *DMA_OUT_BUFFER.0.get() };
             epout[i]
                 .ptr
-                .write(|w| unsafe { w.bits(buf.as_ptr() as u32) });
+                .write(|w| unsafe { w.bits(dma_buf.as_mut_ptr() as u32) });
             // MAXCNT must match SIZE
             epout[i].maxcnt.write(|w| unsafe { w.bits(size) });
 
             dma_start();
             regs.events_endepout[i].reset();
             regs.tasks_startepout[i].write(|w| w.tasks_startepout().set_bit());
-            while regs.events_endepout[i]
-                .read()
-                .events_endepout()
-                .bit_is_clear()
-            {}
+            let completed = poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
+                regs.events_endepout[i]
+                    .read()
+                    .events_endepout()
+                    .bit_is_set()
+            });
+            if !completed {
+                regs.usbpullup.write(|w| w.connect().disabled());
+                self.latch_fault(cs, UsbdFault::OutDmaTimeout { endpoint: i as u8 });
+                return publish_out_transfer(None, buf, size as usize);
+            }
             regs.events_endepout[i].reset();
             dma_end();
+            let count = publish_out_transfer(Some(dma_buf), buf, size as usize)?;
 
             // TODO: ISO
 
             // Enable the endpoint
             regs.size.epout[i].reset();
 
-            Ok(size as usize)
+            Ok(count)
         })
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
+        // usb-device forwards endpoint recipients from host control requests. Reject
+        // unadvertised directions and EP8..EP15 before masking or indexing the regular
+        // EP0..EP7 hardware arrays.
+        if !self.is_used(ep_addr) {
+            return;
+        }
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return;
+            }
             let regs = self.regs(&cs);
 
             unsafe {
@@ -590,7 +842,13 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
+        if !self.is_used(ep_addr) {
+            return false;
+        }
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return false;
+            }
             let regs = self.regs(&cs);
 
             let i = ep_addr.index();
@@ -604,6 +862,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn suspend(&self) {
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return;
+            }
             let regs = self.regs(&cs);
             regs.lowpower.write(|w| w.lowpower().low_power());
         });
@@ -612,6 +873,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn resume(&self) {
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return;
+            }
             let regs = self.regs(&cs);
 
             errata::pre_wakeup();
@@ -622,6 +886,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
     fn poll(&self) -> PollResult {
         critical_section::with(move |cs| {
+            if self.has_fault(cs) {
+                return PollResult::None;
+            }
             let regs = self.regs(&cs);
             let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
 
@@ -739,17 +1006,258 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
     fn force_reset(&self) -> usb_device::Result<()> {
         critical_section::with(move |cs| {
-            self.regs(&cs).usbpullup.write(|w| w.connect().disabled());
-        });
+            let regs = self.regs(&cs);
+            regs.usbpullup.write(|w| w.connect().disabled());
+            if !link_restore_allowed(self.has_fault(cs), T::vbus_present()) {
+                return Err(UsbError::InvalidState);
+            }
+            Ok(())
+        })?;
 
         // Delay for 1ms, to give the host a chance to detect this.
         // We run at 64 MHz, so 64k cycles are 1ms.
         cortex_m::asm::delay(64_000);
 
         critical_section::with(move |cs| {
-            self.regs(&cs).usbpullup.write(|w| w.connect().enabled());
-        });
+            let regs = self.regs(&cs);
+            if !link_restore_allowed(self.has_fault(cs), T::vbus_present()) {
+                regs.usbpullup.write(|w| w.connect().disabled());
+                return Err(UsbError::InvalidState);
+            }
+            regs.usbpullup.write(|w| w.connect().enabled());
+            Ok(())
+        })
+    }
+}
 
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use core::cell::Cell;
+
+    use usb_device::{
+        endpoint::{
+            EndpointAddress, EndpointType, IsochronousSynchronizationType, IsochronousUsageType,
+        },
+        UsbDirection, UsbError,
+    };
+
+    use super::{
+        apply_handoff_sanitization, endpoint_is_owned, link_restore_allowed, poll_with_budget,
+        publish_out_transfer, validate_endpoint_request, PermanentClaim, RegisterBlock,
+        StaticDmaBuffer, TerminalFault, DMA_BUFFER_SIZE, HANDOFF_CONFIG_ZERO_OFFSETS,
+        HANDOFF_EVENT_CLEAR_OFFSETS, HANDOFF_W1C_CLEAR_OFFSETS,
+    };
+    use crate::UsbdFault;
+
+    #[test]
+    fn staging_storage_is_easydma_aligned() {
+        assert!(core::mem::align_of::<StaticDmaBuffer>() >= 4);
+        assert!(core::mem::size_of::<StaticDmaBuffer>() >= DMA_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn staging_storage_claim_is_permanent_and_refuses_a_second_owner() {
+        let claim = PermanentClaim::new();
+        {
+            assert!(claim.try_claim());
+        }
+        // Leaving the owner's scope cannot release storage: a timed-out peripheral may
+        // still complete EasyDMA against it later.
+        assert!(!claim.try_claim());
+    }
+
+    #[test]
+    fn zero_budget_never_polls_hardware() {
+        let calls = Cell::new(0);
+        assert!(!poll_with_budget(0, || {
+            calls.set(calls.get() + 1);
+            true
+        }));
+        assert_eq!(calls.get(), 0);
+    }
+
+    #[test]
+    fn readiness_on_the_last_permitted_poll_succeeds() {
+        let calls = Cell::new(0);
+        assert!(poll_with_budget(3, || {
+            calls.set(calls.get() + 1);
+            calls.get() == 3
+        }));
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn readiness_after_the_budget_times_out_at_the_exact_limit() {
+        let calls = Cell::new(0);
+        assert!(!poll_with_budget(3, || {
+            calls.set(calls.get() + 1);
+            calls.get() == 4
+        }));
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn isochronous_allocation_is_rejected_before_regular_endpoint_indexing() {
+        let endpoint_type = EndpointType::Isochronous {
+            synchronization: IsochronousSynchronizationType::NoSynchronization,
+            usage: IsochronousUsageType::Data,
+        };
+        assert_eq!(
+            validate_endpoint_request(endpoint_type, DMA_BUFFER_SIZE as u16),
+            Err(UsbError::Unsupported)
+        );
+    }
+
+    #[test]
+    fn regular_endpoint_packets_must_fit_the_staging_storage() {
+        assert_eq!(
+            validate_endpoint_request(EndpointType::Bulk, DMA_BUFFER_SIZE as u16),
+            Ok(())
+        );
+        assert_eq!(
+            validate_endpoint_request(EndpointType::Bulk, DMA_BUFFER_SIZE as u16 + 1),
+            Err(UsbError::EndpointMemoryOverflow)
+        );
+    }
+
+    #[test]
+    fn handoff_offsets_and_actions_cover_the_pac_event_map() {
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_usbreset), 0x100);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_started), 0x104);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_endepin), 0x108);
+        assert_eq!(
+            core::mem::offset_of!(RegisterBlock, events_ep0datadone),
+            0x128
+        );
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_endisoin), 0x12c);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_endepout), 0x130);
+        assert_eq!(
+            core::mem::offset_of!(RegisterBlock, events_endisoout),
+            0x150
+        );
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_sof), 0x154);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_usbevent), 0x158);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_ep0setup), 0x15c);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, events_epdata), 0x160);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, intenclr), 0x308);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, eventcause), 0x400);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, epstatus), 0x468);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, epdatastatus), 0x46c);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, enable), 0x500);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, usbpullup), 0x504);
+
+        let mut actions = [(usize::MAX, 0u32); 38];
+        let mut count = 0;
+        apply_handoff_sanitization(|offset, value| {
+            actions[count] = (offset, value);
+            count += 1;
+        });
+        assert_eq!(count, actions.len());
+        assert_eq!(actions[0], (0x504, 0));
+        assert_eq!(actions[1], (0x308, u32::MAX));
+        assert_eq!(actions[2], (0x05c, 1));
+        assert_eq!(actions[3], (0x500, 0));
+
+        let config_start = 4;
+        for (index, offset) in HANDOFF_CONFIG_ZERO_OFFSETS.iter().enumerate() {
+            assert_eq!(actions[config_start + index], (*offset, 0));
+        }
+        let event_start = config_start + HANDOFF_CONFIG_ZERO_OFFSETS.len();
+        for (index, offset) in HANDOFF_EVENT_CLEAR_OFFSETS.iter().enumerate() {
+            assert_eq!(actions[event_start + index], (*offset, 0));
+        }
+        let w1c_start = event_start + HANDOFF_EVENT_CLEAR_OFFSETS.len();
+        for (index, offset) in HANDOFF_W1C_CLEAR_OFFSETS.iter().enumerate() {
+            assert_eq!(actions[w1c_start + index], (*offset, u32::MAX));
+        }
+    }
+
+    #[test]
+    fn endpoint_ownership_rejects_hostile_indices_and_wrong_directions() {
+        let used_in = 0b0000_0011; // EP0 + EP1 IN
+        let used_out = 0b0000_0101; // EP0 + EP2 OUT
+        assert!(endpoint_is_owned(
+            used_in,
+            used_out,
+            EndpointAddress::from_parts(1, UsbDirection::In)
+        ));
+        assert!(!endpoint_is_owned(
+            used_in,
+            used_out,
+            EndpointAddress::from_parts(1, UsbDirection::Out)
+        ));
+        assert!(endpoint_is_owned(
+            used_in,
+            used_out,
+            EndpointAddress::from_parts(2, UsbDirection::Out)
+        ));
+        assert!(!endpoint_is_owned(
+            used_in,
+            used_out,
+            EndpointAddress::from_parts(2, UsbDirection::In)
+        ));
+        for index in 8..=15 {
+            assert!(!endpoint_is_owned(
+                used_in,
+                used_out,
+                EndpointAddress::from_parts(index, UsbDirection::In)
+            ));
+            assert!(!endpoint_is_owned(
+                used_in,
+                used_out,
+                EndpointAddress::from_parts(index, UsbDirection::Out)
+            ));
+        }
+    }
+
+    #[test]
+    fn pullup_restore_requires_both_a_live_link_and_a_healthy_bus() {
+        assert!(link_restore_allowed(false, true));
+        assert!(!link_restore_allowed(true, true));
+        assert!(!link_restore_allowed(false, false));
+        assert!(!link_restore_allowed(true, false));
+    }
+
+    #[test]
+    fn timed_out_out_transfer_never_publishes_staging_bytes_to_the_caller() {
+        let staging = [0x3c; 8];
+        let mut caller = [0xa5; 8];
+        let original = caller;
+
+        assert_eq!(
+            publish_out_transfer(None, &mut caller, staging.len()),
+            Err(UsbError::InvalidState)
+        );
+        assert_eq!(caller, original);
+
+        assert_eq!(
+            publish_out_transfer(Some(&staging), &mut caller, staging.len()),
+            Ok(staging.len())
+        );
+        assert_eq!(caller, staging);
+    }
+
+    #[test]
+    fn first_fault_is_terminal_and_prevents_later_operation_starts() {
+        let mut state = TerminalFault::new(None);
+        let starts = Cell::new(0);
+        if state.permits_operation() {
+            starts.set(starts.get() + 1);
+        }
+
+        let first = UsbdFault::OutDmaTimeout { endpoint: 3 };
+        let (latched, newly_latched) = state.latch(first);
+        state = latched;
+        assert!(newly_latched);
+        assert_eq!(state.fault(), Some(first));
+
+        if state.permits_operation() {
+            starts.set(starts.get() + 1);
+        }
+        let (still_latched, newly_latched) = state.latch(UsbdFault::EnableTimeout);
+        assert!(!newly_latched);
+        assert_eq!(still_latched.fault(), Some(first));
+        assert!(!still_latched.permits_operation());
+        assert_eq!(starts.get(), 1);
     }
 }

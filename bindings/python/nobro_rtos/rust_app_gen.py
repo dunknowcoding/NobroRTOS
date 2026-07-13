@@ -9,7 +9,8 @@ admits it, and exports the host-readable `NOBRO_MANIFEST_REPORT` /
 Rust by hand.
 
 The app is created as a workspace member under `core/apps/<use-case>/<name>/` so it builds with
-the existing toolchain (`cargo build -p <name>`), exactly like the bundled demos.
+the existing toolchain (`cargo build --locked -p <name>` after the one-time lock refresh),
+exactly like the bundled demos.
 """
 from __future__ import annotations
 
@@ -174,13 +175,17 @@ the Rust compiler and re-checked at admission.
 
 ```powershell
 cd core
-cargo build -p {pkg} --release
+# The generator registered a new workspace member; resolve it once and retain
+# the resulting Cargo.lock, then keep every build locked.
+cargo generate-lockfile
+cargo build --locked -p {pkg} --release
 ```
 
 ## Verify on hardware
 
 ```powershell
-# flash + read NOBRO_MANIFEST_REPORT / NOBRO_ADMISSION_REPORT (see docs/HARDWARE_BRINGUP.md)
+# Follow docs/GETTING_STARTED.md in the NobroRTOS repository to flash and read the
+# NOBRO_MANIFEST_REPORT / NOBRO_ADMISSION_REPORT records.
 ```
 """
 
@@ -273,5 +278,8 @@ def generate_rust_app(
         "crate_dir": crate.relative_to(repo_root).as_posix(),
         "files": sorted(written),
         "registered_member": registered,
-        "build_hint": f"cd core && cargo build -p {pkg} --release",
+        "build_hint": (
+            f"cd core && cargo generate-lockfile && "
+            f"cargo build --locked -p {pkg} --release"
+        ),
     }

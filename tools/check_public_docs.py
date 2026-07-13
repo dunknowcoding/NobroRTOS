@@ -11,11 +11,17 @@ DOCS = [
     ROOT / "README.md",
     *(ROOT / "docs" / name for name in (
         "README.md", "GETTING_STARTED.md", "USER_GUIDE.md", "API.md",
-        "ARCHITECTURE.md", "PORTING.md", "api-index.md",
+        "ARCHITECTURE.md", "PORTING.md", "LIMITATIONS.md", "CAMERA_SUPPORT.md",
+        "WIRELESS_SUPPORT.md", "api-index.md",
     )),
 ]
 LINK = re.compile(r"\[[^]]*\]\(([^)]+)\)")
 TOOL = re.compile(r"(?:python3?|py)\s+(tools/[A-Za-z0-9_./-]+\.py)\b")
+DOC_REFERENCE = re.compile(r"\bdocs/[A-Za-z0-9_.-]+\.md\b")
+DOC_REFERENCE_EXEMPT = {
+    pathlib.PurePosixPath("tools/check_public_docs.py"),
+    pathlib.PurePosixPath("tools/check_release_boundary.py"),
+}
 PRIVATE = {
     "internal plan reference": re.compile(
         r"(?:_INTERNAL\.md|REMODELING_PLAN_" r"INTERNAL)"
@@ -26,8 +32,9 @@ PRIVATE = {
     "local environment": re.compile(r"\b(?:conda|venv)\s+(?:activate|env)\b", re.IGNORECASE),
 }
 TEXT_SUFFIXES = {
-    ".c", ".cc", ".cpp", ".h", ".hpp", ".ino", ".json", ".md", ".ps1",
-    ".py", ".rs", ".sh", ".toml", ".txt", ".yaml", ".yml",
+    ".c", ".cc", ".cpp", ".h", ".hpp", ".ino", ".j2", ".jinja", ".jinja2",
+    ".json", ".md", ".ps1", ".py", ".rs", ".sh", ".template", ".tmpl", ".toml",
+    ".txt", ".yaml", ".yml",
 }
 
 
@@ -63,7 +70,8 @@ def main() -> int:
             if line.strip() and not line.lstrip().startswith("#")
         ]
 
-    for path in tracked_text_files():
+    text_files = tracked_text_files()
+    for path in text_files:
         text = path.read_text(encoding="utf-8", errors="replace")
         relative = path.relative_to(ROOT)
         patterns = {} if path == pathlib.Path(__file__).resolve() else PRIVATE
@@ -75,6 +83,26 @@ def main() -> int:
         for needle in local_needles:
             if needle.casefold() in folded:
                 errors.append(f"{relative}: local privacy needle present")
+
+        # Generator templates and source comments can publish documentation paths without
+        # using Markdown-link syntax. Discover every such tracked literal automatically so
+        # a newly added generator cannot escape a hardcoded allowlist. Product-contract
+        # checkers are the exception: by design they name deliberately absent retired paths.
+        if pathlib.PurePosixPath(relative.as_posix()) not in DOC_REFERENCE_EXEMPT:
+            for match in DOC_REFERENCE.finditer(text):
+                target = pathlib.Path(match.group(0))
+                if not (ROOT / target).is_file():
+                    line = text.count("\n", 0, match.start()) + 1
+                    errors.append(
+                        f"{relative}:{line}: public documentation reference is missing: "
+                        f"{target}"
+                    )
+                elif target not in tracked:
+                    line = text.count("\n", 0, match.start()) + 1
+                    errors.append(
+                        f"{relative}:{line}: public documentation reference is not tracked: "
+                        f"{target}"
+                    )
 
     for path in DOCS:
         if not path.is_file():
@@ -116,7 +144,7 @@ def main() -> int:
         print(f"FAIL: {error}")
     print(
         f"PUBLIC TREE: {'PASS' if not errors else 'FAIL'} "
-        f"({len(tracked_text_files())} tracked text files; {len(DOCS)} public docs)"
+        f"({len(text_files)} tracked text files; {len(DOCS)} public docs)"
     )
     return int(bool(errors))
 

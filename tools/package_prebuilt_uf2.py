@@ -44,8 +44,11 @@ def load_manifest():
 def build() -> int:
     man = load_manifest()
     env = dict(os.environ, CARGO_TARGET_DIR=image.TARGET_DIR)
-    cmd = ["cargo", "build", "-p", man["package"], "--bin", man["binary"], "--release",
-           "--no-default-features", "--features", ",".join(man["features"])]
+    cmd = [
+        "cargo", "build", "--locked", "-p", man["package"], "--bin",
+        man["binary"], "--release", "--no-default-features", "--features",
+        ",".join(man["features"]),
+    ]
     print("+", " ".join(cmd))
     if subprocess.run(cmd, cwd=image.CORE, env=env).returncode:
         return 1

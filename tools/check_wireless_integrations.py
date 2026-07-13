@@ -110,7 +110,8 @@ def main() -> int:
                     for case, (fqbn, source) in CASES.items():
                         compile_sketch(cli, wireless, case, fqbn, source, base)
                 if args.compile_zigbee:
-                    compile_sketch(cli, zigbee, "zigbee", "arduinonrf:nrf52:promicro_nrf52840",
+                    compile_sketch(cli, zigbee, "zigbee",
+                                   "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled",
                                    ZIGBEE_CASE, base)
     except (OSError, RuntimeError) as error:
         print(f"WIRELESS INTEGRATIONS: FAIL ({error})")

@@ -498,59 +498,111 @@ Portable leases use a neutral class plus instance number, and each platform
 adapter performs the concrete peripheral mapping. Bus providers also declare
 whether transfers are polling or DMA.
 
+Capability rows describe one firmware composition, not the union of every API that can
+compile for a board. For RA4M1, the native Rust composition implements timebase,
+deadline, and USB. The separate Arduino facade delegates clock, deadline, ADC, PWM,
+I2C, SPI, and byte I/O to the installed board core and is recorded separately in the
+platform matrix. Generic Arduino `analogWrite` is PWM, not a servo-period provider.
+
+The current RA4M1 clock extends a 48 MHz 32-bit DWT counter, so active firmware must
+sample it within every approximately 89-second wrap; it does not preserve elapsed time
+when DWT stops in low-power modes. The 24-bit SysTick deadline provider accepts one-shot
+delays only through approximately 349 milliseconds. Longer active runs and deadlines
+need a future always-on/chained provider before stronger timing claims are made.
+
 ## Mountable stacks (HAL modularity)
 
-NobroRTOS keeps board and vendor differences behind **mountable backends**: a
-board selects one implementation of a common trait by a Cargo feature, and app
-code never names the concrete stack. This is how NobroRTOS stays compatible
-with the ArduinoNRF ecosystem and, per board, with other vendor libraries
-without forking the apps.
+NobroRTOS uses **mountable backends** where the subsystem implements the complete
+selection contract: a firmware composition chooses one implementation of a common
+trait and application code consumes the trait. USB is the implemented reference.
+Sensor categories use the Universal Driver Interface described below. Wireless has a
+shared bounded data-plane trait today, but its vendor-stack selection layer is planned,
+not present.
 
 ### Reference: ArduinoNRF Layer 0
 
-The nRF52840 profiles run the ArduinoNRF core's Layer 0 by default: native
-`NrfUsbd`, NimBLE, GDB stub, and peripheral drivers. NobroRTOS mirrors that
-default so boards can behave like stock ArduinoNRF targets, while still moving
-to ArduinoNRF's own stacks by swapping a feature.
+Arduino sketches use the stacks and peripheral ownership supplied by the installed
+ArduinoNRF board package. Native Rust firmware uses the providers compiled into its
+selected composition. These are distinct compositions; NobroRTOS does not currently
+offer a feature that swaps a running native firmware to an Arduino-managed BLE stack.
 
 ### USB - implemented (`crates/nobro_usb`)
 
-`UsbStack` trait + `mount()`; a board picks one backend:
+`UsbStack` trait + typed `try_mount()` (with panic-compatible `mount()`); a board picks
+one backend:
 
 | feature | backend | status |
 | --- | --- | --- |
 | `backend-nrf-usbd` (default) | vendored `nrf-usbd` + `usbd-serial` CDC | implemented |
-| `backend-usb-serial-jtag` | fixed-function USB serial/JTAG peripheral | implemented |
+| `backend-usb-serial-jtag-esp32c3` | ESP32-C3 fixed-function USB serial/JTAG register map | implemented; physical recovery evidence pending |
+| `backend-usb-serial-jtag-esp32s3` | ESP32-S3 fixed-function USB serial/JTAG register map | implemented; physical recovery evidence pending |
 | `backend-ra-usbfs` | USBFS CDC device backend | implemented |
 
-`usb_stack_demo` consumes only `mount()` + `UsbStack`. Compile-time guards allow
-exactly one implemented backend, and a process-wide permanent claim rejects a
-second mount before hardware access. Nonfunctional placeholder stacks are not
-published as features.
+The Cortex-M `usb_stack_demo` consumes only `try_mount()` + `UsbStack` and selects nRF
+USBD or RA4M1 USBFS. ESP32-C3/S3 use architecture-specific demos in their port crates;
+the Cortex-M package does not advertise impossible RISC-V/Xtensa features. Compile-time
+guards allow exactly one implemented backend. Its RA feature uses the exact exported
+identity and the 0x4000 RA4M1 application link map, but it is a compile/link contract;
+complete UNO R4 clock/mux startup remains in the RA4M1 port executable. Mount preflight
+validates fixed descriptor requirements before a process-wide permanent claim and before
+hardware access; the panic-compatible `mount()` wrapper is retained for existing callers.
+Nonfunctional placeholder stacks are not published as features.
 
-### Radio / BLE / Zigbee / RFID - same pattern
+`UsbConfig` is the requested identity. The nRF backend generates descriptors from it,
+the RA4M1 backend accepts only `RA4M1_USB_CONFIG`, and ESP USB-Serial-JTAG descriptors
+are fixed by the controller and ignore the request. The public `identity_policy()` and
+`config_supported()` facts keep accepted configuration distinct from host-visible
+identity.
 
-The mountable-backend shape extends to wireless and proximity links, each behind its own trait:
+The ESP link state fails closed: SOF establishes only a live bus. The backend clears
+reset-high `SERIAL_IN_EMPTY` without treating it as enumeration evidence, waits for a
+free IN FIFO before issuing a zero-length EP1 probe, and reports `Configured` only after
+a later EP1 IN token or OUT packet. Bus reset and the SOF watchdog invalidate that state.
+Reset/pre-probe OUT evidence is cleared and its packet FIFO is drained with a 64-byte
+per-poll bound before probing, so stale data cannot strand the FIFO or become configured
+evidence. `IN_EP_DATA_FREE` means only that the FIFO is not full; nonempty writes clear
+the old empty event and retain a pending flag until a later `SERIAL_IN_EMPTY` event.
+Therefore flush never infers completion from free capacity. Host state-machine tests do
+not replace physical disconnect/reconnect evidence.
 
-- **BLE**: a `BleStack` trait with backends `nimble` (ArduinoNRF default) and
-  `nrf-softdevice` (S140-compatible layout). The existing nRF `Radio` driver is
-  the raw-radio backend.
-- **Zigbee / 802.15.4**: a `RadioCoprocessor` trait with backends such as UART
-  co-processors and, later, the nRF on-chip RADIO running Nordic's official
-  Zigbee sidecar firmware.
-- **RFID / NFC**: `SpiIo` adapts a board SPI driver to the no-heap `Mfrc522` backend, which exposes ISO 14443A UID polling through `WirelessBackend`.
+The nRF backend bounds controller-ready and EasyDMA completion polling, retains late-DMA
+storage in permanently claimed aligned buffers, and propagates terminal direction/endpoint
+faults through the common error lane. Those finite waits still run inside a critical
+section and their limits count iterations, not elapsed time. Until target timing and a
+poll-driven transfer state machine close that gap, they are a liveness containment—not an
+interrupt-blackout or deadline guarantee. Unsupported nRF isochronous endpoints are
+rejected during allocation rather than reaching the regular endpoint arrays.
 
-Each backend is `no_std`, feature-selected, and swappable per
-`core/boards/<platform>/*/board.json`, so a board's wireless identity is data plus one
-feature, not scattered `#[cfg]`s.
+### Radio / BLE / WiFi / Zigbee / RFID - current boundary and planned shape
+
+Implemented today in `nobro-wireless`:
+
+- `WirelessBackend` is the bounded application data plane, and `ManagedLink` adds
+  resource accounting plus a deadline check for one immediate send attempt.
+  `TxContract` does not schedule priority or execute retries: priority belongs to the
+  scheduler and retry state belongs to the caller. Implementations are constructed
+  explicitly; the crate does not yet select a vendor stack from a board profile.
+- `Mfrc522<SpiIo>` implements bounded ISO 14443A UID polling, and `Cc2530<ByteIo>`
+  implements an initialized raw IEEE 802.15.4 PSDU transport behind `WirelessBackend`,
+  bounded by the 127-byte PHY frame limit. It is not a Zigbee join/network/APS stack;
+  `ZIGBEE_APS` is catalog descriptor metadata only.
+- `BleAdvBuilder` constructs advertising packets. It is not a BLE controller/host
+  stack, and a protocol descriptor is not proof that a board implements that protocol.
+
+WiFi join/socket control, BLE scan/connect/GATT control, Zigbee co-processor lifecycle,
+shared-radio arbitration, and vendor backend selection remain future work. They will
+extend the existing `nobro-wireless` domain rather than create a parallel link crate.
+Each protocol control trait will sit beneath `ManagedLink`, each logical instance will
+select exactly one backend, and board/firmware composition will state vendor-managed
+memory, interrupts, coexistence, and radio ownership explicitly. Concrete names and
+features become public only when their implementations and exclusivity gates exist.
 
 ### Why mountable, not `#[cfg]` sprinkled
 
-One trait + one `mount()` per subsystem means apps are backend-agnostic and
-portable; a new board is a data drop plus a backend choice; and vendor stacks
-are integrated once, behind the subsystem boundary, instead of leaking into
-every app. This is the same discipline the kernel already applies to leases and
-capabilities, extended to the USB and wireless vendor layer.
+One trait plus one selected implementation keeps apps backend-agnostic when the whole
+selection path exists. USB demonstrates that rule now. Future wireless control stacks
+must earn the same property through explicit composition, ownership, and conformance
+gates; adding a board profile or a catalog descriptor alone is insufficient.
 
 ## The Universal Driver Interface
 

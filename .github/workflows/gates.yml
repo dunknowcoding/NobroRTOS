@@ -50,6 +50,13 @@ jobs:
           python tools/check_ros_bridge.py --selftest
           python tools/check_udi.py --selftest
           python tools/nobro_shrink.py --selftest
+          python tools/check_platform_tiers.py --selftest
+      - name: complete product experience gates
+        run: |
+          python tools/nobro_app.py tutorials/hello-device/app.json
+          python tools/package_prebuilt_uf2.py --check
+          python tools/nobro_admission.py --selftest
+          python sdk/cli/nobro.py project --selftest
   rust-matrix:
     runs-on: ubuntu-latest
     steps:
@@ -57,8 +64,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv7em-none-eabihf
+          components: clippy,rustfmt,llvm-tools-preview
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: build generated firmware and prebuilt UF2 experiences
+        run: |
+          python tools/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
+          python tools/package_prebuilt_uf2.py --build
       - name: comprehensive Rust gates
-        run: python tools/run_checks.py --rust-only
+        run: |
+          python tools/check_platform_tiers.py --begin-receipts rust-matrix
+          python tools/run_checks.py --rust-only
+          python tools/check_platform_tiers.py --run-gate nrf52840-hal-host
+          python tools/check_platform_tiers.py --run-gate nrf52840-usb-host
+          python tools/check_platform_tiers.py --assert-receipts rust-matrix
 
   supply-chain-and-coverage:
     runs-on: ubuntu-latest
@@ -68,15 +88,19 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit,cargo-llvm-cov
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: locked source and license policy
         run: python tools/check_dependency_policy.py
       - name: advisory database audit
         working-directory: core
-        run: cargo audit
+        # cargo-audit reads a lockfile directly and has no --locked option.
+        run: cargo audit --file Cargo.lock
       - name: portable coverage
         working-directory: core
         run: >-
-          cargo llvm-cov -p nobro-kernel -p nobro-net -p nobro-secure
+          cargo llvm-cov --locked -p nobro-kernel -p nobro-net -p nobro-secure
           -p nobro-storage -p nobro-database -p nobro-power -p nobro-sal
           --target x86_64-unknown-linux-gnu --lcov --output-path ../coverage.lcov
       - uses: actions/upload-artifact@v4
@@ -94,7 +118,7 @@ jobs:
       - name: Miri portable safety boundary
         working-directory: core
         run: >-
-          cargo miri test --target x86_64-unknown-linux-gnu
+          cargo miri test --locked --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure -p nobro-hal
       - name: Miri bounded async boundary
         working-directory: core
@@ -104,25 +128,42 @@ jobs:
         # Two invocations: `cargo test` takes a single positional filter, so the
         # reactor and the MPMC/task-group boundary are checked separately.
         run: |
-          cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
-          cargo miri test --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
       - name: address sanitizer smoke
         working-directory: core
         env:
           CARGO_TARGET_DIR: ../_work/ci-asan
           RUSTFLAGS: -Zsanitizer=address
         run: >-
-          cargo test --target x86_64-unknown-linux-gnu
+          cargo test --locked --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure
 
   cross-mcu:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
           components: llvm-tools-preview
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install ESP32-S3 Xtensa Rust toolchain
+        uses: esp-rs/xtensa-toolchain@ec6d36527049a7f4fb2cb0c1a644668c1bb8a2a4 # v1.7.0
+        with:
+          default: false
+          buildtargets: esp32s3
+          ldproxy: false
+          override: false
+          export: true
+      - name: install Tier-C Arm linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gcc-arm-none-eabi
       - name: full reproducible cross-MCU matrix
         run: bash tools/ci_matrix.sh
 
@@ -131,16 +172,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: install representative cores
         run: |
           arduino-cli core update-index
           arduino-cli core install arduino:avr
           arduino-cli core install arduino:renesas_uno
           arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-      - name: compile public package examples
+      - name: compile public package examples (AVR, UNO R4, ESP32-S3)
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
-        run: python tools/check_arduino_compile.py
+        run: |
+          python tools/check_platform_tiers.py --begin-receipts arduino-package
+          python tools/check_platform_tiers.py --run-gate arduino-facade-contract
+          python tools/check_platform_tiers.py --run-gate arduino-ra4m1-compile
+          python tools/check_platform_tiers.py --assert-receipts arduino-package
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
@@ -161,3 +209,38 @@ jobs:
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
           git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
           python tools/check_camera_integrations.py --library _work/NiusCam --compile
+
+  arduino-nrf-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install pinned ArduinoNRF core
+        shell: pwsh
+        run: |
+          $index = "https://raw.githubusercontent.com/dunknowcoding/ArduinoNRF/0add1ce4842b346316334d41f1038e792f3b6958/package_arduinonrf_index.json"
+          arduino-cli core update-index --additional-urls $index
+          arduino-cli core install arduinonrf:nrf52@0.3.11 --additional-urls $index
+      - name: compile public package examples (ArduinoNRF)
+        shell: pwsh
+        run: |
+          python tools/check_platform_tiers.py --begin-receipts arduino-nrf-package
+          python tools/check_platform_tiers.py --run-gate arduino-nrf52840-compile
+          python tools/check_platform_tiers.py --assert-receipts arduino-nrf-package
+      - name: compile pinned NiusIMU integration (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
+          git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+      - name: compile pinned NiusZigbee integration (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
+          git -C _work/NiusWireless checkout f40e76cccbcb0b5d0597f784ae5be1e6a52d46cb
+          git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
+          git -C _work/ArduinoNRF-Zigbee checkout 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          python tools/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-zigbee

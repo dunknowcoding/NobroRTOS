@@ -44,7 +44,7 @@ def target_dir(env):
 
 def build() -> int:
     env = dict(os.environ)
-    if subprocess.run(["cargo", "build", "--release", "-p", "nobro-tierc"],
+    if subprocess.run(["cargo", "build", "--locked", "--release", "-p", "nobro-tierc"],
                       cwd=CORE, env=env).returncode:
         return 1
     tdir = target_dir(env)

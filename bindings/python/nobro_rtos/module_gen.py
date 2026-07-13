@@ -82,7 +82,7 @@ def generate_module(name: str, lang: str, out_dir: str, overwrite: bool = False)
     module_path.write_text(content, encoding="utf-8")
 
     build_cmd = (
-        f"{env}={module_path.resolve().as_posix()} cargo build -p nobro-c-abi-demo "
+        f"{env}={module_path.resolve().as_posix()} cargo build --locked -p nobro-c-abi-demo "
         f"--no-default-features --features board-promicro-nosd,{feature} --release"
     )
     readme = out / f"{name}.README.md"
@@ -91,7 +91,8 @@ def generate_module(name: str, lang: str, out_dir: str, overwrite: bool = False)
         f"Edit `{module_path.name}` - `nobro_app_init()` runs once, `nobro_app_poll()` "
         f"every cycle. Then build it into the c_abi_demo firmware (run from `core/`):\n\n"
         f"```\n{build_cmd}\n```\n\n"
-        f"Flash the image at 0x1000 and read your NOBRO_* report (see docs/HARDWARE_BRINGUP.md).\n",
+        f"For the public flash and report workflow, see docs/GETTING_STARTED.md in "
+        f"the NobroRTOS repository.\n",
         encoding="utf-8",
     )
 

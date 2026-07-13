@@ -35,6 +35,7 @@ enum AppError : uint8_t {
     APP_INVALID_PERIOD,
     APP_BUDGET_EXCEEDS_PERIOD,
     APP_RESOURCE_BUDGET,
+    APP_INVALID_BUDGET,
 };
 
 /* Allocation-free Arduino declaration and admission preview. The Rust firmware path
@@ -47,7 +48,11 @@ public:
              uint32_t ram_limit = 32ul * 1024ul)
         : task_count_(0), channel_count_(0), flash_limit_(flash_limit),
           ram_limit_(ram_limit), flash_used_(12ul * 1024ul),
-          ram_used_(3ul * 1024ul), error_(APP_OK) {}
+          ram_used_(3ul * 1024ul),
+          error_(flash_limit == 0 || ram_limit == 0 ||
+                         flash_limit < 12ul * 1024ul || ram_limit < 3ul * 1024ul
+                     ? APP_RESOURCE_BUDGET
+                     : APP_OK) {}
 
     TaskId control(const char *name, uint32_t every_ms) {
         return add(name, CONTROL, every_ms, 2048, 512, 5);
@@ -61,17 +66,24 @@ public:
 
     NobroApp &budget(TaskId id, uint32_t budget_us) {
         if (!contains(id)) return fail(APP_INVALID_TASK);
+        if (budget_us == 0) return fail(APP_INVALID_BUDGET);
         tasks_[id.value].budget_us = budget_us;
         return *this;
     }
     NobroApp &memory(TaskId id, uint32_t flash_bytes, uint32_t ram_bytes) {
         if (!contains(id)) return fail(APP_INVALID_TASK);
-        flash_used_ -= tasks_[id.value].flash_bytes;
-        ram_used_ -= tasks_[id.value].ram_bytes;
+        if (flash_bytes == 0 || ram_bytes == 0) return fail(APP_RESOURCE_BUDGET);
+        uint32_t next_flash = 0;
+        uint32_t next_ram = 0;
+        if (!checked_replace(flash_used_, tasks_[id.value].flash_bytes,
+                             flash_bytes, next_flash) ||
+            !checked_replace(ram_used_, tasks_[id.value].ram_bytes,
+                             ram_bytes, next_ram))
+            return fail(APP_RESOURCE_BUDGET);
         tasks_[id.value].flash_bytes = flash_bytes;
         tasks_[id.value].ram_bytes = ram_bytes;
-        flash_used_ += flash_bytes;
-        ram_used_ += ram_bytes;
+        flash_used_ = next_flash;
+        ram_used_ = next_ram;
         return *this;
     }
     NobroApp &connect(TaskId from, TaskId to) {
@@ -88,6 +100,7 @@ public:
         if (error_ != APP_OK) return false;
         for (uint8_t i = 0; i < task_count_; ++i) {
             if (tasks_[i].period_us == 0) return fail_bool(APP_INVALID_PERIOD);
+            if (tasks_[i].budget_us == 0) return fail_bool(APP_INVALID_BUDGET);
             if (tasks_[i].budget_us > tasks_[i].period_us)
                 return fail_bool(APP_BUDGET_EXCEEDS_PERIOD);
         }
@@ -105,7 +118,9 @@ public:
         case APP_INVALID_TASK: return "channel or override names an invalid task";
         case APP_INVALID_PERIOD: return "task period must be greater than zero";
         case APP_BUDGET_EXCEEDS_PERIOD: return "task budget exceeds its period";
-        case APP_RESOURCE_BUDGET: return "declared task memory exceeds the board profile";
+        case APP_RESOURCE_BUDGET:
+            return "task memory is zero, overflows, or exceeds the board profile";
+        case APP_INVALID_BUDGET: return "task budget must be greater than zero";
         default: return "unknown application error";
         }
     }
@@ -133,6 +148,13 @@ private:
         }
         uint32_t period = every_ms > (0xFFFFFFFFul / 1000ul)
             ? 0ul : every_ms * 1000ul;
+        uint32_t next_flash = 0;
+        uint32_t next_ram = 0;
+        if (!checked_add(flash_used_, flash, next_flash) ||
+            !checked_add(ram_used_, ram, next_ram)) {
+            fail(APP_RESOURCE_BUDGET);
+            return invalid();
+        }
         Task &task = tasks_[task_count_];
         task.name = name;
         task.role = (uint8_t)role;
@@ -140,13 +162,23 @@ private:
         task.budget_us = period / divisor;
         task.flash_bytes = flash;
         task.ram_bytes = ram;
-        flash_used_ += flash;
-        ram_used_ += ram;
+        flash_used_ = next_flash;
+        ram_used_ = next_ram;
         TaskId result = {task_count_};
         ++task_count_;
         return result;
     }
     bool contains(TaskId id) const { return id.valid() && id.value < task_count_; }
+    static bool checked_add(uint32_t current, uint32_t increment, uint32_t &result) {
+        if (increment > 0xFFFFFFFFul - current) return false;
+        result = current + increment;
+        return true;
+    }
+    static bool checked_replace(uint32_t current, uint32_t previous,
+                                uint32_t replacement, uint32_t &result) {
+        if (current < previous) return false;
+        return checked_add(current - previous, replacement, result);
+    }
     static TaskId invalid() { TaskId id = {0xFFu}; return id; }
     NobroApp &fail(AppError error) { if (error_ == APP_OK) error_ = error; return *this; }
     bool fail_bool(AppError error) { fail(error); return false; }
@@ -165,8 +197,9 @@ private:
 } // namespace nobro
 #endif
 
-#endif /* NOBRO_RTOS_ARDUINO_H */
-
-#ifdef ARDUINO
+#if defined(ARDUINO) && defined(__cplusplus) && \
+    defined(NOBRO_ARDUINO_ENABLE_PROVIDERS)
 #include "NobroArduinoProviders.h"
 #endif
+
+#endif /* NOBRO_RTOS_ARDUINO_H */

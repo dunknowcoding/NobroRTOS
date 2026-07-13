@@ -24,7 +24,12 @@ package: `ArduinoClock`, `ArduinoDeadline`, `ArduinoAdc`, `ArduinoPwm`, `Arduino
 `ArduinoSpi`, and `ArduinoByteIo`. These wrappers do not replace a vendor core or copy
 its register drivers; they give applications one bounded call shape while the installed
 board package continues to own pin routing, interrupts, and peripheral setup. The UNO R4
-uses this path for ADC/PWM/I2C/SPI and the native RA4M1 port owns Rust time/deadline/USB.
+uses this path for ADC/PWM/I2C/SPI; those facade calls are not native `nobro-hal`
+provider claims. The separate native RA4M1 composition implements only
+timebase/deadline/USB. Its 48 MHz DWT clock must be sampled during active execution at
+least once per approximately 89-second counter wrap and is not a sleep-stable timebase.
+Its 24-bit SysTick one-shot rejects delays above approximately 349 milliseconds. A
+stronger always-on clock and chained alarm are still pending.
 
 ### Crate Overview
 
@@ -37,9 +42,76 @@ uses this path for ADC/PWM/I2C/SPI and the native RA4M1 port owns Rust time/dead
 | `nobro-ml` | Heap-free DSP/ML utilities: anomaly stats, fusion, gesture detection, KWS audio features, model scheduling |
 | `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
 | `nobro-net` | Mesh routing, secure links, OTA chunking, store-forward queues, fleet OTA rollout planning |
-| `nobro-wireless` | Bounded wireless contracts and mountable BLE, WiFi, Zigbee, Thread, RFID, and proprietary backends |
+| `nobro-wireless` | Bounded link contracts, protocol descriptors/helpers, and implemented `WirelessBackend` adapters such as MFRC522 and CC2530 |
 | `nobro-camera` | Frame leases, capture admission, stream backpressure, recovery, and diagnostics |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
+
+### Unreleased post-v0.2.0 API migration (next semantic version)
+
+The changes in this section are on the development branch and target the next semantic
+version after v0.2.0; they are not part of the published v0.2.0 API contract.
+
+#### USB
+
+`nobro-usb` returns the public `MountedUsb` wrapper from `try_mount()` and `mount()`.
+The concrete `NrfUsbdCdc`, `UsbSerialJtagCdc`, and `RaUsbfsCdc` implementation types are
+private. Applications that imported or constructed a concrete backend must remove that
+type annotation or constructor, select one exact `backend-*` feature, and call
+`nobro_usb::try_mount(&config)`. `try_mount()` reports `AlreadyMounted` or
+`UnsupportedConfig`; it performs descriptor preflight before the permanent singleton
+claim and before hardware access. `mount()` remains as a compatibility wrapper and
+panics on those errors.
+
+The former ambiguous `backend-usb-serial-jtag` feature is split into
+`backend-usb-serial-jtag-esp32c3` and `backend-usb-serial-jtag-esp32s3`; downstream
+manifests must select the register map for their exact chip. The placeholder
+`backend_id::TINYUSB` and `backend_id::TAICHIUSB` constants are removed because no
+selectable implementation backs those identities.
+
+`UsbConfig` is a request, not an unconditional claim about the identity observed by the
+host. `identity_policy()` reports one of three behaviors: nRF descriptors use the
+requested identity, RA4M1 requires the exact exported `RA4M1_USB_CONFIG`, and the
+ESP32-C3/S3 fixed-function USB-Serial-JTAG controller ignores the requested identity.
+`config_supported()` checks only whether a request is accepted; for a controller-fixed
+identity, acceptance does not mean the requested VID, PID, or strings are advertised.
+
+The count-only `UsbStack::write` and `read` methods remain for compatibility. The newly
+added `flush` method has a fail-closed `false` default so older third-party
+implementations remain source-compatible without claiming that unknown private buffers
+are drained. New generic code should use `try_write`, `try_read`, and `try_flush`, or the
+bounded `MountedUsb::write_all`, `read_available`, and `flush_pending` conveniences.
+These distinguish ordinary non-blocking backpressure from typed `UsbBackendError`
+failures such as `ControllerTimeout`.
+
+`UsbStack::configured()` now describes only the currently observed usable link; reset,
+suspend, watchdog expiry, or disconnect makes it false. It is no longer a historical
+"configured at least once" latch. Applications that need session history must track it
+separately.
+
+The fallible inherent convenience formerly named `MountedUsb::flush()` is now
+`flush_pending()`. This removes its return-type/name collision with
+`UsbStack::flush() -> bool`; update callers that expected `Result<(), UsbIoError>`.
+
+`CdcState` and the RA4M1 backend's public `Stage` gain `Suspended`; `CdcState`,
+`Stage`, and `UsbIoError` become `#[non_exhaustive]`. That is an intentional source
+break for downstream exhaustive matches: add a wildcard arm and fail closed for states
+or errors the application does not understand. `UsbIoError` also gains the `Backend`
+case. This policy lets later controller states and typed faults be added without
+repeating the same exhaustive-match break.
+
+#### Wireless
+
+`TxContract` removes the public `priority` and `max_attempts` fields; construct it with
+`TxContract::by(deadline_us)` or set only `deadline_us`. `ManagedLink::send_at` now checks
+one immediate attempt against that deadline. Scheduling priority belongs to the scheduler,
+and retry attempts/state belong to the caller.
+
+`Protocol` adds `Ieee802154Raw`, so downstream exhaustive `Protocol` matches must add
+that arm (or a wildcard). `LinkDiagnostics` adds public `rx_rejected`, so downstream
+struct literals must initialize it; `Default` remains available. The CC2530 descriptor
+is now `IEEE802154_RAW` with the 127-byte PSDU limit after explicit initialization.
+`ZIGBEE_APS` remains catalog metadata and is not an implemented Zigbee join/NWK/APS
+stack.
 
 ### Neural Network API
 
@@ -75,14 +147,30 @@ assert!(nobro_ml::kws_log_energy_features(&pcm_i16, &mut features));
 
 ### Wireless Domain API
 
-`nobro-wireless` keeps link identity as data and physical radios behind small traits.
-Apps consume `WirelessBackend` for descriptor, link-state, send, and receive calls,
-so a BLE advertisement backend, a Zigbee co-processor, or an RFID reader can be
-mounted without changing application logic.
+`nobro-wireless` keeps link identity as data and lets concrete transports implement
+the small `WirelessBackend` data-plane trait (descriptor, link state, send, receive,
+and recovery). `ManagedLink` adds traffic accounting and checks whether one immediate
+send attempt is submitted by `TxContract::deadline_us`. It does not schedule by priority
+or retry a failed attempt: priority is scheduler-owned and retry state is caller-owned.
+
+The crate currently includes concrete MFRC522 and CC2530 implementations plus protocol
+helpers such as `BleAdvBuilder`. After explicit initialization, `Cc2530<ByteIo>` is a raw
+IEEE 802.15.4 PSDU transport with the 127-byte PHY limit; it does not join a Zigbee
+network or implement APS. `ZIGBEE_APS` remains descriptor metadata, not evidence of an
+implemented Zigbee stack. A descriptor or packet builder by itself is not board support.
+
+WiFi association/socket lifecycle, BLE scanning/connection/GATT lifecycle, shared-radio
+ownership, and one-backend-per-logical-instance selection are not implemented yet.
+Future WiFi and BLE instances may coexist when an explicit shared-radio lease admits them;
+their Cargo features must be additive rather than globally exclusive.
+Future board-specific WiFi and BLE stacks will extend `nobro-wireless` beneath the
+existing `ManagedLink`/`WirelessBackend` data plane, following the proven `nobro-usb`
+composition pattern. They must not be inferred from `link_catalog` entries or created
+as a duplicate wireless domain.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and
-`Mfrc522<S>` provides bounded request, anticollision, UID polling, and an
+`Mfrc522<S>` provides bounded request, anticollision, UID polling, and a
 `WirelessBackend` implementation:
 
 ```rust

@@ -21,7 +21,7 @@ def main() -> int:
     # are intentionally permanent; all other Miri checks remain enabled.
     flags = env.get("MIRIFLAGS", "").strip()
     env["MIRIFLAGS"] = f"{flags} -Zmiri-ignore-leaks".strip()
-    command = ["cargo", "+nightly", "miri", "test", "--target", host_target(),
+    command = ["cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
                "-p", "nobro-kernel", "async_rt::tests"]
     return subprocess.run(command, cwd=ROOT / "core", env=env).returncode
 

@@ -7,6 +7,7 @@
 # matrix (SAMD/RP2040 M0+, SAM M3, nRF52840/UNO-R4 M4F, RP2350 M33, ESP32-C3/C6 RISC-V).
 # Requires the targets: rustup target add <t> (skipped with a hint if missing).
 set -u
+set -o pipefail
 cd "$(dirname "$0")/../core" || exit 1
 
 PORTABLE="-p nobro-sal -p nobro-kernel -p nobro-net -p nobro-crypto -p nobro-ml \
@@ -33,7 +34,7 @@ for entry in "${TARGETS[@]}"; do
     echo "[SKIP] ${t}  - ${d} (run: rustup target add ${t})"
     continue
   fi
-  if cargo build ${PORTABLE} --release --target "${t}" >/dev/null 2>&1; then
+  if cargo build --locked ${PORTABLE} --release --target "${t}" >/dev/null 2>&1; then
     echo "[ OK ] ${t}  - ${d}"
     pass=$((pass + 1))
   else

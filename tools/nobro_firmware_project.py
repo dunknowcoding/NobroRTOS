@@ -200,10 +200,28 @@ fn main() {
 
 
 def build(project: pathlib.Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["cargo", "build", "--release", "--target",
-                           "thumbv7em-none-eabihf", "--manifest-path",
-                           str(project / "Cargo.toml")], cwd=ROOT, text=True,
-                          capture_output=True)
+    manifest = project / "Cargo.toml"
+    lockfile = project / "Cargo.lock"
+    if not lockfile.is_file():
+        # A generated standalone project needs one explicit first resolution. Cargo
+        # persists it beside the manifest; all builds below then fail closed on drift.
+        resolved = subprocess.run(
+            ["cargo", "generate-lockfile", "--manifest-path", str(manifest)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        if resolved.returncode:
+            return resolved
+    return subprocess.run(
+        [
+            "cargo", "build", "--locked", "--release", "--target",
+            "thumbv7em-none-eabihf", "--manifest-path", str(manifest),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
 
 
 def selftest() -> int:

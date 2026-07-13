@@ -3,11 +3,14 @@ name = "nobro-wireless"
 version.workspace = true
 edition.workspace = true
 
-# Wireless domain for NobroRTOS: one place for link contracts and helpers - BLE, WiFi,
-# Zigbee, Thread, RFID, and proprietary radio - behind a common transport surface
-# (mirroring nobro_usb's mountable-backend pattern). Ships protocol descriptors as data,
-# a WirelessBackend trait radios implement, and pure-logic protocol helpers (the BLE
-# advertising PDU builder proven on air by ble_adv_demo, ISO 14443A UID checks). No heap.
+# Wireless domain for NobroRTOS: bounded link contracts, protocol descriptors, explicit
+# WirelessBackend implementations, and pure-logic helpers (including BLE advertising
+# PDU construction and ISO 14443A UID checks). MFRC522 and a raw IEEE 802.15.4 CC2530
+# transport are implemented here; descriptors for higher protocol layers do not imply
+# board or stack support. Future WiFi/BLE
+# lifecycle traits and one-backend-per-logical-instance selection belong in this crate,
+# while additive WiFi/BLE instances may coexist under an explicit shared-radio lease.
+# Those are not current Cargo features. No heap.
 
 [dependencies]
 nobro-net = { path = "../nobro_net" }

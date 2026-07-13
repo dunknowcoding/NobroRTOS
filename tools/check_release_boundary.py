@@ -120,7 +120,11 @@ def validate() -> list[str]:
     for name in ("measure_authoring.py", "measure_baselines.py", "measure_complex_runtime.py", "measure_embassy_variants.py"):
         if f"tools/{name}" in workflow:
             errors.append(f"hosted workflow uses stale public comparison path: tools/{name}")
-    if "arduino-cli core install arduinonrf:nrf52" in workflow:
+    hosted_jobs = re.findall(
+        r"(?ms)^  [A-Za-z0-9_-]+:\s*\n.*?(?=^  [A-Za-z0-9_-]+:\s*$|\Z)", workflow
+    )
+    linux_jobs = [job for job in hosted_jobs if re.search(r"(?m)^    runs-on: ubuntu", job)]
+    if any("arduino-cli core install arduinonrf:nrf52" in job for job in linux_jobs):
         errors.append("hosted Linux workflow cannot install the Windows-only ArduinoNRF toolchain")
     for relative in tracked:
         path = ROOT / relative

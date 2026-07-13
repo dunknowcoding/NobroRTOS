@@ -3,15 +3,17 @@ name = "usb-stack-demo"
 version.workspace = true
 edition.workspace = true
 
-# Modular USB stack demo (M-USB): the app uses only nobro_usb::mount() + UsbStack, so a
-# board swaps the whole USB backend by feature. Default mounts nrf-usbd; S140-compatible
-# layouts use the same app-level USB contract. Prove-out target for the mountable USB architecture.
+# Cortex-M modular USB stack demo: the app uses only nobro_usb::try_mount() + UsbStack,
+# so the nRF52840 and RA4M1 targets swap the whole USB backend by feature. ESP32-C3 and
+# ESP32-S3 use architecture-specific examples in their port crates instead of pretending
+# this cortex-m-rt binary can run on RISC-V or Xtensa. The RA feature is a compile/link
+# contract; complete UNO R4 clock/mux startup remains in core/ports/ra4m1.
 [[bin]]
 name = "usb_stack_demo"
 path = "src/main.rs"
 
 [dependencies]
-nobro-usb = { path = "../../../crates/nobro_usb" }
+nobro-usb = { path = "../../../crates/nobro_usb", default-features = false }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
@@ -21,5 +23,4 @@ defmt-rtt = "0.4"
 [features]
 default = ["backend-nrf-usbd"]
 backend-nrf-usbd = ["nobro-usb/backend-nrf-usbd"]
-backend-usb-serial-jtag = ["nobro-usb/backend-usb-serial-jtag"]
 backend-ra-usbfs = ["nobro-usb/backend-ra-usbfs"]

@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <strong>Chinese name: 糙哥RTOS</strong> &mdash; a lightweight embedded RTOS for AI, robotics, IoT, and intelligent control.
+  <strong>中文名：糙哥RTOS</strong> &mdash; 面向 AI 机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。
+  为什么叫“糙哥”？因为好用到没朋友！
 </p>
 
 <p align="center">
@@ -306,17 +307,29 @@ python tools/run_checks.py    # bindings + contracts + packages -> "RESULT: ALL 
 
 "Supports N boards" hides more than it says, so NobroRTOS states exactly what each
 target gets. The machine-readable capability matrix is `core/boards/platform_tiers.json`
-(validated by `tools/check_platform_tiers.py`); cross-compile coverage is
+(validated by `tools/check_platform_tiers.py`). Each native or Arduino composition
+binds every capability to gates scoped to that exact platform, composition, and claim.
+Hosted jobs execute the declared argv from a clean, session-bound receipt directory and
+must return every required receipt. Each session is freshness-bound to the current Git
+HEAD, tracked diff, and nonignored untracked source content; ignored `_work` output is
+excluded. A target build is never treated as physical proof.
+Cross-compile coverage is
 `tools/check_portability.sh`; the extended build matrix (ports + boards + SDK) is
 `tools/ci_matrix.sh`.
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | portable contracts plus board-specific peripheral providers | nRF52840 |
+| **Deep HAL** | one native composition implements every currently declared provider capability | nRF52840 |
 | **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7), RA4M1/UNO R4 |
 | **Core ports** | target startup and status path available; peripheral providers are incomplete | SAMD21 (+ an 8-bit AVR kernel-lite subset) |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
+
+RA4M1's native row means timebase, deadline, and USB only. UNO R4 and ArduinoNRF wrappers
+for clock/deadline/ADC/PWM/I2C/SPI/byte I/O are separate board-core compositions and do
+not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
+ArduinoNRF composition is compiled on its supported Windows toolchain with the exact
+`usbcdc=enabled` board selection.
 
 The exact scheduling, resource, isolation, tooling, and per-platform boundaries are
 maintained in the public [limitations matrix](docs/LIMITATIONS.md).

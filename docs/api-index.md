@@ -185,13 +185,13 @@ Power-fail-safe, wear-leveled key-value flash store.
 ## `nobro-usb`
 Modular, mountable USB device stack for NobroRTOS.
 - **trait**: `UsbStack`
-- **struct**: `UsbConfig`
-- **enum**: `CdcState`
-- **fn**: `mount`, `mount`, `mount`
+- **struct**: `UsbConfig`, `MountedUsb`
+- **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbMountError`
+- **fn**: `config_supported`, `state`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount`, `mount`
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.
 - **trait**: `WirelessBackend`, `SpiIo`, `ByteIo`
 - **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
 - **enum**: `Protocol`, `LinkState`, `LinkError`, `AdvKind`, `RfidError`, `MacFrameType`
-- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `join`, `poll_frame`
+- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `initialize`, `join`, `poll_frame`
