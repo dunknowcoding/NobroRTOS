@@ -1,0 +1,21 @@
+{
+  "schema": "nobro-core-layout-v1",
+  "rules": {
+    "crates": "flat public capability packages",
+    "ports": "flat MCU-family providers",
+    "adapters": "one domain category, then implementation",
+    "apps": "one use-case category, then composition",
+    "boards": "one platform-family category, then data-only board profile",
+    "baselines": "flat framework-workload specimens"
+  },
+  "adapter_categories": [
+    "actuator", "ai", "bus", "environment", "imu", "power", "protocol",
+    "virtual", "wireless"
+  ],
+  "app_categories": [
+    "ai", "connectivity", "control", "imu", "interop", "kernel", "storage"
+  ],
+  "board_categories": [
+    "esp32", "generic", "nrf52", "rp2", "samd", "stm32", "teensy"
+  ]
+}

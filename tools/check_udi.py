@@ -14,7 +14,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UDI_APP = os.path.join(ROOT, "core", "apps", "udi_imu_demo")
+UDI_APP = os.path.join(ROOT, "core", "apps", "imu", "udi_imu_demo")
 CARGO = os.path.join(UDI_APP, "Cargo.toml")
 APP_RS = os.path.join(UDI_APP, "src", "app.rs")
 UDI_DOC = os.path.join(ROOT, "docs", "ARCHITECTURE.md")

@@ -280,8 +280,8 @@ Mapping table:
 ### 2. Keep your `embedded-hal` drivers
 
 Compatible synchronous driver logic can stay. A bus adapter exposes NobroRTOS's `BusSal`
-as the `embedded-hal` I2C/SPI traits (see `core/adapters/embedded-hal-i2c` and
-`core/adapters/embedded-hal-spi`). Async-only drivers and drivers that own platform-global
+as the `embedded-hal` I2C/SPI traits (see `core/adapters/bus/embedded-hal-i2c` and
+`core/adapters/bus/embedded-hal-spi`). Async-only drivers and drivers that own platform-global
 interrupt/DMA state still need adaptation.
 
 ### 3. When you genuinely want `async fn`: the bounded executor
@@ -346,13 +346,13 @@ capabilities in the manifest.** You keep your driver logic; you re-express the
 ### 1. devicetree → board.json
 
 Zephyr's devicetree is the source of truth for pins, memory, and peripherals.
-NobroRTOS uses data-first `core/boards/*/board.json` profiles validated by
+NobroRTOS uses data-first `core/boards/<platform>/*/board.json` profiles validated by
 `tools/check_board_profiles.py`.
 
 Best-effort import from a `.dts` file:
 
 ```bash
-python tools/import_dts.py board.dts --out core/boards/mine/board.json
+python tools/import_dts.py board.dts --out core/boards/vendor/mine/board.json
 ```
 
 The importer maps the clean subset (compatible, model, code/app flash partition,
@@ -472,11 +472,11 @@ before board-specific validation begins.
 
 ### Board Descriptor
 
-Board profiles live in `core/boards/*/board.json` and are validated by
+Board profiles live in `core/boards/<platform>/*/board.json` and are validated by
 `tools/check_board_profiles.py`. For a Zephyr-style on-ramp from DeviceTree:
 
 ```bash
-python tools/import_dts.py board.dts --out core/boards/mine/board.json
+python tools/import_dts.py board.dts --out core/boards/vendor/mine/board.json
 ```
 
 Review the `_review` list in the output — DTS carries hardware layout, not

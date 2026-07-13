@@ -118,7 +118,7 @@ actual clock/RTC/sleep operations and are responsible for wake-source correctnes
 One equivalent-observable workload (50 Hz control + 10 Hz sensor + consumer stage
 over a message channel, raw-register GPIO/TIMER in all variants), pinned build settings
 (`opt-level = "z"`, fat LTO, one codegen unit, no logging), nRF52840 target.
-Suite: `core/baselines/`; runner: `python tools/measure_baselines.py`
+The reproducible comparison suite is maintainer/CI-only and excluded from user packages.
 (regression budgets enforced in CI). Measured 2026-07-11, rustc stable:
 
 | implementation | flash | static RAM | source lines |

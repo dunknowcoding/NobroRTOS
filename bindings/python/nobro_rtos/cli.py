@@ -416,6 +416,12 @@ def main() -> int:
     gen_app.add_argument("--flash", type=int, default=8192, help="module flash budget (bytes)")
     gen_app.add_argument("--ram", type=int, default=2048, help="module RAM budget (bytes)")
     gen_app.add_argument("--pool", type=int, default=2, help="module sample-pool slots")
+    gen_app.add_argument(
+        "--category",
+        choices=("ai", "connectivity", "control", "imu", "interop", "kernel", "storage"),
+        default="control",
+        help="use-case folder under core/apps",
+    )
     gen_app.add_argument("--overwrite", action="store_true")
     gen_module = subparsers.add_parser(
         "gen-module",
@@ -780,7 +786,8 @@ def main() -> int:
             args.flash,
             args.ram,
             args.pool,
-            args.overwrite,
+            category=args.category,
+            overwrite=args.overwrite,
         )
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report["passing"] else 1

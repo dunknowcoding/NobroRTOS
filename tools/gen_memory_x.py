@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate a linker memory.x from a data-first board profile (M91).
 
-Reads core/boards/<board>/board.json and emits the MEMORY block (plus the RP2350
+Finds a unique core/boards/<platform>/<board>/board.json by board directory name
+and emits the MEMORY block (plus the RP2350
 IMAGE_DEF sections when the layout needs it), so a new port's linker script derives
 from the same single source of truth the validator checks.
 
@@ -63,13 +64,19 @@ def generate(profile):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("board", help="directory name under core/boards/")
+    ap.add_argument("board", help="board directory name under core/boards/<platform>/")
     ap.add_argument("--out")
     args = ap.parse_args()
-    profile = os.path.join(HERE, "..", "core", "boards", args.board, "board.json")
-    if not os.path.exists(profile):
-        print(f"no profile: {profile}")
+    boards = os.path.join(HERE, "..", "core", "boards")
+    matches = []
+    for platform in os.listdir(boards):
+        candidate = os.path.join(boards, platform, args.board, "board.json")
+        if os.path.isfile(candidate):
+            matches.append(candidate)
+    if len(matches) != 1:
+        print(f"expected one profile named {args.board!r}, found {len(matches)}")
         return 1
+    profile = matches[0]
     text = generate(profile)
     if args.out:
         with open(args.out, "w", newline="\n") as f:

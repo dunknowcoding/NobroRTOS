@@ -440,7 +440,7 @@ python tools/nobro_contract_tool.py gen-app --name my_control_app --module contr
 # options: --criticality {best_effort|user|driver|system}  --flash <bytes>  --ram <bytes>  --pool <slots>
 ```
 
-This writes `core/apps/my_control_app/` (`Cargo.toml`, `build.rs`, `src/main.rs`,
+This writes `core/apps/control/my_control_app/` (`Cargo.toml`, `build.rs`, `src/main.rs`,
 `nobro-contract.json`, `README.md`) and registers it as a workspace member.
 
 ### Build

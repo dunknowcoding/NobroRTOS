@@ -1,0 +1,15 @@
+[package]
+name = "nobro-adapter-robo-servo"
+version.workspace = true
+edition.workspace = true
+description = "RoboServo ActuatorSal adapter for NobroRTOS (nRF52840 PWM backend)"
+
+[dependencies]
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../../crates/nobro_kernel" }
+nobro-sal = { path = "../../../crates/nobro_sal" }
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

@@ -1,7 +1,7 @@
 # tools/ — developer & CI surface
 
-Every file here has one job. Users normally drive these through the SDK command
-(`python sdk/cli/nobro.py <cmd>`); the table is for contributors.
+Every file here has one job. Only tools allowlisted by `sdk/sdk-manifest.json` ship
+to users; gates, comparisons, HIL, and developer utilities are repository/CI-only.
 
 ## Orchestrators
 
@@ -14,7 +14,7 @@ Every file here has one job. Users normally drive these through the SDK command
 | `lint_gate.sh` | clippy `-D warnings` across portable crates + HAL |
 | `nobro_project.py` | create/import/explain/build/simulate/flash/report project flow |
 | `nobro_firmware_project.py` | generate an admitted workload and production nRF firmware from one short app declaration |
-| `measure_authoring.py` | reproduce the scoped three-periodic-task authoring comparison |
+| `internal/comparison/` | non-shipped RTOS authoring/resource comparison suite |
 | `check_arduino_facade.py` | compile/run positive and negative allocation-free C++ facade contracts |
 
 ## Gates (each also runs standalone)

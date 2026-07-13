@@ -168,7 +168,7 @@
     "magic": "0x4E424E32",
     "runner": "project-local phase2 eval runner",
     "warmup_sec": 8,
-    "sensor_backend": "adapters/sensor-stub",
+    "sensor_backend": "adapters/virtual/sensor-stub",
     "note": "Synthetic IMU fixture via SensorSal stub",
     "thresholds": {
       "min_servo_steps": 20,

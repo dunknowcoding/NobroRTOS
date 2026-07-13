@@ -1,0 +1,18 @@
+[package]
+name = "nobro-adapter-mpu9250-imu"
+version.workspace = true
+edition.workspace = true
+description = "MPU9250/GY-9250/GY-91 SensorSal adapter (real TWIM I2C)"
+
+[dependencies]
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../../crates/nobro_kernel" }
+nobro-imu = { path = "../../../crates/nobro_imu" }
+nobro-sal = { path = "../../../crates/nobro_sal" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+libm = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

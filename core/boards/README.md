@@ -5,14 +5,15 @@ data drop plus a HAL platform port, not edits scattered across drivers and apps.
 
 ```text
 boards/
-  nrf52840-nosd/    board.json   # nRF52840, no-SoftDevice layout (app @ 0x1000)
-  nrf52840-s140/    board.json   # nRF52840 + S140 v6 SoftDevice (app @ 0x26000)
-  esp32c3-supermini/board.json   # ESP32-C3 portable-core profile
-  rp2350-pico2w/    board.json   # RP2350 portable-core profile
-  samd21-uf2/        board.json   # SAMD21 UF2/SAM-BA-class profile
-  stm32f4-generic/   board.json   # generic STM32F4 Cortex-M4 profile
-  teensy4-generic/   board.json   # generic i.MX RT1062 / Teensy 4-class profile
-  cortexm-generic/   board.json   # small generic Cortex-M planning profile
+  nrf52/
+    nrf52840-nosd/    board.json   # no-SoftDevice layout (app @ 0x1000)
+    nrf52840-s140/    board.json   # S140 v6 layout (app @ 0x26000)
+  esp32/esp32c3-supermini/board.json
+  rp2/rp2350-pico2w/board.json
+  samd/samd21-uf2/board.json
+  stm32/stm32f4-generic/board.json
+  teensy/teensy4-generic/board.json
+  generic/cortexm-generic/board.json
 ```
 
 Each `board.json` carries the boot memory layout, capacity budgets, and critical pins.

@@ -1,0 +1,35 @@
+[package]
+name = "kernel-wcet-demo"
+version.workspace = true
+edition.workspace = true
+
+# Measured worst-case execution time for core kernel operations (Wave 17): the DWT
+# cycle counter times mailbox push/pop, alarm schedule/pop, quota reserve/release,
+# capability authorize, lease acquire/release, and the longest interrupt-masked
+# critical section, taking the MAX over many iterations. Honest label: a measured
+# upper bound on this silicon, not a formal WCET proof - but a number where the
+# external review correctly said none was published.
+[[bin]]
+name = "kernel_wcet_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[[bin]]
+name = "kernel_wcet_demo_s140"
+path = "src/main.rs"
+required-features = ["board-nicenano-s140"]
+
+[dependencies]
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../../crates/nobro_kernel" }
+nobro-classic = { path = "../../../crates/nobro_classic" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

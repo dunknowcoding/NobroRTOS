@@ -1,0 +1,5 @@
+[package]
+name = "nobro-imu"
+version.workspace = true
+edition.workspace = true
+description = "Canonical allocation-free IMU domain contracts"

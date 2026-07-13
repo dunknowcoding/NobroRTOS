@@ -7,5 +7,5 @@ presented as overall ease-of-use or efficiency.
 
 The Embassy fixture targets the executor/time API shape and the FreeRTOS fixture targets
 the task API shape. They are comparison text, not resource binaries; the pinned buildable
-resource variants live one directory above. Run `python tools/measure_authoring.py` to
+resource variants live one directory above. Maintainers run `python tools/internal/comparison/measure_authoring.py` to
 recompute semantic lines and the explicitly declared concept inventory.

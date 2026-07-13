@@ -8,7 +8,7 @@ passes tools/check_board_profiles.py. Everything DeviceTree does NOT carry (Nobr
 software budgets, the cargo feature name, servo/trigger pins) is filled with reviewable
 defaults and listed under "_review" so nothing is silently invented.
 
-  python tools/import_dts.py board.dts --out core/boards/mine/board.json
+  python tools/import_dts.py board.dts --out core/boards/vendor/mine/board.json
   python tools/import_dts.py --selftest
 
 This is a best-effort on-ramp, not a full DTS compiler: no phandle resolution beyond

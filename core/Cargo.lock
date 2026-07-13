@@ -673,6 +673,7 @@ name = "nobro-adapter-icm45686"
 version = "0.2.0"
 dependencies = [
  "embedded-hal 1.0.0",
+ "nobro-imu",
 ]
 
 [[package]]
@@ -696,6 +697,7 @@ dependencies = [
  "cortex-m",
  "libm",
  "nobro-hal",
+ "nobro-imu",
  "nobro-kernel",
  "nobro-sal",
 ]
@@ -824,6 +826,10 @@ dependencies = [
 
 [[package]]
 name = "nobro-host"
+version = "0.2.0"
+
+[[package]]
+name = "nobro-imu"
 version = "0.2.0"
 
 [[package]]

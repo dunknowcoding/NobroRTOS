@@ -6,7 +6,7 @@ Same pipeline as train_motion_nn.py but three classes: synthesize |accel| window
 idle (tiny noise), walk (moderate periodic sway), and shake (large erratic motion);
 extract the same 3 integer features (variance, range, mean-abs successive diff); train a
 3 -> 8 -> 3 MLP; quantize to int8 integer inference; validate the integer model; and emit
-core/adapters/nn-motion-ai/src/nn3_weights.rs. Run: python tools/train_motion3_nn.py
+core/adapters/ai/nn-motion-ai/src/nn3_weights.rs. Run: python tools/train_motion3_nn.py
 """
 import os
 import numpy as np

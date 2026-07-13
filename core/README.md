@@ -1,50 +1,17 @@
-# NobroRTOS Core Workspace
+# Core source layout
 
-This directory contains the Rust implementation of NobroRTOS. The crate names,
-host report symbols, repository, and public documentation use NobroRTOS naming.
+The directory tree expresses ownership; the ecosystem matrix expresses relationships.
+They are deliberately different:
 
-## Workspace Map
+- `crates/<nobro_domain>` contains reusable contracts and runtime capabilities.
+- `adapters/<domain>/<implementation>` contains device or external-library bridges.
+- `apps/<use-case>/<composition>` contains complete firmware compositions.
+- `boards/<platform>/<board>` contains data-only real-board profiles.
+- `ports/<mcu-family>` contains portable provider implementations shared by boards.
+- `ecosystem/integration_matrix.json` links domains, adapters, libraries, boards, and
+  evidence without duplicating their source trees.
 
-| Path | Role |
-| ---- | ---- |
-| `crates/nobro_kernel` | Manifest validation, deadline model, quotas, capability grants, IPC, health, recovery, and reports |
-| `crates/nobro_hal` | Board descriptions, nRF52840 platform backend, resource leases, timers, PWM, bus, and event capture |
-| `crates/nobro_sal` | Bus, stream, radio, actuator, sensor, and crypto traits |
-| `crates/nobro_host` | Host constants and fixed-layout report decoders |
-| `adapters/*` | Thin SAL implementations for concrete devices or compatibility stubs |
-| `apps/*` | Firmware compositions used for evaluation and examples |
-
-## Host Validation
-
-```powershell
-$env:CARGO_TARGET_DIR = (Resolve-Path '..\_work').Path + '\cargo-target'
-cargo fmt --all -- --check
-cargo test -p nobro-kernel --target x86_64-pc-windows-msvc
-cargo test -p nobro-sal --target x86_64-pc-windows-msvc
-cargo test -p nobro-host --target x86_64-pc-windows-msvc
-```
-
-`cargo check --workspace` uses `.cargo/config.toml` and checks the embedded
-`thumbv7em-none-eabihf` target by default. Run crate tests with an explicit
-host target because the embedded target does not provide the Rust test harness.
-
-## Recovery Planning
-
-`nobro-kernel` keeps recovery decisions allocation-free. `RecoveryOutcome`
-captures the supervisor action, and `RecoveryPlan<N>` converts it into bounded
-steps such as notify, retry, quiesce, restart, heartbeat verification, and
-resume. Plans are fixed-capacity arrays and fail explicitly when capacity or
-total recovery budget is exceeded.
-
-## Compatibility Notes
-
-Board-specific bootloader layouts are represented by Cargo features:
-
-| Feature | App start | Intended boards |
-| ------- | --------- | --------------- |
-| `board-promicro-nosd` | `0x1000` | ProMicro-style nRF52840 boards without SoftDevice |
-| `board-nicenano-s140` | `0x26000` | nRF52840 boards using a SoftDevice S140 v6 layout |
-
-NobroRTOS uses `HalEventCapture` as the portable term for event-to-timestamp
-routing. On the current nRF52840 backend this maps to PPI; future ports can map
-the same concept to their own peripheral fabric without changing app code.
+Only one category level is allowed. Package names remain stable if a source directory
+moves. A library that supports many modules, such as NiusIMU, is one library member
+with an upstream inventory; its module aliases do not become dozens of duplicate
+NobroRTOS directories. `tools/check_core_layout.py` enforces these rules.

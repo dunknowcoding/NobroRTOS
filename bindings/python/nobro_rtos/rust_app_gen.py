@@ -8,7 +8,7 @@ admits it, and exports the host-readable `NOBRO_MANIFEST_REPORT` /
 - the user edits JSON / re-runs the generator and gets real firmware without writing
 Rust by hand.
 
-The app is created as a workspace member under `core/apps/<name>/` so it builds with
+The app is created as a workspace member under `core/apps/<use-case>/<name>/` so it builds with
 the existing toolchain (`cargo build -p <name>`), exactly like the bundled demos.
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ _CRITICALITY_RUST = {
     "driver": "Driver",
     "system": "System",
 }
+_APP_CATEGORIES = ("ai", "connectivity", "control", "imu", "interop", "kernel", "storage")
 
 _MAIN_RS = r"""//! Generated NobroRTOS firmware app (developer-experience Track 1A).
 //! Assembles the manifest for the declared module(s) via BootAssembly, admits it,
@@ -116,15 +117,15 @@ _BUILD_RS = """use std::{env, fs, path::PathBuf};
 fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let memory = if env::var("CARGO_FEATURE_BOARD_NICENANO_S140").is_ok() {
-        PathBuf::from("../../memory-s140.x")
+        PathBuf::from("../../../memory-s140.x")
     } else {
-        PathBuf::from("../../memory-nosd.x")
+        PathBuf::from("../../../memory-nosd.x")
     };
     let dest = out.join("memory.x");
     fs::copy(&memory, &dest).expect("copy memory.x");
     println!("cargo:rerun-if-changed={}", memory.display());
-    println!("cargo:rerun-if-changed=../../memory-nosd.x");
-    println!("cargo:rerun-if-changed=../../memory-s140.x");
+    println!("cargo:rerun-if-changed=../../../memory-nosd.x");
+    println!("cargo:rerun-if-changed=../../../memory-s140.x");
     println!("cargo:rustc-link-search={}", out.display());
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BOARD_NICENANO_S140");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_BOARD_PROMICRO_NOSD");
@@ -144,8 +145,8 @@ path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
 [dependencies]
-nobro-hal = {{ path = "../../crates/nobro_hal", default-features = false }}
-nobro-kernel = {{ path = "../../crates/nobro_kernel" }}
+nobro-hal = {{ path = "../../../crates/nobro_hal", default-features = false }}
+nobro-kernel = {{ path = "../../../crates/nobro_kernel" }}
 cortex-m = {{ version = "0.7", features = ["critical-section-single-core"] }}
 cortex-m-rt = "0.7"
 defmt = "0.3"
@@ -202,21 +203,21 @@ def _contract_json(name: str, module: str, criticality: str, flash: int, ram: in
     return json.dumps(contract, indent=2, sort_keys=True) + "\n"
 
 
-def _register_member(core_cargo: Path, dir_name: str) -> bool:
-    """Append apps/<dir_name> to the workspace members list if absent. Returns True
+def _register_member(core_cargo: Path, category: str, dir_name: str) -> bool:
+    """Append apps/<category>/<dir_name> to the workspace members if absent. Returns True
     if a change was made."""
     text = core_cargo.read_text(encoding="utf-8")
-    member = f'"apps/{dir_name}"'
+    member = f'"apps/{category}/{dir_name}"'
     if member in text:
         return False
-    marker = '    "apps/imu_i2c_demo",'
+    marker = '    "apps/imu/imu_i2c_demo",'
     if marker in text:
-        text = text.replace(marker, f'{marker}\n    "apps/{dir_name}",', 1)
+        text = text.replace(marker, f'{marker}\n    {member},', 1)
     else:
         # Fall back: insert before the closing bracket of members = [ ... ].
         idx = text.index("members = [")
         end = text.index("]", idx)
-        text = text[:end] + f'    "apps/{dir_name}",\n' + text[end:]
+        text = text[:end] + f'    {member},\n' + text[end:]
     core_cargo.write_text(text, encoding="utf-8")
     return True
 
@@ -229,15 +230,18 @@ def generate_rust_app(
     flash_bytes: int,
     ram_bytes: int,
     pool_slots: int,
+    category: str = "control",
     overwrite: bool = False,
 ) -> dict:
     if criticality not in _CRITICALITY_RUST:
         raise ValueError(f"unsupported criticality {criticality!r}")
+    if category not in _APP_CATEGORIES:
+        raise ValueError(f"unsupported app category {category!r}")
     dir_name = name.replace("-", "_")
     pkg = name.replace("_", "-")
     binname = dir_name
 
-    crate = repo_root / "core" / "apps" / dir_name
+    crate = repo_root / "core" / "apps" / category / dir_name
     if crate.exists() and not overwrite:
         return {"passing": False, "error": f"{crate} exists (use --overwrite)"}
 
@@ -260,7 +264,7 @@ def generate_rust_app(
         dest.write_text(content, encoding="utf-8")
         written.append(dest.relative_to(repo_root).as_posix())
 
-    registered = _register_member(repo_root / "core" / "Cargo.toml", dir_name)
+    registered = _register_member(repo_root / "core" / "Cargo.toml", category, dir_name)
 
     return {
         "passing": True,

@@ -278,9 +278,10 @@ NobroRTOS/
 |   |   |-- nobro_hal/      # board data, leases, timers, PWM, bus, capture
 |   |   |-- nobro_sal/      # portable service traits
 |   |   `-- nobro_host/     # host report decoders and stable labels
-|   |-- adapters/           # thin SAL implementations
-|   |-- apps/               # firmware compositions and evaluation apps
-|   `-- boards/             # board-facing notes and layout policy
+|   |-- adapters/<domain>/  # thin device/library implementations
+|   |-- apps/<use-case>/    # firmware compositions and evaluation apps
+|   |-- boards/<platform>/  # data-only real-board profiles
+|   `-- ports/              # flat MCU-family provider implementations
 |-- sdk/                    # standalone SDK packaging surface
 |-- packages/               # Arduino and PlatformIO package surfaces
 |-- bindings/               # C, C++, and Python-facing wrappers

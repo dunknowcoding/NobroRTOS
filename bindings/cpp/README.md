@@ -58,7 +58,7 @@ struct ImuModule {
 NOBRO_REGISTER_MODULE(ImuModule)
 ```
 
-The NobroRTOS app (`core/apps/c_abi_demo`) admits the module and drives the
+The NobroRTOS app (`core/apps/interop/c_abi_demo`) admits the module and drives the
 callbacks. Build with `--features cpp-source`: `build.rs` compiles the `.cpp` with
 `arm-none-eabi-g++` (`-fno-exceptions -fno-rtti`, no libstdc++) and links it - the
 same `extern "C"` `nobro_app_*` symbols as the C and Rust providers. Verified on

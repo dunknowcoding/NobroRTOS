@@ -1,0 +1,27 @@
+[package]
+name = "gesture-demo"
+version.workspace = true
+edition.workspace = true
+
+# IMU gesture recognition (M143): the nobro-ml GestureDetector runs on-target against
+# synthetic tap/shake/tilt/idle windows AND the live SPI MPU-9250 at rest (expect None).
+# NOBRO_GESTURE_REPORT (mem32).
+[[bin]]
+name = "gesture_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[dependencies]
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-eh-spi = { path = "../../../adapters/bus/embedded-hal-spi", default-features = false }
+nobro-ml = { path = "../../../crates/nobro_ml" }
+embedded-hal = "1.0"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd", "nobro-eh-spi/board-promicro-nosd"]

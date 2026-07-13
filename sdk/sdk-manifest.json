@@ -15,6 +15,30 @@
     "tools/nobro_contract_tool.py",
     "tools/nobro_project.py"
   ],
+  "core_distribution_roots": [
+    "core/Cargo.toml",
+    "core/Cargo.lock",
+    "core/README.md",
+    "core/crates",
+    "core/adapters",
+    "core/apps",
+    "core/boards",
+    "core/ports",
+    "core/vendor",
+    "core/ecosystem",
+    "core/layout.json",
+    "core/memory-nosd.x",
+    "core/memory-s140.x"
+  ],
+  "release_excludes": [
+    "core/baselines",
+    "core/fuzz",
+    "core/target",
+    "core/_work",
+    "tools/internal",
+    "tools/dev",
+    "_work"
+  ],
   "python_package": "bindings/python",
   "package_surfaces": {
     "arduino": "packages/arduino",

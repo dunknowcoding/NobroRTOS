@@ -1,0 +1,36 @@
+[package]
+name = "ai-imu-demo"
+version.workspace = true
+edition.workspace = true
+
+# Edge-AI on hardware: reads the IMU and runs the bounded on-device motion classifier
+# (nobro-adapter-motion-ai, AiInferenceSal) every window, recording the class,
+# Q15 confidence, and measured latency in NOBRO_AI_EVAL_REPORT. Proves the AI
+# inference contract runs on a real board within its declared timeout.
+[[bin]]
+name = "ai_imu_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[dependencies]
+nobro-adapter-motion-ai = { path = "../../../adapters/ai/motion-ai" }
+nobro-adapter-mpu9250-imu = { path = "../../../adapters/imu/mpu9250-imu", default-features = false }
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-kernel = { path = "../../../crates/nobro_kernel" }
+nobro-sal = { path = "../../../crates/nobro_sal" }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = [
+    "nobro-hal/board-promicro-nosd",
+    "nobro-adapter-mpu9250-imu/board-promicro-nosd",
+]
+board-nicenano-s140 = [
+    "nobro-hal/board-nicenano-s140",
+    "nobro-adapter-mpu9250-imu/board-nicenano-s140",
+]

@@ -620,7 +620,7 @@ mod tests {
 // ---------------------------------------------------------------- board modules (M190)
 
 /// A dev board as a mountable module: identity + capacity + the platform feature the HAL
-/// needs. Mirrors core/boards/<id>/board.json so third parties extend the board list by a
+/// needs. Mirrors core/boards/<platform>/<id>/board.json so third parties extend the board list by a
 /// data drop + a `pub const` here (or their own crate).
 #[derive(Clone, Copy, Debug)]
 pub struct BoardModule {
@@ -676,7 +676,7 @@ impl<const N: usize> BoardRegistry<N> {
     }
 }
 
-/// Built-in board catalog (matches core/boards/*/board.json).
+/// Built-in board catalog (matches core/boards/<platform>/*/board.json).
 pub mod board_catalog {
     use super::BoardModule;
 

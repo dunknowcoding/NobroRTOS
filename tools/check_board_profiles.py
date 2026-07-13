@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate data-first board profiles in core/boards/*/board.json.
+"""Validate categorized data-first board profiles in core/boards/*/*/board.json.
 
 Checks required fields and boot/capacity invariants so a board profile cannot silently
 drift from a coherent layout. Pure stdlib; exit 0 = all profiles valid.
@@ -54,13 +54,13 @@ def check(path):
     return errs
 
 def main():
-    profiles = sorted(glob.glob(os.path.join(ROOT, "*", "board.json")))
+    profiles = sorted(glob.glob(os.path.join(ROOT, "*", "*", "board.json")))
     if not profiles:
         print("no board profiles found"); return 1
     bad = 0
     for p in profiles:
         errs = check(p)
-        name = os.path.basename(os.path.dirname(p))
+        name = "/".join(os.path.normpath(p).split(os.sep)[-3:-1])
         if errs:
             bad += 1
             print(f"[FAIL] {name}: " + "; ".join(errs))

@@ -41,14 +41,14 @@ are size specimens, never flashed by the hardware tools).
 ## Measuring
 
 ```bash
-python tools/measure_baselines.py            # builds + sizes all three
-python tools/measure_baselines.py --breakdown  # + marginal cost per Nobro service
+python tools/internal/comparison/measure_baselines.py
+python tools/internal/comparison/measure_baselines.py --breakdown
 ```
 
 Output: `_work/evidence/baselines.json` (flash text+rodata+data, static RAM
 data+bss, worst-case stack for the Nobro app via `static_budget`, source line
 counts) and a plain table. Thresholds for `nobro-min` live in
-`tools/baseline_budgets.json`; CI fails when a regression exceeds them.
+`tools/internal/comparison/baseline_budgets.json`; CI fails when a regression exceeds them.
 
 ## Honesty rules
 

@@ -8,7 +8,7 @@ Pipeline (the "NN tools -> embedded" path):
   3. train a 3 -> 8 -> 2 MLP (numpy, manual backprop),
   4. quantize to int8 weights + integer inference with fixed shifts,
   5. validate that the *integer* model matches the labels, and
-  6. emit core/adapters/nn-motion-ai/src/nn_weights.rs for the firmware to embed.
+  6. emit core/adapters/ai/nn-motion-ai/src/nn_weights.rs for the firmware to embed.
 
 No PyTorch/TF needed for a model this small; numpy is enough and the export is the
 real artifact. Run: python tools/train_motion_nn.py
@@ -32,7 +32,7 @@ OUT = os.path.join(HERE, "..", "core", "adapters", "nn-motion-ai", "src", "nn_we
 MODELS_JSON = os.path.join(HERE, "..", "packages", "block-editor", "models.json")
 
 # Model identity + AiModelContract values, kept in lockstep with the firmware adapter
-# core/adapters/nn-motion-ai/src/lib.rs (MODEL_ID + contract()): on-device int8 MLP,
+# core/adapters/ai/nn-motion-ai/src/lib.rs (MODEL_ID + contract()): on-device int8 MLP,
 # <=64 input bytes (<=32 u16 samples), 4 output bytes, 256-byte scratch arena, 2ms budget.
 PRESET = "nn_motion"
 MODEL_ID = 0x4E4E4D31           # "NNM1"

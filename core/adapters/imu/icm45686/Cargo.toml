@@ -1,0 +1,9 @@
+[package]
+name = "nobro-adapter-icm45686"
+version.workspace = true
+edition.workspace = true
+description = "ICM45686 sensor-family member of the nobro-imu ecosystem"
+
+[dependencies]
+embedded-hal = "1.0"
+nobro-imu = { path = "../../../crates/nobro_imu" }

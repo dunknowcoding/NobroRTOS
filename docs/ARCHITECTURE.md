@@ -23,8 +23,8 @@ and diagnosable recovery.
 
 | Layer | Crate or path | Responsibility |
 | ----- | ------------- | -------------- |
-| App | `core/apps/*` | Compose board, adapters, manifest, startup graph, and runtime |
-| Adapter | `core/adapters/*` | Translate devices or libraries into SAL traits |
+| App | `core/apps/<use-case>/*` | Compose board, adapters, manifest, startup graph, and runtime |
+| Adapter | `core/adapters/<domain>/*` | Translate devices or libraries into SAL traits |
 | SAL | `nobro-sal` | Stable service traits for hardware, communication, AI, and edge services |
 | Kernel | `nobro-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
 | HAL | `nobro-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |
@@ -559,7 +559,7 @@ The mountable-backend shape extends to wireless and proximity links, each behind
 - **RFID / NFC**: `SpiIo` adapts a board SPI driver to the no-heap `Mfrc522` backend, which exposes ISO 14443A UID polling through `IotTransport`.
 
 Each backend is `no_std`, feature-selected, and swappable per
-`core/boards/*/board.json`, so a board's wireless identity is data plus one
+`core/boards/<platform>/*/board.json`, so a board's wireless identity is data plus one
 feature, not scattered `#[cfg]`s.
 
 ### Why mountable, not `#[cfg]` sprinkled
@@ -610,7 +610,7 @@ Every backend:
 
 ### Proven today: `ImuSal`
 
-`core/apps/udi_imu_demo` shares one `app.rs` evaluation across three binaries:
+`core/apps/imu/udi_imu_demo` shares one `app.rs` evaluation across three binaries:
 
 | Backend | Feature | `backend_id` | Transport |
 | --- | --- | --- | --- |

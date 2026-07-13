@@ -125,11 +125,11 @@ execute and verify the denial/failure state transitions.
 
 The NobroRTOS app provides the `extern "C"` host services, admits the module through
 `BootAssembly`, and drives the callbacks. Because the ABI is plain `extern "C"`, the
-module object can come from any toolchain. `core/apps/c_abi_demo` builds it two ways
+module object can come from any toolchain. `core/apps/interop/c_abi_demo` builds it two ways
 from one source of truth:
 
 - `--features rust-module` (default): links the reference module from
-  `core/apps/c_abi_module` (Rust `extern "C"`, byte-identical ABI) - no C compiler
+  `core/apps/interop/c_abi_module` (Rust `extern "C"`, byte-identical ABI) - no C compiler
   needed.
 - `--features c-source`: `build.rs` compiles `examples/imu_module.c` with
   `arm-none-eabi-gcc` and links it.

@@ -1,0 +1,29 @@
+[package]
+name = "nn-inference-demo"
+version.workspace = true
+edition.workspace = true
+
+# AI + hardware + resource management: bring up the SPI MPU-9250, run the
+# trained int8 MLP (nn-motion-ai) on synthetic idle/active windows AND the live IMU,
+# and admit the model through the kernel's preflight_ai_invocation (which enforces the
+# AI's arena/timeout/RAM budget). Self-certifies via NOBRO_NN_REPORT (J-Link mem32).
+[[bin]]
+name = "nn_inference_demo"
+path = "src/main.rs"
+required-features = ["board-promicro-nosd"]
+
+[dependencies]
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-eh-spi = { path = "../../../adapters/bus/embedded-hal-spi", default-features = false }
+nobro-adapter-nn-motion-ai = { path = "../../../adapters/ai/nn-motion-ai" }
+nobro-sal = { path = "../../../crates/nobro_sal" }
+embedded-hal = "1.0"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-halt = "0.2"
+
+[features]
+default = ["board-promicro-nosd"]
+board-promicro-nosd = ["nobro-hal/board-promicro-nosd", "nobro-eh-spi/board-promicro-nosd"]
