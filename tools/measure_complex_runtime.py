@@ -162,6 +162,9 @@ def run_one(jlink: str, elf: pathlib.Path, run_ms: int) -> dict:
     stack, reset = validate_ram_image(memory)
     report = symbol_address(elf, "BASELINE_REPORT")
     busy_address = symbol_address(elf, "RUNTIME_BUSY_CYCLES")
+    latency_address = symbol_address(elf, "RUNTIME_LATENCY")
+    idle_cycles_address = symbol_address(elf, "RUNTIME_IDLE_CYCLES")
+    idle_entries_address = symbol_address(elf, "RUNTIME_IDLE_ENTRIES")
     task_stack_address = optional_symbol_address(elf, "RUNTIME_PEAK_TASK_STACK_BYTES")
     heap_start = symbol_address(elf, "__sheap")
     if not RAM_LO <= report < RAM_HI - 16:
@@ -189,6 +192,9 @@ def run_one(jlink: str, elf: pathlib.Path, run_ms: int) -> dict:
         "h",
         f"mem32 0x{report:08X},4",
         f"mem32 0x{busy_address:08X},1",
+        f"mem32 0x{latency_address:08X},7",
+        f"mem32 0x{idle_cycles_address:08X},1",
+        f"mem32 0x{idle_entries_address:08X},1",
     ]
     if task_stack_address is not None:
         command_lines.append(f"mem32 0x{task_stack_address:08X},1")
@@ -205,7 +211,16 @@ def run_one(jlink: str, elf: pathlib.Path, run_ms: int) -> dict:
     report_words = [values.get(report + 4 * i) for i in range(4)]
     elapsed_cycles = values.get(DWT_CYCCNT)
     busy_cycles = values.get(busy_address)
-    if elapsed_cycles is None or busy_cycles is None or any(value is None for value in report_words):
+    latency_words = [values.get(latency_address + 4 * i) for i in range(7)]
+    idle_cycles = values.get(idle_cycles_address)
+    idle_entries = values.get(idle_entries_address)
+    if (
+        elapsed_cycles is None
+        or busy_cycles is None
+        or idle_cycles is None
+        or idle_entries is None
+        or any(value is None for value in report_words + latency_words)
+    ):
         raise RuntimeError(f"incomplete J-Link evidence for {elf.name}")
     snapshot = snapshot_path.read_bytes()
     changed = [index for index, value in enumerate(snapshot) if value != 0xA5]
@@ -223,19 +238,47 @@ def run_one(jlink: str, elf: pathlib.Path, run_ms: int) -> dict:
     shortfalls = {
         key: max(0, round(expected[key]) - int(observed[key])) for key in expected
     }
-    active_ratio = min(1.0, busy_cycles / max(1, elapsed_cycles))
-    # Explicit estimate only: active cycle = 1 unit, idle/sleep cycle = 0.1 unit.
-    energy_index = active_ratio + 0.1 * (1.0 - active_ratio)
+    task_work_ratio = min(1.0, busy_cycles / max(1, elapsed_cycles))
+    latency_samples = int(latency_words[0])
+    residency_kind = {
+        "baremetal-complex": "none_busy_polling",
+        "nobro-graph-complex": "deadline_timer_wfi",
+        "embassy-complex": "executor_idle_interval",
+        "embassy-complex-tuned": "executor_idle_interval",
+        "freertos-complex": "idle_task",
+    }[elf.stem]
+    residency_ratio = min(1.0, idle_cycles / max(1, elapsed_cycles))
+    # Explicit estimate only: non-resident cycle = 1 unit, measured idle/sleep
+    # residence cycle = 0.1 unit. This deliberately treats a busy-poll loop as
+    # non-resident rather than pretending all non-task-work time is asleep.
+    energy_index = (1.0 - residency_ratio) + 0.1 * residency_ratio
     result = {
         "report": report_words,
         "static_ram_bytes": elf_sizes(elf)["static_ram"],
         "elapsed_cycles": elapsed_cycles,
         "busy_cycles": busy_cycles,
-        "active_ratio": round(active_ratio, 6),
-        "energy_index_estimate": round(energy_index, 6),
-        "estimate_coefficients": {"active": 1.0, "idle_or_sleep": 0.1},
+        "task_work_ratio": round(task_work_ratio, 6),
+        "residency_energy_index_estimate": round(energy_index, 6),
+        "estimate_coefficients": {"non_resident": 1.0, "idle_or_sleep_resident": 0.1},
         "release_shortfalls": shortfalls,
         "main_stack_peak_bytes": main_stack_peak,
+        "release_interval_jitter_cycles": {
+            "samples": latency_samples,
+            "mean": round(int(latency_words[2]) / max(1, latency_samples), 2),
+            "max": int(latency_words[1]),
+            "histogram_le_cycles": {
+                "64": int(latency_words[3]),
+                "640": int(latency_words[4]),
+                "6400": int(latency_words[5]),
+                "over_6400": int(latency_words[6]),
+            },
+        },
+        "residency": {
+            "kind": residency_kind,
+            "entries": idle_entries,
+            "cycles": idle_cycles,
+            "ratio": round(residency_ratio, 6),
+        },
         "ram_image_range": [f"0x{min(memory):08X}", f"0x{max(memory)+1:08X}"],
     }
     if task_stack_address is not None:
@@ -253,6 +296,10 @@ def selftest() -> int:
         struct.pack("<II", RAM_HI, RAM_LO + 0x101)
     )}
     assert validate_ram_image(memory) == (RAM_HI, RAM_LO + 0x101)
+    assert set(IMPLEMENTATIONS) == {
+        "baremetal-complex", "nobro-graph-complex", "embassy-complex",
+        "embassy-complex-tuned", "freertos-complex",
+    }
     print("COMPLEX RUNTIME SELFTEST: PASS")
     return 0
 
@@ -305,8 +352,8 @@ def main() -> int:
         and all(result["busy_cycles"] <= result["elapsed_cycles"] for result in results.values())
     )
     evidence = {
-        "schema": "nobro-complex-runtime-v1",
-        "method": "RAM-only J-Link run; instrumented DWT task-work cycles; no flash writes",
+        "schema": "nobro-complex-runtime-v2",
+        "method": "RAM-only J-Link run; task-work, TIMER0 jitter, typed residency; no flash writes",
         "run_ms": args.run_ms,
         "cpu_hz": CPU_HZ,
         "electrical_energy_measured": False,

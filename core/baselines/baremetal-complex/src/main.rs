@@ -17,6 +17,18 @@ static mut BASELINE_REPORT: [u32; 4] = [0; 4];
 #[no_mangle]
 #[used]
 static mut RUNTIME_BUSY_CYCLES: u32 = 0;
+#[cfg(nobro_ram_run)]
+#[no_mangle]
+#[used]
+static mut RUNTIME_LATENCY: [u32; 7] = [0; 7];
+#[cfg(nobro_ram_run)]
+#[no_mangle]
+#[used]
+static mut RUNTIME_IDLE_CYCLES: u32 = 0;
+#[cfg(nobro_ram_run)]
+#[no_mangle]
+#[used]
+static mut RUNTIME_IDLE_ENTRIES: u32 = 0;
 // BENCH_INSTRUMENTATION_END
 
 const TIMER0: u32 = 0x4000_8000;
@@ -62,6 +74,35 @@ fn account_runtime(start: u32) {
         );
     }
 }
+
+#[cfg(nobro_ram_run)]
+fn record_jitter(now_us: u32, last_us: &mut u32, period_us: u32) {
+    let jitter = if *last_us == 0 {
+        0
+    } else {
+        now_us
+            .wrapping_sub(*last_us)
+            .abs_diff(period_us)
+            .saturating_mul(64)
+    };
+    *last_us = now_us;
+    unsafe {
+        let report = &mut *core::ptr::addr_of_mut!(RUNTIME_LATENCY);
+        report[0] = report[0].wrapping_add(1);
+        report[1] = report[1].max(jitter);
+        report[2] = report[2].wrapping_add(jitter);
+        let bucket = if jitter <= 64 {
+            3
+        } else if jitter <= 640 {
+            4
+        } else if jitter <= 6_400 {
+            5
+        } else {
+            6
+        };
+        report[bucket] = report[bucket].wrapping_add(1);
+    }
+}
 // BENCH_INSTRUMENTATION_END
 
 /// A hand-rolled one-slot channel with a full-flag, so backpressure is counted
@@ -94,6 +135,10 @@ fn main() -> ! {
 
     // Hand-rolled deadline schedule for five stages.
     let (mut nf, mut nc, mut nr, mut ns, mut nd) = (0u32, 0u32, 0u32, 0u32, 0u32);
+    // BENCH_INSTRUMENTATION_BEGIN
+    #[cfg(nobro_ram_run)]
+    let (mut lf, mut lc, mut lr) = (0u32, 0u32, 0u32);
+    // BENCH_INSTRUMENTATION_END
     let mut fusion_out = Slot(None);
     let mut radio_in = Slot(None);
     let mut storage_in = Slot(None);
@@ -102,6 +147,10 @@ fn main() -> ! {
         let now = micros();
         // fusion @ 100 Hz
         if now.wrapping_sub(nf) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            record_jitter(now, &mut lf, 10_000);
+            // BENCH_INSTRUMENTATION_END
             // BENCH_INSTRUMENTATION_BEGIN
             #[cfg(nobro_ram_run)]
             let runtime_start = runtime_cycles();
@@ -121,6 +170,10 @@ fn main() -> ! {
         }
         // control @ 50 Hz: consume fusion, toggle GPIO, fan out
         if now.wrapping_sub(nc) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            record_jitter(now, &mut lc, 20_000);
+            // BENCH_INSTRUMENTATION_END
             // BENCH_INSTRUMENTATION_BEGIN
             #[cfg(nobro_ram_run)]
             let runtime_start = runtime_cycles();
@@ -149,6 +202,10 @@ fn main() -> ! {
         }
         // radio @ 20 Hz
         if now.wrapping_sub(nr) < 0x8000_0000 {
+            // BENCH_INSTRUMENTATION_BEGIN
+            #[cfg(nobro_ram_run)]
+            record_jitter(now, &mut lr, 50_000);
+            // BENCH_INSTRUMENTATION_END
             // BENCH_INSTRUMENTATION_BEGIN
             #[cfg(nobro_ram_run)]
             let runtime_start = runtime_cycles();

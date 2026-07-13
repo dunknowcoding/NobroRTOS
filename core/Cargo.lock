@@ -818,6 +818,7 @@ dependencies = [
  "cortex-m",
  "critical-section",
  "embedded-hal 1.0.0",
+ "nobro-power",
  "nrf52840-pac",
 ]
 

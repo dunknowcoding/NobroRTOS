@@ -183,6 +183,8 @@
       "required_tokens": [
         "RAM-only J-Link run",
         "RUNTIME_BUSY_CYCLES",
+        "release_interval_jitter_cycles",
+        "deadline_timer_wfi",
         "electrical_energy_measured",
         "restored_dfu"
       ],

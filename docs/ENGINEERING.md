@@ -158,19 +158,22 @@ diagnostic graph with three one-slot backpressure edges. Under the same profile,
 bare metal measures 1,436 B flash / 16 B static RAM / 109 local source lines;
 Embassy 4,328 / 4,724 / 113 (or 4,320 / 1,652 / 113 with its stable 1 KiB arena);
 official FreeRTOS 11.3.0 6,724 / 3,828 / 183;
-and NobroRTOS 19,588 / 16 / 170. These are real builds with common observable
+and NobroRTOS 19,352 / 16 / 142. These are real builds with common observable
 semantics; instrumentation-only lines are excluded from authoring counts.
 
 The state-restoring Wave-61 RAM-only hardware run adds runtime context. Over the
 same 5-second interval, with equivalent output spreads bounded and no release
-shortfalls, task-work cycles/busy ratio/main-stack peak were: bare metal
-16,300/0.0051%/56 B; NobroRTOS 1,406,582/0.4360%/9,460 B; Embassy
-1,183,189/0.3667%/208 B (the tuned-arena variant was effectively identical at
-1,183,229/0.3666%/208 B); FreeRTOS 991,733/0.3073%/160 B (plus a measured
+shortfalls, task-work cycles/work ratio/main-stack peak were: bare metal
+15,326/0.0047%/96 B; NobroRTOS 1,512,069/0.4677%/9,492 B; Embassy
+1,323,799/0.4094%/216 B (the tuned-arena variant was effectively identical at
+1,322,724/0.4090%/216 B); FreeRTOS 1,084,829/0.3356%/168 B (plus a measured
 156 B peak across 2,944 B reserved task+idle stacks). This result is unfavorable
 to NobroRTOS on CPU work and peak stack and is retained as such. The software
 energy index is an explicitly coefficient-based estimate; current and joules
-were not measured.
+were not measured. TIMER0-based inter-release jitter mean/max was 79.33/1,783 us
+for NobroRTOS versus 79.11/247 us for Embassy and 4.37/26 us for FreeRTOS.
+Explicit idle/sleep residence was 98.3592%, 99.4177%, and 99.4066% respectively;
+Nobro now uses a real deadline-programmed WFI provider, but remains worse here.
 
 ## Measured kernel-op latencies
 

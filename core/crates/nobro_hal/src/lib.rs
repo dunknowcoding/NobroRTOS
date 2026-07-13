@@ -31,6 +31,8 @@ pub mod bus;
 pub mod deadline_timer;
 #[cfg(feature = "platform-nrf52840")]
 pub mod inspect;
+#[cfg(feature = "platform-nrf52840-rt")]
+pub mod power_nrf;
 #[cfg(feature = "platform-nrf52840")]
 pub mod ppi;
 #[cfg(feature = "platform-nrf52840")]
@@ -80,6 +82,8 @@ pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 pub use deadline_timer::DeadlineTimer;
 #[cfg(feature = "platform-nrf52840")]
 pub use inspect::scene_d_pass;
+#[cfg(feature = "platform-nrf52840-rt")]
+pub use power_nrf::NrfTimerPower;
 #[cfg(feature = "platform-nrf52840")]
 pub use pwm::{PwmBank, PwmBankSession, PwmServo, PwmSession, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]

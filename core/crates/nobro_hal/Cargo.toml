@@ -7,13 +7,15 @@ edition.workspace = true
 cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
 critical-section = "1.2"
 embedded-hal = "1.0"
+nobro-power = { path = "../nobro_power", optional = true }
 nrf52840-pac = { version = "0.12", optional = true }
 
 [features]
 default = ["platform-nrf52840", "board-promicro-nosd"]
 
 # SoC / HAL backends (enable exactly one per build).
-platform-nrf52840 = ["dep:cortex-m", "dep:nrf52840-pac"]
+platform-nrf52840 = ["dep:cortex-m", "dep:nobro-power", "dep:nrf52840-pac"]
+platform-nrf52840-rt = ["platform-nrf52840", "nrf52840-pac/rt"]
 contract-only = []
 
 # Board packages are mutually exclusive and depend on platform-nrf52840.

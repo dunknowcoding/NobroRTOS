@@ -12,7 +12,7 @@ edition = "2021"
 
 [dependencies]
 nobro-kernel = { path = "../../crates/nobro_kernel" }
-nobro-power = { path = "../../crates/nobro_power" }
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["platform-nrf52840-rt", "board-promicro-nosd"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"

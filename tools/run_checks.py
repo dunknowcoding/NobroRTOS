@@ -42,7 +42,9 @@ def host_target():
     override = os.environ.get("HOST_TARGET")
     if override:
         return override
-    output = subprocess.check_output(["rustc", "-vV"], text=True)
+    output = subprocess.check_output(
+        ["rustc", "-vV"], text=True, encoding="utf-8", errors="replace"
+    )
     return next(line.split(":", 1)[1].strip()
                 for line in output.splitlines() if line.startswith("host:"))
 
@@ -50,9 +52,12 @@ def host_target():
 def run(name, cmd, cwd=ROOT, env=None, quiet=False):
     if not quiet:
         print(f"--- {name} ---", flush=True)
-    r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
+    r = subprocess.run(
+        cmd, cwd=cwd, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
     ok = r.returncode == 0
-    tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
+    tail = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-3:]
     if not quiet:
         for line in tail:
             print("   ", line)
