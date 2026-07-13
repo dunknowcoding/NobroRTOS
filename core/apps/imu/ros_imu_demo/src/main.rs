@@ -10,14 +10,14 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_halt as _;
 
-use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
+use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 use nobro_adapter_ros_imu_bridge::{RosImuBridge, DEPTH, MAX_MSG, TOPIC_IMU};
 use nobro_hal::{
     lease::Resource,
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_kernel::{pool::SamplePool, ImuPayload};
+use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::{RosBridgeSal, SensorSal};
 
 #[repr(C)]
@@ -95,8 +95,8 @@ fn main() -> ! {
 
     loop {
         if let Ok(Some(sample)) = imu.poll() {
-            if let Some(p) = ImuPayload::read_from_handle(sample.handle) {
-                let accel_mg = accel_mag_mg(p.accel_g) as u16;
+            if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
+                let accel_mg = p.into_sample(sample.captured_us).accel_mag_mg as u16;
                 let gyro_mdps = imu.last_gyro_mag_mdps() as u16;
                 let temp_centi = imu.last_temp_centi_c() as u16;
 

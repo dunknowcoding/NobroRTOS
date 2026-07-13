@@ -62,22 +62,25 @@ fn with_slots<R>(f: impl FnOnce(&mut [PoolSlot; SAMPLE_POOL_SIZE]) -> R) -> R {
     })
 }
 
-/// IMU payload layout (matches NiusIMU engineering units, 24 B).
+/// Compact queue representation of the canonical IMU sample (28 B). The sample
+/// ticket carries capture/deadline timestamps, while magnitude is derived from
+/// `accel_mg`; neither is duplicated in the fixed 32-byte slot.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ImuPayload {
-    pub accel_g: [f32; 3],
-    pub gyro_dps: [f32; 3],
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CompactImuPayload {
+    pub accel_mg: [i32; 3],
+    pub gyro_mdps: [i32; 3],
+    pub temperature_centi_c: i32,
 }
 
-impl ImuPayload {
+impl CompactImuPayload {
     pub const LEN: u16 = core::mem::size_of::<Self>() as u16;
 
     pub fn write_to_handle(handle: PoolHandle, payload: &Self) -> bool {
         SamplePool::with_slot_mut(handle, SampleKind::Imu, Self::LEN, |bytes| {
             let src = payload as *const Self as *const u8;
             // SAFETY: the destination is valid for `LEN` bytes, the source points to a
-            // fully initialized `ImuPayload`, and the regions do not overlap.
+            // fully initialized `CompactImuPayload`, and the regions do not overlap.
             unsafe {
                 core::ptr::copy_nonoverlapping(src, bytes.as_mut_ptr(), Self::LEN as usize);
             }
@@ -96,6 +99,25 @@ impl ImuPayload {
             }
             payload
         })
+    }
+
+    pub const fn from_sample(sample: nobro_imu::ImuSample) -> Self {
+        Self {
+            accel_mg: sample.accel_mg,
+            gyro_mdps: sample.gyro_mdps,
+            temperature_centi_c: sample.temperature_centi_c,
+        }
+    }
+
+    pub fn into_sample(self, timestamp_us: u64) -> nobro_imu::ImuSample {
+        nobro_imu::ImuSample {
+            accel_mg: self.accel_mg,
+            accel_mag_mg: nobro_imu::magnitude3(self.accel_mg),
+            gyro_mdps: self.gyro_mdps,
+            temperature_centi_c: self.temperature_centi_c,
+            timestamp_us,
+            ..nobro_imu::ImuSample::default()
+        }
     }
 }
 
@@ -223,21 +245,26 @@ mod tests {
     #[test]
     fn imu_payload_requires_live_typed_handle() {
         release_all_slots();
-        assert!(ImuPayload::read_from_handle(PoolHandle::INVALID).is_none());
+        assert!(CompactImuPayload::read_from_handle(PoolHandle::INVALID).is_none());
 
-        let sample =
-            SamplePool::alloc(SampleKind::Imu, ImuPayload::LEN, 10, 20).expect("sample slot");
-        let payload = ImuPayload {
-            accel_g: [0.0, 0.0, 1.0],
-            gyro_dps: [1.0, 2.0, 3.0],
+        let sample = SamplePool::alloc(SampleKind::Imu, CompactImuPayload::LEN, 10, 20)
+            .expect("sample slot");
+        let payload = CompactImuPayload {
+            accel_mg: [0, 0, 1000],
+            gyro_mdps: [1000, 2000, 3000],
+            temperature_centi_c: 2500,
         };
-        assert!(ImuPayload::write_to_handle(sample.handle, &payload));
-        let readback = ImuPayload::read_from_handle(sample.handle).expect("payload readback");
-        assert_eq!(readback.accel_g, payload.accel_g);
-        assert_eq!(readback.gyro_dps, payload.gyro_dps);
+        assert_eq!(CompactImuPayload::LEN, 28);
+        assert!(CompactImuPayload::write_to_handle(sample.handle, &payload));
+        let readback =
+            CompactImuPayload::read_from_handle(sample.handle).expect("payload readback");
+        assert_eq!(readback, payload);
+        let canonical = readback.into_sample(sample.captured_us);
+        assert_eq!(canonical.accel_mag_mg, 1000);
+        assert_eq!(canonical.timestamp_us, 10);
 
         assert!(SamplePool::release(sample.handle));
-        assert!(ImuPayload::read_from_handle(sample.handle).is_none());
+        assert!(CompactImuPayload::read_from_handle(sample.handle).is_none());
         assert!(!SamplePool::release(sample.handle));
     }
 
@@ -284,16 +311,16 @@ mod tests {
     #[test]
     fn typed_access_rejects_kind_and_length_mismatch() {
         release_all_slots();
-        let raw = SamplePool::alloc(SampleKind::Raw, ImuPayload::LEN, 0, 0).unwrap();
-        assert!(!ImuPayload::write_to_handle(
+        let raw = SamplePool::alloc(SampleKind::Raw, CompactImuPayload::LEN, 0, 0).unwrap();
+        assert!(!CompactImuPayload::write_to_handle(
             raw.handle,
-            &ImuPayload::default()
+            &CompactImuPayload::default()
         ));
-        assert!(ImuPayload::read_from_handle(raw.handle).is_none());
+        assert!(CompactImuPayload::read_from_handle(raw.handle).is_none());
         assert!(SamplePool::release(raw.handle));
 
         let short = SamplePool::alloc(SampleKind::Imu, 4, 0, 0).unwrap();
-        assert!(ImuPayload::read_from_handle(short.handle).is_none());
+        assert!(CompactImuPayload::read_from_handle(short.handle).is_none());
         assert!(SamplePool::release(short.handle));
     }
 

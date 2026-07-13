@@ -842,6 +842,7 @@ version = "0.2.0"
 dependencies = [
  "critical-section",
  "nobro-hal",
+ "nobro-imu",
  "nobro-power",
  "portable-atomic",
 ]
@@ -871,6 +872,7 @@ version = "0.2.0"
 name = "nobro-sal"
 version = "0.2.0"
 dependencies = [
+ "nobro-imu",
  "nobro-kernel",
 ]
 

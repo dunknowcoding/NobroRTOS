@@ -18,13 +18,13 @@ use usb_device::prelude::*;
 use usbd_serial::SerialPort;
 
 use nobro_adapter_motion_ai::{MotionClassifier, CLASS_ACTIVE};
-use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
+use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 use nobro_hal::{
     lease::Resource,
     traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_kernel::{pool::SamplePool, ImuPayload};
+use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::{AiInferenceRequest, AiInferenceSal, SensorSal};
 
 struct Nrf52840Usbd;
@@ -141,8 +141,8 @@ fn main() -> ! {
             let mut did = false;
             if let Some(d) = imu.as_mut() {
                 if let Ok(Some(sample)) = d.poll() {
-                    if let Some(p) = ImuPayload::read_from_handle(sample.handle) {
-                        accel_mg = accel_mag_mg(p.accel_g) as u16;
+                    if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
+                        accel_mg = p.into_sample(sample.captured_us).accel_mag_mg as u16;
                         window[widx] = accel_mg;
                         widx += 1;
                         if widx >= WINDOW {

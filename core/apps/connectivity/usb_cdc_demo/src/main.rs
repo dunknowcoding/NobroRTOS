@@ -13,7 +13,7 @@ use nrf_usbd::{UsbPeripheral, Usbd};
 use usb_device::prelude::*;
 use usbd_serial::SerialPort;
 
-use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
+use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 #[cfg(feature = "board-nicenano-s140")]
 use nobro_hal::traits::HalClock;
 use nobro_hal::{
@@ -21,7 +21,7 @@ use nobro_hal::{
     traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_kernel::{pool::SamplePool, ImuPayload};
+use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::SensorSal;
 
 /// Zero-sized handle to the nRF52840 USBD register block (base 0x4002_7000).
@@ -233,8 +233,8 @@ fn main() -> ! {
                 match d.poll() {
                     Ok(Some(sample)) => {
                         reads += 1;
-                        if let Some(p) = ImuPayload::read_from_handle(sample.handle) {
-                            accel_mg = accel_mag_mg(p.accel_g);
+                        if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
+                            accel_mg = p.into_sample(sample.captured_us).accel_mag_mg;
                         }
                         SamplePool::release(sample.handle);
                     }

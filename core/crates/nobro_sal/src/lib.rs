@@ -436,14 +436,9 @@ pub trait SensorSal {
     fn poll(&mut self) -> Result<Option<Sample>, Self::Error>;
 }
 
-/// One IMU reading in category-level units (backend-independent).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ImuSample {
-    /// Acceleration per axis in milli-g.
-    pub accel_mg: [i32; 3],
-    /// Acceleration magnitude in milli-g (~1000 at rest).
-    pub accel_mag_mg: u32,
-}
+/// The canonical allocation-free IMU sample. SAL re-exports the domain type so
+/// category consumers and backend implementers cannot drift into a second layout.
+pub use nobro_imu::ImuSample;
 
 /// The IMU **category** interface of the Universal Driver Interface: one trait per
 /// sensor category, parts described as catalog data (`nobro_device::SensorDescriptor`),

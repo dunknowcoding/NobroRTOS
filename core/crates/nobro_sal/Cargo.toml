@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 nobro-kernel = { path = "../nobro_kernel", default-features = false }
+nobro-imu = { path = "../nobro_imu" }
 
 [features]
 default = ["portable-atomic-cs"]

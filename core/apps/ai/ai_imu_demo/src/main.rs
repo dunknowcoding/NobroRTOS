@@ -11,13 +11,13 @@ use defmt_rtt as _;
 use panic_halt as _;
 
 use nobro_adapter_motion_ai::{MotionClassifier, CLASS_IDLE, MODEL_ID};
-use nobro_adapter_mpu9250_imu::{accel_mag_mg, Mpu9250Imu};
+use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 use nobro_hal::{
     lease::Resource,
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_kernel::{pool::SamplePool, ImuPayload};
+use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::{AiInferenceRequest, AiInferenceSal, SensorSal};
 
 #[repr(C)]
@@ -96,8 +96,8 @@ fn main() -> ! {
 
     loop {
         if let Ok(Some(sample)) = imu.poll() {
-            if let Some(p) = ImuPayload::read_from_handle(sample.handle) {
-                let mg = accel_mag_mg(p.accel_g) as u16;
+            if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
+                let mg = p.into_sample(sample.captured_us).accel_mag_mg as u16;
                 win[widx] = mg;
                 widx += 1;
                 last_accel = u32::from(mg);

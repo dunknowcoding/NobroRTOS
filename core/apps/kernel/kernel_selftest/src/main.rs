@@ -22,9 +22,9 @@ use nobro_kernel::{
         Criticality, DeadlineContract, MemoryBudget, ModuleSpec, SystemBudget, SystemProfile,
     },
     Action, AlarmQueue, BackoffKind, BootAssembly, Capability, CapabilityGrantTable, CapabilitySet,
-    DegradePlanner, EventLog, FaultThresholds, HealthMonitor, ImuPayload, KernelError, KvStore,
-    Lifecycle, Mailbox, ModuleId, QuotaLedger, RetryPolicy, RetryState, SampleKind, SamplePool,
-    StartupDependency, SystemState, Watchdog,
+    CompactImuPayload, DegradePlanner, EventLog, FaultThresholds, HealthMonitor, KernelError,
+    KvStore, Lifecycle, Mailbox, ModuleId, QuotaLedger, RetryPolicy, RetryState, SampleKind,
+    SamplePool, StartupDependency, SystemState, Watchdog,
 };
 use nobro_sal::{
     preflight_ai_invocation, AiBackendKind, AiInferenceRequest, AiInvocationLimits,
@@ -399,23 +399,24 @@ fn test_health() -> bool {
 
 fn test_pool() -> bool {
     // Allocate a pool ticket, round-trip an IMU payload through it, then release.
-    let payload = ImuPayload {
-        accel_g: [0.0, 0.0, 1.0],
-        gyro_dps: [1.0, 2.0, 3.0],
+    let payload = CompactImuPayload {
+        accel_mg: [0, 0, 1000],
+        gyro_mdps: [1000, 2000, 3000],
+        temperature_centi_c: 2500,
     };
-    let Some(sample) = SamplePool::alloc(SampleKind::Imu, ImuPayload::LEN, 100, 200) else {
+    let Some(sample) = SamplePool::alloc(SampleKind::Imu, CompactImuPayload::LEN, 100, 200) else {
         return false;
     };
     if sample.kind != SampleKind::Imu || !sample.handle.is_valid() {
         SamplePool::release(sample.handle);
         return false;
     }
-    if !ImuPayload::write_to_handle(sample.handle, &payload) {
+    if !CompactImuPayload::write_to_handle(sample.handle, &payload) {
         SamplePool::release(sample.handle);
         return false;
     }
-    let ok = ImuPayload::read_from_handle(sample.handle)
-        .map(|p| p.accel_g[2] == 1.0 && p.gyro_dps[2] == 3.0)
+    let ok = CompactImuPayload::read_from_handle(sample.handle)
+        .map(|p| p.accel_mg[2] == 1000 && p.gyro_mdps[2] == 3000)
         .unwrap_or(false);
     SamplePool::release(sample.handle);
     ok

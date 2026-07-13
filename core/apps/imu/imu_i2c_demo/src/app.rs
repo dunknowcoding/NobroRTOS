@@ -4,7 +4,7 @@ use cortex_m::asm;
 use defmt_rtt as _;
 use panic_probe as _;
 
-use nobro_adapter_mpu9250_imu::{accel_mag_mg, imu_plausible, Mpu9250Imu};
+use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 use nobro_hal::{
     board_desc::BoardDesc,
     lease::Resource,
@@ -92,9 +92,10 @@ fn main() -> ! {
         match imu.poll() {
             Ok(Some(sample)) => {
                 IMU_READS.fetch_add(1, Ordering::AcqRel);
-                if let Some(payload) = nobro_kernel::ImuPayload::read_from_handle(sample.handle) {
-                    if imu_plausible(payload.accel_g) {
-                        LAST_MAG_MG.store(accel_mag_mg(payload.accel_g), Ordering::Release);
+                if let Some(payload) = nobro_kernel::CompactImuPayload::read_from_handle(sample.handle) {
+                    let canonical = payload.into_sample(sample.captured_us);
+                    if (800..1300).contains(&canonical.accel_mag_mg) {
+                        LAST_MAG_MG.store(canonical.accel_mag_mg, Ordering::Release);
                     } else {
                         IMU_ERRORS.fetch_add(1, Ordering::AcqRel);
                     }

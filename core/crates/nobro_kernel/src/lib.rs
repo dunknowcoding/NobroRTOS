@@ -114,7 +114,7 @@ pub use module_runtime::{
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
-pub use pool::{ImuPayload, SamplePool};
+pub use pool::{CompactImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
     RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanDispatch,

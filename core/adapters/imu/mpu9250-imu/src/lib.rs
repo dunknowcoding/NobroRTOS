@@ -7,7 +7,7 @@ use nobro_imu::{
     magnitude3, ImuBackend, ImuDiagnostics, ImuEvent, ImuFamily, ImuIdentity, ImuSample,
 };
 use nobro_kernel::{
-    pool::{ImuPayload, SamplePool},
+    pool::{CompactImuPayload, SamplePool},
     Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
 use nobro_sal::{AdapterManifest, SensorSal};
@@ -256,11 +256,10 @@ impl SensorSal for Mpu9250Imu {
     fn poll(&mut self) -> Result<Option<Sample>, Self::Error> {
         let domain = ImuBackend::sample(self)?;
         let now = domain.timestamp_us;
-        let accel_g = domain.accel_mg.map(|value| value as f32 / 1000.0);
-        let gyro_dps = domain.gyro_mdps.map(|value| value as f32 / 1000.0);
-        let sample = SamplePool::alloc(SampleKind::Imu, ImuPayload::LEN, now, now)
+        let payload = CompactImuPayload::from_sample(domain);
+        let sample = SamplePool::alloc(SampleKind::Imu, CompactImuPayload::LEN, now, now)
             .ok_or(Mpu9250Error::PoolFull)?;
-        let _ = ImuPayload::write_to_handle(sample.handle, &ImuPayload { accel_g, gyro_dps });
+        let _ = CompactImuPayload::write_to_handle(sample.handle, &payload);
         Ok(Some(sample))
     }
 }

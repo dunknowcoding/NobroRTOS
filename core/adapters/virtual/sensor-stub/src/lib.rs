@@ -9,7 +9,7 @@ extern crate std;
 
 use nobro_hal::{traits::HalClock, ActivePlatform as Hal};
 use nobro_kernel::{
-    pool::{ImuPayload, SamplePool},
+    pool::{CompactImuPayload, SamplePool},
     Capability, CapabilitySet, Criticality, MemoryBudget, ModuleId, ModuleSpec, Sample, SampleKind,
 };
 use nobro_sal::{AdapterManifest, SensorSal};
@@ -109,28 +109,29 @@ impl SensorStub {
             return Ok(None);
         }
 
-        let sample = SamplePool::alloc(SampleKind::Imu, ImuPayload::LEN, now_us, now_us)
+        let sample = SamplePool::alloc(SampleKind::Imu, CompactImuPayload::LEN, now_us, now_us)
             .ok_or(SensorStubError::PoolFull)?;
 
         let payload = self.payload_for_tick();
-        let _ = ImuPayload::write_to_handle(sample.handle, &payload);
+        let _ = CompactImuPayload::write_to_handle(sample.handle, &payload);
         Ok(Some(sample))
     }
 
-    fn payload_for_tick(&self) -> ImuPayload {
+    fn payload_for_tick(&self) -> CompactImuPayload {
         if let SensorStubMode::BadDataEvery(period) = self.profile.mode {
             if period != 0 && self.tick.is_multiple_of(period) {
-                return ImuPayload {
-                    accel_g: [4.0, 0.0, 0.0],
-                    gyro_dps: [0.0, 0.0, 0.0],
+                return CompactImuPayload {
+                    accel_mg: [4000, 0, 0],
+                    ..CompactImuPayload::default()
                 };
             }
         }
 
-        let wobble = ((self.tick / self.profile.sample_period_ticks) % 360) as f32 * 0.01;
-        ImuPayload {
-            accel_g: [wobble, 0.0, 1.0],
-            gyro_dps: [0.0, 0.0, wobble * 10.0],
+        let cycle = ((self.tick / self.profile.sample_period_ticks) % 360) as i32;
+        CompactImuPayload {
+            accel_mg: [cycle * 10, 0, 1000],
+            gyro_mdps: [0, 0, cycle * 100],
+            temperature_centi_c: 2500,
         }
     }
 }
@@ -164,13 +165,10 @@ pub fn stub_imu_plausible(sample: &Sample) -> bool {
     if sample.kind != SampleKind::Imu {
         return false;
     }
-    let Some(payload) = ImuPayload::read_from_handle(sample.handle) else {
+    let Some(payload) = CompactImuPayload::read_from_handle(sample.handle) else {
         return false;
     };
-    let mag_sq = payload.accel_g[0] * payload.accel_g[0]
-        + payload.accel_g[1] * payload.accel_g[1]
-        + payload.accel_g[2] * payload.accel_g[2];
-    (0.81..1.44).contains(&mag_sq)
+    (900..1200).contains(&payload.into_sample(sample.captured_us).accel_mag_mg)
 }
 
 #[cfg(test)]

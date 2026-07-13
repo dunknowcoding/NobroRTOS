@@ -63,7 +63,11 @@ fn counts_to_sample(ax: i16, ay: i16, az: i16) -> ImuSample {
     let sum = (i64::from(mx) * i64::from(mx)
         + i64::from(my) * i64::from(my)
         + i64::from(mz) * i64::from(mz)) as u64;
-    ImuSample { accel_mg: [mx, my, mz], accel_mag_mg: isqrt(sum) as u32 }
+    ImuSample {
+        accel_mg: [mx, my, mz],
+        accel_mag_mg: isqrt(sum) as u32,
+        ..ImuSample::default()
+    }
 }
 
 /// The MPU-9250 bring-up sequence in transport-neutral form: (reg, value) writes.

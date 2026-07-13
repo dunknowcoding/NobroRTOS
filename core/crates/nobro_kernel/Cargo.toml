@@ -11,6 +11,7 @@ nobro-hal = { path = "../nobro_hal", default-features = false, features = ["cont
 portable-atomic = { version = "1", default-features = false }
 critical-section = "1.2"
 nobro-power = { path = "../nobro_power" }
+nobro-imu = { path = "../nobro_imu" }
 
 [features]
 default = ["portable-atomic-cs"]
