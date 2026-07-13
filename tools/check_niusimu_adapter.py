@@ -155,15 +155,17 @@ def verify_checkout(library: pathlib.Path) -> None:
         raise RuntimeError(f"NiusIMU checkout is {revision}; expected pinned {PIN}")
     if output(["git", "status", "--porcelain"], library):
         raise RuntimeError("NiusIMU checkout has local modifications")
-    matrix = json.loads((ROOT / "core" / "ecosystem" / "integration_matrix.json").read_text(encoding="utf-8"))
-    domain = next(item for item in matrix["domains"] if item["id"] == "nobro_imu")
+    catalog = json.loads((ROOT / "core" / "adapters" / "catalog.json").read_text(encoding="utf-8"))
+    domain = next(item for item in catalog["domains"] if item["id"] == "imu")
     member = next(item for item in domain["library_members"] if item["id"] == "niusimu")
+    if member["version"] != VERSION or member["revision"] != PIN:
+        raise RuntimeError("NiusIMU catalog pin differs from the integration pin")
     actual_sensors = sorted(path.name for path in (library / "src" / "sensors").iterdir() if path.is_dir())
     actual_boards = sorted(path.name for path in (library / "src" / "boards").iterdir() if path.is_dir())
-    if actual_sensors != sorted(member["upstream_sensor_drivers"]):
-        raise RuntimeError("NiusIMU sensor inventory differs from the ecosystem matrix")
-    if actual_boards != sorted(member["upstream_board_modules"]):
-        raise RuntimeError("NiusIMU board/module inventory differs from the ecosystem matrix")
+    if actual_sensors != sorted(member["sensor_drivers"]):
+        raise RuntimeError("NiusIMU sensor inventory differs from the adapter catalog")
+    if actual_boards != sorted(member["board_modules"]):
+        raise RuntimeError("NiusIMU board/module inventory differs from the adapter catalog")
 
 
 def selftest() -> int:

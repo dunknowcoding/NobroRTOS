@@ -43,6 +43,14 @@ def validate() -> list[str]:
             facade = member.get("facade")
             if facade and not (ROOT / facade).is_file():
                 errors.append(f"missing library facade: {facade}")
+            for inventory in ("sensor_drivers", "board_modules"):
+                values = member.get(inventory)
+                if values is not None and (
+                    not isinstance(values, list)
+                    or not values
+                    or values != sorted(set(values), key=str.casefold)
+                ):
+                    errors.append(f"{name}/{member.get('name')}: invalid {inventory}")
 
     actual = {
         path.parent.relative_to(ROOT).as_posix()
