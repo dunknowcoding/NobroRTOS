@@ -19,6 +19,9 @@ default = ["portable-atomic-cs"]
 # provides atomics another way (esp-hal assume-single-core) disable default features.
 portable-atomic-cs = ["portable-atomic/critical-section"]
 hal-profile = ["dep:nobro-hal"]
+# Opt-in campaign telemetry used to produce fail-closed capacity reports.  It
+# adds no fields or mutation-path work to ordinary kernel builds.
+capacity-report = []
 
 [dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }

@@ -42,6 +42,10 @@ gate "host tests (portable crates)" \
     -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
     --target "$HOST_TARGET"'
 
+gate "capacity-report feature target build" \
+  bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
+    -p nobro-kernel --features capacity-report'
+
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 
 gate "reset platform evidence receipts" \

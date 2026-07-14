@@ -56,7 +56,11 @@ EXPECTED_RELEASE_EXCLUDES = frozenset(
 )
 EXPECTED_HOST_TOOLS = frozenset(
     pathlib.PurePosixPath(item)
-    for item in ("tools/nobro_contract_tool.py", "tools/nobro_project.py")
+    for item in (
+        "tools/nobro_contract_tool.py",
+        "tools/nobro_project.py",
+        "tools/nobro_shrink.py",
+    )
 )
 EXPECTED_INCLUDE_ROOTS = frozenset(
     pathlib.PurePosixPath(item)

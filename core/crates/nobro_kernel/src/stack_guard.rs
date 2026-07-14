@@ -110,6 +110,24 @@ impl<const N: usize> StackGuardTable<N> {
         Some(inspect(entry.module, entry.region))
     }
 
+    /// Iterate over a point-in-time inspection of every registered stack.
+    /// Watermarks are cumulative since registration or the last explicit
+    /// repaint, so a campaign cannot accidentally understate an earlier peak.
+    pub fn statuses(&self) -> impl Iterator<Item = StackStatus> + '_ {
+        self.entries
+            .iter()
+            .flatten()
+            .map(|entry| inspect(entry.module, entry.region))
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.iter().flatten().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Sweep every guarded stack; the first broken canary is returned for
     /// recovery attribution (subsequent sweeps surface the rest).
     pub fn sweep(&self) -> Option<StackFault> {

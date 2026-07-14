@@ -13,6 +13,8 @@ pub mod async_mpmc;
 pub mod async_rt;
 pub mod boot;
 pub mod capability;
+#[cfg(feature = "capacity-report")]
+pub mod capacity_report;
 pub mod degrade;
 pub mod error;
 pub mod event_log;
@@ -22,6 +24,7 @@ pub mod foreign_module;
 pub mod graph;
 pub mod health;
 pub mod hot_reload;
+pub mod instrumentation;
 pub mod kernel_executor;
 pub mod kv;
 pub mod launch_gate;
@@ -67,6 +70,16 @@ pub use capability::{
     CapabilityTrace, CapabilityTraceError, CapabilityTraceInput, CapabilityTraceOp,
     CapabilityTraceRecord,
 };
+#[cfg(feature = "capacity-report")]
+pub use capacity_report::{
+    CapacityCampaign, CapacityCampaignConfig, CapacityCampaignError, CapacityIdentity,
+    CapacityRegistry, CapacityRegistryError, CapacityReport, CapacityResource,
+    CapacityResourceKind, CapacityResourceRecord, CAPACITY_FLAG_DECLARATION_MISMATCH,
+    CAPACITY_FLAG_IDENTITY_MISSING, CAPACITY_FLAG_INCOMPLETE, CAPACITY_FLAG_RESOURCE_MISSING,
+    CAPACITY_FLAG_SESSION_MISMATCH, CAPACITY_FLAG_SIZE_OVERFLOW, CAPACITY_FLAG_UNEXPECTED_PATH,
+    CAPACITY_REPORT_FIXED_BYTES, CAPACITY_REPORT_MAGIC, CAPACITY_REPORT_VERSION,
+    CAPACITY_RESOURCE_RECORD_BYTES,
+};
 pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, FaultContext, FaultSource, HealthFault, KernelError};
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
@@ -86,8 +99,16 @@ pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,
     HotReloadStepKind, LeaseReleaser, ModuleReloadRequest, NoopLeaseReleaser,
 };
+pub use instrumentation::{
+    ExecutorInstrumentation, ExecutorTimingReport, ReportIdentity, EXECUTOR_FLAG_CLOCK_INVALID,
+    EXECUTOR_FLAG_COUNTER_SATURATED, EXECUTOR_FLAG_GROUP_TABLE_FULL,
+    EXECUTOR_FLAG_IDENTITY_MISSING, EXECUTOR_FLAG_INCOMPLETE, EXECUTOR_FLAG_PARTIAL_RELEASE_GROUP,
+    EXECUTOR_FLAG_SELECTION_REEVALUATED, EXECUTOR_FLAG_SELECTION_UNSTABLE,
+    EXECUTOR_TIMING_REPORT_MAGIC, EXECUTOR_TIMING_REPORT_VERSION, EXECUTOR_TIMING_REPORT_WORDS,
+};
 pub use kernel_executor::{
-    ContainmentPolicy, CycleOutcome, ExecError, ExecutionSentinel, KernelExecutor, StuckPoll,
+    ContainmentPolicy, CycleOutcome, ExecError, ExecutionSentinel, ExecutorInitError,
+    KernelExecutor, KernelExecutorCell, StuckPoll,
 };
 pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use launch_gate::ModuleLaunchGate;

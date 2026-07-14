@@ -45,21 +45,179 @@ impl PoolSlot {
     }
 }
 
-struct PoolStorage(UnsafeCell<[PoolSlot; SAMPLE_POOL_SIZE]>);
+#[cfg(feature = "capacity-report")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PoolCapacitySnapshot {
+    pub session_id: u32,
+    pub observed_peak: u32,
+    pub failures: u32,
+    pub saturated: bool,
+    pub sealed: bool,
+    pub activity_after_finish: bool,
+}
+
+#[cfg(feature = "capacity-report")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PoolCapacityMetrics {
+    session_id: u32,
+    observed_peak: u32,
+    failures: u32,
+    saturated: bool,
+    sealed: bool,
+    activity_after_finish: bool,
+}
+
+#[cfg(feature = "capacity-report")]
+impl PoolCapacityMetrics {
+    const fn can_start(&self, session_id: u32) -> bool {
+        session_id != 0 && (self.session_id == 0 || (self.sealed && session_id > self.session_id))
+    }
+
+    const fn can_restart(&self, current_session: u32, next_session: u32) -> bool {
+        current_session != 0 && self.session_id == current_session && next_session > current_session
+    }
+
+    fn start(&mut self, session_id: u32, current_used: usize) {
+        let (observed_peak, saturated) = bounded_capacity(current_used);
+        *self = Self {
+            session_id,
+            observed_peak,
+            failures: 0,
+            saturated,
+            sealed: false,
+            activity_after_finish: false,
+        };
+    }
+
+    fn record_peak(&mut self, used: usize) {
+        if self.session_id == 0 {
+            return;
+        }
+        if self.sealed {
+            self.activity_after_finish = true;
+            return;
+        }
+        let (used, saturated) = bounded_capacity(used);
+        self.observed_peak = self.observed_peak.max(used);
+        self.saturated |= saturated;
+    }
+
+    fn record_failure(&mut self) {
+        if self.session_id == 0 {
+            return;
+        }
+        if self.sealed {
+            self.activity_after_finish = true;
+            return;
+        }
+        let (next, overflow) = self.failures.overflowing_add(1);
+        if overflow {
+            self.failures = u32::MAX;
+            self.saturated = true;
+        } else {
+            self.failures = next;
+        }
+    }
+
+    fn finish(&mut self, session_id: u32) -> bool {
+        if self.session_id != session_id || self.sealed {
+            return false;
+        }
+        self.sealed = true;
+        true
+    }
+
+    fn record_mutation(&mut self) {
+        if self.session_id != 0 && self.sealed {
+            self.activity_after_finish = true;
+        }
+    }
+
+    const fn snapshot(self) -> PoolCapacitySnapshot {
+        PoolCapacitySnapshot {
+            session_id: self.session_id,
+            observed_peak: self.observed_peak,
+            failures: self.failures,
+            saturated: self.saturated,
+            sealed: self.sealed,
+            activity_after_finish: self.activity_after_finish,
+        }
+    }
+}
+
+struct PoolState {
+    slots: [PoolSlot; SAMPLE_POOL_SIZE],
+    #[cfg(feature = "capacity-report")]
+    capacity_metrics: PoolCapacityMetrics,
+}
+
+impl PoolState {
+    const EMPTY: Self = Self {
+        slots: [PoolSlot::EMPTY; SAMPLE_POOL_SIZE],
+        #[cfg(feature = "capacity-report")]
+        capacity_metrics: PoolCapacityMetrics {
+            session_id: 0,
+            observed_peak: 0,
+            failures: 0,
+            saturated: false,
+            sealed: false,
+            activity_after_finish: false,
+        },
+    };
+}
+
+struct PoolStorage(UnsafeCell<PoolState>);
 
 // SAFETY: every access to the UnsafeCell is contained by `critical_section::with` and
 // no reference to its contents escapes that closure.
 unsafe impl Sync for PoolStorage {}
 
-static POOL: PoolStorage = PoolStorage(UnsafeCell::new([PoolSlot::EMPTY; SAMPLE_POOL_SIZE]));
+static POOL: PoolStorage = PoolStorage(UnsafeCell::new(PoolState::EMPTY));
+
+fn with_pool<R>(f: impl FnOnce(&mut PoolState) -> R) -> R {
+    critical_section::with(|_| {
+        // SAFETY: the critical-section token serializes all accesses, and `state`
+        // is used only for this closure invocation.
+        let state = unsafe { &mut *POOL.0.get() };
+        f(state)
+    })
+}
 
 fn with_slots<R>(f: impl FnOnce(&mut [PoolSlot; SAMPLE_POOL_SIZE]) -> R) -> R {
-    critical_section::with(|_| {
-        // SAFETY: the critical-section token serializes all accesses, and `slots` is
-        // used only for this closure invocation.
-        let slots = unsafe { &mut *POOL.0.get() };
-        f(slots)
-    })
+    with_pool(|state| f(&mut state.slots))
+}
+
+#[cfg(test)]
+static TEST_POOL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn test_pool_guard() -> std::sync::MutexGuard<'static, ()> {
+    TEST_POOL.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_test_pool() {
+    with_pool(|state| {
+        for slot in &mut state.slots {
+            slot.bytes.fill(0);
+            slot.refs = 0;
+            slot.len = 0;
+            slot.kind = SampleKind::Raw;
+            slot.taken = false;
+        }
+        #[cfg(feature = "capacity-report")]
+        {
+            state.capacity_metrics = PoolCapacityMetrics::default();
+        }
+    });
+}
+
+#[cfg(feature = "capacity-report")]
+fn bounded_capacity(value: usize) -> (u32, bool) {
+    match u32::try_from(value) {
+        Ok(value) => (value, false),
+        Err(_) => (u32::MAX, true),
+    }
 }
 
 /// Compact queue representation of the canonical IMU sample (28 B). The sample
@@ -128,22 +286,38 @@ impl SamplePool {
         if len as usize > SLOT_BYTES {
             return None;
         }
-        with_slots(|slots| {
-            let (idx, slot) = slots.iter_mut().enumerate().find(|(_, slot)| !slot.taken)?;
-            let generation = slot.next_generation();
-            slot.bytes.fill(0);
-            slot.generation = generation;
-            slot.refs = 1;
-            slot.len = len;
-            slot.kind = kind;
-            slot.taken = true;
-            Some(Sample {
-                handle: PoolHandle::from_parts(idx, generation),
-                len,
-                kind,
-                captured_us,
-                deadline_us,
-            })
+        with_pool(|state| {
+            let sample = {
+                let Some((idx, slot)) = state
+                    .slots
+                    .iter_mut()
+                    .enumerate()
+                    .find(|(_, slot)| !slot.taken)
+                else {
+                    #[cfg(feature = "capacity-report")]
+                    state.capacity_metrics.record_failure();
+                    return None;
+                };
+                let generation = slot.next_generation();
+                slot.bytes.fill(0);
+                slot.generation = generation;
+                slot.refs = 1;
+                slot.len = len;
+                slot.kind = kind;
+                slot.taken = true;
+                Sample {
+                    handle: PoolHandle::from_parts(idx, generation),
+                    len,
+                    kind,
+                    captured_us,
+                    deadline_us,
+                }
+            };
+            #[cfg(feature = "capacity-report")]
+            state
+                .capacity_metrics
+                .record_peak(state.slots.iter().filter(|slot| slot.taken).count());
+            Some(sample)
         })
     }
 
@@ -164,20 +338,24 @@ impl SamplePool {
     /// Release one retained owner. Returns false for stale, invalid, or already-free
     /// tickets; such a ticket can never release a newer allocation in the same slot.
     pub fn release(handle: PoolHandle) -> bool {
-        with_slots(|slots| {
-            let Some(slot) = slots.get_mut(handle.index()) else {
-                return false;
-            };
-            if !slot.matches(handle) || slot.refs == 0 {
-                return false;
+        with_pool(|state| {
+            {
+                let Some(slot) = state.slots.get_mut(handle.index()) else {
+                    return false;
+                };
+                if !slot.matches(handle) || slot.refs == 0 {
+                    return false;
+                }
+                slot.refs -= 1;
+                if slot.refs == 0 {
+                    slot.bytes.fill(0);
+                    slot.len = 0;
+                    slot.kind = SampleKind::Raw;
+                    slot.taken = false;
+                }
             }
-            slot.refs -= 1;
-            if slot.refs == 0 {
-                slot.bytes.fill(0);
-                slot.len = 0;
-                slot.kind = SampleKind::Raw;
-                slot.taken = false;
-            }
+            #[cfg(feature = "capacity-report")]
+            state.capacity_metrics.record_mutation();
             true
         })
     }
@@ -193,6 +371,43 @@ impl SamplePool {
 
     pub fn free_slots() -> usize {
         with_slots(|slots| slots.iter().filter(|slot| !slot.taken).count())
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn try_start_capacity_session(session_id: u32) -> bool {
+        with_pool(|state| {
+            if !state.capacity_metrics.can_start(session_id) {
+                return false;
+            }
+            let current_used = state.slots.iter().filter(|slot| slot.taken).count();
+            state.capacity_metrics.start(session_id, current_used);
+            true
+        })
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn try_restart_capacity_session(current_session: u32, next_session: u32) -> bool {
+        with_pool(|state| {
+            if !state
+                .capacity_metrics
+                .can_restart(current_session, next_session)
+            {
+                return false;
+            }
+            let current_used = state.slots.iter().filter(|slot| slot.taken).count();
+            state.capacity_metrics.start(next_session, current_used);
+            true
+        })
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn capacity_snapshot() -> PoolCapacitySnapshot {
+        with_pool(|state| state.capacity_metrics.snapshot())
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn finish_capacity_session(session_id: u32) -> bool {
+        with_pool(|state| state.capacity_metrics.finish(session_id))
     }
 
     pub fn with_slot<R>(
@@ -229,24 +444,13 @@ impl SamplePool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
 
-    static TEST_POOL: Mutex<()> = Mutex::new(());
-
-    fn isolated_pool() -> MutexGuard<'static, ()> {
-        TEST_POOL.lock().unwrap_or_else(|error| error.into_inner())
+    fn isolated_pool() -> std::sync::MutexGuard<'static, ()> {
+        test_pool_guard()
     }
 
     fn release_all_slots() {
-        with_slots(|slots| {
-            for slot in slots {
-                slot.bytes.fill(0);
-                slot.refs = 0;
-                slot.len = 0;
-                slot.kind = SampleKind::Raw;
-                slot.taken = false;
-            }
-        });
+        reset_test_pool();
     }
 
     #[test]

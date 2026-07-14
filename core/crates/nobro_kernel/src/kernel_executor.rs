@@ -27,12 +27,17 @@
 //! module in real time — the bounded containment answer for cooperative
 //! execution; preemption is intentionally out of scope for this profile.
 
+use core::{cell::UnsafeCell, mem::MaybeUninit};
+
+#[cfg(test)]
+use core::cell::Cell;
 use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform};
-use portable_atomic::{AtomicU32, Ordering};
+use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
-    module_code, KernelError, ModuleCtx, ModuleId, ModuleRunState, Poll, Runtime, RuntimeError,
-    StackFault, StackGuardTable, TaskMeta, TaskTable, TaskTableError,
+    module_code, ExecutorInstrumentation, FaultThresholds, KernelError, ModuleCtx, ModuleId,
+    ModuleRunState, Poll, Runtime, RuntimeError, StackFault, StackGuardTable, StartupNode,
+    SystemManifest, SystemProfile, TaskMeta, TaskTable, TaskTableError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,6 +68,20 @@ pub enum ExecError {
     PowerLedgerFull,
 }
 
+/// Failure to claim or assemble a [`KernelExecutorCell`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutorInitError {
+    /// The one-shot cell is being initialized or already contains an executor.
+    AlreadyInitialized,
+    Runtime(RuntimeError),
+}
+
+impl From<RuntimeError> for ExecutorInitError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
 impl From<TaskTableError> for ExecError {
     fn from(error: TaskTableError) -> Self {
         Self::Task(error)
@@ -85,6 +104,9 @@ impl From<PowerHookError> for ExecError {
 /// to detect a module running past its declared budget while the cooperative
 /// loop cannot regain control.
 pub struct ExecutionSentinel {
+    /// Even = stable generation, odd = writer in progress. Readers never spin:
+    /// an ISR that preempts an update simply reports no stable sample.
+    sequence: AtomicU32,
     /// `module_code` of the polling module; 0 = idle.
     module: AtomicU32,
     /// Absolute time the in-flight poll must have yielded by, split into two
@@ -106,6 +128,7 @@ pub struct StuckPoll {
 impl ExecutionSentinel {
     pub const fn new() -> Self {
         Self {
+            sequence: AtomicU32::new(0),
             module: AtomicU32::new(0),
             deadline_lo: AtomicU32::new(0),
             deadline_hi: AtomicU32::new(0),
@@ -113,25 +136,37 @@ impl ExecutionSentinel {
     }
 
     fn arm(&self, module: ModuleId, deadline_us: u64) {
-        self.deadline_lo
-            .store(deadline_us as u32, Ordering::Relaxed);
+        // The sentinel is sampled asynchronously and its fields are separate
+        // atomics. A single sequentially-consistent order is intentional here:
+        // it makes the odd/even generation a real publication bracket instead
+        // of permitting a new module to be paired with an older deadline.
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+        self.deadline_lo.store(deadline_us as u32, Ordering::SeqCst);
         self.deadline_hi
-            .store((deadline_us >> 32) as u32, Ordering::Release);
-        self.module.store(module_code(module), Ordering::Release);
+            .store((deadline_us >> 32) as u32, Ordering::SeqCst);
+        self.module.store(module_code(module), Ordering::SeqCst);
+        self.sequence.fetch_add(1, Ordering::SeqCst);
     }
 
     fn disarm(&self) {
-        self.module.store(0, Ordering::Release);
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+        self.module.store(0, Ordering::SeqCst);
+        self.sequence.fetch_add(1, Ordering::SeqCst);
     }
 
     /// ISR-safe: returns the in-flight poll iff it has outlived its budget.
     pub fn check(&self, now_us: u64) -> Option<StuckPoll> {
-        let module_code = self.module.load(Ordering::Acquire);
-        if module_code == 0 {
+        let before = self.sequence.load(Ordering::SeqCst);
+        if before & 1 != 0 {
             return None;
         }
-        let deadline_us = u64::from(self.deadline_lo.load(Ordering::Relaxed))
-            | (u64::from(self.deadline_hi.load(Ordering::Relaxed)) << 32);
+        let module_code = self.module.load(Ordering::SeqCst);
+        let deadline_us = u64::from(self.deadline_lo.load(Ordering::SeqCst))
+            | (u64::from(self.deadline_hi.load(Ordering::SeqCst)) << 32);
+        let after = self.sequence.load(Ordering::SeqCst);
+        if before != after || after & 1 != 0 || module_code == 0 {
+            return None;
+        }
         if now_us <= deadline_us {
             return None;
         }
@@ -140,6 +175,23 @@ impl ExecutionSentinel {
             deadline_us,
             late_us: now_us - deadline_us,
         })
+    }
+}
+
+struct SentinelArmGuard<'a> {
+    sentinel: &'a ExecutionSentinel,
+}
+
+impl<'a> SentinelArmGuard<'a> {
+    fn new(sentinel: &'a ExecutionSentinel, module: ModuleId, deadline_us: u64) -> Self {
+        sentinel.arm(module, deadline_us);
+        Self { sentinel }
+    }
+}
+
+impl Drop for SentinelArmGuard<'_> {
+    fn drop(&mut self) {
+        self.sentinel.disarm();
     }
 }
 
@@ -181,6 +233,343 @@ pub struct KernelExecutor<
     sentinel: ExecutionSentinel,
     power: ExecutorPower<TASKS>,
     sealed: bool,
+}
+
+const CELL_EMPTY: u8 = 0;
+const CELL_INITIALIZING: u8 = 1;
+const CELL_READY: u8 = 2;
+
+/// One-shot static storage for constructing an admitted executor in place.
+///
+/// This removes the duplicate by-value `Runtime`/`KernelExecutor` temporary
+/// from the entry stack.  It does **not** make the executor free: the complete
+/// [`storage_bytes`](Self::storage_bytes) value resides in `.bss` and must be
+/// included in total-RAM accounting alongside every measured stack peak.
+///
+/// A cell never exposes a partial value.  Initialization is claimed with an
+/// atomic state transition; failures and unwinding panics restore the empty
+/// state after dropping only completed fields.  Successful cells are one-shot
+/// for the firmware lifetime, matching normal static executor ownership.
+pub struct KernelExecutorCell<
+    const TASKS: usize,
+    const STARTUP: usize,
+    const QUOTAS: usize,
+    const MAILBOX: usize,
+    const ALARMS: usize,
+    const KV: usize,
+    const HEALTH: usize,
+    const LOG: usize,
+> {
+    state: AtomicU8,
+    value: UnsafeCell<
+        MaybeUninit<KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>>,
+    >,
+}
+
+// The atomic state grants exactly one initializer exclusive access to the
+// UnsafeCell.  The only successful borrow is unique and one-shot; racing calls
+// receive `AlreadyInitialized` and can never observe the storage.
+unsafe impl<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > Sync for KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExecutorInitStage {
+    Runtime,
+    Tasks,
+    Containment,
+    Sentinel,
+    Power,
+    Sealed,
+}
+
+#[cfg(test)]
+impl ExecutorInitStage {
+    const ALL: [Self; 6] = [
+        Self::Runtime,
+        Self::Tasks,
+        Self::Containment,
+        Self::Sentinel,
+        Self::Power,
+        Self::Sealed,
+    ];
+}
+
+struct ExecutorInitGuard<
+    'a,
+    const TASKS: usize,
+    const STARTUP: usize,
+    const QUOTAS: usize,
+    const MAILBOX: usize,
+    const ALARMS: usize,
+    const KV: usize,
+    const HEALTH: usize,
+    const LOG: usize,
+> {
+    cell: &'a KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+    initialized: u8,
+    armed: bool,
+    #[cfg(test)]
+    cleanup_mask: Option<*const Cell<u8>>,
+}
+
+impl<
+        'a,
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > ExecutorInitGuard<'a, TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    fn new(
+        cell: &'a KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        #[cfg(test)] cleanup_mask: Option<&Cell<u8>>,
+    ) -> Self {
+        Self {
+            cell,
+            initialized: 0,
+            armed: true,
+            #[cfg(test)]
+            cleanup_mask: cleanup_mask.map(core::ptr::from_ref),
+        }
+    }
+
+    fn mark(&mut self, stage: ExecutorInitStage) {
+        self.initialized |= 1 << stage as u8;
+    }
+
+    fn has(&self, stage: ExecutorInitStage) -> bool {
+        self.initialized & (1 << stage as u8) != 0
+    }
+
+    fn finish(mut self) {
+        self.cell.state.store(CELL_READY, Ordering::Release);
+        self.armed = false;
+    }
+}
+
+impl<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > Drop for ExecutorInitGuard<'_, TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        #[cfg(test)]
+        if let Some(cleanup_mask) = self.cleanup_mask {
+            // SAFETY: the test observer outlives this constructor call.
+            unsafe { (*cleanup_mask).set(self.initialized) };
+        }
+
+        unsafe {
+            let destination = self.cell.destination();
+            if self.has(ExecutorInitStage::Sealed) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).sealed));
+            }
+            if self.has(ExecutorInitStage::Power) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).power));
+            }
+            if self.has(ExecutorInitStage::Sentinel) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).sentinel));
+            }
+            if self.has(ExecutorInitStage::Containment) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).containment));
+            }
+            if self.has(ExecutorInitStage::Tasks) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).tasks));
+            }
+            if self.has(ExecutorInitStage::Runtime) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).runtime));
+            }
+        }
+        self.cell.state.store(CELL_EMPTY, Ordering::Release);
+    }
+}
+
+impl<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicU8::new(CELL_EMPTY),
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+        }
+    }
+
+    /// Bytes reserved by the cell, including executor storage and state/alignment.
+    pub const fn storage_bytes() -> usize {
+        core::mem::size_of::<Self>()
+    }
+
+    fn destination(
+        &self,
+    ) -> *mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG> {
+        self.value.get().cast()
+    }
+
+    /// Admit and construct one executor directly in this static cell.
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "the atomic one-shot claim proves this UnsafeCell can yield exactly one mutable borrow"
+    )]
+    pub fn init_admitted<const MODULES: usize>(
+        &'static self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ExecutorInitError,
+    > {
+        let mut checkpoint = |_stage| Ok(());
+        #[cfg(not(test))]
+        {
+            self.init_admitted_inner(
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                containment,
+                &mut checkpoint,
+            )
+        }
+        #[cfg(test)]
+        {
+            self.init_admitted_inner(
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                containment,
+                &mut checkpoint,
+                None,
+            )
+        }
+    }
+
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "testable inner half of the same atomic one-shot UnsafeCell protocol"
+    )]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the test-only checkpoint and cleanup observer keep failure coverage off the production API"
+    )]
+    fn init_admitted_inner<const MODULES: usize>(
+        &'static self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+        checkpoint: &mut impl FnMut(ExecutorInitStage) -> Result<(), ExecutorInitError>,
+        #[cfg(test)] cleanup_mask: Option<&Cell<u8>>,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ExecutorInitError,
+    > {
+        self.state
+            .compare_exchange(
+                CELL_EMPTY,
+                CELL_INITIALIZING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map_err(|_| ExecutorInitError::AlreadyInitialized)?;
+
+        let destination = self.destination();
+        let mut guard = ExecutorInitGuard::new(
+            self,
+            #[cfg(test)]
+            cleanup_mask,
+        );
+        unsafe {
+            Runtime::admit_in_place(
+                core::ptr::addr_of_mut!((*destination).runtime),
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+            )?;
+            guard.mark(ExecutorInitStage::Runtime);
+            checkpoint(ExecutorInitStage::Runtime)?;
+
+            core::ptr::addr_of_mut!((*destination).tasks).write(TaskTable::new());
+            guard.mark(ExecutorInitStage::Tasks);
+            checkpoint(ExecutorInitStage::Tasks)?;
+
+            core::ptr::addr_of_mut!((*destination).containment).write(containment);
+            guard.mark(ExecutorInitStage::Containment);
+            checkpoint(ExecutorInitStage::Containment)?;
+
+            core::ptr::addr_of_mut!((*destination).sentinel).write(ExecutionSentinel::new());
+            guard.mark(ExecutorInitStage::Sentinel);
+            checkpoint(ExecutorInitStage::Sentinel)?;
+
+            core::ptr::addr_of_mut!((*destination).power)
+                .write(ExecutorPower::new(1_000_000, 1_000_000, 1_000));
+            guard.mark(ExecutorInitStage::Power);
+            checkpoint(ExecutorInitStage::Power)?;
+
+            core::ptr::addr_of_mut!((*destination).sealed).write(false);
+            guard.mark(ExecutorInitStage::Sealed);
+            checkpoint(ExecutorInitStage::Sealed)?;
+        }
+
+        guard.finish();
+        // SAFETY: every field is initialized, the release store published the
+        // ready state, and this one-shot cell can never yield another borrow.
+        Ok(unsafe { &mut *destination })
+    }
+}
+
+impl<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > Default for KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<
@@ -315,9 +704,37 @@ impl<
         &mut self,
         clock: impl Fn() -> u64,
         power_platform: &mut impl PowerPlatform,
+        dispatch: impl FnMut(
+            &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ) -> Result<Poll, KernelError>,
+    ) -> Result<CycleOutcome, ExecError> {
+        self.run_cycle_inner::<false, 1>(clock, power_platform, dispatch, None)
+    }
+
+    /// Opt-in attribution path. The caller owns the bounded recorder; the
+    /// ordinary [`run_cycle`](Self::run_cycle) specialization has no recorder
+    /// storage and performs none of the attribution-only clock reads.
+    pub fn run_cycle_instrumented<const GROUPS: usize>(
+        &mut self,
+        clock: impl Fn() -> u64,
+        power_platform: &mut impl PowerPlatform,
+        dispatch: impl FnMut(
+            &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ) -> Result<Poll, KernelError>,
+        instrumentation: &mut ExecutorInstrumentation<GROUPS>,
+    ) -> Result<CycleOutcome, ExecError> {
+        self.run_cycle_inner::<true, GROUPS>(clock, power_platform, dispatch, Some(instrumentation))
+    }
+
+    #[inline]
+    fn run_cycle_inner<const INSTRUMENTED: bool, const GROUPS: usize>(
+        &mut self,
+        clock: impl Fn() -> u64,
+        power_platform: &mut impl PowerPlatform,
         mut dispatch: impl FnMut(
             &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         ) -> Result<Poll, KernelError>,
+        mut instrumentation: Option<&mut ExecutorInstrumentation<GROUPS>>,
     ) -> Result<CycleOutcome, ExecError> {
         if !self.sealed {
             return Err(ExecError::NotSealed);
@@ -331,42 +748,281 @@ impl<
         let alarms = self.runtime.dispatch_due_alarms_with_recovery(now_us)?;
         outcome.alarms_dispatched = alarms.dispatched;
 
-        let Some(idx) = self.tasks.due_index(now_us) else {
+        let mut selected = if INSTRUMENTED {
+            None
+        } else {
+            self.tasks.due_index(now_us)
+        };
+        let mut release_us = 0;
+        let mut simultaneous_width = 0;
+        let mut selection_sweep_slots = 0u32;
+        let mut selection_due_tasks = 0u32;
+        let mut peer_scan_slots = 0u32;
+        let mut scheduling_now_us = now_us;
+        let mut instrumented_start_us = None;
+        let mut instrumented_meta = None;
+        let mut instrumented_active = false;
+        let mut instrumentation_clock_invalid = false;
+        let mut selection_reevaluated = false;
+        let mut selection_started_us = 0;
+        let mut selection_finished_us = 0;
+        let mut probe_clock_reads = 0u32;
+        if INSTRUMENTED {
+            selection_started_us = clock();
+            selection_finished_us = selection_started_us;
+            let mut snapshot_us = selection_started_us;
+            probe_clock_reads = 1;
+            instrumentation_clock_invalid = selection_started_us < now_us;
+            let mut instrumentation_stable = !instrumentation_clock_invalid;
+            if instrumentation_stable {
+                instrumentation_stable = false;
+                // Each failed stabilization can only be caused by time moving
+                // across another release. Keep the diagnostic bounded even for
+                // a pathological clock/task set; fail closed instead of using
+                // a stale choice if no stable snapshot is found.
+                for _ in 0..TASKS.saturating_add(2) {
+                    let sweep = self.tasks.due_sweep(snapshot_us);
+                    selected = sweep.selected.map(|selection| selection.index);
+                    release_us = sweep.selected.map_or(0, |selection| selection.release_us);
+                    simultaneous_width = sweep.simultaneous_width;
+                    let next_release_us = sweep.next_release_us;
+                    selection_sweep_slots =
+                        selection_sweep_slots.saturating_add(sweep.inspected_slots);
+                    selection_due_tasks = sweep.due_tasks;
+                    peer_scan_slots = peer_scan_slots.saturating_add(sweep.peer_inspected_slots);
+
+                    let sweep_finished_us = clock();
+                    probe_clock_reads = probe_clock_reads.saturating_add(1);
+                    selection_finished_us = sweep_finished_us;
+                    if sweep_finished_us < snapshot_us {
+                        instrumentation_clock_invalid = true;
+                        break;
+                    }
+                    if next_release_us.is_some_and(|release| release <= sweep_finished_us) {
+                        selection_reevaluated = true;
+                        snapshot_us = sweep_finished_us;
+                        continue;
+                    }
+                    scheduling_now_us = sweep_finished_us;
+                    if selected.is_none() {
+                        instrumentation_stable = true;
+                        break;
+                    }
+
+                    let candidate_index = selected.expect("instrumented selection has a task");
+                    let candidate_meta = self
+                        .tasks
+                        .meta_at(candidate_index)
+                        .expect("due task has a slot");
+                    let candidate_active = self.runtime.module_state(candidate_meta.module)
+                        == Some(ModuleRunState::Active);
+
+                    // This is the ordinary poll-start read when the choice is
+                    // stable. If it crosses a release it becomes an extra probe
+                    // read and the complete measured sweep is repeated at that
+                    // timestamp before any module is dispatched.
+                    let dispatch_candidate_us = clock();
+                    if dispatch_candidate_us < sweep_finished_us {
+                        instrumentation_clock_invalid = true;
+                        probe_clock_reads = probe_clock_reads.saturating_add(1);
+                        selection_finished_us = dispatch_candidate_us;
+                        break;
+                    }
+                    if next_release_us.is_some_and(|release| release <= dispatch_candidate_us) {
+                        probe_clock_reads = probe_clock_reads.saturating_add(1);
+                        selection_reevaluated = true;
+                        snapshot_us = dispatch_candidate_us;
+                        continue;
+                    }
+                    instrumented_start_us = Some(dispatch_candidate_us);
+                    instrumented_meta = Some(candidate_meta);
+                    instrumented_active = candidate_active;
+                    scheduling_now_us = dispatch_candidate_us;
+                    if !candidate_active {
+                        // The ordinary inactive-module path has no poll-start
+                        // sample, so this stable candidate read is probe-only.
+                        probe_clock_reads = probe_clock_reads.saturating_add(1);
+                    }
+                    instrumentation_stable = true;
+                    break;
+                }
+            }
+            if !instrumentation_stable {
+                if let Some(recorder) = instrumentation.as_mut() {
+                    if instrumentation_clock_invalid {
+                        recorder.record_clock_invalid();
+                    }
+                    if selection_reevaluated {
+                        recorder.record_selection_reevaluated();
+                    }
+                    recorder.record_probe_scan_slots(peer_scan_slots);
+                    recorder.record_selection(
+                        selection_sweep_slots,
+                        selection_due_tasks,
+                        selection_started_us,
+                        selection_finished_us,
+                        probe_clock_reads,
+                    );
+                    recorder.record_selection_unstable();
+                }
+                outcome.idle_until_us = self.next_activity_us();
+                outcome.power_mode = Some(self.power.apply_idle(
+                    scheduling_now_us,
+                    true,
+                    outcome.idle_until_us,
+                    power_platform,
+                )?);
+                return Ok(outcome);
+            }
+        }
+        let Some(idx) = selected else {
+            if INSTRUMENTED {
+                // Final post-recorder sample keeps the idle decision from
+                // sleeping past work that became due while telemetry was
+                // serialized. Count it before serialization so no recorder
+                // mutation follows a valid final snapshot.
+                probe_clock_reads = probe_clock_reads.saturating_add(1);
+                if let Some(recorder) = instrumentation.as_mut() {
+                    if instrumentation_clock_invalid {
+                        recorder.record_clock_invalid();
+                    }
+                    if selection_reevaluated {
+                        recorder.record_selection_reevaluated();
+                    }
+                    recorder.record_probe_scan_slots(peer_scan_slots);
+                    recorder.record_selection(
+                        selection_sweep_slots,
+                        selection_due_tasks,
+                        selection_started_us,
+                        selection_finished_us,
+                        probe_clock_reads,
+                    );
+                }
+                let idle_now_us = clock();
+                if idle_now_us < scheduling_now_us {
+                    if let Some(recorder) = instrumentation.as_mut() {
+                        recorder.record_clock_invalid();
+                    }
+                } else {
+                    scheduling_now_us = idle_now_us;
+                }
+            }
             outcome.idle_until_us = self.next_activity_us();
+            let work_pending = self.tasks.due_index(scheduling_now_us).is_some()
+                || self
+                    .runtime
+                    .alarms()
+                    .next_due_us()
+                    .is_some_and(|due| due <= scheduling_now_us);
             outcome.power_mode = Some(self.power.apply_idle(
-                now_us,
-                false,
+                scheduling_now_us,
+                work_pending,
                 outcome.idle_until_us,
                 power_platform,
             )?);
             return Ok(outcome);
         };
-        let meta = self.tasks.meta_at(idx).expect("due task has a slot");
+        let meta = if INSTRUMENTED {
+            instrumented_meta.expect("stable instrumented selection has metadata")
+        } else {
+            self.tasks.meta_at(idx).expect("due task has a slot")
+        };
+        let module_active = if INSTRUMENTED {
+            instrumented_active
+        } else {
+            self.runtime.module_state(meta.module) == Some(ModuleRunState::Active)
+        };
 
-        if self.runtime.module_state(meta.module) != Some(ModuleRunState::Active) {
+        if !module_active {
             // Not runnable: the release is skipped and counted, never executed.
-            self.tasks.skip_release(idx, now_us);
+            self.tasks.skip_release(idx, scheduling_now_us);
             outcome.skipped_release = Some(meta.module);
+            if INSTRUMENTED {
+                probe_clock_reads = probe_clock_reads.saturating_add(1);
+                if let Some(recorder) = instrumentation.as_mut() {
+                    if instrumentation_clock_invalid {
+                        recorder.record_clock_invalid();
+                    }
+                    if selection_reevaluated {
+                        recorder.record_selection_reevaluated();
+                    }
+                    recorder.record_probe_scan_slots(peer_scan_slots);
+                    recorder.record_selection(
+                        selection_sweep_slots,
+                        selection_due_tasks,
+                        selection_started_us,
+                        selection_finished_us,
+                        probe_clock_reads,
+                    );
+                }
+                let skip_now_us = clock();
+                if skip_now_us < scheduling_now_us {
+                    if let Some(recorder) = instrumentation.as_mut() {
+                        recorder.record_clock_invalid();
+                    }
+                } else {
+                    scheduling_now_us = skip_now_us;
+                }
+            }
             outcome.idle_until_us = self.next_activity_us();
+            let work_pending = self.tasks.due_index(scheduling_now_us).is_some()
+                || self
+                    .runtime
+                    .alarms()
+                    .next_due_us()
+                    .is_some_and(|due| due <= scheduling_now_us);
             outcome.power_mode = Some(self.power.apply_idle(
-                now_us,
-                false,
+                scheduling_now_us,
+                work_pending,
                 outcome.idle_until_us,
                 power_platform,
             )?);
             return Ok(outcome);
         }
 
-        let start_us = clock();
-        self.sentinel.arm(
+        let start_us = instrumented_start_us.unwrap_or_else(&clock);
+        let sentinel_guard = SentinelArmGuard::new(
+            &self.sentinel,
             meta.module,
             start_us.saturating_add(u64::from(meta.budget_us)),
         );
         let poll = self
             .runtime
-            .with_module(meta.module, start_us, &mut dispatch)?;
-        self.sentinel.disarm();
+            .with_module(meta.module, start_us, &mut dispatch);
+        drop(sentinel_guard);
         let end_us = clock();
+        if INSTRUMENTED && end_us < start_us {
+            instrumentation_clock_invalid = true;
+        }
+        if INSTRUMENTED {
+            if let Some(recorder) = instrumentation.as_mut() {
+                if instrumentation_clock_invalid {
+                    recorder.record_clock_invalid();
+                }
+                if selection_reevaluated {
+                    recorder.record_selection_reevaluated();
+                }
+                recorder.record_probe_scan_slots(peer_scan_slots);
+                recorder.record_selection(
+                    selection_sweep_slots,
+                    selection_due_tasks,
+                    selection_started_us,
+                    selection_finished_us,
+                    probe_clock_reads,
+                );
+                recorder.record_poll_attempt();
+                recorder.record_dispatch(
+                    release_us,
+                    start_us,
+                    simultaneous_width,
+                    module_code(meta.module),
+                    meta.criticality as u32,
+                    idx.min(u32::MAX as usize) as u32,
+                );
+                recorder.record_poll_clock(start_us, end_us);
+            }
+        }
+        let poll = poll?;
         let duration_us = end_us.saturating_sub(start_us).min(u64::from(u32::MAX)) as u32;
 
         // Accounting is unconditional: measured time reaches the CPU ledger and
@@ -432,14 +1088,48 @@ impl<
         }
 
         outcome.idle_until_us = self.next_activity_us();
-        let work_pending = self.tasks.due_index(end_us).is_some()
+        let mut power_now_us = end_us;
+        let mut work_pending = self.tasks.due_index(end_us).is_some()
             || self
                 .runtime
                 .alarms()
                 .next_due_us()
                 .is_some_and(|due| due <= end_us);
+        if INSTRUMENTED {
+            let bookkeeping_finished_us = clock();
+            if let Some(recorder) = instrumentation.as_mut() {
+                recorder.record_bookkeeping(end_us, bookkeeping_finished_us);
+                // Account for the final post-serialization snapshot before it
+                // is taken. A valid snapshot has no recorder mutation after it.
+                recorder.record_probe_clock_reads(1);
+            }
+            let final_power_us = clock();
+            if !instrumentation_clock_invalid
+                && bookkeeping_finished_us >= end_us
+                && final_power_us >= bookkeeping_finished_us
+            {
+                // Telemetry serialization itself can straddle the next
+                // release. Base the power decision on the final post-telemetry
+                // snapshot, never the stale poll-end/bookkeeping values.
+                power_now_us = final_power_us;
+                work_pending = self.tasks.due_index(power_now_us).is_some()
+                    || self
+                        .runtime
+                        .alarms()
+                        .next_due_us()
+                        .is_some_and(|due| due <= power_now_us);
+            } else {
+                // A regressing clock cannot support an idle-safety decision.
+                // Mark the evidence invalid and force the fail-closed active
+                // path rather than programming a potentially late wake.
+                work_pending = true;
+                if let Some(recorder) = instrumentation.as_mut() {
+                    recorder.record_clock_invalid();
+                }
+            }
+        }
         outcome.power_mode = Some(self.power.apply_idle(
-            end_us,
+            power_now_us,
             work_pending,
             outcome.idle_until_us,
             power_platform,
@@ -539,7 +1229,7 @@ mod tests {
         }
     }
 
-    fn runtime() -> TestRuntime {
+    fn admitted_inputs() -> (SystemManifest<3>, [StartupNode; 3]) {
         let mut manifest = SystemManifest::<3>::new();
         manifest
             .add(kernel_module_spec(
@@ -566,6 +1256,11 @@ mod tests {
             StartupNode::new(ModuleId::Sensor, DependencySet::empty()),
             StartupNode::new(ModuleId::Actuator, DependencySet::empty()),
         ];
+        (manifest, nodes)
+    }
+
+    fn runtime() -> TestRuntime {
+        let (manifest, nodes) = admitted_inputs();
         let mut runtime = TestRuntime::admit(
             &manifest,
             &nodes,
@@ -575,6 +1270,154 @@ mod tests {
         .unwrap();
         runtime.boot_to_running(0).unwrap();
         runtime
+    }
+
+    fn expect_init_error<T>(result: Result<T, ExecutorInitError>) -> ExecutorInitError {
+        match result {
+            Ok(_) => panic!("executor initialization unexpectedly succeeded"),
+            Err(error) => error,
+        }
+    }
+
+    #[test]
+    fn executor_cell_cleans_every_completed_field_and_can_retry() {
+        static CELL: KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 32> = KernelExecutorCell::new();
+        let (manifest, nodes) = admitted_inputs();
+        for (index, fail_stage) in ExecutorInitStage::ALL.into_iter().enumerate() {
+            let cleanup = Cell::new(0u8);
+            let error = expect_init_error(CELL.init_admitted_inner(
+                &manifest,
+                &nodes,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                &mut |stage| {
+                    if stage == fail_stage {
+                        Err(ExecutorInitError::Runtime(RuntimeError::PoolExhausted))
+                    } else {
+                        Ok(())
+                    }
+                },
+                Some(&cleanup),
+            ));
+            assert_eq!(
+                error,
+                ExecutorInitError::Runtime(RuntimeError::PoolExhausted)
+            );
+            assert_eq!(cleanup.get(), (1u8 << (index + 1)) - 1);
+            assert_eq!(CELL.state.load(Ordering::Acquire), CELL_EMPTY);
+        }
+
+        let executor = CELL
+            .init_admitted(
+                &manifest,
+                &nodes,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+            )
+            .unwrap();
+        assert_eq!(executor.runtime().plan().module_count(), 3);
+        assert_eq!(
+            expect_init_error(CELL.init_admitted(
+                &manifest,
+                &nodes,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+            )),
+            ExecutorInitError::AlreadyInitialized
+        );
+    }
+
+    #[test]
+    fn executor_cell_restores_empty_state_after_every_unwinding_stage() {
+        static CELL: KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 32> = KernelExecutorCell::new();
+        let (manifest, nodes) = admitted_inputs();
+        for (index, panic_stage) in ExecutorInitStage::ALL.into_iter().enumerate() {
+            let cleanup = Cell::new(0u8);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = CELL.init_admitted_inner(
+                    &manifest,
+                    &nodes,
+                    SystemProfile::NRF52840_CORE,
+                    FaultThresholds::DEFAULT,
+                    ContainmentPolicy::Cooperative,
+                    &mut |stage| {
+                        assert_ne!(stage, panic_stage, "injected executor init panic");
+                        Ok(())
+                    },
+                    Some(&cleanup),
+                );
+            }));
+            assert!(result.is_err());
+            assert_eq!(cleanup.get(), (1u8 << (index + 1)) - 1);
+            assert_eq!(CELL.state.load(Ordering::Acquire), CELL_EMPTY);
+        }
+    }
+
+    #[test]
+    fn executor_cell_runtime_failure_never_publishes_partial_storage() {
+        static CELL: KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 32> = KernelExecutorCell::new();
+        let (manifest, nodes) = admitted_inputs();
+        let error = expect_init_error(CELL.init_admitted(
+            &manifest,
+            &nodes[..2],
+            SystemProfile::NRF52840_CORE,
+            FaultThresholds::DEFAULT,
+            ContainmentPolicy::Cooperative,
+        ));
+        assert!(matches!(error, ExecutorInitError::Runtime(_)));
+        assert_eq!(CELL.state.load(Ordering::Acquire), CELL_EMPTY);
+
+        let executor = CELL
+            .init_admitted(
+                &manifest,
+                &nodes,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+            )
+            .unwrap();
+        assert_eq!(executor.runtime().plan().module_count(), 3);
+        assert!(
+            KernelExecutorCell::<4, 4, 4, 8, 4, 8, 4, 32>::storage_bytes()
+                >= core::mem::size_of::<TestExecutor>()
+        );
+    }
+
+    #[test]
+    fn executor_cell_allows_exactly_one_initializer_across_threads() {
+        static CELL: KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 32> = KernelExecutorCell::new();
+        let (manifest, nodes) = admitted_inputs();
+        let winners = std::thread::scope(|scope| {
+            let contenders = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        match CELL.init_admitted(
+                            &manifest,
+                            &nodes,
+                            SystemProfile::NRF52840_CORE,
+                            FaultThresholds::DEFAULT,
+                            ContainmentPolicy::Cooperative,
+                        ) {
+                            Ok(executor) => {
+                                assert_eq!(executor.runtime().plan().module_count(), 3);
+                                1u8
+                            }
+                            Err(ExecutorInitError::AlreadyInitialized) => 0,
+                            Err(error) => panic!("unexpected executor init failure: {error:?}"),
+                        }
+                    })
+                })
+                .collect::<std::vec::Vec<_>>();
+            contenders
+                .into_iter()
+                .map(|thread| thread.join().expect("initializer thread"))
+                .sum::<u8>()
+        });
+        assert_eq!(winners, 1);
+        assert_eq!(CELL.state.load(Ordering::Acquire), CELL_READY);
     }
 
     #[test]
@@ -657,6 +1500,206 @@ mod tests {
         // The sensor task is still due: the loop names the next activity.
         assert_eq!(outcome.idle_until_us, Some(0));
         assert_eq!(exec.power().ledger().energy_uj(6), Some(1_000));
+    }
+
+    #[test]
+    fn opt_in_timing_report_observes_simultaneous_release_order() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 10_000, 2_000),
+            0,
+        )
+        .unwrap();
+        exec.add_task(
+            TaskMeta::new(ModuleId::Actuator, Criticality::System, 20_000, 2_000),
+            0,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+
+        let ticks = Cell::new(0u64);
+        let clock = || {
+            let now = ticks.get();
+            ticks.set(now + 10);
+            now
+        };
+        let mut recorder =
+            ExecutorInstrumentation::<8>::with_identity(crate::ReportIdentity::new(1, 2, 3));
+        let mut power = PowerHooks::default();
+        exec.run_cycle_instrumented(clock, &mut power, |_| Ok(Poll::Ready), &mut recorder)
+            .unwrap();
+        exec.run_cycle_instrumented(clock, &mut power, |_| Ok(Poll::Ready), &mut recorder)
+            .unwrap();
+
+        let report = recorder.report();
+        assert!(report.verify_checksum());
+        assert_eq!(report.dispatch_samples, 2);
+        assert_eq!(report.simultaneous_release_groups, 1);
+        assert_eq!(report.simultaneous_max_width, 2);
+        assert_eq!(report.simultaneous_max_rank, 2);
+        assert_ne!(report.simultaneous_order_hash, 0x811C_9DC5);
+        assert_eq!(report.selection_sweep_slots_total(), 8);
+        assert_eq!(report.selection_due_tasks_total(), 3);
+        assert_eq!(report.selection_duration_total_us(), 20);
+        assert_eq!(report.poll_bookkeeping_total_us(), 20);
+        assert_eq!(report.probe_clock_reads, 8);
+        assert_eq!(report.probe_scan_slots_total(), 8);
+        assert_eq!(report.completed, 1);
+    }
+
+    #[test]
+    fn ordinary_and_instrumented_cycles_match_outputs_with_probe_reads_opt_in() {
+        fn executor() -> TestExecutor {
+            let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+            exec.add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+                0,
+            )
+            .unwrap();
+            exec.seal().unwrap();
+            exec
+        }
+
+        let mut ordinary = executor();
+        let ordinary_values = [0, 30, 40];
+        let ordinary_calls = Cell::new(0usize);
+        let ordinary_clock = || {
+            let index = ordinary_calls.get();
+            ordinary_calls.set(index + 1);
+            ordinary_values[index]
+        };
+        let ordinary_outcome = ordinary
+            .run_cycle(ordinary_clock, &mut PowerHooks::default(), |_| {
+                Ok(Poll::Ready)
+            })
+            .unwrap();
+
+        let mut instrumented = executor();
+        let instrumented_values = [0, 10, 20, 30, 40, 50, 60];
+        let instrumented_calls = Cell::new(0usize);
+        let instrumented_clock = || {
+            let index = instrumented_calls.get();
+            instrumented_calls.set(index + 1);
+            instrumented_values[index]
+        };
+        let mut recorder =
+            ExecutorInstrumentation::<1>::with_identity(crate::ReportIdentity::new(1, 2, 3));
+        let instrumented_outcome = instrumented
+            .run_cycle_instrumented(
+                instrumented_clock,
+                &mut PowerHooks::default(),
+                |_| Ok(Poll::Ready),
+                &mut recorder,
+            )
+            .unwrap();
+
+        assert_eq!(ordinary_calls.get(), 3);
+        assert_eq!(instrumented_calls.get(), 7);
+        assert_eq!(ordinary_outcome, instrumented_outcome);
+        assert_eq!(recorder.report().probe_clock_reads, 4);
+    }
+
+    #[test]
+    fn instrumented_selection_rechecks_a_release_crossed_by_its_probe() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.add_task(
+            TaskMeta::new(ModuleId::Actuator, Criticality::System, 1_000, 100),
+            8,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+        let values = [0, 5, 10, 11, 12, 13, 14, 15];
+        let calls = Cell::new(0usize);
+        let clock = || {
+            let index = calls.get();
+            calls.set(index + 1);
+            values[index]
+        };
+        let mut recorder =
+            ExecutorInstrumentation::<2>::with_identity(crate::ReportIdentity::new(1, 2, 3));
+        let outcome = exec
+            .run_cycle_instrumented(
+                clock,
+                &mut PowerHooks::default(),
+                |_| Ok(Poll::Ready),
+                &mut recorder,
+            )
+            .unwrap();
+        assert_eq!(outcome.polled, Some(ModuleId::Actuator));
+        let report = recorder.report();
+        assert_ne!(report.flags & crate::EXECUTOR_FLAG_SELECTION_REEVALUATED, 0);
+        assert_eq!(report.selection_sweep_slots_total(), 8);
+        assert_eq!(report.probe_scan_slots_total(), 8);
+    }
+
+    #[test]
+    fn instrumented_post_telemetry_snapshot_prevents_sleeping_past_new_work() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.add_task(
+            TaskMeta::new(ModuleId::Actuator, Criticality::System, 1_000, 100),
+            50,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+        // The actuator becomes due after the measured bookkeeping snapshot
+        // (40) but before the final post-telemetry snapshot (60).
+        let values = [0, 1, 2, 3, 4, 40, 60];
+        let calls = Cell::new(0usize);
+        let clock = || {
+            let index = calls.get();
+            calls.set(index + 1);
+            values[index]
+        };
+        let mut recorder =
+            ExecutorInstrumentation::<2>::with_identity(crate::ReportIdentity::new(1, 2, 3));
+        let mut hooks = PowerHooks::default();
+        let outcome = exec
+            .run_cycle_instrumented(clock, &mut hooks, |_| Ok(Poll::Ready), &mut recorder)
+            .unwrap();
+        assert_eq!(outcome.idle_until_us, Some(50));
+        assert_eq!(outcome.power_mode, Some(PowerMode::Active));
+        assert_eq!(hooks.wake, None);
+        assert_eq!(recorder.report().poll_bookkeeping_max_us, 36);
+        assert_eq!(recorder.report().probe_clock_reads, 4);
+    }
+
+    #[test]
+    fn instrumented_global_clock_regression_invalidates_report_and_forces_active() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+        let values = [100, 110, 120, 130, 90, 140, 150];
+        let calls = Cell::new(0usize);
+        let clock = || {
+            let index = calls.get();
+            calls.set(index + 1);
+            values[index]
+        };
+        let mut recorder =
+            ExecutorInstrumentation::<1>::with_identity(crate::ReportIdentity::new(1, 2, 3));
+        let mut hooks = PowerHooks::default();
+        let outcome = exec
+            .run_cycle_instrumented(clock, &mut hooks, |_| Ok(Poll::Ready), &mut recorder)
+            .unwrap();
+        let report = recorder.report();
+        assert!(!report.clock_valid());
+        assert_eq!(report.completed, 0);
+        assert_eq!(outcome.power_mode, Some(PowerMode::Active));
+        assert_eq!(hooks.wake, None);
     }
 
     #[test]
@@ -775,6 +1818,14 @@ mod tests {
     fn sentinel_flags_a_non_yielding_poll_for_the_isr() {
         let sentinel = ExecutionSentinel::new();
         assert_eq!(sentinel.check(1_000), None);
+        sentinel.sequence.store(1, Ordering::Release);
+        sentinel
+            .module
+            .store(module_code(ModuleId::Radio), Ordering::Release);
+        sentinel.deadline_lo.store(10, Ordering::Relaxed);
+        sentinel.deadline_hi.store(0, Ordering::Release);
+        assert_eq!(sentinel.check(1_000), None);
+        sentinel.sequence.store(2, Ordering::Release);
         sentinel.arm(ModuleId::Radio, 5_000);
         assert_eq!(sentinel.check(4_999), None);
         let stuck = sentinel.check(6_000).expect("stuck poll");
@@ -782,6 +1833,70 @@ mod tests {
         assert_eq!(stuck.late_us, 1_000);
         sentinel.disarm();
         assert_eq!(sentinel.check(10_000), None);
+    }
+
+    #[test]
+    fn sentinel_is_disarmed_when_dispatch_unwinds() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = exec.run_cycle(
+                || 0,
+                &mut PowerHooks::default(),
+                |_| panic!("injected dispatch panic"),
+            );
+        }));
+        assert!(result.is_err());
+        assert_eq!(exec.sentinel().check(u64::MAX), None);
+    }
+
+    #[test]
+    fn sentinel_never_reports_a_torn_module_deadline_pair() {
+        use std::sync::atomic::{AtomicBool, AtomicU32 as StdAtomicU32, Ordering as StdOrdering};
+
+        let sentinel = ExecutionSentinel::new();
+        let finished = AtomicBool::new(false);
+        let observations = StdAtomicU32::new(0);
+        sentinel.arm(ModuleId::Radio, 100);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                let iterations = if cfg!(miri) { 1_000 } else { 100_000 };
+                for index in 0..iterations {
+                    sentinel.arm(ModuleId::Radio, 100);
+                    sentinel.disarm();
+                    sentinel.arm(ModuleId::Sensor, 200);
+                    if index % 64 == 0 {
+                        std::thread::yield_now();
+                    }
+                }
+                finished.store(true, StdOrdering::Release);
+            });
+            scope.spawn(|| {
+                while !finished.load(StdOrdering::Acquire)
+                    || observations.load(StdOrdering::Relaxed) == 0
+                {
+                    if let Some(stuck) = sentinel.check(1_000) {
+                        match stuck.module_code {
+                            code if code == module_code(ModuleId::Radio) => {
+                                assert_eq!(stuck.late_us, 900)
+                            }
+                            code if code == module_code(ModuleId::Sensor) => {
+                                assert_eq!(stuck.late_us, 800)
+                            }
+                            code => panic!("unexpected sentinel module code {code}"),
+                        }
+                        observations.fetch_add(1, StdOrdering::Relaxed);
+                    }
+                }
+            });
+        });
+        assert!(observations.load(StdOrdering::Relaxed) > 0);
+        sentinel.disarm();
     }
 
     #[test]

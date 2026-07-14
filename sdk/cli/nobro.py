@@ -11,7 +11,7 @@
 | sign     | measure + sign a firmware image               | tools/sign_firmware.py |
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
 | contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
-| project  | create/import/explain/build/run/report apps   | tools/nobro_project.py |
+| project  | create/explain/build/run/report/shrink apps   | tools/nobro_project.py |
 | firmware | generate/build nRF firmware from app.nobro   | tools/nobro_firmware_project.py |
 
 Each command accepts its underlying tool's flags unchanged. The mapping is data, so

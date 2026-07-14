@@ -56,6 +56,116 @@ pub struct Mailbox<const N: usize> {
     control_len: usize,
     control_reserve: usize,
     dropped: u32,
+    #[cfg(feature = "capacity-report")]
+    capacity_metrics: MailboxCapacityMetrics,
+}
+
+#[cfg(feature = "capacity-report")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MailboxCapacitySnapshot {
+    pub session_id: u32,
+    pub observed_peak: u32,
+    pub failures: u32,
+    pub saturated: bool,
+    pub sealed: bool,
+    pub activity_after_finish: bool,
+}
+
+#[cfg(feature = "capacity-report")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MailboxCapacityMetrics {
+    session_id: u32,
+    observed_peak: u32,
+    failures: u32,
+    saturated: bool,
+    sealed: bool,
+    activity_after_finish: bool,
+}
+
+#[cfg(feature = "capacity-report")]
+impl MailboxCapacityMetrics {
+    const fn can_start(&self, session_id: u32) -> bool {
+        session_id != 0 && (self.session_id == 0 || (self.sealed && session_id > self.session_id))
+    }
+
+    const fn can_restart(&self, current_session: u32, next_session: u32) -> bool {
+        current_session != 0 && self.session_id == current_session && next_session > current_session
+    }
+
+    fn start(&mut self, session_id: u32, current_len: usize) {
+        let (observed_peak, saturated) = bounded_capacity(current_len);
+        *self = Self {
+            session_id,
+            observed_peak,
+            failures: 0,
+            saturated,
+            sealed: false,
+            activity_after_finish: false,
+        };
+    }
+
+    fn record_peak(&mut self, len: usize) {
+        if self.session_id == 0 {
+            return;
+        }
+        if self.sealed {
+            self.activity_after_finish = true;
+            return;
+        }
+        let (len, saturated) = bounded_capacity(len);
+        self.observed_peak = self.observed_peak.max(len);
+        self.saturated |= saturated;
+    }
+
+    fn record_failure(&mut self) {
+        if self.session_id == 0 {
+            return;
+        }
+        if self.sealed {
+            self.activity_after_finish = true;
+            return;
+        }
+        let (next, overflow) = self.failures.overflowing_add(1);
+        if overflow {
+            self.failures = u32::MAX;
+            self.saturated = true;
+        } else {
+            self.failures = next;
+        }
+    }
+
+    fn finish(&mut self, session_id: u32) -> bool {
+        if self.session_id != session_id || self.sealed {
+            return false;
+        }
+        self.sealed = true;
+        true
+    }
+
+    fn record_mutation(&mut self) {
+        if self.session_id != 0 && self.sealed {
+            self.activity_after_finish = true;
+        }
+    }
+
+    const fn snapshot(self) -> MailboxCapacitySnapshot {
+        MailboxCapacitySnapshot {
+            session_id: self.session_id,
+            observed_peak: self.observed_peak,
+            failures: self.failures,
+            saturated: self.saturated,
+            sealed: self.sealed,
+            activity_after_finish: self.activity_after_finish,
+        }
+    }
+}
+
+#[cfg(feature = "capacity-report")]
+fn bounded_capacity(value: usize) -> (u32, bool) {
+    match u32::try_from(value) {
+        Ok(value) => (value, false),
+        Err(_) => (u32::MAX, true),
+    }
 }
 
 impl<const N: usize> Mailbox<N> {
@@ -67,6 +177,15 @@ impl<const N: usize> Mailbox<N> {
             control_len: 0,
             control_reserve: 0,
             dropped: 0,
+            #[cfg(feature = "capacity-report")]
+            capacity_metrics: MailboxCapacityMetrics {
+                session_id: 0,
+                observed_peak: 0,
+                failures: 0,
+                saturated: false,
+                sealed: false,
+                activity_after_finish: false,
+            },
         }
     }
 
@@ -84,6 +203,8 @@ impl<const N: usize> Mailbox<N> {
         let control = Self::is_control(message);
         if self.len == N || (!control && self.len >= N.saturating_sub(self.control_reserve)) {
             self.dropped = self.dropped.saturating_add(1);
+            #[cfg(feature = "capacity-report")]
+            self.capacity_metrics.record_failure();
             return Err(MailboxError::Full);
         }
 
@@ -101,6 +222,8 @@ impl<const N: usize> Mailbox<N> {
             self.slots[idx] = Some(message);
         }
         self.len += 1;
+        #[cfg(feature = "capacity-report")]
+        self.capacity_metrics.record_peak(self.len);
         Ok(())
     }
 
@@ -115,6 +238,8 @@ impl<const N: usize> Mailbox<N> {
         }
         self.head = (self.head + 1) % N;
         self.len -= 1;
+        #[cfg(feature = "capacity-report")]
+        self.capacity_metrics.record_mutation();
         message
     }
 
@@ -191,6 +316,41 @@ impl<const N: usize> Mailbox<N> {
         self.control_len
     }
 
+    #[cfg(feature = "capacity-report")]
+    pub(crate) const fn can_start_capacity_session(&self, session_id: u32) -> bool {
+        self.capacity_metrics.can_start(session_id)
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn start_capacity_session(&mut self, session_id: u32) {
+        self.capacity_metrics.start(session_id, self.len);
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) const fn can_restart_capacity_session(
+        &self,
+        current_session: u32,
+        next_session: u32,
+    ) -> bool {
+        self.capacity_metrics
+            .can_restart(current_session, next_session)
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn restart_capacity_session(&mut self, session_id: u32) {
+        self.capacity_metrics.start(session_id, self.len);
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) const fn capacity_snapshot(&self) -> MailboxCapacitySnapshot {
+        self.capacity_metrics.snapshot()
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub(crate) fn finish_capacity_session(&mut self, session_id: u32) -> bool {
+        self.capacity_metrics.finish(session_id)
+    }
+
     fn compact_from(&mut self, age: usize) -> usize {
         if age < self.control_len {
             self.control_len -= 1;
@@ -204,6 +364,8 @@ impl<const N: usize> Mailbox<N> {
         let tail = (self.head + self.len - 1) % N;
         self.slots[tail] = None;
         self.len -= 1;
+        #[cfg(feature = "capacity-report")]
+        self.capacity_metrics.record_mutation();
         shifted
     }
 }

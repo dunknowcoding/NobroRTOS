@@ -76,11 +76,24 @@ def gate_specs(quick, rust_only=False, extended=False):
         for c in HOST_CRATES:
             cargo += ["-p", c]
         specs.append(("cargo host tests", cargo, CORE))
+        specs.append((
+            "kernel capacity-report feature tests",
+            ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-kernel", "--features", "capacity-report"],
+            CORE,
+        ))
         lint = ["cargo", "clippy", "--locked", "--no-deps", "--target", host_target()]
         for c in HOST_CRATES:
             lint += ["-p", c]
         lint += ["--", "-D", "warnings"]
         specs.append(("cargo clippy", lint, CORE))
+        specs.append((
+            "kernel capacity-report feature clippy",
+            ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
+             "--target", host_target(), "-p", "nobro-kernel", "--features",
+             "capacity-report", "--", "-D", "warnings"],
+            CORE,
+        ))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
         specs += [
             ("USB RA4M1 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),

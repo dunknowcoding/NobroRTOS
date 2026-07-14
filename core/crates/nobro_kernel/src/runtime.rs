@@ -1,5 +1,8 @@
 //! Fixed-capacity runtime control plane assembled after admission.
 
+#[cfg(test)]
+use core::cell::Cell;
+
 use crate::{
     AdmissionController, AdmissionError, AdmissionPlan, Alarm, AlarmError, AlarmId, AlarmQueue,
     Capability, CapabilityGrantError, CapabilityReplayScope, CapabilityTrace, CapabilityTraceInput,
@@ -269,6 +272,158 @@ pub struct Runtime<
     degrade: DegradeApplication,
 }
 
+/// Internal checkpoints for the guarded in-place constructor.  Keeping these
+/// explicit makes it possible to exercise cleanup after every initialized
+/// field under Miri without adding a runtime fault-injection surface.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RuntimeInitStage {
+    Plan,
+    Mailbox,
+    Alarms,
+    Kv,
+    KvOwners,
+    Recovery,
+    Watchdog,
+    Modules,
+    Objects,
+    Trace,
+    Degrade,
+}
+
+#[cfg(test)]
+impl RuntimeInitStage {
+    const ALL: [Self; 11] = [
+        Self::Plan,
+        Self::Mailbox,
+        Self::Alarms,
+        Self::Kv,
+        Self::KvOwners,
+        Self::Recovery,
+        Self::Watchdog,
+        Self::Modules,
+        Self::Objects,
+        Self::Trace,
+        Self::Degrade,
+    ];
+}
+
+struct RuntimeInitGuard<
+    const STARTUP: usize,
+    const QUOTAS: usize,
+    const MAILBOX: usize,
+    const ALARMS: usize,
+    const KV: usize,
+    const HEALTH: usize,
+    const LOG: usize,
+> {
+    destination: *mut Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+    initialized: u16,
+    armed: bool,
+    #[cfg(test)]
+    cleanup_mask: Option<*const Cell<u16>>,
+}
+
+impl<
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > RuntimeInitGuard<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    fn new(
+        destination: *mut Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
+    ) -> Self {
+        Self {
+            destination,
+            initialized: 0,
+            armed: true,
+            #[cfg(test)]
+            cleanup_mask: cleanup_mask.map(core::ptr::from_ref),
+        }
+    }
+
+    fn mark(&mut self, stage: RuntimeInitStage) {
+        self.initialized |= 1 << stage as u8;
+    }
+
+    fn finish(mut self) {
+        self.armed = false;
+    }
+
+    fn has(&self, stage: RuntimeInitStage) -> bool {
+        self.initialized & (1 << stage as u8) != 0
+    }
+}
+
+impl<
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > Drop for RuntimeInitGuard<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        #[cfg(test)]
+        if let Some(cleanup_mask) = self.cleanup_mask {
+            // SAFETY: the test observer outlives the constructor call and this
+            // guard; production builds contain neither the pointer nor branch.
+            unsafe { (*cleanup_mask).set(self.initialized) };
+        }
+
+        // Drop in reverse initialization order, and only fields whose writes
+        // completed.  `addr_of_mut!` does not form a reference to the still
+        // partially initialized enclosing `Runtime`.
+        unsafe {
+            let destination = self.destination;
+            if self.has(RuntimeInitStage::Degrade) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).degrade));
+            }
+            if self.has(RuntimeInitStage::Trace) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).trace));
+            }
+            if self.has(RuntimeInitStage::Objects) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).objects));
+            }
+            if self.has(RuntimeInitStage::Modules) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).modules));
+            }
+            if self.has(RuntimeInitStage::Watchdog) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).watchdog));
+            }
+            if self.has(RuntimeInitStage::Recovery) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).recovery));
+            }
+            if self.has(RuntimeInitStage::KvOwners) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).kv_owners));
+            }
+            if self.has(RuntimeInitStage::Kv) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).kv));
+            }
+            if self.has(RuntimeInitStage::Alarms) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).alarms));
+            }
+            if self.has(RuntimeInitStage::Mailbox) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).mailbox));
+            }
+            if self.has(RuntimeInitStage::Plan) {
+                core::ptr::drop_in_place(core::ptr::addr_of_mut!((*destination).plan));
+            }
+        }
+    }
+}
+
 impl<
         const STARTUP: usize,
         const QUOTAS: usize,
@@ -306,6 +461,131 @@ impl<
         if MAILBOX == 0 || ALARMS == 0 || KV == 0 || LOG == 0 {
             return Err(CapacityError::EmptyQueue { capacities });
         }
+        Ok(())
+    }
+
+    /// Assemble a complete admitted runtime directly at `destination`.
+    ///
+    /// The caller owns an uninitialized, properly aligned `Self` slot and must
+    /// not read, move, or expose it until this function returns `Ok(())`.  On
+    /// every error or unwinding panic, the internal guard drops exactly the
+    /// fields whose initialization completed.
+    pub(crate) unsafe fn admit_in_place<const MODULES: usize>(
+        destination: *mut Self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+    ) -> Result<(), RuntimeError> {
+        let mut checkpoint = |_stage| Ok(());
+        #[cfg(not(test))]
+        {
+            Self::admit_in_place_inner(
+                destination,
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                &mut checkpoint,
+            )
+        }
+        #[cfg(test)]
+        {
+            Self::admit_in_place_inner(
+                destination,
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                &mut checkpoint,
+                None,
+            )
+        }
+    }
+
+    unsafe fn admit_in_place_inner<const MODULES: usize>(
+        destination: *mut Self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        checkpoint: &mut impl FnMut(RuntimeInitStage) -> Result<(), RuntimeError>,
+        #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
+    ) -> Result<(), RuntimeError> {
+        let plan = AdmissionController::admit::<MODULES, STARTUP, QUOTAS>(
+            manifest,
+            startup_nodes,
+            profile,
+        )?;
+        // Preserve `Runtime::admit` error precedence: admission is observable
+        // before the `from_plan` threshold and capacity checks.
+        thresholds.validate()?;
+        Self::validate_capacities(plan.module_count())?;
+
+        let mut guard = RuntimeInitGuard::new(
+            destination,
+            #[cfg(test)]
+            cleanup_mask,
+        );
+
+        core::ptr::addr_of_mut!((*destination).plan).write(plan);
+        guard.mark(RuntimeInitStage::Plan);
+        checkpoint(RuntimeInitStage::Plan)?;
+
+        core::ptr::addr_of_mut!((*destination).mailbox)
+            .write(Mailbox::with_control_reserve(usize::from(MAILBOX > 1)));
+        guard.mark(RuntimeInitStage::Mailbox);
+        checkpoint(RuntimeInitStage::Mailbox)?;
+
+        core::ptr::addr_of_mut!((*destination).alarms).write(AlarmQueue::new());
+        guard.mark(RuntimeInitStage::Alarms);
+        checkpoint(RuntimeInitStage::Alarms)?;
+
+        core::ptr::addr_of_mut!((*destination).kv).write(KvStore::new());
+        guard.mark(RuntimeInitStage::Kv);
+        checkpoint(RuntimeInitStage::Kv)?;
+
+        core::ptr::addr_of_mut!((*destination).kv_owners).write([None; KV]);
+        guard.mark(RuntimeInitStage::KvOwners);
+        checkpoint(RuntimeInitStage::KvOwners)?;
+
+        core::ptr::addr_of_mut!((*destination).recovery)
+            .write(RecoveryCoordinator::new(thresholds));
+        guard.mark(RuntimeInitStage::Recovery);
+        checkpoint(RuntimeInitStage::Recovery)?;
+
+        core::ptr::addr_of_mut!((*destination).watchdog).write(Watchdog::new());
+        guard.mark(RuntimeInitStage::Watchdog);
+        checkpoint(RuntimeInitStage::Watchdog)?;
+
+        core::ptr::addr_of_mut!((*destination).modules).write(ModuleRuntimeGuard::new());
+        guard.mark(RuntimeInitStage::Modules);
+        let startup = core::ptr::addr_of!((*destination).plan.startup);
+        (&mut *core::ptr::addr_of_mut!((*destination).modules))
+            .register_startup_plan(&*startup, 0)?;
+        checkpoint(RuntimeInitStage::Modules)?;
+
+        core::ptr::addr_of_mut!((*destination).objects).write(ObjectLedger::new());
+        guard.mark(RuntimeInitStage::Objects);
+        let objects = &mut *core::ptr::addr_of_mut!((*destination).objects);
+        for module in (*startup).order.iter().flatten() {
+            objects.register(*module, ObjectQuota::DEFAULT);
+        }
+        // Manifest-declared object quotas replace the defaults seeded above.
+        for spec in manifest.iter() {
+            objects.register(spec.id, spec.objects);
+        }
+        checkpoint(RuntimeInitStage::Objects)?;
+
+        core::ptr::addr_of_mut!((*destination).trace).write(CapabilityTrace::new());
+        guard.mark(RuntimeInitStage::Trace);
+        checkpoint(RuntimeInitStage::Trace)?;
+
+        core::ptr::addr_of_mut!((*destination).degrade).write(DegradeApplication::none());
+        guard.mark(RuntimeInitStage::Degrade);
+        checkpoint(RuntimeInitStage::Degrade)?;
+
+        guard.finish();
         Ok(())
     }
 
@@ -1280,6 +1560,194 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn in_place_runtime_cleans_exactly_initialized_fields_on_every_error_stage() {
+        let manifest = manifest();
+        let startup = startup();
+        for (index, fail_stage) in RuntimeInitStage::ALL.into_iter().enumerate() {
+            let mut slot = core::mem::MaybeUninit::<TestRuntime>::uninit();
+            let cleanup = Cell::new(0u16);
+            let error = unsafe {
+                TestRuntime::admit_in_place_inner(
+                    slot.as_mut_ptr(),
+                    &manifest,
+                    &startup,
+                    profile(),
+                    FaultThresholds {
+                        notify_after: 1,
+                        reboot_after: 3,
+                    },
+                    &mut |stage| {
+                        if stage == fail_stage {
+                            Err(RuntimeError::PoolExhausted)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                    Some(&cleanup),
+                )
+            }
+            .unwrap_err();
+            assert_eq!(error, RuntimeError::PoolExhausted);
+            assert_eq!(cleanup.get(), (1u16 << (index + 1)) - 1);
+        }
+    }
+
+    #[test]
+    fn in_place_runtime_guard_runs_at_every_unwinding_stage() {
+        let manifest = manifest();
+        let startup = startup();
+        for (index, panic_stage) in RuntimeInitStage::ALL.into_iter().enumerate() {
+            let mut slot = core::mem::MaybeUninit::<TestRuntime>::uninit();
+            let cleanup = Cell::new(0u16);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let _ = TestRuntime::admit_in_place_inner(
+                    slot.as_mut_ptr(),
+                    &manifest,
+                    &startup,
+                    profile(),
+                    FaultThresholds {
+                        notify_after: 1,
+                        reboot_after: 3,
+                    },
+                    &mut |stage| {
+                        assert_ne!(stage, panic_stage, "injected init panic");
+                        Ok(())
+                    },
+                    Some(&cleanup),
+                );
+            }));
+            assert!(result.is_err());
+            assert_eq!(cleanup.get(), (1u16 << (index + 1)) - 1);
+        }
+    }
+
+    #[test]
+    fn in_place_runtime_is_exposed_only_after_complete_initialization() {
+        let manifest = manifest();
+        let startup = startup();
+        let mut slot = core::mem::MaybeUninit::<TestRuntime>::uninit();
+        unsafe {
+            TestRuntime::admit_in_place(
+                slot.as_mut_ptr(),
+                &manifest,
+                &startup,
+                profile(),
+                FaultThresholds {
+                    notify_after: 1,
+                    reboot_after: 3,
+                },
+            )
+            .unwrap();
+            let runtime = slot.assume_init_mut();
+            assert_eq!(runtime.plan().module_count(), 2);
+            runtime.boot_to_running(10).unwrap();
+            assert_eq!(runtime.state(), SystemState::Running);
+            slot.assume_init_drop();
+        }
+    }
+
+    #[test]
+    fn in_place_runtime_preserves_admit_error_precedence() {
+        type CapacityConstrainedRuntime = Runtime<4, 4, 4, 4, 4, 1, 16>;
+
+        let manifest = manifest();
+        let valid_startup = startup();
+        let missing_sensor_startup = [valid_startup[0]];
+        let invalid_thresholds = FaultThresholds {
+            notify_after: 3,
+            reboot_after: 1,
+        };
+        let valid_thresholds = FaultThresholds {
+            notify_after: 1,
+            reboot_after: 3,
+        };
+
+        // When every layer is invalid, admission remains the first visible
+        // error, exactly as in the established by-value constructor.
+        let by_value = CapacityConstrainedRuntime::admit(
+            &manifest,
+            &missing_sensor_startup,
+            profile(),
+            invalid_thresholds,
+        )
+        .err();
+        let mut slot = core::mem::MaybeUninit::<CapacityConstrainedRuntime>::uninit();
+        let in_place = unsafe {
+            CapacityConstrainedRuntime::admit_in_place(
+                slot.as_mut_ptr(),
+                &manifest,
+                &missing_sensor_startup,
+                profile(),
+                invalid_thresholds,
+            )
+        }
+        .err();
+        assert_eq!(in_place, by_value);
+        assert_eq!(
+            in_place,
+            Some(RuntimeError::Admission(AdmissionError::MissingStartupNode(
+                ModuleId::Sensor
+            )))
+        );
+
+        // With admission fixed, threshold validation precedes capacity
+        // validation in both paths.
+        let by_value = CapacityConstrainedRuntime::admit(
+            &manifest,
+            &valid_startup,
+            profile(),
+            invalid_thresholds,
+        )
+        .err();
+        let mut slot = core::mem::MaybeUninit::<CapacityConstrainedRuntime>::uninit();
+        let in_place = unsafe {
+            CapacityConstrainedRuntime::admit_in_place(
+                slot.as_mut_ptr(),
+                &manifest,
+                &valid_startup,
+                profile(),
+                invalid_thresholds,
+            )
+        }
+        .err();
+        assert_eq!(in_place, by_value);
+        assert_eq!(
+            in_place,
+            Some(RuntimeError::FaultThreshold(
+                FaultThresholdError::RebootBeforeNotify
+            ))
+        );
+
+        // With admission and thresholds valid, the constrained health table
+        // reaches the same capacity error in both paths.
+        let by_value = CapacityConstrainedRuntime::admit(
+            &manifest,
+            &valid_startup,
+            profile(),
+            valid_thresholds,
+        )
+        .err();
+        let mut slot = core::mem::MaybeUninit::<CapacityConstrainedRuntime>::uninit();
+        let in_place = unsafe {
+            CapacityConstrainedRuntime::admit_in_place(
+                slot.as_mut_ptr(),
+                &manifest,
+                &valid_startup,
+                profile(),
+                valid_thresholds,
+            )
+        }
+        .err();
+        assert_eq!(in_place, by_value);
+        assert!(matches!(
+            in_place,
+            Some(RuntimeError::Capacity(
+                CapacityError::ModuleTablesTooSmall { modules: 2, .. }
+            ))
+        ));
     }
 
     #[test]

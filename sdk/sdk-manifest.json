@@ -13,7 +13,8 @@
   ],
   "host_tools": [
     "tools/nobro_contract_tool.py",
-    "tools/nobro_project.py"
+    "tools/nobro_project.py",
+    "tools/nobro_shrink.py"
   ],
   "core_distribution_roots": [
     "core/Cargo.toml",

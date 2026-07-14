@@ -9,6 +9,7 @@ A single flow from "I have an idea" to a running, self-explaining app:
                                         marginal cost, schedulability, shed advice)
   nobro project run <project>         explain + real build + simulate + report
   nobro project report <report.json>  decode a project report
+  nobro project shrink <report.json>  propose identity-bound capacity changes
 
 Everything generated lands under an ignored work root (`_work/projects/<name>`)
 unless `--out` says otherwise, so a scaffold never dirties the tree.
@@ -30,6 +31,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import nobro_admission as adm  # noqa: E402  (marginal-cost + shed analysis)
+import nobro_shrink as shrink  # noqa: E402  (fail-closed capacity proposals)
 
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
@@ -297,6 +299,35 @@ def read_report(path: pathlib.Path) -> tuple[str, bool]:
     raise ValueError("unknown report schema")
 
 
+def shrink_report(
+    report: pathlib.Path | None,
+    output: pathlib.Path | None = None,
+    *,
+    bindings: bool = False,
+    device_report: pathlib.Path | None = None,
+    campaign: pathlib.Path | None = None,
+    workload: pathlib.Path | None = None,
+    build_manifest: pathlib.Path | None = None,
+) -> int:
+    """Dispatch analysis, binding, and device-report decoding to one engine."""
+    inputs = (campaign, workload, build_manifest)
+    if bindings or device_report is not None:
+        if report is not None or any(path is None for path in inputs):
+            raise ValueError(
+                "binding/device-report modes require campaign, workload, and build manifest"
+            )
+        if bindings and device_report is not None:
+            raise ValueError("choose either bindings or device report")
+        if bindings:
+            return shrink.run_bindings(campaign, workload, build_manifest, output)
+        return shrink.run_device_report(
+            device_report, campaign, workload, build_manifest, output
+        )
+    if any(path is not None for path in inputs) or report is None:
+        raise ValueError("an occupancy report is required")
+    return shrink.run(report, output)
+
+
 # ------------------------------------------------------------------- explain
 
 def explain(workload: dict) -> tuple[str, bool]:
@@ -430,6 +461,26 @@ def main() -> int:
     p_report = sub.add_parser("report", help="read a project report")
     p_report.add_argument("report", type=pathlib.Path)
 
+    p_shrink = sub.add_parser(
+        "shrink", help="propose capacity changes from an occupancy report"
+    )
+    p_shrink.add_argument("report", nargs="?", type=pathlib.Path)
+    p_shrink.add_argument(
+        "--json", type=pathlib.Path, metavar="FILE", help="write proposal JSON"
+    )
+    p_shrink.add_argument(
+        "--bindings", action="store_true", help="derive firmware campaign identities"
+    )
+    p_shrink.add_argument(
+        "--device-report",
+        type=pathlib.Path,
+        metavar="REPORT.BIN",
+        help="decode a report captured from firmware",
+    )
+    p_shrink.add_argument("--campaign", type=pathlib.Path, metavar="FILE")
+    p_shrink.add_argument("--workload", type=pathlib.Path, metavar="FILE")
+    p_shrink.add_argument("--build-manifest", type=pathlib.Path, metavar="FILE")
+
     p_run = sub.add_parser("run", help="explain, build, then simulate")
     p_run.add_argument("project", type=pathlib.Path)
 
@@ -489,6 +540,21 @@ def main() -> int:
             return 1
         print(rendered)
         return 0 if ok else 1
+
+    if args.command == "shrink":
+        try:
+            return shrink_report(
+                args.report,
+                args.json,
+                bindings=args.bindings,
+                device_report=args.device_report,
+                campaign=args.campaign,
+                workload=args.workload,
+                build_manifest=args.build_manifest,
+            )
+        except ValueError as error:
+            print(f"PROJECT SHRINK: FAIL ({error})")
+            return 1
 
     if args.command == "run":
         project = args.project.resolve()

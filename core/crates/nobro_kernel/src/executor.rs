@@ -89,6 +89,26 @@ pub struct TaskTable<const N: usize> {
     slots: [Option<TaskSlot>; N],
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DueSelection {
+    pub index: usize,
+    pub release_us: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DueSweep {
+    pub selected: Option<DueSelection>,
+    /// Array entries inspected by the same single pass used for selection.
+    pub inspected_slots: u32,
+    pub due_tasks: u32,
+    pub simultaneous_width: u32,
+    pub peer_inspected_slots: u32,
+    /// Earliest phase-anchored release strictly after this sweep's snapshot.
+    /// The diagnostic path can compare later clock samples in O(1) without
+    /// adding another task-table scan after the poll-start timestamp.
+    pub next_release_us: Option<u64>,
+}
+
 impl<const N: usize> TaskTable<N> {
     pub const fn new() -> Self {
         Self { slots: [None; N] }
@@ -152,6 +172,70 @@ impl<const N: usize> TaskTable<N> {
             };
         }
         selected
+    }
+
+    /// Instrumented form of [`due_index`](Self::due_index). It performs the
+    /// identical one-pass comparison while returning bounded attribution data.
+    pub(crate) fn due_sweep(&self, now_us: u64) -> DueSweep {
+        let mut selected = None;
+        let mut due_tasks = 0u32;
+        let mut next_release_us = None;
+        for (idx, slot) in self.slots.iter().enumerate() {
+            let Some(slot) = slot else {
+                continue;
+            };
+            if now_us < slot.stats.next_due_us {
+                next_release_us =
+                    Some(next_release_us.map_or(slot.stats.next_due_us, |next: u64| {
+                        next.min(slot.stats.next_due_us)
+                    }));
+                continue;
+            }
+            due_tasks = due_tasks.saturating_add(1);
+            selected = match selected {
+                None => Some(idx),
+                Some(prev_idx) => {
+                    let prev = self.slots[prev_idx].expect("selected task slot");
+                    if slot.meta.criticality > prev.meta.criticality
+                        || (slot.meta.criticality == prev.meta.criticality
+                            && slot.stats.next_due_us < prev.stats.next_due_us)
+                    {
+                        Some(idx)
+                    } else {
+                        Some(prev_idx)
+                    }
+                }
+            };
+        }
+        let selected = selected.map(|index| DueSelection {
+            index,
+            release_us: self.slots[index]
+                .expect("selected task slot")
+                .stats
+                .next_due_us,
+        });
+        let simultaneous_width = selected.map_or(0, |selection| {
+            self.slots
+                .iter()
+                .flatten()
+                .filter(|slot| {
+                    slot.stats.next_due_us == selection.release_us
+                        && slot.stats.next_due_us <= now_us
+                })
+                .fold(0u32, |count, _| count.saturating_add(1))
+        });
+        DueSweep {
+            selected,
+            inspected_slots: N.min(u32::MAX as usize) as u32,
+            due_tasks,
+            simultaneous_width,
+            peer_inspected_slots: if selected.is_some() {
+                N.min(u32::MAX as usize) as u32
+            } else {
+                0
+            },
+            next_release_us,
+        }
     }
 
     pub fn record_poll(
@@ -325,6 +409,31 @@ mod tests {
             table.get(ModuleId::Actuator).expect("actuator").stats.polls,
             1
         );
+    }
+
+    #[test]
+    fn due_sweep_preserves_selection_and_reports_bounded_scan() {
+        let mut table = TaskTable::<4>::new();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1000, 100),
+                0,
+            )
+            .unwrap();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Actuator, Criticality::HardRealtime, 2000, 100),
+                0,
+            )
+            .unwrap();
+        let sweep = table.due_sweep(0);
+        assert_eq!(
+            sweep.selected.map(|selected| selected.index),
+            table.due_index(0)
+        );
+        assert_eq!(sweep.selected.unwrap().release_us, 0);
+        assert_eq!(sweep.inspected_slots, 4);
+        assert_eq!(sweep.due_tasks, 2);
     }
 
     #[test]
