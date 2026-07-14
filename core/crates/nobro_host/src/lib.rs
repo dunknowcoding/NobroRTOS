@@ -282,6 +282,8 @@ pub const fn manifest_error_label(code: u32) -> Option<&'static str> {
         13 => Some("missing_kernel"),
         14 => Some("invalid_kernel_contract"),
         15 => Some("overutilized"),
+        16 => Some("invalid_blocking"),
+        17 => Some("unschedulable"),
         _ => None,
     }
 }
@@ -2137,6 +2139,8 @@ mod tests {
             Some("duplicate_critical_pin")
         );
         assert_eq!(manifest_error_label(10), Some("budget_exceeded"));
+        assert_eq!(manifest_error_label(16), Some("invalid_blocking"));
+        assert_eq!(manifest_error_label(17), Some("unschedulable"));
         assert_eq!(manifest_error_label(99), None);
         assert_eq!(board_package_error_label(3), Some("unaligned_flash_origin"));
         assert_eq!(board_package_error_label(99), None);

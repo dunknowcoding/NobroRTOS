@@ -28,6 +28,17 @@ contract and marginal costs, builds the generated host scaffold, simulates it, d
 its report, and emits identity-bound capacity proposals without rewriting source.
 Flashing is explicit because a host scaffold is not a device image.
 
+One-file device projects run deadline, jitter, execution, blocking, utilization,
+response-time, memory, pool, capability, and quota admission in the generated build
+script. A rejected build names the task and a `NOBRO-E0xx` reason. Successful builds
+place only the admitted priority/release/binding table in `.rodata`; the L0 target does
+not link the admission engine, recovery, reporting, tracing, quota, health, stack-guard,
+MPU, async, classic-compat, or formatting subsystems. The public gate verifies both
+symbol absence and the 3,000 B minimal / 3,400 B complex L0 flash ceilings.
+The Rust presets are `L0NanoKernel`, `L1GuardedKernel`, `L2ManagedKernel`, and
+`L3AssuredKernel`; generated one-file firmware selects L0, while dynamic/Tier-C
+assembly retains the L3 runtime admission and `seal` path.
+
 ### Right-size from a device run
 
 Use one campaign file for the declared stacks, kernel mailbox, sample pool, and

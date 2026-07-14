@@ -110,24 +110,16 @@ def parse(text: str) -> dict:
 
 
 def rust_main(spec: dict) -> str:
-    tasks = spec["workload"]["tasks"][1:]
-    chain = f"AppGraph::<{len(tasks)}>::new()\n"
-    constructor = {"control": "control", "sensor": "periodic", "service": "service"}
-    for task in tasks:
-        chain += (f'        .task(TaskDecl::{constructor[task["role"]]}('
-                  f'"{task["name"]}", {task["period_us"]})'
-                  f'.budget_us({task["budget_us"]})'
-                  f'.blocking_us({task["blocking_us"]})).unwrap()\n')
-    for source, destination in spec["workload"]["channels"]:
-        chain += f'        .channel("{source}", "{destination}").unwrap()\n'
-    chain += f"        .build_for::<{len(tasks) + 1}>(SystemProfile::NRF52840_CORE).unwrap()"
+    task_count = len(spec["workload"]["tasks"])
     return f'''//! Generated from app.nobro. Regenerate instead of editing this file.
 #![no_std]
 #![no_main]
 use cortex_m::asm;
 use cortex_m_rt::entry;
 use panic_halt as _;
-use nobro_kernel::{{AppGraph, SystemProfile, TaskDecl}};
+use nobro_kernel::NanoKernel;
+
+include!(concat!(env!("OUT_DIR"), "/nobro_admitted.rs"));
 
 #[no_mangle]
 #[used]
@@ -135,12 +127,86 @@ static mut NOBRO_APP_REPORT: [u32; 4] = [0; 4];
 
 #[entry]
 fn main() -> ! {{
-    let built = {chain};
+    let Ok(mut kernel) = NanoKernel::<{task_count}>::new(&NOBRO_ADMITTED_WORKLOAD, 0) else {{
+        loop {{ asm::wfi(); }}
+    }};
+    let released = kernel.release_due(0);
+    let first = kernel.take_next().map(|index| index as u32).unwrap_or(u32::MAX);
+    let admitted_schema = unsafe {{
+        core::ptr::read_volatile(core::ptr::addr_of!(NOBRO_ADMITTED_WORKLOAD.schema_version))
+    }};
     unsafe {{
         core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_APP_REPORT),
-            [0x4e42_4150, built.task_len as u32, built.startup_len as u32, 1]);
+            [0x4e42_4150 | u32::from(admitted_schema), NOBRO_ADMITTED_WORKLOAD.task_count as u32,
+             u32::from(released), first]);
     }}
     loop {{ asm::wfi(); }}
+}}
+'''
+
+
+def rust_build(spec: dict) -> str:
+    workload = spec["workload"]
+    tasks = workload["tasks"]
+    channel_users = {name for channel in workload["channels"] for name in channel}
+    contracts = []
+    for index, task in enumerate(tasks):
+        priority = {"hard_realtime": 0, "system": 1, "driver": 2,
+                    "user": 3, "best_effort": 4}[task["criticality"]]
+        contract = f"TaskContract::new({index}).priority({priority})"
+        if task.get("role") != "service" and int(task.get("budget_us", 0)) > 0:
+            period = int(task["period_us"])
+            jitter = max(5 if task.get("role") == "control" else 10,
+                         period // (200 if task.get("role") == "control" else 100))
+            contract += (f".deadline({period}, {period}, {jitter}, "
+                         f"{int(task['budget_us'])}, {int(task.get('blocking_us', 0))})")
+        contract += (f".memory({int(task.get('flash', 0))}, {int(task.get('ram', 0))}, "
+                     f"{int(task.get('pool', 0))})")
+        capabilities = (1 << 13) if task["name"] in channel_users else 0
+        quota_bits = 8 | (8 << 8) | (8 << 16)
+        contract += f".bindings({capabilities}, {quota_bits})"
+        contracts.append(f"        {contract},")
+    labels = ", ".join(json.dumps(task["name"]) for task in tasks)
+    profile = workload["profile"]
+    return f'''use nobro_admission::{{admit, AdmittedWorkload,
+    AdmissionProfile, TaskContract}};
+use std::{{env, fs, path::PathBuf}};
+
+const LABELS: [&str; {len(tasks)}] = [{labels}];
+const TASKS: [TaskContract; {len(tasks)}] = [
+{os.linesep.join(contracts)}
+];
+const PROFILE: AdmissionProfile = AdmissionProfile::new(
+    {int(profile['flash'])}, {int(profile['ram'])}, {int(profile['pool'])}, {len(tasks)});
+
+fn emit(table: AdmittedWorkload<{len(tasks)}>, path: &PathBuf) {{
+    let source = format!(r#"use nobro_admission::{{{{AdmittedTask, AdmittedWorkload}}}};
+#[link_section = ".rodata.nobro.admission"]
+#[no_mangle]
+#[used]
+pub static NOBRO_ADMITTED_WORKLOAD: AdmittedWorkload<{len(tasks)}> = {{:?}};
+"#, table);
+    fs::write(path.join("nobro_admitted.rs"), source).expect("write admitted table");
+}}
+
+fn main() {{
+    let out = PathBuf::from(env::var("OUT_DIR").unwrap());
+    fs::copy("memory.x", out.join("memory.x")).expect("copy memory.x");
+    println!("cargo:rerun-if-changed=memory.x");
+    println!("cargo:rerun-if-changed=app.nobro");
+    println!("cargo:rustc-link-search={{}}", out.display());
+    match admit(TASKS, PROFILE) {{
+        Ok(table) => emit(table, &out),
+        Err(error) => {{
+            let task = if error.task_index == u16::MAX {{
+                "<workload>"
+            }} else {{
+                LABELS[usize::from(error.task_index)]
+            }};
+            panic!("{{}}: task `{{}}`; observed={{}} limit={{}}",
+                error.code.diagnostic(), task, error.observed, error.limit);
+        }}
+    }}
 }}
 '''
 
@@ -150,14 +216,20 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
     spec = parse(text)
     project = (out_dir / spec["app"]).resolve()
     (project / "src").mkdir(parents=True, exist_ok=True)
+    (project / ".cargo").mkdir(parents=True, exist_ok=True)
     (project / "app.nobro").write_text(text, encoding="utf-8", newline="\n")
     (project / "workload.json").write_text(
         json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n")
     kernel = ROOT / "core" / "crates" / "nobro_kernel"
+    admission = ROOT / "core" / "crates" / "nobro_admission"
     try:
         kernel_path = os.path.relpath(kernel, project).replace("\\", "/")
     except ValueError:
         kernel_path = str(kernel).replace("\\", "/")
+    try:
+        admission_path = os.path.relpath(admission, project).replace("\\", "/")
+    except ValueError:
+        admission_path = str(admission).replace("\\", "/")
     cargo = f'''[package]
 name = "nobro-app-{spec['app'].replace('_', '-')}"
 version = "0.1.0"
@@ -169,9 +241,13 @@ build = "build.rs"
 
 [dependencies]
 nobro-kernel = {{ path = {json.dumps(kernel_path)} }}
+nobro-admission = {{ path = {json.dumps(admission_path)} }}
 cortex-m = {{ version = "0.7", features = ["critical-section-single-core"] }}
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
+
+[build-dependencies]
+nobro-admission = {{ path = {json.dumps(admission_path)} }}
 
 [profile.release]
 opt-level = "z"
@@ -179,16 +255,18 @@ lto = "fat"
 codegen-units = 1
 '''
     (project / "Cargo.toml").write_text(cargo, encoding="utf-8", newline="\n")
+    (project / ".cargo" / "config.toml").write_text('''[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=--nmagic",
+]
+''', encoding="utf-8", newline="\n")
     profile = BOARDS[spec["board"]][0]
     shutil.copyfile(ROOT / "core" / f"memory-{profile}.x", project / "memory.x")
-    (project / "build.rs").write_text('''use std::{env, fs, path::PathBuf};
-fn main() {
-    let out = PathBuf::from(env::var("OUT_DIR").unwrap());
-    fs::copy("memory.x", out.join("memory.x")).expect("copy memory.x");
-    println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rustc-link-search={}", out.display());
-}
-''', encoding="utf-8", newline="\n")
+    (project / "build.rs").write_text(rust_build(spec), encoding="utf-8", newline="\n")
     (project / "src" / "main.rs").write_text(rust_main(spec), encoding="utf-8", newline="\n")
     metadata = {"schema": "nobro-firmware-project-v1", "app": spec["app"],
                 "board": spec["board"], "memory_profile": profile,
@@ -207,7 +285,7 @@ def build(project: pathlib.Path) -> subprocess.CompletedProcess:
         # persists it beside the manifest; all builds below then fail closed on drift.
         resolved = subprocess.run(
             ["cargo", "generate-lockfile", "--manifest-path", str(manifest)],
-            cwd=ROOT,
+            cwd=project,
             text=True,
             capture_output=True,
         )
@@ -218,7 +296,7 @@ def build(project: pathlib.Path) -> subprocess.CompletedProcess:
             "cargo", "build", "--locked", "--release", "--target",
             "thumbv7em-none-eabihf", "--manifest-path", str(manifest),
         ],
-        cwd=ROOT,
+        cwd=project,
         text=True,
         capture_output=True,
     )
@@ -248,8 +326,13 @@ service camera every 40ms
         result = generate(source, pathlib.Path(tmp) / "out")
         assert result["memory_profile"] == "s140" and result["user_lines"] == 5
         assert (result["project"] / "src" / "main.rs").is_file()
+        assert "-Tlink.x" in (result["project"] / ".cargo" / "config.toml").read_text()
         generated = (result["project"] / "src" / "main.rs").read_text()
-        assert "AppGraph::<3>" in generated and ".budget_us(1000).blocking_us(0)" in generated
+        assert "NanoKernel::<4>" in generated and "NOBRO_ADMITTED_WORKLOAD" in generated
+        build_source = (result["project"] / "build.rs").read_text()
+        assert "nobro_admission::{admit" in build_source
+        assert '"motor", "imu", "camera"' in build_source
+        assert "TaskContract::new(1).priority(0).deadline(5000, 5000" in build_source
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown")):

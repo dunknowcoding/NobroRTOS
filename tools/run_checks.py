@@ -20,7 +20,7 @@ import sys
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 CORE = os.path.join(ROOT, "core")
 HOST_CRATES = [
-    "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
+    "nobro-admission", "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
     "nobro-sal", "nobro-kernel", "nobro-classic", "nobro-control",
     "nobro-database", "nobro-secure", "nobro-storage",
     "nobro-device", "nobro-wireless", "nobro-camera", "nobro-nn", "nobro-ai", "nobro-host",
@@ -95,6 +95,8 @@ def gate_specs(quick, rust_only=False, extended=False):
             CORE,
         ))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
+        specs.append(("nano kernel build/admission/symbol budgets",
+                      [py, "tools/check_nano_kernel.py"], ROOT))
         specs += [
             ("USB RA4M1 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),
              "-p", "nobro-usb", "--no-default-features", "--features", "backend-ra-usbfs"], CORE),

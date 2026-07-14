@@ -38,13 +38,16 @@ HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')}"
 export HOST_TARGET
 
 gate "host tests (portable crates)" \
-  bash -c 'cd core && cargo test --locked -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
+  bash -c 'cd core && cargo test --locked -p nobro-admission -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
     -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
     --target "$HOST_TARGET"'
 
 gate "capacity-report feature target build" \
   bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features capacity-report'
+
+gate "nano kernel build/admission/symbol budgets" \
+  python tools/check_nano_kernel.py
 
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 

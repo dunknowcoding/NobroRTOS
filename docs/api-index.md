@@ -68,6 +68,11 @@ Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **enum**: `RadioCommsError`
 - **fn**: `acquire`, `release`
 
+## `nobro-admission`
+Allocation-free admission shared by firmware build scripts and the kernel.
+- **struct**: `AdmissionProfile`, `TaskContract`, `AdmissionError`, `AdmittedTask`, `AdmittedWorkload`
+- **enum**: `AdmissionErrorCode`
+
 ## `nobro-ai`
 AI deployment + cloud-API management for NobroRTOS.
 - **struct**: `ModelManifest`, `ApiKeyRef`, `CloudPolicy`, `CloudSession`

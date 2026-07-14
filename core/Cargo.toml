@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/nobro_admission",
     "crates/nobro_net",
     "crates/nobro_database",
     "crates/nobro_nn",

@@ -35,6 +35,7 @@ pub mod manifest;
 pub mod module_ctx;
 pub mod module_runtime;
 pub mod multicore;
+pub mod nano;
 pub mod objects;
 pub mod pool;
 pub mod quota;
@@ -126,6 +127,9 @@ pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
+pub use nano::{
+    GuardedNanoKernel, KernelLayer, NanoError, NanoKernel, NanoSubsystemReport, SUBSYSTEM_PRESENT,
+};
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{CompactImuPayload, SamplePool};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
@@ -155,6 +159,17 @@ pub use runtime::{
 pub type SmallRuntime = Runtime<4, 4, 8, 4, 8, 4, 16>;
 pub type StandardRuntime = Runtime<8, 8, 16, 8, 16, 8, 32>;
 pub type LargeRuntime = Runtime<16, 16, 32, 16, 32, 16, 64>;
+/// L0 preset: pre-admitted bitmap dispatcher only.
+pub type L0NanoKernel<const TASKS: usize> = NanoKernel<TASKS>;
+/// L1 preset: L0 plus mandatory stack canary/watermark enforcement.
+pub type L1GuardedKernel<const TASKS: usize, const GUARDS: usize> =
+    GuardedNanoKernel<TASKS, GUARDS>;
+/// L2 preset: bounded managed services at the small coherent capacity profile.
+pub type L2ManagedKernel = SmallRuntime;
+/// L3 preset: admitted executor, containment, power, and managed services.
+pub type L3AssuredKernel = KernelExecutor<4, 4, 4, 8, 4, 8, 4, 16>;
+/// Static in-place storage for [`L3AssuredKernel`].
+pub type L3AssuredKernelCell = KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 16>;
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use stack_guard::{

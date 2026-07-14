@@ -229,6 +229,8 @@ pub struct DeadlineContract {
     /// Declared worst-case execution cost per period. Zero = not declared;
     /// declared costs participate in the admission utilization check.
     pub execution_budget_us: u32,
+    /// Measured non-preemptible interference charged by response-time analysis.
+    pub blocking_us: u32,
 }
 
 impl DeadlineContract {
@@ -237,11 +239,17 @@ impl DeadlineContract {
             period_us,
             max_jitter_us,
             execution_budget_us: 0,
+            blocking_us: 0,
         }
     }
 
     pub const fn execution_budget(mut self, execution_budget_us: u32) -> Self {
         self.execution_budget_us = execution_budget_us;
+        self
+    }
+
+    pub const fn blocking(mut self, blocking_us: u32) -> Self {
+        self.blocking_us = blocking_us;
         self
     }
 
@@ -358,6 +366,9 @@ impl ModuleSpec {
                 // keep their pre-existing pinned fingerprints.
                 if deadline.execution_budget_us != 0 {
                     hash = hash_u32(hash, deadline.execution_budget_us);
+                    if deadline.blocking_us != 0 {
+                        hash = hash_u32(hash, deadline.blocking_us);
+                    }
                 }
             }
             None => {
@@ -409,6 +420,12 @@ pub enum ManifestError {
     Overutilized {
         utilization_permyriad: u64,
     },
+    InvalidBlocking(ModuleId),
+    Unschedulable {
+        module: ModuleId,
+        response_us: u64,
+        deadline_us: u64,
+    },
 }
 
 impl ManifestError {
@@ -429,6 +446,8 @@ impl ManifestError {
             Self::MissingKernel => 13,
             Self::InvalidKernelContract => 14,
             Self::Overutilized { .. } => 15,
+            Self::InvalidBlocking(_) => 16,
+            Self::Unschedulable { .. } => 17,
         }
     }
 
@@ -439,9 +458,11 @@ impl ManifestError {
             | Self::InvalidDeadline(module)
             | Self::InvalidFaultThreshold(module)
             | Self::EmptyMemoryBudget(module)
-            | Self::UserOwnsKernelCapability(module) => Some(module),
+            | Self::UserOwnsKernelCapability(module)
+            | Self::InvalidBlocking(module) => Some(module),
             Self::CapabilityOwnershipConflict { module, .. }
-            | Self::MissingOwnedCapability { module, .. } => Some(module),
+            | Self::MissingOwnedCapability { module, .. }
+            | Self::Unschedulable { module, .. } => Some(module),
             Self::Full
             | Self::ModuleLimitExceeded { .. }
             | Self::BudgetExceeded { .. }
@@ -472,7 +493,9 @@ impl ManifestError {
             | Self::EmptyManifest
             | Self::MissingKernel
             | Self::InvalidKernelContract
-            | Self::Overutilized { .. } => 0,
+            | Self::Overutilized { .. }
+            | Self::InvalidBlocking(_)
+            | Self::Unschedulable { .. } => 0,
         }
     }
 }
@@ -543,6 +566,79 @@ impl<const N: usize> SystemManifest<N> {
         let limit = profile.budget();
         if !used.fits_within(limit) {
             return Err(ManifestError::BudgetExceeded { used, limit });
+        }
+
+        // The shared no-alloc admission core is also run by generated build.rs
+        // projects. Runtime Tier-C/dynamic admission and build-time static
+        // admission therefore cannot drift on utilization, blocking, or RTA.
+        let mut contracts = [nobro_admission::TaskContract::EMPTY; N];
+        for (index, spec) in self.iter().enumerate() {
+            let mut contract = nobro_admission::TaskContract::new(module_code(spec.id) as u16)
+                .priority(match spec.criticality {
+                    Criticality::HardRealtime => 0,
+                    Criticality::System => 1,
+                    Criticality::Driver => 2,
+                    Criticality::User => 3,
+                    Criticality::BestEffort => 4,
+                })
+                .memory(
+                    spec.memory.flash_bytes,
+                    spec.memory.ram_bytes,
+                    spec.memory.pool_slots,
+                )
+                .bindings(
+                    spec.requires.union(spec.owns).bits(),
+                    u32::from(spec.objects.mailbox_slots)
+                        | (u32::from(spec.objects.alarms) << 8)
+                        | (u32::from(spec.objects.kv_entries) << 16),
+                );
+            if let Some(deadline) = spec.deadline {
+                if deadline.execution_budget_us != 0 {
+                    contract = contract.deadline(
+                        deadline.period_us,
+                        deadline.period_us,
+                        deadline.max_jitter_us,
+                        deadline.execution_budget_us,
+                        deadline.blocking_us,
+                    );
+                }
+            }
+            contracts[index] = contract;
+        }
+        if let Err(error) = nobro_admission::admit(
+            contracts,
+            nobro_admission::AdmissionProfile::new(
+                profile.flash_limit_bytes,
+                profile.ram_limit_bytes,
+                profile.pool_slot_limit,
+                profile.max_modules.min(u16::MAX as usize) as u16,
+            ),
+        ) {
+            let module = if error.task_index == u16::MAX {
+                None
+            } else {
+                self.iter()
+                    .nth(error.task_index as usize)
+                    .map(|spec| spec.id)
+            };
+            return Err(match error.code {
+                nobro_admission::AdmissionErrorCode::InvalidBlocking => {
+                    ManifestError::InvalidBlocking(module.unwrap_or(ModuleId::Kernel))
+                }
+                nobro_admission::AdmissionErrorCode::ResponseTimeExceeded => {
+                    ManifestError::Unschedulable {
+                        module: module.unwrap_or(ModuleId::Kernel),
+                        response_us: error.observed,
+                        deadline_us: error.limit,
+                    }
+                }
+                nobro_admission::AdmissionErrorCode::UtilizationExceeded => {
+                    ManifestError::Overutilized {
+                        utilization_permyriad: error.observed,
+                    }
+                }
+                _ => ManifestError::InvalidDeadline(module.unwrap_or(ModuleId::Kernel)),
+            });
         }
 
         Ok(())
@@ -658,11 +754,19 @@ impl<const N: usize> SystemManifest<N> {
         }
         if let Some(deadline) = spec.deadline {
             if deadline.period_us == 0
-                || deadline.max_jitter_us == 0
                 || deadline.max_jitter_us >= deadline.period_us
                 || deadline.execution_budget_us > deadline.period_us
             {
                 return Err(ManifestError::InvalidDeadline(spec.id));
+            }
+            if (deadline.execution_budget_us == 0 && deadline.blocking_us != 0)
+                || (deadline.execution_budget_us != 0
+                    && deadline.blocking_us
+                        > deadline
+                            .period_us
+                            .saturating_sub(deadline.execution_budget_us))
+            {
+                return Err(ManifestError::InvalidBlocking(spec.id));
             }
         }
 
@@ -919,6 +1023,37 @@ mod tests {
     }
 
     #[test]
+    fn zero_jitter_deadline_is_a_valid_strict_bound() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(4096, 512, 0))
+                    .deadline(DeadlineContract::new(100, 0).execution_budget(10)),
+            )
+            .unwrap();
+        assert!(manifest.validate().is_ok());
+    }
+
+    #[test]
+    fn blocking_requires_a_declared_execution_bound() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(4096, 512, 0))
+                    .deadline(DeadlineContract::new(1_000, 10).blocking(1)),
+            )
+            .unwrap();
+        assert_eq!(
+            manifest.validate(),
+            Err(ManifestError::InvalidBlocking(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
     fn profile_requires_the_kernel_contract() {
         let empty = SystemManifest::<1>::new();
         assert_eq!(
@@ -1007,6 +1142,34 @@ mod tests {
             Err(ManifestError::ModuleLimitExceeded {
                 modules: 2,
                 limit: 1
+            })
+        );
+    }
+
+    #[test]
+    fn shared_response_time_analysis_rejects_interference_below_full_utilization() {
+        let mut manifest = SystemManifest::<3>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(1024, 128, 0))
+                    .deadline(DeadlineContract::new(2_000, 10).execution_budget(800)),
+            )
+            .unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Actuator, Criticality::Driver)
+                    .memory(MemoryBudget::new(1024, 128, 0))
+                    .deadline(DeadlineContract::new(3_000, 10).execution_budget(1_500)),
+            )
+            .unwrap();
+        assert_eq!(
+            manifest.validate_profile(SystemProfile::NRF52840_CORE),
+            Err(ManifestError::Unschedulable {
+                module: ModuleId::Actuator,
+                response_us: 3_110,
+                deadline_us: 3_000,
             })
         );
     }

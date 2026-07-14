@@ -405,7 +405,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             if decl.has_deadline {
                 spec = spec.deadline(
                     DeadlineContract::new(decl.period_us, decl.max_jitter_us)
-                        .execution_budget(decl.execution_budget_us),
+                        .execution_budget(decl.execution_budget_us)
+                        .blocking(decl.blocking_us),
                 );
             }
             manifest.add(spec).map_err(|error| GraphError::Manifest {
@@ -705,5 +706,26 @@ mod tests {
                 period_us: 1000,
             }
         );
+    }
+
+    #[test]
+    fn blocking_bound_reaches_the_shared_admission_contract() {
+        let graph = AppGraph::<1>::new()
+            .task(
+                TaskDecl::control("motor", 5_000)
+                    .budget_us(400)
+                    .blocking_us(75),
+            )
+            .unwrap();
+        let built = graph.build_for::<2>(SystemProfile::NRF52840_CORE).unwrap();
+        let motor = built.module_of("motor").unwrap();
+        let deadline = built
+            .manifest
+            .iter()
+            .find(|spec| spec.id == motor)
+            .unwrap()
+            .deadline
+            .unwrap();
+        assert_eq!(deadline.blocking_us, 75);
     }
 }

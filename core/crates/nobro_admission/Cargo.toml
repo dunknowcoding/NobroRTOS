@@ -1,0 +1,7 @@
+[package]
+name = "nobro-admission"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []

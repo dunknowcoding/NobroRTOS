@@ -17,6 +17,7 @@ corpora, and private reports are intentionally not tracked.
 | `sign_firmware.py` | Measure and sign a firmware image |
 | `ros_msg_gen.py` | Generate bounded Rust records from ROS message definitions |
 | `import_dts.py` | Convert a limited DeviceTree input into a board-profile draft |
+| `check_nano_kernel.py` | Build-time admission, executable-section, L0 size, and absent-symbol gate |
 
 ## Build and package utilities
 

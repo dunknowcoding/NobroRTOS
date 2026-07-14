@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+nobro-admission = { path = "../nobro_admission" }
 nobro-hal = { path = "../nobro_hal", default-features = false, features = ["contract-only"], optional = true }
 # Drop-in atomics: native CAS where the ISA has it, critical-section fallback on cores
 # that lack atomic CAS (Cortex-M0+, RISC-V without the 'a' extension) - keeps the kernel
