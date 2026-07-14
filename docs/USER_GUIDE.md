@@ -405,6 +405,9 @@ python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 The generator emits `workload.json`, `generation.json`, and a compiling `no_std` Cargo
 crate from the same input. The explicit board profile selects the S140 or no-SoftDevice
 memory layout. Defaults reduce beginner boilerplate while keeping budget review visible.
+If the exact board/composition has a measured compare-wake-to-dispatch upper bound,
+place `wake 25us` directly after the `board` line. It is charged by admission; omit
+the line rather than inventing a value when no bound has been measured.
 
 `gen-app` turns a declarative module spec into a **buildable NobroRTOS firmware app**.
 You describe the module (criticality + memory budget); the generator emits a workspace

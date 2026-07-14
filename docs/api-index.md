@@ -157,7 +157,7 @@ No-heap power management policy: pick a sleep mode from activity + a deadline,
 - **trait**: `PowerPlatform`
 - **struct**: `PowerHookError`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
 - **enum**: `PowerMode`
-- **fn**: `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `account_task`, `apply_idle`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
+- **fn**: `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `account_task`, `apply_idle`, `apply_idle_release`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
 
 ## `nobro-sal`
 NobroRTOS service abstraction layer with portable capability traits.

@@ -1520,6 +1520,7 @@ mod tests {
             ram_limit_bytes: 32 * 1024,
             pool_slot_limit: 8,
             max_modules: 4,
+            wake_latency_us: 0,
         }
     }
 

@@ -444,10 +444,19 @@ scheduler configuration.
 #### Executor Power And Structured Faults
 
 `KernelExecutor::run_cycle` accepts a `PowerPlatform` implementation. When no
-work is due, it programs the absolute wake deadline before entering the mode
-chosen by `ExecutorPower`; every completed poll automatically charges measured
-active time to its module's energy profile. Executor suspend/resume methods call
-fallible peripheral hooks before committing module state.
+work is due, it programs the absolute wake deadline and the exact ready-group
+mask before entering the mode chosen by `ExecutorPower`. A compare ISR publishes
+that bounded mask through `PowerPlatform::take_deadline_releases()`; the normal
+executor cycle drains it automatically. A custom provider can also call
+`accept_isr_releases()` explicitly. Early, stale, duplicate, and out-of-range bits are
+rejected. Every completed poll automatically charges measured active time to its
+module's energy profile. Executor suspend/resume methods call fallible peripheral
+hooks before committing module state.
+
+Call `SystemProfile::wake_latency_us()` for manifest/build admission or
+`KernelExecutor::set_wake_latency_us()` before `seal()` for a dynamic executor.
+This is a measured compare-wake-to-dispatch upper bound, charged once per response;
+it is not inferred from a board name.
 
 Use `HealthFault` when subsystem context matters. It combines `KernelError` with
 `FaultContext { source, code, detail0, detail1 }`. A `FaultPolicy` can retain

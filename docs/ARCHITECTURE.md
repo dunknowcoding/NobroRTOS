@@ -481,8 +481,17 @@ The next step is not a larger kernel; it is stronger contracts:
 
 The current executor support is deliberately small: `TaskTable` is a fixed-size
 task registry that records period, budget, criticality, due time, and overrun
-statistics. It lets NobroRTOS validate scheduling contracts before choosing a full
-async executor surface.
+statistics. An intrusive sorted release queue makes the next deadline an O(1) lookup;
+elapsed releases are transferred without a capacity-wide scan. A five-level
+criticality bitmap selects a FIFO head in O(1), preserving fairness between peers.
+Bounded reinsertion happens after a poll, outside the release-to-dispatch edge.
+The ready-membership word supports at most 32 tasks and rejects a wider table.
+Compare providers can program the exact earliest release group and transfer its
+bits from ISR context; early, duplicate, and stale bits fail closed.
+
+Tickless admission charges a measured compare-wake-to-dispatch bound once in each
+response-time calculation. The bound defaults to zero for compatibility and must
+be set explicitly when the selected board/composition has measured evidence.
 
 The current observability support is equally small: `EventLog` is a no-heap ring
 buffer that preserves the latest records, tracks drops, and can be copied into a

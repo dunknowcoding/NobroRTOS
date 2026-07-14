@@ -157,6 +157,7 @@ mod tests {
                 ram_limit_bytes: 32,
                 pool_slot_limit: 8,
                 max_modules: 4,
+                wake_latency_us: 0,
             },
         )
         .unwrap();
@@ -184,6 +185,7 @@ mod tests {
                     ram_limit_bytes: 32,
                     pool_slot_limit: 8,
                     max_modules: 2,
+                    wake_latency_us: 0,
                 },
             ),
             Err(DegradeError::EssentialOverBudget)
@@ -205,6 +207,7 @@ mod tests {
                 ram_limit_bytes: 100,
                 pool_slot_limit: 8,
                 max_modules: 2,
+                wake_latency_us: 0,
             },
         )
         .unwrap();

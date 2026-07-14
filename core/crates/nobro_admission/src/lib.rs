@@ -17,6 +17,8 @@ pub struct AdmissionProfile {
     pub ram_limit_bytes: u32,
     pub pool_slot_limit: u16,
     pub max_tasks: u16,
+    /// Measured compare-wake-to-dispatch bound, charged once per response.
+    pub wake_latency_us: u32,
 }
 
 impl AdmissionProfile {
@@ -31,7 +33,13 @@ impl AdmissionProfile {
             ram_limit_bytes,
             pool_slot_limit,
             max_tasks,
+            wake_latency_us: 0,
         }
+    }
+
+    pub const fn wake_latency_us(mut self, wake_latency_us: u32) -> Self {
+        self.wake_latency_us = wake_latency_us;
+        self
     }
 }
 
@@ -152,6 +160,7 @@ pub enum AdmissionErrorCode {
     RamExceeded = 11,
     PoolExceeded = 12,
     ArithmeticOverflow = 13,
+    WakeLatencyExceeded = 14,
 }
 
 impl AdmissionErrorCode {
@@ -170,6 +179,7 @@ impl AdmissionErrorCode {
             Self::RamExceeded => "NOBRO-E011 RAM profile exceeded",
             Self::PoolExceeded => "NOBRO-E012 sample-pool profile exceeded",
             Self::ArithmeticOverflow => "NOBRO-E013 admission arithmetic overflow",
+            Self::WakeLatencyExceeded => "NOBRO-E014 wake-latency bound exceeds deadline",
         }
     }
 }
@@ -282,9 +292,24 @@ const fn priority_of(index: usize, tasks: &[TaskContract]) -> u16 {
     priority
 }
 
-const fn response_time(index: usize, tasks: &[TaskContract]) -> Result<u32, AdmissionError> {
+const fn response_time(
+    index: usize,
+    tasks: &[TaskContract],
+    wake_latency_us: u32,
+) -> Result<u32, AdmissionError> {
     let task = tasks[index];
-    let mut response = match checked_add_u32(task.execution_us, task.blocking_us) {
+    let execution_and_blocking = match checked_add_u32(task.execution_us, task.blocking_us) {
+        Some(value) => value,
+        None => {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::ArithmeticOverflow,
+                index,
+                u64::MAX,
+                u32::MAX as u64,
+            ))
+        }
+    };
+    let mut response = match checked_add_u32(execution_and_blocking, wake_latency_us) {
         Some(value) => value,
         None => {
             return Err(AdmissionError::task(
@@ -297,7 +322,7 @@ const fn response_time(index: usize, tasks: &[TaskContract]) -> Result<u32, Admi
     };
     let mut iteration = 0usize;
     while iteration < 64 {
-        let mut next = match checked_add_u32(task.execution_us, task.blocking_us) {
+        let mut next = match checked_add_u32(execution_and_blocking, wake_latency_us) {
             Some(value) => value,
             None => {
                 return Err(AdmissionError::task(
@@ -449,6 +474,15 @@ pub const fn admit<const N: usize>(
                     task.deadline_us as u64,
                 ));
             }
+            let response_floor = execution_and_blocking + profile.wake_latency_us as u64;
+            if response_floor > task.deadline_us as u64 {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::WakeLatencyExceeded,
+                    index,
+                    response_floor,
+                    task.deadline_us as u64,
+                ));
+            }
             utilization += (task.execution_us as u64 * 10_000).div_ceil(task.period_us as u64);
             if utilization > 10_000 {
                 return Err(AdmissionError::task(
@@ -519,7 +553,7 @@ pub const fn admit<const N: usize>(
             continue;
         }
         let response = if task.participates() {
-            match response_time(index, &tasks) {
+            match response_time(index, &tasks, profile.wake_latency_us) {
                 Ok(value) => value,
                 Err(error) => return Err(error),
             }
@@ -630,6 +664,24 @@ mod tests {
         let error = admit(tasks, PROFILE).unwrap_err();
         assert_eq!(error.code, AdmissionErrorCode::ResponseTimeExceeded);
         assert_eq!(error.task_index, 1);
+    }
+
+    #[test]
+    fn measured_wake_latency_is_charged_once_and_fails_with_attribution() {
+        let task = TaskContract::new(7).deadline(1_000, 1_000, 0, 900, 0);
+        let admitted = admit([task], PROFILE.wake_latency_us(100))
+            .expect("execution plus the wake bound exactly fits");
+        assert_eq!(admitted.tasks[0].response_bound_us, 1_000);
+
+        let error = admit([task], PROFILE.wake_latency_us(101)).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::WakeLatencyExceeded);
+        assert_eq!(error.task_index, 0);
+        assert_eq!(error.observed, 1_001);
+        assert_eq!(error.limit, 1_000);
+        assert_eq!(
+            error.code.diagnostic(),
+            "NOBRO-E014 wake-latency bound exceeds deadline"
+        );
     }
 
     #[test]

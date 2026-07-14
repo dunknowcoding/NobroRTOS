@@ -284,6 +284,7 @@ pub const fn manifest_error_label(code: u32) -> Option<&'static str> {
         15 => Some("overutilized"),
         16 => Some("invalid_blocking"),
         17 => Some("unschedulable"),
+        18 => Some("invalid_wake_latency"),
         _ => None,
     }
 }

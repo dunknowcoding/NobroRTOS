@@ -5,6 +5,7 @@ The input is intentionally a declaration, not generated Rust boilerplate::
 
     app rover
     board nrf52840-s140
+    wake 25us
     control motor every 5ms
     sensor imu every 10ms -> motor
     service camera every 40ms
@@ -32,6 +33,7 @@ LINE = re.compile(
     r"(?:\s+blocking\s+([1-9][0-9]*)(us|ms|s))?"
     r"(?:\s+memory\s+([1-9][0-9]*)/([1-9][0-9]*))?$"
 )
+WAKE = re.compile(r"^wake\s+([1-9][0-9]*)(us|ms|s)$")
 BOARDS = {
     "nrf52840-s140": ("s140", 128 * 1024, 32 * 1024),
     "nrf52840-nosd": ("nosd", 128 * 1024, 32 * 1024),
@@ -67,9 +69,20 @@ def parse(text: str) -> dict:
     board = records[1][1][6:].strip()
     if board not in BOARDS:
         raise ValueError(f"unsupported board profile {board!r}; choose {', '.join(BOARDS)}")
+    wake_latency_us = 0
+    task_records = records[2:]
+    if task_records and task_records[0][1].startswith("wake "):
+        number, line = task_records[0]
+        match = WAKE.fullmatch(line)
+        if not match:
+            raise ValueError(f"line {number}: expected 'wake <duration>'")
+        wake_latency_us = parse_duration(*match.groups())
+        task_records = task_records[1:]
+    if not task_records:
+        raise ValueError("at least one control, sensor, or service task is required")
     tasks = []
     channels = []
-    for number, line in records[2:]:
+    for number, line in task_records:
         match = LINE.fullmatch(line)
         if not match:
             raise ValueError(f"line {number}: expected '<role> <name> every <duration> [-> <task>]' ")
@@ -99,7 +112,9 @@ def parse(text: str) -> dict:
             raise ValueError(f"{source}: a task cannot send to itself")
     _, flash_limit, ram_limit = BOARDS[board]
     workload = {
-        "profile": {"flash": flash_limit, "ram": ram_limit, "pool": max(8, len(tasks) + 1)},
+        "profile": {"flash": flash_limit, "ram": ram_limit,
+                    "pool": max(8, len(tasks) + 1),
+                    "wake_latency_us": wake_latency_us},
         "tasks": [{"name": "kernel", "criticality": "hard_realtime",
                    "flash": 12 * 1024, "ram": 3 * 1024, "pool": 2,
                    "period_us": 20_000, "budget_us": 0}] + tasks,
@@ -177,7 +192,8 @@ const TASKS: [TaskContract; {len(tasks)}] = [
 {os.linesep.join(contracts)}
 ];
 const PROFILE: AdmissionProfile = AdmissionProfile::new(
-    {int(profile['flash'])}, {int(profile['ram'])}, {int(profile['pool'])}, {len(tasks)});
+    {int(profile['flash'])}, {int(profile['ram'])}, {int(profile['pool'])}, {len(tasks)})
+    .wake_latency_us({int(profile['wake_latency_us'])});
 
 fn emit(table: AdmittedWorkload<{len(tasks)}>, path: &PathBuf) {{
     let source = format!(r#"use nobro_admission::{{{{AdmittedTask, AdmittedWorkload}}}};
@@ -320,6 +336,9 @@ service camera every 40ms
     assert overridden["workload"]["tasks"][1]["budget_us"] == 400
     assert overridden["workload"]["tasks"][1]["blocking_us"] == 100
     assert overridden["workload"]["tasks"][1]["ram"] == 640
+    with_wake = parse(sample.replace(
+        "board nrf52840-s140", "board nrf52840-s140\nwake 25us"))
+    assert with_wake["workload"]["profile"]["wake_latency_us"] == 25
     with tempfile.TemporaryDirectory() as tmp:
         source = pathlib.Path(tmp) / "app.nobro"
         source.write_text(sample, encoding="utf-8")
@@ -333,6 +352,7 @@ service camera every 40ms
         assert "nobro_admission::{admit" in build_source
         assert '"motor", "imu", "camera"' in build_source
         assert "TaskContract::new(1).priority(0).deadline(5000, 5000" in build_source
+        assert ".wake_latency_us(0)" in build_source
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown")):

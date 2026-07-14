@@ -85,7 +85,8 @@ pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, FaultContext, FaultSource, HealthFault, KernelError};
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{
-    I2cPollTask, Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable, TaskTableError,
+    DeadlineReleaseArm, I2cPollTask, IsrReleaseReceipt, Poll, StatsTask, Task, TaskMeta, TaskSlot,
+    TaskStats, TaskTable, TaskTableError,
 };
 pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,

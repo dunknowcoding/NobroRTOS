@@ -152,6 +152,8 @@ python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 profiles. The generator never chooses between them from a connected endpoint. Generated
 files live in ignored `_work/projects` by default. Inferred role budgets are safe
 starting estimates, not measured WCET; inspect them before flashing an application.
+An optional `wake 25us` line after `board` admits a measured compare-wake-to-dispatch
+upper bound. It is an engineering input, not a value inferred from a board name.
 
 NobroRTOS is not tied to the Arduino IDE or VS Code. The core builds from a terminal on
 Linux, macOS, or Windows with Rust, Python, the selected target support, and any external

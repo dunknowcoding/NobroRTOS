@@ -19,6 +19,27 @@ pub struct PowerHookError {
 /// Fallible board power operations owned by the authoritative executor.
 pub trait PowerPlatform {
     fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError>;
+    /// Arm a compare together with the admitted task-slot bits that its ISR
+    /// must publish. Existing platforms retain wake-only behavior by default.
+    fn program_deadline_release(
+        &mut self,
+        deadline_us: Option<u64>,
+        _ready_mask: u32,
+    ) -> Result<(), PowerHookError> {
+        self.program_wake(deadline_us)
+    }
+    /// Atomically drain task bits published by the platform's compare ISR.
+    /// Providers without an ISR handoff keep the default and the executor
+    /// releases tasks from its ordered queue after wake.
+    fn take_deadline_releases(&mut self, _now_us: u64) -> u32 {
+        0
+    }
+    /// Largest compare-deadline-to-executor-entry delay observed by this
+    /// provider. Qualification feeds a conservative bound back into admission;
+    /// zero means no provider measurement is available.
+    fn observed_wake_latency_us(&self) -> u32 {
+        0
+    }
     fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError>;
     fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError>;
     fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError>;
@@ -204,10 +225,21 @@ impl<const N: usize> ExecutorPower<N> {
         deadline_us: Option<u64>,
         platform: &mut impl PowerPlatform,
     ) -> Result<PowerMode, PowerHookError> {
+        self.apply_idle_release(now_us, work_pending, deadline_us, 0, platform)
+    }
+
+    pub fn apply_idle_release(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        ready_mask: u32,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerMode, PowerHookError> {
         let relative = deadline_us.map(|deadline| deadline.saturating_sub(now_us));
         let mode = self.manager.select(work_pending, relative);
         if mode != PowerMode::Active {
-            platform.program_wake(deadline_us)?;
+            platform.program_deadline_release(deadline_us, ready_mask)?;
             platform.enter(mode)?;
         }
         Ok(mode)

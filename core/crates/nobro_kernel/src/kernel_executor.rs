@@ -206,6 +206,9 @@ pub struct CycleOutcome {
     pub polled: Option<ModuleId>,
     pub poll: Option<Poll>,
     pub duration_us: u32,
+    pub isr_releases: u32,
+    pub rejected_isr_releases: u32,
+    pub observed_wake_latency_us: u32,
     pub overrun: bool,
     /// The bounded containment profile disabled the module this cycle.
     pub contained: bool,
@@ -232,6 +235,7 @@ pub struct KernelExecutor<
     containment: ContainmentPolicy,
     sentinel: ExecutionSentinel,
     power: ExecutorPower<TASKS>,
+    wake_latency_us: u32,
     sealed: bool,
 }
 
@@ -544,6 +548,7 @@ impl<
             guard.mark(ExecutorInitStage::Power);
             checkpoint(ExecutorInitStage::Power)?;
 
+            core::ptr::addr_of_mut!((*destination).wake_latency_us).write(profile.wake_latency_us);
             core::ptr::addr_of_mut!((*destination).sealed).write(false);
             guard.mark(ExecutorInitStage::Sealed);
             checkpoint(ExecutorInitStage::Sealed)?;
@@ -594,6 +599,7 @@ impl<
             containment,
             sentinel: ExecutionSentinel::new(),
             power: ExecutorPower::new(1_000_000, 1_000_000, 1_000),
+            wake_latency_us: 0,
             sealed: false,
         }
     }
@@ -614,7 +620,7 @@ impl<
     pub fn seal(&mut self) -> Result<(), ExecError> {
         let metas = self.tasks.metas();
         for meta in metas.iter().flatten() {
-            let response_us = response_time(*meta, &metas)?;
+            let response_us = response_time(*meta, &metas, self.wake_latency_us)?;
             if response_us > u64::from(meta.period_us) {
                 return Err(ExecError::Unschedulable {
                     module: meta.module,
@@ -627,6 +633,19 @@ impl<
         Ok(())
     }
 
+    /// Set the measured compare-wake-to-dispatch bound before admission.
+    pub fn set_wake_latency_us(&mut self, wake_latency_us: u32) -> Result<(), ExecError> {
+        if self.sealed {
+            return Err(ExecError::Sealed);
+        }
+        self.wake_latency_us = wake_latency_us;
+        Ok(())
+    }
+
+    pub const fn wake_latency_us(&self) -> u32 {
+        self.wake_latency_us
+    }
+
     pub const fn sentinel(&self) -> &ExecutionSentinel {
         &self.sentinel
     }
@@ -637,6 +656,15 @@ impl<
 
     pub const fn tasks(&self) -> &TaskTable<TASKS> {
         &self.tasks
+    }
+
+    /// Transfer a bounded compare-ISR handoff into the executor's ready queues.
+    pub fn accept_isr_releases(
+        &mut self,
+        ready_mask: u32,
+        now_us: u64,
+    ) -> crate::IsrReleaseReceipt {
+        self.tasks.accept_isr_releases(ready_mask, now_us)
     }
 
     pub const fn power(&self) -> &ExecutorPower<TASKS> {
@@ -741,6 +769,10 @@ impl<
         }
         let now_us = clock();
         let mut outcome = CycleOutcome::default();
+        let isr = self.accept_isr_releases(power_platform.take_deadline_releases(now_us), now_us);
+        outcome.isr_releases = isr.accepted;
+        outcome.rejected_isr_releases = isr.rejected;
+        outcome.observed_wake_latency_us = power_platform.observed_wake_latency_us();
 
         let sweep = self.runtime.sweep_watchdogs(now_us)?;
         outcome.watchdog_recoveries = sweep.len;
@@ -748,13 +780,16 @@ impl<
         let alarms = self.runtime.dispatch_due_alarms_with_recovery(now_us)?;
         outcome.alarms_dispatched = alarms.dispatched;
 
-        let mut selected = if INSTRUMENTED {
+        let ordinary_selection = if INSTRUMENTED {
             None
         } else {
-            self.tasks.due_index(now_us)
+            self.tasks.select_due(now_us)
         };
-        let mut release_us = 0;
-        let mut simultaneous_width = 0;
+        let mut selected = ordinary_selection.map(|selection| selection.index);
+        let mut release_us = ordinary_selection.map_or(0, |selection| selection.release_us);
+        let mut simultaneous_width = ordinary_selection.map_or(0, |selection| {
+            self.tasks.selected_group_width(selection.index)
+        });
         let mut selection_sweep_slots = 0u32;
         let mut selection_due_tasks = 0u32;
         let mut peer_scan_slots = 0u32;
@@ -866,7 +901,7 @@ impl<
                     recorder.record_selection_unstable();
                 }
                 outcome.idle_until_us = self.next_activity_us();
-                outcome.power_mode = Some(self.power.apply_idle(
+                outcome.power_mode = Some(self.apply_idle(
                     scheduling_now_us,
                     true,
                     outcome.idle_until_us,
@@ -908,13 +943,13 @@ impl<
                 }
             }
             outcome.idle_until_us = self.next_activity_us();
-            let work_pending = self.tasks.due_index(scheduling_now_us).is_some()
+            let work_pending = self.tasks.has_due(scheduling_now_us)
                 || self
                     .runtime
                     .alarms()
                     .next_due_us()
                     .is_some_and(|due| due <= scheduling_now_us);
-            outcome.power_mode = Some(self.power.apply_idle(
+            outcome.power_mode = Some(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
                 outcome.idle_until_us,
@@ -927,6 +962,7 @@ impl<
         } else {
             self.tasks.meta_at(idx).expect("due task has a slot")
         };
+        self.tasks.take_selected(idx);
         let module_active = if INSTRUMENTED {
             instrumented_active
         } else {
@@ -935,7 +971,7 @@ impl<
 
         if !module_active {
             // Not runnable: the release is skipped and counted, never executed.
-            self.tasks.skip_release(idx, scheduling_now_us);
+            self.tasks.skip_selected_release(idx, scheduling_now_us);
             outcome.skipped_release = Some(meta.module);
             if INSTRUMENTED {
                 probe_clock_reads = probe_clock_reads.saturating_add(1);
@@ -965,13 +1001,13 @@ impl<
                 }
             }
             outcome.idle_until_us = self.next_activity_us();
-            let work_pending = self.tasks.due_index(scheduling_now_us).is_some()
+            let work_pending = self.tasks.has_due(scheduling_now_us)
                 || self
                     .runtime
                     .alarms()
                     .next_due_us()
                     .is_some_and(|due| due <= scheduling_now_us);
-            outcome.power_mode = Some(self.power.apply_idle(
+            outcome.power_mode = Some(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
                 outcome.idle_until_us,
@@ -1036,7 +1072,7 @@ impl<
         }
         let stats = self
             .tasks
-            .record_poll(
+            .record_selected_poll(
                 idx,
                 end_us,
                 duration_us,
@@ -1089,7 +1125,7 @@ impl<
 
         outcome.idle_until_us = self.next_activity_us();
         let mut power_now_us = end_us;
-        let mut work_pending = self.tasks.due_index(end_us).is_some()
+        let mut work_pending = self.tasks.has_due(end_us)
             || self
                 .runtime
                 .alarms()
@@ -1112,7 +1148,7 @@ impl<
                 // release. Base the power decision on the final post-telemetry
                 // snapshot, never the stale poll-end/bookkeeping values.
                 power_now_us = final_power_us;
-                work_pending = self.tasks.due_index(power_now_us).is_some()
+                work_pending = self.tasks.has_due(power_now_us)
                     || self
                         .runtime
                         .alarms()
@@ -1128,7 +1164,7 @@ impl<
                 }
             }
         }
-        outcome.power_mode = Some(self.power.apply_idle(
+        outcome.power_mode = Some(self.apply_idle(
             power_now_us,
             work_pending,
             outcome.idle_until_us,
@@ -1145,6 +1181,22 @@ impl<
             (a, b) => a.or(b),
         }
     }
+
+    fn apply_idle(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerMode, PowerHookError> {
+        let ready_mask = self
+            .tasks
+            .next_release_arm()
+            .filter(|arm| Some(arm.deadline_us) == deadline_us)
+            .map_or(0, |arm| arm.ready_mask);
+        self.power
+            .apply_idle_release(now_us, work_pending, deadline_us, ready_mask, platform)
+    }
 }
 
 /// Iterative response-time analysis for one task against the whole set.
@@ -1154,8 +1206,11 @@ impl<
 fn response_time<const N: usize>(
     task: TaskMeta,
     metas: &[Option<TaskMeta>; N],
+    wake_latency_us: u32,
 ) -> Result<u64, ExecError> {
-    let cost = u64::from(task.budget_us).saturating_add(u64::from(task.blocking_us));
+    let cost = u64::from(task.budget_us)
+        .saturating_add(u64::from(task.blocking_us))
+        .saturating_add(u64::from(wake_latency_us));
     let mut response = cost;
     // The response never needs more iterations than it has microseconds below
     // the period bound; cap defensively to stay bounded on pathological input.
@@ -1203,6 +1258,8 @@ mod tests {
     #[derive(Default)]
     struct PowerHooks {
         wake: Option<u64>,
+        ready_mask: u32,
+        pending_ready: u32,
         mode: Option<PowerMode>,
         suspended: Option<u16>,
     }
@@ -1211,6 +1268,21 @@ mod tests {
         fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
             self.wake = deadline_us;
             Ok(())
+        }
+        fn program_deadline_release(
+            &mut self,
+            deadline_us: Option<u64>,
+            ready_mask: u32,
+        ) -> Result<(), PowerHookError> {
+            self.wake = deadline_us;
+            self.ready_mask = ready_mask;
+            Ok(())
+        }
+        fn take_deadline_releases(&mut self, _now_us: u64) -> u32 {
+            core::mem::take(&mut self.pending_ready)
+        }
+        fn observed_wake_latency_us(&self) -> u32 {
+            7
         }
         fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
             self.mode = Some(mode);
@@ -1452,6 +1524,37 @@ mod tests {
     }
 
     #[test]
+    fn executor_admits_the_measured_wake_bound_and_freezes_it_at_seal() {
+        let mut exact = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exact
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 900),
+                0,
+            )
+            .unwrap();
+        exact.set_wake_latency_us(100).unwrap();
+        assert_eq!(exact.wake_latency_us(), 100);
+        exact.seal().unwrap();
+        assert_eq!(exact.set_wake_latency_us(0), Err(ExecError::Sealed));
+
+        let mut late = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        late.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 900),
+            0,
+        )
+        .unwrap();
+        late.set_wake_latency_us(101).unwrap();
+        assert!(matches!(
+            late.seal(),
+            Err(ExecError::Unschedulable {
+                module: ModuleId::Sensor,
+                response_us: 1_001,
+                period_us: 1_000,
+            })
+        ));
+    }
+
+    #[test]
     fn one_cycle_selects_measures_charges_and_reports_idle() {
         let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
         exec.add_task(
@@ -1538,12 +1641,12 @@ mod tests {
         assert_eq!(report.simultaneous_max_width, 2);
         assert_eq!(report.simultaneous_max_rank, 2);
         assert_ne!(report.simultaneous_order_hash, 0x811C_9DC5);
-        assert_eq!(report.selection_sweep_slots_total(), 8);
+        assert_eq!(report.selection_sweep_slots_total(), 2);
         assert_eq!(report.selection_due_tasks_total(), 3);
         assert_eq!(report.selection_duration_total_us(), 20);
         assert_eq!(report.poll_bookkeeping_total_us(), 20);
         assert_eq!(report.probe_clock_reads, 8);
-        assert_eq!(report.probe_scan_slots_total(), 8);
+        assert_eq!(report.probe_scan_slots_total(), 0);
         assert_eq!(report.completed, 1);
     }
 
@@ -1633,8 +1736,8 @@ mod tests {
         assert_eq!(outcome.polled, Some(ModuleId::Actuator));
         let report = recorder.report();
         assert_ne!(report.flags & crate::EXECUTOR_FLAG_SELECTION_REEVALUATED, 0);
-        assert_eq!(report.selection_sweep_slots_total(), 8);
-        assert_eq!(report.probe_scan_slots_total(), 8);
+        assert_eq!(report.selection_sweep_slots_total(), 2);
+        assert_eq!(report.probe_scan_slots_total(), 0);
     }
 
     #[test]
@@ -1718,6 +1821,18 @@ mod tests {
         assert_eq!(outcome.idle_until_us, Some(10_000));
         assert_eq!(outcome.power_mode, Some(PowerMode::LowPower));
         assert_eq!(hooks.wake, Some(10_000));
+        assert_eq!(hooks.ready_mask, 1);
+
+        // Model the compare ISR publishing the exact armed group. The normal
+        // cycle drains it; application code performs no release plumbing.
+        hooks.pending_ready = hooks.ready_mask;
+        let released = exec
+            .run_cycle(|| 10_000, &mut hooks, |_| Ok(Poll::Ready))
+            .unwrap();
+        assert_eq!(released.isr_releases, 1);
+        assert_eq!(released.rejected_isr_releases, 0);
+        assert_eq!(released.observed_wake_latency_us, 7);
+        assert_eq!(released.polled, Some(ModuleId::Sensor));
 
         exec.suspend_module(ModuleId::Sensor, 1, &mut hooks)
             .unwrap();

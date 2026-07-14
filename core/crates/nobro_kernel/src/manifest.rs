@@ -156,6 +156,8 @@ pub struct SystemProfile {
     pub ram_limit_bytes: u32,
     pub pool_slot_limit: u16,
     pub max_modules: usize,
+    /// Measured compare-wake-to-dispatch upper bound.
+    pub wake_latency_us: u32,
 }
 
 impl SystemProfile {
@@ -164,6 +166,7 @@ impl SystemProfile {
         ram_limit_bytes: 32 * 1024,
         pool_slot_limit: 8,
         max_modules: 16,
+        wake_latency_us: 0,
     };
 
     pub const fn new(
@@ -177,7 +180,13 @@ impl SystemProfile {
             ram_limit_bytes,
             pool_slot_limit,
             max_modules,
+            wake_latency_us: 0,
         }
+    }
+
+    pub const fn wake_latency_us(mut self, wake_latency_us: u32) -> Self {
+        self.wake_latency_us = wake_latency_us;
+        self
     }
 
     pub const fn budget(self) -> SystemBudget {
@@ -421,6 +430,7 @@ pub enum ManifestError {
         utilization_permyriad: u64,
     },
     InvalidBlocking(ModuleId),
+    InvalidWakeLatency(ModuleId),
     Unschedulable {
         module: ModuleId,
         response_us: u64,
@@ -448,6 +458,7 @@ impl ManifestError {
             Self::Overutilized { .. } => 15,
             Self::InvalidBlocking(_) => 16,
             Self::Unschedulable { .. } => 17,
+            Self::InvalidWakeLatency(_) => 18,
         }
     }
 
@@ -460,6 +471,7 @@ impl ManifestError {
             | Self::EmptyMemoryBudget(module)
             | Self::UserOwnsKernelCapability(module)
             | Self::InvalidBlocking(module) => Some(module),
+            Self::InvalidWakeLatency(module) => Some(module),
             Self::CapabilityOwnershipConflict { module, .. }
             | Self::MissingOwnedCapability { module, .. }
             | Self::Unschedulable { module, .. } => Some(module),
@@ -495,6 +507,7 @@ impl ManifestError {
             | Self::InvalidKernelContract
             | Self::Overutilized { .. }
             | Self::InvalidBlocking(_)
+            | Self::InvalidWakeLatency(_)
             | Self::Unschedulable { .. } => 0,
         }
     }
@@ -612,7 +625,8 @@ impl<const N: usize> SystemManifest<N> {
                 profile.ram_limit_bytes,
                 profile.pool_slot_limit,
                 profile.max_modules.min(u16::MAX as usize) as u16,
-            ),
+            )
+            .wake_latency_us(profile.wake_latency_us),
         ) {
             let module = if error.task_index == u16::MAX {
                 None
@@ -624,6 +638,9 @@ impl<const N: usize> SystemManifest<N> {
             return Err(match error.code {
                 nobro_admission::AdmissionErrorCode::InvalidBlocking => {
                     ManifestError::InvalidBlocking(module.unwrap_or(ModuleId::Kernel))
+                }
+                nobro_admission::AdmissionErrorCode::WakeLatencyExceeded => {
+                    ManifestError::InvalidWakeLatency(module.unwrap_or(ModuleId::Kernel))
                 }
                 nobro_admission::AdmissionErrorCode::ResponseTimeExceeded => {
                     ManifestError::Unschedulable {
@@ -1171,6 +1188,27 @@ mod tests {
                 response_us: 3_110,
                 deadline_us: 3_000,
             })
+        );
+    }
+
+    #[test]
+    fn profile_wake_latency_is_admitted_and_attributed_to_the_task() {
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(1_024, 128, 0))
+                    .deadline(DeadlineContract::new(1_000, 0).execution_budget(900)),
+            )
+            .unwrap();
+
+        assert!(manifest
+            .validate_profile(SystemProfile::NRF52840_CORE.wake_latency_us(100))
+            .is_ok());
+        assert_eq!(
+            manifest.validate_profile(SystemProfile::NRF52840_CORE.wake_latency_us(101)),
+            Err(ManifestError::InvalidWakeLatency(ModuleId::Sensor))
         );
     }
 
