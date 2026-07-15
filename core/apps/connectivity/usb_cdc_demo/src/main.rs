@@ -61,6 +61,7 @@ unsafe fn sanitize_bootloader_interrupt_handoff() {
     cortex_m::asm::isb();
 }
 
+#[inline(never)]
 fn push(buf: &mut [u8], pos: &mut usize, s: &[u8]) {
     for &b in s {
         if *pos < buf.len() {
@@ -70,6 +71,7 @@ fn push(buf: &mut [u8], pos: &mut usize, s: &[u8]) {
     }
 }
 
+#[inline(never)]
 fn push_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
     let mut tmp = [0u8; 10];
     let mut n = 0;
@@ -115,6 +117,7 @@ fn install_device_serial(words: [u32; 2]) -> &'static str {
     }
 }
 
+#[inline(never)]
 fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
     for packet in line.chunks(nobro_usb::CDC_PACKET_SIZE) {
         if usb.write_all(packet).is_err() {
@@ -122,6 +125,99 @@ fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
         }
     }
     true
+}
+
+#[inline(never)]
+fn read_dfu_command(usb: &mut MountedUsb, dfu_command_pos: &mut u8) -> bool {
+    let mut command_bytes = [0u8; 16];
+    if let Ok(count) = usb.try_read(&mut command_bytes) {
+        for &byte in &command_bytes[..count] {
+            *dfu_command_pos = match (*dfu_command_pos, byte) {
+                (0, b'D') => 1,
+                (1, b'F') => 2,
+                (2, b'U') => 3,
+                (3, b'\r') => 3,
+                (3, b'\n') => return true,
+                (_, b'\n') => 0,
+                _ => 0,
+            };
+        }
+    }
+    false
+}
+
+#[inline(never)]
+fn write_human_report(
+    usb: &mut MountedUsb,
+    who: u32,
+    addr: u32,
+    i2c_ok: u32,
+    reads: u32,
+    errors: u32,
+    accel_mg: u32,
+    temp_centi_c: u32,
+    gyro_mag_mdps: u32,
+    pass: bool,
+) -> bool {
+    let mut buf = [0u8; 128];
+    let mut n = 0usize;
+    push(&mut buf, &mut n, b"NobroRTOS IMU who=0x");
+    let hi = (who >> 4) & 0xF;
+    let lo = who & 0xF;
+    let hexd = |d: u32| {
+        if d < 10 {
+            b'0' + d as u8
+        } else {
+            b'a' + (d - 10) as u8
+        }
+    };
+    if n + 2 <= buf.len() {
+        buf[n] = hexd(hi);
+        buf[n + 1] = hexd(lo);
+        n += 2;
+    }
+    push(&mut buf, &mut n, b" addr=");
+    push_u32(&mut buf, &mut n, addr);
+    push(&mut buf, &mut n, b" i2c=");
+    push_u32(&mut buf, &mut n, i2c_ok);
+    push(&mut buf, &mut n, b" reads=");
+    push_u32(&mut buf, &mut n, reads);
+    push(&mut buf, &mut n, b" err=");
+    push_u32(&mut buf, &mut n, errors);
+    push(&mut buf, &mut n, b" accel=");
+    push_u32(&mut buf, &mut n, accel_mg);
+    push(&mut buf, &mut n, b"mg temp=");
+    push_u32(&mut buf, &mut n, temp_centi_c);
+    push(&mut buf, &mut n, b" gyro=");
+    push_u32(&mut buf, &mut n, gyro_mag_mdps);
+    push(&mut buf, &mut n, b"mdps ");
+    push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
+    write_line(usb, &buf[..n])
+}
+
+#[inline(never)]
+fn write_machine_report(
+    usb: &mut MountedUsb,
+    who: u32,
+    reads: u32,
+    errors: u32,
+    accel_mg: u32,
+    pass: bool,
+) -> bool {
+    let mut mline = [0u8; 96];
+    let mut m = 0usize;
+    push(&mut mline, &mut m, b"NOBRO-CDC who=");
+    push_u32(&mut mline, &mut m, who);
+    push(&mut mline, &mut m, b" reads=");
+    push_u32(&mut mline, &mut m, reads);
+    push(&mut mline, &mut m, b" errors=");
+    push_u32(&mut mline, &mut m, errors);
+    push(&mut mline, &mut m, b" accel_mg=");
+    push_u32(&mut mline, &mut m, accel_mg);
+    push(&mut mline, &mut m, b" all_pass=");
+    push_u32(&mut mline, &mut m, u32::from(pass));
+    push(&mut mline, &mut m, b"\r\n");
+    write_line(usb, &mline[..m])
 }
 
 #[cfg(feature = "board-nicenano-s140")]
@@ -298,25 +394,12 @@ fn main() -> ! {
 
         // A line containing only "DFU" enters the UF2 bootloader. This keeps future
         // update cycles host-driven even on boards without a debug probe.
-        let mut command_bytes = [0u8; 16];
-        if let Ok(count) = usb.try_read(&mut command_bytes) {
-            for &byte in &command_bytes[..count] {
-                dfu_command_pos = match (dfu_command_pos, byte) {
-                    (0, b'D') => 1,
-                    (1, b'F') => 2,
-                    (2, b'U') => 3,
-                    (3, b'\r') => 3,
-                    (3, b'\n') => {
-                        #[cfg(feature = "board-nicenano-s140")]
-                        {
-                            dfu_handoff = DfuHandoff::Quiescing;
-                        }
-                        0
-                    }
-                    (_, b'\n') => 0,
-                    _ => 0,
-                };
+        if read_dfu_command(&mut usb, &mut dfu_command_pos) {
+            #[cfg(feature = "board-nicenano-s140")]
+            {
+                dfu_handoff = DfuHandoff::Quiescing;
             }
+            dfu_command_pos = 0;
         }
         #[cfg(feature = "board-nicenano-s140")]
         if dfu_handoff != DfuHandoff::Idle {
@@ -345,69 +428,28 @@ fn main() -> ! {
         }
 
         if spin % 600_000 == 0 {
-            let mut buf = [0u8; 128];
-            let mut n = 0usize;
-            push(&mut buf, &mut n, b"NobroRTOS IMU who=0x");
-            let hi = (who >> 4) & 0xF;
-            let lo = who & 0xF;
-            let hexd = |d: u32| {
-                if d < 10 {
-                    b'0' + d as u8
-                } else {
-                    b'a' + (d - 10) as u8
-                }
-            };
-            if n + 2 <= buf.len() {
-                buf[n] = hexd(hi);
-                buf[n + 1] = hexd(lo);
-                n += 2;
-            }
-            push(&mut buf, &mut n, b" addr=");
-            push_u32(&mut buf, &mut n, addr);
-            push(&mut buf, &mut n, b" i2c=");
-            push_u32(&mut buf, &mut n, i2c_ok);
-            push(&mut buf, &mut n, b" reads=");
-            push_u32(&mut buf, &mut n, reads);
-            push(&mut buf, &mut n, b" err=");
-            push_u32(&mut buf, &mut n, errors);
-            push(&mut buf, &mut n, b" accel=");
-            push_u32(&mut buf, &mut n, accel_mg);
-            push(&mut buf, &mut n, b"mg temp=");
-            push_u32(
-                &mut buf,
-                &mut n,
-                imu.as_ref().map(|d| d.last_temp_centi_c()).unwrap_or(0),
-            );
-            push(&mut buf, &mut n, b" gyro=");
-            push_u32(
-                &mut buf,
-                &mut n,
-                imu.as_ref().map(|d| d.last_gyro_mag_mdps()).unwrap_or(0),
-            );
-            push(&mut buf, &mut n, b"mdps ");
             let pass = i2c_ok == 1 && reads >= 10 && (800..1200).contains(&accel_mg);
-            push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
-            if !write_line(&mut usb, &buf[..n]) {
+            let temp_centi_c = imu.as_ref().map(|d| d.last_temp_centi_c()).unwrap_or(0);
+            let gyro_mag_mdps = imu.as_ref().map(|d| d.last_gyro_mag_mdps()).unwrap_or(0);
+            if !write_human_report(
+                &mut usb,
+                who,
+                addr,
+                i2c_ok,
+                reads,
+                errors,
+                accel_mg,
+                temp_centi_c,
+                gyro_mag_mdps,
+                pass,
+            ) {
                 defmt::warn!("USB telemetry backpressure");
             }
 
             // Machine-decodable twin of the line above, in the standard
             // `NOBRO-<NAME> key=value` shape the host tools and the web-flasher
             // report console parse (nobro_rtos.node / parseStatusLine).
-            let mut mline = [0u8; 96];
-            let mut m = 0usize;
-            push(&mut mline, &mut m, b"NOBRO-CDC who=");
-            push_u32(&mut mline, &mut m, who);
-            push(&mut mline, &mut m, b" reads=");
-            push_u32(&mut mline, &mut m, reads);
-            push(&mut mline, &mut m, b" errors=");
-            push_u32(&mut mline, &mut m, errors);
-            push(&mut mline, &mut m, b" accel_mg=");
-            push_u32(&mut mline, &mut m, accel_mg);
-            push(&mut mline, &mut m, b" all_pass=");
-            push_u32(&mut mline, &mut m, u32::from(pass));
-            push(&mut mline, &mut m, b"\r\n");
-            if !write_line(&mut usb, &mline[..m]) {
+            if !write_machine_report(&mut usb, who, reads, errors, accel_mg, pass) {
                 defmt::warn!("USB model-report backpressure");
             }
         }

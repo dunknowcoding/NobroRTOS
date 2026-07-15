@@ -92,11 +92,11 @@ gate "nRF52840 USB application link builds" \
 
 gate "nRF52840 application static budgets" \
   bash -c 'python tools/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo" \
-      --flash-budget 32768 --static-ram-budget 2048 --ram-budget 4096 --stack-budget 2304 --top 3 && \
+      --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 --top 3 && \
     python tools/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo_s140" \
-      --flash-budget 32768 --static-ram-budget 2048 --ram-budget 4096 --stack-budget 2304 --top 3 && \
+      --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 --top 3 && \
     python tools/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/ai_usb_demo" \
-      --flash-budget 32768 --static-ram-budget 2048 --ram-budget 4096 --stack-budget 2304 --top 3'
+      --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 --top 3'
 
 gate "esp32c3 port and USB demo build" \
   python tools/check_platform_tiers.py --run-gate esp32c3-target-build

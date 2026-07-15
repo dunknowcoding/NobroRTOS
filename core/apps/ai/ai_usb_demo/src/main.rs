@@ -57,6 +57,7 @@ static mut NOBRO_AI_USB_REPORT: AiUsbReport = AiUsbReport {
     checksum: 0,
 };
 
+#[inline(never)]
 fn push(buf: &mut [u8], pos: &mut usize, s: &[u8]) {
     for &b in s {
         if *pos < buf.len() {
@@ -65,6 +66,7 @@ fn push(buf: &mut [u8], pos: &mut usize, s: &[u8]) {
         }
     }
 }
+#[inline(never)]
 fn push_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
     let mut tmp = [0u8; 10];
     let mut n = 0;
@@ -112,6 +114,7 @@ fn install_device_serial(words: [u32; 2]) -> &'static str {
     }
 }
 
+#[inline(never)]
 fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
     for packet in line.chunks(nobro_usb::CDC_PACKET_SIZE) {
         if usb.write_all(packet).is_err() {
@@ -119,6 +122,94 @@ fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
         }
     }
     true
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn step_inference(
+    imu: &mut Option<Mpu9250Imu>,
+    model: &mut MotionClassifier,
+    model_id: u32,
+    window: &mut [u16; WINDOW],
+    widx: &mut usize,
+    accel_mg: &mut u16,
+    last_class: &mut u8,
+    last_conf_q15: &mut u16,
+    inferences: &mut u32,
+) -> bool {
+    if let Some(d) = imu.as_mut() {
+        if let Ok(Some(sample)) = d.poll() {
+            if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
+                *accel_mg = p.into_sample(sample.captured_us).accel_mag_mg as u16;
+                window[*widx] = *accel_mg;
+                *widx += 1;
+                if *widx >= WINDOW {
+                    *widx = 0;
+                    let mut input = [0u8; WINDOW * 2];
+                    for i in 0..WINDOW {
+                        input[2 * i..2 * i + 2].copy_from_slice(&window[i].to_le_bytes());
+                    }
+                    let mut out = [0u8; 4];
+                    let req = AiInferenceRequest::new(model_id, &input, 0);
+                    if let Ok(res) = model.infer(req, &mut out) {
+                        *last_class = out[0];
+                        *last_conf_q15 = res.confidence_q15;
+                        *inferences = inferences.wrapping_add(1);
+                        let pass = *inferences >= 4
+                            && *last_class != CLASS_ACTIVE
+                            && *last_conf_q15 >= 16_000
+                            && (800..1200).contains(&u32::from(*accel_mg));
+                        let completed = u32::from(*inferences >= 4);
+                        let all_pass = u32::from(pass);
+                        let cs = AI_USB_MAGIC
+                            ^ 1
+                            ^ completed
+                            ^ all_pass
+                            ^ model_id
+                            ^ *inferences
+                            ^ u32::from(*last_class)
+                            ^ u32::from(*last_conf_q15)
+                            ^ u32::from(*accel_mg);
+                        unsafe {
+                            NOBRO_AI_USB_REPORT.completed = completed;
+                            NOBRO_AI_USB_REPORT.all_pass = all_pass;
+                            NOBRO_AI_USB_REPORT.inferences = *inferences;
+                            NOBRO_AI_USB_REPORT.last_class = u32::from(*last_class);
+                            NOBRO_AI_USB_REPORT.confidence_q15 = u32::from(*last_conf_q15);
+                            NOBRO_AI_USB_REPORT.accel_mg = u32::from(*accel_mg);
+                            NOBRO_AI_USB_REPORT.checksum = cs;
+                        }
+                        SamplePool::release(sample.handle);
+                        return true;
+                    }
+                }
+            }
+            SamplePool::release(sample.handle);
+        }
+    }
+    false
+}
+
+#[inline(never)]
+fn write_ai_line(usb: &mut MountedUsb, last_class: u8, last_conf_q15: u16, accel_mg: u16) -> bool {
+    let mut buf = [0u8; 96];
+    let mut n = 0usize;
+    push(&mut buf, &mut n, b"NobroRTOS AI class=");
+    push(
+        &mut buf,
+        &mut n,
+        if last_class == CLASS_ACTIVE {
+            b"active"
+        } else {
+            b"idle"
+        },
+    );
+    push(&mut buf, &mut n, b" conf=");
+    push_u32(&mut buf, &mut n, u32::from(last_conf_q15) * 1000 / 32767);
+    push(&mut buf, &mut n, b"/1000 accel=");
+    push_u32(&mut buf, &mut n, u32::from(accel_mg));
+    push(&mut buf, &mut n, b"mg\r\n");
+    write_line(usb, &buf[..n])
 }
 
 #[entry]
@@ -154,69 +245,21 @@ fn main() -> ! {
         NOBRO_AI_USB_REPORT.model_id = model_id;
     }
 
-    // One inference step: pull a sample; on a full window classify + record the
-    // result. Returns true when an inference completed.
-    macro_rules! step {
-        () => {{
-            let mut did = false;
-            if let Some(d) = imu.as_mut() {
-                if let Ok(Some(sample)) = d.poll() {
-                    if let Some(p) = CompactImuPayload::read_from_handle(sample.handle) {
-                        accel_mg = p.into_sample(sample.captured_us).accel_mag_mg as u16;
-                        window[widx] = accel_mg;
-                        widx += 1;
-                        if widx >= WINDOW {
-                            widx = 0;
-                            let mut input = [0u8; WINDOW * 2];
-                            for i in 0..WINDOW {
-                                input[2 * i..2 * i + 2].copy_from_slice(&window[i].to_le_bytes());
-                            }
-                            let mut out = [0u8; 4];
-                            let req = AiInferenceRequest::new(model_id, &input, 0);
-                            if let Ok(res) = model.infer(req, &mut out) {
-                                last_class = out[0];
-                                last_conf_q15 = res.confidence_q15;
-                                inferences = inferences.wrapping_add(1);
-                                let pass = inferences >= 4
-                                    && last_class != CLASS_ACTIVE
-                                    && last_conf_q15 >= 16_000
-                                    && (800..1200).contains(&u32::from(accel_mg));
-                                let completed = u32::from(inferences >= 4);
-                                let all_pass = u32::from(pass);
-                                let cs = AI_USB_MAGIC
-                                    ^ 1
-                                    ^ completed
-                                    ^ all_pass
-                                    ^ model_id
-                                    ^ inferences
-                                    ^ u32::from(last_class)
-                                    ^ u32::from(last_conf_q15)
-                                    ^ u32::from(accel_mg);
-                                unsafe {
-                                    NOBRO_AI_USB_REPORT.completed = completed;
-                                    NOBRO_AI_USB_REPORT.all_pass = all_pass;
-                                    NOBRO_AI_USB_REPORT.inferences = inferences;
-                                    NOBRO_AI_USB_REPORT.last_class = u32::from(last_class);
-                                    NOBRO_AI_USB_REPORT.confidence_q15 = u32::from(last_conf_q15);
-                                    NOBRO_AI_USB_REPORT.accel_mg = u32::from(accel_mg);
-                                    NOBRO_AI_USB_REPORT.checksum = cs;
-                                }
-                                did = true;
-                            }
-                        }
-                    }
-                    SamplePool::release(sample.handle);
-                }
-            }
-            did
-        }};
-    }
-
     // Warm-up: record several inferences BEFORE USB so the report is readable even
     // if USB enumeration stalls on a given host.
     let mut warm = 0u32;
     while warm < 6 {
-        if step!() {
+        if step_inference(
+            &mut imu,
+            &mut model,
+            model_id,
+            &mut window,
+            &mut widx,
+            &mut accel_mg,
+            &mut last_class,
+            &mut last_conf_q15,
+            &mut inferences,
+        ) {
             warm += 1;
         }
         asm::delay(40_000);
@@ -236,27 +279,20 @@ fn main() -> ! {
         let usb_state = usb.poll();
         spin = spin.wrapping_add(1);
         if spin % 4096 == 0 {
-            let _ = step!();
+            let _ = step_inference(
+                &mut imu,
+                &mut model,
+                model_id,
+                &mut window,
+                &mut widx,
+                &mut accel_mg,
+                &mut last_class,
+                &mut last_conf_q15,
+                &mut inferences,
+            );
         }
         if usb_state == CdcState::Configured && spin % 600_000 == 0 {
-            let mut buf = [0u8; 96];
-            let mut n = 0usize;
-            push(&mut buf, &mut n, b"NobroRTOS AI class=");
-            push(
-                &mut buf,
-                &mut n,
-                if last_class == CLASS_ACTIVE {
-                    b"active"
-                } else {
-                    b"idle"
-                },
-            );
-            push(&mut buf, &mut n, b" conf=");
-            push_u32(&mut buf, &mut n, u32::from(last_conf_q15) * 1000 / 32767);
-            push(&mut buf, &mut n, b"/1000 accel=");
-            push_u32(&mut buf, &mut n, u32::from(accel_mg));
-            push(&mut buf, &mut n, b"mg\r\n");
-            if !write_line(&mut usb, &buf[..n]) {
+            if !write_ai_line(&mut usb, last_class, last_conf_q15, accel_mg) {
                 defmt::warn!("USB telemetry backpressure");
             }
         }
