@@ -65,6 +65,8 @@ gate "accounting semantics" python tools/check_accounting_semantics.py
 gate "nano kernel build/admission/symbol budgets" \
   python tools/check_nano_kernel.py
 
+gate "static budget analyzer" python tools/static_budget.py --selftest
+
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 
 gate "reset platform evidence receipts" \

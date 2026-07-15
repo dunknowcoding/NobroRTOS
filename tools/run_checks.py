@@ -150,6 +150,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "tools/nobro_contract_tool.py", "check-software-surface"], ROOT),
         ("public docs", [py, "tools/check_public_docs.py"], ROOT),
+        ("static budget analyzer", [py, "tools/static_budget.py", "--selftest"], ROOT),
         ("board profiles", [py, "tools/check_board_profiles.py"], ROOT),
         ("core layout", [py, "tools/check_core_layout.py"], ROOT),
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),

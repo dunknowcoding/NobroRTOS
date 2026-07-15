@@ -16,6 +16,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import nobro_firmware_project as firmware  # noqa: E402
+import static_budget  # noqa: E402
 
 TARGET = "thumbv7em-none-eabihf"
 FORBIDDEN = {
@@ -74,7 +75,8 @@ def command(args: list[str | pathlib.Path]) -> str:
                                    encoding="utf-8", errors="replace")
 
 
-def build_case(root: pathlib.Path, source_text: str, ceiling: int) -> dict:
+def build_case(root: pathlib.Path, source_text: str, ceiling: int,
+               ram_ceiling: int, stack_ceiling: int, total_ram_ceiling: int) -> dict:
     source = root / "app.nobro"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(source_text, encoding="utf-8")
@@ -88,11 +90,37 @@ def build_case(root: pathlib.Path, source_text: str, ceiling: int) -> dict:
     if not target_root.is_absolute():
         target_root = pathlib.Path(generated["project"]) / target_root
     elf = target_root / TARGET / "release" / f"nobro-app-{app}"
+    objdump = str(llvm_tool("objdump"))
     size = command([llvm_tool("size"), elf]).strip().splitlines()[-1].split()
     flash = int(size[0]) + int(size[1])
     static_ram = int(size[1]) + int(size[2])
     if flash > ceiling:
         raise AssertionError(f"{app}: flash {flash} exceeds {ceiling}")
+    (
+        _frames,
+        _cycles,
+        stack_worst,
+        stack_path,
+        _cycle_worst,
+        _cycle_path,
+        indirect,
+        _loops,
+        recursive,
+        _unknown_cycles,
+    ) = static_budget.analyze(str(elf), objdump)
+    total_ram = static_ram + stack_worst
+    if static_ram > ram_ceiling:
+        raise AssertionError(f"{app}: static RAM {static_ram} exceeds {ram_ceiling}")
+    if stack_worst > stack_ceiling:
+        raise AssertionError(
+            f"{app}: computed stack {stack_worst} exceeds {stack_ceiling}; "
+            f"path {static_budget.format_path(stack_path)}")
+    if total_ram > total_ram_ceiling:
+        raise AssertionError(f"{app}: total RAM {total_ram} exceeds {total_ram_ceiling}")
+    if indirect:
+        raise AssertionError(f"{app}: static budget has unpriced indirect calls: {indirect[:4]}")
+    if recursive:
+        raise AssertionError(f"{app}: static budget found recursion: {recursive[:4]}")
     sections = command([llvm_tool("objdump"), "-h", elf])
     for required in (".vector_table", ".text", ".rodata"):
         if required not in sections:
@@ -107,6 +135,7 @@ def build_case(root: pathlib.Path, source_text: str, ceiling: int) -> dict:
     if violations:
         raise AssertionError(f"{app}: forbidden linked symbols: {', '.join(violations)}")
     return {"app": app, "flash": flash, "static_ram": static_ram,
+            "stack": stack_worst, "total_ram": total_ram,
             "table": int(match.group(1), 16)}
 
 
@@ -114,8 +143,8 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="nobro-nano-") as tmp:
             root = pathlib.Path(tmp)
-            simple = build_case(root / "simple", SIMPLE, 3_000)
-            complex_case = build_case(root / "complex", COMPLEX, 3_400)
+            simple = build_case(root / "simple", SIMPLE, 3_000, 64, 128, 192)
+            complex_case = build_case(root / "complex", COMPLEX, 3_400, 96, 128, 224)
 
             reject_source = root / "reject" / "app.nobro"
             reject_source.parent.mkdir(parents=True)
@@ -129,8 +158,10 @@ def main() -> int:
         print(f"NANO KERNEL: FAIL ({error})")
         return 1
     print("NANO KERNEL: PASS "
-          f"(min flash={simple['flash']} table={simple['table']}; "
-          f"complex flash={complex_case['flash']} table={complex_case['table']}; "
+          f"(min flash={simple['flash']} ram={simple['static_ram']} "
+          f"stack={simple['stack']} table={simple['table']}; "
+          f"complex flash={complex_case['flash']} ram={complex_case['static_ram']} "
+          f"stack={complex_case['stack']} table={complex_case['table']}; "
           "build rejection attributed; feature symbols absent)")
     return 0
 
