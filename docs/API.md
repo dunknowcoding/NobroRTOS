@@ -530,10 +530,19 @@ Invalid contracts and exhausted timer capacity also fail closed with a
 sleep-through operations are separate backend features; this API is the
 portable async contract boundary.
 
-For multi-priority async designs, validate the domains and channels before
-constructing the concrete reactors:
+For multi-priority async designs, attach each reactor domain to the graph task
+that drives it, then validate the domains and channels before constructing the
+concrete reactors:
 
 ```rust
+let graph = nobro_kernel::AppGraph::<2>::new()
+    .task(nobro_kernel::TaskDecl::control("control-reactor", 5_000)
+        .reactor_domain(0))?
+    .task(nobro_kernel::TaskDecl::service("telemetry-reactor", 100_000)
+        .reactor_domain(1)
+        .after("control-reactor"))?;
+let built = graph.build::<3>()?;
+
 let control = nobro_kernel::ReactorDomainContract::new(0, 0)
     .task_slots(4)
     .timer_slots(2)
@@ -543,18 +552,19 @@ let telemetry = nobro_kernel::ReactorDomainContract::new(1, 3)
     .timer_slots(4)
     .fuel_per_cycle(8);
 
-let plan = nobro_kernel::admit_reactor_domains::<2, 1>(
+let plan = built.admit_reactor_domains::<2, 1>(
     [Some(control), Some(telemetry)],
     [Some(nobro_kernel::ReactorChannelContract::new(0, 1, 4))],
 )?;
-assert_eq!(plan.cross_domain_len, 1);
+assert_eq!(plan.reactor.cross_domain_len, 1);
 ```
 
-Each domain is still driven by a normal admitted reactor task. Cross-domain
-channels are surfaced in the plan so applications can choose a multi-waiter
-transport such as `MpmcChannel` instead of accidentally sharing a single-waker
-SPSC channel across priority domains. A cross-domain channel must declare at
-least two waiter slots.
+Each domain is driven by exactly one normal admitted reactor task; the graph
+link rejects unknown, missing, or duplicate domain drivers before runtime
+wiring. Cross-domain channels are surfaced in the plan so applications can
+choose a multi-waiter transport such as `MpmcChannel` instead of accidentally
+sharing a single-waker SPSC channel across priority domains. A cross-domain
+channel must declare at least two waiter slots.
 
 #### Executor Power And Structured Faults
 

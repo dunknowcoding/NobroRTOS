@@ -29,6 +29,10 @@
 //! offending name instead of a bare index.
 
 use crate::{
+    async_rt::{
+        admit_reactor_domains, ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract,
+        ReactorDomainContract,
+    },
     kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
     DependencySet, ManifestError, MemoryBudget, ModuleId, ModuleSpec, ObjectQuota, StartupError,
     StartupNode, StartupPlanner, SystemManifest, SystemProfile, TaskMeta,
@@ -60,6 +64,9 @@ pub struct TaskDecl {
     /// Optional explicit core placement. `None` = let the placement
     /// planner assign a core by balancing utilization (beginner-safe default).
     pub core_affinity: Option<u8>,
+    /// Optional async reactor domain driven by this admitted kernel task.
+    /// Exactly one graph task must drive each admitted reactor domain.
+    pub reactor_domain: Option<u8>,
     after: [Option<&'static str>; MAX_DEPS],
 }
 
@@ -91,6 +98,7 @@ impl TaskDecl {
             role: None,
             has_deadline: true,
             core_affinity: None,
+            reactor_domain: None,
             after: [None; MAX_DEPS],
         }
     }
@@ -186,6 +194,14 @@ impl TaskDecl {
         self
     }
 
+    /// Mark this admitted task as the driver for one async reactor domain.
+    /// Futures in that domain still live inside the bounded reactor; this
+    /// label connects the domain to manifest/admission budgets by name.
+    pub const fn reactor_domain(mut self, domain: u8) -> Self {
+        self.reactor_domain = Some(domain);
+        self
+    }
+
     /// Start this task after `name` (startup ordering, by label).
     pub fn after(mut self, name: &'static str) -> Self {
         for slot in self.after.iter_mut() {
@@ -237,6 +253,37 @@ pub enum GraphError {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorTaskBinding {
+    pub task: &'static str,
+    pub module: ModuleId,
+    pub domain: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphReactorError {
+    ReactorAdmission(ReactorAdmissionError),
+    UnknownDomain {
+        task: &'static str,
+        domain: u8,
+    },
+    DuplicateDomainDriver {
+        domain: u8,
+        first_task: &'static str,
+        duplicate_task: &'static str,
+    },
+    MissingDomainDriver {
+        domain: u8,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphReactorAdmission<const TASKS: usize, const DOMAINS: usize, const CHANNELS: usize> {
+    pub reactor: ReactorAdmissionPlan<DOMAINS, CHANNELS>,
+    pub bindings: [Option<ReactorTaskBinding>; TASKS],
+    pub binding_len: usize,
+}
+
 /// Everything the kernel needs, derived from one declaration set.
 pub struct BuiltGraph<const MODULES: usize, const TASKS: usize> {
     pub manifest: SystemManifest<MODULES>,
@@ -245,6 +292,8 @@ pub struct BuiltGraph<const MODULES: usize, const TASKS: usize> {
     pub tasks: [Option<TaskMeta>; TASKS],
     pub task_len: usize,
     labels: [Option<(&'static str, ModuleId)>; TASKS],
+    reactor_bindings: [Option<ReactorTaskBinding>; TASKS],
+    reactor_binding_len: usize,
 }
 
 impl<const MODULES: usize, const TASKS: usize> BuiltGraph<MODULES, TASKS> {
@@ -268,6 +317,68 @@ impl<const MODULES: usize, const TASKS: usize> BuiltGraph<MODULES, TASKS> {
             .flatten()
             .find(|(_, owner)| *owner == module)
             .map(|(label, _)| *label)
+    }
+
+    pub fn reactor_bindings(&self) -> impl Iterator<Item = &ReactorTaskBinding> + '_ {
+        self.reactor_bindings.iter().flatten()
+    }
+
+    pub fn reactor_domain_of(&self, task: &str) -> Option<u8> {
+        self.reactor_bindings()
+            .find(|binding| binding.task == task)
+            .map(|binding| binding.domain)
+    }
+
+    /// Admit reactor-domain contracts and prove every domain is driven by
+    /// exactly one already-admitted graph task. This links the async executor
+    /// plan back to the manifest/startup graph before runtime wiring.
+    pub fn admit_reactor_domains<const DOMAINS: usize, const CHANNELS: usize>(
+        &self,
+        domains: [Option<ReactorDomainContract>; DOMAINS],
+        channels: [Option<ReactorChannelContract>; CHANNELS],
+    ) -> Result<GraphReactorAdmission<TASKS, DOMAINS, CHANNELS>, GraphReactorError> {
+        let reactor = admit_reactor_domains(domains, channels)
+            .map_err(GraphReactorError::ReactorAdmission)?;
+        self.link_reactor_plan(reactor)
+    }
+
+    /// Link a pre-admitted reactor-domain plan to this graph.
+    pub fn link_reactor_plan<const DOMAINS: usize, const CHANNELS: usize>(
+        &self,
+        reactor: ReactorAdmissionPlan<DOMAINS, CHANNELS>,
+    ) -> Result<GraphReactorAdmission<TASKS, DOMAINS, CHANNELS>, GraphReactorError> {
+        for binding in self.reactor_bindings() {
+            if reactor.domain(binding.domain).is_none() {
+                return Err(GraphReactorError::UnknownDomain {
+                    task: binding.task,
+                    domain: binding.domain,
+                });
+            }
+        }
+        for (index, binding) in self.reactor_bindings().enumerate() {
+            for previous in self.reactor_bindings().take(index) {
+                if previous.domain == binding.domain {
+                    return Err(GraphReactorError::DuplicateDomainDriver {
+                        domain: binding.domain,
+                        first_task: previous.task,
+                        duplicate_task: binding.task,
+                    });
+                }
+            }
+        }
+        for domain in reactor.domains() {
+            if !self
+                .reactor_bindings()
+                .any(|binding| binding.domain == domain.id)
+            {
+                return Err(GraphReactorError::MissingDomainDriver { domain: domain.id });
+            }
+        }
+        Ok(GraphReactorAdmission {
+            reactor,
+            bindings: self.reactor_bindings,
+            binding_len: self.reactor_binding_len,
+        })
     }
 }
 
@@ -414,6 +525,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         let mut startup = [StartupNode::EMPTY; MODULES];
         startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
         let mut tasks: [Option<TaskMeta>; TASKS] = [None; TASKS];
+        let mut reactor_bindings: [Option<ReactorTaskBinding>; TASKS] = [None; TASKS];
+        let mut reactor_binding_len = 0usize;
 
         for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
             if decl.blocking_us > decl.deadline_us.saturating_sub(decl.execution_budget_us) {
@@ -471,6 +584,14 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                 .with_deadline_us(decl.deadline_us)
                 .with_blocking_us(decl.blocking_us),
             );
+            if let Some(domain) = decl.reactor_domain {
+                reactor_bindings[reactor_binding_len] = Some(ReactorTaskBinding {
+                    task: decl.name,
+                    module,
+                    domain,
+                });
+                reactor_binding_len += 1;
+            }
         }
 
         // Cycle/consistency check with attribution: the planner sees the same
@@ -509,6 +630,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             tasks,
             task_len: self.len,
             labels,
+            reactor_bindings,
+            reactor_binding_len,
         })
     }
 
@@ -791,6 +914,111 @@ mod tests {
         assert_eq!(
             (task.phase_us, task.period_us, task.deadline_us),
             (1_000, 5_000, 4_000)
+        );
+    }
+
+    #[test]
+    fn reactor_domains_are_linked_to_admitted_graph_tasks() {
+        let built = AppGraph::<2>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .task(
+                TaskDecl::service("telemetry-reactor", 100_000)
+                    .reactor_domain(1)
+                    .after("control-reactor"),
+            )
+            .unwrap()
+            .channel("control-reactor", "telemetry-reactor")
+            .unwrap()
+            .build::<3>()
+            .unwrap();
+
+        assert_eq!(built.reactor_domain_of("control-reactor"), Some(0));
+        let admitted = built
+            .admit_reactor_domains::<2, 1>(
+                [
+                    Some(ReactorDomainContract::new(0, 0).task_slots(4)),
+                    Some(ReactorDomainContract::new(1, 3).task_slots(2)),
+                ],
+                [Some(ReactorChannelContract::new(0, 1, 4).waiter_slots(4))],
+            )
+            .unwrap();
+
+        assert_eq!(admitted.binding_len, 2);
+        assert_eq!(admitted.reactor.cross_domain_len, 1);
+        assert_eq!(
+            admitted.bindings[0],
+            Some(ReactorTaskBinding {
+                task: "control-reactor",
+                module: ModuleId::App(0),
+                domain: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn reactor_domain_linkage_rejects_missing_unknown_and_duplicate_drivers() {
+        let missing = AppGraph::<1>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .build::<2>()
+            .unwrap()
+            .admit_reactor_domains::<2, 0>(
+                [
+                    Some(ReactorDomainContract::new(0, 0)),
+                    Some(ReactorDomainContract::new(1, 1)),
+                ],
+                [],
+            )
+            .unwrap_err();
+        assert_eq!(
+            missing,
+            GraphReactorError::MissingDomainDriver { domain: 1 }
+        );
+
+        let unknown = AppGraph::<1>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(7))
+            .unwrap()
+            .build::<2>()
+            .unwrap()
+            .admit_reactor_domains::<1, 0>([Some(ReactorDomainContract::new(0, 0))], [])
+            .unwrap_err();
+        assert_eq!(
+            unknown,
+            GraphReactorError::UnknownDomain {
+                task: "control-reactor",
+                domain: 7,
+            }
+        );
+
+        let duplicate = AppGraph::<2>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .task(TaskDecl::service("telemetry-reactor", 100_000).reactor_domain(0))
+            .unwrap()
+            .build::<3>()
+            .unwrap()
+            .admit_reactor_domains::<1, 0>([Some(ReactorDomainContract::new(0, 0))], [])
+            .unwrap_err();
+        assert_eq!(
+            duplicate,
+            GraphReactorError::DuplicateDomainDriver {
+                domain: 0,
+                first_task: "control-reactor",
+                duplicate_task: "telemetry-reactor",
+            }
+        );
+
+        let invalid_contract = AppGraph::<1>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .build::<2>()
+            .unwrap()
+            .admit_reactor_domains::<0, 0>([], [])
+            .unwrap_err();
+        assert_eq!(
+            invalid_contract,
+            GraphReactorError::ReactorAdmission(ReactorAdmissionError::EmptyDomains)
         );
     }
 

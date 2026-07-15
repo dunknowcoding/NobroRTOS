@@ -507,8 +507,9 @@ The next step is not a larger kernel; it is stronger contracts:
   without hardware-specific probes
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
 - optional async executors with static task allocation, deadline-guarded
-  futures that turn fired compares into typed health faults, and validated
-  multi-priority reactor domains with explicit cross-domain channels
+  futures that turn fired compares into typed health faults, and graph-linked
+  multi-priority reactor domains with one admitted driver task per domain plus
+  explicit cross-domain channels
 - health reports exported through the same host contract as runtime reports
 - fixed-layout health reports with checksums for CDC, memory inspection, or another stream
   readers

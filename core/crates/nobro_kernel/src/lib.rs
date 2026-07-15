@@ -96,7 +96,10 @@ pub use foreign_host::{
     ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
-pub use graph::{AppGraph, BuiltGraph, GraphError, TaskDecl};
+pub use graph::{
+    AppGraph, BuiltGraph, GraphError, GraphReactorAdmission, GraphReactorError, ReactorTaskBinding,
+    TaskDecl,
+};
 pub use health::{
     FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,
     ModuleId,
