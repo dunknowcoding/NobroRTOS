@@ -19,6 +19,16 @@ FILES = {
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",
 }
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
+RAW_MASK_TOKENS = (
+    "cortex_m::interrupt::disable(",
+    "cortex_m::interrupt::enable(",
+    "cortex_m::interrupt::free(",
+    "cortex_m::register::primask",
+)
+RAW_MASK_ALLOWLIST = {
+    ROOT / "core/apps/connectivity/usb_cdc_demo/src/main.rs",
+    ROOT / "core/ports/samd21/src/masked_critical_section.rs",
+}
 
 
 def _basepri_service_model() -> list[str]:
@@ -74,6 +84,47 @@ def _basepri_service_model() -> list[str]:
     return failures
 
 
+def _raw_masking_allowlist() -> list[str]:
+    """Keep raw interrupt masking out of ordinary public code paths.
+
+    nRF builds must route shared-state exclusion through the BASEPRI-backed
+    `critical_section` provider so deadline/watchdog sources stay serviceable.
+    The only public exceptions are:
+      * the pre-RAM USB bootloader-handoff sanitizer, which deliberately masks
+        before Rust statics exist and re-enables at the start of `main`; and
+      * the SAMD21 Cortex-M0+ measured fallback, because the architecture has no
+        BASEPRI and the provider reports its maximum masked time.
+    """
+    failures: list[str] = []
+    for path in sorted((ROOT / "core").rglob("*.rs")):
+        text = path.read_text(encoding="utf-8")
+        hits = [token for token in RAW_MASK_TOKENS if token in text]
+        if not hits:
+            continue
+        if path not in RAW_MASK_ALLOWLIST:
+            rel = path.relative_to(ROOT)
+            failures.append(f"{rel}: raw interrupt masking tokens {hits} are not allowed")
+            continue
+        if path == FILES["samd_provider"]:
+            for token in ("MAX_MASKED_CYCLES", "SYST_COUNTFLAG", "max_masked_us_ceil"):
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: measured PRIMASK fallback missing {token!r}"
+                    )
+        else:
+            required = (
+                "sanitize_bootloader_interrupt_handoff",
+                "leaves interrupt delivery masked until `main`",
+                "pre-RAM handoff sanitizer deliberately leaves PRIMASK set",
+            )
+            for token in required:
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: boot-handoff raw mask exception missing {token!r}"
+                    )
+    return failures
+
+
 def main() -> int:
     text = {name: path.read_text(encoding="utf-8") for name, path in FILES.items()}
     failures = []
@@ -123,6 +174,7 @@ def main() -> int:
             if token not in text[name]:
                 failures.append(f"{name}: missing required mechanism {token!r}")
     failures.extend(_basepri_service_model())
+    failures.extend(_raw_masking_allowlist())
     selection_token = "critical-section-single-core"
     selected_manifests = list((ROOT / "core/apps").rglob("Cargo.toml"))
     selected_manifests += list((ROOT / "core/adapters").rglob("Cargo.toml"))
