@@ -10,7 +10,9 @@ It also estimates a static instruction-cycle envelope for the same call graph an
 gate a cycle budget. Recursive, looped, indirect-call, or unknown-instruction paths are
 flagged rather than silently treated as fully priced.
 
-  python3 tools/static_budget.py path/to/app.elf [--objdump PATH] [--ram-budget BYTES]
+  python3 tools/static_budget.py path/to/app.elf [--objdump PATH] [--flash-budget BYTES]
+  python3 tools/static_budget.py path/to/app.elf [--static-ram-budget BYTES]
+  python3 tools/static_budget.py path/to/app.elf [--ram-budget BYTES] [--stack-budget BYTES]
   python3 tools/static_budget.py path/to/app.elf [--cycle-budget CYCLES] [--clock-hz HZ]
 
 Exit code 1 if any requested budget is exceeded.
@@ -250,8 +252,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("elf", nargs="?")
     ap.add_argument("--objdump", default=None)
+    ap.add_argument("--flash-budget", type=int, default=None,
+                    help="fail if flash text+data exceeds this")
+    ap.add_argument("--static-ram-budget", type=int, default=None,
+                    help="fail if static RAM data+bss exceeds this")
     ap.add_argument("--ram-budget", type=int, default=None,
                     help="fail if static RAM + worst-case stack exceeds this")
+    ap.add_argument("--stack-budget", type=int, default=None,
+                    help="fail if the computed worst-case stack exceeds this")
     ap.add_argument("--cycle-budget", type=int, default=None,
                     help="fail if the static deepest-path cycle estimate exceeds this")
     ap.add_argument("--clock-hz", type=int, default=None,
@@ -316,10 +324,25 @@ def main():
               + ("..." if len(unknown_cycles) > 4 else ""))
 
     ok = True
+    if args.flash_budget is not None:
+        flash_ok = text + data <= args.flash_budget
+        print(f"flash budget {args.flash_budget} B: {'PASS' if flash_ok else 'FAIL'}")
+        ok = ok and flash_ok
+    if args.static_ram_budget is not None:
+        static_ram_ok = static_ram <= args.static_ram_budget
+        print(
+            f"static RAM budget {args.static_ram_budget} B: "
+            f"{'PASS' if static_ram_ok else 'FAIL'}"
+        )
+        ok = ok and static_ram_ok
     if args.ram_budget is not None:
         ram_ok = total_ram <= args.ram_budget
         print(f"RAM budget {args.ram_budget} B: {'PASS' if ram_ok else 'FAIL'}")
         ok = ok and ram_ok
+    if args.stack_budget is not None:
+        stack_ok = worst <= args.stack_budget
+        print(f"stack budget {args.stack_budget} B: {'PASS' if stack_ok else 'FAIL'}")
+        ok = ok and stack_ok
     if args.cycle_budget is not None:
         cycle_ok = worst_cycles <= args.cycle_budget
         print(f"cycle budget {args.cycle_budget} cycles: {'PASS' if cycle_ok else 'FAIL'}")
