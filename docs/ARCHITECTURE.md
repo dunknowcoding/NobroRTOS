@@ -506,7 +506,8 @@ The next step is not a larger kernel; it is stronger contracts:
   before app admission so board bring-up can diagnose adapter/profile mismatch
   without hardware-specific probes
 - compile-time or host-time checks for RAM, flash, capabilities, and criticality
-- optional async executors with static task allocation
+- optional async executors with static task allocation and deadline-guarded
+  futures that turn fired compares into typed health faults
 - health reports exported through the same host contract as runtime reports
 - fixed-layout health reports with checksums for CDC, memory inspection, or another stream
   readers

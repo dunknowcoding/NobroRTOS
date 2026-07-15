@@ -503,6 +503,33 @@ The `check-scheduler-matrix` CLI validates on-time ticks, tolerated early/late
 jitter, missed deadlines, 32-bit time wraparound, counter reset, and invalid
 scheduler configuration.
 
+#### Bounded Async Deadline Guard
+
+`TimerQueue::with_deadline` and the free `with_deadline` helper wrap a
+caller-pinned future with an explicit `(phase_us, period_us, deadline_us)`
+contract. The wrapper registers the absolute compare deadline in the fixed
+timer queue and polls the deadline before the inner future after wake-up. If
+the deadline fires first, the future resolves to `Err(DeadlineFault)`; use
+`DeadlineFault::health_fault()` to route the miss through the normal
+health/recovery path instead of accepting a silent late result.
+
+```rust
+let mut read = core::future::ready(7u8);
+let value = nobro_kernel::with_deadline(
+    &timers,
+    0,
+    1_000,
+    250,
+    core::pin::Pin::new(&mut read),
+).await?;
+assert_eq!(value, 7);
+```
+
+Invalid contracts and exhausted timer capacity also fail closed with a
+`DeadlineFault`. Hardware-completion wakers and provider-specific DMA/PPI
+sleep-through operations are separate backend features; this API is the
+portable async contract boundary.
+
 #### Executor Power And Structured Faults
 
 `KernelExecutor::run_cycle` accepts a `PowerPlatform` implementation. When no

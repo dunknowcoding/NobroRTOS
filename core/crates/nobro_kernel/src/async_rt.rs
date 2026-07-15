@@ -36,6 +36,7 @@ use critical_section::Mutex;
 use portable_atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU8, Ordering};
 
 use crate::async_exec::SpawnedTask;
+use crate::{FaultContext, FaultSource, HealthFault, KernelError};
 
 /// Per-task wake state; lives in a `'static` [`AsyncCore`].
 pub struct WakeCell {
@@ -281,6 +282,20 @@ impl<const T: usize> TimerQueue<T> {
             slot: None,
         }
     }
+
+    /// Wrap a caller-pinned future in a deadline guard backed by this timer
+    /// queue. The wrapper resolves to `Err(DeadlineFault)` when the compare
+    /// deadline fires first, so a late async completion is never silently
+    /// treated as success.
+    pub fn with_deadline<'a, F: Future + ?Sized>(
+        &'a self,
+        phase_us: u64,
+        period_us: u64,
+        deadline_us: u64,
+        future: Pin<&'a mut F>,
+    ) -> DeadlineFuture<'a, F, T> {
+        with_deadline(self, phase_us, period_us, deadline_us, future)
+    }
 }
 
 pub struct Sleep<'q, const T: usize> {
@@ -339,6 +354,186 @@ impl<const T: usize> Drop for Sleep<'_, T> {
             critical_section::with(|cs| {
                 self.queue.slots.borrow(cs).borrow_mut()[index] = None;
             });
+        }
+    }
+}
+
+// -------------------------------------------------------- deadline guard
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineContractError {
+    ZeroPeriod,
+    ZeroDeadline,
+    DeadlineExceedsPeriod,
+    AbsoluteDeadlineOverflow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AsyncDeadline {
+    pub phase_us: u64,
+    pub period_us: u64,
+    pub deadline_us: u64,
+    pub absolute_deadline_us: u64,
+}
+
+impl AsyncDeadline {
+    pub const fn new(
+        phase_us: u64,
+        period_us: u64,
+        deadline_us: u64,
+    ) -> Result<Self, DeadlineContractError> {
+        if period_us == 0 {
+            return Err(DeadlineContractError::ZeroPeriod);
+        }
+        if deadline_us == 0 {
+            return Err(DeadlineContractError::ZeroDeadline);
+        }
+        if deadline_us > period_us {
+            return Err(DeadlineContractError::DeadlineExceedsPeriod);
+        }
+        let Some(absolute_deadline_us) = phase_us.checked_add(deadline_us) else {
+            return Err(DeadlineContractError::AbsoluteDeadlineOverflow);
+        };
+        Ok(Self {
+            phase_us,
+            period_us,
+            deadline_us,
+            absolute_deadline_us,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineFaultKind {
+    InvalidContract(DeadlineContractError),
+    TimerUnavailable,
+    Missed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineFault {
+    pub kind: DeadlineFaultKind,
+    pub deadline: AsyncDeadline,
+}
+
+impl DeadlineFault {
+    pub const fn invalid(error: DeadlineContractError) -> Self {
+        Self {
+            kind: DeadlineFaultKind::InvalidContract(error),
+            deadline: AsyncDeadline {
+                phase_us: 0,
+                period_us: 0,
+                deadline_us: 0,
+                absolute_deadline_us: 0,
+            },
+        }
+    }
+
+    pub const fn timer_unavailable(deadline: AsyncDeadline) -> Self {
+        Self {
+            kind: DeadlineFaultKind::TimerUnavailable,
+            deadline,
+        }
+    }
+
+    pub const fn missed(deadline: AsyncDeadline) -> Self {
+        Self {
+            kind: DeadlineFaultKind::Missed,
+            deadline,
+        }
+    }
+
+    pub const fn health_fault(self) -> HealthFault {
+        let (error, source, code) = match self.kind {
+            DeadlineFaultKind::Missed => (KernelError::DeadlineMissed, FaultSource::Scheduler, 1),
+            DeadlineFaultKind::TimerUnavailable => {
+                (KernelError::QuotaBreach, FaultSource::Kernel, 2)
+            }
+            DeadlineFaultKind::InvalidContract(_) => {
+                (KernelError::QuotaBreach, FaultSource::Kernel, 3)
+            }
+        };
+        HealthFault::new(
+            error,
+            FaultContext::new(
+                source,
+                code,
+                self.deadline.absolute_deadline_us as u32,
+                self.deadline.deadline_us as u32,
+            ),
+        )
+    }
+}
+
+/// Build a deadline-scoped async operation over a caller-pinned future.
+///
+/// The deadline is registered in the supplied [`TimerQueue`] and is polled
+/// before the wrapped future on later wakes. Once the queue fires, the wrapper
+/// returns a [`DeadlineFaultKind::Missed`] fault even if the wrapped future
+/// would also become ready in that same pass. This preserves the RTOS rule that
+/// missed deadlines flow through health/recovery instead of becoming silent
+/// late successes.
+pub fn with_deadline<'a, F: Future + ?Sized, const T: usize>(
+    queue: &'a TimerQueue<T>,
+    phase_us: u64,
+    period_us: u64,
+    deadline_us: u64,
+    future: Pin<&'a mut F>,
+) -> DeadlineFuture<'a, F, T> {
+    let deadline = AsyncDeadline::new(phase_us, period_us, deadline_us);
+    DeadlineFuture {
+        queue,
+        future,
+        deadline: deadline.ok(),
+        invalid: deadline.err(),
+        sleep: None,
+    }
+}
+
+pub struct DeadlineFuture<'a, F: Future + ?Sized, const T: usize> {
+    queue: &'a TimerQueue<T>,
+    future: Pin<&'a mut F>,
+    deadline: Option<AsyncDeadline>,
+    invalid: Option<DeadlineContractError>,
+    sleep: Option<Sleep<'a, T>>,
+}
+
+impl<F: Future + ?Sized, const T: usize> Unpin for DeadlineFuture<'_, F, T> {}
+
+impl<F: Future + ?Sized, const T: usize> Future for DeadlineFuture<'_, F, T> {
+    type Output = Result<F::Output, DeadlineFault>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = &mut *self;
+        if let Some(error) = this.invalid.take() {
+            return Poll::Ready(Err(DeadlineFault::invalid(error)));
+        }
+        let deadline = this
+            .deadline
+            .expect("deadline future polled after completion");
+        if this.sleep.is_none() {
+            this.sleep = Some(this.queue.sleep_until(deadline.absolute_deadline_us));
+        }
+        if let Some(sleep) = this.sleep.as_mut() {
+            match Pin::new(sleep).poll(cx) {
+                Poll::Ready(false) => {
+                    this.sleep = None;
+                    return Poll::Ready(Err(DeadlineFault::timer_unavailable(deadline)));
+                }
+                Poll::Ready(true) => {
+                    this.sleep = None;
+                    return Poll::Ready(Err(DeadlineFault::missed(deadline)));
+                }
+                Poll::Pending => {}
+            }
+        }
+        match this.future.as_mut().poll(cx) {
+            Poll::Ready(output) => {
+                this.sleep = None;
+                this.deadline = None;
+                Poll::Ready(Ok(output))
+            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -747,6 +942,103 @@ mod tests {
         assert_eq!(exec.run_ready(8).completed, 1);
         assert_eq!(QUEUE.next_deadline_us(), None); // all slots released
         assert_eq!(exec.live(), 0);
+    }
+
+    #[test]
+    fn deadline_future_completes_before_compare_and_releases_slot() {
+        static QUEUE: TimerQueue<1> = TimerQueue::new();
+        static OUT: AtomicU32 = AtomicU32::new(0);
+        OUT.store(0, Ordering::Relaxed);
+        let core = leak_core::<1>();
+        let mut exec = ReactorExecutor::bind(core);
+
+        let task = pin!(async {
+            let mut work = core::future::ready(42u32);
+            let result = with_deadline(&QUEUE, 10, 100, 50, Pin::new(&mut work)).await;
+            OUT.store(result.unwrap(), Ordering::Relaxed);
+        });
+        exec.spawn(task).unwrap();
+        let stats = exec.run_ready(4);
+        assert_eq!(stats.completed, 1);
+        assert_eq!(OUT.load(Ordering::Relaxed), 42);
+        assert_eq!(QUEUE.next_deadline_us(), None);
+    }
+
+    #[test]
+    fn deadline_future_reports_health_fault_when_compare_fires_first() {
+        static QUEUE: TimerQueue<1> = TimerQueue::new();
+        static FAULT_CODE: AtomicU32 = AtomicU32::new(0);
+        FAULT_CODE.store(0, Ordering::Relaxed);
+        let core = leak_core::<1>();
+        let mut exec = ReactorExecutor::bind(core);
+
+        struct Never;
+        impl Future for Never {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                Poll::Pending
+            }
+        }
+
+        let task = pin!(async {
+            let mut work = Never;
+            let fault = with_deadline(&QUEUE, 1_000, 10_000, 2_000, Pin::new(&mut work))
+                .await
+                .unwrap_err();
+            assert_eq!(fault.kind, DeadlineFaultKind::Missed);
+            assert_eq!(fault.deadline.absolute_deadline_us, 3_000);
+            let health = fault.health_fault();
+            assert_eq!(health.error, KernelError::DeadlineMissed);
+            assert_eq!(health.context.source, FaultSource::Scheduler);
+            FAULT_CODE.store(u32::from(health.context.code), Ordering::Relaxed);
+        });
+        exec.spawn(task).unwrap();
+        assert_eq!(exec.run_ready(4).completed, 0); // registered and parked
+        assert_eq!(QUEUE.next_deadline_us(), Some(3_000));
+        QUEUE.advance(3_000);
+        assert_eq!(exec.run_ready(4).completed, 1);
+        assert_eq!(FAULT_CODE.load(Ordering::Relaxed), 1);
+        assert_eq!(QUEUE.next_deadline_us(), None);
+    }
+
+    #[test]
+    fn deadline_future_fails_closed_on_invalid_contract_or_no_timer_slot() {
+        static EMPTY_QUEUE: TimerQueue<0> = TimerQueue::new();
+        static QUEUE: TimerQueue<1> = TimerQueue::new();
+        let core = leak_core::<2>();
+        let mut exec = ReactorExecutor::bind(core);
+
+        struct Never;
+        impl Future for Never {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                Poll::Pending
+            }
+        }
+
+        let invalid = pin!(async {
+            let mut work = Never;
+            let fault = with_deadline(&QUEUE, 0, 100, 101, Pin::new(&mut work))
+                .await
+                .unwrap_err();
+            assert_eq!(
+                fault.kind,
+                DeadlineFaultKind::InvalidContract(DeadlineContractError::DeadlineExceedsPeriod)
+            );
+            assert_eq!(fault.health_fault().error, KernelError::QuotaBreach);
+        });
+        let no_slot = pin!(async {
+            let mut work = Never;
+            let fault = EMPTY_QUEUE
+                .with_deadline(0, 100, 50, Pin::new(&mut work))
+                .await
+                .unwrap_err();
+            assert_eq!(fault.kind, DeadlineFaultKind::TimerUnavailable);
+            assert_eq!(fault.health_fault().error, KernelError::QuotaBreach);
+        });
+        exec.spawn(invalid).unwrap();
+        exec.spawn(no_slot).unwrap();
+        assert_eq!(exec.run_ready(4).completed, 2);
     }
 
     #[test]
