@@ -67,6 +67,8 @@ gate "nano kernel build/admission/symbol budgets" \
 
 gate "static budget analyzer" python tools/static_budget.py --selftest
 
+gate "flash tool fail-closed parser" python tools/flash.py --selftest
+
 gate "portability matrix (6 MCU families)" bash tools/check_portability.sh
 
 gate "reset platform evidence receipts" \
