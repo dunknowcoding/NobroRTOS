@@ -394,6 +394,11 @@ The concise `workload.json` task/channel graph regenerates the build input and i
 expanded into the same low-level contract the kernel admits. `project run` combines
 contract explanation, build, simulation, and report decoding.
 
+`project explain` validates the same task/wire model before it prices the graph. The
+first workload error is reported with a stable `NOBRO-E02x` code, for example an
+unknown wire endpoint is `NOBRO-E031`, so CI logs and beginner-facing tutorials point
+to the same fix.
+
 If the desired output is production nRF firmware rather than a host scaffold, use one
 short `app.nobro` declaration:
 
