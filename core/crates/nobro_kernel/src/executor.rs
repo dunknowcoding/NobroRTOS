@@ -381,8 +381,35 @@ impl<const N: usize> TaskTable<N> {
             rejected: (ready_mask & !valid_mask).count_ones(),
             ..IsrReleaseReceipt::default()
         };
-        let mut accepted_members = 0u32;
         let mut candidates = ready_mask & valid_mask;
+        if candidates != 0 && candidates & (candidates - 1) == 0 {
+            let task_index = candidates.trailing_zeros() as usize;
+            if self.release_root() != Some(task_index) {
+                receipt.rejected = receipt.rejected.saturating_add(1);
+                return receipt;
+            }
+            let bit = 1u32 << task_index;
+            let due = self.slots[task_index]
+                .expect("release task slot")
+                .stats
+                .next_due_us;
+            if due > now_us {
+                receipt.rejected = receipt.rejected.saturating_add(1);
+                return receipt;
+            }
+            let _ = self.pop_release_root();
+            self.enqueue_ready(task_index);
+            self.ready_members |= bit;
+            self.slots[task_index]
+                .as_mut()
+                .expect("ready task slot")
+                .stats
+                .release_group_width = 1;
+            receipt.accepted = 1;
+            return receipt;
+        }
+
+        let mut accepted_members = 0u32;
         while let Some(task_index) = self.release_root() {
             let bit = 1u32 << task_index;
             let due = self.slots[task_index]
@@ -979,6 +1006,50 @@ mod tests {
             ModuleId::Actuator
         );
         assert_eq!(table.selected_group_width(selected.index), 2);
+    }
+
+    #[test]
+    fn compare_isr_handoff_fast_path_accepts_only_release_root() {
+        let mut table = TaskTable::<2>::new();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 100, 1).with_phase_us(20),
+                0,
+            )
+            .unwrap();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Radio, Criticality::System, 100, 1).with_phase_us(10),
+                0,
+            )
+            .unwrap();
+
+        assert_eq!(
+            table.accept_isr_releases(1u32 << 0, 20),
+            IsrReleaseReceipt {
+                accepted: 0,
+                rejected: 1
+            }
+        );
+        assert_eq!(
+            table.accept_isr_releases(1u32 << 1, 9),
+            IsrReleaseReceipt {
+                accepted: 0,
+                rejected: 1
+            }
+        );
+        assert_eq!(
+            table.accept_isr_releases(1u32 << 1, 10),
+            IsrReleaseReceipt {
+                accepted: 1,
+                rejected: 0
+            }
+        );
+        let selected = table
+            .select_due(10)
+            .expect("single ISR bit made root ready");
+        assert_eq!(selected.index, 1);
+        assert_eq!(table.selected_group_width(selected.index), 1);
     }
 
     #[test]
