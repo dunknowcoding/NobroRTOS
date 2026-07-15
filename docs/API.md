@@ -64,9 +64,9 @@ panics on those errors.
 
 The former ambiguous `backend-usb-serial-jtag` feature is split into
 `backend-usb-serial-jtag-esp32c3` and `backend-usb-serial-jtag-esp32s3`; downstream
-manifests must select the register map for their exact chip. The placeholder
-`backend_id::TINYUSB` and `backend_id::TAICHIUSB` constants are removed because no
-selectable implementation backs those identities.
+manifests must select the register map for their exact chip. Placeholder backend
+identity constants that had no selectable implementation are removed; diagnostics
+identify only backends that can actually be mounted.
 
 `UsbConfig` is a request, not an unconditional claim about the identity observed by the
 host. `identity_policy()` reports one of three behaviors: nRF descriptors use the
@@ -87,6 +87,18 @@ failures such as `ControllerTimeout`.
 suspend, watchdog expiry, or disconnect makes it false. It is no longer a historical
 "configured at least once" latch. Applications that need session history must track it
 separately.
+
+`UsbStack::force_reenumeration()` explicitly detaches and reattaches the current
+application device session when the backend supports that operation. It is for a
+rate-limited recovery policy after enumeration stops making progress, not for routine
+host suspend. A successful return means that recovery was initiated; keep calling
+`poll()` and wait for `configured()` to become true before using the data endpoints.
+The nRF USBD backend currently implements this generic operation. The selectable RA4M1
+and ESP backends retain the default `Unsupported` result; board-specific routing or
+recovery APIs are separate. On nRF, absence of VBUS or a bounded controller-wake failure
+is reported as a typed backend error. This operation neither enters a bootloader nor
+changes firmware. A bootloader has its own USB identity, independent of the application
+identity requested through `UsbConfig`.
 
 The fallible inherent convenience formerly named `MountedUsb::flush()` is now
 `flush_pending()`. This removes its return-type/name collision with
@@ -338,6 +350,53 @@ application work begins, so host tools can stop at the adapter stage when
 descriptors do not match the selected board profile.
 
 #### Admission
+
+Periodic declarations can separate first-release phase, period, and relative
+deadline without duplicating scheduler configuration:
+
+```rust
+let motor = nobro_kernel::TaskDecl::control("motor", 5_000)
+    .phase_us(1_000)
+    .deadline_us(4_000)
+    .budget_us(400);
+```
+
+The same values reach the manifest, shared build/runtime admission core, and
+executor. Invalid phase uses stable diagnostic `NOBRO-E015`. Periods are
+limited to `MAX_WRAP_SAFE_INTERVAL_US` (`0x7fff_ffff` us) because Nano's
+32-bit allocation-free clock comparison requires an unambiguous half-range.
+
+Advanced Cortex-M applications may opt into interrupt-domain admission with
+`nobro_admission::admit_with_interrupts`. `InterruptContract` declares logical
+priority, period/deadline, execution, exception-stack bytes, and only bounded
+`IsrOperations`. Platform profiles reject reserved priorities (including S140
+reservations), account nested stack use, and add every ISR's interference to
+cooperative task response bounds. Multiple sources may share one logical
+priority; admission conservatively charges equal-priority sources as mutual
+interference because vector-order metadata is not part of the contract.
+Arbitrary ISR callbacks are intentionally absent.
+
+The `nobro-kernel/preemptive` feature adds `InterruptHandoff` and
+`SliceController`; `nobro-hal/cortex-m-slice` adds the nRF PSP/PendSV mechanism.
+Both are opt-in. P-SLICE owns separate stacks but is not an MPU or privilege
+boundary. Start a controller with `start_next_at(now_us, sentinel)` before
+entering thread mode; this arms the budget sentinel before user work can hog.
+`CortexMSliceSwitch::start(record, pendsv_logical_priority, ceiling)` validates
+an explicit PendSV priority at or below the selected BASEPRI ceiling (logical
+7 is the portable nRF choice). This ensures a context switch cannot split a
+process-wide critical-section transaction. A budget overrun outside a critical
+section is suspendable; one inside a section remains pending until the section
+exits and must escalate to the watchdog if it never exits. The port preserves
+BASEPRI per PSP context. `SliceTask::allows_fpu(true)` raises the stack floor by
+136 bytes: 72 bytes of hardware extended frame plus 64 bytes for S16-S31.
+
+The nRF board package also supplies the process-wide `critical-section`
+implementation. It uses BASEPRI 3 for the no-SoftDevice profile and BASEPRI 6
+for S140, so admitted deadline/watchdog priorities remain serviceable while
+kernel, HAL, USB, adapter, and portable-atomic users share one lock contract.
+Do not also enable Cortex-M's `critical-section-single-core` PRIMASK provider.
+Interrupts above the ceiling may touch only lock-free handoff state; using a
+critical-section mutex there violates the priority-ceiling contract.
 
 `AdmissionController` composes manifest validation, startup ordering, quota
 seeding, and capability grant construction:

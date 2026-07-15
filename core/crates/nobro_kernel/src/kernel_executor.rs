@@ -135,7 +135,7 @@ impl ExecutionSentinel {
         }
     }
 
-    fn arm(&self, module: ModuleId, deadline_us: u64) {
+    pub(crate) fn arm(&self, module: ModuleId, deadline_us: u64) {
         // The sentinel is sampled asynchronously and its fields are separate
         // atomics. A single sequentially-consistent order is intentional here:
         // it makes the odd/even generation a real publication bracket instead
@@ -148,7 +148,7 @@ impl ExecutionSentinel {
         self.sequence.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn disarm(&self) {
+    pub(crate) fn disarm(&self) {
         self.sequence.fetch_add(1, Ordering::SeqCst);
         self.module.store(0, Ordering::SeqCst);
         self.sequence.fetch_add(1, Ordering::SeqCst);
@@ -615,17 +615,18 @@ impl<
 
     /// Fail-closed schedulability admission: response-time analysis over the
     /// registered set (fixed priority = criticality, same-priority interference
-    /// counted pessimistically, deadline = period) plus the utilization bound.
+    /// counted pessimistically) plus the utilization bound. Explicit phases
+    /// shape releases but do not reduce this conservative interference proof.
     /// `run_cycle` refuses to execute until this has passed.
     pub fn seal(&mut self) -> Result<(), ExecError> {
         let metas = self.tasks.metas();
         for meta in metas.iter().flatten() {
             let response_us = response_time(*meta, &metas, self.wake_latency_us)?;
-            if response_us > u64::from(meta.period_us) {
+            if response_us > u64::from(meta.deadline_us) {
                 return Err(ExecError::Unschedulable {
                     module: meta.module,
                     response_us,
-                    period_us: meta.period_us,
+                    period_us: meta.deadline_us,
                 });
             }
         }
@@ -1213,7 +1214,7 @@ fn response_time<const N: usize>(
         .saturating_add(u64::from(wake_latency_us));
     let mut response = cost;
     // The response never needs more iterations than it has microseconds below
-    // the period bound; cap defensively to stay bounded on pathological input.
+    // the deadline bound; cap defensively to stay bounded on pathological input.
     for _ in 0..64 {
         let mut next = cost;
         for other in metas.iter().flatten() {
@@ -1226,11 +1227,11 @@ fn response_time<const N: usize>(
         if next == response {
             return Ok(response);
         }
-        if next > u64::from(task.period_us) {
+        if next > u64::from(task.deadline_us) {
             return Err(ExecError::Unschedulable {
                 module: task.module,
                 response_us: next,
-                period_us: task.period_us,
+                period_us: task.deadline_us,
             });
         }
         response = next;
@@ -1238,7 +1239,7 @@ fn response_time<const N: usize>(
     Err(ExecError::Unschedulable {
         module: task.module,
         response_us: response,
-        period_us: task.period_us,
+        period_us: task.deadline_us,
     })
 }
 

@@ -38,6 +38,8 @@ pub mod multicore;
 pub mod nano;
 pub mod objects;
 pub mod pool;
+#[cfg(feature = "preemptive")]
+pub mod preemption;
 pub mod quota;
 pub mod recovery;
 pub mod report;
@@ -133,6 +135,11 @@ pub use nano::{
 };
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{CompactImuPayload, SamplePool};
+#[cfg(feature = "preemptive")]
+pub use preemption::{
+    InterruptHandoff, InterruptReceipt, SliceContext, SliceController, SliceDecision, SliceError,
+    SlicePort, SliceTask,
+};
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
     RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanDispatch,

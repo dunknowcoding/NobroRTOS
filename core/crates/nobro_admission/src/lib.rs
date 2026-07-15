@@ -8,7 +8,10 @@
 
 /// Report status used when a subsystem was intentionally not linked.
 pub const SUBSYSTEM_ABSENT: u16 = 0xFFFF;
-pub const ADMITTED_SCHEMA_VERSION: u16 = 1;
+pub const ADMITTED_SCHEMA_VERSION: u16 = 2;
+/// Largest interval that remains unambiguous under 32-bit wrapping time
+/// comparisons used by the allocation-free target dispatcher.
+pub const MAX_WRAP_SAFE_INTERVAL_US: u32 = 0x7FFF_FFFF;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +53,8 @@ pub struct TaskContract {
     pub id: u16,
     /// Lower values have higher fixed priority.
     pub priority_key: u16,
+    /// First release offset from the executor epoch. Must be below `period_us`.
+    pub phase_us: u32,
     /// Zero marks a capacity-only entry that does not participate in RTA.
     pub period_us: u32,
     /// Zero means the entry has no deadline contract.
@@ -71,6 +76,7 @@ impl TaskContract {
         active: false,
         id: 0,
         priority_key: u16::MAX,
+        phase_us: 0,
         period_us: 0,
         deadline_us: 0,
         jitter_us: 0,
@@ -88,6 +94,7 @@ impl TaskContract {
             active: true,
             id,
             priority_key: u16::MAX,
+            phase_us: 0,
             period_us: 0,
             deadline_us: 0,
             jitter_us: 0,
@@ -122,6 +129,14 @@ impl TaskContract {
         self
     }
 
+    /// Offset the first periodic release without changing its relative deadline.
+    /// Response-time analysis remains conservatively valid because it does not
+    /// subtract interference merely because phases differ.
+    pub const fn phase(mut self, phase_us: u32) -> Self {
+        self.phase_us = phase_us;
+        self
+    }
+
     pub const fn memory(mut self, flash_bytes: u32, ram_bytes: u32, pool_slots: u16) -> Self {
         self.flash_bytes = flash_bytes;
         self.ram_bytes = ram_bytes;
@@ -144,6 +159,128 @@ impl TaskContract {
     }
 }
 
+/// Operations permitted in an interrupt-domain step. Arbitrary callbacks,
+/// allocation, locks, waits, and peripheral polling are intentionally absent.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IsrOperations(u16);
+
+impl IsrOperations {
+    pub const ACK_PERIPHERAL: Self = Self(1 << 0);
+    pub const READ_CLOCK: Self = Self(1 << 1);
+    pub const MARK_READY: Self = Self(1 << 2);
+    pub const PUSH_BOUNDED_EVENT: Self = Self(1 << 3);
+    pub const ALL_BOUNDED: Self = Self(
+        Self::ACK_PERIPHERAL.0
+            | Self::READ_CLOCK.0
+            | Self::MARK_READY.0
+            | Self::PUSH_BOUNDED_EVENT.0,
+    );
+
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn bits(self) -> u16 {
+        self.0
+    }
+}
+
+/// One deadline-critical interrupt domain. Lower logical priority values are
+/// higher urgency, matching NVIC convention before hardware bit shifting.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InterruptContract {
+    active: bool,
+    pub id: u16,
+    pub priority: u8,
+    pub period_us: u32,
+    pub deadline_us: u32,
+    pub execution_us: u32,
+    /// Basic/extended exception-frame and handler-owned stack bound.
+    pub stack_bytes: u16,
+    pub operations: IsrOperations,
+}
+
+impl InterruptContract {
+    pub const EMPTY: Self = Self {
+        active: false,
+        id: 0,
+        priority: u8::MAX,
+        period_us: 0,
+        deadline_us: 0,
+        execution_us: 0,
+        stack_bytes: 0,
+        operations: IsrOperations::empty(),
+    };
+
+    pub const fn new(
+        id: u16,
+        priority: u8,
+        period_us: u32,
+        deadline_us: u32,
+        execution_us: u32,
+        stack_bytes: u16,
+    ) -> Self {
+        Self {
+            active: true,
+            id,
+            priority,
+            period_us,
+            deadline_us,
+            execution_us,
+            stack_bytes,
+            operations: IsrOperations::empty(),
+        }
+    }
+
+    pub const fn operations(mut self, operations: IsrOperations) -> Self {
+        self.operations = operations;
+        self
+    }
+
+    const fn active(self) -> bool {
+        self.active
+    }
+}
+
+/// Target-specific interrupt constraints supplied to shared admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InterruptProfile {
+    pub priority_levels: u8,
+    /// Logical priority bits reserved by firmware/radio/boot stacks.
+    pub reserved_priorities: u8,
+    pub max_nesting: u8,
+    pub interrupt_stack_limit_bytes: u16,
+}
+
+impl InterruptProfile {
+    pub const fn new(
+        priority_levels: u8,
+        reserved_priorities: u8,
+        max_nesting: u8,
+        interrupt_stack_limit_bytes: u16,
+    ) -> Self {
+        Self {
+            priority_levels,
+            reserved_priorities,
+            max_nesting,
+            interrupt_stack_limit_bytes,
+        }
+    }
+
+    /// nRF52840 without a SoftDevice: all eight logical levels are available.
+    pub const NRF52840_BARE: Self = Self::new(8, 0, 3, 1_024);
+    /// S140 reserves logical priorities 0, 1, 4, and 5; application IRQs use
+    /// 2, 3, 6, or 7. The stack bound remains an explicit application budget.
+    pub const NRF52840_S140: Self =
+        Self::new(8, (1 << 0) | (1 << 1) | (1 << 4) | (1 << 5), 3, 1_024);
+}
+
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AdmissionErrorCode {
@@ -161,6 +298,13 @@ pub enum AdmissionErrorCode {
     PoolExceeded = 12,
     ArithmeticOverflow = 13,
     WakeLatencyExceeded = 14,
+    InvalidPhase = 15,
+    InvalidInterruptPriority = 16,
+    ReservedInterruptPriority = 17,
+    InvalidInterruptContract = 18,
+    UnsafeInterruptOperation = 19,
+    InterruptStackExceeded = 20,
+    InterruptResponseExceeded = 21,
 }
 
 impl AdmissionErrorCode {
@@ -180,6 +324,19 @@ impl AdmissionErrorCode {
             Self::PoolExceeded => "NOBRO-E012 sample-pool profile exceeded",
             Self::ArithmeticOverflow => "NOBRO-E013 admission arithmetic overflow",
             Self::WakeLatencyExceeded => "NOBRO-E014 wake-latency bound exceeds deadline",
+            Self::InvalidPhase => "NOBRO-E015 phase must be below period",
+            Self::InvalidInterruptPriority => {
+                "NOBRO-E016 interrupt priority is outside target range"
+            }
+            Self::ReservedInterruptPriority => {
+                "NOBRO-E017 interrupt priority is reserved by the platform stack"
+            }
+            Self::InvalidInterruptContract => "NOBRO-E018 invalid interrupt timing/stack contract",
+            Self::UnsafeInterruptOperation => {
+                "NOBRO-E019 interrupt step requests an unbounded operation"
+            }
+            Self::InterruptStackExceeded => "NOBRO-E020 nested interrupt-stack budget exceeded",
+            Self::InterruptResponseExceeded => "NOBRO-E021 interrupt interference exceeds deadline",
         }
     }
 }
@@ -220,6 +377,7 @@ pub struct AdmittedTask {
     pub id: u16,
     /// Zero is the highest fixed priority. Capacity-only entries use `u16::MAX`.
     pub priority: u16,
+    pub phase_us: u32,
     pub period_us: u32,
     pub deadline_us: u32,
     pub response_bound_us: u32,
@@ -231,6 +389,7 @@ impl AdmittedTask {
     pub const EMPTY: Self = Self {
         id: 0,
         priority: u16::MAX,
+        phase_us: 0,
         period_us: 0,
         deadline_us: 0,
         response_bound_us: 0,
@@ -441,12 +600,23 @@ pub const fn admit<const N: usize>(
         };
 
         if task.participates() {
-            if task.period_us == 0 || task.deadline_us > task.period_us {
+            if task.period_us == 0
+                || task.period_us > MAX_WRAP_SAFE_INTERVAL_US
+                || task.deadline_us > task.period_us
+            {
                 return Err(AdmissionError::task(
                     AdmissionErrorCode::InvalidDeadline,
                     index,
                     task.deadline_us as u64,
                     task.period_us as u64,
+                ));
+            }
+            if task.phase_us >= task.period_us {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidPhase,
+                    index,
+                    task.phase_us as u64,
+                    task.period_us.saturating_sub(1) as u64,
                 ));
             }
             if task.jitter_us >= task.deadline_us {
@@ -492,7 +662,8 @@ pub const fn admit<const N: usize>(
                     10_000,
                 ));
             }
-        } else if task.period_us != 0
+        } else if task.phase_us != 0
+            || task.period_us != 0
             || task.jitter_us != 0
             || task.execution_us != 0
             || task.blocking_us != 0
@@ -572,6 +743,7 @@ pub const fn admit<const N: usize>(
         admitted[index] = AdmittedTask {
             id: task.id,
             priority: priority_of(index, &tasks),
+            phase_us: task.phase_us,
             period_us: task.period_us,
             deadline_us: task.deadline_us,
             response_bound_us: response,
@@ -590,6 +762,395 @@ pub const fn admit<const N: usize>(
         pool_slots: pool,
         utilization_permyriad: utilization as u16,
     })
+}
+
+const fn interrupt_response<const I: usize>(
+    index: usize,
+    interrupts: &[InterruptContract; I],
+) -> Result<u32, AdmissionError> {
+    let interrupt = interrupts[index];
+    let mut response = interrupt.execution_us;
+    let mut iteration = 0usize;
+    while iteration < 64 {
+        let mut next = interrupt.execution_us as u64;
+        let mut other = 0usize;
+        while other < I {
+            let hp = interrupts[other];
+            // Equal-priority sources cannot preempt each other, but one may
+            // already be pending when this source becomes ready. Without
+            // vector-order metadata, charging their periodic demand as mutual
+            // interference is conservative and permits useful priority groups.
+            if other != index && hp.active() && hp.priority <= interrupt.priority {
+                let releases = (response as u64).div_ceil(hp.period_us as u64);
+                let interference = match releases.checked_mul(hp.execution_us as u64) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+                next = match next.checked_add(interference) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+            }
+            other += 1;
+        }
+        if next > u32::MAX as u64 || next > interrupt.deadline_us as u64 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::InterruptResponseExceeded,
+                index,
+                next,
+                interrupt.deadline_us as u64,
+            ));
+        }
+        if next as u32 == response {
+            return Ok(response);
+        }
+        response = next as u32;
+        iteration += 1;
+    }
+    Err(AdmissionError::task(
+        AdmissionErrorCode::InterruptResponseExceeded,
+        index,
+        response as u64,
+        interrupt.deadline_us as u64,
+    ))
+}
+
+const fn task_response_with_interrupts<const T: usize, const I: usize>(
+    index: usize,
+    tasks: &[TaskContract; T],
+    interrupts: &[InterruptContract; I],
+    wake_latency_us: u32,
+) -> Result<u32, AdmissionError> {
+    let task = tasks[index];
+    let execution_and_blocking =
+        match (task.execution_us as u64).checked_add(task.blocking_us as u64) {
+            Some(value) => value,
+            None => {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::ArithmeticOverflow,
+                    index,
+                    u64::MAX,
+                    u32::MAX as u64,
+                ))
+            }
+        };
+    let base = match execution_and_blocking.checked_add(wake_latency_us as u64) {
+        Some(value) => value,
+        None => {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::ArithmeticOverflow,
+                index,
+                u64::MAX,
+                u32::MAX as u64,
+            ))
+        }
+    };
+    if base > u32::MAX as u64 {
+        return Err(AdmissionError::task(
+            AdmissionErrorCode::ArithmeticOverflow,
+            index,
+            base,
+            u32::MAX as u64,
+        ));
+    }
+    let mut response = base as u32;
+    let mut iteration = 0usize;
+    while iteration < 64 {
+        let mut next = base;
+        let mut other = 0usize;
+        while other < T {
+            if higher_priority(other, index, tasks) {
+                let hp = tasks[other];
+                let releases =
+                    (response as u64 + hp.jitter_us as u64).div_ceil(hp.period_us as u64);
+                let interference = match releases.checked_mul(hp.execution_us as u64) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+                next = match next.checked_add(interference) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+            }
+            other += 1;
+        }
+        let mut irq = 0usize;
+        while irq < I {
+            let interrupt = interrupts[irq];
+            if interrupt.active() {
+                let releases = (response as u64).div_ceil(interrupt.period_us as u64);
+                let interference = match releases.checked_mul(interrupt.execution_us as u64) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+                next = match next.checked_add(interference) {
+                    Some(value) => value,
+                    None => {
+                        return Err(AdmissionError::task(
+                            AdmissionErrorCode::ArithmeticOverflow,
+                            index,
+                            u64::MAX,
+                            u32::MAX as u64,
+                        ))
+                    }
+                };
+            }
+            irq += 1;
+        }
+        if next > u32::MAX as u64 || next + task.jitter_us as u64 > task.deadline_us as u64 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::ResponseTimeExceeded,
+                index,
+                next + task.jitter_us as u64,
+                task.deadline_us as u64,
+            ));
+        }
+        if next as u32 == response {
+            return Ok(response);
+        }
+        response = next as u32;
+        iteration += 1;
+    }
+    Err(AdmissionError::task(
+        AdmissionErrorCode::ResponseTimeExceeded,
+        index,
+        response as u64 + task.jitter_us as u64,
+        task.deadline_us as u64,
+    ))
+}
+
+/// Admit periodic tasks together with optional deadline-critical ISR domains.
+/// ISR work is charged as interference to every cooperative task; each ISR is
+/// also checked against higher-urgency ISR interference and a conservative
+/// nested exception-stack bound. Default `admit` users pay no code/data cost.
+pub const fn admit_with_interrupts<const T: usize, const I: usize>(
+    tasks: [TaskContract; T],
+    interrupts: [InterruptContract; I],
+    profile: AdmissionProfile,
+    interrupt_profile: InterruptProfile,
+) -> Result<AdmittedWorkload<T>, AdmissionError> {
+    let mut admitted = match admit(tasks, profile) {
+        Ok(value) => value,
+        Err(error) => return Err(error),
+    };
+    if interrupt_profile.priority_levels == 0
+        || interrupt_profile.priority_levels > 8
+        || interrupt_profile.max_nesting == 0
+    {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::InvalidInterruptContract,
+            interrupt_profile.priority_levels as u64,
+            8,
+        ));
+    }
+
+    let mut utilization = admitted.utilization_permyriad as u64;
+    let mut index = 0usize;
+    while index < I {
+        let interrupt = interrupts[index];
+        if !interrupt.active() {
+            index += 1;
+            continue;
+        }
+        if interrupt.priority >= interrupt_profile.priority_levels {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::InvalidInterruptPriority,
+                index,
+                interrupt.priority as u64,
+                interrupt_profile.priority_levels.saturating_sub(1) as u64,
+            ));
+        }
+        if interrupt_profile.reserved_priorities & (1u8 << interrupt.priority) != 0 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::ReservedInterruptPriority,
+                index,
+                interrupt.priority as u64,
+                interrupt_profile.reserved_priorities as u64,
+            ));
+        }
+        if interrupt.period_us == 0
+            || interrupt.period_us > MAX_WRAP_SAFE_INTERVAL_US
+            || interrupt.deadline_us == 0
+            || interrupt.deadline_us > interrupt.period_us
+            || interrupt.execution_us == 0
+            || interrupt.execution_us > interrupt.deadline_us
+            || interrupt.stack_bytes < 32
+            || interrupt.stack_bytes & 7 != 0
+        {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::InvalidInterruptContract,
+                index,
+                interrupt.execution_us as u64,
+                interrupt.deadline_us as u64,
+            ));
+        }
+        if interrupt.operations.bits() & !IsrOperations::ALL_BOUNDED.bits() != 0 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::UnsafeInterruptOperation,
+                index,
+                interrupt.operations.bits() as u64,
+                IsrOperations::ALL_BOUNDED.bits() as u64,
+            ));
+        }
+        let mut previous = 0usize;
+        while previous < index {
+            if interrupts[previous].active() && interrupts[previous].id == interrupt.id {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidInterruptContract,
+                    index,
+                    interrupt.id as u64,
+                    0,
+                ));
+            }
+            previous += 1;
+        }
+        let irq_utilization =
+            (interrupt.execution_us as u64 * 10_000).div_ceil(interrupt.period_us as u64);
+        utilization = match utilization.checked_add(irq_utilization) {
+            Some(value) => value,
+            None => {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::ArithmeticOverflow,
+                    index,
+                    u64::MAX,
+                    10_000,
+                ))
+            }
+        };
+        if utilization > 10_000 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::UtilizationExceeded,
+                index,
+                utilization,
+                10_000,
+            ));
+        }
+        match interrupt_response(index, &interrupts) {
+            Ok(_) => {}
+            Err(error) => return Err(error),
+        }
+        index += 1;
+    }
+
+    // Equal-priority NVIC handlers cannot nest. Select the largest frame at
+    // each distinct priority, then sum the largest admitted nesting depth.
+    let mut priorities_present = [false; 8];
+    let mut priority_count = 0usize;
+    index = 0;
+    while index < I {
+        if interrupts[index].active() {
+            let priority = interrupts[index].priority as usize;
+            if !priorities_present[priority] {
+                priorities_present[priority] = true;
+                priority_count += 1;
+            }
+        }
+        index += 1;
+    }
+    // Every distinct NVIC priority may be live in one preemption chain. A
+    // profile's nesting limit is an admitted deployment bound, not permission
+    // to ignore the remaining frames. Reject an unrealizable profile instead
+    // of truncating the stack calculation and understating MSP demand.
+    if priority_count > interrupt_profile.max_nesting as usize {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::InvalidInterruptContract,
+            priority_count as u64,
+            interrupt_profile.max_nesting as u64,
+        ));
+    }
+    let mut chosen_priority = [false; 8];
+    let mut stack = 0u32;
+    let mut depth = 0usize;
+    while depth < priority_count {
+        let mut largest = 0u16;
+        let mut largest_index = I;
+        index = 0;
+        while index < I {
+            if interrupts[index].active()
+                && !chosen_priority[interrupts[index].priority as usize]
+                && interrupts[index].stack_bytes > largest
+            {
+                largest = interrupts[index].stack_bytes;
+                largest_index = index;
+            }
+            index += 1;
+        }
+        if largest_index < I {
+            chosen_priority[interrupts[largest_index].priority as usize] = true;
+            stack = match stack.checked_add(largest as u32) {
+                Some(value) => value,
+                None => {
+                    return Err(AdmissionError::global(
+                        AdmissionErrorCode::ArithmeticOverflow,
+                        u64::MAX,
+                        u32::MAX as u64,
+                    ))
+                }
+            };
+        }
+        depth += 1;
+    }
+    if stack > interrupt_profile.interrupt_stack_limit_bytes as u32 {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::InterruptStackExceeded,
+            stack as u64,
+            interrupt_profile.interrupt_stack_limit_bytes as u64,
+        ));
+    }
+
+    index = 0;
+    while index < T {
+        if tasks[index].active() && tasks[index].participates() {
+            let response = match task_response_with_interrupts(
+                index,
+                &tasks,
+                &interrupts,
+                profile.wake_latency_us,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Err(error),
+            };
+            admitted.tasks[index].response_bound_us = response;
+        }
+        index += 1;
+    }
+    admitted.utilization_permyriad = utilization as u16;
+    Ok(admitted)
 }
 
 #[cfg(test)]
@@ -681,6 +1242,125 @@ mod tests {
         assert_eq!(
             error.code.diagnostic(),
             "NOBRO-E014 wake-latency bound exceeds deadline"
+        );
+    }
+
+    #[test]
+    fn phase_is_retained_and_invalid_offsets_fail_with_stable_diagnostic() {
+        let task = TaskContract::new(7)
+            .deadline(1_000, 800, 0, 100, 0)
+            .phase(250);
+        let admitted = admit([task], PROFILE).expect("valid offset admits");
+        assert_eq!(admitted.tasks[0].phase_us, 250);
+        assert_eq!(admitted.tasks[0].deadline_us, 800);
+
+        let error = admit([task.phase(1_000)], PROFILE).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::InvalidPhase);
+        assert_eq!(error.task_index, 0);
+        assert_eq!(
+            error.code.diagnostic(),
+            "NOBRO-E015 phase must be below period"
+        );
+
+        let too_long = TaskContract::new(4).deadline(
+            MAX_WRAP_SAFE_INTERVAL_US + 1,
+            MAX_WRAP_SAFE_INTERVAL_US + 1,
+            0,
+            1,
+            0,
+        );
+        assert_eq!(
+            admit([too_long], PROFILE).unwrap_err().code,
+            AdmissionErrorCode::InvalidDeadline
+        );
+    }
+
+    #[test]
+    fn interrupt_domains_are_optional_admitted_interference() {
+        let task = TaskContract::new(1).deadline(1_000, 500, 0, 300, 0);
+        let irq = InterruptContract::new(9, 2, 1_000, 100, 50, 64)
+            .operations(IsrOperations::ACK_PERIPHERAL.union(IsrOperations::MARK_READY));
+        let admitted =
+            admit_with_interrupts([task], [irq], PROFILE, InterruptProfile::NRF52840_S140)
+                .expect("S140 application priority and bounded handoff admit");
+        assert_eq!(admitted.tasks[0].response_bound_us, 350);
+        assert_eq!(admitted.utilization_permyriad, 3_500);
+
+        let reserved = admit_with_interrupts(
+            [task],
+            [InterruptContract::new(9, 1, 1_000, 100, 50, 64)],
+            PROFILE,
+            InterruptProfile::NRF52840_S140,
+        )
+        .unwrap_err();
+        assert_eq!(reserved.code, AdmissionErrorCode::ReservedInterruptPriority);
+        assert_eq!(
+            reserved.code.diagnostic(),
+            "NOBRO-E017 interrupt priority is reserved by the platform stack"
+        );
+    }
+
+    #[test]
+    fn interrupt_deadline_and_nested_stack_fail_closed() {
+        let task = TaskContract::new(1).deadline(1_000, 900, 0, 100, 0);
+        let too_slow = InterruptContract::new(7, 2, 1_000, 40, 50, 64);
+        assert_eq!(
+            admit_with_interrupts([task], [too_slow], PROFILE, InterruptProfile::NRF52840_BARE,)
+                .unwrap_err()
+                .code,
+            AdmissionErrorCode::InvalidInterruptContract
+        );
+
+        let interrupts = [
+            InterruptContract::new(7, 2, 1_000, 100, 10, 128),
+            InterruptContract::new(8, 3, 1_000, 100, 10, 128),
+        ];
+        let profile = InterruptProfile::new(8, 0, 2, 192);
+        let error = admit_with_interrupts([task], interrupts, PROFILE, profile).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::InterruptStackExceeded);
+        assert_eq!(error.observed, 256);
+
+        let too_many_levels = [
+            InterruptContract::new(7, 2, 1_000, 100, 10, 64),
+            InterruptContract::new(8, 3, 1_000, 100, 10, 64),
+            InterruptContract::new(9, 4, 1_000, 100, 10, 64),
+        ];
+        let error = admit_with_interrupts(
+            [task],
+            too_many_levels,
+            PROFILE,
+            InterruptProfile::new(8, 0, 2, 1_024),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::InvalidInterruptContract);
+        assert_eq!(error.observed, 3);
+        assert_eq!(error.limit, 2);
+    }
+
+    #[test]
+    fn interrupt_sources_may_share_a_priority_with_conservative_interference() {
+        let task = TaskContract::new(1).deadline(2_000, 1_500, 0, 100, 0);
+        let interrupts = [
+            InterruptContract::new(7, 2, 1_000, 200, 50, 64),
+            InterruptContract::new(8, 2, 1_000, 200, 40, 64),
+        ];
+        let admitted =
+            admit_with_interrupts([task], interrupts, PROFILE, InterruptProfile::NRF52840_BARE)
+                .expect("equal-priority interrupt sources compose");
+        assert_eq!(admitted.tasks[0].response_bound_us, 190);
+
+        let one_stack_depth = InterruptProfile::new(8, 0, 2, 64);
+        assert!(admit_with_interrupts([task], interrupts, PROFILE, one_stack_depth).is_ok());
+
+        let too_tight = [
+            InterruptContract::new(7, 2, 1_000, 80, 50, 64),
+            InterruptContract::new(8, 2, 1_000, 80, 40, 64),
+        ];
+        assert_eq!(
+            admit_with_interrupts([task], too_tight, PROFILE, InterruptProfile::NRF52840_BARE,)
+                .unwrap_err()
+                .code,
+            AdmissionErrorCode::InterruptResponseExceeded
         );
     }
 

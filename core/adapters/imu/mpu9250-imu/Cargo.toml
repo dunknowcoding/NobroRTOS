@@ -9,7 +9,7 @@ nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }
 nobro-imu = { path = "../../../crates/nobro_imu" }
 nobro-sal = { path = "../../../crates/nobro_sal" }
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m = "0.7"
 libm = "0.2"
 
 [features]

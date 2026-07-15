@@ -6,6 +6,11 @@ use nobro_power::{PowerHookError, PowerMode, PowerPlatform};
 use nrf52840_pac::TIMER0;
 
 const COMPARE: usize = 3;
+const SCB_SCR_SEVONPEND: u32 = 1 << 4;
+#[cfg(feature = "board-nicenano-s140")]
+const TIMER0_PRIORITY_RAW: u8 = 2 << 5;
+#[cfg(not(feature = "board-nicenano-s140"))]
+const TIMER0_PRIORITY_RAW: u8 = 0;
 static ARMED_READY: AtomicU32 = AtomicU32::new(0);
 static PENDING_READY: AtomicU32 = AtomicU32::new(0);
 static ARMED_DEADLINE: AtomicU32 = AtomicU32::new(0);
@@ -34,6 +39,15 @@ impl NrfTimerPower {
         ARMED_DEADLINE.store(0, Ordering::Release);
         PENDING_DEADLINE.store(0, Ordering::Release);
         (*timer).tasks_start.write(|w| w.bits(1));
+        // SEVONPEND closes the check-to-sleep race without PRIMASK: if the
+        // compare becomes pending immediately before WFE, the event register
+        // remains set even after the ISR runs and WFE returns instead of
+        // sleeping past the release. S140-compatible builds use application
+        // priority 2; priorities 0/1 remain reserved by the SoftDevice.
+        let mut core = cortex_m::Peripherals::steal();
+        core.SCB.scr.modify(|value| value | SCB_SCR_SEVONPEND);
+        core.NVIC
+            .set_priority(nrf52840_pac::Interrupt::TIMER0, TIMER0_PRIORITY_RAW);
         NVIC::unmask(nrf52840_pac::Interrupt::TIMER0);
         Self {
             residency_us: 0,
@@ -71,6 +85,13 @@ impl NrfTimerPower {
 impl PowerPlatform for NrfTimerPower {
     fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
         let Some(deadline) = deadline_us else {
+            unsafe {
+                let timer = TIMER0::ptr();
+                (*timer).intenclr.write(|w| w.compare3().set_bit());
+                (*timer).events_compare[COMPARE].reset();
+            }
+            ARMED_READY.store(0, Ordering::Release);
+            ARMED_DEADLINE.store(0, Ordering::Release);
             self.wake_at = None;
             return Ok(());
         };
@@ -126,16 +147,23 @@ impl PowerPlatform for NrfTimerPower {
         }
         let start = Self::now_us() as u32;
         let mut slept = false;
-        cortex_m::interrupt::free(|_| {
-            let now = Self::now_us() as u32;
-            if self
-                .wake_at
-                .is_some_and(|wake| wake.wrapping_sub(now) < 0x8000_0000 && wake != now)
-            {
-                slept = true;
-                cortex_m::asm::wfi();
-            }
-        });
+        // Consume a stale event before deciding to sleep. Recheck both the
+        // hardware deadline and ISR handoff afterward; SEVONPEND closes the
+        // remaining check-to-WFE race.
+        cortex_m::asm::sev();
+        cortex_m::asm::wfe();
+        cortex_m::asm::dsb();
+        let now = Self::now_us() as u32;
+        if self
+            .wake_at
+            .is_some_and(|wake| wake.wrapping_sub(now) < 0x8000_0000 && wake != now)
+            && PENDING_READY.load(Ordering::Acquire) == 0
+            && PENDING_DEADLINE.load(Ordering::Acquire) == 0
+        {
+            slept = true;
+            cortex_m::asm::dsb();
+            cortex_m::asm::wfe();
+        }
         let end = Self::now_us() as u32;
         unsafe {
             (*TIMER0::ptr()).intenclr.write(|w| w.compare3().set_bit());

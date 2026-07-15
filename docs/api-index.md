@@ -70,7 +70,7 @@ Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 
 ## `nobro-admission`
 Allocation-free admission shared by firmware build scripts and the kernel.
-- **struct**: `AdmissionProfile`, `TaskContract`, `AdmissionError`, `AdmittedTask`, `AdmittedWorkload`
+- **struct**: `AdmissionProfile`, `TaskContract`, `IsrOperations`, `InterruptContract`, `InterruptProfile`, `AdmissionError`, `AdmittedTask`, `AdmittedWorkload`
 - **enum**: `AdmissionErrorCode`
 
 ## `nobro-ai`

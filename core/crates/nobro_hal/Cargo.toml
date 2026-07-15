@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
+cortex-m = { version = "0.7", optional = true }
 critical-section = "1.2"
 embedded-hal = "1.0"
 nobro-power = { path = "../nobro_power", optional = true }
@@ -14,8 +14,16 @@ nrf52840-pac = { version = "0.12", optional = true }
 default = ["platform-nrf52840", "board-promicro-nosd"]
 
 # SoC / HAL backends (enable exactly one per build).
-platform-nrf52840 = ["dep:cortex-m", "dep:nobro-power", "dep:nrf52840-pac"]
+platform-nrf52840 = [
+    "dep:cortex-m",
+    "dep:nobro-power",
+    "dep:nrf52840-pac",
+    "critical-section/restore-state-bool",
+]
 platform-nrf52840-rt = ["platform-nrf52840", "nrf52840-pac/rt"]
+# Optional Cortex-M4F PSP/PendSV port. It is never enabled by a portable board
+# profile and therefore has zero default cost on every target.
+cortex-m-slice = ["platform-nrf52840"]
 contract-only = []
 
 # Board packages are mutually exclusive and depend on platform-nrf52840.

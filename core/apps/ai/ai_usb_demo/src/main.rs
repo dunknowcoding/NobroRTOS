@@ -12,10 +12,6 @@ use cortex_m_rt::entry;
 use defmt_rtt as _;
 use panic_halt as _;
 
-use nrf_usbd::{UsbPeripheral, Usbd};
-use usb_device::prelude::*;
-use usbd_serial::SerialPort;
-
 use nobro_adapter_motion_ai::{MotionClassifier, CLASS_ACTIVE};
 use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 use nobro_hal::{
@@ -25,11 +21,7 @@ use nobro_hal::{
 };
 use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::{AiInferenceRequest, AiInferenceSal, SensorSal};
-
-struct Nrf52840Usbd;
-unsafe impl UsbPeripheral for Nrf52840Usbd {
-    const REGISTERS: *const () = 0x4002_7000 as *const ();
-}
+use nobro_usb::{CdcState, MountedUsb, UsbConfig, UsbStack};
 
 const OWNER_TWIM: u8 = 3;
 const WINDOW: usize = 16;
@@ -94,15 +86,44 @@ fn push_u32(buf: &mut [u8], pos: &mut usize, mut v: u32) {
     }
 }
 
+fn device_serial(words: [u32; 2]) -> [u8; 16] {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut serial = [0u8; 16];
+    for (index, nibble) in words
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .flat_map(|byte| [byte >> 4, byte & 0x0f])
+        .enumerate()
+    {
+        serial[index] = HEX[usize::from(nibble)];
+    }
+    serial
+}
+
+static mut USB_SERIAL: [u8; 16] = [b'0'; 16];
+
+fn install_device_serial(words: [u32; 2]) -> &'static str {
+    let serial = device_serial(words);
+    unsafe {
+        let destination = core::ptr::addr_of_mut!(USB_SERIAL).cast::<u8>();
+        core::ptr::copy_nonoverlapping(serial.as_ptr(), destination, serial.len());
+        let bytes = core::slice::from_raw_parts(destination.cast_const(), serial.len());
+        core::str::from_utf8_unchecked(bytes)
+    }
+}
+
+fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
+    for packet in line.chunks(nobro_usb::CDC_PACKET_SIZE) {
+        if usb.write_all(packet).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
 #[entry]
 fn main() -> ! {
     let periph = nrf52840_pac::Peripherals::take().unwrap();
-    periph
-        .CLOCK
-        .tasks_hfclkstart
-        .write(|w| unsafe { w.bits(1) });
-    while periph.CLOCK.events_hfclkstarted.read().bits() == 0 {}
-    while periph.POWER.usbregstatus.read().vbusdetect().bit_is_clear() {}
 
     Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
@@ -201,28 +222,23 @@ fn main() -> ! {
         asm::delay(40_000);
     }
 
-    // Bring up USB and stream live.
-    let usb_alloc = usb_device::bus::UsbBusAllocator::new(Usbd::new(Nrf52840Usbd));
-    let mut serial = SerialPort::new(&usb_alloc);
-    let mut dev = UsbDeviceBuilder::new(&usb_alloc, UsbVidPid(0x1209, 0x0001))
-        .strings(&[StringDescriptors::default()
-            .manufacturer("NiusRobotLab")
-            .product("NobroRTOS AI")
-            .serial_number("nobro-ai")])
-        .unwrap()
-        .device_class(usbd_serial::USB_CLASS_CDC)
-        .max_packet_size_0(64)
-        .unwrap()
-        .build();
+    // Bring up the shared nRF backend so the AI application receives the same
+    // controller lifecycle, errata, and reconnect fixes as every other USB app.
+    let serial_id = install_device_serial([
+        periph.FICR.deviceid[0].read().bits(),
+        periph.FICR.deviceid[1].read().bits(),
+    ]);
+    let config = UsbConfig::new(0x1209, 0x0001, "NiusRobotLab", "NobroRTOS AI", serial_id);
+    let mut usb = nobro_usb::mount(&config);
 
     let mut spin = 0u32;
     loop {
-        dev.poll(&mut [&mut serial]);
+        let usb_state = usb.poll();
         spin = spin.wrapping_add(1);
         if spin % 4096 == 0 {
             let _ = step!();
         }
-        if dev.state() == UsbDeviceState::Configured && spin % 600_000 == 0 {
+        if usb_state == CdcState::Configured && spin % 600_000 == 0 {
             let mut buf = [0u8; 96];
             let mut n = 0usize;
             push(&mut buf, &mut n, b"NobroRTOS AI class=");
@@ -240,7 +256,7 @@ fn main() -> ! {
             push(&mut buf, &mut n, b"/1000 accel=");
             push_u32(&mut buf, &mut n, u32::from(accel_mg));
             push(&mut buf, &mut n, b"mg\r\n");
-            if serial.write(&buf[..n]).is_err() {
+            if !write_line(&mut usb, &buf[..n]) {
                 defmt::warn!("USB telemetry backpressure");
             }
         }

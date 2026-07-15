@@ -5,13 +5,9 @@
 #![no_std]
 #![no_main]
 
-use cortex_m_rt::entry;
+use cortex_m_rt::{entry, pre_init};
 use defmt_rtt as _; // provides defmt.x linker section + global logger
 use panic_halt as _;
-
-use nrf_usbd::{UsbPeripheral, Usbd};
-use usb_device::prelude::*;
-use usbd_serial::SerialPort;
 
 use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 #[cfg(feature = "board-nicenano-s140")]
@@ -23,16 +19,47 @@ use nobro_hal::{
 };
 use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::SensorSal;
-
-/// Zero-sized handle to the nRF52840 USBD register block (base 0x4002_7000).
-/// nrf-usbd accesses the peripheral through this and applies the mandatory USB
-/// errata workarounds itself.
-struct Nrf52840Usbd;
-unsafe impl UsbPeripheral for Nrf52840Usbd {
-    const REGISTERS: *const () = 0x4002_7000 as *const ();
-}
+use nobro_usb::{CdcState, MountedUsb, UsbConfig, UsbStack};
 
 const OWNER_TWIM: u8 = 3;
+
+const SCB_VTOR: *mut u32 = 0xE000_ED08 as *mut u32;
+const SCB_ICSR: *mut u32 = 0xE000_ED04 as *mut u32;
+const SYST_CSR: *mut u32 = 0xE000_E010 as *mut u32;
+const SYST_CVR: *mut u32 = 0xE000_E018 as *mut u32;
+const NVIC_ICER: *mut u32 = 0xE000_E180 as *mut u32;
+const NVIC_ICPR: *mut u32 = 0xE000_E280 as *mut u32;
+const ICSR_PENDSTCLR: u32 = 1 << 25;
+const ICSR_PENDSVCLR: u32 = 1 << 27;
+
+extern "C" {
+    static __vector_table: u32;
+}
+
+/// Install this image's vector table before sanitizing interrupt state inherited
+/// from a firmware-stage handoff.
+///
+/// Some nRF bootloaders branch to the application instead of issuing a complete
+/// core reset. This is intentionally narrower than a reset emulation: it masks
+/// interrupts, selects the linker-provided vector table, clears inherited SysTick
+/// and external-IRQ state, then leaves interrupt delivery masked until `main`.
+/// Keep this pre-RAM hook register-only; no Rust static data is initialized yet.
+#[pre_init]
+unsafe fn sanitize_bootloader_interrupt_handoff() {
+    cortex_m::interrupt::disable();
+    SCB_VTOR.write_volatile(core::ptr::addr_of!(__vector_table) as u32);
+    cortex_m::asm::dsb();
+    cortex_m::asm::isb();
+    for bank in 0..2 {
+        NVIC_ICER.add(bank).write_volatile(u32::MAX);
+        NVIC_ICPR.add(bank).write_volatile(u32::MAX);
+    }
+    SYST_CSR.write_volatile(0);
+    SYST_CVR.write_volatile(0);
+    SCB_ICSR.write_volatile(ICSR_PENDSTCLR | ICSR_PENDSVCLR);
+    cortex_m::asm::dsb();
+    cortex_m::asm::isb();
+}
 
 fn push(buf: &mut [u8], pos: &mut usize, s: &[u8]) {
     for &b in s {
@@ -76,57 +103,97 @@ fn device_serial(words: [u32; 2]) -> [u8; 16] {
     serial
 }
 
-fn enter_uf2_bootloader() -> ! {
+static mut USB_SERIAL: [u8; 16] = [b'0'; 16];
+
+fn install_device_serial(words: [u32; 2]) -> &'static str {
+    let serial = device_serial(words);
     unsafe {
-        core::ptr::write_volatile(0x4000_051C as *mut u32, 0x57); // POWER.GPREGRET
+        let destination = core::ptr::addr_of_mut!(USB_SERIAL).cast::<u8>();
+        core::ptr::copy_nonoverlapping(serial.as_ptr(), destination, serial.len());
+        let bytes = core::slice::from_raw_parts(destination.cast_const(), serial.len());
+        core::str::from_utf8_unchecked(bytes)
     }
+}
+
+fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
+    for packet in line.chunks(nobro_usb::CDC_PACKET_SIZE) {
+        if usb.write_all(packet).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(feature = "board-nicenano-s140")]
+const USB_DFU_DETACH_US: u64 = 20_000;
+
+#[cfg(feature = "board-nicenano-s140")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DfuHandoff {
+    Idle,
+    Quiescing,
+    Detached { started_us: u64 },
+}
+
+#[cfg(feature = "board-nicenano-s140")]
+fn interval_elapsed(now_us: u64, started_us: u64, interval_us: u64) -> bool {
+    now_us.wrapping_sub(started_us) >= interval_us
+}
+
+#[cfg(feature = "board-nicenano-s140")]
+fn enter_uf2_bootloader_after_detach() -> ! {
+    const POWER_GPREGRET: *mut u32 = 0x4000_051C as *mut u32;
+    const UF2_DFU_MAGIC: u32 = 0x57;
+
+    // The caller has already detached through nobro-usb and held that lifecycle
+    // state without polling for USB_DFU_DETACH_US. Never write USBD.ENABLE or
+    // USBPULLUP here: raw teardown would bypass the driver's EasyDMA-parity and
+    // revision-specific errata ownership.
+    unsafe {
+        core::ptr::write_volatile(POWER_GPREGRET, UF2_DFU_MAGIC);
+    }
+    cortex_m::asm::dsb();
     cortex_m::peripheral::SCB::sys_reset();
 }
 
 #[entry]
 fn main() -> ! {
+    // The pre-RAM handoff sanitizer deliberately leaves PRIMASK set. Re-enable only
+    // now, after cortex-m-rt has initialized .data/.bss and the inherited pending
+    // interrupt state has been cleared.
+    unsafe {
+        cortex_m::interrupt::enable();
+    }
     let periph = nrf52840_pac::Peripherals::take().unwrap();
 
-    // USB requires the external 32 MHz crystal (HFXO).
-    periph
-        .CLOCK
-        .tasks_hfclkstart
-        .write(|w| unsafe { w.bits(1) });
-    while periph.CLOCK.events_hfclkstarted.read().bits() == 0 {}
-    // Gate on VBUS present. Do NOT wait on OUTPUTRDY: on a VDD-powered board the USB
-    // regulator output is bypassed and OUTPUTRDY never sets, which would hang.
-    while periph.POWER.usbregstatus.read().vbusdetect().bit_is_clear() {}
-
-    // A UF2 bootloader may drive USBD for mass storage and hand off without fully
-    // tearing it down, so reinitialization would start from a dirty state and the host
-    // could reject it. Mirror TaichiUSB's clean start: disconnect the pullup,
-    // disable USBD, clear leftover events, and zero the device address before nrf-usbd
-    // re-enables. No-op on a board that already starts clean.
-    periph.USBD.usbpullup.write(|w| w.connect().disabled());
-    periph.USBD.enable.write(|w| w.enable().disabled());
-    periph.USBD.events_usbreset.reset();
-    periph.USBD.events_usbevent.reset();
-    periph.USBD.events_ep0setup.reset();
-    periph
-        .USBD
-        .eventcause
-        .write(|w| unsafe { w.bits(0xFFFF_FFFF) }); // W1C: clear all
-    for _ in 0..400_000u32 {
-        cortex_m::asm::nop();
-    }
-    // LED progress indicator so a probe-less board shows how far USB got: it is lit
-    // after this point, then in the loop flickers fast once USB is Configured (working)
-    // or blinks slowly while enumeration is stuck.
+    // LED progress indicator so a probe-less board shows how far USB got.
     unsafe {
         nobro_hal::ppi::led_init_output();
         nobro_hal::ppi::led_toggle();
     }
 
-    // Bring up the timebase + IMU (TWIM I2C) before starting USB enumeration.
+    // The lifecycle uses this 1 MHz clock for bounded detach/enable transitions.
     Hal::acquire(Resource::Timer0, 2).unwrap_or_else(|_| defmt::panic!("timer lease"));
     unsafe {
         Hal::init_timebase();
     }
+
+    // A per-MCU serial prevents Windows from merging identical CDC identities when
+    // several boards run this image at the same time.
+    let serial_id = install_device_serial([
+        periph.FICR.deviceid[0].read().bits(),
+        periph.FICR.deviceid[1].read().bits(),
+    ]);
+    // Keep hardware bring-up inside nobro-usb. Demos must not recreate raw CLOCK,
+    // POWER, trim, or USBD sequences: doing so previously bypassed OUTPUTRDY and the
+    // 64-byte EP0 contract, so the demo could diverge from the stack it was meant to test.
+    let config = UsbConfig::new(0x1209, 0x0001, "NiusRobotLab", "NobroRTOS CDC", serial_id);
+    let mut usb = nobro_usb::mount(&config);
+    // Start the non-blocking inherited-session cleanup before optional sensor work.
+    // If an adapter stalls or is absent, it cannot prevent the stack from claiming
+    // the controller and dropping a bootloader-owned pull-up first.
+    let _ = usb.poll();
+
     Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     let imu = Mpu9250Imu::probe_and_init(OWNER_TWIM);
     let (who, addr, i2c_ok) = match &imu {
@@ -134,26 +201,6 @@ fn main() -> ! {
         Err(_) => (0, 0, 0),
     };
     let mut imu = imu.ok();
-
-    let usb_alloc = usb_device::bus::UsbBusAllocator::new(Usbd::new(Nrf52840Usbd));
-    let mut serial = SerialPort::new(&usb_alloc);
-    // A per-MCU serial prevents Windows from merging identical CDC identities when
-    // several boards run this image at the same time.
-    let serial_bytes = device_serial([
-        periph.FICR.deviceid[0].read().bits(),
-        periph.FICR.deviceid[1].read().bits(),
-    ]);
-    let serial_id = unsafe { core::str::from_utf8_unchecked(&serial_bytes) };
-    let mut dev = UsbDeviceBuilder::new(&usb_alloc, UsbVidPid(0x1209, 0x0001))
-        .strings(&[StringDescriptors::default()
-            .manufacturer("NiusRobotLab")
-            .product("NobroRTOS CDC")
-            .serial_number(serial_id)])
-        .unwrap()
-        .device_class(usbd_serial::USB_CLASS_CDC)
-        .max_packet_size_0(64) // nRF52840 USBD EP0 buffer is 64 bytes
-        .unwrap()
-        .build();
 
     let mut reads: u32 = 0;
     let mut errors: u32 = 0;
@@ -164,15 +211,48 @@ fn main() -> ! {
     #[cfg(feature = "board-nicenano-s140")]
     let usb_start = Hal::now_us();
     #[cfg(feature = "board-nicenano-s140")]
+    let mut last_usb_recovery = usb_start;
+    #[cfg(feature = "board-nicenano-s140")]
     let mut ever_configured = false;
     let mut max_state: u8 = 0; // 0=Default, 1=Addressed, 2=Configured (max reached)
     let mut dfu_command_pos: u8 = 0;
+    #[cfg(feature = "board-nicenano-s140")]
+    let mut dfu_handoff = DfuHandoff::Idle;
     loop {
-        dev.poll(&mut [&mut serial]);
+        #[cfg(feature = "board-nicenano-s140")]
+        match dfu_handoff {
+            DfuHandoff::Detached { started_us } => {
+                if interval_elapsed(Hal::now_us(), started_us, USB_DFU_DETACH_US) {
+                    enter_uf2_bootloader_after_detach();
+                }
+                // The one-way handoff has already repaired EasyDMA parity, proved
+                // ENABLE=Disabled, and released errata ownership. Deliberately do not
+                // poll or perform USB I/O during this host-visible disconnect dwell.
+                continue;
+            }
+            DfuHandoff::Quiescing => {
+                match usb.poll_bootloader_handoff() {
+                    Ok(true) => {
+                        dfu_handoff = DfuHandoff::Detached {
+                            started_us: Hal::now_us(),
+                        };
+                    }
+                    Ok(false) | Err(_) => {
+                        // Never reset across an uncertain controller state. A real
+                        // terminal driver fault remains fail-closed for probe recovery.
+                        dfu_handoff = DfuHandoff::Quiescing;
+                    }
+                }
+                continue;
+            }
+            DfuHandoff::Idle => {}
+        }
+
+        let usb_state = usb.poll();
         blink = blink.wrapping_add(1);
-        let s = match dev.state() {
-            UsbDeviceState::Addressed => 1u8,
-            UsbDeviceState::Configured => 2u8,
+        let s = match usb_state {
+            CdcState::Addressed => 1u8,
+            CdcState::Configured => 2u8,
             _ => 0u8,
         };
         if s > max_state {
@@ -183,12 +263,19 @@ fn main() -> ! {
         if configured {
             ever_configured = true;
         }
-        // Self-recovery: if USB never enumerates, reboot into the UF2 bootloader so the
-        // next firmware can be flashed without a manual double-tap. GPREGRET = 0x57 is
-        // the Adafruit-compatible DFU magic. This path is gated to the S140 profile.
+        // If a host abandons the initial control transfer and leaves the controller
+        // suspended with VBUS present, retry the application identity in place. Keep
+        // this rate-limited: an ordinary configured-device suspend is valid and must
+        // not be turned into a reconnect loop. Explicit "DFU" remains the only path
+        // that changes to the bootloader identity.
         #[cfg(feature = "board-nicenano-s140")]
-        if !ever_configured && Hal::now_us().saturating_sub(usb_start) > 30_000_000 {
-            enter_uf2_bootloader();
+        if !ever_configured {
+            const USB_RECOVERY_INTERVAL_US: u64 = 5_000_000;
+            let now = Hal::now_us();
+            if interval_elapsed(now, last_usb_recovery, USB_RECOVERY_INTERVAL_US) {
+                let _ = usb.force_reenumeration();
+                last_usb_recovery = now;
+            }
         }
         // Fast flicker once Configured (USB working); slow blink while enumeration is
         // stuck. Lets a probe-less board report its USB state on the LED.
@@ -212,21 +299,34 @@ fn main() -> ! {
         // A line containing only "DFU" enters the UF2 bootloader. This keeps future
         // update cycles host-driven even on boards without a debug probe.
         let mut command_bytes = [0u8; 16];
-        if let Ok(count) = serial.read(&mut command_bytes) {
+        if let Ok(count) = usb.try_read(&mut command_bytes) {
             for &byte in &command_bytes[..count] {
                 dfu_command_pos = match (dfu_command_pos, byte) {
                     (0, b'D') => 1,
                     (1, b'F') => 2,
                     (2, b'U') => 3,
                     (3, b'\r') => 3,
-                    (3, b'\n') => enter_uf2_bootloader(),
+                    (3, b'\n') => {
+                        #[cfg(feature = "board-nicenano-s140")]
+                        {
+                            dfu_handoff = DfuHandoff::Quiescing;
+                        }
+                        0
+                    }
                     (_, b'\n') => 0,
                     _ => 0,
                 };
             }
         }
+        #[cfg(feature = "board-nicenano-s140")]
+        if dfu_handoff != DfuHandoff::Idle {
+            // Attempt the lifecycle-owned teardown at the top of the next iteration.
+            // In particular, do not let write_line()/write_all() poll the backend
+            // after accepting the command.
+            continue;
+        }
 
-        // Sample the IMU occasionally; keep dev.poll() the hot path for USB timing.
+        // Sample the IMU occasionally; keep usb.poll() the hot path for USB timing.
         spin = spin.wrapping_add(1);
         if spin % 4096 == 0 {
             if let Some(d) = imu.as_mut() {
@@ -287,7 +387,7 @@ fn main() -> ! {
             push(&mut buf, &mut n, b"mdps ");
             let pass = i2c_ok == 1 && reads >= 10 && (800..1200).contains(&accel_mg);
             push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
-            if serial.write(&buf[..n]).is_err() {
+            if !write_line(&mut usb, &buf[..n]) {
                 defmt::warn!("USB telemetry backpressure");
             }
 
@@ -307,7 +407,7 @@ fn main() -> ! {
             push(&mut mline, &mut m, b" all_pass=");
             push_u32(&mut mline, &mut m, u32::from(pass));
             push(&mut mline, &mut m, b"\r\n");
-            if serial.write(&mline[..m]).is_err() {
+            if !write_line(&mut usb, &mline[..m]) {
                 defmt::warn!("USB model-report backpressure");
             }
         }

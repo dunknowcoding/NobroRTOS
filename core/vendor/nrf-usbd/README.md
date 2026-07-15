@@ -1,21 +1,41 @@
-# nrf-usbd (vendored fork for NobroRTOS)
+# nrf-usbd (NobroRTOS vendored fork)
 
-Vendored from upstream `nrf-usbd` 0.3.0 with a **single** behavioral change, needed to
-run USB-CDC on **cloned nRF52840** silicon (some nice!nano-class boards - NobroRTOS
-"the clone-silicon board").
+This fork starts from upstream `nrf-usbd` 0.3.0. It is intentionally vendored because
+NobroRTOS needs controller-lifecycle and diagnostics changes that are not present in the
+published crate.
 
-**The fix** - `src/usbd.rs`, `UsbBus::write()`: the EP-IN busy guard reads `EPSTATUS`
-and returns `WouldBlock` if the endpoint's bit is set. On cloned USBD silicon `EPSTATUS`
-reads a **constant `0x00010001`** (the `EPIN0`/`EPOUT0` bits are permanently stuck set),
-so for **EP0** the guard always tripped: the device descriptor was never written and
-enumeration died at the first `GET_DESCRIPTOR(DEVICE)` ("unrecognized USB device"). The
-fix skips the `EPSTATUS` check **for EP0 only** (`if i != 0 && ...`); EP0 is already
-serialised by `busy_in_endpoints` + the inline `ENDEPIN` wait, so the check was
-redundant there. Bulk/interrupt endpoints are unchanged. Search the source for
-`Clone-safe` to find it.
+The maintained delta includes:
 
-Verified on hardware: genuine nRF52840 (the development board, `who=0x71`) and clone (the clone-silicon board,
-`who=0x70`) both enumerate a CDC port and stream the IMU eval line (`... PASS`).
+- the upstream Windows control-endpoint recovery from commit
+  [`8ddc8d3`](https://github.com/nrf-rs/nrf-usbd/commit/8ddc8d3e815157c639b979e3ae2fb74d167d7281),
+  which releases EP0 after the status-stage fallback so a second device-descriptor request
+  is not rejected as busy;
+- explicit VBUS, regulator-ready, suspend/wake, and firmware-handoff lifecycle handling,
+  including post-READY session cleanup and release of inherited forced DP/DM drive before
+  D+ is connected;
+- nRF52840 revision-aware Nordic USBD anomaly workarounds and a factory-identity
+  gate that fails closed before handoff or lifecycle writes on other silicon;
+- bounded EasyDMA failure reporting and process-wide DMA-buffer ownership; and
+- endpoint-allocation and control-endpoint validation used by the shared `nobro-usb`
+  backend.
+
+The Nordic power-up sequence and anomaly predicates are cross-checked against the current
+[`nrfx` USBD driver](https://github.com/NordicSemiconductor/nrfx/blob/master/drivers/src/nrfx_usbd.c)
+and the nRF52 product errata. Before `USBD.ENABLE`, the driver invokes a board clock-
+provider hook and waits asynchronously until HFXO is running and selected;
+`EVENTCAUSE.READY` only acknowledges the controller transition and is not an oscillator
+request. The nRF board backend uses a request-only policy and never blindly writes
+`TASKS_HFCLKSTOP`, so it cannot stop a clock that radio or SoftDevice code may share.
+Host tests and target linking cover the software contracts;
+successful enumeration, reconnect, and suspend/resume still require hardware validation for
+each supported silicon and bootloader combination.
+
+This fork makes `UsbBus::force_reset()` non-blocking: `Ok` means D+ detach was accepted,
+and callers must continue polling the bus while the detach interval and reattachment finish.
+For a one-way resident-bootloader transfer, `nobro-usb` uses the separate handoff request:
+it keeps returning pending until D+ is off, odd cumulative EasyDMA parity is repaired,
+`ENABLE` reads disabled, and all active errata ownership is closed. Application code must
+not substitute ordinary re-enumeration before `SYSRESETREQ`.
 
 ---
 
@@ -30,9 +50,12 @@ Semiconductor nRF microcontrollers.
 ## Supported microcontrollers
 
 * `nrf52840`
-* `nrf52833`
-* `nrf52820`
-* `nrf5340`, maybe?
+
+The upstream README listed nRF52820/nRF52833, but this maintained fork intentionally
+rejects them and unknown parts before touching USBD. Those two parts require Erratum 223's
+first-enable double cycle; support must not be advertised until the fork has the matching
+PAC and board integration, an asynchronous verified-disable phase, and silicon/bootloader
+hardware validation. nRF5340 is not supported by this nRF52 register-block driver.
 
 ## Usage
 

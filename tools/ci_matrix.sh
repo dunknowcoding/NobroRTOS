@@ -46,6 +46,20 @@ gate "capacity-report feature target build" \
   bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features capacity-report'
 
+gate "preemption contracts host tests" \
+  bash -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
+    -p nobro-kernel --features preemptive -p nobro-admission'
+
+gate "nRF52840 PSP/PendSV target build" \
+  bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
+    -p nobro-kernel --features preemptive && \
+    cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
+    --no-default-features --features platform-nrf52840-rt,board-promicro-nosd,cortex-m-slice && \
+    ! cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
+    --no-default-features --features platform-nrf52840-rt,board-nicenano-s140,cortex-m-slice'
+
+gate "deadline masking" python tools/check_timebase_masking.py
+
 gate "nano kernel build/admission/symbol budgets" \
   python tools/check_nano_kernel.py
 
@@ -59,6 +73,18 @@ gate "nRF52840 HAL target build" \
 
 gate "nRF52840 USB target build" \
   python tools/check_platform_tiers.py --run-gate nrf52840-usb-target-build
+
+gate "nRF52840 USB application link builds" \
+  bash -c 'cd core && \
+    cargo build --locked --release --target thumbv7em-none-eabihf \
+      -p usb-cdc-demo --bin usb_cdc_demo --no-default-features \
+      --features board-promicro-nosd && \
+    cargo build --locked --release --target thumbv7em-none-eabihf \
+      -p usb-cdc-demo --bin usb_cdc_demo_s140 --no-default-features \
+      --features board-nicenano-s140 && \
+    cargo build --locked --release --target thumbv7em-none-eabihf \
+      -p ai-usb-demo --bin ai_usb_demo --no-default-features \
+      --features board-promicro-nosd'
 
 gate "esp32c3 port and USB demo build" \
   python tools/check_platform_tiers.py --run-gate esp32c3-target-build

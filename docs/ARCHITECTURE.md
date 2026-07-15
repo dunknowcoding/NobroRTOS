@@ -372,6 +372,38 @@ Fault handling is intentionally small:
 - `AdmissionController` composes manifest validation, startup ordering, and
   quota seeding into one boot-time software gate before board-specific startup
   code runs.
+- `TaskDecl` and `DeadlineContract` carry explicit phase, period, and relative
+  deadline. The release queue uses phase to avoid unnecessary bursts, while
+  shared admission deliberately keeps pessimistic interference instead of
+  treating offsets as free schedulability headroom.
+- Opt-in P-ISR admission prices bounded interrupt execution, platform-reserved
+  priorities, higher-priority interference, and nested exception-stack use.
+  `InterruptHandoff` limits ISR work to lock-free ready/event publication.
+- Opt-in P-SLICE uses task-owned PSP stacks and `SliceController`; the nRF
+  `cortex-m-slice` port saves R4-R11, EXC_RETURN, BASEPRI, and the lazy-FPU
+  extension in PendSV. PendSV is configured at or below the selected kernel
+  BASEPRI ceiling so it cannot split a process-wide critical-section
+  transaction. A ceiling-held overrun therefore defers switching until the
+  section exits; a section that never exits requires watchdog escalation.
+  The current port is a bare-nRF profile: combining `cortex-m-slice` with
+  `board-nicenano-s140` fails at compile time because it programs PendSV through
+  CMSIS and does not yet integrate interrupt control through the SoftDevice API.
+  Cooperative execution remains the default, and neither profile
+  implies unprivileged execution or MPU isolation.
+- Native nRF board features install one BASEPRI-backed implementation for the
+  ecosystem-wide `critical-section` ABI. Bare builds mask logical priorities
+  3-7 and S140 builds mask application priorities 6-7; deadline/watchdog/P-ISR
+  domains above those ceilings remain live and use lock-free handoff only.
+  The build gate rejects a simultaneous Cortex-M PRIMASK implementation.
+- The nRF idle path uses SEVONPEND plus `SEV; WFE`, rechecks the deadline and
+  lock-free ISR handoff, then performs the sleeping `WFE`. This consumes stale
+  events without reopening the check-to-sleep race or counting a false sleep.
+- Cortex-M0+ has no BASEPRI. The SAMD21 port therefore owns a measured PRIMASK
+  provider: a free-running SysTick counter records each outer section, nested
+  sections inherit that interval, and a counter wrap fails closed. Its serial
+  report exposes maximum masked cycles/time and the configured bound; target
+  compilation alone is not physical timing evidence. This measurement owns
+  SysTick in the current SAMD21 core-only port.
 - `AdmissionReport` provides a fixed host-readable admission result so startup
   failures can be diagnosed without dynamic logging. It can be built from the
   same admission result used by boot code, reducing report-path drift.

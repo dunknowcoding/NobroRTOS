@@ -233,7 +233,11 @@ impl MemoryBudget {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeadlineContract {
+    /// Offset of the first release from the executor epoch.
+    pub phase_us: u32,
     pub period_us: u32,
+    /// Relative deadline from each release; defaults to the period.
+    pub deadline_us: u32,
     pub max_jitter_us: u32,
     /// Declared worst-case execution cost per period. Zero = not declared;
     /// declared costs participate in the admission utilization check.
@@ -245,11 +249,23 @@ pub struct DeadlineContract {
 impl DeadlineContract {
     pub const fn new(period_us: u32, max_jitter_us: u32) -> Self {
         Self {
+            phase_us: 0,
             period_us,
+            deadline_us: period_us,
             max_jitter_us,
             execution_budget_us: 0,
             blocking_us: 0,
         }
+    }
+
+    pub const fn phase_us(mut self, phase_us: u32) -> Self {
+        self.phase_us = phase_us;
+        self
+    }
+
+    pub const fn relative_deadline_us(mut self, deadline_us: u32) -> Self {
+        self.deadline_us = deadline_us;
+        self
     }
 
     pub const fn execution_budget(mut self, execution_budget_us: u32) -> Self {
@@ -371,6 +387,12 @@ impl ModuleSpec {
             Some(deadline) => {
                 hash = hash_u32(hash, deadline.period_us);
                 hash = hash_u32(hash, deadline.max_jitter_us);
+                // Preserve fingerprints for the historical phase-zero,
+                // deadline-equals-period form while binding explicit timing.
+                if deadline.phase_us != 0 || deadline.deadline_us != deadline.period_us {
+                    hash = hash_u32(hash, deadline.phase_us);
+                    hash = hash_u32(hash, deadline.deadline_us);
+                }
                 // Hashed only when declared so manifests without execution budgets
                 // keep their pre-existing pinned fingerprints.
                 if deadline.execution_budget_us != 0 {
@@ -607,13 +629,15 @@ impl<const N: usize> SystemManifest<N> {
                 );
             if let Some(deadline) = spec.deadline {
                 if deadline.execution_budget_us != 0 {
-                    contract = contract.deadline(
-                        deadline.period_us,
-                        deadline.period_us,
-                        deadline.max_jitter_us,
-                        deadline.execution_budget_us,
-                        deadline.blocking_us,
-                    );
+                    contract = contract
+                        .deadline(
+                            deadline.period_us,
+                            deadline.deadline_us,
+                            deadline.max_jitter_us,
+                            deadline.execution_budget_us,
+                            deadline.blocking_us,
+                        )
+                        .phase(deadline.phase_us);
                 }
             }
             contracts[index] = contract;
@@ -641,6 +665,9 @@ impl<const N: usize> SystemManifest<N> {
                 }
                 nobro_admission::AdmissionErrorCode::WakeLatencyExceeded => {
                     ManifestError::InvalidWakeLatency(module.unwrap_or(ModuleId::Kernel))
+                }
+                nobro_admission::AdmissionErrorCode::InvalidPhase => {
+                    ManifestError::InvalidDeadline(module.unwrap_or(ModuleId::Kernel))
                 }
                 nobro_admission::AdmissionErrorCode::ResponseTimeExceeded => {
                     ManifestError::Unschedulable {
@@ -771,8 +798,11 @@ impl<const N: usize> SystemManifest<N> {
         }
         if let Some(deadline) = spec.deadline {
             if deadline.period_us == 0
-                || deadline.max_jitter_us >= deadline.period_us
-                || deadline.execution_budget_us > deadline.period_us
+                || deadline.phase_us >= deadline.period_us
+                || deadline.deadline_us == 0
+                || deadline.deadline_us > deadline.period_us
+                || deadline.max_jitter_us >= deadline.deadline_us
+                || deadline.execution_budget_us > deadline.deadline_us
             {
                 return Err(ManifestError::InvalidDeadline(spec.id));
             }
@@ -780,7 +810,7 @@ impl<const N: usize> SystemManifest<N> {
                 || (deadline.execution_budget_us != 0
                     && deadline.blocking_us
                         > deadline
-                            .period_us
+                            .deadline_us
                             .saturating_sub(deadline.execution_budget_us))
             {
                 return Err(ManifestError::InvalidBlocking(spec.id));

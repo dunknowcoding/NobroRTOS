@@ -1,6 +1,6 @@
 //! Deadline slot scheduler (Phase 1): TIMER1 drives 50 Hz hard-real-time ticks.
 
-use portable_atomic::{AtomicU32, Ordering};
+use portable_atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::KernelError;
 
@@ -14,8 +14,13 @@ static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_MISSES: AtomicU32 = AtomicU32::new(0);
 static JITTER_TOLERANCE_US: AtomicU32 = AtomicU32::new(DEFAULT_JITTER_TOLERANCE_US);
 static TICK_PERIOD_US: AtomicU32 = AtomicU32::new(DEADLINE_PERIOD_US as u32);
+/// Thread-mode configuration writer sequence. It is separate from the ISR
+/// sequence so the deadline source never waits for a configuration lock.
+static CONFIG_SEQUENCE: AtomicU32 = AtomicU32::new(0);
 static STATS_SEQUENCE: AtomicU32 = AtomicU32::new(0);
 static PENDING_DEADLINE_TICKS: AtomicU32 = AtomicU32::new(0);
+static DEFERRED_TICK: AtomicBool = AtomicBool::new(false);
+static DEFERRED_NOW_US: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TickConfigError<E> {
@@ -33,17 +38,88 @@ pub struct SchedulerStats {
 
 pub struct Scheduler;
 
+struct StatsWriter(u32);
+
+impl Drop for StatsWriter {
+    fn drop(&mut self) {
+        STATS_SEQUENCE.store(self.0.wrapping_add(2), Ordering::Release);
+    }
+}
+
+fn try_stats_writer() -> Option<StatsWriter> {
+    let observed = STATS_SEQUENCE.load(Ordering::Acquire);
+    if observed & 1 != 0 {
+        return None;
+    }
+    STATS_SEQUENCE
+        .compare_exchange(
+            observed,
+            observed.wrapping_add(1),
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .ok()
+        .map(StatsWriter)
+}
+
+fn defer_tick(now_us: u64) {
+    // TIMER1 cannot re-enter itself on the single-core nRF target. Publishing
+    // the timestamp before the flag lets the interrupted configuration drain
+    // this exact boundary after it commits, without ever waiting in the ISR.
+    DEFERRED_NOW_US.store(now_us as u32, Ordering::Relaxed);
+    DEFERRED_TICK.store(true, Ordering::Release);
+}
+
+fn drain_deferred_tick() {
+    if DEFERRED_TICK.swap(false, Ordering::AcqRel) {
+        Scheduler::on_deadline_tick(DEFERRED_NOW_US.load(Ordering::Acquire) as u64);
+    }
+}
+
+fn configure<R>(operation: impl FnOnce() -> R) -> R {
+    let generation = loop {
+        let observed = CONFIG_SEQUENCE.load(Ordering::Acquire);
+        if observed & 1 == 0
+            && CONFIG_SEQUENCE
+                .compare_exchange(
+                    observed,
+                    observed.wrapping_add(1),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+        {
+            break observed;
+        }
+        core::hint::spin_loop();
+    };
+    // A host model may execute the writer and ISR on different threads. On
+    // target, an in-flight ISR has already returned before thread mode resumes.
+    while STATS_SEQUENCE.load(Ordering::Acquire) & 1 != 0 {
+        core::hint::spin_loop();
+    }
+    struct Finish(u32);
+    impl Drop for Finish {
+        fn drop(&mut self) {
+            CONFIG_SEQUENCE.store(self.0.wrapping_add(2), Ordering::Release);
+        }
+    }
+    let finish = Finish(generation);
+    let result = operation();
+    drop(finish);
+    drain_deferred_tick();
+    result
+}
+
 impl Scheduler {
     pub fn reset_stats() {
-        critical_section::with(|_| {
-            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
+        configure(|| {
             EXPECTED_NEXT_US.store(0, Ordering::Release);
             MAX_JITTER_US.store(0, Ordering::Release);
             TICK_COUNT.store(0, Ordering::Release);
             DEADLINE_MISSES.store(0, Ordering::Release);
             PENDING_DEADLINE_TICKS.store(0, Ordering::Release);
             JITTER_TOLERANCE_US.store(DEFAULT_JITTER_TOLERANCE_US, Ordering::Release);
-            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
         });
     }
 
@@ -64,11 +140,7 @@ impl Scheduler {
     }
 
     pub fn set_jitter_tolerance_us(tolerance_us: u32) {
-        critical_section::with(|_| {
-            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-            JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release);
-            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
-        });
+        configure(|| JITTER_TOLERANCE_US.store(tolerance_us, Ordering::Release));
     }
 
     pub fn tick_period_us() -> u32 {
@@ -76,8 +148,9 @@ impl Scheduler {
     }
 
     /// Atomically reprogram the hardware tick source and publish its software cadence.
-    /// The callback executes inside the critical section and must perform only bounded
-    /// provider register work. On provider failure, the old period and phase remain.
+    /// The caller owns the provider session. The deadline ISR is never masked:
+    /// a tick racing the bounded register update observes the old period, after
+    /// which the successful publish re-anchors the next phase.
     pub fn reconfigure_tick_period<E>(
         period_us: u32,
         program_provider: impl FnOnce(u32) -> Result<(), E>,
@@ -85,23 +158,21 @@ impl Scheduler {
         if period_us == 0 {
             return Err(TickConfigError::ZeroPeriod);
         }
-        critical_section::with(|_| {
-            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-            let result = match program_provider(period_us) {
-                Ok(()) => {
-                    TICK_PERIOD_US.store(period_us, Ordering::Release);
-                    EXPECTED_NEXT_US.store(0, Ordering::Release);
-                    Ok(())
-                }
-                Err(error) => Err(TickConfigError::Provider(error)),
-            };
-            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
-            result
-        })
+        program_provider(period_us).map_err(TickConfigError::Provider)?;
+        configure(|| {
+            TICK_PERIOD_US.store(period_us, Ordering::Release);
+            EXPECTED_NEXT_US.store(0, Ordering::Release);
+        });
+        Ok(())
     }
 
     pub fn stats() -> SchedulerStats {
         loop {
+            let config_before = CONFIG_SEQUENCE.load(Ordering::Acquire);
+            if config_before & 1 != 0 {
+                core::hint::spin_loop();
+                continue;
+            }
             let before = STATS_SEQUENCE.load(Ordering::Acquire);
             if before & 1 != 0 {
                 core::hint::spin_loop();
@@ -114,7 +185,8 @@ impl Scheduler {
                 jitter_tolerance_us: Self::jitter_tolerance_us(),
             };
             let after = STATS_SEQUENCE.load(Ordering::Acquire);
-            if before == after {
+            let config_after = CONFIG_SEQUENCE.load(Ordering::Acquire);
+            if before == after && config_before == config_after {
                 return stats;
             }
         }
@@ -122,35 +194,38 @@ impl Scheduler {
 
     /// Called from TIMER1 ISR or polled compare handler.
     pub fn on_deadline_tick(now_us: u64) {
-        critical_section::with(|_| {
-            STATS_SEQUENCE.fetch_add(1, Ordering::AcqRel);
-            let now_lo = now_us as u32;
-            let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
-            if expected != 0 {
-                let late = now_lo.wrapping_sub(expected);
-                let early = expected.wrapping_sub(now_lo);
-                let jitter = late.min(early);
-                MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
-                if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
-                    DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
-                }
+        let Some(writer) = try_stats_writer() else {
+            defer_tick(now_us);
+            return;
+        };
+        if CONFIG_SEQUENCE.load(Ordering::Acquire) & 1 != 0 {
+            drop(writer);
+            defer_tick(now_us);
+            return;
+        }
+        let now_lo = now_us as u32;
+        let expected = EXPECTED_NEXT_US.load(Ordering::Acquire);
+        if expected != 0 {
+            let late = now_lo.wrapping_sub(expected);
+            let early = expected.wrapping_sub(now_lo);
+            let jitter = late.min(early);
+            MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
+            if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
+                DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
             }
-            let period = TICK_PERIOD_US.load(Ordering::Acquire);
-            let next = if expected == 0 {
-                now_lo.wrapping_add(period)
-            } else {
-                expected.wrapping_add(period)
-            };
-            EXPECTED_NEXT_US.store(next, Ordering::Release);
-            TICK_COUNT.fetch_add(1, Ordering::AcqRel);
-            PENDING_DEADLINE_TICKS.store(
-                PENDING_DEADLINE_TICKS
-                    .load(Ordering::Relaxed)
-                    .saturating_add(1),
-                Ordering::Release,
-            );
-            STATS_SEQUENCE.fetch_add(1, Ordering::Release);
+        }
+        let period = TICK_PERIOD_US.load(Ordering::Acquire);
+        let next = if expected == 0 {
+            now_lo.wrapping_add(period)
+        } else {
+            expected.wrapping_add(period)
+        };
+        EXPECTED_NEXT_US.store(next, Ordering::Release);
+        TICK_COUNT.fetch_add(1, Ordering::AcqRel);
+        let _ = PENDING_DEADLINE_TICKS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+            Some(value.saturating_add(1))
         });
+        drop(writer);
     }
 
     /// Claim at most `max_ticks` ISR releases for execution as ordinary admitted work.
@@ -160,12 +235,13 @@ impl Scheduler {
         if max_ticks == 0 {
             return 0;
         }
-        critical_section::with(|_| {
-            let pending = PENDING_DEADLINE_TICKS.load(Ordering::Acquire);
-            let claimed = pending.min(max_ticks);
-            PENDING_DEADLINE_TICKS.store(pending - claimed, Ordering::Release);
-            claimed
-        })
+        let mut claimed = 0;
+        let _ =
+            PENDING_DEADLINE_TICKS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |pending| {
+                claimed = pending.min(max_ticks);
+                Some(pending - claimed)
+            });
+        claimed
     }
 
     pub fn note_error(err: KernelError) -> crate::Action {
@@ -323,6 +399,30 @@ mod tests {
         assert_eq!(Scheduler::take_pending_deadline_ticks(1), 1);
         assert_eq!(Scheduler::take_pending_deadline_ticks(8), 1);
         assert_eq!(Scheduler::take_pending_deadline_ticks(8), 0);
+    }
+
+    #[test]
+    fn tick_inside_configuration_is_deferred_once_and_uses_committed_period() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
+        Scheduler::reset_stats();
+
+        configure(|| {
+            TICK_PERIOD_US.store(1_000, Ordering::Release);
+            EXPECTED_NEXT_US.store(0, Ordering::Release);
+            // Model TIMER1 preempting thread mode after the new cadence has
+            // been written but before the configuration generation commits.
+            Scheduler::on_deadline_tick(50_000);
+            assert_eq!(Scheduler::tick_count(), 0);
+            assert_eq!(Scheduler::take_pending_deadline_ticks(1), 0);
+        });
+
+        assert_eq!(Scheduler::tick_count(), 1);
+        assert_eq!(Scheduler::take_pending_deadline_ticks(1), 1);
+        Scheduler::on_deadline_tick(51_004);
+        assert_eq!(Scheduler::max_jitter_us(), 4);
+        assert_eq!(Scheduler::tick_count(), 2);
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
     }
 
     #[test]

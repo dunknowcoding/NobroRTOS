@@ -1,5 +1,6 @@
 //! TIMER1 50 Hz deadline slot interrupt at the highest NVIC priority.
 
+use core::sync::atomic::{AtomicU32, Ordering};
 use cortex_m::peripheral::NVIC;
 use nrf52840_pac::TIMER1;
 
@@ -7,6 +8,7 @@ use crate::lease::LeaseError;
 
 const PRESCALER: u32 = 4;
 const TICKS_PER_PERIOD: u32 = 20_000;
+static PENDING_PERIOD_US: AtomicU32 = AtomicU32::new(0);
 
 pub struct DeadlineTimer;
 
@@ -25,21 +27,18 @@ impl DeadlineTimer {
         (*t).cc[0].write(|w| w.bits(TICKS_PER_PERIOD));
         (*t).shorts.write(|w| w.compare0_clear().set_bit());
         (*t).intenset.write(|w| w.compare0().set_bit());
+        PENDING_PERIOD_US.store(0, Ordering::Release);
         (*t).tasks_start.write(|w| w.bits(1));
     }
 
-    /// Reprogram the 1 MHz compare interval while the caller holds the live TIMER1
-    /// session. Stops/clears/restarts as one bounded register sequence.
+    /// Queue a 1 MHz compare interval while the caller holds the TIMER1
+    /// session. The live ISR applies it at the next compare boundary, so no
+    /// kernel path masks the deadline source or races a stop/clear sequence.
     pub(crate) unsafe fn set_period_us(period_us: u32) -> Result<(), LeaseError> {
         if period_us == 0 {
             return Err(LeaseError::Unsupported);
         }
-        let t = TIMER1::ptr();
-        (*t).tasks_stop.write(|w| w.bits(1));
-        (*t).tasks_clear.write(|w| w.bits(1));
-        (*t).events_compare[0].reset();
-        (*t).cc[0].write(|w| w.bits(period_us));
-        (*t).tasks_start.write(|w| w.bits(1));
+        PENDING_PERIOD_US.store(period_us, Ordering::Release);
         Ok(())
     }
 
@@ -56,6 +55,10 @@ impl DeadlineTimer {
             let t = TIMER1::ptr();
             if (*t).events_compare[0].read().bits() != 0 {
                 (*t).events_compare[0].reset();
+                let period_us = PENDING_PERIOD_US.swap(0, Ordering::AcqRel);
+                if period_us != 0 {
+                    (*t).cc[0].write(|w| w.bits(period_us));
+                }
             }
         }
     }

@@ -17,6 +17,12 @@ pub mod traits;
 #[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
 compile_error!("nobro-hal: enable exactly one board-* feature");
 
+#[cfg(all(feature = "cortex-m-slice", feature = "board-nicenano-s140"))]
+compile_error!(
+    "nobro-hal: cortex-m-slice cannot be combined with board-nicenano-s140; \
+     the current port programs PendSV through CMSIS and has no SoftDevice NVIC integration"
+);
+
 #[cfg(all(
     feature = "platform-nrf52840",
     not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))
@@ -27,12 +33,16 @@ compile_error!("nobro-hal: enable one board-* feature");
 pub mod board;
 #[cfg(feature = "platform-nrf52840")]
 pub mod bus;
+#[cfg(feature = "cortex-m-slice")]
+pub mod context_switch;
 #[cfg(feature = "platform-nrf52840")]
 pub mod deadline_timer;
 #[cfg(feature = "platform-nrf52840-rt")]
 pub mod power_nrf;
 #[cfg(feature = "platform-nrf52840")]
 pub mod ppi;
+#[cfg(feature = "platform-nrf52840")]
+pub mod priority_ceiling;
 #[cfg(feature = "platform-nrf52840")]
 pub mod pwm;
 mod quiesce;
@@ -76,10 +86,14 @@ pub use traits::{
 pub use board::{Board, ACTIVE_BOARD_PACKAGE, I2C_SCL_PIN, I2C_SDA_PIN};
 #[cfg(feature = "platform-nrf52840")]
 pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
+#[cfg(feature = "cortex-m-slice")]
+pub use context_switch::{ContextRecord, ContextSwitchError, CortexMSliceSwitch};
 #[cfg(feature = "platform-nrf52840")]
 pub use deadline_timer::DeadlineTimer;
 #[cfg(feature = "platform-nrf52840-rt")]
 pub use power_nrf::NrfTimerPower;
+#[cfg(feature = "platform-nrf52840")]
+pub use priority_ceiling::{PriorityCeiling, PriorityCeilingError};
 #[cfg(feature = "platform-nrf52840")]
 pub use pwm::{PwmBank, PwmBankSession, PwmServo, PwmSession, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]

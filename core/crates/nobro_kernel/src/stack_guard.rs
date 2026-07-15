@@ -33,6 +33,8 @@ pub struct StackRegion {
 pub enum StackGuardError {
     Full,
     Duplicate(ModuleId),
+    /// Two logical contexts claimed overlapping physical stack memory.
+    AliasedRegion(ModuleId),
     /// Zero-length region or canary not smaller than the region.
     InvalidRegion(ModuleId),
 }
@@ -92,12 +94,34 @@ impl<const N: usize> StackGuardTable<N> {
         {
             return Err(StackGuardError::Duplicate(module));
         }
+        let Some(end) = region.base.checked_add(region.len) else {
+            return Err(StackGuardError::InvalidRegion(module));
+        };
+        if self.entries.iter().flatten().any(|entry| {
+            let entry_end = entry.region.base.saturating_add(entry.region.len);
+            region.base < entry_end && entry.region.base < end
+        }) {
+            return Err(StackGuardError::AliasedRegion(module));
+        }
         let Some(slot) = self.entries.iter_mut().find(|slot| slot.is_none()) else {
             return Err(StackGuardError::Full);
         };
         paint(region);
         *slot = Some(GuardEntry { module, region });
         Ok(())
+    }
+
+    /// Register the single MSP stack shared by cooperative tasks. It is
+    /// attributed to the kernel execution context; per-task attribution is
+    /// available only for P-SLICE tasks that actually own separate PSP stacks.
+    ///
+    /// # Safety
+    /// Same memory-lifetime and below-current-SP contract as [`register`].
+    pub unsafe fn register_shared_msp(
+        &mut self,
+        region: StackRegion,
+    ) -> Result<(), StackGuardError> {
+        self.register(ModuleId::Kernel, region)
     }
 
     /// Inspect one module's stack: canary integrity + high-water mark.
@@ -275,6 +299,17 @@ mod tests {
                 table.register(ModuleId::Sensor, region_of(&mut buf, 32)),
                 Err(StackGuardError::InvalidRegion(ModuleId::Sensor))
             );
+            assert_eq!(
+                table.register(
+                    ModuleId::Sensor,
+                    StackRegion {
+                        base: usize::MAX - 3,
+                        len: 8,
+                        canary_bytes: 1,
+                    },
+                ),
+                Err(StackGuardError::InvalidRegion(ModuleId::Sensor))
+            );
             table
                 .register(ModuleId::Sensor, region_of(&mut buf, 4))
                 .unwrap();
@@ -284,5 +319,26 @@ mod tests {
                 Err(StackGuardError::Duplicate(ModuleId::Sensor))
             );
         }
+    }
+
+    #[test]
+    fn cooperative_stack_is_one_kernel_owned_region_and_overlap_is_rejected() {
+        let mut stack = [0u8; 96];
+        let mut table = StackGuardTable::<2>::new();
+        unsafe {
+            table.register_shared_msp(region_of(&mut stack, 8)).unwrap();
+            assert_eq!(
+                table.register(
+                    ModuleId::Sensor,
+                    StackRegion {
+                        base: stack.as_mut_ptr().add(32) as usize,
+                        len: 32,
+                        canary_bytes: 8,
+                    },
+                ),
+                Err(StackGuardError::AliasedRegion(ModuleId::Sensor))
+            );
+        }
+        assert_eq!(table.status(ModuleId::Kernel).unwrap().len, 96);
     }
 }

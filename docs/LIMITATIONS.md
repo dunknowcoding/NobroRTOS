@@ -14,8 +14,10 @@ and omission checks rather than an adversarial attestation.
 
 | Boundary | Current behavior | Practical consequence |
 | --- | --- | --- |
-| Scheduling | Cooperative fixed-priority execution with response-time admission, fuel-bounded async, and overrun containment | A callback that never yields still needs a deadline/watchdog path to recover it; there is no general preemptive time-slicing profile |
+| Scheduling | Cooperative fixed-priority execution is the default. An opt-in `preemptive` kernel feature admits bounded P-ISR interference and owns P-SLICE state; the bare-nRF-only `cortex-m-slice` port provides PSP/PendSV frame switching | P-ISR permits bounded acknowledgement/ready/event handoff, not arbitrary callbacks. P-SLICE is not a portable default or an isolation boundary. PendSV must remain at or below the process-wide BASEPRI ceiling so it cannot split a critical-section transaction; an overrun that never leaves such a section still requires watchdog recovery. The build rejects `cortex-m-slice` with `board-nicenano-s140` until a SoftDevice-NVIC integration exists; repeated-switch, lazy-FPU, and other-architecture support remains unpromoted |
 | Timing | Admission uses declared or measured budgets and pessimistic interference | Blocking terms and unmeasured compiler/platform paths are not formal WCET bounds |
+| Release shape | Tasks may declare `phase < period` and `deadline <= period`; admission retains both while conservatively keeping worst-case interference | A useful phase reduces avoidable release bursts but does not by itself prove lower jitter or schedulability. Nano periods are limited to the wrap-safe 32-bit half-range (`0x7fff_ffff` us) |
+| Critical sections | Native nRF board packages use one BASEPRI ceiling for kernel, HAL, USB, adapter, and portable-atomic critical sections; the deadline/watchdog priorities stay unmasked. The SAMD21 Cortex-M0+ port supplies a SysTick-instrumented PRIMASK provider and reports `mask_max_cycles`, `mask_max_us`, its bound, wrap state, and pass state | High-priority handlers must use lock-free handoff only. The SAMD21 measurement owns SysTick, is target-built, and has no physical result in the public evidence set; a future SAMD timebase must use another timer or replace the instrument. Other CM0(+), Xtensa, RISC-V, and platform ports retain their platform behavior until they have an equivalent measured contract |
 | Async | No allocation; fixed task, timer, waiter, and channel capacities | Capacity is explicit and exhaustion is reported instead of allocating dynamically |
 | Composition | One graph derives manifest, startup, task metadata, labels, and mailbox grants | Capability kinds remain a closed bit set and stable numeric module codes remain on wire formats |
 | Project workflow | `nobro project` creates, explains, builds, simulates, and reports; `nobro firmware` emits nRF firmware from one declaration | Firmware generation currently covers explicit nRF52840 layouts and does not infer WCET or interrupt/DMA ownership |
@@ -42,22 +44,34 @@ A provider row is not interchangeable with deep support. In particular, event ro
 and PWM construction differ between MCU families, and a generic bus adapter still needs
 a concrete board application to exercise the selected pins and peripheral instance.
 
-The UNO R4 and ArduinoNRF facades are separate compositions, not additions to native
-tiers. They delegate clock, deadline, ADC, generic PWM, I2C, SPI, and byte I/O to their
-installed Arduino board cores. Hosted ArduinoNRF compilation runs on Windows against the
-pinned 0.3.11 core and the exact Pro Micro nRF52840 `usbcdc=enabled` selection. Generic
-`analogWrite` does not establish servo-period semantics. On the native RA4M1 port, the
+The Arduino compatibility facades are separate compositions, not additions to native
+tiers. They delegate clock, deadline, ADC, generic PWM, I2C, SPI, and byte I/O to the
+selected installed board core. A hosted facade build proves source compatibility only;
+it does not establish native-provider parity or physical timing. Generic `analogWrite`
+does not establish servo-period semantics. On the native RA4M1 port, the
 48 MHz 32-bit DWT clock must be sampled during active execution within approximately 89
 seconds and may stop in low-power modes; the 24-bit SysTick alarm rejects one-shot delays
 above approximately 349 milliseconds. Stronger long-running/sleep timing needs an
 always-on timebase and chained alarm.
 
-The nRF USB backend has finite iteration budgets for controller-ready and EasyDMA
-completion, quarantines staging storage after a terminal timeout, and reports typed
-faults. The bounded waits still execute inside a critical section; their target-specific
-interrupt blackout has not been measured, and host tests do not establish disconnect or
-fault-recovery behavior on silicon. A future poll-driven transfer state machine plus
-target timing and fault evidence are required for a stronger deadline claim.
+The nRF USB backend advances controller-ready, regulator `OUTPUTRDY`, detach, and wake
+authorization as poll-driven lifecycle states. Only bounded register transitions are made
+inside a critical section; an optional board monotonic clock supplies elapsed-time limits,
+with an explicitly weaker poll-count fallback when no clock is available. Suspend makes
+the data path unavailable, VBUS loss invalidates the session, and reconnect starts a fresh
+controller attach rather than reusing suspended state. `UsbStack::force_reenumeration()`
+exposes an explicit application detach/reattach for rate-limited recovery. EasyDMA
+completion still uses finite iteration budgets inside a critical section, quarantines its
+staging storage after a terminal timeout, and has no measured target interrupt-blackout
+bound. Host tests and target linking do not establish initial enumeration, unplug/replug,
+suspend/resume, or fault recovery on silicon; those lifecycle claims require physical
+evidence for the selected silicon and bootloader combination.
+
+The nRF deadline timer applies cadence changes at an ISR boundary, and the timer-power
+sleep edge uses SEVONPEND/WFE instead of globally masking interrupts. BASEPRI ceiling
+contracts are available for bounded shared-state work and reject configurations that
+would mask the deadline or watchdog priority. This does not remove the separate USB
+critical-section limitation above.
 
 USB configuration is backend-dependent. `UsbConfig` is only a request: nRF generates
 its descriptors from it, RA4M1 accepts only the exported fixed descriptor value, and the
@@ -68,6 +82,12 @@ OUT data is boundedly discarded rather than reinterpreted, and transmit flush wa
 a post-write empty event rather than treating FIFO capacity as completion; those register
 semantics still need silicon fault/recovery evidence. The public identity policy must be
 checked when host-visible VID/PID/string identity matters.
+
+Bootloader and application USB identities are independent. `UsbConfig` and forced
+re-enumeration apply only to the mounted application backend; they do not select a
+SoftDevice/no-SoftDevice flash layout, modify bootloader descriptors, or enter recovery
+firmware. Host-visible absence alone cannot distinguish failure to execute a bootloader
+from failure to enumerate its USB identity.
 
 `nobro-wireless` currently supplies a common bounded data plane and selected concrete
 transports; it does not yet supply WiFi/BLE lifecycle traits or vendor-stack feature

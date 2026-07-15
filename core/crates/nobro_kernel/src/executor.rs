@@ -20,7 +20,11 @@ pub enum Poll {
 pub struct TaskMeta {
     pub module: ModuleId,
     pub criticality: Criticality,
+    /// Offset of the first release from the executor epoch.
+    pub phase_us: u32,
     pub period_us: u32,
+    /// Relative deadline from each release.
+    pub deadline_us: u32,
     pub budget_us: u32,
     /// Measured upper bound for lower-priority non-preemptible/critical-section delay.
     pub blocking_us: u32,
@@ -36,10 +40,22 @@ impl TaskMeta {
         Self {
             module,
             criticality,
+            phase_us: 0,
             period_us,
+            deadline_us: period_us,
             budget_us,
             blocking_us: 0,
         }
+    }
+
+    pub const fn with_phase_us(mut self, phase_us: u32) -> Self {
+        self.phase_us = phase_us;
+        self
+    }
+
+    pub const fn with_deadline_us(mut self, deadline_us: u32) -> Self {
+        self.deadline_us = deadline_us;
+        self
     }
 
     pub const fn with_blocking_us(mut self, blocking_us: u32) -> Self {
@@ -89,6 +105,8 @@ pub enum TaskTableError {
     ReadyMaskCapacity,
     DuplicateTask(ModuleId),
     InvalidPeriod(ModuleId),
+    InvalidPhase(ModuleId),
+    InvalidDeadline(ModuleId),
     InvalidBudget(ModuleId),
     InvalidBlocking(ModuleId),
 }
@@ -164,13 +182,19 @@ impl<const N: usize> TaskTable<N> {
         if N > u32::BITS as usize || usize::from(self.len) >= u32::BITS as usize {
             return Err(TaskTableError::ReadyMaskCapacity);
         }
-        if meta.period_us == 0 {
+        if meta.period_us == 0 || meta.period_us > nobro_admission::MAX_WRAP_SAFE_INTERVAL_US {
             return Err(TaskTableError::InvalidPeriod(meta.module));
         }
-        if meta.budget_us == 0 || meta.budget_us > meta.period_us {
+        if meta.phase_us >= meta.period_us {
+            return Err(TaskTableError::InvalidPhase(meta.module));
+        }
+        if meta.deadline_us == 0 || meta.deadline_us > meta.period_us {
+            return Err(TaskTableError::InvalidDeadline(meta.module));
+        }
+        if meta.budget_us == 0 || meta.budget_us > meta.deadline_us {
             return Err(TaskTableError::InvalidBudget(meta.module));
         }
-        if meta.blocking_us > meta.period_us.saturating_sub(meta.budget_us) {
+        if meta.blocking_us > meta.deadline_us.saturating_sub(meta.budget_us) {
             return Err(TaskTableError::InvalidBlocking(meta.module));
         }
         if self
@@ -188,7 +212,7 @@ impl<const N: usize> TaskTable<N> {
         self.slots[index] = Some(TaskSlot {
             meta,
             stats: TaskStats {
-                next_due_us: now_us,
+                next_due_us: now_us.saturating_add(u64::from(meta.phase_us)),
                 ..TaskStats::zeroed()
             },
         });
@@ -793,6 +817,44 @@ mod tests {
     }
 
     #[test]
+    fn explicit_phase_shapes_first_release_and_preserves_the_periodic_anchor() {
+        let mut table = TaskTable::<2>::new();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100)
+                    .with_phase_us(250)
+                    .with_deadline_us(700),
+                10_000,
+            )
+            .unwrap();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Actuator, Criticality::System, 1_000, 100)
+                    .with_phase_us(600),
+                10_000,
+            )
+            .unwrap();
+
+        assert_eq!(table.next_due_us(), Some(10_250));
+        assert!(table.select_due(10_249).is_none());
+        let first = table.select_due(10_250).expect("first shaped release");
+        assert_eq!(table.meta_at(first.index).unwrap().module, ModuleId::Sensor);
+        table
+            .record_poll(first.index, 10_260, 10, Poll::Ready)
+            .unwrap();
+        assert_eq!(table.next_due_us(), Some(10_600));
+        let second = table.select_due(10_600).expect("second shaped release");
+        assert_eq!(
+            table.meta_at(second.index).unwrap().module,
+            ModuleId::Actuator
+        );
+        table
+            .record_poll(second.index, 10_610, 10, Poll::Ready)
+            .unwrap();
+        assert_eq!(table.next_due_us(), Some(11_250));
+    }
+
+    #[test]
     fn equal_criticality_fifo_prevents_new_release_overtaking() {
         let mut table = TaskTable::<2>::new();
         table
@@ -996,5 +1058,37 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(err, TaskTableError::InvalidBlocking(ModuleId::App(1)));
+    }
+
+    #[test]
+    fn phase_and_relative_deadline_fail_closed() {
+        let mut table = TaskTable::<1>::new();
+        let module = ModuleId::App(1);
+        assert_eq!(
+            table.add(
+                TaskMeta::new(module, Criticality::User, 100, 10).with_phase_us(100),
+                0
+            ),
+            Err(TaskTableError::InvalidPhase(module))
+        );
+        assert_eq!(
+            table.add(
+                TaskMeta::new(module, Criticality::User, 100, 10).with_deadline_us(101),
+                0
+            ),
+            Err(TaskTableError::InvalidDeadline(module))
+        );
+        assert_eq!(
+            table.add(
+                TaskMeta::new(
+                    module,
+                    Criticality::User,
+                    nobro_admission::MAX_WRAP_SAFE_INTERVAL_US + 1,
+                    10,
+                ),
+                0,
+            ),
+            Err(TaskTableError::InvalidPeriod(module))
+        );
     }
 }

@@ -9,10 +9,10 @@
 //!
 //! Typed builders carry safe, reviewable defaults (UX-01):
 //! - [`TaskDecl::periodic`] — a driver-criticality periodic task; jitter
-//!   defaults to period/100 (min 10 µs), execution budget to period/10,
-//!   memory to 1 KiB flash / 256 B RAM.
+//!   defaults to period/100 (minimum 1 µs when the period permits), execution
+//!   budget to period/10, memory to 1 KiB flash / 256 B RAM.
 //! - [`TaskDecl::control`] — hard-real-time: tighter jitter (period/200,
-//!   min 5 µs), same budget rule; put actuation here.
+//!   minimum 1 µs when possible), same budget rule; put actuation here.
 //! - [`TaskDecl::service`] — best-effort background work polled at a relaxed
 //!   cadence with no deadline contract.
 //!
@@ -41,7 +41,11 @@ const MAX_DEPS: usize = 4;
 pub struct TaskDecl {
     pub name: &'static str,
     pub criticality: Criticality,
+    /// Offset of the first release from the executor epoch.
+    pub phase_us: u32,
     pub period_us: u32,
+    /// Relative deadline from each release.
+    pub deadline_us: u32,
     pub max_jitter_us: u32,
     pub execution_budget_us: u32,
     pub blocking_us: u32,
@@ -61,12 +65,24 @@ pub struct TaskDecl {
 
 impl TaskDecl {
     fn base(name: &'static str, criticality: Criticality, period_us: u32) -> Self {
+        let max_jitter_us = if period_us <= 1 {
+            0
+        } else {
+            (period_us / 100).max(1).min(period_us - 1)
+        };
+        let execution_budget_us = if period_us == 0 {
+            1
+        } else {
+            (period_us / 10).max(1).min(period_us)
+        };
         Self {
             name,
             criticality,
+            phase_us: 0,
             period_us,
-            max_jitter_us: (period_us / 100).max(10),
-            execution_budget_us: (period_us / 10).max(10),
+            deadline_us: period_us,
+            max_jitter_us,
+            execution_budget_us,
             blocking_us: 0,
             memory: MemoryBudget::new(1024, 256, 0),
             objects: ObjectQuota::DEFAULT,
@@ -87,7 +103,11 @@ impl TaskDecl {
     /// A hard-real-time control task: tighter default jitter.
     pub fn control(name: &'static str, period_us: u32) -> Self {
         let mut decl = Self::base(name, Criticality::HardRealtime, period_us);
-        decl.max_jitter_us = (period_us / 200).max(5);
+        decl.max_jitter_us = if period_us <= 1 {
+            0
+        } else {
+            (period_us / 200).max(1).min(period_us - 1)
+        };
         decl
     }
 
@@ -107,6 +127,18 @@ impl TaskDecl {
 
     pub const fn jitter_us(mut self, max_jitter_us: u32) -> Self {
         self.max_jitter_us = max_jitter_us;
+        self
+    }
+
+    /// Offset this task's first release to avoid unnecessary release bursts.
+    pub const fn phase_us(mut self, phase_us: u32) -> Self {
+        self.phase_us = phase_us;
+        self
+    }
+
+    /// Set a constrained relative deadline. The default is the period.
+    pub const fn deadline_us(mut self, deadline_us: u32) -> Self {
+        self.deadline_us = deadline_us;
         self
     }
 
@@ -384,7 +416,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         let mut tasks: [Option<TaskMeta>; TASKS] = [None; TASKS];
 
         for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
-            if decl.blocking_us > decl.period_us.saturating_sub(decl.execution_budget_us) {
+            if decl.blocking_us > decl.deadline_us.saturating_sub(decl.execution_budget_us) {
                 return Err(GraphError::InvalidBlocking {
                     task: decl.name,
                     budget_us: decl.execution_budget_us,
@@ -405,6 +437,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             if decl.has_deadline {
                 spec = spec.deadline(
                     DeadlineContract::new(decl.period_us, decl.max_jitter_us)
+                        .phase_us(decl.phase_us)
+                        .relative_deadline_us(decl.deadline_us)
                         .execution_budget(decl.execution_budget_us)
                         .blocking(decl.blocking_us),
                 );
@@ -433,6 +467,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                     decl.period_us,
                     decl.execution_budget_us,
                 )
+                .with_phase_us(decl.phase_us)
+                .with_deadline_us(decl.deadline_us)
                 .with_blocking_us(decl.blocking_us),
             );
         }
@@ -727,5 +763,49 @@ mod tests {
             .deadline
             .unwrap();
         assert_eq!(deadline.blocking_us, 75);
+    }
+
+    #[test]
+    fn phase_period_deadline_are_declared_once_and_reach_both_kernel_inputs() {
+        let graph = AppGraph::<1>::new()
+            .task(
+                TaskDecl::control("motor", 5_000)
+                    .phase_us(1_000)
+                    .deadline_us(4_000)
+                    .budget_us(400),
+            )
+            .unwrap();
+        let built = graph.build_for::<2>(SystemProfile::NRF52840_CORE).unwrap();
+        let contract = built
+            .manifest
+            .iter()
+            .find(|spec| spec.id == ModuleId::App(0))
+            .unwrap()
+            .deadline
+            .unwrap();
+        assert_eq!(
+            (contract.phase_us, contract.period_us, contract.deadline_us),
+            (1_000, 5_000, 4_000)
+        );
+        let task = built.tasks[0].unwrap();
+        assert_eq!(
+            (task.phase_us, task.period_us, task.deadline_us),
+            (1_000, 5_000, 4_000)
+        );
+    }
+
+    #[test]
+    fn shortest_period_defaults_remain_self_consistent() {
+        let decl = TaskDecl::periodic("fast", 1);
+        assert_eq!(decl.max_jitter_us, 0);
+        assert_eq!(decl.execution_budget_us, 1);
+        assert!(AppGraph::<1>::new()
+            .task(decl)
+            .unwrap()
+            .build_for::<2>(SystemProfile::NRF52840_CORE)
+            .is_ok());
+        let control = TaskDecl::control("fast-control", 1);
+        assert_eq!(control.max_jitter_us, 0);
+        assert_eq!(control.execution_budget_us, 1);
     }
 }

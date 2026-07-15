@@ -5,7 +5,9 @@
 //! only releases periodic work into a fixed-priority bitmap and dispatches it.
 
 use crate::{StackFault, StackGuardTable};
-use nobro_admission::{AdmittedWorkload, ADMITTED_SCHEMA_VERSION, SUBSYSTEM_ABSENT};
+use nobro_admission::{
+    AdmittedWorkload, ADMITTED_SCHEMA_VERSION, MAX_WRAP_SAFE_INTERVAL_US, SUBSYSTEM_ABSENT,
+};
 
 pub const SUBSYSTEM_PRESENT: u16 = 0;
 
@@ -25,6 +27,7 @@ pub enum NanoError {
     EmptyWorkload,
     TooManyTasks,
     InvalidPriority,
+    InvalidPeriod,
     MissingStackGuard,
 }
 
@@ -131,13 +134,18 @@ impl<const N: usize> NanoKernel<N> {
             if task.priority == u16::MAX {
                 continue;
             }
+            // A zero period denotes an event-only task released through
+            // `mark_ready`; only periodic entries need the wrap-safe horizon.
+            if task.period_us > MAX_WRAP_SAFE_INTERVAL_US {
+                return Err(NanoError::InvalidPeriod);
+            }
             let priority = usize::from(task.priority);
             if priority >= usize::from(workload.task_count) || priority_to_task[priority] != u8::MAX
             {
                 return Err(NanoError::InvalidPriority);
             }
             priority_to_task[priority] = index as u8;
-            next_release_us[index] = epoch_us;
+            next_release_us[index] = epoch_us.wrapping_add(task.phase_us);
         }
         Ok(Self {
             workload,
@@ -202,11 +210,11 @@ impl<const N: usize> NanoKernel<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nobro_admission::{admit, AdmissionProfile, TaskContract};
+    use nobro_admission::{admit, AdmissionProfile, AdmittedTask, TaskContract};
 
     const CONTRACTS: [TaskContract; 3] = [
         TaskContract::new(1).deadline(10, 10, 1, 1, 0),
-        TaskContract::new(2).deadline(20, 20, 1, 1, 0),
+        TaskContract::new(2).deadline(20, 20, 1, 1, 0).phase(5),
         TaskContract::new(3),
     ];
     const WORKLOAD: AdmittedWorkload<3> =
@@ -218,17 +226,47 @@ mod tests {
     #[test]
     fn releases_preserve_phase_and_dispatch_in_constant_priority_order() {
         let mut kernel = NanoKernel::new(&WORKLOAD, 100).unwrap();
-        assert_eq!(kernel.release_due(100), 2);
+        assert_eq!(kernel.release_due(100), 1);
         assert_eq!(kernel.take_next(), Some(0));
+        assert_eq!(kernel.release_due(104), 0);
+        assert_eq!(kernel.release_due(105), 1);
         assert_eq!(kernel.take_next(), Some(1));
         assert!(kernel.is_idle());
 
         assert_eq!(kernel.release_due(139), 2);
         assert_eq!(kernel.take_next(), Some(0));
         assert_eq!(kernel.take_next(), Some(1));
-        assert_eq!(kernel.release_due(140), 2);
+        assert_eq!(kernel.release_due(140), 1);
         assert_eq!(kernel.take_next(), Some(0));
+        assert_eq!(kernel.release_due(144), 0);
+        assert_eq!(kernel.release_due(145), 1);
         assert_eq!(kernel.take_next(), Some(1));
+    }
+
+    #[test]
+    fn malformed_workload_cannot_bypass_wrap_safe_period_gate() {
+        static WORKLOAD: AdmittedWorkload<1> = AdmittedWorkload {
+            schema_version: ADMITTED_SCHEMA_VERSION,
+            task_count: 1,
+            tasks: [AdmittedTask {
+                id: 1,
+                priority: 0,
+                phase_us: 0,
+                period_us: MAX_WRAP_SAFE_INTERVAL_US + 1,
+                deadline_us: 1,
+                response_bound_us: 1,
+                capability_bits: 0,
+                quota_bits: 0,
+            }],
+            flash_bytes: 0,
+            ram_bytes: 0,
+            pool_slots: 0,
+            utilization_permyriad: 0,
+        };
+        assert!(matches!(
+            NanoKernel::new(&WORKLOAD, 0),
+            Err(NanoError::InvalidPeriod)
+        ));
     }
 
     #[test]

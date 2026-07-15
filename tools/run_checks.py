@@ -77,9 +77,20 @@ def gate_specs(quick, rust_only=False, extended=False):
             cargo += ["-p", c]
         specs.append(("cargo host tests", cargo, CORE))
         specs.append((
+            "vendored nRF USBD regression tests",
+            ["cargo", "test", "--locked", "--target", host_target(), "-p", "nrf-usbd"],
+            CORE,
+        ))
+        specs.append((
             "kernel capacity-report feature tests",
             ["cargo", "test", "--locked", "--target", host_target(),
              "-p", "nobro-kernel", "--features", "capacity-report"],
+            CORE,
+        ))
+        specs.append((
+            "kernel preemption feature tests",
+            ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-kernel", "--features", "preemptive"],
             CORE,
         ))
         lint = ["cargo", "clippy", "--locked", "--no-deps", "--target", host_target()]
@@ -92,6 +103,13 @@ def gate_specs(quick, rust_only=False, extended=False):
             ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
              "--target", host_target(), "-p", "nobro-kernel", "--features",
              "capacity-report", "--", "-D", "warnings"],
+            CORE,
+        ))
+        specs.append((
+            "kernel preemption feature clippy",
+            ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
+             "--target", host_target(), "-p", "nobro-kernel", "--features",
+             "preemptive", "--", "-D", "warnings"],
             CORE,
         ))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
@@ -127,6 +145,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         return specs
     specs += [
         ("release boundary", [py, "tools/check_release_boundary.py"], ROOT),
+        ("deadline masking", [py, "tools/check_timebase_masking.py"], ROOT),
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "tools/nobro_contract_tool.py", "check-software-surface"], ROOT),
         ("public docs", [py, "tools/check_public_docs.py"], ROOT),

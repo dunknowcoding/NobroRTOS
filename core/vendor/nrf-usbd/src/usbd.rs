@@ -20,13 +20,31 @@ use crate::pac::usbd::RegisterBlock;
 use crate::{errata, UsbPeripheral, UsbdFault};
 
 const DMA_BUFFER_SIZE: usize = 64;
-// These are deliberately iteration budgets rather than timing claims. On a normal
-// nRF52840 both events arrive orders of magnitude sooner; the limits only stop a broken
-// controller/handoff from trapping the whole application forever. These finite polls
-// still execute inside a critical section: the constants bound iteration count, while
-// the actual interrupt blackout remains dependent on target clock and silicon timing.
-const ENABLE_READY_POLL_BUDGET: usize = 100_000;
+// If the peripheral supplies a monotonic microsecond clock, these are elapsed-time
+// limits. Otherwise the corresponding POLL_BUDGET is a count of failed calls to the
+// driver's non-blocking lifecycle poller, not a wall-clock claim.
+const ENABLE_READY_TIMEOUT_US: u32 = 100_000;
+const ENABLE_READY_POLL_BUDGET: usize = 6_000_000;
+const HFCLK_READY_TIMEOUT_US: u32 = 100_000;
+const HFCLK_READY_POLL_BUDGET: usize = 6_000_000;
+const POWER_READY_TIMEOUT_US: u32 = 100_000;
+const POWER_READY_POLL_BUDGET: usize = 6_000_000;
+const WAKE_READY_TIMEOUT_US: u32 = 100_000;
+const WAKE_READY_POLL_BUDGET: usize = 6_000_000;
+// USB 2.0 section 7.1.7.3 requires a downstream port to observe continuous SE0
+// for more than 2.5 us before it recognizes disconnect. Keep the bootloader-owned
+// D+ pull-up off for a deliberately conservative interval after ENABLE has read
+// back Disabled; an immediate disable/re-enable has no lower bound and can be
+// invisible to the host.
+const INITIAL_DETACH_TIMEOUT_US: u32 = 20_000;
+const INITIAL_DETACH_POLL_BUDGET: usize = 6_000_000;
+const DETACH_TIMEOUT_US: u32 = 1_000;
+const DETACH_POLL_BUDGET: usize = 6_000_000;
+const PARITY_DMA_TIMEOUT_US: u32 = 100_000;
+const PARITY_DMA_POLL_BUDGET: usize = 6_000_000;
+const HANDOFF_DISABLE_POLL_BUDGET: usize = 100_000;
 const DMA_COMPLETE_POLL_BUDGET: usize = 2_048;
+const ISO_SPLIT_HALF_IN: u32 = 0x80;
 
 const REGISTER_WORD_BYTES: usize = size_of::<u32>();
 const ENDEPIN_EVENT_BASE: usize = offset_of!(RegisterBlock, events_endepin);
@@ -71,25 +89,21 @@ const HANDOFF_W1C_CLEAR_OFFSETS: [usize; 3] = [
 ];
 
 // Persistent routing/configuration owned by the previous USB session. Command-style
-// DTOGGLE/EPSTALL registers are intentionally excluded; disabling the peripheral and
-// clearing endpoint enables is the defined session boundary.
-const HANDOFF_CONFIG_ZERO_OFFSETS: [usize; 6] = [
+// DTOGGLE/EPSTALL registers are intentionally excluded; the authoritative cleanup runs
+// after ENABLE/READY, and forced DP/DM drive is released explicitly just before it.
+const HANDOFF_CONFIG_ZERO_OFFSETS: [usize; 4] = [
     offset_of!(RegisterBlock, shorts),
     offset_of!(RegisterBlock, epinen),
     offset_of!(RegisterBlock, epouten),
-    offset_of!(RegisterBlock, isosplit),
-    offset_of!(RegisterBlock, lowpower),
     offset_of!(RegisterBlock, isoinconfig),
 ];
 
-fn apply_handoff_sanitization(mut write: impl FnMut(usize, u32)) {
-    // Disconnect first, then prevent a stale peripheral or NVIC source from observing
-    // partially sanitized state. The board layer separately masks/unpends the NVIC line.
-    write(offset_of!(RegisterBlock, usbpullup), 0);
-    write(offset_of!(RegisterBlock, intenclr), u32::MAX);
-    write(offset_of!(RegisterBlock, tasks_dpdmnodrive), 1);
-    write(offset_of!(RegisterBlock, enable), 0);
+#[cfg(test)]
+const SESSION_SANITIZATION_WRITE_COUNT: usize = HANDOFF_CONFIG_ZERO_OFFSETS.len()
+    + HANDOFF_EVENT_CLEAR_OFFSETS.len()
+    + HANDOFF_W1C_CLEAR_OFFSETS.len();
 
+fn apply_session_register_sanitization(mut write: impl FnMut(usize, u32)) {
     for offset in HANDOFF_CONFIG_ZERO_OFFSETS {
         write(offset, 0);
     }
@@ -101,21 +115,188 @@ fn apply_handoff_sanitization(mut write: impl FnMut(usize, u32)) {
     }
 }
 
-/// Disconnects, disables, and clears a bootloader-owned nRF52 USBD session.
+fn finish_enable_session(
+    mut configure_enabled_errata: impl FnMut(),
+    mut write: impl FnMut(usize, u32),
+) {
+    // A bootloader can leave TASKS_DPDMDRIVE ownership behind. The handoff pass
+    // also triggers NODRIVE, but that task is not guaranteed to be accepted while
+    // USBD is disabled. Repeat it only after ENABLE/READY and any inherited
+    // LOWPOWER exit have both completed.
+    write(offset_of!(RegisterBlock, tasks_dpdmnodrive), 1);
+    configure_enabled_errata();
+    apply_session_register_sanitization(&mut write);
+    // Match Nordic's enabled-session baseline even though this fork currently
+    // rejects ISO endpoint allocation. Erratum 166 and HalfIN make future ISO IN/OUT
+    // sharing correct; neither setting changes the regular EP0/CDC attach path.
+    // Write HalfIN after generic cleanup so handoff sanitation cannot erase it.
+    write(offset_of!(RegisterBlock, isosplit), ISO_SPLIT_HALF_IN);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EnableSessionCompletion {
+    Finished,
+    WakePending,
+}
+
+fn complete_enable_session(
+    mut keep_pullup_disabled: impl FnMut(),
+    mut clear_ready: impl FnMut(),
+    mut complete_errata: impl FnMut(),
+    mut inherited_lowpower: impl FnMut() -> bool,
+    mut clear_wake_allowed: impl FnMut(),
+    mut begin_wake: impl FnMut(),
+    mut force_normal: impl FnMut(),
+    configure_enabled_errata: impl FnMut(),
+    write: impl FnMut(usize, u32),
+) -> EnableSessionCompletion {
+    // These callbacks deliberately encode the hardware ordering. The session
+    // registers are documented as accessible only after ENABLE/READY, while D+
+    // must remain detached until both this cleanup and regulator readiness finish.
+    keep_pullup_disabled();
+    clear_ready();
+    complete_errata();
+    if inherited_lowpower() {
+        // LOWPOWER -> ForceNormal is an acknowledged Erratum 171 transaction.
+        // Keep D+ detached and do not release inherited DP/DM drive until the MAC
+        // reports USBWUALLOWED and the wake bracket has been closed.
+        clear_wake_allowed();
+        begin_wake();
+        force_normal();
+        EnableSessionCompletion::WakePending
+    } else {
+        finish_enable_session(configure_enabled_errata, write);
+        EnableSessionCompletion::Finished
+    }
+}
+
+fn reset_ep0_transaction_registers(
+    mut clear_status_shortcut: impl FnMut(),
+    mut clear_data_done_event: impl FnMut(),
+) {
+    // USBRESET is an abort boundary for the old transfer, so its status shortcut and
+    // data-stage completion must not survive. Deliberately preserve EP0SETUP: a host
+    // may issue its first post-reset SETUP before usb-device calls `UsbBus::reset`, and
+    // discarding that already-latched request would stall enumeration until retry.
+    clear_status_shortcut();
+    clear_data_done_event();
+}
+
+const EVENTCAUSE_SUSPEND_MASK: u32 = 1 << 8;
+const EVENTCAUSE_RESUME_MASK: u32 = 1 << 9;
+
+fn acknowledge_usbevent(
+    mut clear_event: impl FnMut(),
+    mut read_causes: impl FnMut() -> u32,
+    mut clear_causes: impl FnMut(u32),
+) -> u32 {
+    // Re-arm the aggregate event before snapshotting and W1C-clearing its causes.
+    // A cause arriving after this write can therefore raise a fresh USBEVENT.
+    clear_event();
+    let causes = read_causes();
+    clear_causes(causes);
+    causes
+}
+
+fn suspend_resume_poll_result(causes: u32) -> Option<PollResult> {
+    // If both causes accumulated before polling, RESUME describes the final link
+    // state and must win because the snapshot is cleared as one transaction.
+    if causes & EVENTCAUSE_RESUME_MASK != 0 {
+        Some(PollResult::Resume)
+    } else if causes & EVENTCAUSE_SUSPEND_MASK != 0 {
+        Some(PollResult::Suspend)
+    } else {
+        None
+    }
+}
+
+/// Result of disconnecting a bootloader-owned USBD session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandoffSanitization {
+    /// Factory identity is not an nRF52840 maintained by this fork. No USBD register
+    /// was written, so an unsupported part cannot be damaged by guessed cleanup.
+    UnsupportedSilicon,
+    /// `ENABLE` read back disabled and the post-disable best-effort cleanup writes
+    /// were issued. The newly enabled session repeats those writes after `READY`,
+    /// when the controller guarantees that its session registers are accessible.
+    /// This result does not claim readback verification of the cleanup writes.
+    Complete,
+    /// `ENABLE` did not read back disabled within the fallback observation budget.
+    /// No endpoint, event, or configuration registers were cleared in this state.
+    DisableTimeout,
+}
+
+fn sanitize_if_supported(
+    applicable: Option<errata::Applicability>,
+    sanitize: impl FnOnce(errata::Applicability) -> HandoffSanitization,
+) -> HandoffSanitization {
+    match applicable {
+        Some(applicable) => sanitize(applicable),
+        None => HandoffSanitization::UnsupportedSilicon,
+    }
+}
+
+fn apply_handoff_sanitization(
+    mut write: impl FnMut(usize, u32),
+    mut enable_is_disabled: impl FnMut() -> bool,
+    mut after_disable: impl FnMut(),
+) -> HandoffSanitization {
+    // Disconnect first, then prevent a stale peripheral or NVIC source from observing
+    // partially sanitized state. The board layer separately masks/unpends the NVIC line.
+    write(offset_of!(RegisterBlock, usbpullup), 0);
+    write(offset_of!(RegisterBlock, intenclr), u32::MAX);
+    write(offset_of!(RegisterBlock, tasks_dpdmnodrive), 1);
+    write(offset_of!(RegisterBlock, enable), 0);
+
+    if !poll_with_budget(HANDOFF_DISABLE_POLL_BUDGET, &mut enable_is_disabled) {
+        return HandoffSanitization::DisableTimeout;
+    }
+
+    // The shared Erratum 187/211 flag remains owned until hardware confirms
+    // disable. Only then is it safe to close that active-lifetime workaround.
+    after_disable();
+
+    // Nordic does not guarantee access to these registers while USBD is disabled,
+    // but retain this pass as a best-effort cleanup for implementations that accept
+    // it. `complete_enable_session` repeats the exact pass after ENABLE/READY and
+    // before pull-up, which is the authoritative session boundary.
+    apply_session_register_sanitization(write);
+    HandoffSanitization::Complete
+}
+
+/// Disconnects and disables a bootloader-owned nRF52 USBD session, then issues a
+/// best-effort post-disable cleanup pass.
+///
+/// The driver repeats the same session-register cleanup after the next successful
+/// `ENABLE`/`READY` transition and retriggers `TASKS_DPDMNODRIVE` before connecting D+,
+/// because those registers and tasks are guaranteed to be accessible only while USBD
+/// is enabled.
 ///
 /// # Safety
 ///
 /// `T::REGISTERS` must identify the exclusive live nRF52 USBD register block, and the
-/// caller must prevent concurrent access while this handoff transaction runs.
+/// caller must prevent concurrent access while this handoff transaction runs. The
+/// factory-identity gate runs before this pointer is dereferenced.
 #[doc(hidden)]
-pub unsafe fn sanitize_handoff<T: UsbPeripheral>() {
+pub unsafe fn sanitize_handoff<T: UsbPeripheral>() -> HandoffSanitization {
     let base = T::REGISTERS.cast::<u8>();
-    apply_handoff_sanitization(|offset, value| unsafe {
-        base.add(offset)
-            .cast_mut()
-            .cast::<u32>()
-            .write_volatile(value);
-    });
+    sanitize_if_supported(errata::detect(), |applicable| {
+        apply_handoff_sanitization(
+            |offset, value| unsafe {
+                base.add(offset)
+                    .cast_mut()
+                    .cast::<u32>()
+                    .write_volatile(value);
+            },
+            || unsafe {
+                base.add(offset_of!(RegisterBlock, enable))
+                    .cast::<u32>()
+                    .read_volatile()
+                    == 0
+            },
+            || errata::end_disabled(applicable),
+        )
+    })
 }
 
 #[repr(align(4))]
@@ -146,6 +327,29 @@ impl PermanentClaim {
 // Permanent by design: after a timeout hardware may finish against the static buffers
 // later, so no subsequent bus instance may ever reuse them in the same process.
 static DMA_STORAGE_CLAIM: PermanentClaim = PermanentClaim::new();
+static BOOTLOADER_HANDOFF_REQUEST: AtomicBool = AtomicBool::new(false);
+
+/// Marks the next `UsbBus::force_reset()` call as a one-way bootloader handoff.
+///
+/// Unlike ordinary re-enumeration, that call remains `WouldBlock` until EasyDMA
+/// parity repair, controller disable readback, and errata release have completed.
+pub fn request_bootloader_handoff() {
+    BOOTLOADER_HANDOFF_REQUEST.store(true, Ordering::Release);
+}
+
+fn initial_fault_for_silicon(
+    applicability: Option<errata::Applicability>,
+    try_claim_storage: impl FnOnce() -> bool,
+) -> Option<UsbdFault> {
+    if applicability.is_none() {
+        return Some(UsbdFault::UnsupportedSilicon);
+    }
+    if try_claim_storage() {
+        None
+    } else {
+        Some(UsbdFault::DmaStorageAlreadyClaimed)
+    }
+}
 
 #[derive(Clone, Copy)]
 struct TerminalFault(Option<UsbdFault>);
@@ -172,12 +376,18 @@ impl TerminalFault {
     }
 }
 
-fn dma_start() {
+fn dma_start(applicable: errata::Applicability) {
+    errata::begin_dma(applicable);
     compiler_fence(Ordering::Release);
 }
 
-fn dma_end() {
+fn dma_end(applicable: errata::Applicability) {
     compiler_fence(Ordering::Acquire);
+    errata::complete_dma(applicable);
+}
+
+fn accumulated_dma_odd(currently_odd: bool, amount: u8) -> bool {
+    currently_odd ^ (amount & 1 != 0)
 }
 
 fn poll_with_budget(limit: usize, mut ready: impl FnMut() -> bool) -> bool {
@@ -188,6 +398,248 @@ fn poll_with_budget(limit: usize, mut ready: impl FnMut() -> bool) -> bool {
         core::hint::spin_loop();
     }
     false
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AsyncWait {
+    started_us: Option<u32>,
+    last_us: Option<u32>,
+    timeout_us: u32,
+    polls_remaining: usize,
+    poll_budget: usize,
+}
+
+impl AsyncWait {
+    fn new(now_us: Option<u32>, timeout_us: u32, poll_budget: usize) -> Self {
+        Self {
+            started_us: now_us,
+            last_us: now_us,
+            timeout_us,
+            polls_remaining: poll_budget,
+            poll_budget,
+        }
+    }
+
+    /// Records one failed readiness observation and reports expiration.
+    ///
+    /// A progressing clock is authoritative and the fallback budget is refreshed;
+    /// this prevents a tight poll loop from expiring before the promised wall time.
+    /// A missing or frozen clock still consumes the conservative poll fallback.
+    /// With no clock at construction, a later clock is intentionally ignored because
+    /// there is no elapsed origin.
+    fn failed_observation(&mut self, now_us: Option<u32>) -> bool {
+        let elapsed_expired = matches!(
+            (self.started_us, now_us),
+            (Some(started), Some(now)) if now.wrapping_sub(started) >= self.timeout_us
+        );
+        if elapsed_expired {
+            return true;
+        }
+
+        // A progressing clock is authoritative: do not let a fast caller consume
+        // the fallback count before the promised wall time has elapsed. Reset the
+        // fallback only on observed progress. A missing or frozen clock still expires
+        // after a deliberately conservative number of failed observations.
+        if self.started_us.is_some() && now_us.is_some() && now_us != self.last_us {
+            self.last_us = now_us;
+            self.polls_remaining = self.poll_budget;
+            return false;
+        }
+        self.polls_remaining = self.polls_remaining.saturating_sub(1);
+        self.polls_remaining == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InitialDetachPreparation {
+    AwaitVbus,
+    Disabling(AsyncWait),
+    Dwelling(AsyncWait),
+}
+
+fn prepare_initial_detach(
+    mut keep_pullup_disabled: impl FnMut(),
+    mut enable_is_disabled: impl FnMut() -> bool,
+    mut request_disable: impl FnMut(),
+    vbus_present: bool,
+    mut now_us: impl FnMut() -> Option<u32>,
+) -> InitialDetachPreparation {
+    // Disconnect is the first externally observable action. ENABLE readback is
+    // then the ownership boundary: the dwell must never start while the old
+    // controller session can still be driving D+/D-.
+    keep_pullup_disabled();
+    if !enable_is_disabled() {
+        request_disable();
+        InitialDetachPreparation::Disabling(AsyncWait::new(
+            now_us(),
+            ENABLE_READY_TIMEOUT_US,
+            ENABLE_READY_POLL_BUDGET,
+        ))
+    } else if vbus_present {
+        InitialDetachPreparation::Dwelling(AsyncWait::new(
+            now_us(),
+            INITIAL_DETACH_TIMEOUT_US,
+            INITIAL_DETACH_POLL_BUDGET,
+        ))
+    } else {
+        // Physical VBUS absence already supplies an unbounded disconnect. A new
+        // VBUS edge can therefore proceed through the ordinary enable path.
+        InitialDetachPreparation::AwaitVbus
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InitialDetachObservation {
+    Waiting,
+    StartEnable,
+    VbusLost,
+}
+
+fn observe_initial_detach(
+    wait: &mut AsyncWait,
+    vbus_present: bool,
+    now_us: Option<u32>,
+) -> InitialDetachObservation {
+    // VBUS loss wins even on the nominal last dwell observation: a physical
+    // disconnect must not be followed by an ENABLE request until VBUS returns.
+    if !vbus_present {
+        InitialDetachObservation::VbusLost
+    } else if wait.failed_observation(now_us) {
+        InitialDetachObservation::StartEnable
+    } else {
+        InitialDetachObservation::Waiting
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ErrataOwnership {
+    Enabling(errata::Applicability),
+    Active(errata::Applicability),
+    Waking(errata::Applicability),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DisablePreparation {
+    StartDisable,
+    WaitForPower,
+    AwaitWake,
+    BeginWake,
+    StartParityDma,
+    UnsafeLifecycle,
+}
+
+fn disable_preparation(
+    dma_odd: bool,
+    ownership: Option<ErrataOwnership>,
+    vbus_present: bool,
+    power_ready: bool,
+    lowpower: bool,
+) -> DisablePreparation {
+    if !dma_odd {
+        return DisablePreparation::StartDisable;
+    }
+    if !vbus_present || !power_ready {
+        return DisablePreparation::WaitForPower;
+    }
+    match ownership {
+        Some(ErrataOwnership::Waking(_)) => DisablePreparation::AwaitWake,
+        Some(ErrataOwnership::Active(_)) if lowpower => DisablePreparation::BeginWake,
+        Some(ErrataOwnership::Active(_)) => DisablePreparation::StartParityDma,
+        // An odd cumulative DMA count can only be produced by the Active state.
+        // Never guess that an unacknowledged enable phase is safe for EasyDMA.
+        Some(ErrataOwnership::Enabling(_)) | None => DisablePreparation::UnsafeLifecycle,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WakeTarget {
+    Active,
+    FinishEnable,
+}
+
+fn complete_wake_session(
+    target: WakeTarget,
+    mut clear_wake_allowed: impl FnMut(),
+    mut complete_wake: impl FnMut(),
+    configure_enabled_errata: impl FnMut(),
+    write: impl FnMut(usize, u32),
+) -> WakeTarget {
+    clear_wake_allowed();
+    complete_wake();
+    if matches!(target, WakeTarget::FinishEnable) {
+        finish_enable_session(configure_enabled_errata, write);
+    }
+    target
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Lifecycle {
+    AwaitVbus,
+    InitialDisabling {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+    },
+    InitialDetach {
+        wait: AsyncWait,
+    },
+    PreparingDisable {
+        errata: Option<ErrataOwnership>,
+        pending_fault: Option<UsbdFault>,
+    },
+    DisableWaking {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+        pending_fault: Option<UsbdFault>,
+    },
+    ParityFixing {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+        pending_fault: Option<UsbdFault>,
+    },
+    Disabling {
+        wait: AsyncWait,
+        errata: Option<ErrataOwnership>,
+        pending_fault: Option<UsbdFault>,
+    },
+    HfclkStarting {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+    },
+    Enabling {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+    },
+    PowerReady {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+    },
+    Active {
+        errata: errata::Applicability,
+    },
+    Suspended {
+        errata: errata::Applicability,
+    },
+    Waking {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+        target: WakeTarget,
+    },
+    Detaching {
+        wait: AsyncWait,
+        errata: errata::Applicability,
+    },
+    HandoffComplete,
+}
+
+#[cfg(test)]
+impl Lifecycle {
+    fn accepts_full_usb_events(self) -> bool {
+        matches!(self, Self::Active { .. })
+    }
+}
+
+fn release_ep0_after_status_fallback(busy_in_endpoints: u16) -> u16 {
+    busy_in_endpoints & !1
 }
 
 fn validate_endpoint_request(
@@ -257,6 +709,18 @@ struct EP0State {
     is_set_address: bool,
 }
 
+fn abort_ep0_for_new_transaction(state: &mut EP0State, busy_in_endpoints: u16) -> u16 {
+    // A bus reset or a newly ACKed SETUP packet is the hardware-defined abort
+    // boundary for the previous control transfer. EP0DATADONE is not guaranteed
+    // for that aborted transfer, so software must not retain its busy/fallback
+    // state and wait for a completion that can never arrive.
+    state.direction = UsbDirection::Out;
+    state.remaining_size = 0;
+    state.in_transfer_state = TransferState::NoTransfer;
+    state.is_set_address = false;
+    busy_in_endpoints & !1
+}
+
 /// USB device implementation.
 ///
 /// This type implements the [`UsbBus`] trait and can be passed to a [`UsbBusAllocator`] to
@@ -265,6 +729,7 @@ struct EP0State {
 /// [`UsbBusAllocator`]: usb_device::bus::UsbBusAllocator
 pub struct Usbd<T: UsbPeripheral> {
     _periph: Mutex<T>,
+    applicability: Option<errata::Applicability>,
     // argument passed to `UsbDeviceBuilder.max_packet_size_0`
     max_packet_size_0: u16,
     bufs: Buffers,
@@ -272,7 +737,10 @@ pub struct Usbd<T: UsbPeripheral> {
     used_out: u8,
     ep0_state: Mutex<Cell<EP0State>>,
     busy_in_endpoints: Mutex<Cell<u16>>,
+    dma_odd: Mutex<Cell<bool>>,
     fault: Mutex<Cell<TerminalFault>>,
+    lifecycle: Mutex<Cell<Lifecycle>>,
+    bootloader_handoff: Mutex<Cell<bool>>,
 }
 
 impl<T: UsbPeripheral> Usbd<T> {
@@ -282,21 +750,25 @@ impl<T: UsbPeripheral> Usbd<T> {
     ///
     /// * `periph`: The raw USBD peripheral.
     ///
-    /// The first instance permanently claims the process-wide, EasyDMA-safe staging
-    /// buffers. A later instance is constructed in a faulted state and reports
+    /// Unsupported factory identity is faulted before controller access or shared-storage
+    /// claim. On nRF52840, the first instance permanently claims the process-wide,
+    /// EasyDMA-safe staging buffers. A later instance is constructed in a faulted state and reports
     /// [`UsbdFault::DmaStorageAlreadyClaimed`]; staging storage is never reused because a
     /// timed-out transfer has no documented cancellation task and may complete late.
     #[inline]
     pub fn new(periph: T) -> Self {
-        let initial_fault = if DMA_STORAGE_CLAIM.try_claim() {
-            None
-        } else {
-            let fault = UsbdFault::DmaStorageAlreadyClaimed;
+        // Factory identity is immutable. Gate it before claiming shared DMA storage or
+        // allowing any lifecycle method to touch USBD.
+        let applicability = errata::detect();
+        T::on_operational_change(false);
+        let initial_fault =
+            initial_fault_for_silicon(applicability, || DMA_STORAGE_CLAIM.try_claim());
+        if let Some(fault) = initial_fault {
             T::on_fault(fault);
-            Some(fault)
-        };
+        }
         Self {
             _periph: Mutex::new(periph),
+            applicability,
             max_packet_size_0: 0,
             bufs: Buffers::new(),
             used_in: 0,
@@ -308,7 +780,10 @@ impl<T: UsbPeripheral> Usbd<T> {
                 is_set_address: false,
             })),
             busy_in_endpoints: Mutex::new(Cell::new(0)),
+            dma_odd: Mutex::new(Cell::new(false)),
             fault: Mutex::new(Cell::new(TerminalFault::new(initial_fault))),
+            lifecycle: Mutex::new(Cell::new(Lifecycle::AwaitVbus)),
+            bootloader_handoff: Mutex::new(Cell::new(false)),
         }
     }
 
@@ -333,19 +808,752 @@ impl<T: UsbPeripheral> Usbd<T> {
         !self.fault.borrow(cs).get().permits_operation()
     }
 
+    fn operational_errata(
+        &self,
+        cs: CriticalSection<'_>,
+    ) -> Result<errata::Applicability, UsbError> {
+        if self.has_fault(cs) {
+            return Err(UsbError::InvalidState);
+        }
+        match self.lifecycle.borrow(cs).get() {
+            Lifecycle::Active { errata } => Ok(errata),
+            _ => Err(UsbError::WouldBlock),
+        }
+    }
+
     fn latch_fault(&self, cs: CriticalSection<'_>, fault: UsbdFault) {
         let current = self.fault.borrow(cs);
         let (next, newly_latched) = current.get().latch(fault);
         if newly_latched {
             current.set(next);
+            T::on_operational_change(false);
             T::on_fault(fault);
         }
     }
 
+    fn async_wait(timeout_us: u32, poll_budget: usize) -> AsyncWait {
+        AsyncWait::new(T::monotonic_us_32(), timeout_us, poll_budget)
+    }
+
+    fn set_lifecycle(&self, cs: CriticalSection<'_>, lifecycle: Lifecycle) {
+        T::on_operational_change(matches!(lifecycle, Lifecycle::Active { .. }));
+        self.lifecycle.borrow(cs).set(lifecycle);
+    }
+
+    /// Establishes the host-visible bootloader-to-application disconnect.
+    ///
+    /// The caller may invoke this with an inherited controller still active. In
+    /// that case the lifecycle first observes ENABLE reach Disabled and only then
+    /// starts the detach timer. No LOWPOWER, endpoint, event, or configuration
+    /// register is accessed during this initial boundary.
+    fn begin_initial_detach(&self, cs: CriticalSection<'_>, regs: &RegisterBlock) {
+        let Some(applicable) = self.applicability else {
+            return;
+        };
+        let preparation = prepare_initial_detach(
+            || regs.usbpullup.write(|w| w.connect().disabled()),
+            || regs.enable.read().enable().is_disabled(),
+            || regs.enable.write(|w| w.enable().disabled()),
+            T::vbus_present(),
+            T::monotonic_us_32,
+        );
+        match preparation {
+            InitialDetachPreparation::AwaitVbus => self.set_lifecycle(cs, Lifecycle::AwaitVbus),
+            InitialDetachPreparation::Disabling(wait) => self.set_lifecycle(
+                cs,
+                Lifecycle::InitialDisabling {
+                    wait,
+                    errata: applicable,
+                },
+            ),
+            InitialDetachPreparation::Dwelling(wait) => {
+                self.set_lifecycle(cs, Lifecycle::InitialDetach { wait })
+            }
+        }
+    }
+
+    /// Starts exactly one asynchronous `ENABLE` attempt.
+    ///
+    /// A stale enabled handoff is first driven through a separately observed
+    /// disable transition. The driver never issues a second ENABLE attempt from
+    /// an uncertain state.
+    fn start_enable(&self, cs: CriticalSection<'_>, regs: &RegisterBlock) {
+        let Some(applicable) = self.applicability else {
+            // Construction has already latched UnsupportedSilicon. Keep this guard at
+            // the write boundary so even an accidental caller cannot touch USBD.
+            return;
+        };
+        if !T::vbus_present() {
+            self.set_lifecycle(cs, Lifecycle::AwaitVbus);
+            return;
+        }
+
+        regs.usbpullup.write(|w| w.connect().disabled());
+        if regs.enable.read().enable().is_enabled() {
+            regs.enable.write(|w| w.enable().disabled());
+            self.set_lifecycle(
+                cs,
+                Lifecycle::Disabling {
+                    wait: Self::async_wait(ENABLE_READY_TIMEOUT_US, ENABLE_READY_POLL_BUDGET),
+                    errata: None,
+                    pending_fault: None,
+                },
+            );
+            return;
+        }
+
+        self.start_hfclk_or_enable(cs, regs, applicable);
+    }
+
+    fn start_hfclk_or_enable(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        applicable: errata::Applicability,
+    ) {
+        T::request_hfclk();
+        if T::hfclk_running() {
+            self.enable_controller(cs, regs, applicable);
+        } else {
+            self.set_lifecycle(
+                cs,
+                Lifecycle::HfclkStarting {
+                    wait: Self::async_wait(HFCLK_READY_TIMEOUT_US, HFCLK_READY_POLL_BUDGET),
+                    errata: applicable,
+                },
+            );
+        }
+    }
+
+    fn enable_controller(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        applicable: errata::Applicability,
+    ) {
+        // Nordic requires HFXO running before USBD is enabled. READY only
+        // acknowledges the controller transition; it is not an oscillator request.
+        // The board hook above owns clock arbitration. READY is W1C, so clear a stale
+        // handoff event before creating the only 0->1 transition.
+        regs.eventcause.write(|w| w.ready().set_bit());
+        errata::begin_enable(applicable);
+        regs.enable.write(|w| w.enable().enabled());
+        self.set_lifecycle(
+            cs,
+            Lifecycle::Enabling {
+                wait: Self::async_wait(ENABLE_READY_TIMEOUT_US, ENABLE_READY_POLL_BUDGET),
+                errata: applicable,
+            },
+        );
+    }
+
+    fn begin_disabling(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        errata: Option<ErrataOwnership>,
+        pending_fault: Option<UsbdFault>,
+    ) {
+        regs.usbpullup.write(|w| w.connect().disabled());
+        self.set_lifecycle(
+            cs,
+            Lifecycle::PreparingDisable {
+                errata,
+                pending_fault,
+            },
+        );
+    }
+
+    fn start_disable_readback(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        errata: Option<ErrataOwnership>,
+        pending_fault: Option<UsbdFault>,
+    ) {
+        regs.enable.write(|w| w.enable().disabled());
+        self.set_lifecycle(
+            cs,
+            Lifecycle::Disabling {
+                wait: Self::async_wait(ENABLE_READY_TIMEOUT_US, ENABLE_READY_POLL_BUDGET),
+                errata,
+                pending_fault,
+            },
+        );
+    }
+
+    fn start_parity_fix(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        applicable: errata::Applicability,
+        pending_fault: Option<UsbdFault>,
+    ) {
+        // Current Nordic nrfx performs this one-byte EPIN0 EasyDMA transaction before
+        // disabling when the cumulative DMA byte count is odd. Without it the next
+        // USBD enable can issue an invalid bus request. The pull-up is already off,
+        // the controller is ForceNormal/OUTPUTRDY, and endpoint I/O is unpublished,
+        // so this does not create a USB control transfer or mutate usb-device state.
+        let ram_buf = unsafe { &mut *DMA_IN_BUFFER.0.get() };
+        regs.events_endepin[0].reset();
+        unsafe {
+            regs.epin0.ptr.write(|w| w.bits(ram_buf.as_ptr() as u32));
+            regs.epin0.maxcnt.write(|w| w.maxcnt().bits(1));
+        }
+        dma_start(applicable);
+        regs.tasks_startepin[0].write(|w| w.tasks_startepin().set_bit());
+        self.set_lifecycle(
+            cs,
+            Lifecycle::ParityFixing {
+                wait: Self::async_wait(PARITY_DMA_TIMEOUT_US, PARITY_DMA_POLL_BUDGET),
+                errata: applicable,
+                pending_fault,
+            },
+        );
+    }
+
+    fn close_errata(ownership: Option<ErrataOwnership>) {
+        match ownership {
+            Some(ErrataOwnership::Enabling(applicable)) => errata::abort_enable(applicable),
+            Some(ErrataOwnership::Active(applicable)) => errata::end_active(applicable),
+            Some(ErrataOwnership::Waking(applicable)) => {
+                // No wake acknowledgement is implied. The controller is already
+                // confirmed disabled, so the open EC14 and active-lifetime ED14
+                // flags can now be released.
+                errata::complete_wake(applicable);
+                errata::end_active(applicable);
+            }
+            None => {}
+        }
+    }
+
+    /// Advances at most one hardware lifecycle observation.
+    ///
+    /// This runs inside a critical section, but performs no spin or delay: every
+    /// invocation samples a readiness condition once and returns to the caller.
+    fn advance_lifecycle(&self, cs: CriticalSection<'_>, regs: &RegisterBlock) {
+        if self.has_fault(cs) {
+            return;
+        }
+
+        let lifecycle = self.lifecycle.borrow(cs);
+        match lifecycle.get() {
+            Lifecycle::AwaitVbus => {
+                if T::vbus_present() {
+                    self.start_enable(cs, regs);
+                }
+            }
+            Lifecycle::InitialDisabling {
+                mut wait,
+                errata: applicable,
+            } => {
+                if regs.enable.read().enable().is_disabled() {
+                    // A bootloader can own any of the hidden enable/wake state.
+                    // Close it only after ENABLE readback proves the old session
+                    // cannot still be using those workarounds.
+                    errata::end_disabled(applicable);
+                    if T::vbus_present() {
+                        self.set_lifecycle(
+                            cs,
+                            Lifecycle::InitialDetach {
+                                wait: Self::async_wait(
+                                    INITIAL_DETACH_TIMEOUT_US,
+                                    INITIAL_DETACH_POLL_BUDGET,
+                                ),
+                            },
+                        );
+                    } else {
+                        self.set_lifecycle(cs, Lifecycle::AwaitVbus);
+                    }
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    // Retain errata ownership while ENABLE is uncertain. A reset
+                    // is the only safe boundary after this terminal timeout.
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::InitialDisabling {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                    self.latch_fault(cs, UsbdFault::DisableTimeout);
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::InitialDisabling {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                }
+            }
+            Lifecycle::InitialDetach { mut wait } => {
+                match observe_initial_detach(&mut wait, T::vbus_present(), T::monotonic_us_32()) {
+                    InitialDetachObservation::Waiting => {
+                        self.set_lifecycle(cs, Lifecycle::InitialDetach { wait });
+                    }
+                    InitialDetachObservation::StartEnable => self.start_enable(cs, regs),
+                    InitialDetachObservation::VbusLost => {
+                        self.set_lifecycle(cs, Lifecycle::AwaitVbus);
+                    }
+                }
+            }
+            Lifecycle::PreparingDisable {
+                errata: ownership,
+                pending_fault,
+            } => {
+                let vbus_present = T::vbus_present();
+                let power_ready = vbus_present && T::power_ready();
+                let lowpower = power_ready && regs.lowpower.read().lowpower().is_low_power();
+                match disable_preparation(
+                    self.dma_odd.borrow(cs).get(),
+                    ownership,
+                    vbus_present,
+                    power_ready,
+                    lowpower,
+                ) {
+                    DisablePreparation::StartDisable => {
+                        self.start_disable_readback(cs, regs, ownership, pending_fault);
+                    }
+                    DisablePreparation::WaitForPower => self.set_lifecycle(
+                        cs,
+                        Lifecycle::PreparingDisable {
+                            errata: ownership,
+                            pending_fault,
+                        },
+                    ),
+                    DisablePreparation::AwaitWake => {
+                        let Some(ErrataOwnership::Waking(applicable)) = ownership else {
+                            unreachable!("disable preparation classified wake ownership")
+                        };
+                        self.set_lifecycle(
+                            cs,
+                            Lifecycle::DisableWaking {
+                                wait: Self::async_wait(
+                                    WAKE_READY_TIMEOUT_US,
+                                    WAKE_READY_POLL_BUDGET,
+                                ),
+                                errata: applicable,
+                                pending_fault,
+                            },
+                        );
+                    }
+                    DisablePreparation::BeginWake => {
+                        let Some(ErrataOwnership::Active(applicable)) = ownership else {
+                            unreachable!("disable preparation classified active ownership")
+                        };
+                        regs.eventcause.write(|w| w.usbwuallowed().set_bit());
+                        errata::begin_wake(applicable);
+                        regs.lowpower.write(|w| w.lowpower().force_normal());
+                        self.set_lifecycle(
+                            cs,
+                            Lifecycle::DisableWaking {
+                                wait: Self::async_wait(
+                                    WAKE_READY_TIMEOUT_US,
+                                    WAKE_READY_POLL_BUDGET,
+                                ),
+                                errata: applicable,
+                                pending_fault,
+                            },
+                        );
+                    }
+                    DisablePreparation::StartParityDma => {
+                        let Some(ErrataOwnership::Active(applicable)) = ownership else {
+                            unreachable!("disable preparation classified active ownership")
+                        };
+                        self.start_parity_fix(cs, regs, applicable, pending_fault);
+                    }
+                    DisablePreparation::UnsafeLifecycle => {
+                        // Preserve ENABLE and all errata ownership. An odd count in an
+                        // unacknowledged/non-active session violates the driver's own
+                        // invariant, so neither a guessed DMA nor disable is safe.
+                        self.set_lifecycle(
+                            cs,
+                            Lifecycle::PreparingDisable {
+                                errata: ownership,
+                                pending_fault,
+                            },
+                        );
+                        self.latch_fault(cs, UsbdFault::ParityRepairUnavailable);
+                    }
+                }
+            }
+            Lifecycle::DisableWaking {
+                mut wait,
+                errata: applicable,
+                pending_fault,
+            } => {
+                if !T::vbus_present() || !T::power_ready() {
+                    // A disconnected regulator cannot acknowledge ForceNormal. Keep
+                    // the pull-up off and the Erratum 171/211 ownership open, and give
+                    // hardware a fresh bounded window after continuous power returns.
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::DisableWaking {
+                            wait: Self::async_wait(WAKE_READY_TIMEOUT_US, WAKE_READY_POLL_BUDGET),
+                            errata: applicable,
+                            pending_fault,
+                        },
+                    );
+                } else if regs.eventcause.read().usbwuallowed().is_allowed() {
+                    regs.eventcause.write(|w| w.usbwuallowed().set_bit());
+                    errata::complete_wake(applicable);
+                    self.start_parity_fix(cs, regs, applicable, pending_fault);
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::DisableWaking {
+                            wait,
+                            errata: applicable,
+                            pending_fault,
+                        },
+                    );
+                    self.latch_fault(cs, UsbdFault::WakeTimeout);
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::DisableWaking {
+                            wait,
+                            errata: applicable,
+                            pending_fault,
+                        },
+                    );
+                }
+            }
+            Lifecycle::ParityFixing {
+                mut wait,
+                errata: applicable,
+                pending_fault,
+            } => {
+                if regs.events_endepin[0].read().events_endepin().bit_is_set() {
+                    regs.events_endepin[0].reset();
+                    dma_end(applicable);
+                    self.dma_odd.borrow(cs).set(false);
+                    self.start_disable_readback(
+                        cs,
+                        regs,
+                        Some(ErrataOwnership::Active(applicable)),
+                        pending_fault,
+                    );
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    // EasyDMA may still own the permanent buffer. Do not disable or
+                    // close Erratum 199/211; only reset can recover this controller.
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::ParityFixing {
+                            wait,
+                            errata: applicable,
+                            pending_fault,
+                        },
+                    );
+                    self.latch_fault(cs, UsbdFault::InDmaTimeout { endpoint: 0 });
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::ParityFixing {
+                            wait,
+                            errata: applicable,
+                            pending_fault,
+                        },
+                    );
+                }
+            }
+            Lifecycle::Disabling {
+                mut wait,
+                errata: ownership,
+                pending_fault,
+            } => {
+                if regs.enable.read().enable().is_disabled() {
+                    Self::close_errata(ownership);
+                    if self.bootloader_handoff.borrow(cs).get() {
+                        self.set_lifecycle(cs, Lifecycle::HandoffComplete);
+                    } else {
+                        self.set_lifecycle(cs, Lifecycle::AwaitVbus);
+                    }
+                    if let Some(fault) = pending_fault {
+                        self.latch_fault(cs, fault);
+                    }
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    // Hardware may still be active, so retain the asserted errata
+                    // workarounds and their ownership. Clearing ED14 here would
+                    // violate Erratum 211's active-lifetime requirement precisely
+                    // when the ENABLE state is uncertain. The terminal fault prevents
+                    // this instance from touching the controller again; a subsequent
+                    // system reset provides the only safe ownership boundary.
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Disabling {
+                            wait,
+                            errata: ownership,
+                            pending_fault,
+                        },
+                    );
+                    self.latch_fault(cs, UsbdFault::DisableTimeout);
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Disabling {
+                            wait,
+                            errata: ownership,
+                            pending_fault,
+                        },
+                    );
+                }
+            }
+            Lifecycle::HfclkStarting {
+                mut wait,
+                errata: applicable,
+            } => {
+                if !T::vbus_present() {
+                    self.set_lifecycle(cs, Lifecycle::AwaitVbus);
+                } else if T::hfclk_running() {
+                    self.enable_controller(cs, regs, applicable);
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::HfclkStarting {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                    self.latch_fault(cs, UsbdFault::HfclkTimeout);
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::HfclkStarting {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                }
+            }
+            Lifecycle::Enabling {
+                mut wait,
+                errata: applicable,
+            } => {
+                if !T::vbus_present() {
+                    self.begin_disabling(
+                        cs,
+                        regs,
+                        Some(ErrataOwnership::Enabling(applicable)),
+                        None,
+                    );
+                } else if regs.eventcause.read().ready().is_ready() {
+                    let base = regs as *const RegisterBlock as *const u8;
+                    let completion = complete_enable_session(
+                        || regs.usbpullup.write(|w| w.connect().disabled()),
+                        || regs.eventcause.write(|w| w.ready().set_bit()),
+                        || errata::complete_enable(applicable),
+                        || regs.lowpower.read().lowpower().is_low_power(),
+                        || regs.eventcause.write(|w| w.usbwuallowed().set_bit()),
+                        || errata::begin_wake(applicable),
+                        || regs.lowpower.write(|w| w.lowpower().force_normal()),
+                        || errata::configure_enabled_session(applicable),
+                        |offset, value| unsafe {
+                            base.add(offset)
+                                .cast_mut()
+                                .cast::<u32>()
+                                .write_volatile(value);
+                        },
+                    );
+                    match completion {
+                        EnableSessionCompletion::Finished => self.set_lifecycle(
+                            cs,
+                            Lifecycle::PowerReady {
+                                wait: Self::async_wait(
+                                    POWER_READY_TIMEOUT_US,
+                                    POWER_READY_POLL_BUDGET,
+                                ),
+                                errata: applicable,
+                            },
+                        ),
+                        EnableSessionCompletion::WakePending => self.set_lifecycle(
+                            cs,
+                            Lifecycle::Waking {
+                                wait: Self::async_wait(
+                                    WAKE_READY_TIMEOUT_US,
+                                    WAKE_READY_POLL_BUDGET,
+                                ),
+                                errata: applicable,
+                                target: WakeTarget::FinishEnable,
+                            },
+                        ),
+                    }
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    self.begin_disabling(
+                        cs,
+                        regs,
+                        Some(ErrataOwnership::Enabling(applicable)),
+                        Some(UsbdFault::EnableTimeout),
+                    );
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Enabling {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                }
+            }
+            Lifecycle::PowerReady {
+                mut wait,
+                errata: applicable,
+            } => {
+                if !T::vbus_present() {
+                    self.begin_disabling(cs, regs, Some(ErrataOwnership::Active(applicable)), None);
+                } else if T::power_ready() {
+                    regs.usbpullup.write(|w| w.connect().enabled());
+                    self.set_lifecycle(cs, Lifecycle::Active { errata: applicable });
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    self.begin_disabling(
+                        cs,
+                        regs,
+                        Some(ErrataOwnership::Active(applicable)),
+                        Some(UsbdFault::PowerReadyTimeout),
+                    );
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::PowerReady {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                }
+            }
+            Lifecycle::Active { errata: applicable }
+            | Lifecycle::Suspended { errata: applicable } => {
+                if !T::vbus_present() {
+                    self.begin_disabling(cs, regs, Some(ErrataOwnership::Active(applicable)), None);
+                }
+            }
+            Lifecycle::Waking {
+                mut wait,
+                errata: applicable,
+                target,
+            } => {
+                if !T::vbus_present() {
+                    self.begin_disabling(cs, regs, Some(ErrataOwnership::Waking(applicable)), None);
+                } else if regs.eventcause.read().usbwuallowed().is_allowed() {
+                    let base = regs as *const RegisterBlock as *const u8;
+                    let target = complete_wake_session(
+                        target,
+                        || regs.eventcause.write(|w| w.usbwuallowed().set_bit()),
+                        || errata::complete_wake(applicable),
+                        || errata::configure_enabled_session(applicable),
+                        |offset, value| unsafe {
+                            base.add(offset)
+                                .cast_mut()
+                                .cast::<u32>()
+                                .write_volatile(value);
+                        },
+                    );
+                    match target {
+                        WakeTarget::Active => {
+                            self.set_lifecycle(cs, Lifecycle::Active { errata: applicable });
+                        }
+                        WakeTarget::FinishEnable => {
+                            self.set_lifecycle(
+                                cs,
+                                Lifecycle::PowerReady {
+                                    wait: Self::async_wait(
+                                        POWER_READY_TIMEOUT_US,
+                                        POWER_READY_POLL_BUDGET,
+                                    ),
+                                    errata: applicable,
+                                },
+                            );
+                        }
+                    }
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    self.begin_disabling(
+                        cs,
+                        regs,
+                        Some(ErrataOwnership::Waking(applicable)),
+                        Some(UsbdFault::WakeTimeout),
+                    );
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Waking {
+                            wait,
+                            errata: applicable,
+                            target,
+                        },
+                    );
+                }
+            }
+            Lifecycle::Detaching {
+                mut wait,
+                errata: applicable,
+            } => {
+                if !T::vbus_present() {
+                    self.begin_disabling(cs, regs, Some(ErrataOwnership::Active(applicable)), None);
+                } else if wait.failed_observation(T::monotonic_us_32()) {
+                    if T::power_ready() {
+                        regs.usbpullup.write(|w| w.connect().enabled());
+                        self.set_lifecycle(cs, Lifecycle::Active { errata: applicable });
+                    } else {
+                        self.set_lifecycle(
+                            cs,
+                            Lifecycle::PowerReady {
+                                wait: Self::async_wait(
+                                    POWER_READY_TIMEOUT_US,
+                                    POWER_READY_POLL_BUDGET,
+                                ),
+                                errata: applicable,
+                            },
+                        );
+                    }
+                } else {
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Detaching {
+                            wait,
+                            errata: applicable,
+                        },
+                    );
+                }
+            }
+            Lifecycle::HandoffComplete => {}
+        }
+    }
+
+    fn begin_wake(
+        &self,
+        cs: CriticalSection<'_>,
+        regs: &RegisterBlock,
+        applicable: errata::Applicability,
+    ) {
+        if regs.lowpower.read().lowpower().is_force_normal() {
+            self.set_lifecycle(cs, Lifecycle::Active { errata: applicable });
+            return;
+        }
+
+        if !T::vbus_present() {
+            self.begin_disabling(cs, regs, Some(ErrataOwnership::Active(applicable)), None);
+            return;
+        }
+
+        // USBWUALLOWED is W1C. Clear a stale acknowledgement before opening
+        // Erratum 171 and issuing the one asynchronous wake request.
+        regs.eventcause.write(|w| w.usbwuallowed().set_bit());
+        errata::begin_wake(applicable);
+        regs.lowpower.write(|w| w.lowpower().force_normal());
+        self.set_lifecycle(
+            cs,
+            Lifecycle::Waking {
+                wait: Self::async_wait(WAKE_READY_TIMEOUT_US, WAKE_READY_POLL_BUDGET),
+                errata: applicable,
+                target: WakeTarget::Active,
+            },
+        );
+    }
+
     /// Returns the fatal fault latched by this bus instance, if any.
     ///
-    /// A fault is permanent for the lifetime of the instance because an EasyDMA timeout
-    /// cannot be cancelled safely by the nRF USBD register interface.
+    /// A fault is permanent for the lifetime of the instance because the controller or
+    /// EasyDMA state cannot be proven safe to reuse after a bounded operation times out.
     pub fn fault(&self) -> Option<UsbdFault> {
         critical_section::with(|cs| self.fault.borrow(cs).get().fault())
     }
@@ -464,27 +1672,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 return;
             }
             let regs = self.regs(&cs);
-
-            errata::pre_enable();
-
-            regs.enable.write(|w| w.enable().enabled());
-
-            // Wait until the peripheral is ready.
-            if !poll_with_budget(ENABLE_READY_POLL_BUDGET, || {
-                regs.eventcause.read().ready().is_ready()
-            }) {
-                regs.usbpullup.write(|w| w.connect().disabled());
-                regs.enable.write(|w| w.enable().disabled());
-                errata::post_enable();
-                self.latch_fault(cs, UsbdFault::EnableTimeout);
-                return;
-            }
-            regs.eventcause.write(|w| w.ready().set_bit()); // Write 1 to clear.
-
-            errata::post_enable();
-
-            // Enable the USB pullup, allowing enumeration.
-            regs.usbpullup.write(|w| w.connect().enabled());
+            self.begin_initial_detach(cs, regs);
         });
     }
 
@@ -495,6 +1683,20 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 return;
             }
             let regs = self.regs(&cs);
+
+            reset_ep0_transaction_registers(
+                || {
+                    regs.shorts
+                        .modify(|_, w| w.ep0datadone_ep0status().clear_bit())
+                },
+                || regs.events_ep0datadone.reset(),
+            );
+            let ep0_state = self.ep0_state.borrow(cs);
+            let mut state = ep0_state.get();
+            let busy =
+                abort_ep0_for_new_transaction(&mut state, self.busy_in_endpoints.borrow(cs).get());
+            ep0_state.set(state);
+            self.busy_in_endpoints.borrow(cs).set(busy);
 
             // TODO: Initialize ISO buffers
 
@@ -528,10 +1730,13 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         // Nothing to do, the peripheral handles this.
     }
 
+    // nRF USBD performs SET_ADDRESS in hardware as part of the status stage.
+    // Publish the software Addressed state before accepting that status stage;
+    // a later set_device_address() call is intentionally a no-op on this bus.
+    const QUIRK_SET_ADDRESS_BEFORE_STATUS: bool = true;
+
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> usb_device::Result<usize> {
-        if critical_section::with(|cs| self.has_fault(cs)) {
-            return Err(UsbError::InvalidState);
-        }
+        critical_section::with(|cs| self.operational_errata(cs))?;
         if !self.is_used(ep_addr) {
             return Err(UsbError::InvalidEndpoint);
         }
@@ -582,9 +1787,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         }
 
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
-                return Err(UsbError::InvalidState);
-            }
+            let applicable = self.operational_errata(cs)?;
             let regs = self.regs(&cs);
             let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
 
@@ -601,11 +1804,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                     return Err(UsbError::WouldBlock);
                 }
             }
-            // Clone-safe: skip the EPSTATUS busy check for EP0. On cloned nRF52840 USBD
-            // silicon EPSTATUS reads a constant 0x00010001 (EPIN0/EPOUT0 bits stuck set),
-            // so this always returned WouldBlock for EP0 and the device descriptor was
-            // never sent (enumeration stuck at the very first GET_DESCRIPTOR). EP0 is
-            // already serialised by busy_in_endpoints and the inline ENDEPIN wait below.
+            // EP0 availability is serialized by `busy_in_endpoints` and the bounded
+            // ENDEPIN wait below. EPSTATUS is not an additional reliable busy gate for
+            // the control endpoint, so apply that check only to regular data endpoints.
             if i != 0 && regs.epstatus.read().bits() & (1 << i) != 0 {
                 return Err(UsbError::WouldBlock);
             }
@@ -638,12 +1839,10 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             }
 
             if i == 0 {
-                // EPIN0: a short packet (len < max_packet_size0) ends the data stage; the
-                // host then sends an OUT token we must ACK (the status stage). On genuine
-                // silicon the EP0DATADONE->EP0STATUS hardware shortcut does this, but a
-                // cloned USBD mishandles it and truncates multi-packet control IN. So we
-                // never arm the shortcut and instead flag the final packet; poll() drives
-                // TASKS_EP0STATUS in software once the host has read it.
+                // A short EPIN0 packet ends the control data stage, so arm the hardware
+                // transition to EP0STATUS only for that final packet. An intermediate
+                // full-size packet must keep the data stage open for the next packet;
+                // poll() retains its bounded software fallback for the final status stage.
                 let is_short_packet = buf.len() < self.max_packet_size_0 as usize;
                 regs.shorts.modify(|_, w| {
                     if is_short_packet {
@@ -672,17 +1871,25 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             regs.events_endepin[i].reset();
 
             // Kick off device -> host transmission. This starts DMA, so a compiler fence is needed.
-            dma_start();
+            dma_start(applicable);
             regs.tasks_startepin[i].write(|w| w.tasks_startepin().set_bit());
             if !poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
                 regs.events_endepin[i].read().events_endepin().bit_is_set()
             }) {
+                // Nordic forbids disabling USBD while an EasyDMA transfer may still
+                // be active. Detach D+ and fault the instance, but keep ENABLE and the
+                // active-lifetime Erratum 211 flag untouched. The process-wide staging
+                // buffer remains valid for a late completion; only a system reset can
+                // safely reclaim this terminal controller state.
                 regs.usbpullup.write(|w| w.connect().disabled());
                 self.latch_fault(cs, UsbdFault::InDmaTimeout { endpoint: i as u8 });
                 return Err(UsbError::InvalidState);
             }
             regs.events_endepin[i].reset();
-            dma_end();
+            let amount = epin[i].amount.read().amount().bits();
+            let dma_odd = self.dma_odd.borrow(cs);
+            dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
+            dma_end(applicable);
 
             // Clear EPSTATUS.EPIN[i] flag
             regs.epstatus.write(|w| unsafe { w.bits(1 << i) });
@@ -705,9 +1912,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
         let i = ep_addr.index();
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
-                return Err(UsbError::InvalidState);
-            }
+            let applicable = self.operational_errata(cs)?;
             let regs = self.regs(&cs);
 
             // Control EP 0 is special
@@ -778,8 +1983,8 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             // MAXCNT must match SIZE
             epout[i].maxcnt.write(|w| unsafe { w.bits(size) });
 
-            dma_start();
             regs.events_endepout[i].reset();
+            dma_start(applicable);
             regs.tasks_startepout[i].write(|w| w.tasks_startepout().set_bit());
             let completed = poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
                 regs.events_endepout[i]
@@ -788,12 +1993,18 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                     .bit_is_set()
             });
             if !completed {
+                // As above, an absent ENDEPOUT acknowledgement means EasyDMA may
+                // still own the permanent staging buffer. Disconnect the host, retain
+                // ENABLE and the 211 workaround, and require a system reset.
                 regs.usbpullup.write(|w| w.connect().disabled());
                 self.latch_fault(cs, UsbdFault::OutDmaTimeout { endpoint: i as u8 });
                 return publish_out_transfer(None, buf, size as usize);
             }
             regs.events_endepout[i].reset();
-            dma_end();
+            let amount = epout[i].amount.read().amount().bits();
+            let dma_odd = self.dma_odd.borrow(cs);
+            dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
+            dma_end(applicable);
             let count = publish_out_transfer(Some(dma_buf), buf, size as usize)?;
 
             // TODO: ISO
@@ -813,7 +2024,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             return;
         }
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.operational_errata(cs).is_err() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -846,7 +2057,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             return false;
         }
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.operational_errata(cs).is_err() {
                 return false;
             }
             let regs = self.regs(&cs);
@@ -862,11 +2073,26 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn suspend(&self) {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.has_fault(cs) || !T::vbus_present() {
                 return;
             }
             let regs = self.regs(&cs);
+            let lifecycle = self.lifecycle.borrow(cs);
+            let Lifecycle::Active { errata: applicable } = lifecycle.get() else {
+                return;
+            };
+            if regs.eventcause.read().resume().bit_is_set() {
+                return;
+            }
             regs.lowpower.write(|w| w.lowpower().low_power());
+            self.set_lifecycle(cs, Lifecycle::Suspended { errata: applicable });
+
+            // RESUME can race the LOWPOWER write. Wake immediately when that cause is
+            // already pending, but leave the cause set so usb-device still observes
+            // and publishes the Resume transition on its next poll.
+            if regs.eventcause.read().resume().bit_is_set() {
+                self.begin_wake(cs, regs, applicable);
+            }
         });
     }
 
@@ -877,10 +2103,12 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 return;
             }
             let regs = self.regs(&cs);
-
-            errata::pre_wakeup();
-
-            regs.lowpower.write(|w| w.lowpower().force_normal());
+            match self.lifecycle.borrow(cs).get() {
+                Lifecycle::Suspended { errata: applicable }
+                | Lifecycle::Active { errata: applicable } => self.begin_wake(cs, regs, applicable),
+                Lifecycle::Waking { .. } => {}
+                _ => {}
+            }
         });
     }
 
@@ -890,21 +2118,43 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 return PollResult::None;
             }
             let regs = self.regs(&cs);
+            self.advance_lifecycle(cs, regs);
+            if self.has_fault(cs) {
+                return PollResult::None;
+            }
+            match self.lifecycle.borrow(cs).get() {
+                Lifecycle::Active { .. } => {}
+                Lifecycle::Suspended { .. } => {
+                    // Nordic marks endpoint, SOF, and configuration registers
+                    // unavailable in LOWPOWER. Only the wake-capable USBEVENT path
+                    // is sampled until resume has been acknowledged.
+                    if regs.events_usbevent.read().events_usbevent().bit_is_set() {
+                        let causes = acknowledge_usbevent(
+                            || regs.events_usbevent.reset(),
+                            || regs.eventcause.read().bits(),
+                            |causes| regs.eventcause.write(|w| unsafe { w.bits(causes) }),
+                        );
+                        if let Some(result) = suspend_resume_poll_result(causes) {
+                            return result;
+                        }
+                    }
+                    return PollResult::None;
+                }
+                _ => return PollResult::None,
+            }
             let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
 
             if regs.events_usbreset.read().events_usbreset().bit_is_set() {
                 regs.events_usbreset.reset();
                 return PollResult::Reset;
             } else if regs.events_usbevent.read().events_usbevent().bit_is_set() {
-                // "Write 1 to clear"
-                if regs.eventcause.read().suspend().bit() {
-                    regs.eventcause.write(|w| w.suspend().bit(true));
-                    return PollResult::Suspend;
-                } else if regs.eventcause.read().resume().bit() {
-                    regs.eventcause.write(|w| w.resume().bit(true));
-                    return PollResult::Resume;
-                } else {
-                    regs.events_usbevent.reset();
+                let causes = acknowledge_usbevent(
+                    || regs.events_usbevent.reset(),
+                    || regs.eventcause.read().bits(),
+                    |causes| regs.eventcause.write(|w| unsafe { w.bits(causes) }),
+                );
+                if let Some(result) = suspend_resume_poll_result(causes) {
+                    return result;
                 }
             }
 
@@ -924,6 +2174,12 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                         // reset the state
                         state.in_transfer_state = TransferState::NoTransfer;
                         ep0_state.set(state);
+                        // Windows immediately starts a second Get Device Descriptor
+                        // without the intervening bus reset commonly issued by Linux.
+                        // The status fallback cancels the first transfer, so EP0 must
+                        // no longer remain busy or that second response WouldBlock.
+                        busy_in_endpoints
+                            .set(release_ep0_after_status_fallback(busy_in_endpoints.get()));
                     }
                 }
             }
@@ -985,7 +2241,18 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             if regs.events_ep0setup.read().events_ep0setup().bit_is_set() {
                 ep_setup = 1;
 
-                // Reset shorts
+                // A fresh SETUP ACK aborts any older EP0 transfer even when the
+                // old data stage never raised EP0DATADONE. Release EP0 before
+                // usb-device handles this setup so its immediate response cannot
+                // be stranded behind a stale WouldBlock.
+                let ep0_state = self.ep0_state.borrow(cs);
+                let mut state = ep0_state.get();
+                let busy = abort_ep0_for_new_transaction(&mut state, busy_in_endpoints.get());
+                ep0_state.set(state);
+                busy_in_endpoints.set(busy);
+                regs.events_ep0datadone.reset();
+
+                // Reset the status-stage shortcut inherited from the aborted request.
                 regs.shorts
                     .modify(|_, w| w.ep0datadone_ep0status().clear_bit());
             }
@@ -1006,26 +2273,82 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
     fn force_reset(&self) -> usb_device::Result<()> {
         critical_section::with(move |cs| {
+            if BOOTLOADER_HANDOFF_REQUEST.swap(false, Ordering::AcqRel) {
+                self.bootloader_handoff.borrow(cs).set(true);
+            }
             let regs = self.regs(&cs);
-            regs.usbpullup.write(|w| w.connect().disabled());
-            if !link_restore_allowed(self.has_fault(cs), T::vbus_present()) {
+            self.advance_lifecycle(cs, regs);
+            if self.has_fault(cs) {
                 return Err(UsbError::InvalidState);
             }
-            Ok(())
-        })?;
-
-        // Delay for 1ms, to give the host a chance to detect this.
-        // We run at 64 MHz, so 64k cycles are 1ms.
-        cortex_m::asm::delay(64_000);
-
-        critical_section::with(move |cs| {
-            let regs = self.regs(&cs);
-            if !link_restore_allowed(self.has_fault(cs), T::vbus_present()) {
-                regs.usbpullup.write(|w| w.connect().disabled());
+            if self.bootloader_handoff.borrow(cs).get() {
+                return match self.lifecycle.borrow(cs).get() {
+                    Lifecycle::HandoffComplete => Ok(()),
+                    Lifecycle::Active { errata: applicable }
+                    | Lifecycle::Suspended { errata: applicable } => {
+                        self.begin_disabling(
+                            cs,
+                            regs,
+                            Some(ErrataOwnership::Active(applicable)),
+                            None,
+                        );
+                        Err(UsbError::WouldBlock)
+                    }
+                    Lifecycle::Detaching {
+                        errata: applicable, ..
+                    } => {
+                        self.begin_disabling(
+                            cs,
+                            regs,
+                            Some(ErrataOwnership::Active(applicable)),
+                            None,
+                        );
+                        Err(UsbError::WouldBlock)
+                    }
+                    Lifecycle::PreparingDisable { .. }
+                    | Lifecycle::DisableWaking { .. }
+                    | Lifecycle::ParityFixing { .. }
+                    | Lifecycle::Disabling { .. } => Err(UsbError::WouldBlock),
+                    _ => Err(UsbError::InvalidState),
+                };
+            }
+            if !link_restore_allowed(false, T::vbus_present()) {
                 return Err(UsbError::InvalidState);
             }
-            regs.usbpullup.write(|w| w.connect().enabled());
-            Ok(())
+            match self.lifecycle.borrow(cs).get() {
+                Lifecycle::Active { errata: applicable } => {
+                    regs.usbpullup.write(|w| w.connect().disabled());
+                    self.set_lifecycle(
+                        cs,
+                        Lifecycle::Detaching {
+                            wait: Self::async_wait(DETACH_TIMEOUT_US, DETACH_POLL_BUDGET),
+                            errata: applicable,
+                        },
+                    );
+                    // Fork contract: Ok means the request has been accepted, not that
+                    // reattachment has already completed. Subsequent bus polls keep D+
+                    // detached until the elapsed-time or poll-count boundary, then
+                    // reattach without blocking this call or masking interrupts.
+                    Ok(())
+                }
+                Lifecycle::Detaching { .. } => Ok(()),
+                Lifecycle::Suspended { errata: applicable } => {
+                    self.begin_wake(cs, regs, applicable);
+                    Err(UsbError::WouldBlock)
+                }
+                Lifecycle::Waking { .. }
+                | Lifecycle::HfclkStarting { .. }
+                | Lifecycle::Enabling { .. }
+                | Lifecycle::PowerReady { .. }
+                | Lifecycle::InitialDisabling { .. }
+                | Lifecycle::InitialDetach { .. }
+                | Lifecycle::PreparingDisable { .. }
+                | Lifecycle::DisableWaking { .. }
+                | Lifecycle::ParityFixing { .. }
+                | Lifecycle::Disabling { .. }
+                | Lifecycle::HandoffComplete
+                | Lifecycle::AwaitVbus => Err(UsbError::WouldBlock),
+            }
         })
     }
 }
@@ -1035,6 +2358,7 @@ mod tests {
     use core::cell::Cell;
 
     use usb_device::{
+        bus::PollResult,
         endpoint::{
             EndpointAddress, EndpointType, IsochronousSynchronizationType, IsochronousUsageType,
         },
@@ -1042,10 +2366,18 @@ mod tests {
     };
 
     use super::{
-        apply_handoff_sanitization, endpoint_is_owned, link_restore_allowed, poll_with_budget,
-        publish_out_transfer, validate_endpoint_request, PermanentClaim, RegisterBlock,
-        StaticDmaBuffer, TerminalFault, DMA_BUFFER_SIZE, HANDOFF_CONFIG_ZERO_OFFSETS,
-        HANDOFF_EVENT_CLEAR_OFFSETS, HANDOFF_W1C_CLEAR_OFFSETS,
+        abort_ep0_for_new_transaction, accumulated_dma_odd, acknowledge_usbevent,
+        apply_handoff_sanitization, apply_session_register_sanitization, complete_enable_session,
+        complete_wake_session, disable_preparation, endpoint_is_owned, initial_fault_for_silicon,
+        link_restore_allowed, observe_initial_detach, poll_with_budget, prepare_initial_detach,
+        publish_out_transfer, release_ep0_after_status_fallback, reset_ep0_transaction_registers,
+        sanitize_if_supported, suspend_resume_poll_result, validate_endpoint_request, AsyncWait,
+        DisablePreparation, EP0State, EnableSessionCompletion, ErrataOwnership,
+        HandoffSanitization, InitialDetachObservation, InitialDetachPreparation, Lifecycle,
+        PermanentClaim, RegisterBlock, StaticDmaBuffer, TerminalFault, TransferState, WakeTarget,
+        DMA_BUFFER_SIZE, HANDOFF_CONFIG_ZERO_OFFSETS, HANDOFF_EVENT_CLEAR_OFFSETS,
+        HANDOFF_W1C_CLEAR_OFFSETS, INITIAL_DETACH_TIMEOUT_US, ISO_SPLIT_HALF_IN,
+        SESSION_SANITIZATION_WRITE_COUNT,
     };
     use crate::UsbdFault;
 
@@ -1053,6 +2385,91 @@ mod tests {
     fn staging_storage_is_easydma_aligned() {
         assert!(core::mem::align_of::<StaticDmaBuffer>() >= 4);
         assert!(core::mem::size_of::<StaticDmaBuffer>() >= DMA_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn cumulative_dma_parity_tracks_the_hardware_amount_not_the_request_size() {
+        assert!(!accumulated_dma_odd(false, 0));
+        assert!(accumulated_dma_odd(false, 1));
+        assert!(!accumulated_dma_odd(false, 64));
+        assert!(!accumulated_dma_odd(true, 1));
+        assert!(accumulated_dma_odd(true, 2));
+    }
+
+    #[test]
+    fn even_dma_count_can_disable_without_usb_power() {
+        assert_eq!(
+            disable_preparation(false, None, false, false, false),
+            DisablePreparation::StartDisable
+        );
+    }
+
+    #[test]
+    fn odd_dma_count_waits_for_continuous_vbus_and_regulator_power() {
+        let applicable = crate::errata::Applicability::NONE;
+        let active = Some(ErrataOwnership::Active(applicable));
+        assert_eq!(
+            disable_preparation(true, active, false, false, false),
+            DisablePreparation::WaitForPower
+        );
+        assert_eq!(
+            disable_preparation(true, active, true, false, false),
+            DisablePreparation::WaitForPower
+        );
+    }
+
+    #[test]
+    fn odd_dma_count_wakes_before_repair_and_repairs_before_disable() {
+        let applicable = crate::errata::Applicability::NONE;
+        assert_eq!(
+            disable_preparation(
+                true,
+                Some(ErrataOwnership::Active(applicable)),
+                true,
+                true,
+                true,
+            ),
+            DisablePreparation::BeginWake
+        );
+        assert_eq!(
+            disable_preparation(
+                true,
+                Some(ErrataOwnership::Waking(applicable)),
+                true,
+                true,
+                true,
+            ),
+            DisablePreparation::AwaitWake
+        );
+        assert_eq!(
+            disable_preparation(
+                true,
+                Some(ErrataOwnership::Active(applicable)),
+                true,
+                true,
+                false,
+            ),
+            DisablePreparation::StartParityDma
+        );
+    }
+
+    #[test]
+    fn odd_dma_count_never_runs_a_repair_in_an_unacknowledged_enable_phase() {
+        let applicable = crate::errata::Applicability::NONE;
+        assert_eq!(
+            disable_preparation(
+                true,
+                Some(ErrataOwnership::Enabling(applicable)),
+                true,
+                true,
+                false,
+            ),
+            DisablePreparation::UnsafeLifecycle
+        );
+        assert_eq!(
+            disable_preparation(true, None, true, true, false),
+            DisablePreparation::UnsafeLifecycle
+        );
     }
 
     #[test]
@@ -1064,6 +2481,60 @@ mod tests {
         // Leaving the owner's scope cannot release storage: a timed-out peripheral may
         // still complete EasyDMA against it later.
         assert!(!claim.try_claim());
+    }
+
+    #[test]
+    fn unsupported_silicon_is_rejected_before_dma_claim_or_handoff_writes() {
+        for (part, family, revision) in [
+            (0x0005_2820, 0x0000_0010, 0),
+            (0x0005_2833, 0x0000_000d, 0),
+            (0, 0, 0),
+        ] {
+            let applicability = crate::errata::applicability_for_ids(part, family, revision);
+            let claims = Cell::new(0usize);
+            assert_eq!(
+                initial_fault_for_silicon(applicability, || {
+                    claims.set(claims.get() + 1);
+                    true
+                }),
+                Some(UsbdFault::UnsupportedSilicon)
+            );
+            assert_eq!(claims.get(), 0);
+
+            let lifecycle_writes = Cell::new(0usize);
+            assert_eq!(
+                sanitize_if_supported(applicability, |_| {
+                    lifecycle_writes.set(lifecycle_writes.get() + 1);
+                    HandoffSanitization::Complete
+                }),
+                HandoffSanitization::UnsupportedSilicon
+            );
+            assert_eq!(lifecycle_writes.get(), 0);
+        }
+    }
+
+    #[test]
+    fn nrf52840_identity_enters_the_claim_and_handoff_paths_once() {
+        let applicability = crate::errata::applicability_for_ids(0x0005_2840, 8, 3);
+        let claims = Cell::new(0usize);
+        assert_eq!(
+            initial_fault_for_silicon(applicability, || {
+                claims.set(claims.get() + 1);
+                true
+            }),
+            None
+        );
+        assert_eq!(claims.get(), 1);
+
+        let handoffs = Cell::new(0usize);
+        assert_eq!(
+            sanitize_if_supported(applicability, |_| {
+                handoffs.set(handoffs.get() + 1);
+                HandoffSanitization::Complete
+            }),
+            HandoffSanitization::Complete
+        );
+        assert_eq!(handoffs.get(), 1);
     }
 
     #[test]
@@ -1094,6 +2565,239 @@ mod tests {
             calls.get() == 4
         }));
         assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn asynchronous_wait_without_a_clock_expires_on_exact_poll_budget() {
+        let mut wait = AsyncWait::new(None, 100, 3);
+        assert!(!wait.failed_observation(None));
+        assert!(!wait.failed_observation(None));
+        assert!(wait.failed_observation(None));
+        assert!(wait.failed_observation(None));
+    }
+
+    #[test]
+    fn asynchronous_wait_uses_wrapping_elapsed_microseconds_when_available() {
+        let mut wait = AsyncWait::new(Some(u32::MAX - 4), 10, 10);
+        assert!(!wait.failed_observation(Some(u32::MAX)));
+        assert!(!wait.failed_observation(Some(4)));
+        assert!(wait.failed_observation(Some(5)));
+    }
+
+    #[test]
+    fn disappearing_clock_degrades_to_poll_count_without_time_claims() {
+        let mut wait = AsyncWait::new(Some(10), 100, 2);
+        assert!(!wait.failed_observation(None));
+        assert!(wait.failed_observation(None));
+    }
+
+    #[test]
+    fn frozen_clock_cannot_defeat_the_poll_count_fallback() {
+        let mut wait = AsyncWait::new(Some(10), 100, 2);
+        assert!(!wait.failed_observation(Some(10)));
+        assert!(wait.failed_observation(Some(10)));
+    }
+
+    #[test]
+    fn progressing_clock_cannot_expire_early_from_a_fast_poll_loop() {
+        let mut wait = AsyncWait::new(Some(10), 100, 2);
+        for now in 11..110 {
+            assert!(!wait.failed_observation(Some(now)));
+        }
+        assert!(wait.failed_observation(Some(110)));
+    }
+
+    #[test]
+    fn initial_detach_starts_only_after_pullup_off_and_confirmed_disable() {
+        let phase = Cell::new(0usize);
+        let preparation = prepare_initial_detach(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+                true
+            },
+            || panic!("an already-disabled controller must not get another disable write"),
+            true,
+            || {
+                assert_eq!(phase.get(), 2);
+                phase.set(3);
+                Some(47)
+            },
+        );
+
+        let InitialDetachPreparation::Dwelling(wait) = preparation else {
+            panic!("confirmed disable with VBUS must enter the dwell");
+        };
+        assert_eq!(phase.get(), 3);
+        assert_eq!(wait.started_us, Some(47));
+        assert_eq!(wait.timeout_us, INITIAL_DETACH_TIMEOUT_US);
+    }
+
+    #[test]
+    fn inherited_enabled_session_is_disabled_before_any_detach_timestamp() {
+        let phase = Cell::new(0usize);
+        let preparation = prepare_initial_detach(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+                false
+            },
+            || {
+                assert_eq!(phase.get(), 2);
+                phase.set(3);
+            },
+            true,
+            || {
+                assert_eq!(phase.get(), 3);
+                phase.set(4);
+                Some(81)
+            },
+        );
+
+        let InitialDetachPreparation::Disabling(wait) = preparation else {
+            panic!("ENABLE must read back zero before the detach dwell starts");
+        };
+        assert_eq!(phase.get(), 4);
+        assert_eq!(wait.started_us, Some(81));
+        assert_eq!(wait.timeout_us, super::ENABLE_READY_TIMEOUT_US);
+    }
+
+    #[test]
+    fn initial_detach_poll_fallback_starts_enable_on_the_exact_last_observation() {
+        let mut wait = AsyncWait::new(None, INITIAL_DETACH_TIMEOUT_US, 3);
+        assert_eq!(
+            observe_initial_detach(&mut wait, true, None),
+            InitialDetachObservation::Waiting
+        );
+        assert_eq!(
+            observe_initial_detach(&mut wait, true, None),
+            InitialDetachObservation::Waiting
+        );
+        assert_eq!(
+            observe_initial_detach(&mut wait, true, None),
+            InitialDetachObservation::StartEnable
+        );
+    }
+
+    #[test]
+    fn initial_detach_clock_never_starts_enable_before_twenty_milliseconds() {
+        let started = u32::MAX - 9_999;
+        let mut wait = AsyncWait::new(Some(started), INITIAL_DETACH_TIMEOUT_US, 2);
+        assert_eq!(
+            observe_initial_detach(
+                &mut wait,
+                true,
+                Some(started.wrapping_add(INITIAL_DETACH_TIMEOUT_US - 1)),
+            ),
+            InitialDetachObservation::Waiting
+        );
+        assert_eq!(
+            observe_initial_detach(
+                &mut wait,
+                true,
+                Some(started.wrapping_add(INITIAL_DETACH_TIMEOUT_US)),
+            ),
+            InitialDetachObservation::StartEnable
+        );
+    }
+
+    #[test]
+    fn vbus_loss_wins_over_an_expired_initial_detach() {
+        let mut wait = AsyncWait::new(None, INITIAL_DETACH_TIMEOUT_US, 1);
+        assert_eq!(
+            observe_initial_detach(&mut wait, false, None),
+            InitialDetachObservation::VbusLost
+        );
+        // The VBUS-loss observation does not consume the final fallback poll or
+        // authorize ENABLE. If VBUS were still present, that same poll would be
+        // the exact transition boundary.
+        assert_eq!(
+            observe_initial_detach(&mut wait, true, None),
+            InitialDetachObservation::StartEnable
+        );
+    }
+
+    #[test]
+    fn absent_vbus_skips_the_synthetic_dwell_after_a_confirmed_disable() {
+        let timestamps = Cell::new(0usize);
+        let preparation = prepare_initial_detach(
+            || {},
+            || true,
+            || panic!("confirmed disabled"),
+            false,
+            || {
+                timestamps.set(timestamps.get() + 1);
+                Some(0)
+            },
+        );
+        assert_eq!(preparation, InitialDetachPreparation::AwaitVbus);
+        assert_eq!(timestamps.get(), 0);
+    }
+
+    #[test]
+    fn windows_status_fallback_releases_only_control_endpoint_zero() {
+        assert_eq!(release_ep0_after_status_fallback(0), 0);
+        assert_eq!(release_ep0_after_status_fallback(1), 0);
+        assert_eq!(release_ep0_after_status_fallback(0b1011), 0b1010);
+        assert_eq!(release_ep0_after_status_fallback(u16::MAX), u16::MAX - 1);
+    }
+
+    #[test]
+    fn fresh_setup_aborts_stale_ep0_transfer_before_the_next_response() {
+        let mut state = EP0State {
+            direction: UsbDirection::In,
+            remaining_size: 64,
+            in_transfer_state: TransferState::Started(17),
+            is_set_address: true,
+        };
+        let busy = abort_ep0_for_new_transaction(&mut state, 0b1011);
+
+        assert_eq!(busy, 0b1010);
+        assert_eq!(state.direction, UsbDirection::Out);
+        assert_eq!(state.remaining_size, 0);
+        assert!(matches!(state.in_transfer_state, TransferState::NoTransfer));
+        assert!(!state.is_set_address);
+    }
+
+    #[test]
+    fn bus_reset_clears_old_ep0_state_without_consuming_a_fresh_setup() {
+        let step = Cell::new(0usize);
+        reset_ep0_transaction_registers(
+            || {
+                assert_eq!(step.get(), 0);
+                step.set(1);
+            },
+            || {
+                assert_eq!(step.get(), 1);
+                step.set(2);
+            },
+        );
+        assert_eq!(step.get(), 2);
+    }
+
+    #[test]
+    fn only_active_lifecycle_publishes_full_usb_events() {
+        let applicable = crate::errata::Applicability::NONE;
+        assert!(Lifecycle::Active { errata: applicable }.accepts_full_usb_events());
+        assert!(!Lifecycle::Suspended { errata: applicable }.accepts_full_usb_events());
+        assert!(!Lifecycle::AwaitVbus.accepts_full_usb_events());
+        assert!(!Lifecycle::InitialDetach {
+            wait: AsyncWait::new(None, 1, 1),
+        }
+        .accepts_full_usb_events());
+        assert!(!Lifecycle::Enabling {
+            wait: AsyncWait::new(None, 1, 1),
+            errata: applicable,
+        }
+        .accepts_full_usb_events());
     }
 
     #[test]
@@ -1146,12 +2850,19 @@ mod tests {
         assert_eq!(core::mem::offset_of!(RegisterBlock, enable), 0x500);
         assert_eq!(core::mem::offset_of!(RegisterBlock, usbpullup), 0x504);
 
-        let mut actions = [(usize::MAX, 0u32); 38];
+        let mut actions = [(usize::MAX, 0u32); 4 + SESSION_SANITIZATION_WRITE_COUNT];
         let mut count = 0;
-        apply_handoff_sanitization(|offset, value| {
-            actions[count] = (offset, value);
-            count += 1;
-        });
+        let after_disable = Cell::new(false);
+        let result = apply_handoff_sanitization(
+            |offset, value| {
+                actions[count] = (offset, value);
+                count += 1;
+            },
+            || true,
+            || after_disable.set(true),
+        );
+        assert_eq!(result, HandoffSanitization::Complete);
+        assert!(after_disable.get());
         assert_eq!(count, actions.len());
         assert_eq!(actions[0], (0x504, 0));
         assert_eq!(actions[1], (0x308, u32::MAX));
@@ -1170,6 +2881,285 @@ mod tests {
         for (index, offset) in HANDOFF_W1C_CLEAR_OFFSETS.iter().enumerate() {
             assert_eq!(actions[w1c_start + index], (*offset, u32::MAX));
         }
+    }
+
+    #[test]
+    fn enabled_session_sanitizer_has_the_exact_register_write_order() {
+        let mut actions = [(usize::MAX, 0u32); SESSION_SANITIZATION_WRITE_COUNT];
+        let mut count = 0usize;
+        apply_session_register_sanitization(|offset, value| {
+            actions[count] = (offset, value);
+            count += 1;
+        });
+
+        assert_eq!(count, SESSION_SANITIZATION_WRITE_COUNT);
+        let mut cursor = 0usize;
+        for offset in HANDOFF_CONFIG_ZERO_OFFSETS {
+            assert_eq!(actions[cursor], (offset, 0));
+            cursor += 1;
+        }
+        for offset in HANDOFF_EVENT_CLEAR_OFFSETS {
+            assert_eq!(actions[cursor], (offset, 0));
+            cursor += 1;
+        }
+        for offset in HANDOFF_W1C_CLEAR_OFFSETS {
+            assert_eq!(actions[cursor], (offset, u32::MAX));
+            cursor += 1;
+        }
+        assert_eq!(cursor, SESSION_SANITIZATION_WRITE_COUNT);
+        assert!(
+            !HANDOFF_CONFIG_ZERO_OFFSETS.contains(&core::mem::offset_of!(RegisterBlock, lowpower))
+        );
+        assert!(
+            !HANDOFF_CONFIG_ZERO_OFFSETS.contains(&core::mem::offset_of!(RegisterBlock, isosplit))
+        );
+    }
+
+    #[test]
+    fn ready_completion_without_inherited_lowpower_finishes_before_releasing_dpdm() {
+        let phase = Cell::new(0usize);
+        let mut actions = [(usize::MAX, 0u32); 2 + SESSION_SANITIZATION_WRITE_COUNT];
+        let mut count = 0usize;
+        let result = complete_enable_session(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+            },
+            || {
+                assert_eq!(phase.get(), 2);
+                phase.set(3);
+            },
+            || {
+                assert_eq!(phase.get(), 3);
+                phase.set(4);
+                false
+            },
+            || panic!("ForceNormal must not be requested when LOWPOWER is clear"),
+            || panic!("Erratum 171 must not be reopened when LOWPOWER is clear"),
+            || panic!("LOWPOWER must not be rewritten when it is already ForceNormal"),
+            || {
+                assert_eq!(phase.get(), 5);
+                phase.set(6);
+            },
+            |offset, value| {
+                if count == 0 {
+                    assert_eq!(phase.get(), 4);
+                    phase.set(5);
+                } else {
+                    assert_eq!(phase.get(), 6);
+                }
+                actions[count] = (offset, value);
+                count += 1;
+            },
+        );
+
+        assert_eq!(result, EnableSessionCompletion::Finished);
+        assert_eq!(phase.get(), 6);
+        assert_eq!(count, actions.len());
+        assert_eq!(
+            actions[0],
+            (core::mem::offset_of!(RegisterBlock, tasks_dpdmnodrive), 1)
+        );
+        assert_eq!(actions[1], (HANDOFF_CONFIG_ZERO_OFFSETS[0], 0));
+        assert_eq!(
+            actions[actions.len() - 1],
+            (
+                core::mem::offset_of!(RegisterBlock, isosplit),
+                ISO_SPLIT_HALF_IN,
+            )
+        );
+    }
+
+    #[test]
+    fn inherited_lowpower_opens_an_acknowledged_wake_before_any_dpdm_release() {
+        let phase = Cell::new(0usize);
+        let writes = Cell::new(0usize);
+        let result = complete_enable_session(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+            },
+            || {
+                assert_eq!(phase.get(), 2);
+                phase.set(3);
+            },
+            || {
+                assert_eq!(phase.get(), 3);
+                phase.set(4);
+                true
+            },
+            || {
+                assert_eq!(phase.get(), 4);
+                phase.set(5);
+            },
+            || {
+                assert_eq!(phase.get(), 5);
+                phase.set(6);
+            },
+            || {
+                assert_eq!(phase.get(), 6);
+                phase.set(7);
+            },
+            || panic!("Erratum 166 must wait for USBWUALLOWED"),
+            |_, _| writes.set(writes.get() + 1),
+        );
+
+        assert_eq!(result, EnableSessionCompletion::WakePending);
+        assert_eq!(phase.get(), 7);
+        assert_eq!(writes.get(), 0);
+    }
+
+    #[test]
+    fn acknowledged_inherited_wake_closes_171_before_dpdm_release() {
+        let phase = Cell::new(0usize);
+        let mut actions = [(usize::MAX, 0u32); 2 + SESSION_SANITIZATION_WRITE_COUNT];
+        let mut count = 0usize;
+        let target = complete_wake_session(
+            WakeTarget::FinishEnable,
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+            },
+            || {
+                assert_eq!(phase.get(), 3);
+                phase.set(4);
+            },
+            |offset, value| {
+                if count == 0 {
+                    assert_eq!(phase.get(), 2);
+                    phase.set(3);
+                } else {
+                    assert_eq!(phase.get(), 4);
+                }
+                actions[count] = (offset, value);
+                count += 1;
+            },
+        );
+
+        assert_eq!(target, WakeTarget::FinishEnable);
+        assert_eq!(phase.get(), 4);
+        assert_eq!(count, actions.len());
+        assert_eq!(
+            actions[0],
+            (core::mem::offset_of!(RegisterBlock, tasks_dpdmnodrive), 1)
+        );
+        assert_eq!(
+            actions[actions.len() - 1],
+            (
+                core::mem::offset_of!(RegisterBlock, isosplit),
+                ISO_SPLIT_HALF_IN,
+            )
+        );
+    }
+
+    #[test]
+    fn ordinary_resume_never_runs_enable_session_sanitization() {
+        let phase = Cell::new(0usize);
+        let writes = Cell::new(0usize);
+        let target = complete_wake_session(
+            WakeTarget::Active,
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+            },
+            || panic!("ordinary resume must not reapply enabled-session Erratum 166"),
+            |_, _| writes.set(writes.get() + 1),
+        );
+
+        assert_eq!(target, WakeTarget::Active);
+        assert_eq!(phase.get(), 2);
+        assert_eq!(writes.get(), 0);
+    }
+
+    #[test]
+    fn usbevent_acknowledgement_rearms_before_snapshot_and_exact_w1c() {
+        let phase = Cell::new(0usize);
+        let observed = (1 << 8) | (1 << 9) | (1 << 10);
+        let cleared = Cell::new(0u32);
+        let result = acknowledge_usbevent(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+            },
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+                observed
+            },
+            |causes| {
+                assert_eq!(phase.get(), 2);
+                phase.set(3);
+                cleared.set(causes);
+            },
+        );
+
+        assert_eq!(phase.get(), 3);
+        assert_eq!(result, observed);
+        assert_eq!(cleared.get(), observed);
+    }
+
+    #[test]
+    fn resume_wins_when_suspend_and_resume_share_one_usbevent_snapshot() {
+        assert!(matches!(
+            suspend_resume_poll_result(1 << 8),
+            Some(PollResult::Suspend)
+        ));
+        assert!(matches!(
+            suspend_resume_poll_result(1 << 9),
+            Some(PollResult::Resume)
+        ));
+        assert!(matches!(
+            suspend_resume_poll_result((1 << 8) | (1 << 9)),
+            Some(PollResult::Resume)
+        ));
+        assert!(suspend_resume_poll_result(1 << 10).is_none());
+    }
+
+    #[test]
+    fn handoff_timeout_never_clears_registers_after_unconfirmed_disable() {
+        let writes = Cell::new(0usize);
+        let after_disable = Cell::new(false);
+        let result = apply_handoff_sanitization(
+            |_, _| writes.set(writes.get() + 1),
+            || false,
+            || after_disable.set(true),
+        );
+        assert_eq!(result, HandoffSanitization::DisableTimeout);
+        assert_eq!(writes.get(), 4);
+        assert!(!after_disable.get());
+    }
+
+    #[test]
+    fn handoff_closes_errata_after_disable_readback_and_before_clearing() {
+        let writes = Cell::new(0usize);
+        let reads = Cell::new(0usize);
+        let result = apply_handoff_sanitization(
+            |_, _| writes.set(writes.get() + 1),
+            || {
+                reads.set(reads.get() + 1);
+                reads.get() == 2
+            },
+            || assert_eq!(writes.get(), 4),
+        );
+        assert_eq!(result, HandoffSanitization::Complete);
+        assert_eq!(reads.get(), 2);
+        assert_eq!(writes.get(), 4 + SESSION_SANITIZATION_WRITE_COUNT);
     }
 
     #[test]

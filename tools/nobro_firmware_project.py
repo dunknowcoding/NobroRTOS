@@ -28,7 +28,10 @@ DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 LINE = re.compile(
     r"^(control|sensor|service)\s+([a-z][a-z0-9_-]{0,47})\s+"
-    r"every\s+([1-9][0-9]*)(us|ms|s)(?:\s*->\s*([a-z][a-z0-9_-]{0,47}))?"
+    r"every\s+([1-9][0-9]*)(us|ms|s)"
+    r"(?:\s+phase\s+([0-9]+)(us|ms|s))?"
+    r"(?:\s+deadline\s+([1-9][0-9]*)(us|ms|s))?"
+    r"(?:\s*->\s*([a-z][a-z0-9_-]{0,47}))?"
     r"(?:\s+budget\s+([1-9][0-9]*)(us|ms|s))?"
     r"(?:\s+blocking\s+([1-9][0-9]*)(us|ms|s))?"
     r"(?:\s+memory\s+([1-9][0-9]*)/([1-9][0-9]*))?$"
@@ -38,6 +41,7 @@ BOARDS = {
     "nrf52840-s140": ("s140", 128 * 1024, 32 * 1024),
     "nrf52840-nosd": ("nosd", 128 * 1024, 32 * 1024),
 }
+MAX_WRAP_SAFE_INTERVAL_US = 0x7FFF_FFFF
 ROLE = {
     "control": ("hard_realtime", 2048, 512, 5),
     "sensor": ("driver", 1024, 256, 10),
@@ -49,7 +53,7 @@ def parse_duration(value: str, unit: str) -> int:
     scale = {"us": 1, "ms": 1000, "s": 1_000_000}[unit]
     result = int(value) * scale
     if result > 0xFFFF_FFFF:
-        raise ValueError("period exceeds the firmware's u32 microsecond range")
+        raise ValueError("duration exceeds the firmware's u32 microsecond range")
     return result
 
 
@@ -85,20 +89,36 @@ def parse(text: str) -> dict:
     for number, line in task_records:
         match = LINE.fullmatch(line)
         if not match:
-            raise ValueError(f"line {number}: expected '<role> <name> every <duration> [-> <task>]' ")
-        (role, name, value, unit, destination, budget_value, budget_unit,
+            raise ValueError(
+                f"line {number}: expected '<role> <name> every <duration> "
+                "[phase <duration>] [deadline <duration>] [-> <task>]'"
+            )
+        (role, name, value, unit, phase_value, phase_unit,
+         deadline_value, deadline_unit, destination, budget_value, budget_unit,
          blocking_value, blocking_unit, flash_override, ram_override) = match.groups()
         criticality, flash, ram, divisor = ROLE[role]
         period = parse_duration(value, unit)
+        if period > MAX_WRAP_SAFE_INTERVAL_US:
+            raise ValueError(
+                f"line {number}: period exceeds the wrap-safe 32-bit half-range"
+            )
+        phase = (parse_duration(phase_value, phase_unit) if phase_value else 0)
+        deadline = (parse_duration(deadline_value, deadline_unit)
+                    if deadline_value else period)
         budget = (parse_duration(budget_value, budget_unit)
-                  if budget_value else max(1, period // divisor))
+                  if budget_value else min(deadline, max(1, period // divisor)))
         blocking = (parse_duration(blocking_value, blocking_unit)
                     if blocking_value else 0)
-        if budget + blocking > period:
-            raise ValueError(f"line {number}: budget + blocking exceeds period")
+        if phase >= period:
+            raise ValueError(f"line {number}: phase must be below period")
+        if deadline > period:
+            raise ValueError(f"line {number}: deadline exceeds period")
+        if budget + blocking > deadline:
+            raise ValueError(f"line {number}: budget + blocking exceeds deadline")
         tasks.append({"name": name, "role": role, "criticality": criticality,
                       "flash": int(flash_override or flash),
                       "ram": int(ram_override or ram), "period_us": period,
+                      "phase_us": phase, "deadline_us": deadline,
                       "budget_us": budget, "blocking_us": blocking})
         if destination:
             channels.append([name, destination])
@@ -117,6 +137,7 @@ def parse(text: str) -> dict:
                     "wake_latency_us": wake_latency_us},
         "tasks": [{"name": "kernel", "criticality": "hard_realtime",
                    "flash": 12 * 1024, "ram": 3 * 1024, "pool": 2,
+                   "phase_us": 0, "deadline_us": 20_000,
                    "period_us": 20_000, "budget_us": 0}] + tasks,
         "channels": channels,
     }
@@ -132,6 +153,7 @@ def rust_main(spec: dict) -> str:
 use cortex_m::asm;
 use cortex_m_rt::entry;
 use panic_halt as _;
+use nobro_hal as _;
 use nobro_kernel::NanoKernel;
 
 include!(concat!(env!("OUT_DIR"), "/nobro_admitted.rs"));
@@ -169,12 +191,17 @@ def rust_build(spec: dict) -> str:
         priority = {"hard_realtime": 0, "system": 1, "driver": 2,
                     "user": 3, "best_effort": 4}[task["criticality"]]
         contract = f"TaskContract::new({index}).priority({priority})"
-        if task.get("role") != "service" and int(task.get("budget_us", 0)) > 0:
+        if int(task.get("budget_us", 0)) > 0:
             period = int(task["period_us"])
-            jitter = max(5 if task.get("role") == "control" else 10,
-                         period // (200 if task.get("role") == "control" else 100))
-            contract += (f".deadline({period}, {period}, {jitter}, "
-                         f"{int(task['budget_us'])}, {int(task.get('blocking_us', 0))})")
+            phase = int(task.get("phase_us", 0))
+            deadline = int(task.get("deadline_us", period))
+            jitter = min(
+                deadline - 1,
+                max(1, period // (200 if task.get("role") == "control" else 100)),
+            ) if deadline > 1 else 0
+            contract += (f".deadline({period}, {deadline}, {jitter}, "
+                         f"{int(task['budget_us'])}, {int(task.get('blocking_us', 0))})"
+                         f".phase({phase})")
         contract += (f".memory({int(task.get('flash', 0))}, {int(task.get('ram', 0))}, "
                      f"{int(task.get('pool', 0))})")
         capabilities = (1 << 13) if task["name"] in channel_users else 0
@@ -238,6 +265,7 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
         json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n")
     kernel = ROOT / "core" / "crates" / "nobro_kernel"
     admission = ROOT / "core" / "crates" / "nobro_admission"
+    hal = ROOT / "core" / "crates" / "nobro_hal"
     try:
         kernel_path = os.path.relpath(kernel, project).replace("\\", "/")
     except ValueError:
@@ -246,6 +274,12 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
         admission_path = os.path.relpath(admission, project).replace("\\", "/")
     except ValueError:
         admission_path = str(admission).replace("\\", "/")
+    try:
+        hal_path = os.path.relpath(hal, project).replace("\\", "/")
+    except ValueError:
+        hal_path = str(hal).replace("\\", "/")
+    hal_feature = ("board-nicenano-s140" if spec["board"] == "nrf52840-s140"
+                   else "board-promicro-nosd")
     cargo = f'''[package]
 name = "nobro-app-{spec['app'].replace('_', '-')}"
 version = "0.1.0"
@@ -258,7 +292,8 @@ build = "build.rs"
 [dependencies]
 nobro-kernel = {{ path = {json.dumps(kernel_path)} }}
 nobro-admission = {{ path = {json.dumps(admission_path)} }}
-cortex-m = {{ version = "0.7", features = ["critical-section-single-core"] }}
+nobro-hal = {{ path = {json.dumps(hal_path)}, default-features = false, features = [{json.dumps(hal_feature)}] }}
+cortex-m = "0.7"
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 
@@ -332,13 +367,17 @@ service camera every 40ms
     assert spec["workload"]["tasks"][1]["budget_us"] == 1000
     overridden = parse(sample.replace(
         "control motor every 5ms",
-        "control motor every 5ms budget 400us blocking 100us memory 3072/640"))
+        "control motor every 5ms phase 1ms deadline 4ms budget 400us blocking 100us memory 3072/640"))
     assert overridden["workload"]["tasks"][1]["budget_us"] == 400
     assert overridden["workload"]["tasks"][1]["blocking_us"] == 100
+    assert overridden["workload"]["tasks"][1]["phase_us"] == 1000
+    assert overridden["workload"]["tasks"][1]["deadline_us"] == 4000
     assert overridden["workload"]["tasks"][1]["ram"] == 640
     with_wake = parse(sample.replace(
         "board nrf52840-s140", "board nrf52840-s140\nwake 25us"))
     assert with_wake["workload"]["profile"]["wake_latency_us"] == 25
+    shortest = parse(sample.replace("control motor every 5ms", "control motor every 1us"))
+    assert shortest["workload"]["tasks"][1]["budget_us"] == 1
     with tempfile.TemporaryDirectory() as tmp:
         source = pathlib.Path(tmp) / "app.nobro"
         source.write_text(sample, encoding="utf-8")
@@ -352,10 +391,14 @@ service camera every 40ms
         assert "nobro_admission::{admit" in build_source
         assert '"motor", "imu", "camera"' in build_source
         assert "TaskContract::new(1).priority(0).deadline(5000, 5000" in build_source
+        assert "TaskContract::new(3).priority(4).deadline(40000, 40000" in build_source
+        assert ".phase(0)" in build_source
         assert ".wake_latency_us(0)" in build_source
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
-                    sample.replace("nrf52840-s140", "unknown")):
+                    sample.replace("nrf52840-s140", "unknown"),
+                    sample.replace("control motor every 5ms",
+                                   "control motor every 2147483648us")):
         try:
             parse(invalid)
             raise AssertionError("invalid declaration accepted")

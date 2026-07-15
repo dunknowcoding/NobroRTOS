@@ -15,7 +15,7 @@ required-features = ["board-promicro-nosd"]
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-power = { path = "../../../crates/nobro_power" }
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m = "0.7"
 cortex-m-rt = "0.7"
 defmt = "0.3"
 defmt-rtt = "0.4"

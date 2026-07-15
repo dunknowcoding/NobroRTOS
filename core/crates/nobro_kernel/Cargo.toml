@@ -23,6 +23,9 @@ hal-profile = ["dep:nobro-hal"]
 # Opt-in campaign telemetry used to produce fail-closed capacity reports.  It
 # adds no fields or mutation-path work to ordinary kernel builds.
 capacity-report = []
+# Optional P-ISR/P-SLICE contracts and controller. Default cooperative/L0
+# images do not link or store any of this state.
+preemptive = []
 
 [dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }

@@ -282,6 +282,27 @@ pub trait UsbStack {
     fn backend_fault(&self) -> Option<UsbBackendError> {
         None
     }
+    /// Explicitly detach and reattach the current device session.
+    ///
+    /// This is a recovery operation for a host/controller session that made no
+    /// enumeration progress. Applications must rate-limit it; routine USB suspend is
+    /// valid and should normally be left for [`UsbStack::poll`] to resume. Backends
+    /// without a controllable pull-up return [`UsbBackendError::Unsupported`]. `Ok`
+    /// means the detach was accepted; completion is asynchronous and must be driven
+    /// by subsequent [`UsbStack::poll`] calls until the link enumerates again.
+    fn force_reenumeration(&mut self) -> Result<(), UsbBackendError> {
+        Err(UsbBackendError::Unsupported)
+    }
+    /// Begins or advances a one-way handoff to a resident bootloader.
+    ///
+    /// `Ok(false)` means teardown is still in progress and the caller must invoke this
+    /// method again without performing endpoint I/O. `Ok(true)` proves the controller
+    /// pull-up is off, cumulative EasyDMA parity is repaired, `ENABLE` reads disabled,
+    /// and lifecycle errata ownership is closed. Backends without such a contract
+    /// return [`UsbBackendError::Unsupported`].
+    fn poll_bootloader_handoff(&mut self) -> Result<bool, UsbBackendError> {
+        Err(UsbBackendError::Unsupported)
+    }
     /// True only while the most recently observed link state is configured and usable.
     fn configured(&self) -> bool;
     /// Which backend is mounted (see [`backend_id`]).
@@ -443,6 +464,20 @@ impl UsbStack for MountedUsb {
 
     fn backend_fault(&self) -> Option<UsbBackendError> {
         self.backend.backend_fault()
+    }
+
+    fn force_reenumeration(&mut self) -> Result<(), UsbBackendError> {
+        let result = self.backend.force_reenumeration();
+        if result.is_ok() {
+            self.state = CdcState::Disconnected;
+        }
+        result
+    }
+
+    fn poll_bootloader_handoff(&mut self) -> Result<bool, UsbBackendError> {
+        let result = self.backend.poll_bootloader_handoff();
+        self.state = CdcState::Disconnected;
+        result
     }
 
     fn configured(&self) -> bool {
@@ -622,6 +657,14 @@ mod tests {
         assert_eq!(backend.try_flush(), Ok(false));
         assert_eq!(backend.try_write(b"abc"), Ok(3));
         assert_eq!(backend.try_read(&mut [0; 1]), Ok(0));
+        assert_eq!(
+            backend.force_reenumeration(),
+            Err(UsbBackendError::Unsupported)
+        );
+        assert_eq!(
+            backend.poll_bootloader_handoff(),
+            Err(UsbBackendError::Unsupported)
+        );
     }
 
     #[test]

@@ -18,7 +18,7 @@ nobro-kernel = { path = "../../../crates/nobro_kernel" }
 nobro-imu = { path = "../../../crates/nobro_imu" }
 embedded-hal = "1.0"
 libm = "0.2"
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m = "0.7"
 cortex-m-rt = "0.7"
 defmt = "0.3"
 defmt-rtt = "0.4"

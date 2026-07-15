@@ -39,6 +39,26 @@ PASS: all_pass=1
 Image generation and upload settings are board-specific. Do not reuse an address, image,
 or boot layout from another profile.
 
+### USB identity and recovery
+
+The bootloader and the application are separate USB devices. They may advertise
+different VID/PID values, strings, storage volumes, or serial endpoints, and the host may
+assign them different device paths. `UsbConfig` controls only the mounted application
+backend; it does not rename or reconfigure the bootloader.
+
+SoftDevice and no-SoftDevice profiles also use different flash layouts. Select the image
+from the installed bootloader's own metadata rather than inferring the layout from the
+board shape or from the application's last USB identity.
+
+If application enumeration stops making progress, a backend that supports
+`UsbStack::force_reenumeration()` can detach and reattach the application identity. Rate
+limit that recovery, continue calling `poll()`, and wait for `configured()` before doing
+I/O. `Suspended` is a valid host power state and should normally be allowed to resume
+through `poll()`; repeatedly forcing enumeration during ordinary suspend creates a
+reconnect loop. Forced re-enumeration does not enter DFU. Conversely, failure to see a
+bootloader volume or serial endpoint proves only that the host did not enumerate it, not
+whether the processor reached bootloader code.
+
 ### What "PASS" means
 
 The app seals a fixed-layout report (`NOBRO_*_REPORT`) and consumers check `magic`,
@@ -72,8 +92,8 @@ compiler, no IDE.
 
 ### 1. Flash the starter (once)
 
-You need an nRF52840 board with the UF2 (S140) bootloader — most nice!nano-style
-boards ship with it.
+You need an nRF52840 board whose installed UF2 bootloader metadata explicitly reports
+SoftDevice S140.
 
 1. Double-tap the RESET button. A USB drive appears (its `INFO_UF2.TXT` should say
    `SoftDevice: S140`).
@@ -154,6 +174,21 @@ files live in ignored `_work/projects` by default. Inferred role budgets are saf
 starting estimates, not measured WCET; inspect them before flashing an application.
 An optional `wake 25us` line after `board` admits a measured compare-wake-to-dispatch
 upper bound. It is an engineering input, not a value inferred from a board name.
+Periodic task lines may also shape their first release and use a constrained deadline:
+
+```text
+control motor every 5ms phase 1ms deadline 4ms budget 400us
+sensor imu every 10ms -> motor
+```
+
+`phase` must be below `every`, and `deadline` must not exceed it. The generator checks
+that execution plus blocking fits the deadline and emits the same values into build-time
+admission and the target dispatcher.
+
+Generated nRF projects select `nobro-hal`'s board-specific BASEPRI critical-section
+provider. Do not add Cortex-M's `critical-section-single-core` feature: it uses PRIMASK,
+conflicts with the selected provider, and would mask the admitted timebase. High-priority
+deadline/watchdog handlers must restrict themselves to the documented lock-free handoff.
 
 NobroRTOS is not tied to the Arduino IDE or VS Code. The core builds from a terminal on
 Linux, macOS, or Windows with Rust, Python, the selected target support, and any external
@@ -167,7 +202,7 @@ cd core
 cargo build -p kernel-selftest --release          # build firmware
 cd ..
 python3 tools/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
-python3 tools/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2 (Pico/nice!nano)
+python3 tools/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2-capable board
 python3 tools/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
 ```
 

@@ -3,7 +3,8 @@
 //! Provides target startup and status over a SERCOM0 USART
 //! (D0/D1 pads on Zero-class boards) written straight from the SAMD21 datasheet:
 //! OSC8M at /1 (8 MHz), GCLK0 routed to SERCOM0, 115200 8N1 with the fractional
-//! baud generator. Report line: `NOBRO-SAMD21 arch=thumbv6m subsystems=7 all_pass=1`.
+//! baud generator. The `NOBRO-SAMD21` report includes `port_ready` plus the
+//! measured PRIMASK maximum, bound, wrap state, and pass state.
 //!
 //! This port currently provides the portable core and serial status path; it does not
 //! claim portable peripheral-provider coverage.
@@ -12,6 +13,11 @@
 
 use cortex_m_rt::entry;
 use panic_halt as _;
+
+mod masked_critical_section;
+
+const CORE_HZ: u32 = 8_000_000;
+const MASK_BOUND_US: u32 = 25;
 
 // ---------------------------------------------------------------- clocks (own driver)
 
@@ -76,13 +82,50 @@ fn print(s: &str) {
     }
 }
 
+fn print_u32(mut value: u32) {
+    let mut digits = [0_u8; 10];
+    let mut used = 0;
+    loop {
+        digits[used] = b'0' + (value % 10) as u8;
+        used += 1;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    while used != 0 {
+        used -= 1;
+        uart_tx(digits[used]);
+    }
+}
+
 #[entry]
 fn main() -> ! {
     clocks_init();
     uart_init();
 
+    masked_critical_section::init();
+    critical_section::with(|_| {
+        // Exercise nesting so the report covers the exact provider selected by
+        // this image rather than an unreferenced measurement helper.
+        critical_section::with(|_| core::hint::spin_loop());
+    });
+
     loop {
-        print("NOBRO-SAMD21 arch=thumbv6m port_ready=1\r\n");
+        let max_cycles = masked_critical_section::max_masked_cycles();
+        let max_us = masked_critical_section::max_masked_us_ceil(CORE_HZ);
+        let pass = masked_critical_section::within_us(CORE_HZ, MASK_BOUND_US);
+        print("NOBRO-SAMD21 arch=thumbv6m port_ready=1 mask_max_cycles=");
+        print_u32(max_cycles);
+        print(" mask_max_us=");
+        print_u32(max_us);
+        print(" mask_bound_us=");
+        print_u32(MASK_BOUND_US);
+        print(" mask_wrapped=");
+        print_u32(masked_critical_section::counter_wrapped() as u32);
+        print(" mask_pass=");
+        print_u32(pass as u32);
+        print("\r\n");
         cortex_m::asm::delay(8_000_000); // ~1 s at 8 MHz
     }
 }
