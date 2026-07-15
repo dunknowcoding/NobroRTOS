@@ -18,6 +18,7 @@ flagged rather than silently treated as fully priced.
 Exit code 1 if any requested budget is exceeded.
 """
 import argparse
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -27,6 +28,33 @@ from collections import defaultdict
 DEFAULT_OBJDUMPS = [
     "arm-none-eabi-objdump",
 ]
+
+
+class BudgetToolError(RuntimeError):
+    """Actionable failure from an external budget-analysis tool."""
+
+
+def run_external_tool(cmd: list[str], what: str) -> str:
+    """Run a required binary and turn tool failures into one-line gate errors."""
+
+    try:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except FileNotFoundError as exc:
+        raise BudgetToolError(
+            f"{what} failed: required tool '{cmd[0]}' was not found; "
+            "install the Arm GNU toolchain or pass --objdump"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip().splitlines()
+        suffix = f": {detail[0]}" if detail else ""
+        raise BudgetToolError(
+            f"{what} failed: {' '.join(cmd)} exited {exc.returncode}{suffix}"
+        ) from exc
 
 SYM_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 PUSH_RE = re.compile(r"\bpush(?:\.w)?\s+\{([^}]*)\}")
@@ -182,10 +210,10 @@ def deepest_path(costs: dict[str, int], calls: dict[str, set]) -> tuple[int, lis
 
 
 def analyze(elf: str, objdump: str):
-    out = subprocess.run(
+    out = run_external_tool(
         [objdump, "-d", "--no-show-raw-insn", elf],
-        capture_output=True, text=True, check=True,
-    ).stdout
+        "disassembly",
+    )
     frames, cycles, calls, indirect, loops, unknown_cycles = analyze_disassembly(out)
     stack_worst, stack_path, recursive = deepest_path(frames, calls)
     cycle_worst, cycle_path, cycle_recursive = deepest_path(cycles, calls)
@@ -206,7 +234,7 @@ def analyze(elf: str, objdump: str):
 
 def sizes(elf: str, objdump: str):
     size_tool = objdump.replace("objdump", "size")
-    out = subprocess.run([size_tool, elf], capture_output=True, text=True, check=True).stdout
+    out = run_external_tool([size_tool, elf], "size report")
     line = out.strip().splitlines()[-1].split()
     text, data, bss = int(line[0]), int(line[1]), int(line[2])
     return text, data, bss
@@ -244,6 +272,16 @@ def run_selftest() -> int:
     assert "foo" in loops
     assert recursive == []
     assert unknown == {}
+    try:
+        run_external_tool(
+            [sys.executable, "-c", "import sys; sys.stderr.write('boom\\n'); sys.exit(7)"],
+            "synthetic budget tool",
+        )
+        raise AssertionError("expected external-tool failure")
+    except BudgetToolError as exc:
+        assert "synthetic budget tool failed" in str(exc)
+        assert "exited 7" in str(exc)
+        assert "boom" in str(exc)
     print("static_budget selftest: PASS")
     return 0
 
@@ -273,25 +311,30 @@ def main():
         return run_selftest()
     if not args.elf:
         ap.error("elf is required unless --selftest is used")
+    if not Path(args.elf).is_file():
+        sys.exit(f"ELF not found: {args.elf}")
 
     objdump = args.objdump or next(
         (t for t in DEFAULT_OBJDUMPS if shutil.which(t) or t.endswith(".exe")), None)
     if objdump is None:
         sys.exit("no arm-none-eabi-objdump found; pass --objdump")
 
-    (
-        frames,
-        cycles,
-        worst,
-        path,
-        worst_cycles,
-        cycle_path,
-        indirect,
-        loops,
-        recursive,
-        unknown_cycles,
-    ) = analyze(args.elf, objdump)
-    text, data, bss = sizes(args.elf, objdump)
+    try:
+        (
+            frames,
+            cycles,
+            worst,
+            path,
+            worst_cycles,
+            cycle_path,
+            indirect,
+            loops,
+            recursive,
+            unknown_cycles,
+        ) = analyze(args.elf, objdump)
+        text, data, bss = sizes(args.elf, objdump)
+    except BudgetToolError as exc:
+        sys.exit(str(exc))
     static_ram = data + bss
     total_ram = static_ram + worst
 
