@@ -372,6 +372,48 @@ impl<const N: usize> TaskTable<N> {
     /// Accept ready bits produced by the bounded compare ISR. Early, stale, or
     /// duplicate bits are rejected and never detach a future release.
     pub fn accept_isr_releases(&mut self, ready_mask: u32, now_us: u64) -> IsrReleaseReceipt {
+        if ready_mask == 0 {
+            return IsrReleaseReceipt::default();
+        }
+        if ready_mask & (ready_mask - 1) == 0 {
+            let task_index = ready_mask.trailing_zeros() as usize;
+            if task_index >= usize::from(self.len) {
+                return IsrReleaseReceipt {
+                    accepted: 0,
+                    rejected: 1,
+                };
+            }
+            if self.release_root() != Some(task_index) {
+                return IsrReleaseReceipt {
+                    accepted: 0,
+                    rejected: 1,
+                };
+            }
+            let bit = 1u32 << task_index;
+            let due = self.slots[task_index]
+                .expect("release task slot")
+                .stats
+                .next_due_us;
+            if due > now_us {
+                return IsrReleaseReceipt {
+                    accepted: 0,
+                    rejected: 1,
+                };
+            }
+            let _ = self.pop_release_root();
+            self.enqueue_ready(task_index);
+            self.ready_members |= bit;
+            self.slots[task_index]
+                .as_mut()
+                .expect("ready task slot")
+                .stats
+                .release_group_width = 1;
+            return IsrReleaseReceipt {
+                accepted: 1,
+                rejected: 0,
+            };
+        }
+
         let valid_mask = if self.len == u32::BITS as u8 {
             u32::MAX
         } else {
@@ -382,33 +424,6 @@ impl<const N: usize> TaskTable<N> {
             ..IsrReleaseReceipt::default()
         };
         let mut candidates = ready_mask & valid_mask;
-        if candidates != 0 && candidates & (candidates - 1) == 0 {
-            let task_index = candidates.trailing_zeros() as usize;
-            if self.release_root() != Some(task_index) {
-                receipt.rejected = receipt.rejected.saturating_add(1);
-                return receipt;
-            }
-            let bit = 1u32 << task_index;
-            let due = self.slots[task_index]
-                .expect("release task slot")
-                .stats
-                .next_due_us;
-            if due > now_us {
-                receipt.rejected = receipt.rejected.saturating_add(1);
-                return receipt;
-            }
-            let _ = self.pop_release_root();
-            self.enqueue_ready(task_index);
-            self.ready_members |= bit;
-            self.slots[task_index]
-                .as_mut()
-                .expect("ready task slot")
-                .stats
-                .release_group_width = 1;
-            receipt.accepted = 1;
-            return receipt;
-        }
-
         let mut accepted_members = 0u32;
         while let Some(task_index) = self.release_root() {
             let bit = 1u32 << task_index;
