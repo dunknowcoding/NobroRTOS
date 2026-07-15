@@ -21,6 +21,59 @@ FILES = {
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
 
 
+def _basepri_service_model() -> list[str]:
+    """Model the priority-ceiling contract independent of a Cortex-M target.
+
+    ARM BASEPRI masks interrupts with logical priority numbers greater than or
+    equal to the ceiling. Lower numbers are more urgent. The safety
+    property is that deadline/watchdog-feeder sources stay serviceable while a
+    kernel critical section is held; PendSV and ordinary user work must wait so
+    they cannot split a shared-state transaction.
+    """
+    failures: list[str] = []
+    profiles = {
+        "bare": {
+            "ceiling": 3,
+            "deadline": 0,
+            "watchdog_feeder": 1,
+            "p_isr": 2,
+            "pendsv": 7,
+            "user": 3,
+        },
+        "s140": {
+            "ceiling": 6,
+            "deadline": 2,
+            "watchdog_feeder": 3,
+            "p_isr": 5,
+            "pendsv": 7,
+            "user": 6,
+        },
+    }
+
+    for name, priorities in profiles.items():
+        ceiling = priorities["ceiling"]
+        serviced: list[str] = []
+        deferred: list[str] = []
+        for event, priority in priorities.items():
+            if event == "ceiling":
+                continue
+            if priority < ceiling:
+                serviced.append(event)
+            else:
+                deferred.append(event)
+        for event in ("deadline", "watchdog_feeder", "p_isr"):
+            if event not in serviced:
+                failures.append(
+                    f"{name}: {event} priority is masked by the BASEPRI ceiling"
+                )
+        for event in ("pendsv", "user"):
+            if event not in deferred:
+                failures.append(f"{name}: {event} can split a critical section")
+        if set(serviced + deferred) != {"deadline", "watchdog_feeder", "p_isr", "pendsv", "user"}:
+            failures.append(f"{name}: model did not classify every event")
+    return failures
+
+
 def main() -> int:
     text = {name: path.read_text(encoding="utf-8") for name, path in FILES.items()}
     failures = []
@@ -69,6 +122,7 @@ def main() -> int:
         for token in tokens:
             if token not in text[name]:
                 failures.append(f"{name}: missing required mechanism {token!r}")
+    failures.extend(_basepri_service_model())
     selection_token = "critical-section-single-core"
     selected_manifests = list((ROOT / "core/apps").rglob("Cargo.toml"))
     selected_manifests += list((ROOT / "core/adapters").rglob("Cargo.toml"))
@@ -92,7 +146,8 @@ def main() -> int:
         return 1
     print(
         "TIMEBASE MASKING GATE: PASS "
-        "(nRF uses BASEPRI; Cortex-M0 fallback reports maximum PRIMASK time)"
+        "(nRF BASEPRI leaves deadline/watchdog-feeder priorities live; "
+        "Cortex-M0 fallback reports maximum PRIMASK time)"
     )
     return 0
 
