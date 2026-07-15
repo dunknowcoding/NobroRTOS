@@ -121,6 +121,7 @@ pub enum SliceError {
     DeadlineOverflow(ModuleId),
     AlreadyRunning,
     NoReadyTask,
+    NoPendingSwitch,
     Port,
 }
 
@@ -129,6 +130,11 @@ pub enum SliceError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SliceDecision {
     None,
+    Pending {
+        from: SliceContext,
+        to: SliceContext,
+        forced: bool,
+    },
     Switch {
         from: SliceContext,
         to: SliceContext,
@@ -157,11 +163,21 @@ struct SliceSlot {
     forced_suspends: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PendingSwitch {
+    current: usize,
+    next: usize,
+    from: SliceContext,
+    to: SliceContext,
+    forced: bool,
+}
+
 pub struct SliceController<const N: usize> {
     slots: [Option<SliceSlot>; N],
     len: usize,
     current: Option<usize>,
     cursor: usize,
+    pending: Option<PendingSwitch>,
 }
 
 impl<const N: usize> SliceController<N> {
@@ -178,6 +194,7 @@ impl<const N: usize> SliceController<N> {
             len: 0,
             current: None,
             cursor: 0,
+            pending: None,
         }
     }
 
@@ -308,6 +325,13 @@ impl<const N: usize> SliceController<N> {
         sentinel: &ExecutionSentinel,
         port: &mut impl SlicePort,
     ) -> Result<SliceDecision, SliceError> {
+        if let Some(pending) = self.pending {
+            return Ok(SliceDecision::Pending {
+                from: pending.from,
+                to: pending.to,
+                forced: pending.forced,
+            });
+        }
         let Some(stuck) = sentinel.check(now_us) else {
             return Ok(SliceDecision::None);
         };
@@ -316,39 +340,70 @@ impl<const N: usize> SliceController<N> {
         if module_code(from.task.module) != stuck.module_code {
             return Ok(SliceDecision::None);
         }
-        self.force_current_after_budget_fault_at(now_us, sentinel, port)
+        self.force_current_after_budget_fault(port)
     }
 
-    fn force_current_after_budget_fault_at(
+    fn force_current_after_budget_fault(
         &mut self,
-        now_us: u64,
-        sentinel: &ExecutionSentinel,
         port: &mut impl SlicePort,
     ) -> Result<SliceDecision, SliceError> {
         let current = self.current.ok_or(SliceError::NoReadyTask)?;
         let from = self.slots[current].expect("current slice slot");
         let next = self.choose(Some(current)).ok_or(SliceError::NoReadyTask)?;
         let to = self.slots[next].expect("next slice slot");
-        let deadline = now_us
-            .checked_add(u64::from(to.task.budget_us))
-            .ok_or(SliceError::DeadlineOverflow(to.task.module))?;
-
         // Queue first. A failed port request leaves scheduling state and the
         // current sentinel unchanged, so callers can retry or escalate safely.
+        // A successful request is still only pending: PendSV is deliberately
+        // configured at or below the BASEPRI ceiling, so a critical-section
+        // overrun may defer the actual architectural switch until the section
+        // exits. Scheduler state and the budget sentinel therefore commit only
+        // from `commit_pending_switch_at`, after the port has completed the
+        // switch. This keeps watchdog/recovery attribution on the old task if
+        // it never releases the ceiling.
         port.pend_switch(from.task.context, to.task.context, true)
             .map_err(|_| SliceError::Port)?;
-        let current_slot = self.slots[current].as_mut().expect("current slice slot");
-        current_slot.suspended = true;
-        current_slot.ready = false;
-        current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
-        self.current = Some(next);
-        self.cursor = (next + 1) % N.max(1);
-        sentinel.disarm();
-        sentinel.arm(to.task.module, deadline);
+        self.pending = Some(PendingSwitch {
+            current,
+            next,
+            from: from.task.context,
+            to: to.task.context,
+            forced: true,
+        });
         Ok(SliceDecision::Switch {
             from: from.task.context,
             to: to.task.context,
             forced: true,
+        })
+    }
+
+    /// Commit a previously queued context switch after the platform PendSV
+    /// path has actually installed the next PSP context. Until this method is
+    /// called, the old task remains current and its sentinel remains armed.
+    pub fn commit_pending_switch_at(
+        &mut self,
+        now_us: u64,
+        sentinel: &ExecutionSentinel,
+    ) -> Result<SliceDecision, SliceError> {
+        let pending = self.pending.ok_or(SliceError::NoPendingSwitch)?;
+        let to = self.slots[pending.next].expect("next slice slot");
+        let deadline = now_us
+            .checked_add(u64::from(to.task.budget_us))
+            .ok_or(SliceError::DeadlineOverflow(to.task.module))?;
+        self.pending = None;
+        let current_slot = self.slots[pending.current]
+            .as_mut()
+            .expect("current slice slot");
+        current_slot.suspended = true;
+        current_slot.ready = false;
+        current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
+        self.current = Some(pending.next);
+        self.cursor = (pending.next + 1) % N.max(1);
+        sentinel.disarm();
+        sentinel.arm(to.task.module, deadline);
+        Ok(SliceDecision::Switch {
+            from: pending.from,
+            to: pending.to,
+            forced: pending.forced,
         })
     }
 
@@ -461,7 +516,50 @@ mod tests {
             }
         ));
         assert_eq!(port.switches, 1);
+        assert_eq!(controller.forced_suspends(ModuleId::Actuator), Some(0));
+        assert_eq!(controller.current, Some(1));
+        assert!(matches!(
+            controller.on_budget_interrupt(150, &sentinel, &mut port),
+            Ok(SliceDecision::Pending {
+                from: SliceContext {
+                    module: ModuleId::Actuator,
+                    ..
+                },
+                to: SliceContext {
+                    module: ModuleId::Sensor,
+                    ..
+                },
+                forced: true,
+            })
+        ));
+        assert_eq!(
+            sentinel.check(150).map(|stuck| stuck.module_code),
+            Some(module_code(ModuleId::Actuator))
+        );
+        let committed = controller
+            .commit_pending_switch_at(150, &sentinel)
+            .expect("pending switch commits");
+        assert!(matches!(
+            committed,
+            SliceDecision::Switch {
+                from: SliceContext {
+                    module: ModuleId::Actuator,
+                    ..
+                },
+                to: SliceContext {
+                    module: ModuleId::Sensor,
+                    ..
+                },
+                forced: true,
+            }
+        ));
         assert_eq!(controller.forced_suspends(ModuleId::Actuator), Some(1));
+        assert_eq!(controller.current, Some(0));
+        assert_eq!(sentinel.check(249), None);
+        assert_eq!(
+            sentinel.check(251).map(|stuck| stuck.module_code),
+            Some(module_code(ModuleId::Sensor))
+        );
     }
 
     #[test]

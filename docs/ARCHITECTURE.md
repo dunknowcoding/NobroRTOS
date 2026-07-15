@@ -383,8 +383,10 @@ Fault handling is intentionally small:
   `cortex-m-slice` port saves R4-R11, EXC_RETURN, BASEPRI, and the lazy-FPU
   extension in PendSV. PendSV is configured at or below the selected kernel
   BASEPRI ceiling so it cannot split a process-wide critical-section
-  transaction. A ceiling-held overrun therefore defers switching until the
-  section exits; a section that never exits requires watchdog escalation.
+  transaction. A queued forced switch is committed only after the port reports
+  the PSP switch complete, so a ceiling-held overrun keeps the old task and
+  sentinel attribution until the section exits; a section that never exits
+  requires watchdog escalation.
   The current port is a bare-nRF profile: combining `cortex-m-slice` with
   `board-nicenano-s140` fails at compile time because it programs PendSV through
   CMSIS and does not yet integrate interrupt control through the SoftDevice API.

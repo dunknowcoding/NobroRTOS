@@ -386,9 +386,12 @@ an explicit PendSV priority at or below the selected BASEPRI ceiling (logical
 7 is the portable nRF choice). This ensures a context switch cannot split a
 process-wide critical-section transaction. A budget overrun outside a critical
 section is suspendable; one inside a section remains pending until the section
-exits and must escalate to the watchdog if it never exits. The port preserves
-BASEPRI per PSP context. `SliceTask::allows_fpu(true)` raises the stack floor by
-136 bytes: 72 bytes of hardware extended frame plus 64 bytes for S16-S31.
+exits and must escalate to the watchdog if it never exits. `on_budget_interrupt`
+queues the PendSV request without changing the current task; call
+`commit_pending_switch_at(now_us, sentinel)` only after the port has actually
+committed the PSP switch. The port preserves BASEPRI per PSP context.
+`SliceTask::allows_fpu(true)` raises the stack floor by 136 bytes: 72 bytes of
+hardware extended frame plus 64 bytes for S16-S31.
 
 The nRF board package also supplies the process-wide `critical-section`
 implementation. It uses BASEPRI 3 for the no-SoftDevice profile and BASEPRI 6
