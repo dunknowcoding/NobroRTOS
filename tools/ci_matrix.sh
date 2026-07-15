@@ -60,6 +60,8 @@ gate "nRF52840 PSP/PendSV target build" \
 
 gate "deadline masking" python tools/check_timebase_masking.py
 
+gate "accounting semantics" python tools/check_accounting_semantics.py
+
 gate "nano kernel build/admission/symbol budgets" \
   python tools/check_nano_kernel.py
 

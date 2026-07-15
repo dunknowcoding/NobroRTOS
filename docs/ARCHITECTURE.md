@@ -518,6 +518,11 @@ elapsed releases are transferred without a capacity-wide scan. A five-level
 criticality bitmap selects a FIFO head in O(1), preserving fairness between peers.
 Bounded reinsertion happens after a poll, outside the release-to-dispatch edge.
 The ready-membership word supports at most 32 tasks and rejects a wider table.
+Bookkeeping remains synchronous in the current executor: poll timing, overrun
+handling, reinsertion, idle-safety checks, and instrumentation snapshots finish
+inline before the cycle can report idle. NobroRTOS does not yet ship an admitted
+maintenance-service reserve or saturated debt model, so no background
+accounting task is claimed.
 Compare providers can program the exact earliest release group and transfer its
 bits from ISR context; early, duplicate, and stale bits fail closed.
 

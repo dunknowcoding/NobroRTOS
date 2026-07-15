@@ -145,6 +145,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         return specs
     specs += [
         ("release boundary", [py, "tools/check_release_boundary.py"], ROOT),
+        ("accounting semantics", [py, "tools/check_accounting_semantics.py"], ROOT),
         ("deadline masking", [py, "tools/check_timebase_masking.py"], ROOT),
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "tools/nobro_contract_tool.py", "check-software-surface"], ROOT),
