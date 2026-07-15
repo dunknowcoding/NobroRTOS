@@ -395,8 +395,8 @@ expanded into the same low-level contract the kernel admits. `project run` combi
 contract explanation, build, simulation, and report decoding.
 
 `project explain` validates the same task/wire model before it prices the graph. The
-first workload error is reported with a stable `NOBRO-E02x` code, for example an
-unknown wire endpoint is `NOBRO-E031`, so CI logs and beginner-facing tutorials point
+first workload error is reported with a stable `NOBRO-E03x`/`NOBRO-E04x` code, for example an
+unknown wire endpoint is `NOBRO-E041`, so CI logs and beginner-facing tutorials point
 to the same fix.
 
 If the desired output is production nRF firmware rather than a host scaffold, use one

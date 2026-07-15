@@ -37,20 +37,21 @@ DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 
 WORKLOAD_DIAGNOSTICS = {
-    "shape": ("NOBRO-E020", "Workload must contain a non-empty task list."),
-    "task-name": ("NOBRO-E021", "Every task needs one stable lowercase name."),
-    "duplicate-task": ("NOBRO-E022", "Task names must be unique."),
-    "missing-kernel": ("NOBRO-E023", "Every workload needs the kernel task."),
-    "criticality": ("NOBRO-E024", "Task criticality must be one of the known roles."),
-    "nonnegative": ("NOBRO-E025", "Resource and timing numbers must be non-negative."),
-    "budget-period": ("NOBRO-E026", "A task budget must fit inside its period."),
-    "after-list": ("NOBRO-E027", "Task dependencies must be a short unique list."),
-    "dependency": ("NOBRO-E028", "Task dependencies must name existing tasks."),
-    "kernel-after": ("NOBRO-E029", "The kernel starts first and cannot depend on app tasks."),
-    "wire-shape": ("NOBRO-E030", "Each wire must be written as [from, to]."),
-    "wire-endpoint": ("NOBRO-E031", "Wire endpoints must name existing tasks."),
-    "cycle": ("NOBRO-E032", "Startup dependencies cannot form a cycle."),
+    "shape": ("NOBRO-E030", "Workload must contain a non-empty task list."),
+    "task-name": ("NOBRO-E031", "Every task needs one stable lowercase name."),
+    "duplicate-task": ("NOBRO-E032", "Task names must be unique."),
+    "missing-kernel": ("NOBRO-E033", "Every workload needs the kernel task."),
+    "criticality": ("NOBRO-E034", "Task criticality must be one of the known roles."),
+    "nonnegative": ("NOBRO-E035", "Resource and timing numbers must be non-negative."),
+    "budget-period": ("NOBRO-E036", "A task budget must fit inside its period."),
+    "after-list": ("NOBRO-E037", "Task dependencies must be a short unique list."),
+    "dependency": ("NOBRO-E038", "Task dependencies must name existing tasks."),
+    "kernel-after": ("NOBRO-E039", "The kernel starts first and cannot depend on app tasks."),
+    "wire-shape": ("NOBRO-E040", "Each wire must be written as [from, to]."),
+    "wire-endpoint": ("NOBRO-E041", "Wire endpoints must name existing tasks."),
+    "cycle": ("NOBRO-E042", "Startup dependencies cannot form a cycle."),
 }
+ADMISSION_DIAGNOSTIC_CODES = {f"NOBRO-E{number:03d}" for number in range(1, 22)}
 
 
 class WorkloadDiagnostic(ValueError):
@@ -461,6 +462,8 @@ def selftest() -> int:
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp)
+        assert not (ADMISSION_DIAGNOSTIC_CODES &
+                    {code for code, _ in WORKLOAD_DIAGNOSTICS.values()})
         # Golden session 1 - the SIMPLE path: scaffold -> explain -> admits.
         info = scaffold("blinky", out)
         assert {"workload.json", "app_graph.rs", "Cargo.toml", "src/main.rs"}.issubset(
@@ -513,7 +516,7 @@ def selftest() -> int:
             startup_order(invalid)
             raise AssertionError("a kernel dependency must be rejected")
         except WorkloadDiagnostic as error:
-            assert error.code == "NOBRO-E029", error
+            assert error.code == "NOBRO-E039", error
             assert "kernel starts first" in error.user_message()
 
         invalid = json.loads(json.dumps(WORKLOAD_TEMPLATE))
@@ -522,7 +525,7 @@ def selftest() -> int:
             startup_order(invalid)
             raise AssertionError("an unknown wire endpoint must be rejected")
         except WorkloadDiagnostic as error:
-            assert error.code == "NOBRO-E031", error
+            assert error.code == "NOBRO-E041", error
             assert "Wire endpoint `missing`" in error.user_message()
 
     print("NOBRO PROJECT SELFTEST: PASS (scaffold/build/simulate/report/diagnostics)")
