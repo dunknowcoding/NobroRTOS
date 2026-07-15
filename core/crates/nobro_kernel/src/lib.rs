@@ -62,9 +62,10 @@ pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
 pub use async_mpmc::{MpmcChannel, TaskGroup, WaitError, WaitQueue};
 pub use async_rt::{
-    join2, select2, with_deadline, AsyncCore, AsyncDeadline, CancelToken, Channel,
-    DeadlineContractError, DeadlineFault, DeadlineFaultKind, DeadlineFuture, Either, ReactorError,
-    ReactorExecutor, ReactorStats, Signal, Sleep, TimerQueue,
+    admit_reactor_domains, join2, select2, with_deadline, AsyncCore, AsyncDeadline, CancelToken,
+    Channel, DeadlineContractError, DeadlineFault, DeadlineFaultKind, DeadlineFuture, Either,
+    ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract, ReactorDomainContract,
+    ReactorError, ReactorExecutor, ReactorStats, Signal, Sleep, TimerQueue,
 };
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,

@@ -538,6 +538,185 @@ impl<F: Future + ?Sized, const T: usize> Future for DeadlineFuture<'_, F, T> {
     }
 }
 
+// ---------------------------------------------------- priority domains
+
+/// Contract for one async reactor domain. Each domain is expected to be driven
+/// by one already-admitted kernel task; this plan only validates the async-side
+/// capacity and cross-domain wiring before the application constructs the
+/// concrete [`ReactorExecutor`] instances.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorDomainContract {
+    pub id: u8,
+    /// Lower numbers are more urgent; the value is portable metadata and is
+    /// mapped to NVIC/ISR priorities only by a board-specific backend.
+    pub priority_band: u8,
+    pub task_slots: u8,
+    pub timer_slots: u8,
+    pub fuel_per_cycle: u32,
+}
+
+impl ReactorDomainContract {
+    pub const fn new(id: u8, priority_band: u8) -> Self {
+        Self {
+            id,
+            priority_band,
+            task_slots: 1,
+            timer_slots: 0,
+            fuel_per_cycle: 1,
+        }
+    }
+
+    pub const fn task_slots(mut self, task_slots: u8) -> Self {
+        self.task_slots = task_slots;
+        self
+    }
+
+    pub const fn timer_slots(mut self, timer_slots: u8) -> Self {
+        self.timer_slots = timer_slots;
+        self
+    }
+
+    pub const fn fuel_per_cycle(mut self, fuel_per_cycle: u32) -> Self {
+        self.fuel_per_cycle = fuel_per_cycle;
+        self
+    }
+}
+
+/// Declares one bounded channel between async reactor domains. Same-domain
+/// channels are allowed; cross-domain channels are surfaced explicitly in the
+/// admitted plan so applications use an MPMC/cross-domain-safe transport rather
+/// than accidentally sharing a single-waker SPSC channel across domains.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorChannelContract {
+    pub from_domain: u8,
+    pub to_domain: u8,
+    pub capacity: u8,
+    pub waiter_slots: u8,
+}
+
+impl ReactorChannelContract {
+    pub const fn new(from_domain: u8, to_domain: u8, capacity: u8) -> Self {
+        Self {
+            from_domain,
+            to_domain,
+            capacity,
+            waiter_slots: 2,
+        }
+    }
+
+    pub const fn waiter_slots(mut self, waiter_slots: u8) -> Self {
+        self.waiter_slots = waiter_slots;
+        self
+    }
+
+    pub const fn is_cross_domain(self) -> bool {
+        self.from_domain != self.to_domain
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReactorAdmissionError {
+    EmptyDomains,
+    DuplicateDomain(u8),
+    InvalidTaskSlots { domain: u8, task_slots: u8 },
+    InvalidFuel { domain: u8 },
+    InvalidChannelCapacity { index: usize },
+    InvalidWaiterSlots { index: usize },
+    UnknownChannelDomain { index: usize, domain: u8 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorAdmissionPlan<const D: usize, const C: usize> {
+    pub domains: [Option<ReactorDomainContract>; D],
+    pub channels: [Option<ReactorChannelContract>; C],
+    pub cross_domain_channels: [Option<ReactorChannelContract>; C],
+    pub domain_len: usize,
+    pub channel_len: usize,
+    pub cross_domain_len: usize,
+}
+
+impl<const D: usize, const C: usize> ReactorAdmissionPlan<D, C> {
+    pub fn domains(&self) -> impl Iterator<Item = &ReactorDomainContract> + '_ {
+        self.domains.iter().flatten()
+    }
+
+    pub fn channels(&self) -> impl Iterator<Item = &ReactorChannelContract> + '_ {
+        self.channels.iter().flatten()
+    }
+
+    pub fn cross_domain_channels(&self) -> impl Iterator<Item = &ReactorChannelContract> + '_ {
+        self.cross_domain_channels.iter().flatten()
+    }
+
+    pub fn domain(&self, id: u8) -> Option<&ReactorDomainContract> {
+        self.domains().find(|domain| domain.id == id)
+    }
+}
+
+/// Validate async reactor domains and channel contracts before runtime wiring.
+pub fn admit_reactor_domains<const D: usize, const C: usize>(
+    domains: [Option<ReactorDomainContract>; D],
+    channels: [Option<ReactorChannelContract>; C],
+) -> Result<ReactorAdmissionPlan<D, C>, ReactorAdmissionError> {
+    let mut domain_len = 0usize;
+    for (index, domain) in domains.iter().flatten().enumerate() {
+        domain_len = index + 1;
+        if domain.task_slots == 0 || domain.task_slots > 32 {
+            return Err(ReactorAdmissionError::InvalidTaskSlots {
+                domain: domain.id,
+                task_slots: domain.task_slots,
+            });
+        }
+        if domain.fuel_per_cycle == 0 {
+            return Err(ReactorAdmissionError::InvalidFuel { domain: domain.id });
+        }
+    }
+    if domain_len == 0 {
+        return Err(ReactorAdmissionError::EmptyDomains);
+    }
+    for (i, a) in domains.iter().flatten().enumerate() {
+        for b in domains.iter().flatten().skip(i + 1) {
+            if a.id == b.id {
+                return Err(ReactorAdmissionError::DuplicateDomain(a.id));
+            }
+        }
+    }
+
+    let mut cross_domain_channels = [None; C];
+    let mut channel_len = 0usize;
+    let mut cross_domain_len = 0usize;
+    for (index, channel) in channels.iter().enumerate() {
+        let Some(channel) = channel else {
+            continue;
+        };
+        channel_len += 1;
+        if channel.capacity == 0 {
+            return Err(ReactorAdmissionError::InvalidChannelCapacity { index });
+        }
+        if channel.waiter_slots == 0 || (channel.is_cross_domain() && channel.waiter_slots < 2) {
+            return Err(ReactorAdmissionError::InvalidWaiterSlots { index });
+        }
+        for domain in [channel.from_domain, channel.to_domain] {
+            if !domains.iter().flatten().any(|known| known.id == domain) {
+                return Err(ReactorAdmissionError::UnknownChannelDomain { index, domain });
+            }
+        }
+        if channel.is_cross_domain() {
+            cross_domain_channels[cross_domain_len] = Some(*channel);
+            cross_domain_len += 1;
+        }
+    }
+
+    Ok(ReactorAdmissionPlan {
+        domains,
+        channels,
+        cross_domain_channels,
+        domain_len,
+        channel_len,
+        cross_domain_len,
+    })
+}
+
 // ---------------------------------------------------------------- channel
 
 struct ChannelState<T, const C: usize> {
@@ -1039,6 +1218,100 @@ mod tests {
         exec.spawn(invalid).unwrap();
         exec.spawn(no_slot).unwrap();
         assert_eq!(exec.run_ready(4).completed, 2);
+    }
+
+    #[test]
+    fn reactor_domain_admission_surfaces_cross_domain_channels() {
+        let control = ReactorDomainContract::new(0, 0)
+            .task_slots(4)
+            .timer_slots(2)
+            .fuel_per_cycle(4);
+        let telemetry = ReactorDomainContract::new(1, 3)
+            .task_slots(8)
+            .timer_slots(4)
+            .fuel_per_cycle(8);
+        let plan = admit_reactor_domains::<2, 2>(
+            [Some(control), Some(telemetry)],
+            [
+                Some(ReactorChannelContract::new(0, 1, 4).waiter_slots(4)),
+                Some(ReactorChannelContract::new(1, 1, 2)),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(plan.domain_len, 2);
+        assert_eq!(plan.channel_len, 2);
+        assert_eq!(plan.cross_domain_len, 1);
+        assert_eq!(plan.domain(0), Some(&control));
+        assert_eq!(
+            plan.cross_domain_channels().next().copied(),
+            Some(ReactorChannelContract::new(0, 1, 4).waiter_slots(4))
+        );
+        assert_eq!(plan.cross_domain_channels().count(), 1);
+    }
+
+    #[test]
+    fn reactor_domain_admission_rejects_invalid_domains_and_channels() {
+        let domain = ReactorDomainContract::new(0, 0).task_slots(1);
+        assert_eq!(
+            admit_reactor_domains::<0, 0>([], []),
+            Err(ReactorAdmissionError::EmptyDomains)
+        );
+        assert_eq!(
+            admit_reactor_domains::<2, 0>(
+                [Some(domain), Some(ReactorDomainContract::new(0, 1))],
+                [],
+            ),
+            Err(ReactorAdmissionError::DuplicateDomain(0))
+        );
+        assert_eq!(
+            admit_reactor_domains::<1, 0>(
+                [Some(ReactorDomainContract::new(2, 0).task_slots(33))],
+                [],
+            ),
+            Err(ReactorAdmissionError::InvalidTaskSlots {
+                domain: 2,
+                task_slots: 33
+            })
+        );
+        assert_eq!(
+            admit_reactor_domains::<1, 0>(
+                [Some(ReactorDomainContract::new(3, 0).fuel_per_cycle(0))],
+                [],
+            ),
+            Err(ReactorAdmissionError::InvalidFuel { domain: 3 })
+        );
+        assert_eq!(
+            admit_reactor_domains::<1, 1>(
+                [Some(domain)],
+                [Some(ReactorChannelContract::new(0, 1, 1))],
+            ),
+            Err(ReactorAdmissionError::UnknownChannelDomain {
+                index: 0,
+                domain: 1
+            })
+        );
+        assert_eq!(
+            admit_reactor_domains::<1, 1>(
+                [Some(domain)],
+                [Some(ReactorChannelContract::new(0, 0, 0))],
+            ),
+            Err(ReactorAdmissionError::InvalidChannelCapacity { index: 0 })
+        );
+        assert_eq!(
+            admit_reactor_domains::<1, 1>(
+                [Some(domain)],
+                [Some(ReactorChannelContract::new(0, 0, 1).waiter_slots(0))],
+            ),
+            Err(ReactorAdmissionError::InvalidWaiterSlots { index: 0 })
+        );
+        assert_eq!(
+            admit_reactor_domains::<2, 1>(
+                [Some(domain), Some(ReactorDomainContract::new(1, 1))],
+                [Some(ReactorChannelContract::new(0, 1, 1).waiter_slots(1))],
+            ),
+            Err(ReactorAdmissionError::InvalidWaiterSlots { index: 0 })
+        );
     }
 
     #[test]
