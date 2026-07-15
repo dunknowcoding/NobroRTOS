@@ -49,6 +49,40 @@ sensor radio every 50ms -> logger budget 300us
 service logger every 100ms
 """
 
+SCALE_10 = """app nano_scale_10
+board nrf52840-nosd
+control t0 every 5ms phase 0us budget 120us
+sensor t1 every 10ms phase 250us -> t0 budget 180us
+sensor t2 every 20ms phase 500us -> t0 budget 220us
+service t3 every 40ms phase 750us -> t4 budget 260us
+control t4 every 5ms phase 1000us budget 120us
+sensor t5 every 10ms phase 1250us -> t0 budget 180us
+sensor t6 every 20ms phase 1500us -> t0 budget 220us
+service t7 every 40ms phase 1750us -> t4 budget 260us
+control t8 every 5ms phase 2000us budget 120us
+sensor t9 every 10ms phase 2250us -> t0 budget 180us
+"""
+
+SCALE_16 = """app nano_scale_16
+board nrf52840-nosd
+control t0 every 5ms phase 0us budget 120us
+sensor t1 every 10ms phase 250us -> t0 budget 180us
+sensor t2 every 20ms phase 500us -> t0 budget 220us
+service t3 every 40ms phase 750us -> t4 budget 260us
+control t4 every 5ms phase 1000us budget 120us
+sensor t5 every 10ms phase 1250us -> t0 budget 180us
+sensor t6 every 20ms phase 1500us -> t0 budget 220us
+service t7 every 40ms phase 1750us -> t4 budget 260us
+control t8 every 5ms phase 2000us budget 120us
+sensor t9 every 10ms phase 2250us -> t0 budget 180us
+sensor t10 every 20ms phase 2500us -> t0 budget 220us
+service t11 every 40ms phase 2750us -> t4 budget 260us
+control t12 every 5ms phase 3000us budget 120us
+sensor t13 every 10ms phase 3250us -> t0 budget 180us
+sensor t14 every 20ms phase 3500us -> t0 budget 220us
+service t15 every 40ms phase 3750us -> t4 budget 260us
+"""
+
 UNSCHEDULABLE = """app nano_reject
 board nrf52840-nosd
 control fast every 2ms budget 800us
@@ -76,7 +110,8 @@ def command(args: list[str | pathlib.Path]) -> str:
 
 
 def build_case(root: pathlib.Path, source_text: str, ceiling: int,
-               ram_ceiling: int, stack_ceiling: int, total_ram_ceiling: int) -> dict:
+               ram_ceiling: int, stack_ceiling: int, total_ram_ceiling: int,
+               table_ceiling: int | None = None) -> dict:
     source = root / "app.nobro"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(source_text, encoding="utf-8")
@@ -130,13 +165,16 @@ def build_case(root: pathlib.Path, source_text: str, ceiling: int,
                       symbols, re.MULTILINE)
     if not match or int(match.group(1), 16) == 0:
         raise AssertionError(f"{app}: admitted .rodata table was discarded")
+    table = int(match.group(1), 16)
+    if table_ceiling is not None and table > table_ceiling:
+        raise AssertionError(f"{app}: admitted table {table} exceeds {table_ceiling}")
     violations = [f"{feature}:{token}" for feature, tokens in FORBIDDEN.items()
                   for token in tokens if token in symbols]
     if violations:
         raise AssertionError(f"{app}: forbidden linked symbols: {', '.join(violations)}")
     return {"app": app, "flash": flash, "static_ram": static_ram,
             "stack": stack_worst, "total_ram": total_ram,
-            "table": int(match.group(1), 16)}
+            "table": table}
 
 
 def main() -> int:
@@ -145,6 +183,10 @@ def main() -> int:
             root = pathlib.Path(tmp)
             simple = build_case(root / "simple", SIMPLE, 3_000, 64, 128, 192)
             complex_case = build_case(root / "complex", COMPLEX, 3_400, 96, 128, 224)
+            scale_10 = build_case(
+                root / "scale10", SCALE_10, 3_300, 96, 128, 224, table_ceiling=360)
+            scale_16 = build_case(
+                root / "scale16", SCALE_16, 3_600, 96, 128, 224, table_ceiling=560)
 
             reject_source = root / "reject" / "app.nobro"
             reject_source.parent.mkdir(parents=True)
@@ -162,6 +204,10 @@ def main() -> int:
           f"stack={simple['stack']} table={simple['table']}; "
           f"complex flash={complex_case['flash']} ram={complex_case['static_ram']} "
           f"stack={complex_case['stack']} table={complex_case['table']}; "
+          f"scale10 flash={scale_10['flash']} ram={scale_10['static_ram']} "
+          f"stack={scale_10['stack']} table={scale_10['table']}; "
+          f"scale16 flash={scale_16['flash']} ram={scale_16['static_ram']} "
+          f"stack={scale_16['stack']} table={scale_16['table']}; "
           "build rejection attributed; feature symbols absent)")
     return 0
 
