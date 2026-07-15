@@ -21,9 +21,18 @@ def main() -> int:
     # are intentionally permanent; all other Miri checks remain enabled.
     flags = env.get("MIRIFLAGS", "").strip()
     env["MIRIFLAGS"] = f"{flags} -Zmiri-ignore-leaks".strip()
-    command = ["cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
-               "-p", "nobro-kernel", "async_rt::tests"]
-    return subprocess.run(command, cwd=ROOT / "core", env=env).returncode
+    filters = [
+        "async_rt::tests",
+        "async_mpmc::tests",
+        "graph::tests::reactor_domain_linkage",
+    ]
+    for test_filter in filters:
+        command = ["cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
+                   "-p", "nobro-kernel", test_filter]
+        completed = subprocess.run(command, cwd=ROOT / "core", env=env)
+        if completed.returncode != 0:
+            return completed.returncode
+    return 0
 
 
 if __name__ == "__main__":

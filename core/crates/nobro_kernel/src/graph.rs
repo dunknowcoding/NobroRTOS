@@ -1022,6 +1022,143 @@ mod tests {
         );
     }
 
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        fn below(&mut self, n: u8) -> u8 {
+            (self.next() % u64::from(n)) as u8
+        }
+    }
+
+    #[test]
+    fn reactor_domain_linkage_fuzz_matches_shadow_model() {
+        let cases: u64 = if cfg!(miri) { 32 } else { 1024 };
+        let names = ["reactor-a", "reactor-b", "reactor-c", "reactor-d"];
+
+        for seed in 1..=cases {
+            let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let task_count = usize::from(rng.below(4) + 1);
+            let mut graph = AppGraph::<4>::new();
+            let mut binding_domains: [Option<u8>; 4] = [None; 4];
+
+            for index in 0..task_count {
+                let mut decl = if rng.below(2) == 0 {
+                    TaskDecl::control(names[index], 5_000 + u32::from(rng.below(8)) * 1_000)
+                } else {
+                    TaskDecl::service(names[index], 50_000 + u32::from(rng.below(8)) * 10_000)
+                };
+                if rng.below(4) != 0 {
+                    let domain = rng.below(5);
+                    binding_domains[index] = Some(domain);
+                    decl = decl.reactor_domain(domain);
+                }
+                graph = graph.task(decl).unwrap();
+            }
+
+            let built = graph.build::<5>().unwrap();
+            let mut domain_present = [false; 4];
+            let mut domains = [None; 4];
+            for id in 0..4 {
+                if rng.below(2) == 0 {
+                    domain_present[id] = true;
+                    domains[id] = Some(
+                        ReactorDomainContract::new(id as u8, id as u8)
+                            .task_slots(rng.below(31) + 1)
+                            .fuel_per_cycle(u32::from(rng.below(8)) + 1),
+                    );
+                }
+            }
+
+            let result = built.admit_reactor_domains::<4, 0>(domains, []);
+            let any_domain = domain_present.iter().any(|present| *present);
+            let first_unknown =
+                binding_domains[..task_count]
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, domain)| {
+                        let domain = (*domain)?;
+                        let known = domain_present
+                            .get(usize::from(domain))
+                            .copied()
+                            .unwrap_or(false);
+                        (!known).then_some((names[index], domain))
+                    });
+            let duplicate =
+                binding_domains[..task_count]
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, domain)| {
+                        let domain = (*domain)?;
+                        binding_domains[..index].iter().enumerate().find_map(
+                            |(previous_index, previous)| {
+                                (*previous == Some(domain)).then_some((
+                                    domain,
+                                    names[previous_index],
+                                    names[index],
+                                ))
+                            },
+                        )
+                    });
+            let missing = domain_present
+                .iter()
+                .enumerate()
+                .find_map(|(domain, present)| {
+                    if !*present {
+                        return None;
+                    }
+                    let driven = binding_domains[..task_count].contains(&Some(domain as u8));
+                    (!driven).then_some(domain as u8)
+                });
+
+            match (any_domain, first_unknown, duplicate, missing) {
+                (false, _, _, _) => assert_eq!(
+                    result.unwrap_err(),
+                    GraphReactorError::ReactorAdmission(ReactorAdmissionError::EmptyDomains),
+                    "seed {seed}"
+                ),
+                (true, Some((task, domain)), _, _) => assert_eq!(
+                    result.unwrap_err(),
+                    GraphReactorError::UnknownDomain { task, domain },
+                    "seed {seed}"
+                ),
+                (true, None, Some((domain, first_task, duplicate_task)), _) => assert_eq!(
+                    result.unwrap_err(),
+                    GraphReactorError::DuplicateDomainDriver {
+                        domain,
+                        first_task,
+                        duplicate_task,
+                    },
+                    "seed {seed}"
+                ),
+                (true, None, None, Some(domain)) => assert_eq!(
+                    result.unwrap_err(),
+                    GraphReactorError::MissingDomainDriver { domain },
+                    "seed {seed}"
+                ),
+                (true, None, None, None) => {
+                    let admitted = result.unwrap();
+                    assert_eq!(
+                        admitted.binding_len,
+                        binding_domains[..task_count]
+                            .iter()
+                            .filter(|domain| domain.is_some())
+                            .count(),
+                        "seed {seed}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn shortest_period_defaults_remain_self_consistent() {
         let decl = TaskDecl::periodic("fast", 1);

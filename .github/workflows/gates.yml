@@ -125,11 +125,12 @@ jobs:
         env:
           # AsyncCore is embedded with static-cell lifetime; tests model that with Box::leak.
           MIRIFLAGS: -Zmiri-ignore-leaks
-        # Two invocations: `cargo test` takes a single positional filter, so the
-        # reactor and the MPMC/task-group boundary are checked separately.
+        # `cargo test` takes a single positional filter, so each bounded async
+        # surface is checked separately.
         run: |
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::reactor_domain_linkage
       - name: address sanitizer smoke
         working-directory: core
         env:
