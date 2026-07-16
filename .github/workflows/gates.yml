@@ -180,9 +180,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.5.1"
+      - name: install pinned Arduino CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=/tmp/arduino-cli_1.5.1_Linux_64bit.tar.gz
+          curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
+            --output "$archive" \
+            https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Linux_64bit.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$archive" -C "$HOME/.local/bin" arduino-cli
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/arduino-cli" version | grep -F "Version: 1.5.1"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -225,9 +234,20 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.5.1"
+      - name: install pinned Arduino CLI
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "arduino-cli_1.5.1_Windows_64bit.zip"
+          $toolDir = Join-Path $env:RUNNER_TEMP "arduino-cli-1.5.1"
+          curl.exe --fail --location --retry 6 --retry-all-errors --retry-delay 10 `
+            --output $archive `
+            https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Windows_64bit.zip
+          if ($LASTEXITCODE -ne 0) { throw "Arduino CLI download failed" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
+          $binary = Join-Path $toolDir "arduino-cli.exe"
+          $version = & $binary version
+          if ($version -notmatch "Version: 1\.5\.1") { throw "unexpected Arduino CLI: $version" }
+          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
