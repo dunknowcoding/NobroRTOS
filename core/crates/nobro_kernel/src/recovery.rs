@@ -562,6 +562,26 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         }
     }
 
+    /// Initialize the coordinator directly in caller-owned storage.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized coordinator.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self, thresholds: FaultThresholds) {
+        Supervisor::init_default_in_place(
+            core::ptr::addr_of_mut!((*destination).supervisor),
+            thresholds,
+        );
+        core::ptr::addr_of_mut!((*destination).lifecycle).write(Lifecycle::new());
+        core::ptr::addr_of_mut!((*destination).storm_policy).write(RecoveryStormPolicy::DEFAULT);
+        let dispatches =
+            core::ptr::addr_of_mut!((*destination).dispatches).cast::<Option<FaultDispatch>>();
+        for index in 0..HEALTH_SLOTS {
+            dispatches.add(index).write(None);
+        }
+    }
+
     pub fn transition(&mut self, to: SystemState, now_us: u64) -> Result<(), RecoveryError> {
         let event = self
             .lifecycle
@@ -742,6 +762,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> Default
 mod tests {
     use super::*;
     use crate::{EventKind, EventPayload, EventRecord, EventSeverity, StartupGraph};
+    use core::mem::MaybeUninit;
 
     fn running_coordinator() -> RecoveryCoordinator<2, 12> {
         let mut recovery = RecoveryCoordinator::<2, 12>::new(FaultThresholds {
@@ -754,6 +775,45 @@ mod tests {
         recovery.transition(SystemState::InitDrivers, 20).unwrap();
         recovery.transition(SystemState::Running, 30).unwrap();
         recovery
+    }
+
+    #[test]
+    fn in_place_initialization_matches_the_const_constructor() {
+        let thresholds = FaultThresholds {
+            notify_after: 1,
+            reboot_after: 3,
+        };
+        let mut expected = RecoveryCoordinator::<2, 4>::new(thresholds);
+        let mut storage = MaybeUninit::<RecoveryCoordinator<2, 4>>::uninit();
+        unsafe {
+            RecoveryCoordinator::init_in_place(storage.as_mut_ptr(), thresholds);
+        }
+        let mut actual = unsafe { storage.assume_init() };
+
+        assert_eq!(actual.state(), expected.state());
+        assert_eq!(actual.events().len(), expected.events().len());
+        assert_eq!(actual.events().dropped(), expected.events().dropped());
+        for (state, now_us) in [
+            (SystemState::ValidateManifest, 10),
+            (SystemState::InitDrivers, 20),
+            (SystemState::Running, 30),
+        ] {
+            actual.transition(state, now_us).unwrap();
+            expected.transition(state, now_us).unwrap();
+        }
+        let actual_outcome = actual
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+        let expected_outcome = expected
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+
+        assert_eq!(actual_outcome, expected_outcome);
+        assert_eq!(
+            actual.snapshot(ModuleId::Sensor),
+            expected.snapshot(ModuleId::Sensor)
+        );
+        assert_eq!(actual.events().latest(), expected.events().latest());
     }
 
     #[test]

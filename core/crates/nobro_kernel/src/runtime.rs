@@ -561,8 +561,10 @@ impl<
         guard.mark(RuntimeInitStage::KvOwners);
         checkpoint(RuntimeInitStage::KvOwners)?;
 
-        core::ptr::addr_of_mut!((*destination).recovery)
-            .write(RecoveryCoordinator::new(thresholds));
+        RecoveryCoordinator::init_in_place(
+            core::ptr::addr_of_mut!((*destination).recovery),
+            thresholds,
+        );
         guard.mark(RuntimeInitStage::Recovery);
         checkpoint(RuntimeInitStage::Recovery)?;
 

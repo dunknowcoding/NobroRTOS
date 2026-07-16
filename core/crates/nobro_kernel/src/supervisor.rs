@@ -34,6 +34,22 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize> Supervisor<HEALTH_SLOTS,
         Self::new(thresholds, default_action)
     }
 
+    /// Initialize the default-policy supervisor directly in its final storage.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized supervisor.
+    pub(crate) unsafe fn init_default_in_place(
+        destination: *mut Self,
+        thresholds: FaultThresholds,
+    ) {
+        HealthMonitor::init_in_place(core::ptr::addr_of_mut!((*destination).health));
+        EventLog::init_in_place(core::ptr::addr_of_mut!((*destination).log));
+        core::ptr::addr_of_mut!((*destination).thresholds).write(thresholds);
+        core::ptr::addr_of_mut!((*destination).policy).write(default_action);
+    }
+
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
         self.health.record_ok(module, now_us);
     }

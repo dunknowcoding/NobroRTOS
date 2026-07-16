@@ -109,6 +109,20 @@ impl<const N: usize> HealthMonitor<N> {
         Self { slots: [None; N] }
     }
 
+    /// Initialize caller-owned storage without materializing the complete slot
+    /// array as a stack temporary.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `HealthMonitor<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let slots = core::ptr::addr_of_mut!((*destination).slots).cast::<Option<HealthSlot>>();
+        for index in 0..N {
+            slots.add(index).write(None);
+        }
+    }
+
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
         let Some(slot) = self.find_or_insert(module) else {
             return;

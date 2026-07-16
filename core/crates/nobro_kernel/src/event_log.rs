@@ -80,6 +80,24 @@ impl<const N: usize> EventLog<N> {
         }
     }
 
+    /// Initialize caller-owned storage without materializing the complete
+    /// record array as a stack temporary.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `EventLog<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let records = core::ptr::addr_of_mut!((*destination).records).cast::<Option<EventRecord>>();
+        for index in 0..N {
+            records.add(index).write(None);
+        }
+        core::ptr::addr_of_mut!((*destination).next).write(0);
+        core::ptr::addr_of_mut!((*destination).len).write(0);
+        core::ptr::addr_of_mut!((*destination).seq).write(0);
+        core::ptr::addr_of_mut!((*destination).dropped).write(0);
+    }
+
     pub fn push(&mut self, mut record: EventRecord) -> Option<EventRecord> {
         if N == 0 {
             self.dropped = self.dropped.saturating_add(1);
