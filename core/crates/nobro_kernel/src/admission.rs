@@ -75,6 +75,45 @@ impl AdmissionController {
         })
     }
 
+    /// Admit directly into caller-owned storage without constructing a second
+    /// capacity-sized [`AdmissionPlan`] aggregate.
+    ///
+    /// All fallible validation and table construction completes before any
+    /// destination field is written, so `Err` leaves `destination`
+    /// uninitialized. On `Ok`, every field is initialized.
+    pub(crate) unsafe fn admit_in_place<
+        const MODULES: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+    >(
+        destination: *mut AdmissionPlan<STARTUP, QUOTAS>,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+    ) -> Result<usize, AdmissionError> {
+        manifest
+            .validate_profile(profile)
+            .map_err(AdmissionError::Manifest)?;
+        Self::validate_startup_coverage(manifest, startup_nodes)?;
+
+        let startup =
+            StartupPlanner::plan::<STARTUP>(startup_nodes).map_err(AdmissionError::Startup)?;
+        let mut quotas = QuotaLedger::<QUOTAS>::new();
+        quotas
+            .register_manifest(manifest)
+            .map_err(AdmissionError::Quota)?;
+        let grants = CapabilityGrantTable::<QUOTAS>::from_manifest(manifest)
+            .map_err(AdmissionError::Capability)?;
+        let module_count = startup.len;
+
+        core::ptr::addr_of_mut!((*destination).startup).write(startup);
+        core::ptr::addr_of_mut!((*destination).quotas).write(quotas);
+        core::ptr::addr_of_mut!((*destination).grants).write(grants);
+        core::ptr::addr_of_mut!((*destination).used).write(manifest.total_budget());
+        core::ptr::addr_of_mut!((*destination).profile).write(profile);
+        Ok(module_count)
+    }
+
     pub fn admit_graph<
         const MODULES: usize,
         const GRAPH: usize,
@@ -226,6 +265,7 @@ mod tests {
         kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
         DependencySet, FaultThresholds, MemoryBudget, ModuleSpec,
     };
+    use core::mem::MaybeUninit;
 
     fn profile() -> SystemProfile {
         SystemProfile {
@@ -284,6 +324,40 @@ mod tests {
             Some(SystemBudget::new(8 * 1024, 2 * 1024, 2))
         );
         assert_eq!(plan.used, SystemBudget::new(24 * 1024, 6 * 1024, 6));
+    }
+
+    #[test]
+    fn in_place_admission_matches_the_by_value_plan() {
+        let manifest = valid_manifest();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+        ];
+        let expected =
+            AdmissionController::admit::<4, 4, 4>(&manifest, &startup, profile()).unwrap();
+        let mut destination = MaybeUninit::<AdmissionPlan<4, 4>>::uninit();
+        let count = unsafe {
+            AdmissionController::admit_in_place::<4, 4, 4>(
+                destination.as_mut_ptr(),
+                &manifest,
+                &startup,
+                profile(),
+            )
+        }
+        .unwrap();
+        let actual = unsafe { destination.assume_init() };
+
+        assert_eq!(count, expected.module_count());
+        assert_eq!(actual.startup, expected.startup);
+        assert_eq!(actual.used, expected.used);
+        assert_eq!(actual.profile, expected.profile);
+        for module in [ModuleId::Kernel, ModuleId::Sensor] {
+            assert_eq!(actual.quotas.limit(module), expected.quotas.limit(module));
+            assert_eq!(
+                actual.grants.granted(module),
+                expected.grants.granted(module)
+            );
+        }
     }
 
     #[test]

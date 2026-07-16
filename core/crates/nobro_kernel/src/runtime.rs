@@ -517,15 +517,23 @@ impl<
         checkpoint: &mut impl FnMut(RuntimeInitStage) -> Result<(), RuntimeError>,
         #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
     ) -> Result<(), RuntimeError> {
-        let plan = AdmissionController::admit::<MODULES, STARTUP, QUOTAS>(
+        let plan = core::ptr::addr_of_mut!((*destination).plan);
+        let module_count = AdmissionController::admit_in_place::<MODULES, STARTUP, QUOTAS>(
+            plan,
             manifest,
             startup_nodes,
             profile,
         )?;
         // Preserve `Runtime::admit` error precedence: admission is observable
         // before the `from_plan` threshold and capacity checks.
-        thresholds.validate()?;
-        Self::validate_capacities(plan.module_count())?;
+        if let Err(error) = thresholds.validate() {
+            core::ptr::drop_in_place(plan);
+            return Err(error.into());
+        }
+        if let Err(error) = Self::validate_capacities(module_count) {
+            core::ptr::drop_in_place(plan);
+            return Err(error.into());
+        }
 
         let mut guard = RuntimeInitGuard::new(
             destination,
@@ -533,7 +541,6 @@ impl<
             cleanup_mask,
         );
 
-        core::ptr::addr_of_mut!((*destination).plan).write(plan);
         guard.mark(RuntimeInitStage::Plan);
         checkpoint(RuntimeInitStage::Plan)?;
 

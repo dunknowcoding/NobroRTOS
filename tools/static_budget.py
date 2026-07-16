@@ -59,7 +59,7 @@ def run_external_tool(cmd: list[str], what: str) -> str:
 SYM_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 PUSH_RE = re.compile(r"\bpush(?:\.w)?\s+\{([^}]*)\}")
 VPUSH_RE = re.compile(r"\bvpush\s+\{([^}]*)\}")
-SUBSP_RE = re.compile(r"\bsub(?:\.w)?\s+sp,(?:\s*sp,)?\s*#(\d+)")
+SUBSP_RE = re.compile(r"\b(?:sub(?:\.w)?|subw)\s+sp,(?:\s*sp,)?\s*#(\d+)")
 CALL_RE = re.compile(r"\bbl(?:\.w)?\s+[0-9a-f]+ <([^>+]+)(?:\+0x[0-9a-f]+)?>")
 TAILCALL_RE = re.compile(r"\bb(?:\.w)?\s+[0-9a-f]+ <([^>+]+)(?:\+0x[0-9a-f]+)?>")
 INDIRECT_RE = re.compile(r"\bblx\s+r\d+")
@@ -101,6 +101,8 @@ def normalize_mnemonic(op: str) -> str:
     for suffix in (".w", ".n"):
         if op.endswith(suffix):
             return op[: -len(suffix)]
+    if op in ("addw", "subw"):
+        return op[:-1]
     return op
 
 
@@ -250,6 +252,7 @@ def run_selftest() -> int:
    0: push {r4, lr}
    2: sub sp, #8
    4: bl 00000010 <foo>
+   6: subw sp, sp, #2568
    8: pop {r4, pc}
 00000010 <foo>:
   10: push {lr}
@@ -262,9 +265,9 @@ def run_selftest() -> int:
     frames, cycles, calls, indirect, loops, unknown = analyze_disassembly(sample)
     stack_worst, stack_path, recursive = deepest_path(frames, calls)
     cycle_worst, cycle_path, _ = deepest_path(cycles, calls)
-    assert frames["main"] == 16
+    assert frames["main"] == 2584
     assert frames["foo"] == 4
-    assert stack_worst == 20
+    assert stack_worst == 2588
     assert stack_path[:2] == ["main", "foo"]
     assert cycle_worst >= 29
     assert cycle_path[:2] == ["main", "foo"]

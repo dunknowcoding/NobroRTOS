@@ -272,6 +272,7 @@ impl NrfUsbdCdc {
         }
     }
 
+    #[inline(never)]
     unsafe fn initialize(&mut self) -> StartAttempt {
         let start = peripheral_clean_start();
         if start != StartAttempt::Ready {
@@ -289,26 +290,28 @@ impl NrfUsbdCdc {
                 Usbd::new(Nrf52840Usbd),
             )));
             let alloc: &'static UsbBusAllocator<Bus> = &*(*core::ptr::addr_of!(ALLOC)).as_ptr();
-            let serial = SerialPort::new(alloc);
+            // Publish the class before constructing the larger device object so
+            // both capacity-sized values never coexist in the startup frame.
+            self.serial = Some(SerialPort::new(alloc));
             let strings = StringDescriptors::default()
                 .manufacturer(cfg.manufacturer)
                 .product(cfg.product)
                 .serial_number(cfg.serial);
-            let dev = UsbDeviceBuilder::new(alloc, UsbVidPid(cfg.vid, cfg.pid))
-                .strings(&[strings])
-                .unwrap()
-                .device_class(usbd_serial::USB_CLASS_CDC)
-                // nRF52840 implements a 64-byte control endpoint. The 8-byte
-                // usb-device default splits the 18-byte device descriptor across the
-                // driver's multi-packet EP0 path and makes firmware-stage handoff more
-                // fragile than the controller-native packet size.
-                // Do not remove this just because 8 is USB-spec legal: this is a
-                // controller/driver integration constraint, not a descriptor preference.
-                .max_packet_size_0(NRF_EP0_MAX_PACKET_SIZE)
-                .unwrap()
-                .build();
-            self.serial = Some(serial);
-            self.dev = Some(dev);
+            self.dev = Some(
+                UsbDeviceBuilder::new(alloc, UsbVidPid(cfg.vid, cfg.pid))
+                    .strings(&[strings])
+                    .unwrap()
+                    .device_class(usbd_serial::USB_CLASS_CDC)
+                    // nRF52840 implements a 64-byte control endpoint. The 8-byte
+                    // usb-device default splits the 18-byte device descriptor across the
+                    // driver's multi-packet EP0 path and makes firmware-stage handoff more
+                    // fragile than the controller-native packet size.
+                    // Do not remove this just because 8 is USB-spec legal: this is a
+                    // controller/driver integration constraint, not a descriptor preference.
+                    .max_packet_size_0(NRF_EP0_MAX_PACKET_SIZE)
+                    .unwrap()
+                    .build(),
+            );
         }
         self.fault = reported_driver_fault();
         StartAttempt::Ready
