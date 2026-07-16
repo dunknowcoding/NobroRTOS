@@ -55,6 +55,20 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         Self { entries: [None; N] }
     }
 
+    /// Initialize caller-owned storage without a capacity-sized array copy.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `ModuleRuntimeGuard<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let entries =
+            core::ptr::addr_of_mut!((*destination).entries).cast::<Option<ModuleRuntimeEntry>>();
+        for index in 0..N {
+            entries.add(index).write(None);
+        }
+    }
+
     pub fn try_from_startup_plan<const STARTUP: usize>(
         plan: &StartupPlan<STARTUP>,
     ) -> Result<Self, ModuleRuntimeError> {
@@ -280,6 +294,19 @@ impl<const N: usize> Default for ModuleRuntimeGuard<N> {
 mod tests {
     use super::*;
     use crate::{KernelError, RecoveryOutcome, SystemState};
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let expected = ModuleRuntimeGuard::<6>::new();
+        let mut storage = core::mem::MaybeUninit::<ModuleRuntimeGuard<6>>::uninit();
+
+        unsafe {
+            ModuleRuntimeGuard::init_in_place(storage.as_mut_ptr());
+        }
+        let actual = unsafe { storage.assume_init_ref() };
+
+        assert_eq!(actual.entries, expected.entries);
+    }
 
     #[test]
     fn guard_registers_and_tracks_power_style_states() {

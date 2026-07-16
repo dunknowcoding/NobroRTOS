@@ -531,7 +531,7 @@ impl<
             guard.mark(ExecutorInitStage::Runtime);
             checkpoint(ExecutorInitStage::Runtime)?;
 
-            core::ptr::addr_of_mut!((*destination).tasks).write(TaskTable::new());
+            TaskTable::init_in_place(core::ptr::addr_of_mut!((*destination).tasks));
             guard.mark(ExecutorInitStage::Tasks);
             checkpoint(ExecutorInitStage::Tasks)?;
 

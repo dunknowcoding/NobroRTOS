@@ -731,7 +731,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
     ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
         let out = destination.as_mut_ptr();
         unsafe {
-            core::ptr::addr_of_mut!((*out).manifest).write(SystemManifest::<MODULES>::new());
+            SystemManifest::<MODULES>::init_in_place(core::ptr::addr_of_mut!((*out).manifest));
             core::ptr::addr_of_mut!((*out).startup).write([StartupNode::EMPTY; MODULES]);
             core::ptr::addr_of_mut!((*out).startup_len).write(0);
             core::ptr::addr_of_mut!((*out).tasks).write([None; TASKS]);
@@ -948,6 +948,10 @@ impl<'a> GraphSpec<'a> {
         clippy::too_many_arguments,
         reason = "the const capacities are inferred from the cell; callers provide only startup policy"
     )]
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "the one-shot executor cell atomically proves unique mutable ownership"
+    )]
     pub fn start_executor<
         const TASKS: usize,
         const STARTUP: usize,
@@ -968,14 +972,18 @@ impl<'a> GraphSpec<'a> {
         &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         GraphStartError,
     > {
-        let mut manifest = SystemManifest::<STARTUP>::new();
+        let mut manifest_storage = MaybeUninit::<SystemManifest<STARTUP>>::uninit();
+        unsafe {
+            SystemManifest::init_in_place(manifest_storage.as_mut_ptr());
+        }
+        let manifest = unsafe { manifest_storage.assume_init_mut() };
         let mut startup = [StartupNode::EMPTY; STARTUP];
         let startup_len = AppGraph::<TASKS>::build_core_into(
             self.tasks,
             self.channels,
             self.kernel_memory,
             self.kernel_deadline,
-            &mut manifest,
+            manifest,
             &mut startup,
         )?;
         manifest
@@ -985,7 +993,7 @@ impl<'a> GraphSpec<'a> {
                 error,
             })?;
         let executor = cell.init_admitted(
-            &manifest,
+            manifest,
             &startup[..startup_len],
             profile,
             thresholds,

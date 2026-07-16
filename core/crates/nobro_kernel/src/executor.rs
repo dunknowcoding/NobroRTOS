@@ -178,6 +178,29 @@ impl<const N: usize> TaskTable<N> {
         }
     }
 
+    /// Initialize caller-owned storage without capacity-sized array copies.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `TaskTable<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let slots = core::ptr::addr_of_mut!((*destination).slots).cast::<Option<TaskSlot>>();
+        let release_next = core::ptr::addr_of_mut!((*destination).release_next).cast::<u8>();
+        let ready_next = core::ptr::addr_of_mut!((*destination).ready_next).cast::<u8>();
+        for index in 0..N {
+            slots.add(index).write(None);
+            release_next.add(index).write(READY_NONE);
+            ready_next.add(index).write(READY_NONE);
+        }
+        core::ptr::addr_of_mut!((*destination).len).write(0);
+        core::ptr::addr_of_mut!((*destination).release_head).write(READY_NONE);
+        core::ptr::addr_of_mut!((*destination).ready_members).write(0);
+        core::ptr::addr_of_mut!((*destination).ready_criticalities).write(0);
+        core::ptr::addr_of_mut!((*destination).ready_head).write([READY_NONE; CRITICALITY_LEVELS]);
+        core::ptr::addr_of_mut!((*destination).ready_tail).write([READY_NONE; CRITICALITY_LEVELS]);
+    }
+
     pub fn add(&mut self, meta: TaskMeta, now_us: u64) -> Result<(), TaskTableError> {
         if N > u32::BITS as usize || usize::from(self.len) >= u32::BITS as usize {
             return Err(TaskTableError::ReadyMaskCapacity);
@@ -806,6 +829,27 @@ impl Task for StatsTask {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let expected = TaskTable::<5>::new();
+        let mut storage = core::mem::MaybeUninit::<TaskTable<5>>::uninit();
+
+        unsafe {
+            TaskTable::init_in_place(storage.as_mut_ptr());
+        }
+        let actual = unsafe { storage.assume_init_ref() };
+
+        assert_eq!(actual.slots, expected.slots);
+        assert_eq!(actual.len, expected.len);
+        assert_eq!(actual.release_head, expected.release_head);
+        assert_eq!(actual.release_next, expected.release_next);
+        assert_eq!(actual.ready_members, expected.ready_members);
+        assert_eq!(actual.ready_criticalities, expected.ready_criticalities);
+        assert_eq!(actual.ready_head, expected.ready_head);
+        assert_eq!(actual.ready_tail, expected.ready_tail);
+        assert_eq!(actual.ready_next, expected.ready_next);
+    }
 
     #[test]
     fn due_index_prefers_higher_criticality() {

@@ -42,6 +42,20 @@ impl<const N: usize> Watchdog<N> {
         Self { entries: [None; N] }
     }
 
+    /// Initialize caller-owned storage without a capacity-sized array copy.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `Watchdog<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let entries =
+            core::ptr::addr_of_mut!((*destination).entries).cast::<Option<WatchdogEntry>>();
+        for index in 0..N {
+            entries.add(index).write(None);
+        }
+    }
+
     pub fn register(
         &mut self,
         module: ModuleId,
@@ -158,6 +172,19 @@ impl<const N: usize> Default for Watchdog<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let expected = Watchdog::<6>::new();
+        let mut storage = core::mem::MaybeUninit::<Watchdog<6>>::uninit();
+
+        unsafe {
+            Watchdog::init_in_place(storage.as_mut_ptr());
+        }
+        let actual = unsafe { storage.assume_init_ref() };
+
+        assert_eq!(actual.entries, expected.entries);
+    }
 
     #[test]
     fn watchdog_reports_expired_modules() {

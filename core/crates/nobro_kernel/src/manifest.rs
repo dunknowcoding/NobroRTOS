@@ -544,6 +544,19 @@ impl<const N: usize> SystemManifest<N> {
         Self { modules: [None; N] }
     }
 
+    /// Initialize caller-owned storage without a capacity-sized array copy.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `SystemManifest<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let modules = core::ptr::addr_of_mut!((*destination).modules).cast::<Option<ModuleSpec>>();
+        for index in 0..N {
+            modules.add(index).write(None);
+        }
+    }
+
     pub fn from_specs(specs: &[ModuleSpec]) -> Result<Self, ManifestError> {
         let mut manifest = Self::new();
         for spec in specs {
@@ -977,6 +990,19 @@ pub const fn module_code(module: ModuleId) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let expected = SystemManifest::<6>::new();
+        let mut storage = core::mem::MaybeUninit::<SystemManifest<6>>::uninit();
+
+        unsafe {
+            SystemManifest::init_in_place(storage.as_mut_ptr());
+        }
+        let actual = unsafe { storage.assume_init_ref() };
+
+        assert_eq!(actual.modules, expected.modules);
+    }
 
     fn kernel_spec() -> ModuleSpec {
         kernel_module_spec(

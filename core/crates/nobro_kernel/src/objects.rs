@@ -55,7 +55,7 @@ impl ObjectUsage {
     };
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ObjectEntry {
     module: ModuleId,
     quota: ObjectQuota,
@@ -71,6 +71,19 @@ pub struct ObjectLedger<const N: usize> {
 impl<const N: usize> ObjectLedger<N> {
     pub const fn new() -> Self {
         Self { entries: [None; N] }
+    }
+
+    /// Initialize caller-owned storage without a capacity-sized array copy.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be valid, aligned, writable storage for one
+    /// uninitialized `ObjectLedger<N>`.
+    pub(crate) unsafe fn init_in_place(destination: *mut Self) {
+        let entries = core::ptr::addr_of_mut!((*destination).entries).cast::<Option<ObjectEntry>>();
+        for index in 0..N {
+            entries.add(index).write(None);
+        }
     }
 
     pub fn register(&mut self, module: ModuleId, quota: ObjectQuota) {
@@ -187,6 +200,19 @@ impl<const N: usize> Default for ObjectLedger<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let expected = ObjectLedger::<6>::new();
+        let mut storage = core::mem::MaybeUninit::<ObjectLedger<6>>::uninit();
+
+        unsafe {
+            ObjectLedger::init_in_place(storage.as_mut_ptr());
+        }
+        let actual = unsafe { storage.assume_init_ref() };
+
+        assert_eq!(actual.entries, expected.entries);
+    }
 
     #[test]
     fn ledger_charges_to_the_limit_then_rejects() {

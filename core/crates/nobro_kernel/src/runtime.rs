@@ -568,18 +568,18 @@ impl<
         guard.mark(RuntimeInitStage::Recovery);
         checkpoint(RuntimeInitStage::Recovery)?;
 
-        core::ptr::addr_of_mut!((*destination).watchdog).write(Watchdog::new());
+        Watchdog::init_in_place(core::ptr::addr_of_mut!((*destination).watchdog));
         guard.mark(RuntimeInitStage::Watchdog);
         checkpoint(RuntimeInitStage::Watchdog)?;
 
-        core::ptr::addr_of_mut!((*destination).modules).write(ModuleRuntimeGuard::new());
+        ModuleRuntimeGuard::init_in_place(core::ptr::addr_of_mut!((*destination).modules));
         guard.mark(RuntimeInitStage::Modules);
         let startup = core::ptr::addr_of!((*destination).plan.startup);
         (&mut *core::ptr::addr_of_mut!((*destination).modules))
             .register_startup_plan(&*startup, 0)?;
         checkpoint(RuntimeInitStage::Modules)?;
 
-        core::ptr::addr_of_mut!((*destination).objects).write(ObjectLedger::new());
+        ObjectLedger::init_in_place(core::ptr::addr_of_mut!((*destination).objects));
         guard.mark(RuntimeInitStage::Objects);
         let objects = &mut *core::ptr::addr_of_mut!((*destination).objects);
         for module in (*startup).order.iter().flatten() {
