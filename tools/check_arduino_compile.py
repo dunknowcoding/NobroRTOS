@@ -15,13 +15,38 @@ EXPECTED_EXAMPLES = (
     "ReportReader",
     "RobotIoTApp",
 )
-FQBNS = [
-    fqbn.strip()
-    for fqbn in os.environ.get(
-        "NOBRO_ARDUINO_FQBNS",
-        "arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3,arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled",
-    ).split(",")
-]
+DEFAULT_FQBNS = (
+    "arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3,"
+    "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+)
+
+
+def split_fqbns(value):
+    """Split board lists without breaking Arduino option lists.
+
+    Arduino FQBNs use commas inside the optional board-option suffix, for
+    example ``pkg:arch:board:bootloader=nicenano,usbcdc=enabled``.  The CI
+    environment historically also used commas between boards, so a plain
+    ``str.split(",")`` incorrectly turns the second option into a fake FQBN.
+
+    Keep the legacy comma-separated board list, but treat comma tokens without
+    the required ``package:architecture:board`` prefix as continuations of the
+    previous FQBN.  Semicolons are also accepted as an unambiguous separator for
+    future multi-option lists.
+    """
+    groups = value.split(";") if ";" in value else value.split(",")
+    fqbns = []
+    for token in (part.strip() for part in groups):
+        if not token:
+            continue
+        if token.count(":") >= 2 or not fqbns:
+            fqbns.append(token)
+        else:
+            fqbns[-1] = f"{fqbns[-1]},{token}"
+    return fqbns
+
+
+FQBNS = split_fqbns(os.environ.get("NOBRO_ARDUINO_FQBNS", DEFAULT_FQBNS))
 
 
 def configuration_error(fqbns, examples):
