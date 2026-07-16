@@ -175,22 +175,21 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
         let mut stats = ReactorStats::default();
         let mut budget = fuel;
         loop {
-            let batch = self.core.ready.fetch_and(0, Ordering::AcqRel);
+            let mut batch = self.core.ready.fetch_and(0, Ordering::AcqRel);
             if batch == 0 {
                 break;
             }
-            for index in 0..N {
-                if batch & (1 << index) == 0 {
-                    continue;
-                }
+            while batch != 0 {
+                let ready_bit = batch & batch.wrapping_neg();
+                let index = ready_bit.trailing_zeros() as usize;
                 if budget == 0 {
                     // Preserve this bit and the batch's un-polled remainder.
-                    let unpolled = batch & (!0u32 << index);
-                    self.core.ready.fetch_or(unpolled, Ordering::AcqRel);
+                    self.core.ready.fetch_or(batch, Ordering::AcqRel);
                     stats.fuel_exhausted = true;
                     stats.live = self.count as u32;
                     return stats;
                 }
+                batch &= !ready_bit;
                 let Some(slot) = self.slots[index].as_mut() else {
                     continue;
                 };
@@ -1073,6 +1072,59 @@ mod tests {
         assert!(stats.fuel_exhausted);
         assert!(exec.has_ready()); // still parked-ready, never lost
         assert_eq!(stats.live, 1);
+    }
+
+    #[test]
+    fn sparse_ready_bits_preserve_unpolled_fuel_remainder() {
+        static POLLS: [portable_atomic::AtomicU32; 8] =
+            [const { portable_atomic::AtomicU32::new(0) }; 8];
+        for polls in &POLLS {
+            polls.store(0, Ordering::Relaxed);
+        }
+
+        struct Counting {
+            index: usize,
+        }
+        impl Future for Counting {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                POLLS[self.index].fetch_add(1, Ordering::Relaxed);
+                Poll::Pending
+            }
+        }
+
+        let core = leak_core::<8>();
+        let mut exec = ReactorExecutor::bind(core);
+        let task0 = pin!(Counting { index: 0 });
+        let task1 = pin!(Counting { index: 1 });
+        let task2 = pin!(Counting { index: 2 });
+        let task3 = pin!(Counting { index: 3 });
+        let task4 = pin!(Counting { index: 4 });
+        let task5 = pin!(Counting { index: 5 });
+        let task6 = pin!(Counting { index: 6 });
+        let task7 = pin!(Counting { index: 7 });
+        exec.spawn(task0).unwrap();
+        exec.spawn(task1).unwrap();
+        exec.spawn(task2).unwrap();
+        exec.spawn(task3).unwrap();
+        exec.spawn(task4).unwrap();
+        exec.spawn(task5).unwrap();
+        exec.spawn(task6).unwrap();
+        exec.spawn(task7).unwrap();
+        assert_eq!(exec.run_ready(8).polled, 8);
+
+        core.waker_for(7).wake_by_ref();
+        core.waker_for(3).wake_by_ref();
+        let first = exec.run_ready(1);
+        assert_eq!(first.polled, 1);
+        assert!(first.fuel_exhausted);
+        assert_eq!(POLLS[3].load(Ordering::Relaxed), 2);
+        assert_eq!(POLLS[7].load(Ordering::Relaxed), 1);
+
+        let second = exec.run_ready(1);
+        assert_eq!(second.polled, 1);
+        assert!(!second.fuel_exhausted);
+        assert_eq!(POLLS[7].load(Ordering::Relaxed), 2);
     }
 
     #[test]
