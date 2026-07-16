@@ -97,8 +97,8 @@ pub use foreign_host::{
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
 pub use graph::{
-    AppGraph, BuiltGraph, GraphError, GraphReactorAdmission, GraphReactorError, ReactorTaskBinding,
-    TaskDecl,
+    AppGraph, BuiltGraph, ChannelDecl, GraphError, GraphReactorAdmission, GraphReactorError,
+    GraphSpec, ReactorTaskBinding, TaskDecl,
 };
 pub use health::{
     FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,

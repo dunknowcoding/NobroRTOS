@@ -376,6 +376,10 @@ Fault handling is intentionally small:
   deadline. The release queue uses phase to avoid unnecessary bursts, while
   shared admission deliberately keeps pessimistic interference instead of
   treating offsets as free schedulability headroom.
+- `AppGraph` is the fluent graph-authoring path. `GraphSpec` borrows const/static
+  `TaskDecl` and `ChannelDecl` slices for firmware that cannot afford a
+  capacity-sized graph builder on the startup stack; both paths expand through
+  the same manifest/startup/profile validation.
 - Opt-in P-ISR admission prices bounded interrupt execution, platform-reserved
   priorities, higher-priority interference, and nested exception-stack use.
   `InterruptHandoff` limits ISR work to lock-free ready/event publication.

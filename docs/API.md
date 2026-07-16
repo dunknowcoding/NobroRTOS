@@ -361,6 +361,32 @@ let motor = nobro_kernel::TaskDecl::control("motor", 5_000)
     .budget_us(400);
 ```
 
+The fluent `AppGraph` builder remains the concise default. Firmware whose
+startup stack must not scale with graph capacity can put the same declarations
+in read-only storage and borrow them through `GraphSpec`:
+
+```rust
+use core::mem::MaybeUninit;
+use nobro_kernel::{BuiltGraph, ChannelDecl, GraphSpec, TaskDecl};
+
+const TASKS: [TaskDecl; 2] = [
+    TaskDecl::periodic("imu", 10_000),
+    TaskDecl::control("motor", 20_000).after("imu"),
+];
+const CHANNELS: [ChannelDecl; 1] = [ChannelDecl::new("imu", "motor")];
+
+static mut BUILT: MaybeUninit<BuiltGraph<3, 2>> = MaybeUninit::uninit();
+
+let built = GraphSpec::new(&TASKS, &CHANNELS).build_for_into::<3, 2>(
+    nobro_kernel::SystemProfile::NRF52840_CORE,
+    unsafe { &mut *core::ptr::addr_of_mut!(BUILT) },
+)?;
+```
+
+`GraphSpec` uses the same duplicate-name, dependency, channel, manifest,
+startup-cycle, and profile validation as `AppGraph`; it changes storage
+placement, not admission semantics.
+
 The same values reach the manifest, shared build/runtime admission core, and
 executor. Invalid phase uses stable diagnostic `NOBRO-E015`. Periods are
 limited to `MAX_WRAP_SAFE_INTERVAL_US` (`0x7fff_ffff` us) because Nano's

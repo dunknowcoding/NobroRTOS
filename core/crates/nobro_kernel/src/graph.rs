@@ -41,6 +41,15 @@ use core::mem::MaybeUninit;
 
 const MAX_DEPS: usize = 4;
 
+const fn clamp_nonzero(value: u32, upper: u32) -> u32 {
+    let value = if value < 1 { 1 } else { value };
+    if value > upper {
+        upper
+    } else {
+        value
+    }
+}
+
 /// One task declaration; construct through the typed builders.
 #[derive(Clone, Copy, Debug)]
 pub struct TaskDecl {
@@ -72,16 +81,36 @@ pub struct TaskDecl {
 }
 
 impl TaskDecl {
-    fn base(name: &'static str, criticality: Criticality, period_us: u32) -> Self {
+    const EMPTY: Self = Self {
+        name: "",
+        criticality: Criticality::BestEffort,
+        phase_us: 0,
+        period_us: 0,
+        deadline_us: 0,
+        max_jitter_us: 0,
+        execution_budget_us: 0,
+        blocking_us: 0,
+        memory: MemoryBudget::ZERO,
+        objects: ObjectQuota::DEFAULT,
+        requires: CapabilitySet::empty(),
+        owns: CapabilitySet::empty(),
+        role: None,
+        has_deadline: false,
+        core_affinity: None,
+        reactor_domain: None,
+        after: [None; MAX_DEPS],
+    };
+
+    const fn base(name: &'static str, criticality: Criticality, period_us: u32) -> Self {
         let max_jitter_us = if period_us <= 1 {
             0
         } else {
-            (period_us / 100).max(1).min(period_us - 1)
+            clamp_nonzero(period_us / 100, period_us - 1)
         };
         let execution_budget_us = if period_us == 0 {
             1
         } else {
-            (period_us / 10).max(1).min(period_us)
+            clamp_nonzero(period_us / 10, period_us)
         };
         Self {
             name,
@@ -105,23 +134,23 @@ impl TaskDecl {
     }
 
     /// A periodic worker with safe defaults (driver criticality).
-    pub fn periodic(name: &'static str, period_us: u32) -> Self {
+    pub const fn periodic(name: &'static str, period_us: u32) -> Self {
         Self::base(name, Criticality::Driver, period_us)
     }
 
     /// A hard-real-time control task: tighter default jitter.
-    pub fn control(name: &'static str, period_us: u32) -> Self {
+    pub const fn control(name: &'static str, period_us: u32) -> Self {
         let mut decl = Self::base(name, Criticality::HardRealtime, period_us);
         decl.max_jitter_us = if period_us <= 1 {
             0
         } else {
-            (period_us / 200).max(1).min(period_us - 1)
+            clamp_nonzero(period_us / 200, period_us - 1)
         };
         decl
     }
 
     /// Best-effort background service polled at `poll_us`; no deadline contract.
-    pub fn service(name: &'static str, poll_us: u32) -> Self {
+    pub const fn service(name: &'static str, poll_us: u32) -> Self {
         let mut decl = Self::base(name, Criticality::BestEffort, poll_us);
         decl.has_deadline = false;
         decl
@@ -204,16 +233,34 @@ impl TaskDecl {
     }
 
     /// Start this task after `name` (startup ordering, by label).
-    pub fn after(mut self, name: &'static str) -> Self {
-        for slot in self.after.iter_mut() {
-            if slot.is_none() {
-                *slot = Some(name);
+    pub const fn after(mut self, name: &'static str) -> Self {
+        let mut index = 0;
+        while index < MAX_DEPS {
+            if self.after[index].is_none() {
+                self.after[index] = Some(name);
                 return self;
             }
+            index += 1;
         }
         // Too many edges is reported at build() with the task's name.
         self.after[MAX_DEPS - 1] = Some("\0too-many");
         self
+    }
+}
+
+/// One named graph channel. Keep these in a `const` slice with task
+/// declarations when startup stack must stay independent of graph capacity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChannelDecl {
+    pub from: &'static str,
+    pub to: &'static str,
+}
+
+impl ChannelDecl {
+    const EMPTY: Self = Self { from: "", to: "" };
+
+    pub const fn new(from: &'static str, to: &'static str) -> Self {
+        Self { from, to }
     }
 }
 
@@ -384,9 +431,9 @@ impl<const MODULES: usize, const TASKS: usize> BuiltGraph<MODULES, TASKS> {
 }
 
 pub struct AppGraph<const TASKS: usize> {
-    tasks: [Option<TaskDecl>; TASKS],
+    tasks: [TaskDecl; TASKS],
     len: usize,
-    channels: [Option<(&'static str, &'static str)>; TASKS],
+    channels: [ChannelDecl; TASKS],
     channel_len: usize,
     kernel_memory: MemoryBudget,
     kernel_deadline: DeadlineContract,
@@ -395,9 +442,9 @@ pub struct AppGraph<const TASKS: usize> {
 impl<const TASKS: usize> AppGraph<TASKS> {
     pub fn new() -> Self {
         Self {
-            tasks: [None; TASKS],
+            tasks: [TaskDecl::EMPTY; TASKS],
             len: 0,
-            channels: [None; TASKS],
+            channels: [ChannelDecl::EMPTY; TASKS],
             channel_len: 0,
             kernel_memory: MemoryBudget::new(8 * 1024, 2 * 1024, 1),
             kernel_deadline: DeadlineContract::new(20_000, 100),
@@ -412,19 +459,19 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
     /// The declared tasks (for placement planning and inspection).
     pub fn task_decls(&self) -> impl Iterator<Item = &TaskDecl> + '_ {
-        self.tasks.iter().flatten()
+        self.tasks[..self.len].iter()
     }
 
     /// The declared channels as `(from, to)` label pairs.
     pub fn channel_pairs(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
-        self.channels.iter().flatten().copied()
+        self.channels[..self.channel_len]
+            .iter()
+            .map(|channel| (channel.from, channel.to))
     }
 
     pub fn task(mut self, decl: TaskDecl) -> Result<Self, GraphError> {
-        if self
-            .tasks
+        if self.tasks[..self.len]
             .iter()
-            .flatten()
             .any(|existing| existing.name == decl.name)
         {
             return Err(GraphError::DuplicateName(decl.name));
@@ -435,7 +482,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         if self.len == TASKS {
             return Err(GraphError::TooManyTasks { capacity: TASKS });
         }
-        self.tasks[self.len] = Some(decl);
+        self.tasks[self.len] = decl;
         self.len += 1;
         Ok(self)
     }
@@ -445,10 +492,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
     /// kernel), instead of a second hand-written declaration.
     pub fn channel(mut self, from: &'static str, to: &'static str) -> Result<Self, GraphError> {
         for endpoint in [from, to] {
-            if !self
-                .tasks
+            if !self.tasks[..self.len]
                 .iter()
-                .flatten()
                 .any(|task| task.name == endpoint)
             {
                 return Err(GraphError::ChannelEndpointUnknown { endpoint });
@@ -457,15 +502,13 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         if self.channel_len == TASKS {
             return Err(GraphError::TooManyChannels);
         }
-        self.channels[self.channel_len] = Some((from, to));
+        self.channels[self.channel_len] = ChannelDecl::new(from, to);
         self.channel_len += 1;
         Ok(self)
     }
 
-    fn decl_index(&self, name: &str) -> Option<usize> {
-        self.tasks[..self.len]
-            .iter()
-            .position(|task| task.map(|task| task.name == name).unwrap_or(false))
+    fn decl_index_in(tasks: &[TaskDecl], name: &str) -> Option<usize> {
+        tasks.iter().position(|task| task.name == name)
     }
 
     /// Expand the declarations into caller-provided storage.
@@ -480,8 +523,41 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         &self,
         destination: &'a mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
     ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
-        if self.len + 1 > MODULES {
+        Self::build_parts_into(
+            &self.tasks[..self.len],
+            &self.channels[..self.channel_len],
+            self.kernel_memory,
+            self.kernel_deadline,
+            destination,
+        )
+    }
+
+    fn build_parts_into<'a, const MODULES: usize>(
+        tasks: &[TaskDecl],
+        channels: &[ChannelDecl],
+        kernel_memory: MemoryBudget,
+        kernel_deadline: DeadlineContract,
+        destination: &'a mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
+    ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
+        if tasks.len() > TASKS {
+            return Err(GraphError::TooManyTasks { capacity: TASKS });
+        }
+        if tasks.len() + 1 > MODULES {
             return Err(GraphError::TooManyTasks { capacity: MODULES });
+        }
+        if channels.len() > TASKS {
+            return Err(GraphError::TooManyChannels);
+        }
+        for (index, task) in tasks.iter().enumerate() {
+            if task.after.iter().flatten().any(|dep| *dep == "\0too-many") {
+                return Err(GraphError::TooManyDependencies { task: task.name });
+            }
+            if tasks[..index]
+                .iter()
+                .any(|existing| existing.name == task.name)
+            {
+                return Err(GraphError::DuplicateName(task.name));
+            }
         }
         let out = destination.as_mut_ptr();
         unsafe {
@@ -499,7 +575,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         // Identity allocation: explicit roles win; everything else gets the
         // next opaque App slot. Roles must be unique.
         let mut next_app: u8 = 0;
-        for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
+        for (index, decl) in tasks.iter().enumerate() {
             let module = match decl.role {
                 Some(role) => {
                     if built.labels.iter().flatten().any(|(_, used)| *used == role) {
@@ -518,10 +594,9 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
         // Channel-derived capabilities.
         let mut mailbox_users = [false; TASKS];
-        for (from, to) in self.channels[..self.channel_len].iter().flatten() {
-            for endpoint in [*from, *to] {
-                let index = self
-                    .decl_index(endpoint)
+        for channel in channels {
+            for endpoint in [channel.from, channel.to] {
+                let index = Self::decl_index_in(tasks, endpoint)
                     .ok_or(GraphError::ChannelEndpointUnknown { endpoint })?;
                 mailbox_users[index] = true;
             }
@@ -529,13 +604,13 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
         // Kernel spec: owns its usual set, plus Mailbox when channels exist.
         let mut kernel_owns = kernel_owned_capabilities();
-        if self.channel_len > 0 {
+        if !channels.is_empty() {
             kernel_owns = kernel_owns.with(Capability::Mailbox);
         }
         let kernel_spec = ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
             .owns(kernel_owns)
-            .memory(self.kernel_memory)
-            .deadline(self.kernel_deadline);
+            .memory(kernel_memory)
+            .deadline(kernel_deadline);
         built
             .manifest
             .add(kernel_spec)
@@ -547,7 +622,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         built.startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
         let mut reactor_binding_len = 0usize;
 
-        for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
+        for (index, decl) in tasks.iter().enumerate() {
             if decl.blocking_us > decl.deadline_us.saturating_sub(decl.execution_budget_us) {
                 return Err(GraphError::InvalidBlocking {
                     task: decl.name,
@@ -586,9 +661,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             // Startup edges by name -> node-index bits (kernel is node 0).
             let mut depends = DependencySet::empty().with_index(0);
             for dep_name in decl.after.iter().flatten() {
-                let dep_index = self
-                    .decl_index(dep_name)
-                    .ok_or(GraphError::UnknownDependency {
+                let dep_index =
+                    Self::decl_index_in(tasks, dep_name).ok_or(GraphError::UnknownDependency {
                         task: decl.name,
                         depends_on: dep_name,
                     })?;
@@ -618,12 +692,13 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
         // Cycle/consistency check with attribution: the planner sees the same
         // nodes admission will see.
-        let startup_len = self.len + 1;
+        let startup_len = tasks.len() + 1;
         if let Err(error) = StartupPlanner::plan::<MODULES>(&built.startup[..startup_len]) {
             let task = match error {
-                StartupError::Cycle => self
-                    .first_task_in_cycle(&built.startup[..startup_len])
-                    .unwrap_or("<unknown>"),
+                StartupError::Cycle => {
+                    Self::first_task_in_cycle_for(tasks, &built.startup[..startup_len])
+                        .unwrap_or("<unknown>")
+                }
                 _ => "<startup>",
             };
             return Err(GraphError::Cycle { task });
@@ -647,7 +722,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         }
 
         built.startup_len = startup_len;
-        built.task_len = self.len;
+        built.task_len = tasks.len();
         built.reactor_binding_len = reactor_binding_len;
         Ok(built)
     }
@@ -659,8 +734,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         Ok(unsafe { destination.assume_init() })
     }
 
-    /// Attribute a startup cycle to the first task on a back-edge.
-    fn first_task_in_cycle(&self, nodes: &[StartupNode]) -> Option<&'static str> {
+    fn first_task_in_cycle_for(tasks: &[TaskDecl], nodes: &[StartupNode]) -> Option<&'static str> {
         // Kahn-style elimination; anything left is on a cycle.
         let mut remaining: u32 = (1u32 << nodes.len()) - 1;
         loop {
@@ -680,7 +754,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             if !progressed {
                 let index = remaining.trailing_zeros() as usize;
                 // Node 0 is the kernel; tasks start at 1.
-                return self.tasks[index.checked_sub(1)?].map(|task| task.name);
+                return Some(tasks[index.checked_sub(1)?].name);
             }
         }
     }
@@ -722,6 +796,72 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 impl<const TASKS: usize> Default for AppGraph<TASKS> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Borrowed, allocation-free graph declaration for startup-stack-sensitive
+/// firmware. Put the task/channel arrays in `const` or `static` storage and
+/// build the same validated [`BuiltGraph`] without first copying an
+/// [`AppGraph`] builder onto the entry stack.
+#[derive(Clone, Copy, Debug)]
+pub struct GraphSpec<'a> {
+    tasks: &'a [TaskDecl],
+    channels: &'a [ChannelDecl],
+    kernel_memory: MemoryBudget,
+    kernel_deadline: DeadlineContract,
+}
+
+impl<'a> GraphSpec<'a> {
+    pub const fn new(tasks: &'a [TaskDecl], channels: &'a [ChannelDecl]) -> Self {
+        Self {
+            tasks,
+            channels,
+            kernel_memory: MemoryBudget::new(8 * 1024, 2 * 1024, 1),
+            kernel_deadline: DeadlineContract::new(20_000, 100),
+        }
+    }
+
+    pub const fn kernel(mut self, memory: MemoryBudget, deadline: DeadlineContract) -> Self {
+        self.kernel_memory = memory;
+        self.kernel_deadline = deadline;
+        self
+    }
+
+    pub const fn task_decls(&self) -> &'a [TaskDecl] {
+        self.tasks
+    }
+
+    pub const fn channel_decls(&self) -> &'a [ChannelDecl] {
+        self.channels
+    }
+
+    pub fn build_into<'b, const MODULES: usize, const TASKS: usize>(
+        &self,
+        destination: &'b mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
+    ) -> Result<&'b mut BuiltGraph<MODULES, TASKS>, GraphError> {
+        AppGraph::<TASKS>::build_parts_into(
+            self.tasks,
+            self.channels,
+            self.kernel_memory,
+            self.kernel_deadline,
+            destination,
+        )
+    }
+
+    pub fn build_for_into<'b, const MODULES: usize, const TASKS: usize>(
+        &self,
+        profile: SystemProfile,
+        destination: &'b mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
+    ) -> Result<&'b mut BuiltGraph<MODULES, TASKS>, GraphError> {
+        let built = self.build_into::<MODULES, TASKS>(destination)?;
+        built
+            .manifest
+            .validate_profile(profile)
+            .map_err(|error| GraphError::Manifest {
+                task: "<profile>",
+                error,
+            })?;
+        Ok(built)
     }
 }
 
@@ -800,6 +940,71 @@ mod tests {
         for label in ["motor", "imu", "telemetry"] {
             assert_eq!(in_place.module_of(label), by_value.module_of(label));
         }
+    }
+
+    #[test]
+    fn const_graph_spec_matches_the_builder_without_builder_storage() {
+        const TASKS: [TaskDecl; 3] = [
+            TaskDecl::control("motor", 20_000),
+            TaskDecl::periodic("imu", 100_000).after("motor"),
+            TaskDecl::service("telemetry", 500_000).after("imu"),
+        ];
+        const CHANNELS: [ChannelDecl; 2] = [
+            ChannelDecl::new("motor", "imu"),
+            ChannelDecl::new("imu", "telemetry"),
+        ];
+
+        let by_value = AppGraph::<3>::new()
+            .task(TASKS[0])
+            .unwrap()
+            .task(TASKS[1])
+            .unwrap()
+            .task(TASKS[2])
+            .unwrap()
+            .channel("motor", "imu")
+            .unwrap()
+            .channel("imu", "telemetry")
+            .unwrap()
+            .build_for::<4>(SystemProfile::NRF52840_CORE)
+            .unwrap();
+        let mut slot = MaybeUninit::<BuiltGraph<4, 3>>::uninit();
+        let borrowed = GraphSpec::new(&TASKS, &CHANNELS)
+            .build_for_into::<4, 3>(SystemProfile::NRF52840_CORE, &mut slot)
+            .unwrap();
+
+        assert_eq!(borrowed.startup_nodes(), by_value.startup_nodes());
+        assert_eq!(borrowed.tasks, by_value.tasks);
+        assert_eq!(
+            borrowed.manifest.fingerprint(),
+            by_value.manifest.fingerprint()
+        );
+        for label in ["motor", "imu", "telemetry"] {
+            assert_eq!(borrowed.module_of(label), by_value.module_of(label));
+        }
+    }
+
+    #[test]
+    fn const_graph_spec_rejects_duplicate_names_and_unknown_channels() {
+        const DUPLICATE: [TaskDecl; 2] = [
+            TaskDecl::periodic("imu", 10_000),
+            TaskDecl::periodic("imu", 20_000),
+        ];
+        const UNKNOWN: [ChannelDecl; 1] = [ChannelDecl::new("imu", "ghost")];
+
+        let mut duplicate_slot = MaybeUninit::<BuiltGraph<3, 2>>::uninit();
+        let duplicate = GraphSpec::new(&DUPLICATE, &[])
+            .build_into::<3, 2>(&mut duplicate_slot)
+            .err();
+        assert_eq!(duplicate, Some(GraphError::DuplicateName("imu")));
+
+        let mut unknown_slot = MaybeUninit::<BuiltGraph<2, 1>>::uninit();
+        let unknown = GraphSpec::new(&DUPLICATE[..1], &UNKNOWN)
+            .build_into::<2, 1>(&mut unknown_slot)
+            .err();
+        assert_eq!(
+            unknown,
+            Some(GraphError::ChannelEndpointUnknown { endpoint: "ghost" })
+        );
     }
 
     #[test]
