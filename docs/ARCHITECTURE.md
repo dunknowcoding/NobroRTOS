@@ -380,9 +380,11 @@ Fault handling is intentionally small:
   `TaskDecl` and `ChannelDecl` slices for firmware that cannot afford a
   capacity-sized graph builder on the startup stack; both paths expand through
   the same manifest/startup/profile validation. `GraphSpec::start_executor`
-  additionally performs boot, task registration, and sealing with the expanded
-  graph as temporary startup scratch, so applications that do not need runtime
-  graph introspection avoid retaining `BuiltGraph` RAM. This is an explicit
+  additionally performs boot, task registration, and sealing with only the
+  derived manifest/startup nodes as temporary scratch; task metadata is
+  regenerated from the declaration, so applications that do not need runtime
+  graph introspection avoid retaining `BuiltGraph` RAM or its label/reactor
+  arrays on the startup stack. This is an explicit
   static-RAM-versus-startup-stack composition choice, not a claim that the
   temporary form always has the lower peak on every target.
 - Opt-in P-ISR admission prices bounded interrupt execution, platform-reserved

@@ -537,6 +537,170 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         tasks.iter().position(|task| task.name == name)
     }
 
+    fn module_for_index(tasks: &[TaskDecl], index: usize) -> ModuleId {
+        if let Some(role) = tasks[index].role {
+            return role;
+        }
+        let app = tasks[..index]
+            .iter()
+            .filter(|task| task.role.is_none())
+            .count();
+        ModuleId::App(app as u8)
+    }
+
+    fn task_meta(decl: &TaskDecl, module: ModuleId) -> TaskMeta {
+        TaskMeta::new(
+            module,
+            decl.criticality,
+            decl.period_us,
+            decl.execution_budget_us,
+        )
+        .with_phase_us(decl.phase_us)
+        .with_deadline_us(decl.deadline_us)
+        .with_blocking_us(decl.blocking_us)
+    }
+
+    fn build_core_into<const MODULES: usize>(
+        tasks: &[TaskDecl],
+        channels: &[ChannelDecl],
+        kernel_memory: MemoryBudget,
+        kernel_deadline: DeadlineContract,
+        manifest: &mut SystemManifest<MODULES>,
+        startup: &mut [StartupNode; MODULES],
+    ) -> Result<usize, GraphError> {
+        if tasks.len() > TASKS {
+            return Err(GraphError::TooManyTasks { capacity: TASKS });
+        }
+        if tasks.len() + 1 > MODULES {
+            return Err(GraphError::TooManyTasks { capacity: MODULES });
+        }
+        if channels.len() > TASKS {
+            return Err(GraphError::TooManyChannels);
+        }
+        for (index, task) in tasks.iter().enumerate() {
+            if task.after.iter().flatten().any(|dep| *dep == "\0too-many") {
+                return Err(GraphError::TooManyDependencies { task: task.name });
+            }
+            if tasks[..index]
+                .iter()
+                .any(|existing| existing.name == task.name)
+            {
+                return Err(GraphError::DuplicateName(task.name));
+            }
+            if task.role.is_some()
+                && (0..index)
+                    .any(|previous| Self::module_for_index(tasks, previous) == task.role.unwrap())
+            {
+                return Err(GraphError::DuplicateRole { task: task.name });
+            }
+        }
+
+        // Channel-derived capabilities.
+        let mut mailbox_users = [false; TASKS];
+        for channel in channels {
+            for endpoint in [channel.from, channel.to] {
+                let index = Self::decl_index_in(tasks, endpoint)
+                    .ok_or(GraphError::ChannelEndpointUnknown { endpoint })?;
+                mailbox_users[index] = true;
+            }
+        }
+
+        // Kernel spec: owns its usual set, plus Mailbox when channels exist.
+        let mut kernel_owns = kernel_owned_capabilities();
+        if !channels.is_empty() {
+            kernel_owns = kernel_owns.with(Capability::Mailbox);
+        }
+        let kernel_spec = ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
+            .owns(kernel_owns)
+            .memory(kernel_memory)
+            .deadline(kernel_deadline);
+        manifest
+            .add(kernel_spec)
+            .map_err(|error| GraphError::Manifest {
+                task: "kernel",
+                error,
+            })?;
+        startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
+
+        for (index, decl) in tasks.iter().enumerate() {
+            if decl.blocking_us > decl.deadline_us.saturating_sub(decl.execution_budget_us) {
+                return Err(GraphError::InvalidBlocking {
+                    task: decl.name,
+                    budget_us: decl.execution_budget_us,
+                    blocking_us: decl.blocking_us,
+                    period_us: decl.period_us,
+                });
+            }
+            let module = Self::module_for_index(tasks, index);
+            let mut requires = decl.requires;
+            if mailbox_users[index] {
+                requires = requires.with(Capability::Mailbox);
+            }
+            let mut spec = ModuleSpec::new(module, decl.criticality)
+                .requires(requires)
+                .owns(decl.owns)
+                .memory(decl.memory)
+                .objects(decl.objects);
+            if decl.has_deadline {
+                spec = spec.deadline(
+                    DeadlineContract::new(decl.period_us, decl.max_jitter_us)
+                        .phase_us(decl.phase_us)
+                        .relative_deadline_us(decl.deadline_us)
+                        .execution_budget(decl.execution_budget_us)
+                        .blocking(decl.blocking_us),
+                );
+            }
+            manifest.add(spec).map_err(|error| GraphError::Manifest {
+                task: decl.name,
+                error,
+            })?;
+
+            // Startup edges by name -> node-index bits (kernel is node 0).
+            let mut depends = DependencySet::empty().with_index(0);
+            for dep_name in decl.after.iter().flatten() {
+                let dep_index =
+                    Self::decl_index_in(tasks, dep_name).ok_or(GraphError::UnknownDependency {
+                        task: decl.name,
+                        depends_on: dep_name,
+                    })?;
+                depends = depends.with_index(dep_index + 1);
+            }
+            startup[index + 1] = StartupNode::new(module, depends);
+        }
+
+        // Cycle/consistency check with attribution: the planner sees the same
+        // nodes admission will see.
+        let startup_len = tasks.len() + 1;
+        if let Err(error) = StartupPlanner::plan::<MODULES>(&startup[..startup_len]) {
+            let task = match error {
+                StartupError::Cycle => {
+                    Self::first_task_in_cycle_for(tasks, &startup[..startup_len])
+                        .unwrap_or("<unknown>")
+                }
+                _ => "<startup>",
+            };
+            return Err(GraphError::Cycle { task });
+        }
+
+        // The expanded contract is still validated exactly like a hand-written
+        // one; attribute any failure back to a task label.
+        if let Err(error) = manifest.validate() {
+            let task = error
+                .module()
+                .and_then(|module| {
+                    tasks
+                        .iter()
+                        .enumerate()
+                        .find(|(index, _)| Self::module_for_index(tasks, *index) == module)
+                        .map(|(_, task)| task.name)
+                })
+                .unwrap_or("<manifest>");
+            return Err(GraphError::Manifest { task, error });
+        }
+
+        Ok(startup_len)
+    }
+
     /// Expand the declarations into caller-provided storage.
     ///
     /// This is the stack-bounded form for small MCUs and generated firmware:
@@ -565,26 +729,6 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         kernel_deadline: DeadlineContract,
         destination: &'a mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
     ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
-        if tasks.len() > TASKS {
-            return Err(GraphError::TooManyTasks { capacity: TASKS });
-        }
-        if tasks.len() + 1 > MODULES {
-            return Err(GraphError::TooManyTasks { capacity: MODULES });
-        }
-        if channels.len() > TASKS {
-            return Err(GraphError::TooManyChannels);
-        }
-        for (index, task) in tasks.iter().enumerate() {
-            if task.after.iter().flatten().any(|dep| *dep == "\0too-many") {
-                return Err(GraphError::TooManyDependencies { task: task.name });
-            }
-            if tasks[..index]
-                .iter()
-                .any(|existing| existing.name == task.name)
-            {
-                return Err(GraphError::DuplicateName(task.name));
-            }
-        }
         let out = destination.as_mut_ptr();
         unsafe {
             core::ptr::addr_of_mut!((*out).manifest).write(SystemManifest::<MODULES>::new());
@@ -598,114 +742,20 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         }
         let built = unsafe { &mut *out };
 
-        // Identity allocation: explicit roles win; everything else gets the
-        // next opaque App slot. Roles must be unique.
-        let mut next_app: u8 = 0;
-        for (index, decl) in tasks.iter().enumerate() {
-            let module = match decl.role {
-                Some(role) => {
-                    if built.labels.iter().flatten().any(|(_, used)| *used == role) {
-                        return Err(GraphError::DuplicateRole { task: decl.name });
-                    }
-                    role
-                }
-                None => {
-                    let module = ModuleId::App(next_app);
-                    next_app += 1;
-                    module
-                }
-            };
-            built.labels[index] = Some((decl.name, module));
-        }
-
-        // Channel-derived capabilities.
-        let mut mailbox_users = [false; TASKS];
-        for channel in channels {
-            for endpoint in [channel.from, channel.to] {
-                let index = Self::decl_index_in(tasks, endpoint)
-                    .ok_or(GraphError::ChannelEndpointUnknown { endpoint })?;
-                mailbox_users[index] = true;
-            }
-        }
-
-        // Kernel spec: owns its usual set, plus Mailbox when channels exist.
-        let mut kernel_owns = kernel_owned_capabilities();
-        if !channels.is_empty() {
-            kernel_owns = kernel_owns.with(Capability::Mailbox);
-        }
-        let kernel_spec = ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
-            .owns(kernel_owns)
-            .memory(kernel_memory)
-            .deadline(kernel_deadline);
-        built
-            .manifest
-            .add(kernel_spec)
-            .map_err(|error| GraphError::Manifest {
-                task: "kernel",
-                error,
-            })?;
-
-        built.startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
+        let startup_len = Self::build_core_into(
+            tasks,
+            channels,
+            kernel_memory,
+            kernel_deadline,
+            &mut built.manifest,
+            &mut built.startup,
+        )?;
         let mut reactor_binding_len = 0usize;
 
         for (index, decl) in tasks.iter().enumerate() {
-            if decl.blocking_us > decl.deadline_us.saturating_sub(decl.execution_budget_us) {
-                return Err(GraphError::InvalidBlocking {
-                    task: decl.name,
-                    budget_us: decl.execution_budget_us,
-                    blocking_us: decl.blocking_us,
-                    period_us: decl.period_us,
-                });
-            }
-            let (_, module) = built.labels[index].expect("allocated above");
-            let mut requires = decl.requires;
-            if mailbox_users[index] {
-                requires = requires.with(Capability::Mailbox);
-            }
-            let mut spec = ModuleSpec::new(module, decl.criticality)
-                .requires(requires)
-                .owns(decl.owns)
-                .memory(decl.memory)
-                .objects(decl.objects);
-            if decl.has_deadline {
-                spec = spec.deadline(
-                    DeadlineContract::new(decl.period_us, decl.max_jitter_us)
-                        .phase_us(decl.phase_us)
-                        .relative_deadline_us(decl.deadline_us)
-                        .execution_budget(decl.execution_budget_us)
-                        .blocking(decl.blocking_us),
-                );
-            }
-            built
-                .manifest
-                .add(spec)
-                .map_err(|error| GraphError::Manifest {
-                    task: decl.name,
-                    error,
-                })?;
-
-            // Startup edges by name -> node-index bits (kernel is node 0).
-            let mut depends = DependencySet::empty().with_index(0);
-            for dep_name in decl.after.iter().flatten() {
-                let dep_index =
-                    Self::decl_index_in(tasks, dep_name).ok_or(GraphError::UnknownDependency {
-                        task: decl.name,
-                        depends_on: dep_name,
-                    })?;
-                depends = depends.with_index(dep_index + 1);
-            }
-            built.startup[index + 1] = StartupNode::new(module, depends);
-            built.tasks[index] = Some(
-                TaskMeta::new(
-                    module,
-                    decl.criticality,
-                    decl.period_us,
-                    decl.execution_budget_us,
-                )
-                .with_phase_us(decl.phase_us)
-                .with_deadline_us(decl.deadline_us)
-                .with_blocking_us(decl.blocking_us),
-            );
+            let module = Self::module_for_index(tasks, index);
+            built.labels[index] = Some((decl.name, module));
+            built.tasks[index] = Some(Self::task_meta(decl, module));
             if let Some(domain) = decl.reactor_domain {
                 built.reactor_bindings[reactor_binding_len] = Some(ReactorTaskBinding {
                     task: decl.name,
@@ -714,37 +764,6 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                 });
                 reactor_binding_len += 1;
             }
-        }
-
-        // Cycle/consistency check with attribution: the planner sees the same
-        // nodes admission will see.
-        let startup_len = tasks.len() + 1;
-        if let Err(error) = StartupPlanner::plan::<MODULES>(&built.startup[..startup_len]) {
-            let task = match error {
-                StartupError::Cycle => {
-                    Self::first_task_in_cycle_for(tasks, &built.startup[..startup_len])
-                        .unwrap_or("<unknown>")
-                }
-                _ => "<startup>",
-            };
-            return Err(GraphError::Cycle { task });
-        }
-
-        // The expanded contract is still validated exactly like a hand-written
-        // one; attribute any failure back to a task label.
-        if let Err(error) = built.manifest.validate() {
-            let task = error
-                .module()
-                .and_then(|module| {
-                    built
-                        .labels
-                        .iter()
-                        .flatten()
-                        .find(|(_, owner)| *owner == module)
-                        .map(|(label, _)| *label)
-                })
-                .unwrap_or("<manifest>");
-            return Err(GraphError::Manifest { task, error });
         }
 
         built.startup_len = startup_len;
@@ -915,8 +934,10 @@ impl<'a> GraphSpec<'a> {
 
     /// Build, admit, boot, register, and seal a graph in one call.
     ///
-    /// The expanded graph is startup scratch on this call's stack rather than
-    /// retained application RAM. The executor's `STARTUP` capacity is also
+    /// Only the derived manifest and startup nodes are temporary scratch on
+    /// this call's stack; labels, task metadata, and reactor bindings are
+    /// regenerated directly from the declarations instead of retaining a
+    /// capacity-sized [`BuiltGraph`]. The executor's `STARTUP` capacity is also
     /// used as the manifest capacity, which is the normal coherent runtime
     /// configuration. Advanced layouts can keep using [`build_for_into`].
     ///
@@ -947,11 +968,25 @@ impl<'a> GraphSpec<'a> {
         &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         GraphStartError,
     > {
-        let mut scratch = MaybeUninit::<BuiltGraph<STARTUP, TASKS>>::uninit();
-        let built = self.build_for_into(profile, &mut scratch)?;
+        let mut manifest = SystemManifest::<STARTUP>::new();
+        let mut startup = [StartupNode::EMPTY; STARTUP];
+        let startup_len = AppGraph::<TASKS>::build_core_into(
+            self.tasks,
+            self.channels,
+            self.kernel_memory,
+            self.kernel_deadline,
+            &mut manifest,
+            &mut startup,
+        )?;
+        manifest
+            .validate_profile(profile)
+            .map_err(|error| GraphError::Manifest {
+                task: "<profile>",
+                error,
+            })?;
         let executor = cell.init_admitted(
-            &built.manifest,
-            built.startup_nodes(),
+            &manifest,
+            &startup[..startup_len],
             profile,
             thresholds,
             containment,
@@ -960,8 +995,9 @@ impl<'a> GraphSpec<'a> {
             .runtime_mut()
             .boot_to_running(now_us)
             .map_err(ExecError::Runtime)?;
-        for meta in built.tasks.iter().flatten() {
-            executor.add_task(*meta, now_us)?;
+        for (index, decl) in self.tasks.iter().enumerate() {
+            let module = AppGraph::<TASKS>::module_for_index(self.tasks, index);
+            executor.add_task(AppGraph::<TASKS>::task_meta(decl, module), now_us)?;
         }
         executor.seal()?;
         Ok(executor)
@@ -1058,6 +1094,79 @@ mod tests {
             executor.add_task(TaskMeta::new(motor, Criticality::System, 20_000, 2_000), 0),
             Err(ExecError::Sealed)
         );
+    }
+
+    #[test]
+    fn compact_startup_core_matches_the_full_built_graph() {
+        const TASKS: [TaskDecl; 3] = [
+            TaskDecl::control("motor", 20_000),
+            TaskDecl::periodic("imu", 100_000).after("motor"),
+            TaskDecl::service("telemetry", 500_000).after("imu"),
+        ];
+        const CHANNELS: [ChannelDecl; 1] = [ChannelDecl::new("imu", "motor")];
+
+        let graph = GraphSpec::new(&TASKS, &CHANNELS);
+        let mut full_slot = MaybeUninit::<BuiltGraph<4, 3>>::uninit();
+        let full = graph
+            .build_for_into::<4, 3>(SystemProfile::NRF52840_CORE, &mut full_slot)
+            .unwrap();
+
+        let mut manifest = SystemManifest::<4>::new();
+        let mut startup = [StartupNode::EMPTY; 4];
+        let startup_len = AppGraph::<3>::build_core_into(
+            graph.tasks,
+            graph.channels,
+            graph.kernel_memory,
+            graph.kernel_deadline,
+            &mut manifest,
+            &mut startup,
+        )
+        .unwrap();
+        manifest
+            .validate_profile(SystemProfile::NRF52840_CORE)
+            .unwrap();
+
+        assert_eq!(startup_len, full.startup_len);
+        assert_eq!(&startup[..startup_len], full.startup_nodes());
+        assert_eq!(manifest.len(), full.manifest.len());
+        for (compact, retained) in manifest.iter().zip(full.manifest.iter()) {
+            assert_eq!(compact, retained);
+        }
+    }
+
+    #[test]
+    fn graph_validation_failure_does_not_claim_the_executor_cell() {
+        const INVALID: [TaskDecl; 1] = [TaskDecl::periodic("imu", 10_000).after("ghost")];
+        const VALID: [TaskDecl; 1] = [TaskDecl::periodic("imu", 10_000)];
+
+        type Cell = KernelExecutorCell<1, 2, 2, 1, 0, 0, 2, 0>;
+        let cell: &'static Cell = Box::leak(Box::new(Cell::new()));
+        let error = GraphSpec::new(&INVALID, &[])
+            .start_executor(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                0,
+            )
+            .err();
+        assert_eq!(
+            error,
+            Some(GraphStartError::Graph(GraphError::UnknownDependency {
+                task: "imu",
+                depends_on: "ghost",
+            }))
+        );
+
+        GraphSpec::new(&VALID, &[])
+            .start_executor(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                0,
+            )
+            .unwrap();
     }
 
     #[test]

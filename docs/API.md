@@ -389,9 +389,9 @@ placement, not admission semantics.
 
 When the expanded graph is needed only during startup, `start_executor`
 performs graph validation, runtime admission, boot, task registration, and
-schedulability sealing in one call. The expanded `BuiltGraph` is temporary
-startup-stack scratch rather than retained RAM, while task identities remain
-available from the const declaration:
+schedulability sealing in one call. Only the derived manifest and startup
+nodes are temporary stack scratch; task metadata and identities are regenerated
+directly from the const declaration, and no `BuiltGraph` is retained:
 
 ```rust
 use nobro_kernel::{
@@ -414,9 +414,10 @@ let motor = graph.module_of("motor").unwrap();
 
 Use `build_for_into` instead when the expanded manifest, startup plan, labels,
 or reactor bindings must remain inspectable after startup, or when the
-expanded graph should live in static scratch rather than increasing startup
-stack. `start_executor` trades retained graph RAM for a capacity-sized
-temporary startup frame; choose from measured board-specific stack evidence.
+derived manifest/startup scratch should live in static storage rather than
+increasing startup stack. `start_executor` trades retained graph RAM for a
+smaller capacity-sized temporary frame; choose from measured board-specific
+stack evidence.
 
 The same values reach the manifest, shared build/runtime admission core, and
 executor. Invalid phase uses stable diagnostic `NOBRO-E015`. Periods are
