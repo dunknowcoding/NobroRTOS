@@ -165,7 +165,7 @@ jobs:
           chmod +x "$HOME/.cargo/bin/espup"
           "$HOME/.cargo/bin/espup" install -l debug --targets esp32s3 \
             --toolchain-version 1.95.0.0
-          source "$HOME/exports"
+          source "$HOME/export-esp.sh"
           echo "$PATH" >> "$GITHUB_PATH"
           echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
           echo "CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
