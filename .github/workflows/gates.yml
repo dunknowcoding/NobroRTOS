@@ -160,7 +160,7 @@ jobs:
           espup_zip=/tmp/espup-x86_64-unknown-linux-gnu.zip
           curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
             --output "$espup_zip" \
-            https://github.com/esp-rs/espup/releases/download/v0.17.0/espup-x86_64-unknown-linux-gnu.zip
+            https://github.com/esp-rs/espup/releases/download/v0.17.1/espup-x86_64-unknown-linux-gnu.zip
           unzip -o "$espup_zip" -d "$HOME/.cargo/bin"
           chmod +x "$HOME/.cargo/bin/espup"
           "$HOME/.cargo/bin/espup" install -l debug --targets esp32s3 \
