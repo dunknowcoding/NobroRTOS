@@ -155,6 +155,11 @@ jobs:
           python-version: "3.11"
       - name: install ESP32-S3 Xtensa Rust toolchain
         uses: esp-rs/xtensa-toolchain@ec6d36527049a7f4fb2cb0c1a644668c1bb8a2a4 # v1.7.0
+        env:
+          # espup queries the GitHub API while resolving the pinned toolchain.
+          # Authenticate those reads so ordinary CI does not consume the low
+          # anonymous rate limit and fail before the cross-MCU matrix starts.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           default: false
           buildtargets: esp32s3
