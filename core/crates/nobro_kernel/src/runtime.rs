@@ -40,7 +40,10 @@ pub enum CapacityError {
         modules: usize,
         capacities: RuntimeCapacities,
     },
-    /// A shared queue was compiled with zero capacity.
+    /// The mandatory mailbox queue was compiled with zero capacity.
+    ///
+    /// Alarm, KV, retained event-log, and capability-trace capacities may be
+    /// zero when those optional services are not part of the application.
     EmptyQueue { capacities: RuntimeCapacities },
 }
 
@@ -449,7 +452,9 @@ impl<
 
     /// One coherence check over the const-generic capacities, run before any
     /// runtime is assembled: every admitted module needs a startup, quota,
-    /// object, and health slot, and the shared queues must be non-empty.
+    /// object, and health slot. Mailbox IPC is the only mandatory shared
+    /// queue; zero-sized alarm, KV, log, and trace stores are valid zero-cost
+    /// service exclusions and fail their own operations closed.
     fn validate_capacities(modules: usize) -> Result<(), CapacityError> {
         let capacities = Self::capacities();
         if modules > QUOTAS || modules > HEALTH || modules > STARTUP {
@@ -458,7 +463,7 @@ impl<
                 capacities,
             });
         }
-        if MAILBOX == 0 || ALARMS == 0 || KV == 0 || LOG == 0 {
+        if MAILBOX == 0 {
             return Err(CapacityError::EmptyQueue { capacities });
         }
         Ok(())
@@ -1774,6 +1779,36 @@ mod tests {
         assert!(runtime
             .authorize(ModuleId::Sensor, Capability::SamplePool)
             .is_ok());
+    }
+
+    #[test]
+    fn zero_capacity_optional_services_admit_and_fail_closed() {
+        type LeanRuntime = Runtime<4, 4, 4, 0, 0, 4, 0>;
+
+        let manifest = manifest();
+        let mut runtime = LeanRuntime::admit(
+            &manifest,
+            &startup(),
+            profile(),
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 3,
+            },
+        )
+        .unwrap();
+        runtime.boot_to_running(10).unwrap();
+
+        assert_eq!(
+            runtime.schedule_once(AlarmId(1), ModuleId::Sensor, 10, 0),
+            Err(RuntimeError::Alarm(AlarmError::Full))
+        );
+        assert_eq!(
+            runtime.kv_set(KvKey(1), KvValue::U32(7)),
+            Err(RuntimeError::Kv(KvError::Full))
+        );
+        assert_eq!(runtime.event_log_report().event_count, 0);
+        assert_eq!(runtime.capability_trace().len(), 0);
+        assert_eq!(runtime.plan().module_count(), 2);
     }
 
     #[test]

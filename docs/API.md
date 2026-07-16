@@ -491,6 +491,22 @@ owns:
 - degraded-mode reports
 - event-log and health reports
 
+Alarm, KV, retained event-log, and capability-trace capacities may be zero.
+Their operations then return the normal fixed-capacity error (or retain no
+records), so unused services consume no slot storage and do not require a
+separate runtime implementation. Mailbox IPC remains mandatory. For the common
+case, `LeanRuntime<MODULES, MAILBOX>` and
+`LeanKernelExecutorCell<TASKS, MODULES, MAILBOX>` keep admission, quotas,
+mailbox IPC, health/recovery, watchdogs, and object accounting while selecting
+zero capacity for those optional stores:
+
+```rust
+use nobro_kernel::LeanKernelExecutorCell;
+
+static EXECUTOR: LeanKernelExecutorCell<5, 6, 4> =
+    LeanKernelExecutorCell::new();
+```
+
 Module-facing operations use the identity-bound context:
 
 ```rust

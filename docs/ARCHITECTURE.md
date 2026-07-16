@@ -458,6 +458,11 @@ Fault handling is intentionally small:
   of being silently ignored. Manual runtime disable is idempotent at the
   runtime API boundary, keeping repeated recovery commands safe while the lower
   module state machine remains strict.
+- Alarm, KV, retained event-log, and capability-trace capacities are optional
+  composition choices and may be zero. Their existing operations fail closed
+  on zero capacity; mailbox IPC and per-module admission/health tables remain
+  mandatory. `LeanRuntime` and `LeanKernelExecutorCell` expose this composition
+  without asking users to spell seven or eight const parameters.
 
 Recovery is module-scoped by default. Full chip reset is a last resort and
 should remain outside hot-path adapters.

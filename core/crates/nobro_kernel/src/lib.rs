@@ -172,6 +172,17 @@ pub use runtime::{
 pub type SmallRuntime = Runtime<4, 4, 8, 4, 8, 4, 16>;
 pub type StandardRuntime = Runtime<8, 8, 16, 8, 16, 8, 32>;
 pub type LargeRuntime = Runtime<16, 16, 32, 16, 32, 16, 64>;
+/// Managed runtime without alarm, KV, retained event-log, or capability-trace
+/// storage. Admission, quotas, mailbox IPC, health/recovery, watchdogs, and
+/// object accounting remain enabled.
+pub type LeanRuntime<const MODULES: usize, const MAILBOX: usize> =
+    Runtime<MODULES, MODULES, MAILBOX, 0, 0, MODULES, 0>;
+/// Deadline-aware executor over [`LeanRuntime`].
+pub type LeanKernelExecutor<const TASKS: usize, const MODULES: usize, const MAILBOX: usize> =
+    KernelExecutor<TASKS, MODULES, MODULES, MAILBOX, 0, 0, MODULES, 0>;
+/// One-shot static storage for [`LeanKernelExecutor`].
+pub type LeanKernelExecutorCell<const TASKS: usize, const MODULES: usize, const MAILBOX: usize> =
+    KernelExecutorCell<TASKS, MODULES, MODULES, MAILBOX, 0, 0, MODULES, 0>;
 /// L0 preset: pre-admitted bitmap dispatcher only.
 pub type L0NanoKernel<const TASKS: usize> = NanoKernel<TASKS>;
 /// L1 preset: L0 plus mandatory stack canary/watermark enforcement.
