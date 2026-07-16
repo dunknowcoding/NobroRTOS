@@ -37,6 +37,7 @@ use crate::{
     DependencySet, ManifestError, MemoryBudget, ModuleId, ModuleSpec, ObjectQuota, StartupError,
     StartupNode, StartupPlanner, SystemManifest, SystemProfile, TaskMeta,
 };
+use core::mem::MaybeUninit;
 
 const MAX_DEPS: usize = 4;
 
@@ -467,20 +468,41 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             .position(|task| task.map(|task| task.name == name).unwrap_or(false))
     }
 
-    /// Expand the declarations into the real, still-validated contract set.
-    pub fn build<const MODULES: usize>(&self) -> Result<BuiltGraph<MODULES, TASKS>, GraphError> {
+    /// Expand the declarations into caller-provided storage.
+    ///
+    /// This is the stack-bounded form for small MCUs and generated firmware:
+    /// the expanded [`BuiltGraph`] can live in a `static`/cell while still
+    /// going through the same manifest, startup, and profile validation as the
+    /// ergonomic by-value [`build`](Self::build) path. `BuiltGraph` contains no
+    /// `Drop` fields; if validation fails after partial initialization, the
+    /// caller may simply reuse or discard the `MaybeUninit` slot.
+    pub fn build_into<'a, const MODULES: usize>(
+        &self,
+        destination: &'a mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
+    ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
         if self.len + 1 > MODULES {
             return Err(GraphError::TooManyTasks { capacity: MODULES });
         }
+        let out = destination.as_mut_ptr();
+        unsafe {
+            core::ptr::addr_of_mut!((*out).manifest).write(SystemManifest::<MODULES>::new());
+            core::ptr::addr_of_mut!((*out).startup).write([StartupNode::EMPTY; MODULES]);
+            core::ptr::addr_of_mut!((*out).startup_len).write(0);
+            core::ptr::addr_of_mut!((*out).tasks).write([None; TASKS]);
+            core::ptr::addr_of_mut!((*out).task_len).write(0);
+            core::ptr::addr_of_mut!((*out).labels).write([None; TASKS]);
+            core::ptr::addr_of_mut!((*out).reactor_bindings).write([None; TASKS]);
+            core::ptr::addr_of_mut!((*out).reactor_binding_len).write(0);
+        }
+        let built = unsafe { &mut *out };
 
         // Identity allocation: explicit roles win; everything else gets the
         // next opaque App slot. Roles must be unique.
-        let mut labels: [Option<(&'static str, ModuleId)>; TASKS] = [None; TASKS];
         let mut next_app: u8 = 0;
         for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
             let module = match decl.role {
                 Some(role) => {
-                    if labels.iter().flatten().any(|(_, used)| *used == role) {
+                    if built.labels.iter().flatten().any(|(_, used)| *used == role) {
                         return Err(GraphError::DuplicateRole { task: decl.name });
                     }
                     role
@@ -491,7 +513,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                     module
                 }
             };
-            labels[index] = Some((decl.name, module));
+            built.labels[index] = Some((decl.name, module));
         }
 
         // Channel-derived capabilities.
@@ -510,22 +532,19 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         if self.channel_len > 0 {
             kernel_owns = kernel_owns.with(Capability::Mailbox);
         }
-        let mut manifest = SystemManifest::<MODULES>::new();
         let kernel_spec = ModuleSpec::new(ModuleId::Kernel, Criticality::HardRealtime)
             .owns(kernel_owns)
             .memory(self.kernel_memory)
             .deadline(self.kernel_deadline);
-        manifest
+        built
+            .manifest
             .add(kernel_spec)
             .map_err(|error| GraphError::Manifest {
                 task: "kernel",
                 error,
             })?;
 
-        let mut startup = [StartupNode::EMPTY; MODULES];
-        startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
-        let mut tasks: [Option<TaskMeta>; TASKS] = [None; TASKS];
-        let mut reactor_bindings: [Option<ReactorTaskBinding>; TASKS] = [None; TASKS];
+        built.startup[0] = StartupNode::new(ModuleId::Kernel, DependencySet::empty());
         let mut reactor_binding_len = 0usize;
 
         for (index, decl) in self.tasks[..self.len].iter().flatten().enumerate() {
@@ -537,7 +556,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                     period_us: decl.period_us,
                 });
             }
-            let (_, module) = labels[index].expect("allocated above");
+            let (_, module) = built.labels[index].expect("allocated above");
             let mut requires = decl.requires;
             if mailbox_users[index] {
                 requires = requires.with(Capability::Mailbox);
@@ -556,10 +575,13 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                         .blocking(decl.blocking_us),
                 );
             }
-            manifest.add(spec).map_err(|error| GraphError::Manifest {
-                task: decl.name,
-                error,
-            })?;
+            built
+                .manifest
+                .add(spec)
+                .map_err(|error| GraphError::Manifest {
+                    task: decl.name,
+                    error,
+                })?;
 
             // Startup edges by name -> node-index bits (kernel is node 0).
             let mut depends = DependencySet::empty().with_index(0);
@@ -572,8 +594,8 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                     })?;
                 depends = depends.with_index(dep_index + 1);
             }
-            startup[index + 1] = StartupNode::new(module, depends);
-            tasks[index] = Some(
+            built.startup[index + 1] = StartupNode::new(module, depends);
+            built.tasks[index] = Some(
                 TaskMeta::new(
                     module,
                     decl.criticality,
@@ -585,7 +607,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                 .with_blocking_us(decl.blocking_us),
             );
             if let Some(domain) = decl.reactor_domain {
-                reactor_bindings[reactor_binding_len] = Some(ReactorTaskBinding {
+                built.reactor_bindings[reactor_binding_len] = Some(ReactorTaskBinding {
                     task: decl.name,
                     module,
                     domain,
@@ -597,10 +619,10 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         // Cycle/consistency check with attribution: the planner sees the same
         // nodes admission will see.
         let startup_len = self.len + 1;
-        if let Err(error) = StartupPlanner::plan::<MODULES>(&startup[..startup_len]) {
+        if let Err(error) = StartupPlanner::plan::<MODULES>(&built.startup[..startup_len]) {
             let task = match error {
                 StartupError::Cycle => self
-                    .first_task_in_cycle(&startup[..startup_len])
+                    .first_task_in_cycle(&built.startup[..startup_len])
                     .unwrap_or("<unknown>"),
                 _ => "<startup>",
             };
@@ -609,11 +631,12 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
         // The expanded contract is still validated exactly like a hand-written
         // one; attribute any failure back to a task label.
-        if let Err(error) = manifest.validate() {
+        if let Err(error) = built.manifest.validate() {
             let task = error
                 .module()
                 .and_then(|module| {
-                    labels
+                    built
+                        .labels
                         .iter()
                         .flatten()
                         .find(|(_, owner)| *owner == module)
@@ -623,16 +646,17 @@ impl<const TASKS: usize> AppGraph<TASKS> {
             return Err(GraphError::Manifest { task, error });
         }
 
-        Ok(BuiltGraph {
-            manifest,
-            startup,
-            startup_len,
-            tasks,
-            task_len: self.len,
-            labels,
-            reactor_bindings,
-            reactor_binding_len,
-        })
+        built.startup_len = startup_len;
+        built.task_len = self.len;
+        built.reactor_binding_len = reactor_binding_len;
+        Ok(built)
+    }
+
+    /// Expand the declarations into the real, still-validated contract set.
+    pub fn build<const MODULES: usize>(&self) -> Result<BuiltGraph<MODULES, TASKS>, GraphError> {
+        let mut destination = MaybeUninit::uninit();
+        self.build_into::<MODULES>(&mut destination)?;
+        Ok(unsafe { destination.assume_init() })
     }
 
     /// Attribute a startup cycle to the first task on a back-edge.
@@ -667,6 +691,23 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         profile: SystemProfile,
     ) -> Result<BuiltGraph<MODULES, TASKS>, GraphError> {
         let built = self.build::<MODULES>()?;
+        built
+            .manifest
+            .validate_profile(profile)
+            .map_err(|error| GraphError::Manifest {
+                task: "<profile>",
+                error,
+            })?;
+        Ok(built)
+    }
+
+    /// Profile-validated in-place form of [`build_for`](Self::build_for).
+    pub fn build_for_into<'a, const MODULES: usize>(
+        &self,
+        profile: SystemProfile,
+        destination: &'a mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
+    ) -> Result<&'a mut BuiltGraph<MODULES, TASKS>, GraphError> {
+        let built = self.build_into::<MODULES>(destination)?;
         built
             .manifest
             .validate_profile(profile)
@@ -741,6 +782,24 @@ mod tests {
         )
         .unwrap();
         runtime.boot_to_running(0).unwrap();
+    }
+
+    #[test]
+    fn in_place_build_matches_by_value_graph() {
+        let graph = demo_graph();
+        let by_value = graph.build_for::<4>(SystemProfile::NRF52840_CORE).unwrap();
+        let mut slot = MaybeUninit::<BuiltGraph<4, 4>>::uninit();
+        let in_place = graph
+            .build_for_into::<4>(SystemProfile::NRF52840_CORE, &mut slot)
+            .unwrap();
+
+        assert_eq!(in_place.manifest.len(), by_value.manifest.len());
+        assert_eq!(in_place.startup_nodes(), by_value.startup_nodes());
+        assert_eq!(in_place.tasks, by_value.tasks);
+        assert_eq!(in_place.task_len, by_value.task_len);
+        for label in ["motor", "imu", "telemetry"] {
+            assert_eq!(in_place.module_of(label), by_value.module_of(label));
+        }
     }
 
     #[test]
