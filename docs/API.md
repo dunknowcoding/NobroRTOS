@@ -387,6 +387,37 @@ let built = GraphSpec::new(&TASKS, &CHANNELS).build_for_into::<3, 2>(
 startup-cycle, and profile validation as `AppGraph`; it changes storage
 placement, not admission semantics.
 
+When the expanded graph is needed only during startup, `start_executor`
+performs graph validation, runtime admission, boot, task registration, and
+schedulability sealing in one call. The expanded `BuiltGraph` is temporary
+startup-stack scratch rather than retained RAM, while task identities remain
+available from the const declaration:
+
+```rust
+use nobro_kernel::{
+    ContainmentPolicy, FaultThresholds, LeanKernelExecutorCell,
+};
+
+static EXECUTOR: LeanKernelExecutorCell<2, 3, 4> =
+    LeanKernelExecutorCell::new();
+
+let graph = GraphSpec::new(&TASKS, &CHANNELS);
+let executor = graph.start_executor(
+    &EXECUTOR,
+    nobro_kernel::SystemProfile::NRF52840_CORE,
+    FaultThresholds::DEFAULT,
+    ContainmentPolicy::Cooperative,
+    now_us,
+)?;
+let motor = graph.module_of("motor").unwrap();
+```
+
+Use `build_for_into` instead when the expanded manifest, startup plan, labels,
+or reactor bindings must remain inspectable after startup, or when the
+expanded graph should live in static scratch rather than increasing startup
+stack. `start_executor` trades retained graph RAM for a capacity-sized
+temporary startup frame; choose from measured board-specific stack evidence.
+
 The same values reach the manifest, shared build/runtime admission core, and
 executor. Invalid phase uses stable diagnostic `NOBRO-E015`. Periods are
 limited to `MAX_WRAP_SAFE_INTERVAL_US` (`0x7fff_ffff` us) because Nano's

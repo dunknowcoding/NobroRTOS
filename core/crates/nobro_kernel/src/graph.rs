@@ -33,9 +33,10 @@ use crate::{
         admit_reactor_domains, ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract,
         ReactorDomainContract,
     },
-    kernel_owned_capabilities, Capability, CapabilitySet, Criticality, DeadlineContract,
-    DependencySet, ManifestError, MemoryBudget, ModuleId, ModuleSpec, ObjectQuota, StartupError,
-    StartupNode, StartupPlanner, SystemManifest, SystemProfile, TaskMeta,
+    kernel_owned_capabilities, Capability, CapabilitySet, ContainmentPolicy, Criticality,
+    DeadlineContract, DependencySet, ExecError, ExecutorInitError, FaultThresholds, KernelExecutor,
+    KernelExecutorCell, ManifestError, MemoryBudget, ModuleId, ModuleSpec, ObjectQuota,
+    StartupError, StartupNode, StartupPlanner, SystemManifest, SystemProfile, TaskMeta,
 };
 use core::mem::MaybeUninit;
 
@@ -299,6 +300,31 @@ pub enum GraphError {
         task: &'static str,
         error: ManifestError,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GraphStartError {
+    Graph(GraphError),
+    Executor(ExecutorInitError),
+    Execution(ExecError),
+}
+
+impl From<GraphError> for GraphStartError {
+    fn from(error: GraphError) -> Self {
+        Self::Graph(error)
+    }
+}
+
+impl From<ExecutorInitError> for GraphStartError {
+    fn from(error: ExecutorInitError) -> Self {
+        Self::Executor(error)
+    }
+}
+
+impl From<ExecError> for GraphStartError {
+    fn from(error: ExecError) -> Self {
+        Self::Execution(error)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -835,6 +861,29 @@ impl<'a> GraphSpec<'a> {
         self.channels
     }
 
+    /// Resolve the identity assigned to a declaration.
+    ///
+    /// After a successful build/start this is the same mapping exposed by
+    /// [`BuiltGraph::module_of`], without retaining a capacity-sized expanded
+    /// graph in RAM.
+    pub fn module_of(&self, name: &str) -> Option<ModuleId> {
+        let mut next_app = 0u8;
+        for task in self.tasks {
+            let module = match task.role {
+                Some(role) => role,
+                None => {
+                    let module = ModuleId::App(next_app);
+                    next_app = next_app.checked_add(1)?;
+                    module
+                }
+            };
+            if task.name == name {
+                return Some(module);
+            }
+        }
+        None
+    }
+
     pub fn build_into<'b, const MODULES: usize, const TASKS: usize>(
         &self,
         destination: &'b mut MaybeUninit<BuiltGraph<MODULES, TASKS>>,
@@ -863,12 +912,67 @@ impl<'a> GraphSpec<'a> {
             })?;
         Ok(built)
     }
+
+    /// Build, admit, boot, register, and seal a graph in one call.
+    ///
+    /// The expanded graph is startup scratch on this call's stack rather than
+    /// retained application RAM. The executor's `STARTUP` capacity is also
+    /// used as the manifest capacity, which is the normal coherent runtime
+    /// configuration. Advanced layouts can keep using [`build_for_into`].
+    ///
+    /// The destination cell is one-shot. Graph validation happens before it is
+    /// claimed; an execution-admission failure after construction leaves the
+    /// executor fail-closed and unavailable for a second initialization.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the const capacities are inferred from the cell; callers provide only startup policy"
+    )]
+    pub fn start_executor<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    >(
+        &self,
+        cell: &'static KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+        now_us: u64,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        GraphStartError,
+    > {
+        let mut scratch = MaybeUninit::<BuiltGraph<STARTUP, TASKS>>::uninit();
+        let built = self.build_for_into(profile, &mut scratch)?;
+        let executor = cell.init_admitted(
+            &built.manifest,
+            built.startup_nodes(),
+            profile,
+            thresholds,
+            containment,
+        )?;
+        executor
+            .runtime_mut()
+            .boot_to_running(now_us)
+            .map_err(ExecError::Runtime)?;
+        for meta in built.tasks.iter().flatten() {
+            executor.add_task(*meta, now_us)?;
+        }
+        executor.seal()?;
+        Ok(executor)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::FaultThresholds;
+    use std::boxed::Box;
 
     fn demo_graph() -> AppGraph<4> {
         AppGraph::<4>::new()
@@ -922,6 +1026,38 @@ mod tests {
         )
         .unwrap();
         runtime.boot_to_running(0).unwrap();
+    }
+
+    #[test]
+    fn graph_spec_starts_and_seals_executor_without_retained_built_graph() {
+        const TASKS: [TaskDecl; 3] = [
+            TaskDecl::control("motor", 20_000),
+            TaskDecl::periodic("imu", 100_000).after("motor"),
+            TaskDecl::service("telemetry", 500_000).after("imu"),
+        ];
+        const CHANNELS: [ChannelDecl; 1] = [ChannelDecl::new("imu", "motor")];
+
+        type Cell = KernelExecutorCell<3, 4, 4, 4, 0, 0, 4, 0>;
+        let cell: &'static Cell = Box::leak(Box::new(Cell::new()));
+        let graph = GraphSpec::new(&TASKS, &CHANNELS);
+        let executor = graph
+            .start_executor(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                0,
+            )
+            .unwrap();
+
+        let motor = graph.module_of("motor").unwrap();
+        assert_eq!(motor, ModuleId::App(0));
+        assert!(executor.tasks().get(motor).is_some());
+        assert_eq!(executor.runtime().plan().module_count(), 4);
+        assert_eq!(
+            executor.add_task(TaskMeta::new(motor, Criticality::System, 20_000, 2_000), 0),
+            Err(ExecError::Sealed)
+        );
     }
 
     #[test]
