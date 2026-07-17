@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES = os.path.join(ROOT, "packages", "arduino", "examples")
@@ -47,6 +48,16 @@ def split_fqbns(value):
 
 
 FQBNS = split_fqbns(os.environ.get("NOBRO_ARDUINO_FQBNS", DEFAULT_FQBNS))
+DEFAULT_ATTEMPTS = 3
+
+
+def compile_attempts():
+    raw = os.environ.get("NOBRO_ARDUINO_COMPILE_ATTEMPTS", str(DEFAULT_ATTEMPTS))
+    try:
+        attempts = int(raw)
+    except ValueError:
+        return None
+    return attempts if 1 <= attempts <= 5 else None
 
 
 def configuration_error(fqbns, examples):
@@ -79,18 +90,33 @@ def main():
     if not cli:
         print("ARDUINO COMPILE: FAIL (arduino-cli not found)")
         return 1
+    attempts = compile_attempts()
+    if attempts is None:
+        print("ARDUINO COMPILE: FAIL "
+              "(NOBRO_ARDUINO_COMPILE_ATTEMPTS must be an integer from 1 to 5)")
+        return 1
     failures = []
     for fqbn in FQBNS:
         for example in examples:
-            result = subprocess.run(
-                [cli, "compile", "--fqbn", fqbn, "--library", LIBRARY,
-                 os.path.join(EXAMPLES, example)],
-                cwd=ROOT, capture_output=True, text=True,
-            )
+            diagnostics = []
+            for attempt in range(1, attempts + 1):
+                result = subprocess.run(
+                    [cli, "compile", "--fqbn", fqbn, "--library", LIBRARY,
+                     os.path.join(EXAMPLES, example)],
+                    cwd=ROOT, capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    break
+                diagnostics.append(
+                    f"attempt {attempt}/{attempts}: "
+                    + "\n".join((result.stdout + result.stderr).splitlines()[-5:])
+                )
+                if attempt < attempts:
+                    print(f"  RETRY {fqbn} {example} ({attempt}/{attempts})")
+                    time.sleep(1)
             print(f"  {'PASS' if result.returncode == 0 else 'FAIL'} {fqbn} {example}")
             if result.returncode:
-                failures.append((f"{fqbn} {example}",
-                                 (result.stdout + result.stderr).splitlines()[-5:]))
+                failures.append((f"{fqbn} {example}", diagnostics))
     if failures:
         for fqbn, lines in failures:
             print(f"--- {fqbn} ---")
