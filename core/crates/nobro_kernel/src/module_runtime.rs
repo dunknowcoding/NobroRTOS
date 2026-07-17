@@ -34,6 +34,48 @@ impl ModuleRuntimeEntry {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ModuleRuntimeSlot {
+    last_change_low: u32,
+    last_change_high: u32,
+    fault_count: u32,
+    recovery_count: u32,
+    module: ModuleId,
+    state: ModuleRunState,
+}
+
+impl ModuleRuntimeSlot {
+    const fn new(module: ModuleId, now_us: u64) -> Self {
+        Self {
+            last_change_low: now_us as u32,
+            last_change_high: (now_us >> 32) as u32,
+            fault_count: 0,
+            recovery_count: 0,
+            module,
+            state: ModuleRunState::Registered,
+        }
+    }
+
+    const fn last_change_us(self) -> u64 {
+        (self.last_change_low as u64) | ((self.last_change_high as u64) << 32)
+    }
+
+    fn set_last_change_us(&mut self, now_us: u64) {
+        self.last_change_low = now_us as u32;
+        self.last_change_high = (now_us >> 32) as u32;
+    }
+
+    const fn public(self) -> ModuleRuntimeEntry {
+        ModuleRuntimeEntry {
+            module: self.module,
+            state: self.state,
+            fault_count: self.fault_count,
+            recovery_count: self.recovery_count,
+            last_change_us: self.last_change_us(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleRuntimeError {
     Full,
     Duplicate(ModuleId),
@@ -47,7 +89,7 @@ pub enum ModuleRuntimeError {
 }
 
 pub struct ModuleRuntimeGuard<const N: usize> {
-    entries: [Option<ModuleRuntimeEntry>; N],
+    entries: [Option<ModuleRuntimeSlot>; N],
 }
 
 impl<const N: usize> ModuleRuntimeGuard<N> {
@@ -63,7 +105,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
     /// uninitialized `ModuleRuntimeGuard<N>`.
     pub(crate) unsafe fn init_in_place(destination: *mut Self) {
         let entries =
-            core::ptr::addr_of_mut!((*destination).entries).cast::<Option<ModuleRuntimeEntry>>();
+            core::ptr::addr_of_mut!((*destination).entries).cast::<Option<ModuleRuntimeSlot>>();
         for index in 0..N {
             entries.add(index).write(None);
         }
@@ -85,7 +127,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         let Some(slot) = self.entries.iter_mut().find(|slot| slot.is_none()) else {
             return Err(ModuleRuntimeError::Full);
         };
-        *slot = Some(ModuleRuntimeEntry::new(module, now_us));
+        *slot = Some(ModuleRuntimeSlot::new(module, now_us));
         Ok(())
     }
 
@@ -153,7 +195,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
             return Err(ModuleRuntimeError::Disabled(module));
         }
         entry.fault_count = entry.fault_count.saturating_add(1);
-        entry.last_change_us = now_us;
+        entry.set_last_change_us(now_us);
         Ok(())
     }
 
@@ -172,11 +214,12 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
     pub fn latest_changed(&self) -> Option<ModuleRuntimeEntry> {
         let mut latest = None;
         for entry in self.entries.iter().flatten() {
+            let entry = entry.public();
             if latest
                 .map(|current: ModuleRuntimeEntry| entry.last_change_us >= current.last_change_us)
                 .unwrap_or(true)
             {
-                latest = Some(*entry);
+                latest = Some(entry);
             }
         }
         latest
@@ -188,6 +231,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
             .flatten()
             .find(|entry| entry.module == module)
             .copied()
+            .map(ModuleRuntimeSlot::public)
     }
 
     pub fn len(&self) -> usize {
@@ -213,7 +257,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         }
         entry.state = ModuleRunState::Faulted;
         entry.fault_count = entry.fault_count.saturating_add(1);
-        entry.last_change_us = now_us;
+        entry.set_last_change_us(now_us);
         Ok(())
     }
 
@@ -229,7 +273,7 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
         entry.state = ModuleRunState::Recovering;
         entry.fault_count = entry.fault_count.saturating_add(1);
         entry.recovery_count = entry.recovery_count.saturating_add(1);
-        entry.last_change_us = now_us;
+        entry.set_last_change_us(now_us);
         Ok(())
     }
 
@@ -248,14 +292,14 @@ impl<const N: usize> ModuleRuntimeGuard<N> {
             });
         }
         entry.state = to;
-        entry.last_change_us = now_us;
+        entry.set_last_change_us(now_us);
         Ok(())
     }
 
     fn entry_mut(
         &mut self,
         module: ModuleId,
-    ) -> Result<&mut ModuleRuntimeEntry, ModuleRuntimeError> {
+    ) -> Result<&mut ModuleRuntimeSlot, ModuleRuntimeError> {
         self.entries
             .iter_mut()
             .flatten()
@@ -294,6 +338,14 @@ impl<const N: usize> Default for ModuleRuntimeGuard<N> {
 mod tests {
     use super::*;
     use crate::{KernelError, RecoveryOutcome, SystemState};
+
+    #[test]
+    fn private_slots_remove_public_alignment_padding() {
+        assert_eq!(core::mem::size_of::<ModuleRuntimeEntry>(), 24);
+        assert_eq!(core::mem::size_of::<Option<ModuleRuntimeEntry>>(), 24);
+        assert_eq!(core::mem::size_of::<Option<ModuleRuntimeSlot>>(), 20);
+        assert_eq!(core::mem::size_of::<ModuleRuntimeGuard<6>>(), 120);
+    }
 
     #[test]
     fn in_place_initialization_matches_const_constructor() {
