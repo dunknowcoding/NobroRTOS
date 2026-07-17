@@ -154,39 +154,65 @@ impl<const N: usize> EnergyLedger<N> {
 
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
     pub fn charge(&mut self, task: u16, active_us: u64, power_uw: u64) -> bool {
+        if self.len > N {
+            return false;
+        }
         let energy_uj = active_us.saturating_mul(power_uw) / 1_000_000;
-        for index in 0..self.len {
-            if self.task_ids[index] == task {
-                self.energy_uj[index] = self.energy_uj[index].saturating_add(energy_uj);
+        for (task_id, recorded_uj) in self
+            .task_ids
+            .iter()
+            .zip(self.energy_uj.iter_mut())
+            .take(self.len)
+        {
+            if *task_id == task {
+                *recorded_uj = recorded_uj.saturating_add(energy_uj);
                 return true;
             }
         }
         if self.len >= N {
             return false;
         }
-        self.task_ids[self.len] = task;
-        self.energy_uj[self.len] = energy_uj;
+        let Some(task_id) = self.task_ids.get_mut(self.len) else {
+            return false;
+        };
+        let Some(recorded_uj) = self.energy_uj.get_mut(self.len) else {
+            return false;
+        };
+        *task_id = task;
+        *recorded_uj = energy_uj;
         self.len += 1;
         true
     }
 
     pub fn energy_uj(&self, task: u16) -> Option<u64> {
-        self.task_ids[..self.len]
+        if self.len > N {
+            return None;
+        }
+        self.task_ids
             .iter()
-            .position(|entry| *entry == task)
-            .map(|index| self.energy_uj[index])
+            .zip(self.energy_uj.iter())
+            .take(self.len)
+            .find(|(entry, _)| **entry == task)
+            .map(|(_, energy_uj)| *energy_uj)
     }
 
     pub fn total_uj(&self) -> u64 {
-        self.energy_uj[..self.len].iter().sum()
+        if self.len > N {
+            return u64::MAX;
+        }
+        self.energy_uj.iter().take(self.len).sum()
     }
 
     /// The hungriest task (id, energy uJ).
     pub fn top(&self) -> Option<(u16, u64)> {
-        self.task_ids[..self.len]
+        if self.len > N {
+            return None;
+        }
+        self.task_ids
             .iter()
             .copied()
-            .zip(self.energy_uj[..self.len].iter().copied())
+            .zip(self.energy_uj.iter().copied())
+            .take(self.len)
             .max_by_key(|entry| entry.1)
     }
 }
@@ -247,27 +273,47 @@ impl<const N: usize> ExecutorPower<N> {
     }
 
     pub fn set_task_power(&mut self, task_id: u16, power_uw: u64) -> bool {
-        if let Some(index) = self.profile_task_ids[..self.profile_len]
+        if self.profile_len > N {
+            return false;
+        }
+        if let Some(index) = self
+            .profile_task_ids
             .iter()
+            .take(self.profile_len)
             .position(|profile| *profile == task_id)
         {
-            self.profile_power_uw[index] = power_uw;
+            let Some(profile_power_uw) = self.profile_power_uw.get_mut(index) else {
+                return false;
+            };
+            *profile_power_uw = power_uw;
             return true;
         }
         if self.profile_len == N {
             return false;
         }
-        self.profile_task_ids[self.profile_len] = task_id;
-        self.profile_power_uw[self.profile_len] = power_uw;
+        let Some(profile_task_id) = self.profile_task_ids.get_mut(self.profile_len) else {
+            return false;
+        };
+        let Some(profile_power_uw) = self.profile_power_uw.get_mut(self.profile_len) else {
+            return false;
+        };
+        *profile_task_id = task_id;
+        *profile_power_uw = power_uw;
         self.profile_len += 1;
         true
     }
 
     pub fn account_task(&mut self, task_id: u16, active_us: u64) -> bool {
-        let power_uw = self.profile_task_ids[..self.profile_len]
+        if self.profile_len > N {
+            return false;
+        }
+        let power_uw = self
+            .profile_task_ids
             .iter()
-            .position(|profile| *profile == task_id)
-            .map(|index| self.profile_power_uw[index])
+            .zip(self.profile_power_uw.iter())
+            .take(self.profile_len)
+            .find(|(profile, _)| **profile == task_id)
+            .map(|(_, power_uw)| *power_uw)
             .unwrap_or(self.default_power_uw);
         let _ = self.manager.account_active(active_us);
         self.ledger.charge(task_id, active_us, power_uw)
@@ -356,6 +402,21 @@ mod energy_tests {
         assert_eq!(led.top(), Some((2, 2_000)));
         assert!(led.charge(2, 1_000_000, 40_000)); // radio burns 40 mJ more
         assert_eq!(led.top(), Some((2, 42_000)));
+    }
+
+    #[test]
+    fn corrupted_length_invariants_fail_closed_without_indexing_panics() {
+        let mut ledger = EnergyLedger::<2>::new();
+        ledger.len = 3;
+        assert!(!ledger.charge(7, 1, 1));
+        assert_eq!(ledger.energy_uj(7), None);
+        assert_eq!(ledger.total_uj(), u64::MAX);
+        assert_eq!(ledger.top(), None);
+
+        let mut power = ExecutorPower::<2>::new(1_000_000, 100_000, 1_000);
+        power.profile_len = 3;
+        assert!(!power.set_task_power(7, 5_000));
+        assert!(!power.account_task(7, 1));
     }
 
     #[test]
