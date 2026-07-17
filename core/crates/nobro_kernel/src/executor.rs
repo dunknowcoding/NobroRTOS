@@ -326,24 +326,34 @@ impl<const N: usize> TaskTable<N> {
     pub fn mark_due_releases(&mut self, now_us: u64) -> u32 {
         let mut released = 0u32;
         while let Some(root) = self.release_root() {
-            let release_us = self.slots[root]
-                .expect("release heap task slot")
-                .stats
-                .next_due_us;
+            let Some(release_us) = self
+                .slots
+                .get(root)
+                .and_then(Option::as_ref)
+                .map(|slot| slot.stats.next_due_us)
+            else {
+                break;
+            };
             if release_us > now_us {
                 break;
             }
 
             let mut group_members = 0u32;
             while let Some(group_root) = self.release_root() {
-                let group_due = self.slots[group_root]
-                    .expect("release heap task slot")
-                    .stats
-                    .next_due_us;
+                let Some(group_due) = self
+                    .slots
+                    .get(group_root)
+                    .and_then(Option::as_ref)
+                    .map(|slot| slot.stats.next_due_us)
+                else {
+                    break;
+                };
                 if group_due != release_us {
                     break;
                 }
-                let task_index = self.pop_release_root().expect("nonempty release list");
+                let Some(task_index) = self.pop_release_root() else {
+                    break;
+                };
                 group_members |= 1u32 << task_index;
                 self.enqueue_ready(task_index);
                 released = released.saturating_add(1);
@@ -354,11 +364,9 @@ impl<const N: usize> TaskTable<N> {
             while members != 0 {
                 let task_index = members.trailing_zeros() as usize;
                 members &= members - 1;
-                self.slots[task_index]
-                    .as_mut()
-                    .expect("ready task slot")
-                    .stats
-                    .release_group_width = group_width;
+                if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
+                    slot.stats.release_group_width = group_width;
+                }
             }
         }
         released
@@ -368,20 +376,12 @@ impl<const N: usize> TaskTable<N> {
     /// Heap pruning visits only members of that group and its immediate frontier.
     pub fn next_release_arm(&self) -> Option<DeadlineReleaseArm> {
         let root = self.release_root()?;
-        let deadline_us = self.slots[root]
-            .expect("release heap task slot")
-            .stats
-            .next_due_us;
+        let deadline_us = self.slots.get(root)?.as_ref()?.stats.next_due_us;
         let mut ready_mask = 0u32;
         let mut cursor = self.release_head;
         while cursor != READY_NONE {
             let index = usize::from(cursor);
-            if self.slots[index]
-                .expect("release list task slot")
-                .stats
-                .next_due_us
-                != deadline_us
-            {
+            if self.slots.get(index)?.as_ref()?.stats.next_due_us != deadline_us {
                 break;
             }
             ready_mask |= 1u32 << index;
@@ -414,10 +414,17 @@ impl<const N: usize> TaskTable<N> {
                 };
             }
             let bit = 1u32 << task_index;
-            let due = self.slots[task_index]
-                .expect("release task slot")
-                .stats
-                .next_due_us;
+            let Some(due) = self
+                .slots
+                .get(task_index)
+                .and_then(Option::as_ref)
+                .map(|slot| slot.stats.next_due_us)
+            else {
+                return IsrReleaseReceipt {
+                    accepted: 0,
+                    rejected: 1,
+                };
+            };
             if due > now_us {
                 return IsrReleaseReceipt {
                     accepted: 0,
@@ -427,11 +434,9 @@ impl<const N: usize> TaskTable<N> {
             let _ = self.pop_release_root();
             self.enqueue_ready(task_index);
             self.ready_members |= bit;
-            self.slots[task_index]
-                .as_mut()
-                .expect("ready task slot")
-                .stats
-                .release_group_width = 1;
+            if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
+                slot.stats.release_group_width = 1;
+            }
             return IsrReleaseReceipt {
                 accepted: 1,
                 rejected: 0,
@@ -451,10 +456,14 @@ impl<const N: usize> TaskTable<N> {
         let mut accepted_members = 0u32;
         while let Some(task_index) = self.release_root() {
             let bit = 1u32 << task_index;
-            let due = self.slots[task_index]
-                .expect("release task slot")
-                .stats
-                .next_due_us;
+            let Some(due) = self
+                .slots
+                .get(task_index)
+                .and_then(Option::as_ref)
+                .map(|slot| slot.stats.next_due_us)
+            else {
+                break;
+            };
             if due > now_us || candidates & bit == 0 {
                 break;
             }
@@ -470,11 +479,9 @@ impl<const N: usize> TaskTable<N> {
         while accepted_members != 0 {
             let task_index = accepted_members.trailing_zeros() as usize;
             accepted_members &= accepted_members - 1;
-            self.slots[task_index]
-                .as_mut()
-                .expect("ready task slot")
-                .stats
-                .release_group_width = width;
+            if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
+                slot.stats.release_group_width = width;
+            }
         }
         receipt
     }
@@ -508,7 +515,7 @@ impl<const N: usize> TaskTable<N> {
         // Queue indices originate only from registered slots. Keep the lookup
         // checked so an inconsistent private queue fails closed without an
         // unsafe access or a panic-formatting path.
-        let slot = self.slots.get(index).copied().flatten()?;
+        let slot = self.slots.get(index)?.as_ref()?;
         Some(DueSelection {
             index,
             release_us: slot.stats.next_due_us,
@@ -524,10 +531,14 @@ impl<const N: usize> TaskTable<N> {
     /// Commit one previously selected task. The updated phase is reinserted by
     /// [`record_poll`](Self::record_poll) or [`skip_release`](Self::skip_release).
     pub(crate) fn take_selected(&mut self, index: usize) {
-        let criticality = self.slots[index]
-            .expect("selected task slot")
-            .meta
-            .criticality as usize;
+        let Some(criticality) = self
+            .slots
+            .get(index)
+            .and_then(Option::as_ref)
+            .map(|slot| slot.meta.criticality as usize)
+        else {
+            return;
+        };
         let head = self.ready_head[criticality];
         if head == index as u8 {
             let next = self.ready_next[index];
@@ -558,12 +569,10 @@ impl<const N: usize> TaskTable<N> {
     }
 
     pub(crate) fn selected_group_width(&self, index: usize) -> u32 {
-        u32::from(
-            self.slots[index]
-                .expect("selected task slot")
-                .stats
-                .release_group_width,
-        )
+        self.slots
+            .get(index)
+            .and_then(Option::as_ref)
+            .map_or(0, |slot| u32::from(slot.stats.release_group_width))
     }
 
     /// O(1) readiness check used by idle decisions.
@@ -590,7 +599,10 @@ impl<const N: usize> TaskTable<N> {
             selected = match selected {
                 None => Some(idx),
                 Some(prev_idx) => {
-                    let prev = self.slots[prev_idx].expect("selected task slot");
+                    let Some(prev) = self.slots.get(prev_idx).and_then(Option::as_ref) else {
+                        selected = Some(idx);
+                        continue;
+                    };
                     if slot.meta.criticality > prev.meta.criticality
                         || (slot.meta.criticality == prev.meta.criticality
                             && slot.stats.next_due_us < prev.stats.next_due_us)
@@ -611,12 +623,10 @@ impl<const N: usize> TaskTable<N> {
         let released = self.mark_due_releases(now_us);
         let selected = self.ready_selection();
         let simultaneous_width = selected.map_or(0, |selection| {
-            u32::from(
-                self.slots[selection.index]
-                    .expect("selected task slot")
-                    .stats
-                    .release_group_width,
-            )
+            self.slots
+                .get(selection.index)
+                .and_then(Option::as_ref)
+                .map_or(0, |slot| u32::from(slot.stats.release_group_width))
         });
         DueSweep {
             selected,
@@ -624,11 +634,11 @@ impl<const N: usize> TaskTable<N> {
             due_tasks: self.ready_members.count_ones(),
             simultaneous_width,
             peer_inspected_slots: 0,
-            next_release_us: self.release_root().map(|index| {
-                self.slots[index]
-                    .expect("release heap task slot")
-                    .stats
-                    .next_due_us
+            next_release_us: self.release_root().and_then(|index| {
+                self.slots
+                    .get(index)
+                    .and_then(Option::as_ref)
+                    .map(|slot| slot.stats.next_due_us)
             }),
         }
     }
