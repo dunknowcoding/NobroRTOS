@@ -8,6 +8,7 @@
 
 pub mod board_catalog;
 pub mod board_desc;
+pub mod completion;
 pub mod lease;
 pub mod mpu;
 pub mod platform;
@@ -66,6 +67,7 @@ pub use board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPackageError, BoardPins, BootLayout, BootProfile,
     BusLayout, ServoProfile,
 };
+pub use completion::{CompletionCell, CompletionError};
 pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::nrf52840::NrfSchedulingSession;

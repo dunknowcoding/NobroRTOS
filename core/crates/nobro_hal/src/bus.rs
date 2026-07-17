@@ -10,6 +10,7 @@ pub const SPIM0_BASE: u32 = 0x4000_3000; // shared IRQ block with TWIM0 on nRF52
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BusError {
     LeaseDenied,
+    Busy,
     Timeout,
     Nack,
     LengthMismatch,

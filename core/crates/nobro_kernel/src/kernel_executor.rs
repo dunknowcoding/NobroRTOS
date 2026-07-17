@@ -215,6 +215,8 @@ pub struct CycleOutcome {
     pub rejected_isr_releases: u32,
     /// Async timer slots fired at cycle entry after a hardware/polled compare.
     pub async_timer_wakes: usize,
+    /// A non-timer reactor wake was pending at cycle entry.
+    pub async_event_wake: bool,
     pub observed_wake_latency_us: u32,
     pub overrun: bool,
     /// The bounded containment profile disabled the module this cycle.
@@ -998,7 +1000,13 @@ impl<
             &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         ) -> Result<Poll, KernelError>,
     ) -> Result<CycleOutcome, ExecError> {
-        self.run_cycle_inner::<false, false, 1, 0>(clock, power_platform, dispatch, None, None)
+        self.run_cycle_inner::<false, false, false, 1, 1, 0>(
+            clock,
+            power_platform,
+            dispatch,
+            None,
+            None,
+        )
     }
 
     /// Run one cycle with an admitted reactor's timer queue included in the
@@ -1019,12 +1027,41 @@ impl<
             &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         ) -> Result<Poll, KernelError>,
     ) -> Result<CycleOutcome, ExecError> {
-        self.run_cycle_inner::<false, true, 1, TIMERS>(
+        self.run_cycle_inner::<false, true, false, 1, 1, TIMERS>(
             clock,
             power_platform,
             dispatch,
             None,
-            Some((reactor_module, timers)),
+            Some((reactor_module, timers, None)),
+        )
+    }
+
+    /// Run one cycle with both timer deadlines and the reactor's lock-free
+    /// ready signal integrated into the authoritative scheduling decision.
+    ///
+    /// Peripheral ISRs wake their future's ordinary [`Waker`](core::task::Waker).
+    /// If that happens while the CPU is sleeping, the interrupt returns from
+    /// the platform's sleep instruction and this entry check event-wakes the
+    /// admitted reactor task. If it happens during dispatch or bookkeeping,
+    /// the ready signal keeps the executor active for the next cycle. No
+    /// peripheral-specific polling hook is required.
+    pub fn run_cycle_with_reactor<const REACTOR_TASKS: usize, const TIMERS: usize>(
+        &mut self,
+        clock: impl Fn() -> u64,
+        power_platform: &mut impl PowerPlatform,
+        reactor_module: ModuleId,
+        reactor_core: &crate::AsyncCore<REACTOR_TASKS>,
+        timers: &crate::TimerQueue<TIMERS>,
+        dispatch: impl FnMut(
+            &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ) -> Result<Poll, KernelError>,
+    ) -> Result<CycleOutcome, ExecError> {
+        self.run_cycle_inner::<false, true, true, 1, REACTOR_TASKS, TIMERS>(
+            clock,
+            power_platform,
+            dispatch,
+            None,
+            Some((reactor_module, timers, Some(reactor_core))),
         )
     }
 
@@ -1040,7 +1077,7 @@ impl<
         ) -> Result<Poll, KernelError>,
         instrumentation: &mut ExecutorInstrumentation<GROUPS>,
     ) -> Result<CycleOutcome, ExecError> {
-        self.run_cycle_inner::<true, false, GROUPS, 0>(
+        self.run_cycle_inner::<true, false, false, GROUPS, 1, 0>(
             clock,
             power_platform,
             dispatch,
@@ -1064,12 +1101,39 @@ impl<
         ) -> Result<Poll, KernelError>,
         instrumentation: &mut ExecutorInstrumentation<GROUPS>,
     ) -> Result<CycleOutcome, ExecError> {
-        self.run_cycle_inner::<true, true, GROUPS, TIMERS>(
+        self.run_cycle_inner::<true, true, false, GROUPS, 1, TIMERS>(
             clock,
             power_platform,
             dispatch,
             Some(instrumentation),
-            Some((reactor_module, timers)),
+            Some((reactor_module, timers, None)),
+        )
+    }
+
+    /// Instrumented form of [`run_cycle_with_reactor`](Self::run_cycle_with_reactor).
+    #[allow(clippy::too_many_arguments)] // mirrors the existing instrumented adapter
+    pub fn run_cycle_with_reactor_instrumented<
+        const REACTOR_TASKS: usize,
+        const TIMERS: usize,
+        const GROUPS: usize,
+    >(
+        &mut self,
+        clock: impl Fn() -> u64,
+        power_platform: &mut impl PowerPlatform,
+        reactor_module: ModuleId,
+        reactor_core: &crate::AsyncCore<REACTOR_TASKS>,
+        timers: &crate::TimerQueue<TIMERS>,
+        dispatch: impl FnMut(
+            &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ) -> Result<Poll, KernelError>,
+        instrumentation: &mut ExecutorInstrumentation<GROUPS>,
+    ) -> Result<CycleOutcome, ExecError> {
+        self.run_cycle_inner::<true, true, true, GROUPS, REACTOR_TASKS, TIMERS>(
+            clock,
+            power_platform,
+            dispatch,
+            Some(instrumentation),
+            Some((reactor_module, timers, Some(reactor_core))),
         )
     }
 
@@ -1077,7 +1141,9 @@ impl<
     fn run_cycle_inner<
         const INSTRUMENTED: bool,
         const ASYNC_DEADLINES: bool,
+        const ASYNC_EVENTS: bool,
         const GROUPS: usize,
+        const REACTOR_TASKS: usize,
         const TIMERS: usize,
     >(
         &mut self,
@@ -1087,7 +1153,11 @@ impl<
             &mut ModuleCtx<'_, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         ) -> Result<Poll, KernelError>,
         mut instrumentation: Option<&mut ExecutorInstrumentation<GROUPS>>,
-        async_deadlines: Option<(ModuleId, &crate::TimerQueue<TIMERS>)>,
+        async_state: Option<(
+            ModuleId,
+            &crate::TimerQueue<TIMERS>,
+            Option<&crate::AsyncCore<REACTOR_TASKS>>,
+        )>,
     ) -> Result<CycleOutcome, ExecError> {
         if !self.sealed {
             return Err(ExecError::NotSealed);
@@ -1099,11 +1169,13 @@ impl<
         outcome.rejected_isr_releases = isr.rejected;
         outcome.observed_wake_latency_us = power_platform.observed_wake_latency_us();
         if ASYNC_DEADLINES {
-            let Some((reactor_module, timers)) = async_deadlines else {
+            let Some((reactor_module, timers, reactor_core)) = async_state else {
                 return Err(ExecError::TaskStateCorrupt);
             };
             outcome.async_timer_wakes = timers.advance(now_us);
-            if outcome.async_timer_wakes != 0 {
+            outcome.async_event_wake =
+                ASYNC_EVENTS && reactor_core.is_some_and(crate::AsyncCore::has_ready);
+            if outcome.async_timer_wakes != 0 || outcome.async_event_wake {
                 let _ = self.tasks.wake_event(reactor_module)?;
             }
         }
@@ -1236,7 +1308,7 @@ impl<
                     recorder.record_selection_unstable();
                 }
                 outcome.idle_until_us =
-                    self.next_activity_us::<ASYNC_DEADLINES, TIMERS>(async_deadlines);
+                    self.next_activity_us::<ASYNC_DEADLINES, REACTOR_TASKS, TIMERS>(async_state);
                 outcome.power_mode = Some(self.apply_idle(
                     scheduling_now_us,
                     true,
@@ -1279,13 +1351,14 @@ impl<
                 }
             }
             outcome.idle_until_us =
-                self.next_activity_us::<ASYNC_DEADLINES, TIMERS>(async_deadlines);
+                self.next_activity_us::<ASYNC_DEADLINES, REACTOR_TASKS, TIMERS>(async_state);
             let work_pending = self.tasks.has_due(scheduling_now_us)
                 || self
                     .runtime
                     .alarms()
                     .next_due_us()
-                    .is_some_and(|due| due <= scheduling_now_us);
+                    .is_some_and(|due| due <= scheduling_now_us)
+                || Self::reactor_ready::<ASYNC_EVENTS, REACTOR_TASKS, TIMERS>(async_state);
             outcome.power_mode = Some(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
@@ -1339,13 +1412,14 @@ impl<
                 }
             }
             outcome.idle_until_us =
-                self.next_activity_us::<ASYNC_DEADLINES, TIMERS>(async_deadlines);
+                self.next_activity_us::<ASYNC_DEADLINES, REACTOR_TASKS, TIMERS>(async_state);
             let work_pending = self.tasks.has_due(scheduling_now_us)
                 || self
                     .runtime
                     .alarms()
                     .next_due_us()
-                    .is_some_and(|due| due <= scheduling_now_us);
+                    .is_some_and(|due| due <= scheduling_now_us)
+                || Self::reactor_ready::<ASYNC_EVENTS, REACTOR_TASKS, TIMERS>(async_state);
             outcome.power_mode = Some(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
@@ -1463,14 +1537,16 @@ impl<
             }
         }
 
-        outcome.idle_until_us = self.next_activity_us::<ASYNC_DEADLINES, TIMERS>(async_deadlines);
+        outcome.idle_until_us =
+            self.next_activity_us::<ASYNC_DEADLINES, REACTOR_TASKS, TIMERS>(async_state);
         let mut power_now_us = end_us;
         let mut work_pending = self.tasks.has_due(end_us)
             || self
                 .runtime
                 .alarms()
                 .next_due_us()
-                .is_some_and(|due| due <= end_us);
+                .is_some_and(|due| due <= end_us)
+            || Self::reactor_ready::<ASYNC_EVENTS, REACTOR_TASKS, TIMERS>(async_state);
         if INSTRUMENTED {
             let bookkeeping_finished_us = clock();
             if let Some(recorder) = instrumentation.as_mut() {
@@ -1493,7 +1569,8 @@ impl<
                         .runtime
                         .alarms()
                         .next_due_us()
-                        .is_some_and(|due| due <= power_now_us);
+                        .is_some_and(|due| due <= power_now_us)
+                    || Self::reactor_ready::<ASYNC_EVENTS, REACTOR_TASKS, TIMERS>(async_state);
             } else {
                 // A regressing clock cannot support an idle-safety decision.
                 // Mark the evidence invalid and force the fail-closed active
@@ -1513,9 +1590,17 @@ impl<
         Ok(outcome)
     }
 
-    fn next_activity_us<const ASYNC_DEADLINES: bool, const TIMERS: usize>(
+    fn next_activity_us<
+        const ASYNC_DEADLINES: bool,
+        const REACTOR_TASKS: usize,
+        const TIMERS: usize,
+    >(
         &self,
-        async_deadlines: Option<(ModuleId, &crate::TimerQueue<TIMERS>)>,
+        async_state: Option<(
+            ModuleId,
+            &crate::TimerQueue<TIMERS>,
+            Option<&crate::AsyncCore<REACTOR_TASKS>>,
+        )>,
     ) -> Option<u64> {
         let task = self.tasks.next_due_us();
         let alarm = self.runtime.alarms().next_due_us();
@@ -1524,7 +1609,7 @@ impl<
             (a, b) => a.or(b),
         };
         let async_deadline = if ASYNC_DEADLINES {
-            async_deadlines.and_then(|(_, timers)| timers.next_deadline_us())
+            async_state.and_then(|(_, timers, _)| timers.next_deadline_us())
         } else {
             None
         };
@@ -1532,6 +1617,20 @@ impl<
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
+    }
+
+    #[inline]
+    fn reactor_ready<const ASYNC_EVENTS: bool, const REACTOR_TASKS: usize, const TIMERS: usize>(
+        async_state: Option<(
+            ModuleId,
+            &crate::TimerQueue<TIMERS>,
+            Option<&crate::AsyncCore<REACTOR_TASKS>>,
+        )>,
+    ) -> bool {
+        ASYNC_EVENTS
+            && async_state
+                .and_then(|(_, _, core)| core)
+                .is_some_and(crate::AsyncCore::has_ready)
     }
 
     fn apply_idle(

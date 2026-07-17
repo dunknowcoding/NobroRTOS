@@ -107,6 +107,14 @@ impl<const N: usize> AsyncCore<N> {
         assert!(index < N, "task slot out of range");
         self.waker(index)
     }
+
+    /// True when at least one task has been woken and still needs a reactor
+    /// poll. Kernel adapters use this lock-free signal after any peripheral
+    /// interrupt, so hardware completion does not have to wait for a timer or
+    /// periodic release.
+    pub fn has_ready(&self) -> bool {
+        self.ready.load(Ordering::Acquire) != 0
+    }
 }
 
 impl<const N: usize> Default for AsyncCore<N> {
@@ -218,7 +226,7 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
     /// True when a wake is pending (the kernel-executor adapter's "poll me
     /// again" signal).
     pub fn has_ready(&self) -> bool {
-        self.core.ready.load(Ordering::Acquire) != 0
+        self.core.has_ready()
     }
 }
 
@@ -2071,10 +2079,11 @@ mod tests {
 
         let mut provider = CompareProvider::default();
         let first = kernel
-            .run_cycle_with_reactor_deadlines(
+            .run_cycle_with_reactor(
                 || 0,
                 &mut provider,
                 reactor_id,
+                core,
                 &QUEUE,
                 |_| {
                     reactor.run_ready(4);
@@ -2091,10 +2100,11 @@ mod tests {
         assert!(!FINISHED.load(Ordering::Acquire));
 
         let second = kernel
-            .run_cycle_with_reactor_deadlines(
+            .run_cycle_with_reactor(
                 || 35,
                 &mut provider,
                 reactor_id,
+                core,
                 &QUEUE,
                 |_| {
                     reactor.run_ready(4);
@@ -2111,6 +2121,62 @@ mod tests {
             kernel.tasks().get(reactor_id).unwrap().stats.next_due_us,
             100_000,
             "event-driven poll must preserve the periodic phase"
+        );
+
+        static DEVICE_DONE: AtomicBool = AtomicBool::new(false);
+        DEVICE_DONE.store(false, Ordering::Release);
+        let device_job = pin!(core::future::poll_fn(|_| {
+            if DEVICE_DONE.load(Ordering::Acquire) {
+                core::task::Poll::Ready(())
+            } else {
+                core::task::Poll::Pending
+            }
+        }));
+        let device_slot = reactor.spawn(device_job).unwrap();
+
+        let parked = kernel
+            .run_cycle_with_reactor(
+                || 40,
+                &mut provider,
+                reactor_id,
+                core,
+                &QUEUE,
+                |_| {
+                    reactor.run_ready(4);
+                    Ok(TaskPoll::Pending)
+                },
+            )
+            .unwrap();
+        assert!(parked.async_event_wake);
+        assert_eq!(parked.polled, Some(reactor_id));
+        assert_eq!(reactor.live(), 1);
+
+        // Model a peripheral completion ISR: publish device state, then invoke
+        // the task's ordinary waker. The next cycle must dispatch immediately,
+        // although neither the 100-ms periodic release nor a timer is due.
+        DEVICE_DONE.store(true, Ordering::Release);
+        core.waker_for(device_slot).wake_by_ref();
+        let completed = kernel
+            .run_cycle_with_reactor(
+                || 41,
+                &mut provider,
+                reactor_id,
+                core,
+                &QUEUE,
+                |_| {
+                    reactor.run_ready(4);
+                    Ok(TaskPoll::Ready)
+                },
+            )
+            .unwrap();
+        assert!(completed.async_event_wake);
+        assert_eq!(completed.async_timer_wakes, 0);
+        assert_eq!(completed.polled, Some(reactor_id));
+        assert_eq!(reactor.live(), 0);
+        assert_eq!(
+            kernel.tasks().get(reactor_id).unwrap().stats.next_due_us,
+            100_000,
+            "hardware completion must preserve the periodic phase"
         );
     }
 }

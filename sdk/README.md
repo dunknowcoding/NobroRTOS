@@ -69,11 +69,21 @@ domains, priority sharing, nesting overflow, and urgency inversions. Portable
 priority bands are never written directly to an NVIC register.
 
 Drive deadline-guarded futures with
-`KernelExecutor::run_cycle_with_reactor_deadlines`: it merges the reactor
-`TimerQueue` with task and alarm deadlines before arming the platform compare.
-When the compare wakes the core, due timer slots event-wake the admitted reactor
-task without polling or shifting its periodic phase. The ordinary `run_cycle`
-path does not link this optional integration.
+`KernelExecutor::run_cycle_with_reactor`: it merges the reactor `TimerQueue`
+with task and alarm deadlines before arming the platform compare, and observes
+the reactor's lock-free ready signal after peripheral interrupts. Timer and
+device completions therefore event-wake the admitted reactor task without
+polling or shifting its periodic phase. Use
+`run_cycle_with_reactor_deadlines` when the application intentionally needs
+timer integration only. The ordinary `run_cycle` path does not link either
+optional integration.
+
+On nRF52840, `Spim0::read_reg_async(...).await`,
+`write_reg_async(...).await`, and `read_burst_async(...).await` use a pinned,
+cancellation-safe EasyDMA transfer. The END interrupt wakes only the waiting
+reactor task; dropping the future, including through a deadline timeout, stops
+DMA before its staging storage is released. Existing synchronous SPI methods
+remain available and unchanged.
 
 ### Right-size from a device run
 
