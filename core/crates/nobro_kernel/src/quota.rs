@@ -19,6 +19,53 @@ impl QuotaEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct QuotaSlot {
+    limit_flash_bytes: u32,
+    limit_ram_bytes: u32,
+    used_flash_bytes: u32,
+    used_ram_bytes: u32,
+    limit_pool_slots: u16,
+    used_pool_slots: u16,
+    module: ModuleId,
+}
+
+impl QuotaSlot {
+    const fn new(module: ModuleId, limit: SystemBudget) -> Self {
+        Self {
+            limit_flash_bytes: limit.flash_bytes,
+            limit_ram_bytes: limit.ram_bytes,
+            used_flash_bytes: 0,
+            used_ram_bytes: 0,
+            limit_pool_slots: limit.pool_slots,
+            used_pool_slots: 0,
+            module,
+        }
+    }
+
+    const fn limit(&self) -> SystemBudget {
+        SystemBudget::new(
+            self.limit_flash_bytes,
+            self.limit_ram_bytes,
+            self.limit_pool_slots,
+        )
+    }
+
+    const fn used(&self) -> SystemBudget {
+        SystemBudget::new(
+            self.used_flash_bytes,
+            self.used_ram_bytes,
+            self.used_pool_slots,
+        )
+    }
+
+    fn set_used(&mut self, used: SystemBudget) {
+        self.used_flash_bytes = used.flash_bytes;
+        self.used_ram_bytes = used.ram_bytes;
+        self.used_pool_slots = used.pool_slots;
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuotaError {
     Full,
@@ -39,7 +86,7 @@ pub enum QuotaError {
 
 #[derive(Debug)]
 pub struct QuotaLedger<const N: usize> {
-    entries: [Option<QuotaEntry>; N],
+    entries: [Option<QuotaSlot>; N],
 }
 
 impl<const N: usize> QuotaLedger<N> {
@@ -57,12 +104,12 @@ impl<const N: usize> QuotaLedger<N> {
         destination: *mut Self,
         manifest: &SystemManifest<M>,
     ) {
-        let entries = core::ptr::addr_of_mut!((*destination).entries).cast::<Option<QuotaEntry>>();
+        let entries = core::ptr::addr_of_mut!((*destination).entries).cast::<Option<QuotaSlot>>();
         for index in 0..N {
             entries.add(index).write(None);
         }
         for (index, spec) in manifest.iter().enumerate() {
-            entries.add(index).write(Some(QuotaEntry::new(
+            entries.add(index).write(Some(QuotaSlot::new(
                 spec.id,
                 SystemBudget::from_memory(spec.memory),
             )));
@@ -77,7 +124,7 @@ impl<const N: usize> QuotaLedger<N> {
         let Some(slot) = self.entries.iter_mut().find(|slot| slot.is_none()) else {
             return Err(QuotaError::Full);
         };
-        *slot = Some(QuotaEntry::new(module, limit));
+        *slot = Some(QuotaSlot::new(module, limit));
         Ok(())
     }
 
@@ -95,18 +142,19 @@ impl<const N: usize> QuotaLedger<N> {
         let Some(entry) = self.find_mut(module) else {
             return Err(QuotaError::MissingModule(module));
         };
-        let Some(next) = entry.used.checked_add(amount) else {
+        let Some(next) = entry.used().checked_add(amount) else {
             return Err(QuotaError::Overflow(module));
         };
-        if !next.fits_within(entry.limit) {
+        let limit = entry.limit();
+        if !next.fits_within(limit) {
             return Err(QuotaError::Exceeded {
                 module,
                 used: next,
-                limit: entry.limit,
+                limit,
             });
         }
 
-        entry.used = next;
+        entry.set_used(next);
         Ok(())
     }
 
@@ -114,15 +162,16 @@ impl<const N: usize> QuotaLedger<N> {
         let Some(entry) = self.find_mut(module) else {
             return Err(QuotaError::MissingModule(module));
         };
-        let Some(next) = entry.used.checked_sub(amount) else {
+        let used = entry.used();
+        let Some(next) = used.checked_sub(amount) else {
             return Err(QuotaError::Underflow {
                 module,
-                used: entry.used,
+                used,
                 release: amount,
             });
         };
 
-        entry.used = next;
+        entry.set_used(next);
         Ok(())
     }
 
@@ -130,28 +179,28 @@ impl<const N: usize> QuotaLedger<N> {
         let Some(entry) = self.find_mut(module) else {
             return Err(QuotaError::MissingModule(module));
         };
-        let released = entry.used;
-        entry.used = SystemBudget::ZERO;
+        let released = entry.used();
+        entry.set_used(SystemBudget::ZERO);
         Ok(released)
     }
 
     pub fn usage(&self, module: ModuleId) -> Option<SystemBudget> {
-        self.find(module).map(|entry| entry.used)
+        self.find(module).map(QuotaSlot::used)
     }
 
     pub fn limit(&self, module: ModuleId) -> Option<SystemBudget> {
-        self.find(module).map(|entry| entry.limit)
+        self.find(module).map(QuotaSlot::limit)
     }
 
     pub fn available(&self, module: ModuleId) -> Option<SystemBudget> {
         let entry = self.find(module)?;
-        entry.limit.checked_sub(entry.used)
+        entry.limit().checked_sub(entry.used())
     }
 
     pub fn total_used(&self) -> SystemBudget {
         let mut total = SystemBudget::ZERO;
         for entry in self.entries.iter().flatten() {
-            total = total.checked_add(entry.used).unwrap_or(SystemBudget {
+            total = total.checked_add(entry.used()).unwrap_or(SystemBudget {
                 flash_bytes: u32::MAX,
                 ram_bytes: u32::MAX,
                 pool_slots: u16::MAX,
@@ -168,14 +217,14 @@ impl<const N: usize> QuotaLedger<N> {
         self.len() == 0
     }
 
-    fn find(&self, module: ModuleId) -> Option<&QuotaEntry> {
+    fn find(&self, module: ModuleId) -> Option<&QuotaSlot> {
         self.entries
             .iter()
             .flatten()
             .find(|entry| entry.module == module)
     }
 
-    fn find_mut(&mut self, module: ModuleId) -> Option<&mut QuotaEntry> {
+    fn find_mut(&mut self, module: ModuleId) -> Option<&mut QuotaSlot> {
         self.entries
             .iter_mut()
             .flatten()
@@ -195,6 +244,13 @@ mod tests {
     use crate::{
         Capability, CapabilitySet, Criticality, DeadlineContract, MemoryBudget, ModuleSpec,
     };
+
+    #[test]
+    fn private_slots_remove_nested_budget_padding() {
+        assert_eq!(core::mem::size_of::<QuotaEntry>(), 28);
+        assert_eq!(core::mem::size_of::<Option<QuotaSlot>>(), 24);
+        assert_eq!(core::mem::size_of::<QuotaLedger<6>>(), 144);
+    }
 
     #[test]
     fn ledger_tracks_reserve_and_release_without_heap() {
