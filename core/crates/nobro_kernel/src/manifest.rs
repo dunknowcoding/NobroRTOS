@@ -812,6 +812,10 @@ impl<const N: usize> SystemManifest<N> {
     }
 }
 
+// This conversion sits behind the streamed-admission callback. Inlining lets
+// the contract be assembled in the caller's return slot instead of an outlined
+// aggregate-return frame.
+#[inline(always)]
 fn admission_contract(spec: ModuleSpec) -> nobro_admission::TaskContract {
     let mut contract = nobro_admission::TaskContract::new(module_code(spec.id) as u16)
         .priority(match spec.criticality {
