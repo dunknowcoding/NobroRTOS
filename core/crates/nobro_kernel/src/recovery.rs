@@ -583,12 +583,16 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
     }
 
     pub fn transition(&mut self, to: SystemState, now_us: u64) -> Result<(), RecoveryError> {
-        let event = self
-            .lifecycle
-            .transition(to, now_us)
-            .map_err(RecoveryError::Lifecycle)?;
         if LOG_SLOTS != 0 {
+            let event = self
+                .lifecycle
+                .transition(to, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
             self.supervisor.events_mut().push(event);
+        } else {
+            self.lifecycle
+                .transition_unlogged(to, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
         }
         Ok(())
     }
@@ -626,12 +630,16 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
                 .events_mut()
                 .push_health(now_us, module, error, action);
         }
-        let event = self
-            .lifecycle
-            .apply_action(module, error, action, now_us)
-            .map_err(RecoveryError::Lifecycle)?;
         if LOG_SLOTS != 0 {
+            let event = self
+                .lifecycle
+                .apply_action(module, error, action, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
             self.supervisor.events_mut().push(event);
+        } else {
+            self.lifecycle
+                .apply_action_unlogged(action, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
         }
 
         Ok(RecoveryOutcome {
@@ -668,12 +676,16 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
                 .events_mut()
                 .push_health(now_us, module, fault.error, action);
         }
-        let event = self
-            .lifecycle
-            .apply_action(module, fault.error, action, now_us)
-            .map_err(RecoveryError::Lifecycle)?;
         if LOG_SLOTS != 0 {
+            let event = self
+                .lifecycle
+                .apply_action(module, fault.error, action, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
             self.supervisor.events_mut().push(event);
+        } else {
+            self.lifecycle
+                .apply_action_unlogged(action, now_us)
+                .map_err(RecoveryError::Lifecycle)?;
         }
         Ok(RecoveryOutcome {
             module,

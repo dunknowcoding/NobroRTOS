@@ -57,6 +57,23 @@ impl Lifecycle {
         to: SystemState,
         now_us: u64,
     ) -> Result<EventRecord, LifecycleError> {
+        let from = self.state;
+        self.transition_unlogged(to, now_us)?;
+
+        Ok(EventRecord::new(
+            now_us,
+            ModuleId::Kernel,
+            Self::severity_for(to),
+            EventKind::Host,
+            EventPayload::Pair(from as u32, to as u32),
+        ))
+    }
+
+    pub(crate) fn transition_unlogged(
+        &mut self,
+        to: SystemState,
+        now_us: u64,
+    ) -> Result<(), LifecycleError> {
         if !Self::is_valid_transition(self.state, to) {
             return Err(LifecycleError::InvalidTransition {
                 from: self.state,
@@ -70,13 +87,7 @@ impl Lifecycle {
         self.transitions = self.transitions.saturating_add(1);
         self.last_change_us = now_us;
 
-        Ok(EventRecord::new(
-            now_us,
-            ModuleId::Kernel,
-            Self::severity_for(to),
-            EventKind::Host,
-            EventPayload::Pair(from as u32, to as u32),
-        ))
+        Ok(())
     }
 
     pub fn apply_action(
@@ -86,11 +97,7 @@ impl Lifecycle {
         action: Action,
         now_us: u64,
     ) -> Result<EventRecord, LifecycleError> {
-        let target = match action {
-            Action::RetryNow | Action::RetryDelay(_) | Action::Ignore => self.state,
-            Action::NotifyUserTask => SystemState::Degraded,
-            Action::RebootModule => SystemState::Recovering,
-        };
+        let target = Self::target_for_action(self.state, action);
 
         if target == self.state {
             return Ok(EventRecord::new(
@@ -103,6 +110,27 @@ impl Lifecycle {
         }
 
         self.transition(target, now_us)
+    }
+
+    pub(crate) fn apply_action_unlogged(
+        &mut self,
+        action: Action,
+        now_us: u64,
+    ) -> Result<(), LifecycleError> {
+        let target = Self::target_for_action(self.state, action);
+        if target == self.state {
+            Ok(())
+        } else {
+            self.transition_unlogged(target, now_us)
+        }
+    }
+
+    const fn target_for_action(state: SystemState, action: Action) -> SystemState {
+        match action {
+            Action::RetryNow | Action::RetryDelay(_) | Action::Ignore => state,
+            Action::NotifyUserTask => SystemState::Degraded,
+            Action::RebootModule => SystemState::Recovering,
+        }
     }
 
     pub const fn is_valid_transition(from: SystemState, to: SystemState) -> bool {
@@ -212,5 +240,40 @@ mod tests {
         assert_eq!(lifecycle.state(), SystemState::ValidateManifest);
         assert_eq!(event.module, ModuleId::Bus);
         assert_eq!(event.kind, EventKind::Recovery);
+    }
+
+    #[test]
+    fn unlogged_lifecycle_paths_match_logged_state() {
+        let mut logged = Lifecycle::new();
+        let mut unlogged = Lifecycle::new();
+
+        for (state, now_us) in [
+            (SystemState::ValidateManifest, 10),
+            (SystemState::InitDrivers, 20),
+            (SystemState::Running, 30),
+        ] {
+            logged.transition(state, now_us).unwrap();
+            unlogged.transition_unlogged(state, now_us).unwrap();
+            assert_eq!(unlogged, logged);
+        }
+
+        logged
+            .apply_action(
+                ModuleId::Sensor,
+                KernelError::SensorReadFail,
+                Action::NotifyUserTask,
+                40,
+            )
+            .unwrap();
+        unlogged
+            .apply_action_unlogged(Action::NotifyUserTask, 40)
+            .unwrap();
+        assert_eq!(unlogged, logged);
+
+        logged
+            .apply_action(ModuleId::Bus, KernelError::BusTimeout, Action::Ignore, 50)
+            .unwrap();
+        unlogged.apply_action_unlogged(Action::Ignore, 50).unwrap();
+        assert_eq!(unlogged, logged);
     }
 }
