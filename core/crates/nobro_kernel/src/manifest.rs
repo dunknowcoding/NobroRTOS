@@ -629,7 +629,10 @@ impl<const N: usize> SystemManifest<N> {
             )
             .wake_latency_us(profile.wake_latency_us),
             |index| {
-                self.modules[index]
+                self.modules
+                    .get(index)
+                    .copied()
+                    .flatten()
                     .map(admission_contract)
                     .unwrap_or(nobro_admission::TaskContract::EMPTY)
             },
