@@ -1510,7 +1510,9 @@ impl<
     }
 
     pub(crate) fn trace_record(&mut self, input: CapabilityTraceInput) {
-        let _ = self.trace.record(input);
+        if LOG != 0 {
+            let _ = self.trace.record(input);
+        }
     }
 
     pub(crate) fn authorize_traced(
@@ -1916,6 +1918,14 @@ mod tests {
         );
         assert_eq!(runtime.event_log_report().event_count, 0);
         assert_eq!(runtime.capability_trace().len(), 0);
+        runtime.trace_record(CapabilityTraceInput::new(
+            ModuleId::Sensor,
+            Capability::SamplePool,
+            CapabilityTraceOp::Read,
+            20,
+        ));
+        assert_eq!(runtime.capability_trace().next_sequence(), 0);
+        assert_eq!(runtime.capability_trace().dropped(), 0);
         assert_eq!(runtime.plan().module_count(), 2);
     }
 

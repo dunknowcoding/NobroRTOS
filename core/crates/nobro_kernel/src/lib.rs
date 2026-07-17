@@ -173,7 +173,7 @@ pub type SmallRuntime = Runtime<4, 4, 8, 4, 8, 4, 16>;
 pub type StandardRuntime = Runtime<8, 8, 16, 8, 16, 8, 32>;
 pub type LargeRuntime = Runtime<16, 16, 32, 16, 32, 16, 64>;
 /// Managed runtime without alarm, KV, retained event-log, or capability-trace
-/// storage. Admission, quotas, mailbox IPC, health/recovery, watchdogs, and
+/// recording. Admission, quotas, mailbox IPC, health/recovery, watchdogs, and
 /// object accounting remain enabled.
 pub type LeanRuntime<const MODULES: usize, const MAILBOX: usize> =
     Runtime<MODULES, MODULES, MAILBOX, 0, 0, MODULES, 0>;
