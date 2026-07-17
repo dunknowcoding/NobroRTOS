@@ -4,7 +4,11 @@
 //! engine, or async runtime. The admitted table lives in `.rodata`; the target
 //! only releases periodic work into a fixed-priority bitmap and dispatches it.
 
-use crate::{Capability, ObjectKind, StackFault, StackGuardTable};
+use crate::{
+    Action, Capability, FaultThresholdError, FaultThresholds, HealthCounters, KernelError,
+    ModuleId, ObjectKind, RecoveryCoordinator, RecoveryError, StackFault, StackGuardTable,
+    SystemState,
+};
 use nobro_admission::{
     AdmittedWorkload, ADMITTED_SCHEMA_VERSION, MAX_WRAP_SAFE_INTERVAL_US, SUBSYSTEM_ABSENT,
 };
@@ -71,6 +75,12 @@ impl NanoSubsystemReport {
     pub const GOVERNED: Self = Self {
         capability: SUBSYSTEM_PRESENT,
         quota: SUBSYSTEM_PRESENT,
+        ..Self::ABSENT
+    };
+
+    pub const SUPERVISED: Self = Self {
+        recovery: SUBSYSTEM_PRESENT,
+        health: SUBSYSTEM_PRESENT,
         ..Self::ABSENT
     };
 
@@ -238,6 +248,151 @@ impl<const N: usize> NanoGovernance<N> {
             ObjectKind::Alarm => 8,
             ObjectKind::KvEntry => 16,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NanoRecoveryOutcome {
+    pub task_index: usize,
+    pub task_id: u16,
+    pub error: KernelError,
+    pub action: Action,
+    pub state: SystemState,
+    pub coalesced: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NanoRecoveryError {
+    InvalidThresholds(FaultThresholdError),
+    InvalidTask(usize),
+    Coordinator(RecoveryError),
+    CannotRestore(SystemState),
+}
+
+/// Optional health escalation and lifecycle recovery for pre-admitted tasks.
+///
+/// Tasks are addressed by their Nano input index; callers do not need to
+/// construct module identifiers or a runtime manifest. Retained event tracing,
+/// dependency recovery plans, watchdogs, and the managed runtime remain
+/// separate choices.
+pub struct NanoRecovery<const N: usize> {
+    workload: &'static AdmittedWorkload<N>,
+    coordinator: RecoveryCoordinator<N, 0>,
+}
+
+impl<const N: usize> NanoRecovery<N> {
+    fn new(
+        workload: &'static AdmittedWorkload<N>,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<Self, NanoRecoveryError> {
+        thresholds
+            .validate()
+            .map_err(NanoRecoveryError::InvalidThresholds)?;
+        let mut recovery = Self {
+            workload,
+            coordinator: RecoveryCoordinator::new(thresholds),
+        };
+        recovery.enter_running(now_us)?;
+        Ok(recovery)
+    }
+
+    unsafe fn init_in_place(
+        destination: *mut Self,
+        workload: &'static AdmittedWorkload<N>,
+        thresholds: FaultThresholds,
+    ) {
+        core::ptr::addr_of_mut!((*destination).workload).write(workload);
+        RecoveryCoordinator::init_in_place(
+            core::ptr::addr_of_mut!((*destination).coordinator),
+            thresholds,
+        );
+    }
+
+    fn enter_running(&mut self, now_us: u64) -> Result<(), NanoRecoveryError> {
+        for state in [
+            SystemState::ValidateManifest,
+            SystemState::InitDrivers,
+            SystemState::Running,
+        ] {
+            self.coordinator
+                .transition(state, now_us)
+                .map_err(NanoRecoveryError::Coordinator)?;
+        }
+        Ok(())
+    }
+
+    pub fn record_ok(&mut self, task_index: usize, now_us: u64) -> Result<(), NanoRecoveryError> {
+        let module = self.module(task_index)?;
+        self.coordinator.record_ok(module, now_us);
+        Ok(())
+    }
+
+    pub fn record_error(
+        &mut self,
+        task_index: usize,
+        error: KernelError,
+        now_us: u64,
+    ) -> Result<NanoRecoveryOutcome, NanoRecoveryError> {
+        let module = self.module(task_index)?;
+        let outcome = self
+            .coordinator
+            .record_error(module, error, now_us)
+            .map_err(NanoRecoveryError::Coordinator)?;
+        Ok(NanoRecoveryOutcome {
+            task_index,
+            task_id: self.workload.tasks[task_index].id,
+            error: outcome.error,
+            action: outcome.action,
+            state: outcome.state,
+            coalesced: outcome.coalesced,
+        })
+    }
+
+    pub fn counters(&self, task_index: usize) -> Result<Option<HealthCounters>, NanoRecoveryError> {
+        let module = self.module(task_index)?;
+        Ok(self
+            .coordinator
+            .snapshot(module)
+            .map(|snapshot| snapshot.counters))
+    }
+
+    /// Return a degraded or recovering system to `Running` after the caller
+    /// has completed the selected recovery action.
+    pub fn restore_running(&mut self, now_us: u64) -> Result<(), NanoRecoveryError> {
+        match self.coordinator.state() {
+            SystemState::Running => Ok(()),
+            SystemState::Degraded => self
+                .coordinator
+                .transition(SystemState::Running, now_us)
+                .map_err(NanoRecoveryError::Coordinator),
+            SystemState::Recovering => {
+                self.coordinator
+                    .transition(SystemState::InitDrivers, now_us)
+                    .map_err(NanoRecoveryError::Coordinator)?;
+                self.coordinator
+                    .transition(SystemState::Running, now_us)
+                    .map_err(NanoRecoveryError::Coordinator)
+            }
+            state => Err(NanoRecoveryError::CannotRestore(state)),
+        }
+    }
+
+    pub const fn state(&self) -> SystemState {
+        self.coordinator.state()
+    }
+
+    pub const fn subsystem_report(&self) -> NanoSubsystemReport {
+        NanoSubsystemReport::SUPERVISED
+    }
+
+    fn module(&self, task_index: usize) -> Result<ModuleId, NanoRecoveryError> {
+        if task_index >= usize::from(self.workload.task_count)
+            || self.workload.tasks.get(task_index).is_none()
+        {
+            return Err(NanoRecoveryError::InvalidTask(task_index));
+        }
+        Ok(ModuleId::App(task_index as u8))
     }
 }
 
@@ -419,6 +574,37 @@ impl<const N: usize> NanoKernel<N> {
     /// construct it only when operations need runtime authorization/accounting.
     pub fn governance(&self) -> NanoGovernance<N> {
         NanoGovernance::new(self.workload)
+    }
+
+    /// Select health escalation and lifecycle recovery without the managed
+    /// runtime or a retained event trace.
+    pub fn recovery(
+        &self,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<NanoRecovery<N>, NanoRecoveryError> {
+        NanoRecovery::new(self.workload, thresholds, now_us)
+    }
+
+    /// Initialize recovery directly in caller-owned storage.
+    ///
+    /// This is the bounded-stack form for static or long-lived MCU services;
+    /// it preserves the same short task-index API as [`Self::recovery`].
+    pub fn recovery_into<'a>(
+        &self,
+        destination: &'a mut core::mem::MaybeUninit<NanoRecovery<N>>,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<&'a mut NanoRecovery<N>, NanoRecoveryError> {
+        thresholds
+            .validate()
+            .map_err(NanoRecoveryError::InvalidThresholds)?;
+        unsafe {
+            NanoRecovery::init_in_place(destination.as_mut_ptr(), self.workload, thresholds);
+        }
+        let recovery = unsafe { destination.assume_init_mut() };
+        recovery.enter_running(now_us)?;
+        Ok(recovery)
     }
 
     pub const fn subsystem_report(&self) -> NanoSubsystemReport {
@@ -622,10 +808,94 @@ mod tests {
 
     #[test]
     fn independently_selected_service_reports_compose() {
-        let report = NanoSubsystemReport::GUARDED.union(NanoSubsystemReport::GOVERNED);
+        let report = NanoSubsystemReport::GUARDED
+            .union(NanoSubsystemReport::GOVERNED)
+            .union(NanoSubsystemReport::SUPERVISED);
         assert_eq!(report.stack_guard, SUBSYSTEM_PRESENT);
         assert_eq!(report.capability, SUBSYSTEM_PRESENT);
         assert_eq!(report.quota, SUBSYSTEM_PRESENT);
-        assert_eq!(report.recovery, SUBSYSTEM_ABSENT);
+        assert_eq!(report.recovery, SUBSYSTEM_PRESENT);
+        assert_eq!(report.health, SUBSYSTEM_PRESENT);
+        assert_eq!(report.trace, SUBSYSTEM_ABSENT);
+    }
+
+    #[test]
+    fn recovery_maps_tasks_and_restores_lifecycle_without_a_trace() {
+        let nano = NanoKernel::new(&GOVERNED_WORKLOAD, 0).unwrap();
+        let mut recovery = nano
+            .recovery(
+                FaultThresholds {
+                    notify_after: 1,
+                    reboot_after: 2,
+                },
+                10,
+            )
+            .unwrap();
+        assert_eq!(recovery.state(), SystemState::Running);
+
+        let first = recovery
+            .record_error(0, KernelError::DeadlineMissed, 20)
+            .unwrap();
+        assert_eq!(first.task_index, 0);
+        assert_eq!(first.task_id, 7);
+        assert_eq!(first.action, Action::NotifyUserTask);
+        assert_eq!(first.state, SystemState::Degraded);
+
+        let second = recovery
+            .record_error(0, KernelError::DeadlineMissed, 30)
+            .unwrap();
+        assert_eq!(second.action, Action::RebootModule);
+        assert_eq!(second.state, SystemState::Recovering);
+        assert_eq!(recovery.counters(0).unwrap().unwrap().consecutive_errors, 2);
+
+        recovery.record_ok(0, 40).unwrap();
+        recovery.restore_running(50).unwrap();
+        assert_eq!(recovery.state(), SystemState::Running);
+        assert_eq!(recovery.counters(0).unwrap().unwrap().consecutive_errors, 0);
+        assert_eq!(recovery.subsystem_report(), NanoSubsystemReport::SUPERVISED);
+        assert_eq!(
+            recovery.record_error(1, KernelError::ModuleCrash, 60),
+            Err(NanoRecoveryError::InvalidTask(1))
+        );
+    }
+
+    #[test]
+    fn recovery_rejects_invalid_thresholds_before_startup() {
+        let nano = NanoKernel::new(&GOVERNED_WORKLOAD, 0).unwrap();
+        assert!(matches!(
+            nano.recovery(
+                FaultThresholds {
+                    notify_after: 0,
+                    reboot_after: 1,
+                },
+                0
+            ),
+            Err(NanoRecoveryError::InvalidThresholds(
+                FaultThresholdError::NotifyZero
+            ))
+        ));
+    }
+
+    #[test]
+    fn in_place_recovery_matches_the_value_constructor() {
+        let nano = NanoKernel::new(&GOVERNED_WORKLOAD, 0).unwrap();
+        let thresholds = FaultThresholds {
+            notify_after: 1,
+            reboot_after: 2,
+        };
+        let mut storage = core::mem::MaybeUninit::uninit();
+        let in_place = nano.recovery_into(&mut storage, thresholds, 10).unwrap();
+        let mut by_value = nano.recovery(thresholds, 10).unwrap();
+
+        assert_eq!(
+            in_place
+                .record_error(0, KernelError::DeadlineMissed, 20)
+                .unwrap(),
+            by_value
+                .record_error(0, KernelError::DeadlineMissed, 20)
+                .unwrap()
+        );
+        assert_eq!(in_place.counters(0), by_value.counters(0));
+        assert_eq!(in_place.state(), by_value.state());
     }
 }

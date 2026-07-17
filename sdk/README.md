@@ -44,6 +44,11 @@ Capability checks and mailbox/alarm/KV limits are independently selectable with
 `let mut governance = nano.governance();`; they use the bindings already admitted
 by `.capabilities(...)` and `.object_quotas(...)` and do not pull in the managed
 runtime or require stack guards.
+Health escalation and lifecycle recovery are another independent choice:
+`let mut recovery = nano.recovery(FaultThresholds::DEFAULT, now_us)?;`.
+Tasks use their Nano indices, and retained tracing or the managed runtime are not required.
+Long-lived MCU services can use `recovery_into` with caller-owned storage to avoid
+a capacity-sized construction frame.
 
 ### Right-size from a device run
 
