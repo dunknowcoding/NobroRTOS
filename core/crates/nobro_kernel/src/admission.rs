@@ -135,17 +135,24 @@ impl AdmissionController {
 
         let startup =
             StartupPlanner::plan::<STARTUP>(startup_nodes).map_err(AdmissionError::Startup)?;
-        let mut quotas = QuotaLedger::<QUOTAS>::new();
-        quotas
-            .register_manifest(manifest)
-            .map_err(AdmissionError::Quota)?;
-        let grants = CapabilityGrantTable::<QUOTAS>::from_manifest(manifest)
-            .map_err(AdmissionError::Capability)?;
         let module_count = startup.len;
+        // A validated manifest cannot contain duplicate module IDs. Both
+        // per-module tables use QUOTAS capacity, so this one check preserves
+        // the established quota-before-capability error ordering and makes
+        // their final construction infallible.
+        if module_count > QUOTAS {
+            return Err(AdmissionError::Quota(QuotaError::Full));
+        }
 
         core::ptr::addr_of_mut!((*destination).startup).write(startup);
-        core::ptr::addr_of_mut!((*destination).quotas).write(quotas);
-        core::ptr::addr_of_mut!((*destination).grants).write(grants);
+        QuotaLedger::init_from_manifest_in_place(
+            core::ptr::addr_of_mut!((*destination).quotas),
+            manifest,
+        );
+        CapabilityGrantTable::init_from_manifest_in_place(
+            core::ptr::addr_of_mut!((*destination).grants),
+            manifest,
+        );
         core::ptr::addr_of_mut!((*destination).used).write(manifest.total_budget());
         core::ptr::addr_of_mut!((*destination).profile).write(profile);
         Ok(module_count)
@@ -395,6 +402,30 @@ mod tests {
                 expected.grants.granted(module)
             );
         }
+    }
+
+    #[test]
+    fn in_place_admission_preserves_quota_capacity_failure() {
+        let manifest = valid_manifest();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+        ];
+        let expected =
+            AdmissionController::admit::<4, 4, 1>(&manifest, &startup, profile()).unwrap_err();
+        let mut destination = MaybeUninit::<AdmissionPlan<4, 1>>::uninit();
+        let actual = unsafe {
+            AdmissionController::admit_in_place::<4, 4, 1>(
+                destination.as_mut_ptr(),
+                &manifest,
+                &startup,
+                profile(),
+            )
+        }
+        .unwrap_err();
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual, AdmissionError::Quota(QuotaError::Full));
     }
 
     #[test]

@@ -47,6 +47,28 @@ impl<const N: usize> QuotaLedger<N> {
         Self { entries: [None; N] }
     }
 
+    /// Initialize final ledger storage from an already validated manifest.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be aligned, writable storage for one uninitialized
+    /// `QuotaLedger<N>`, and `manifest.len()` must not exceed `N`.
+    pub(crate) unsafe fn init_from_manifest_in_place<const M: usize>(
+        destination: *mut Self,
+        manifest: &SystemManifest<M>,
+    ) {
+        let entries = core::ptr::addr_of_mut!((*destination).entries).cast::<Option<QuotaEntry>>();
+        for index in 0..N {
+            entries.add(index).write(None);
+        }
+        for (index, spec) in manifest.iter().enumerate() {
+            entries.add(index).write(Some(QuotaEntry::new(
+                spec.id,
+                SystemBudget::from_memory(spec.memory),
+            )));
+        }
+    }
+
     pub fn register(&mut self, module: ModuleId, limit: SystemBudget) -> Result<(), QuotaError> {
         if self.find(module).is_some() {
             return Err(QuotaError::DuplicateModule(module));

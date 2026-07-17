@@ -303,6 +303,29 @@ impl<const N: usize> CapabilityGrantTable<N> {
         Self { grants: [None; N] }
     }
 
+    /// Initialize final grant storage from an already validated manifest.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be aligned, writable storage for one uninitialized
+    /// `CapabilityGrantTable<N>`, and `manifest.len()` must not exceed `N`.
+    pub(crate) unsafe fn init_from_manifest_in_place<const M: usize>(
+        destination: *mut Self,
+        manifest: &SystemManifest<M>,
+    ) {
+        let grants =
+            core::ptr::addr_of_mut!((*destination).grants).cast::<Option<CapabilityGrant>>();
+        for index in 0..N {
+            grants.add(index).write(None);
+        }
+        for (index, spec) in manifest.iter().enumerate() {
+            grants.add(index).write(Some(CapabilityGrant::new(
+                spec.id,
+                spec.requires.union(spec.owns),
+            )));
+        }
+    }
+
     pub fn register(
         &mut self,
         module: ModuleId,
