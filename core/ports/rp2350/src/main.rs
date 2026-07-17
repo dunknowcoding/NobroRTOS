@@ -44,7 +44,10 @@ fn core1_task() {
     // valid for the whole `-> !` lifetime of core1.
     let worker = core::pin::pin!(async {
         loop {
-            let item = XCORE_WORK.recv().await; // parks when empty; core0 wakes it
+            let item = XCORE_WORK
+                .recv()
+                .await
+                .expect("admitted core1 receiver waiter"); // parks when empty
             let Some(value) = item else { continue };
             // Real work: a saturating multiply-accumulate fusion step.
             let acc = CORE1_ACC

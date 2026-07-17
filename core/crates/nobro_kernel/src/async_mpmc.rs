@@ -22,6 +22,7 @@
 
 use core::cell::RefCell;
 use core::future::Future;
+use core::marker::PhantomPinned;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
@@ -34,9 +35,58 @@ pub enum WaitError {
     WaitersFull,
 }
 
+/// Why a non-blocking MPMC send could not accept the value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MpmcTrySendError<T> {
+    /// The ring is at capacity; retry after a receiver makes space.
+    Full(T),
+    /// The channel is closed and will never accept another value.
+    Closed(T),
+}
+
+impl<T> MpmcTrySendError<T> {
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Full(value) | Self::Closed(value) => value,
+        }
+    }
+}
+
+/// Terminal failure returned by a blocking MPMC send future.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MpmcSendError<T> {
+    /// The channel closed before the value could be delivered.
+    Closed(T),
+    /// The admitted sender-waiter capacity was exhausted.
+    WaitersFull(T),
+}
+
+impl<T> MpmcSendError<T> {
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Closed(value) | Self::WaitersFull(value) => value,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WaitRegistration(usize);
+
+impl WaitRegistration {
+    const UNTRACKED: Self = Self(0);
+}
+
+struct WaitSlot {
+    // Zero is reserved for the public waker-deduplicating `park` API. Pinned
+    // future anchors always have non-null addresses, so a single word is
+    // enough and each bounded slot avoids `Option<usize>` tag expansion.
+    registration: WaitRegistration,
+    waker: Waker,
+}
+
 /// A fixed-capacity FIFO of wakers with arrival-order fairness and dedup.
 pub struct WaitQueue<const W: usize> {
-    slots: [Option<Waker>; W],
+    slots: [Option<WaitSlot>; W],
     len: usize,
 }
 
@@ -52,14 +102,45 @@ impl<const W: usize> WaitQueue<W> {
     /// Returns `WaitersFull` when the bound is reached (attributed, never silent).
     pub fn park(&mut self, waker: &Waker) -> Result<(), WaitError> {
         for slot in self.slots[..self.len].iter() {
-            if slot.as_ref().is_some_and(|w| w.will_wake(waker)) {
+            if slot
+                .as_ref()
+                .is_some_and(|waiter| waiter.waker.will_wake(waker))
+            {
                 return Ok(()); // dedup: a storm collapses to one entry
             }
         }
         if self.len == W {
             return Err(WaitError::WaitersFull);
         }
-        self.slots[self.len] = Some(waker.clone());
+        self.slots[self.len] = Some(WaitSlot {
+            registration: WaitRegistration::UNTRACKED,
+            waker: waker.clone(),
+        });
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Register one future independently of other futures that happen to use
+    /// the same task waker. The stable key lets cancellation remove only the
+    /// caller's registration and lets a changed task waker update in place.
+    fn register(&mut self, registration: WaitRegistration, waker: &Waker) -> Result<(), WaitError> {
+        if let Some(slot) = self.slots[..self.len]
+            .iter_mut()
+            .flatten()
+            .find(|slot| slot.registration == registration)
+        {
+            if !slot.waker.will_wake(waker) {
+                slot.waker = waker.clone();
+            }
+            return Ok(());
+        }
+        if self.len == W {
+            return Err(WaitError::WaitersFull);
+        }
+        self.slots[self.len] = Some(WaitSlot {
+            registration,
+            waker: waker.clone(),
+        });
         self.len += 1;
         Ok(())
     }
@@ -69,14 +150,14 @@ impl<const W: usize> WaitQueue<W> {
         if self.len == 0 {
             return false;
         }
-        let waker = self.slots[0].take();
+        let waiter = self.slots[0].take();
         // Shift the FIFO down by one (bounded by W).
         for i in 1..self.len {
             self.slots[i - 1] = self.slots[i].take();
         }
         self.len -= 1;
-        if let Some(waker) = waker {
-            waker.wake();
+        if let Some(waiter) = waiter {
+            waiter.waker.wake();
             true
         } else {
             false
@@ -86,11 +167,42 @@ impl<const W: usize> WaitQueue<W> {
     /// Wake every parked waiter (used on cancel/close).
     pub fn wake_all(&mut self) {
         for slot in self.slots[..self.len].iter_mut() {
-            if let Some(waker) = slot.take() {
-                waker.wake();
+            if let Some(waiter) = slot.take() {
+                waiter.waker.wake();
             }
         }
         self.len = 0;
+    }
+
+    /// Remove one equivalent parked waker registered through [`park`](Self::park).
+    pub fn remove(&mut self, waker: &Waker) -> bool {
+        let Some(index) = self.slots[..self.len].iter().position(|slot| {
+            slot.as_ref()
+                .is_some_and(|known| known.waker.will_wake(waker))
+        }) else {
+            return false;
+        };
+        self.remove_index(index);
+        true
+    }
+
+    fn unregister(&mut self, registration: WaitRegistration) -> bool {
+        let Some(index) = self.slots[..self.len].iter().position(|slot| {
+            slot.as_ref()
+                .is_some_and(|known| known.registration == registration)
+        }) else {
+            return false;
+        };
+        self.remove_index(index);
+        true
+    }
+
+    fn remove_index(&mut self, index: usize) {
+        self.slots[index] = None;
+        for cursor in index + 1..self.len {
+            self.slots[cursor - 1] = self.slots[cursor].take();
+        }
+        self.len -= 1;
     }
 
     pub fn len(&self) -> usize {
@@ -138,13 +250,24 @@ impl<T, const C: usize, const W: usize> MpmcChannel<T, C, W> {
         }
     }
 
-    /// Push without blocking; `Err(value)` when full (or `Err` semantics via
-    /// [`try_recv`] returning `None` after close). Wakes one fair receiver.
+    /// Push without blocking. This compatibility form returns `Err(value)` for
+    /// either full or closed; use [`try_send_checked`](Self::try_send_checked)
+    /// when the caller must distinguish retryable backpressure from closure.
     pub fn try_send(&self, value: T) -> Result<(), T> {
+        self.try_send_checked(value)
+            .map_err(MpmcTrySendError::into_inner)
+    }
+
+    /// Push without blocking and retain the reason plus ownership of `value`
+    /// on failure. Wakes one fair receiver after a successful enqueue.
+    pub fn try_send_checked(&self, value: T) -> Result<(), MpmcTrySendError<T>> {
         critical_section::with(|cs| {
             let mut state = self.state.borrow(cs).borrow_mut();
-            if state.closed || state.len == C {
-                return Err(value);
+            if state.closed {
+                return Err(MpmcTrySendError::Closed(value));
+            }
+            if state.len == C {
+                return Err(MpmcTrySendError::Full(value));
             }
             let tail = (state.head + state.len) % C;
             state.ring[tail] = Some(value);
@@ -197,49 +320,96 @@ impl<T, const C: usize, const W: usize> MpmcChannel<T, C, W> {
         MpmcSend {
             channel: self,
             value: Some(value),
+            registration_anchor: 0,
+            _pin: PhantomPinned,
         }
     }
 
     pub fn recv(&self) -> MpmcRecv<'_, T, C, W> {
-        MpmcRecv { channel: self }
+        MpmcRecv {
+            channel: self,
+            registration_anchor: 0,
+            _pin: PhantomPinned,
+        }
+    }
+
+    fn remove_sender(&self, registration: WaitRegistration) {
+        critical_section::with(|cs| {
+            self.state
+                .borrow(cs)
+                .borrow_mut()
+                .send_waiters
+                .unregister(registration);
+        });
+    }
+
+    fn remove_receiver(&self, registration: WaitRegistration) {
+        critical_section::with(|cs| {
+            self.state
+                .borrow(cs)
+                .borrow_mut()
+                .recv_waiters
+                .unregister(registration);
+        });
     }
 }
 
-/// Send future: resolves `Ok(())` on success, `Err(value)` if the channel closes
-/// while waiting, and parks fairly (with an attributed error if `W` is exhausted).
+/// Send future: resolves `Ok(())` on success and returns the undelivered value
+/// in [`MpmcSendError`] on closure or waiter-capacity exhaustion.
 pub struct MpmcSend<'c, T, const C: usize, const W: usize> {
     channel: &'c MpmcChannel<T, C, W>,
     value: Option<T>,
+    registration_anchor: u8,
+    _pin: PhantomPinned,
 }
 
 impl<T: Unpin, const C: usize, const W: usize> Future for MpmcSend<'_, T, C, W> {
-    type Output = Result<(), WaitError>;
+    type Output = Result<(), MpmcSendError<T>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let value = self.value.take().expect("polled after completion");
-        match self.channel.try_send(value) {
-            Ok(()) => Poll::Ready(Ok(())),
-            Err(value) => {
-                let parked = critical_section::with(|cs| {
-                    let mut state = self.channel.state.borrow(cs).borrow_mut();
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
+        // SAFETY: `registration_anchor` is never moved after the first poll
+        // because `PhantomPinned` makes this future `!Unpin`. We do not project
+        // a pinned reference to `value`; `T: Unpin` permits taking it.
+        let this = unsafe { self.as_mut().get_unchecked_mut() };
+        let value = this.value.take().expect("polled after completion");
+        match this.channel.try_send_checked(value) {
+            Ok(()) => {
+                this.channel.remove_sender(registration);
+                Poll::Ready(Ok(()))
+            }
+            Err(MpmcTrySendError::Closed(value)) => {
+                this.channel.remove_sender(registration);
+                Poll::Ready(Err(MpmcSendError::Closed(value)))
+            }
+            Err(MpmcTrySendError::Full(value)) => {
+                let parked = critical_section::with(|cs| -> Result<bool, WaitError> {
+                    let mut state = this.channel.state.borrow(cs).borrow_mut();
                     if state.closed {
-                        return Ok(true); // closed: fall through and fail below
+                        return Ok(true);
                     }
-                    state.send_waiters.park(cx.waker()).map(|()| false)
+                    state.send_waiters.register(registration, cx.waker())?;
+                    Ok(false)
                 });
                 match parked {
-                    Err(err) => Poll::Ready(Err(err)),
-                    Ok(_closed_or_parked) => {
+                    Err(WaitError::WaitersFull) => {
+                        Poll::Ready(Err(MpmcSendError::WaitersFull(value)))
+                    }
+                    Ok(true) => Poll::Ready(Err(MpmcSendError::Closed(value))),
+                    Ok(false) => {
                         // Re-check after parking (lost-wake race + close).
-                        match self.channel.try_send(value) {
-                            Ok(()) => Poll::Ready(Ok(())),
-                            Err(value) => {
-                                if self.channel.is_closed() {
-                                    Poll::Ready(Err(WaitError::WaitersFull))
-                                } else {
-                                    self.value = Some(value);
-                                    Poll::Pending
-                                }
+                        match this.channel.try_send_checked(value) {
+                            Ok(()) => {
+                                this.channel.remove_sender(registration);
+                                Poll::Ready(Ok(()))
+                            }
+                            Err(MpmcTrySendError::Closed(value)) => {
+                                this.channel.remove_sender(registration);
+                                Poll::Ready(Err(MpmcSendError::Closed(value)))
+                            }
+                            Err(MpmcTrySendError::Full(value)) => {
+                                this.value = Some(value);
+                                Poll::Pending
                             }
                         }
                     }
@@ -249,34 +419,65 @@ impl<T: Unpin, const C: usize, const W: usize> Future for MpmcSend<'_, T, C, W> 
     }
 }
 
+impl<T, const C: usize, const W: usize> Drop for MpmcSend<'_, T, C, W> {
+    fn drop(&mut self) {
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
+        self.channel.remove_sender(registration);
+    }
+}
+
 /// Recv future: resolves `Some(value)`, or `None` if the channel closes empty.
+/// Waiter exhaustion is returned explicitly and never impersonates EOF.
 pub struct MpmcRecv<'c, T, const C: usize, const W: usize> {
     channel: &'c MpmcChannel<T, C, W>,
+    registration_anchor: u8,
+    _pin: PhantomPinned,
 }
 
 impl<T, const C: usize, const W: usize> Future for MpmcRecv<'_, T, C, W> {
-    type Output = Option<T>;
+    type Output = Result<Option<T>, WaitError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
         if let Some(value) = self.channel.try_recv() {
-            return Poll::Ready(Some(value));
+            self.channel.remove_receiver(registration);
+            return Poll::Ready(Ok(Some(value)));
         }
         let park = critical_section::with(|cs| {
             let mut state = self.channel.state.borrow(cs).borrow_mut();
             if state.closed && state.len == 0 {
-                return Ok(true); // closed + drained
+                return Ok(true);
             }
-            state.recv_waiters.park(cx.waker()).map(|()| false)
+            state
+                .recv_waiters
+                .register(registration, cx.waker())
+                .map(|()| false)
         });
         match park {
-            Ok(true) => Poll::Ready(None),
-            Err(_) => Poll::Ready(None), // waiter table full: don't hang, report empty
+            Ok(true) => {
+                self.channel.remove_receiver(registration);
+                Poll::Ready(Ok(None))
+            }
+            Err(error) => Poll::Ready(Err(error)),
             Ok(false) => match self.channel.try_recv() {
-                Some(value) => Poll::Ready(Some(value)),
-                None if self.channel.is_closed() => Poll::Ready(None),
+                Some(value) => {
+                    self.channel.remove_receiver(registration);
+                    Poll::Ready(Ok(Some(value)))
+                }
+                None if self.channel.is_closed() => {
+                    self.channel.remove_receiver(registration);
+                    Poll::Ready(Ok(None))
+                }
                 None => Poll::Pending,
             },
         }
+    }
+}
+
+impl<T, const C: usize, const W: usize> Drop for MpmcRecv<'_, T, C, W> {
+    fn drop(&mut self) {
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
+        self.channel.remove_receiver(registration);
     }
 }
 
@@ -328,7 +529,11 @@ impl<const N: usize> TaskGroup<N> {
 
     /// A future that resolves when the group is cancelled (fair, multi-waiter).
     pub fn cancelled(&self) -> GroupCancelled<'_, N> {
-        GroupCancelled { group: self }
+        GroupCancelled {
+            group: self,
+            registration_anchor: 0,
+            _pin: PhantomPinned,
+        }
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -360,26 +565,53 @@ impl<const N: usize> TaskGroup<N> {
             state.members > 0 && state.done[..state.members].iter().all(|&d| d)
         })
     }
+
+    fn remove_waiter(&self, registration: WaitRegistration) {
+        critical_section::with(|cs| {
+            self.state
+                .borrow(cs)
+                .borrow_mut()
+                .waiters
+                .unregister(registration);
+        });
+    }
 }
 
 /// Future returned by [`TaskGroup::cancelled`]; parks in the group's wait queue.
 pub struct GroupCancelled<'g, const N: usize> {
     group: &'g TaskGroup<N>,
+    registration_anchor: u8,
+    _pin: PhantomPinned,
 }
 
 impl<const N: usize> Future for GroupCancelled<'_, N> {
-    type Output = ();
+    type Output = Result<(), WaitError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        critical_section::with(|cs| {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
+        let ready = critical_section::with(|cs| -> Result<bool, WaitError> {
             let mut state = self.group.state.borrow(cs).borrow_mut();
             if state.cancelled {
-                return Poll::Ready(());
+                return Ok(true);
             }
-            // WaitersFull cannot happen: at most N members, W == N.
-            let _ = state.waiters.park(cx.waker());
+            state.waiters.register(registration, cx.waker())?;
+            Ok(false)
+        });
+        if ready == Ok(true) {
+            self.group.remove_waiter(registration);
+            Poll::Ready(Ok(()))
+        } else if let Err(error) = ready {
+            Poll::Ready(Err(error))
+        } else {
             Poll::Pending
-        })
+        }
+    }
+}
+
+impl<const N: usize> Drop for GroupCancelled<'_, N> {
+    fn drop(&mut self) {
+        let registration = WaitRegistration(core::ptr::from_ref(&self.registration_anchor).addr());
+        self.group.remove_waiter(registration);
     }
 }
 
@@ -440,13 +672,19 @@ mod tests {
         });
         let c1 = pin!(async {
             for _ in 0..2 {
-                SUM.fetch_add(CH.recv().await.unwrap(), Ordering::Relaxed);
+                SUM.fetch_add(
+                    CH.recv().await.unwrap().expect("channel remained open"),
+                    Ordering::Relaxed,
+                );
                 COUNT.fetch_add(1, Ordering::Relaxed);
             }
         });
         let c2 = pin!(async {
             for _ in 0..2 {
-                SUM.fetch_add(CH.recv().await.unwrap(), Ordering::Relaxed);
+                SUM.fetch_add(
+                    CH.recv().await.unwrap().expect("channel remained open"),
+                    Ordering::Relaxed,
+                );
                 COUNT.fetch_add(1, Ordering::Relaxed);
             }
         });
@@ -472,7 +710,7 @@ mod tests {
         let core = leak_core::<1>();
         let mut exec = ReactorExecutor::bind(core);
         let waiter = pin!(async {
-            if CH.recv().await.is_none() {
+            if CH.recv().await.unwrap().is_none() {
                 GOT_NONE.fetch_add(1, Ordering::Relaxed);
             }
         });
@@ -508,7 +746,7 @@ mod tests {
         });
         let consumer = pin!(async {
             for _ in 0..5 {
-                let v = XCORE.recv().await.unwrap();
+                let v = XCORE.recv().await.unwrap().expect("channel remained open");
                 SUM.fetch_add(v, Ordering::Relaxed);
                 DELIVERED.fetch_add(1, Ordering::Relaxed);
             }
@@ -552,6 +790,105 @@ mod tests {
     }
 
     #[test]
+    fn recv_waiter_exhaustion_is_typed_and_cancellation_frees_capacity() {
+        static CH: MpmcChannel<u32, 1, 1> = MpmcChannel::new();
+        let core = leak_core::<2>();
+        let _exec = ReactorExecutor::bind(core);
+        let first_waker = core.waker_for(0);
+        let second_waker = core.waker_for(1);
+        let mut first_cx = Context::from_waker(&first_waker);
+        let mut second_cx = Context::from_waker(&second_waker);
+
+        let mut first = Box::pin(CH.recv());
+        assert_eq!(first.as_mut().poll(&mut first_cx), Poll::Pending);
+
+        let mut second = pin!(CH.recv());
+        assert_eq!(
+            second.as_mut().poll(&mut second_cx),
+            Poll::Ready(Err(WaitError::WaitersFull))
+        );
+        assert!(!CH.is_closed(), "waiter exhaustion is not end-of-stream");
+
+        drop(first);
+        let mut replacement = pin!(CH.recv());
+        assert_eq!(
+            replacement.as_mut().poll(&mut second_cx),
+            Poll::Pending,
+            "dropping a pending receiver releases its waiter slot"
+        );
+    }
+
+    #[test]
+    fn pending_receiver_replaces_a_changed_task_waker_without_leaking_capacity() {
+        static CH: MpmcChannel<u32, 1, 1> = MpmcChannel::new();
+        let core = leak_core::<2>();
+        let _exec = ReactorExecutor::bind(core);
+        let first_waker = core.waker_for(0);
+        let migrated_waker = core.waker_for(1);
+        let mut first_cx = Context::from_waker(&first_waker);
+        let mut migrated_cx = Context::from_waker(&migrated_waker);
+        let mut receiver = Box::pin(CH.recv());
+
+        assert_eq!(receiver.as_mut().poll(&mut first_cx), Poll::Pending);
+        assert_eq!(
+            receiver.as_mut().poll(&mut migrated_cx),
+            Poll::Pending,
+            "the replacement waker reuses the same admitted waiter slot"
+        );
+
+        drop(receiver);
+        let mut replacement = pin!(CH.recv());
+        assert_eq!(
+            replacement.as_mut().poll(&mut first_cx),
+            Poll::Pending,
+            "dropping after waker migration removes the replacement registration"
+        );
+    }
+
+    #[test]
+    fn cancelling_one_of_two_same_task_waiters_preserves_the_other_wake() {
+        static CH: MpmcChannel<u32, 1, 2> = MpmcChannel::new();
+        let core = leak_core::<1>();
+        let _exec = ReactorExecutor::bind(core);
+        let shared_waker = core.waker_for(0);
+        let mut cx = Context::from_waker(&shared_waker);
+        let mut cancelled = Box::pin(CH.recv());
+        let mut survivor = Box::pin(CH.recv());
+
+        assert_eq!(cancelled.as_mut().poll(&mut cx), Poll::Pending);
+        assert_eq!(survivor.as_mut().poll(&mut cx), Poll::Pending);
+        drop(cancelled);
+
+        assert_eq!(CH.try_send(7), Ok(()));
+        assert!(
+            core.has_ready(),
+            "the surviving future retains an independent wake registration"
+        );
+        assert_eq!(survivor.as_mut().poll(&mut cx), Poll::Ready(Ok(Some(7))));
+    }
+
+    #[test]
+    fn send_distinguishes_full_from_closed_and_returns_undelivered_value() {
+        static CH: MpmcChannel<u32, 1, 1> = MpmcChannel::new();
+        assert_eq!(CH.try_send_checked(1), Ok(()));
+        assert_eq!(CH.try_send_checked(2), Err(MpmcTrySendError::Full(2)));
+
+        let core = leak_core::<1>();
+        let _exec = ReactorExecutor::bind(core);
+        let waker = core.waker_for(0);
+        let mut cx = Context::from_waker(&waker);
+        let mut pending = pin!(CH.send(42));
+        assert_eq!(pending.as_mut().poll(&mut cx), Poll::Pending);
+
+        CH.close();
+        assert_eq!(
+            pending.as_mut().poll(&mut cx),
+            Poll::Ready(Err(MpmcSendError::Closed(42)))
+        );
+        assert_eq!(CH.try_send_checked(3), Err(MpmcTrySendError::Closed(3)));
+    }
+
+    #[test]
     fn task_group_cancels_all_members_and_joins() {
         static GROUP: TaskGroup<3> = TaskGroup::new();
         static CANCELLED: AtomicU32 = AtomicU32::new(0);
@@ -561,7 +898,7 @@ mod tests {
         for _ in 0..3 {
             let index = GROUP.join_member().unwrap();
             let fut = Box::leak(Box::new(async move {
-                GROUP.cancelled().await;
+                GROUP.cancelled().await.unwrap();
                 CANCELLED.fetch_add(1, Ordering::Relaxed);
                 GROUP.mark_done(index);
             }));
@@ -578,6 +915,53 @@ mod tests {
         }
         assert_eq!(CANCELLED.load(Ordering::Relaxed), 3);
         assert!(GROUP.all_done(), "group join satisfied after cancel");
+    }
+
+    #[test]
+    fn dropping_group_cancellation_future_releases_its_waiter_slot() {
+        static GROUP: TaskGroup<1> = TaskGroup::new();
+        assert_eq!(GROUP.join_member(), Ok(0));
+        let core = leak_core::<2>();
+        let _exec = ReactorExecutor::bind(core);
+        let first_waker = core.waker_for(0);
+        let replacement_waker = core.waker_for(1);
+        let mut first_cx = Context::from_waker(&first_waker);
+        let mut replacement_cx = Context::from_waker(&replacement_waker);
+
+        let mut first = Box::pin(GROUP.cancelled());
+        assert_eq!(first.as_mut().poll(&mut first_cx), Poll::Pending);
+        drop(first);
+
+        let mut replacement = Box::pin(GROUP.cancelled());
+        assert_eq!(
+            replacement.as_mut().poll(&mut replacement_cx),
+            Poll::Pending
+        );
+        GROUP.cancel_all();
+        assert_eq!(
+            replacement.as_mut().poll(&mut replacement_cx),
+            Poll::Ready(Ok(()))
+        );
+    }
+
+    #[test]
+    fn group_cancellation_waiter_overflow_is_typed() {
+        static GROUP: TaskGroup<1> = TaskGroup::new();
+        assert_eq!(GROUP.join_member(), Ok(0));
+        let core = leak_core::<2>();
+        let _exec = ReactorExecutor::bind(core);
+        let first_waker = core.waker_for(0);
+        let second_waker = core.waker_for(1);
+        let mut first_cx = Context::from_waker(&first_waker);
+        let mut second_cx = Context::from_waker(&second_waker);
+
+        let mut admitted = Box::pin(GROUP.cancelled());
+        assert_eq!(admitted.as_mut().poll(&mut first_cx), Poll::Pending);
+        let mut overflow = Box::pin(GROUP.cancelled());
+        assert_eq!(
+            overflow.as_mut().poll(&mut second_cx),
+            Poll::Ready(Err(WaitError::WaitersFull))
+        );
     }
 
     #[test]

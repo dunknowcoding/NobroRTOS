@@ -62,7 +62,9 @@ pub use admission::{
 pub use admission_analysis::{AdmissionAnalysis, ModuleCost, ShedError, ShedPlan};
 pub use alarm::{Alarm, AlarmError, AlarmId, AlarmQueue};
 pub use async_exec::{AsyncError, BoundedExecutor, RunStats, SpawnedTask};
-pub use async_mpmc::{MpmcChannel, TaskGroup, WaitError, WaitQueue};
+pub use async_mpmc::{
+    MpmcChannel, MpmcSendError, MpmcTrySendError, TaskGroup, WaitError, WaitQueue,
+};
 pub use async_rt::{
     admit_reactor_domains, join2, select2, with_deadline, AsyncCore, AsyncDeadline, CancelToken,
     Channel, DeadlineContractError, DeadlineFault, DeadlineFaultKind, DeadlineFuture, Either,

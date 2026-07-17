@@ -640,6 +640,20 @@ choose a multi-waiter transport such as `MpmcChannel` instead of accidentally
 sharing a single-waker SPSC channel across priority domains. A cross-domain
 channel must declare at least two waiter slots.
 
+`MpmcChannel::recv().await` returns `Result<Option<T>, WaitError>`: `Ok(None)`
+means the channel is closed and drained, while `Err(WaitersFull)` means the
+admitted receiver-waiter bound was exhausted. `send().await` returns an
+`MpmcSendError<T>` that distinguishes closure from waiter exhaustion and
+returns ownership of the undelivered value. Dropping either pending future
+removes its parked waker immediately. For non-blocking producers,
+`try_send_checked` distinguishes retryable `Full(value)` from
+`Closed(value)`; the older `try_send` remains the concise form when that
+distinction is unnecessary.
+
+`TaskGroup::cancelled().await` likewise returns `Result<(), WaitError>`.
+Dropping a pending cancellation future releases its waiter immediately, and an
+out-of-contract extra waiter receives `WaitersFull` instead of parking forever.
+
 #### Executor Power And Structured Faults
 
 `KernelExecutor::run_cycle` accepts a `PowerPlatform` implementation. When no
