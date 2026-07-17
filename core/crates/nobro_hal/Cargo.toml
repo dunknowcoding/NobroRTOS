@@ -21,6 +21,9 @@ platform-nrf52840 = [
     "critical-section/restore-state-bool",
 ]
 platform-nrf52840-rt = ["platform-nrf52840", "nrf52840-pac/rt"]
+# Opt-in interrupt-driven TWIM0 provider. Synchronous I2C users do not retain
+# its futures, completion cell, or shared-vector dispatch.
+nrf-twim-async = ["platform-nrf52840"]
 # Optional Cortex-M4F PSP/PendSV port. It is never enabled by a portable board
 # profile and therefore has zero default cost on every target.
 cortex-m-slice = ["platform-nrf52840"]

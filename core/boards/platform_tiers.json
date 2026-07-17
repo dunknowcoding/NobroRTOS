@@ -87,7 +87,7 @@
         "nobro-hal",
         "--no-default-features",
         "--features",
-        "board-promicro-nosd",
+        "board-promicro-nosd,nrf-twim-async",
         "--target",
         "thumbv7em-none-eabihf",
         "--locked"

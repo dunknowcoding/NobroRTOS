@@ -181,8 +181,11 @@ impl Spim0 {
             return Err(BusError::LengthMismatch);
         }
         let n = tx.len();
-        if n == 0 || n > SPIM_XFER_MAX {
-            return Err(BusError::Timeout);
+        if n == 0 {
+            return Err(BusError::EmptyTransfer);
+        }
+        if n > SPIM_XFER_MAX {
+            return Err(BusError::TransferTooLong);
         }
         let base = SPIM0_BASE;
         let mut txbuf = [0u8; SPIM_XFER_MAX];
@@ -254,8 +257,11 @@ impl Spim0 {
     /// Read consecutive registers without polling the peripheral.
     pub async fn read_burst_async(&self, reg_addr: u8, output: &mut [u8]) -> Result<(), BusError> {
         let len = output.len();
-        if len == 0 || len + 1 > SPIM_XFER_MAX {
-            return Err(BusError::Timeout);
+        if len == 0 {
+            return Err(BusError::EmptyTransfer);
+        }
+        if len + 1 > SPIM_XFER_MAX {
+            return Err(BusError::TransferTooLong);
         }
         let mut tx = [0; SPIM_XFER_MAX];
         let mut rx = [0; SPIM_XFER_MAX];
@@ -283,8 +289,11 @@ impl Spim0 {
     /// Burst read `buf.len()` consecutive registers starting at `reg_addr`.
     pub fn read_burst(&self, reg_addr: u8, buf: &mut [u8]) -> Result<(), BusError> {
         let n = buf.len();
-        if n == 0 || n + 1 > SPIM_XFER_MAX {
-            return Err(BusError::Timeout);
+        if n == 0 {
+            return Err(BusError::EmptyTransfer);
+        }
+        if n + 1 > SPIM_XFER_MAX {
+            return Err(BusError::TransferTooLong);
         }
         let mut tx = [0u8; SPIM_XFER_MAX];
         let mut rx = [0u8; SPIM_XFER_MAX];
@@ -345,8 +354,11 @@ impl<'a> SpimTransfer<'a> {
         if self.tx.len() != self.rx.len() {
             return Err(BusError::LengthMismatch);
         }
-        if self.len == 0 || self.len > SPIM_XFER_MAX {
-            return Err(BusError::Timeout);
+        if self.len == 0 {
+            return Err(BusError::EmptyTransfer);
+        }
+        if self.len > SPIM_XFER_MAX {
+            return Err(BusError::TransferTooLong);
         }
         Ok(())
     }
@@ -458,19 +470,21 @@ impl Drop for SpimTransfer<'_> {
     }
 }
 
-/// Shared SPIM0/TWIM0 vector. The asynchronous SPIM path owns this vector only
-/// while the SPIM0 lease and its future are active; the legacy TWIM0 path is
-/// polling-only.
+/// Shared SPIM0/TWIM0 vector. Physical-block alias exclusion ensures only one
+/// provider can have an operation armed, while completion state identifies the
+/// active programming mode and prevents interpreting aliased event offsets as
+/// the wrong peripheral.
 #[no_mangle]
 #[allow(non_snake_case)]
 #[cfg(target_arch = "arm")]
 unsafe extern "C" fn SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0() {
     let base = SPIM0_BASE;
-    if *reg(base, SPIM_EVENTS_END) == 0 {
-        return;
+    if SPIM0_COMPLETION.is_busy() && *reg(base, SPIM_EVENTS_END) != 0 {
+        *reg(base, SPIM_INTENCLR) = SPIM_INT_END;
+        *reg(base, SPIM_EVENTS_END) = 0;
+        cortex_m::asm::dsb();
+        SPIM0_COMPLETION.complete_from_isr();
     }
-    *reg(base, SPIM_INTENCLR) = SPIM_INT_END;
-    *reg(base, SPIM_EVENTS_END) = 0;
-    cortex_m::asm::dsb();
-    SPIM0_COMPLETION.complete_from_isr();
+    #[cfg(feature = "nrf-twim-async")]
+    crate::twim_hw::on_interrupt();
 }

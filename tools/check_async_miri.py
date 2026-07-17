@@ -38,6 +38,15 @@ def main() -> int:
         completed = subprocess.run(command, cwd=ROOT / "core", env=env)
         if completed.returncode != 0:
             return completed.returncode
+    command = [
+        "cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
+        "-p", "nobro-hal", "--no-default-features",
+        "--features", "platform-nrf52840,board-promicro-nosd,nrf-twim-async",
+        "twim_hw::async_provider::tests",
+    ]
+    completed = subprocess.run(command, cwd=ROOT / "core", env=env)
+    if completed.returncode != 0:
+        return completed.returncode
     return 0
 
 

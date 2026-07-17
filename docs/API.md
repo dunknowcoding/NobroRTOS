@@ -1055,6 +1055,9 @@ scheduling-session operations revalidate the exact acquisition before touching h
 owner-scoped recovery invalidates stale sessions, quiesces the peripheral, clears nRF
 interrupt/DMA routing state, and only then publishes the slot as free. Raw low-level
 register APIs are `unsafe` and exist for gated compatibility integrations.
+On nRF52840, `Twim0` and `Spim0` are programming modes of the same physical
+peripheral block. Their logical lease IDs therefore exclude each other even
+when different modules or owner IDs request them.
 
 ```rust
 let guard = nobro_hal::ResourceLease::acquire_guard(nobro_hal::Resource::Twim0, module_id)?;
@@ -1070,6 +1073,20 @@ nobro_hal::ResourceLease::release_all_for_owner(module_id);
 `TRANSFER_MODE`, so scheduling and diagnostic code can distinguish polling from
 DMA instead of assuming one platform-wide behavior. The current deep backend
 reports polling I2C and DMA SPI.
+
+With the opt-in `nrf-twim-async` feature, the nRF52840 `TwimBus` also provides
+explicit `write_async`, `read_async`, and `write_read_async` EasyDMA futures
+for reactor code. Synchronous-only firmware does not link this provider. The
+futures use bounded 64-byte RAM staging, an admitted completion-interrupt
+priority, and a cancellation barrier that stops DMA before borrowed buffers
+can leave scope.
+Bare-metal images enable `platform-nrf52840-rt` alongside it so the shared
+SPIM0/TWIM0 vector is present.
+Invalid addresses, empty operations, over-capacity operations, bus NACKs, and
+timeouts remain distinct `BusError` outcomes.
+Call `init_pins` before starting either the synchronous or asynchronous path.
+The portable synchronous `HalI2c::TRANSFER_MODE` remains honestly reported as
+`Polling`; choosing an async method opts into the separate DMA surface.
 
 Owned-peripheral ports use `HalAlarm`, `HalPwmChannel`, and `HalByteIo` for a
 one-shot deadline, a constructed PWM channel, and bounded USB/serial byte I/O.

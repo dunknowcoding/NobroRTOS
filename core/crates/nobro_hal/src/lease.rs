@@ -119,13 +119,34 @@ fn idx(r: Resource) -> usize {
     }
 }
 
+/// Resources that are different programming modes of one physical nRF block.
+///
+/// The aliases have distinct portable identities, but they cannot be leased at
+/// the same time: changing one mode's ENABLE/PSEL/interrupt registers would
+/// corrupt an operation owned through the other identity.
+const fn alias_peer(resource: Resource) -> Option<Resource> {
+    match resource {
+        Resource::Twim0 => Some(Resource::Spim0),
+        Resource::Spim0 => Some(Resource::Twim0),
+        _ => None,
+    }
+}
+
+fn acquisition_conflicts(resource: Resource) -> bool {
+    SLOTS[idx(resource)].taken.load(Ordering::Acquire)
+        || match alias_peer(resource) {
+            Some(peer) => SLOTS[idx(peer)].taken.load(Ordering::Acquire),
+            None => false,
+        }
+}
+
 pub struct ResourceLease;
 
 impl ResourceLease {
     pub fn acquire(resource: Resource, owner: u8) -> Result<(), LeaseError> {
         critical_section::with(|_| {
             let slot = &SLOTS[idx(resource)];
-            if slot.taken.load(Ordering::Acquire) {
+            if acquisition_conflicts(resource) {
                 return Err(LeaseError::AlreadyHeld);
             }
             slot.taken.store(true, Ordering::Release);
@@ -196,7 +217,7 @@ impl ResourceLease {
     pub fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
         critical_section::with(|_| {
             let slot = &SLOTS[idx(resource)];
-            if slot.taken.load(Ordering::Acquire) {
+            if acquisition_conflicts(resource) {
                 return Err(LeaseError::AlreadyHeld);
             }
             let generation = slot.generation.load(Ordering::Acquire);
@@ -359,15 +380,16 @@ mod invariant_tests {
 
             if op <= 2 {
                 let got = ResourceLease::acquire(res, owner);
-                match model[ri] {
-                    None => {
+                let peer_is_held = alias_peer(res).is_some_and(|peer| model[idx(peer)].is_some());
+                match (model[ri], peer_is_held) {
+                    (None, false) => {
                         assert!(got.is_ok(), "acquire of a free resource must succeed");
                         model[ri] = Some(owner);
                     }
-                    Some(_) => assert_eq!(
+                    _ => assert_eq!(
                         got,
                         Err(LeaseError::AlreadyHeld),
-                        "acquire of a held resource must be rejected (mutual exclusion)"
+                        "acquire of a held or physically aliased resource must be rejected"
                     ),
                 }
             } else if op <= 4 {
@@ -412,19 +434,43 @@ mod invariant_tests {
         let _lock = test_lock();
         reset_all();
         assert_eq!(ResourceLease::acquire(Resource::Twim0, 7), Ok(()));
-        assert_eq!(ResourceLease::acquire(Resource::Spim0, 7), Ok(()));
+        assert_eq!(ResourceLease::acquire(Resource::Twim1, 7), Ok(()));
         assert_eq!(ResourceLease::acquire(Resource::Radio, 8), Ok(()));
         assert_eq!(ResourceLease::owner(Resource::Twim0), Some(7));
 
         let twim_before = crate::quiesce::count(Resource::Twim0);
-        let spim_before = crate::quiesce::count(Resource::Spim0);
+        let twim1_before = crate::quiesce::count(Resource::Twim1);
         assert_eq!(ResourceLease::release_all_for_owner(7), 2);
         assert_eq!(crate::quiesce::count(Resource::Twim0), twim_before + 1);
-        assert_eq!(crate::quiesce::count(Resource::Spim0), spim_before + 1);
+        assert_eq!(crate::quiesce::count(Resource::Twim1), twim1_before + 1);
         assert!(!ResourceLease::is_held(Resource::Twim0));
-        assert!(!ResourceLease::is_held(Resource::Spim0));
+        assert!(!ResourceLease::is_held(Resource::Twim1));
         assert_eq!(ResourceLease::owner(Resource::Radio), Some(8));
         assert_eq!(ResourceLease::release(Resource::Radio, 8), Ok(()));
+        reset_all();
+    }
+
+    #[test]
+    fn shared_twim0_spim0_block_has_one_physical_owner() {
+        let _lock = test_lock();
+        reset_all();
+
+        let twim = ResourceLease::acquire_guard(Resource::Twim0, 7).unwrap();
+        assert!(matches!(
+            ResourceLease::acquire_guard(Resource::Spim0, 8),
+            Err(LeaseError::AlreadyHeld)
+        ));
+        drop(twim);
+
+        let spim = ResourceLease::acquire_guard(Resource::Spim0, 8).unwrap();
+        assert_eq!(
+            ResourceLease::acquire(Resource::Twim0, 7),
+            Err(LeaseError::AlreadyHeld)
+        );
+        drop(spim);
+
+        assert_eq!(ResourceLease::acquire(Resource::Twim0, 7), Ok(()));
+        assert_eq!(ResourceLease::release(Resource::Twim0, 7), Ok(()));
         reset_all();
     }
 

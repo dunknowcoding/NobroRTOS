@@ -113,6 +113,8 @@ pub use spim_hw::Spim0;
 pub use timer::MicroTimer;
 #[cfg(feature = "platform-nrf52840")]
 pub use twim_hw::Twim0;
+#[cfg(feature = "nrf-twim-async")]
+pub use twim_hw::{TwimTransfer, TWIM_XFER_MAX};
 
 /// Event-capture snapshot produced by the nRF52840 PPI provider.
 #[cfg(feature = "platform-nrf52840")]
