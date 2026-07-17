@@ -69,6 +69,8 @@ pub enum ExecError {
     Runtime(RuntimeError),
     Power(PowerHookError),
     PowerLedgerFull,
+    /// Scheduler membership and task-slot state disagreed.
+    TaskStateCorrupt,
 }
 
 /// Failure to claim or assemble a [`KernelExecutorCell`].
@@ -1094,11 +1096,12 @@ impl<
                         break;
                     }
 
-                    let candidate_index = selected.expect("instrumented selection has a task");
-                    let candidate_meta = self
-                        .tasks
-                        .meta_at(candidate_index)
-                        .expect("due task has a slot");
+                    let Some(candidate_index) = selected else {
+                        return Err(ExecError::TaskStateCorrupt);
+                    };
+                    let Some(candidate_meta) = self.tasks.meta_at(candidate_index) else {
+                        return Err(ExecError::TaskStateCorrupt);
+                    };
                     let candidate_active = self.runtime.module_state(candidate_meta.module)
                         == Some(ModuleRunState::Active);
 
@@ -1208,9 +1211,9 @@ impl<
             return Ok(outcome);
         };
         let meta = if INSTRUMENTED {
-            instrumented_meta.expect("stable instrumented selection has metadata")
+            instrumented_meta.ok_or(ExecError::TaskStateCorrupt)?
         } else {
-            self.tasks.meta_at(idx).expect("due task has a slot")
+            self.tasks.meta_at(idx).ok_or(ExecError::TaskStateCorrupt)?
         };
         self.tasks.take_selected(idx);
         let module_active = if INSTRUMENTED {
@@ -1328,7 +1331,7 @@ impl<
                 duration_us,
                 *poll.as_ref().unwrap_or(&Poll::Pending),
             )
-            .expect("polled task has a slot");
+            .ok_or(ExecError::TaskStateCorrupt)?;
 
         outcome.polled = Some(meta.module);
         outcome.duration_us = duration_us;
