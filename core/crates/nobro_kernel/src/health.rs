@@ -77,7 +77,10 @@ impl FaultThresholds {
 }
 
 pub struct HealthMonitor<const N: usize> {
-    slots: [Option<HealthSlot>; N],
+    // Keep the small occupancy key separate from the aligned counters so each
+    // configured slot does not retain aggregate tail padding.
+    modules: [Option<ModuleId>; N],
+    counters: [HealthCounters; N],
 }
 
 /// Stateful, module-aware fault policy. Implementations may retain backoff/history and
@@ -106,7 +109,10 @@ impl FaultPolicy for FunctionPolicy {
 
 impl<const N: usize> HealthMonitor<N> {
     pub const fn new() -> Self {
-        Self { slots: [None; N] }
+        Self {
+            modules: [None; N],
+            counters: [HealthCounters::zeroed(); N],
+        }
     }
 
     /// Initialize caller-owned storage without materializing the complete slot
@@ -117,18 +123,20 @@ impl<const N: usize> HealthMonitor<N> {
     /// `destination` must be valid, aligned, writable storage for one
     /// uninitialized `HealthMonitor<N>`.
     pub(crate) unsafe fn init_in_place(destination: *mut Self) {
-        let slots = core::ptr::addr_of_mut!((*destination).slots).cast::<Option<HealthSlot>>();
+        let modules = core::ptr::addr_of_mut!((*destination).modules).cast::<Option<ModuleId>>();
+        let counters = core::ptr::addr_of_mut!((*destination).counters).cast::<HealthCounters>();
         for index in 0..N {
-            slots.add(index).write(None);
+            modules.add(index).write(None);
+            counters.add(index).write(HealthCounters::zeroed());
         }
     }
 
     pub fn record_ok(&mut self, module: ModuleId, now_us: u64) {
-        let Some(slot) = self.find_or_insert(module) else {
+        let Some(counters) = self.find_or_insert(module) else {
             return;
         };
-        slot.counters.consecutive_errors = 0;
-        slot.counters.last_seen_us = now_us;
+        counters.consecutive_errors = 0;
+        counters.last_seen_us = now_us;
     }
 
     pub fn record_error(
@@ -156,53 +164,49 @@ impl<const N: usize> HealthMonitor<N> {
         thresholds: FaultThresholds,
         policy: &mut impl FaultPolicy,
     ) -> Action {
-        let Some(slot) = self.find_or_insert(module) else {
+        let Some(counters) = self.find_or_insert(module) else {
             return Action::NotifyUserTask;
         };
 
-        let consecutive = slot.counters.consecutive_errors.saturating_add(1);
-        slot.counters.total_errors = slot.counters.total_errors.saturating_add(1);
-        slot.counters.consecutive_errors = consecutive;
-        slot.counters.last_error = Some(fault.error);
-        slot.counters.last_fault = Some(fault);
-        slot.counters.last_seen_us = now_us;
+        let consecutive = counters.consecutive_errors.saturating_add(1);
+        counters.total_errors = counters.total_errors.saturating_add(1);
+        counters.consecutive_errors = consecutive;
+        counters.last_error = Some(fault.error);
+        counters.last_fault = Some(fault);
+        counters.last_seen_us = now_us;
 
         let action = if consecutive >= thresholds.reboot_after {
-            slot.counters.last_recovery_us = now_us;
+            counters.last_recovery_us = now_us;
             Action::RebootModule
         } else if consecutive >= thresholds.notify_after {
             Action::NotifyUserTask
         } else {
-            policy.decide(module, &fault, &slot.counters)
+            policy.decide(module, &fault, counters)
         };
 
-        slot.counters.last_action = action;
+        counters.last_action = action;
         action
     }
 
     pub fn get(&self, module: ModuleId) -> Option<HealthCounters> {
-        self.slots
+        self.modules
             .iter()
-            .flatten()
-            .find(|slot| slot.module == module)
-            .map(|slot| slot.counters)
+            .position(|candidate| *candidate == Some(module))
+            .map(|index| self.counters[index])
     }
 
-    fn find_or_insert(&mut self, module: ModuleId) -> Option<&mut HealthSlot> {
+    fn find_or_insert(&mut self, module: ModuleId) -> Option<&mut HealthCounters> {
         if let Some(idx) = self
-            .slots
+            .modules
             .iter()
-            .position(|slot| slot.map(|s| s.module == module).unwrap_or(false))
+            .position(|candidate| *candidate == Some(module))
         {
-            return self.slots[idx].as_mut();
+            return Some(&mut self.counters[idx]);
         }
 
-        if let Some(idx) = self.slots.iter().position(Option::is_none) {
-            self.slots[idx] = Some(HealthSlot {
-                module,
-                counters: HealthCounters::zeroed(),
-            });
-            return self.slots[idx].as_mut();
+        if let Some(idx) = self.modules.iter().position(Option::is_none) {
+            self.modules[idx] = Some(module);
+            return Some(&mut self.counters[idx]);
         }
 
         None
@@ -219,6 +223,7 @@ impl<const N: usize> Default for HealthMonitor<N> {
 mod tests {
     use super::*;
     use crate::scheduler::default_action;
+    use core::mem::MaybeUninit;
 
     struct StatefulPolicy {
         calls: u16,
@@ -259,6 +264,37 @@ mod tests {
             Err(FaultThresholdError::RebootBeforeNotify)
         );
         assert!(FaultThresholds::DEFAULT.validate().is_ok());
+    }
+
+    #[test]
+    fn in_place_initialization_matches_const_constructor() {
+        let mut storage = MaybeUninit::<HealthMonitor<2>>::uninit();
+        unsafe {
+            HealthMonitor::init_in_place(storage.as_mut_ptr());
+        }
+        let mut in_place = unsafe { storage.assume_init() };
+        let mut by_value = HealthMonitor::<2>::new();
+
+        for monitor in [&mut in_place, &mut by_value] {
+            monitor.record_ok(ModuleId::Bus, 10);
+            assert_eq!(
+                monitor.record_error(
+                    ModuleId::Sensor,
+                    KernelError::SensorReadFail,
+                    20,
+                    FaultThresholds::DEFAULT,
+                    default_action,
+                ),
+                Action::Ignore
+            );
+        }
+
+        assert_eq!(in_place.get(ModuleId::Bus), by_value.get(ModuleId::Bus));
+        assert_eq!(
+            in_place.get(ModuleId::Sensor),
+            by_value.get(ModuleId::Sensor)
+        );
+        assert_eq!(in_place.get(ModuleId::Radio), None);
     }
 
     #[test]

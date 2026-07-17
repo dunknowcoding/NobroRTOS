@@ -500,12 +500,13 @@ impl<const N: usize> TaskTable<N> {
         }
         let criticality = (u8::BITS - 1 - self.ready_criticalities.leading_zeros()) as usize;
         let index = usize::from(self.ready_head[criticality]);
+        // Queue indices originate only from registered slots. Keep the lookup
+        // checked so an inconsistent private queue fails closed without an
+        // unsafe access or a panic-formatting path.
+        let slot = self.slots.get(index).copied().flatten()?;
         Some(DueSelection {
             index,
-            release_us: self.slots[index]
-                .expect("ready task slot")
-                .stats
-                .next_due_us,
+            release_us: slot.stats.next_due_us,
         })
     }
 
@@ -752,12 +753,12 @@ impl<const N: usize> TaskTable<N> {
         self.ready_selection()
             .map(|selection| selection.release_us)
             .or_else(|| {
-                self.release_root().map(|index| {
-                    self.slots[index]
-                        .expect("release heap task slot")
-                        .stats
-                        .next_due_us
-                })
+                let index = self.release_root()?;
+                self.slots
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(|slot| slot.stats.next_due_us)
             })
     }
 }

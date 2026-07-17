@@ -24,6 +24,7 @@ def main() -> int:
     filters = [
         "async_rt::tests",
         "async_mpmc::tests",
+        "health::tests::in_place_initialization_matches_const_constructor",
         "graph::tests::reactor_domain_linkage",
         "graph::tests::graph_spec_starts_and_seals_executor_without_retained_built_graph",
         "graph::tests::graph_validation_failure_does_not_claim_the_executor_cell",

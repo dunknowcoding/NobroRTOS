@@ -130,6 +130,7 @@ jobs:
         run: |
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel health::tests::in_place_initialization_matches_const_constructor
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::reactor_domain_linkage
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_spec_starts_and_seals_executor_without_retained_built_graph
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_validation_failure_does_not_claim_the_executor_cell
