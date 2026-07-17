@@ -109,6 +109,7 @@ pub enum TaskTableError {
     InvalidDeadline(ModuleId),
     InvalidBudget(ModuleId),
     InvalidBlocking(ModuleId),
+    UnknownTask(ModuleId),
 }
 
 pub struct TaskTable<const N: usize> {
@@ -122,6 +123,10 @@ pub struct TaskTable<const N: usize> {
     /// five-level criticality bitmap, then consumes that level's FIFO head.
     /// The FIFO is required so a fast peer cannot starve an older release.
     ready_members: u32,
+    /// Ready members whose phase-anchored periodic release was consumed.
+    /// A bit absent here was woken by an external event and must not advance
+    /// the task's periodic schedule when that event-driven poll completes.
+    periodic_ready_members: u32,
     /// Non-empty criticality queues; the highest set bit wins in O(1).
     ready_criticalities: u8,
     ready_head: [u8; CRITICALITY_LEVELS],
@@ -171,6 +176,7 @@ impl<const N: usize> TaskTable<N> {
             release_head: READY_NONE,
             release_next: [READY_NONE; N],
             ready_members: 0,
+            periodic_ready_members: 0,
             ready_criticalities: 0,
             ready_head: [READY_NONE; CRITICALITY_LEVELS],
             ready_tail: [READY_NONE; CRITICALITY_LEVELS],
@@ -196,6 +202,7 @@ impl<const N: usize> TaskTable<N> {
         core::ptr::addr_of_mut!((*destination).len).write(0);
         core::ptr::addr_of_mut!((*destination).release_head).write(READY_NONE);
         core::ptr::addr_of_mut!((*destination).ready_members).write(0);
+        core::ptr::addr_of_mut!((*destination).periodic_ready_members).write(0);
         core::ptr::addr_of_mut!((*destination).ready_criticalities).write(0);
         core::ptr::addr_of_mut!((*destination).ready_head).write([READY_NONE; CRITICALITY_LEVELS]);
         core::ptr::addr_of_mut!((*destination).ready_tail).write([READY_NONE; CRITICALITY_LEVELS]);
@@ -378,10 +385,14 @@ impl<const N: usize> TaskTable<N> {
                     break;
                 };
                 group_members |= 1u32 << task_index;
-                self.enqueue_ready(task_index);
+                let bit = 1u32 << task_index;
+                if self.ready_members & bit == 0 {
+                    self.enqueue_ready(task_index);
+                }
                 released = released.saturating_add(1);
             }
             self.ready_members |= group_members;
+            self.periodic_ready_members |= group_members;
             let group_width = group_members.count_ones().min(u32::from(u8::MAX)) as u8;
             let mut members = group_members;
             while members != 0 {
@@ -455,8 +466,11 @@ impl<const N: usize> TaskTable<N> {
                 };
             }
             let _ = self.pop_release_root();
-            self.enqueue_ready(task_index);
+            if self.ready_members & bit == 0 {
+                self.enqueue_ready(task_index);
+            }
             self.ready_members |= bit;
+            self.periodic_ready_members |= bit;
             if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
                 slot.stats.release_group_width = 1;
             }
@@ -491,13 +505,16 @@ impl<const N: usize> TaskTable<N> {
                 break;
             }
             let _ = self.pop_release_root();
-            self.enqueue_ready(task_index);
+            if self.ready_members & bit == 0 {
+                self.enqueue_ready(task_index);
+            }
             accepted_members |= bit;
             candidates &= !bit;
             receipt.accepted = receipt.accepted.saturating_add(1);
         }
         receipt.rejected = receipt.rejected.saturating_add(candidates.count_ones());
         self.ready_members |= accepted_members;
+        self.periodic_ready_members |= accepted_members;
         let width = receipt.accepted.min(u32::from(u8::MAX)) as u8;
         while accepted_members != 0 {
             let task_index = accepted_members.trailing_zeros() as usize;
@@ -529,6 +546,29 @@ impl<const N: usize> TaskTable<N> {
         self.ready_criticalities |= 1u8 << criticality;
     }
 
+    /// Wake a registered task from a bounded external event without consuming
+    /// or shifting its phase-anchored periodic release. Repeated wakes dedup
+    /// into one ready membership, matching async waker semantics.
+    pub fn wake_event(&mut self, module: ModuleId) -> Result<bool, TaskTableError> {
+        let Some(task_index) = self
+            .slots
+            .iter()
+            .position(|slot| slot.as_ref().is_some_and(|slot| slot.meta.module == module))
+        else {
+            return Err(TaskTableError::UnknownTask(module));
+        };
+        let bit = 1u32 << task_index;
+        if self.ready_members & bit != 0 {
+            return Ok(false);
+        }
+        self.enqueue_ready(task_index);
+        self.ready_members |= bit;
+        if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
+            slot.stats.release_group_width = 1;
+        }
+        Ok(true)
+    }
+
     fn ready_selection(&self) -> Option<DueSelection> {
         if self.ready_members == 0 {
             return None;
@@ -548,19 +588,23 @@ impl<const N: usize> TaskTable<N> {
     /// Mark elapsed releases and return the O(1) highest-priority ready task.
     pub(crate) fn select_due(&mut self, now_us: u64) -> Option<DueSelection> {
         self.mark_due_releases(now_us);
-        self.ready_selection()
+        let mut selected = self.ready_selection()?;
+        if self.periodic_ready_members & (1u32 << selected.index) == 0 {
+            selected.release_us = now_us;
+        }
+        Some(selected)
     }
 
     /// Commit one previously selected task. The updated phase is reinserted by
     /// [`record_poll`](Self::record_poll) or [`skip_release`](Self::skip_release).
-    pub(crate) fn take_selected(&mut self, index: usize) {
+    pub(crate) fn take_selected(&mut self, index: usize) -> bool {
         let Some(criticality) = self
             .slots
             .get(index)
             .and_then(Option::as_ref)
             .map(|slot| slot.meta.criticality as usize)
         else {
-            return;
+            return false;
         };
         let head = self.ready_head[criticality];
         if head == index as u8 {
@@ -589,6 +633,9 @@ impl<const N: usize> TaskTable<N> {
         }
         self.ready_next[index] = READY_NONE;
         self.ready_members &= !(1u32 << index);
+        let periodic = self.periodic_ready_members & (1u32 << index) != 0;
+        self.periodic_ready_members &= !(1u32 << index);
+        periodic
     }
 
     pub(crate) fn selected_group_width(&self, index: usize) -> u32 {
@@ -644,7 +691,12 @@ impl<const N: usize> TaskTable<N> {
     /// released from the incremental heap, never capacity-wide table scans.
     pub(crate) fn due_sweep(&mut self, now_us: u64) -> DueSweep {
         let released = self.mark_due_releases(now_us);
-        let selected = self.ready_selection();
+        let selected = self.ready_selection().map(|mut selection| {
+            if self.periodic_ready_members & (1u32 << selection.index) == 0 {
+                selection.release_us = now_us;
+            }
+            selection
+        });
         let simultaneous_width = selected.map_or(0, |selection| {
             self.slots
                 .get(selection.index)
@@ -677,8 +729,8 @@ impl<const N: usize> TaskTable<N> {
             return None;
         }
         self.remove_release(idx);
-        self.take_selected(idx);
-        self.finish_poll(idx, now_us, duration_us, result)
+        let _ = self.take_selected(idx);
+        self.finish_poll(idx, now_us, duration_us, result, true)
     }
 
     /// Commit a task already detached by [`take_selected`](Self::take_selected).
@@ -689,11 +741,12 @@ impl<const N: usize> TaskTable<N> {
         now_us: u64,
         duration_us: u32,
         result: Poll,
+        periodic_release: bool,
     ) -> Option<TaskStats> {
         if idx >= usize::from(self.len) {
             return None;
         }
-        self.finish_poll(idx, now_us, duration_us, result)
+        self.finish_poll(idx, now_us, duration_us, result, periodic_release)
     }
 
     fn finish_poll(
@@ -702,20 +755,23 @@ impl<const N: usize> TaskTable<N> {
         now_us: u64,
         duration_us: u32,
         result: Poll,
+        periodic_release: bool,
     ) -> Option<TaskStats> {
         let slot = self.slots.get_mut(idx)?.as_mut()?;
         slot.stats.polls = slot.stats.polls.saturating_add(1);
         slot.stats.last_poll_us = now_us;
-        let period = u64::from(slot.meta.period_us);
-        let releases_elapsed = now_us.saturating_sub(slot.stats.next_due_us) / period;
-        slot.stats.missed_releases = slot
-            .stats
-            .missed_releases
-            .saturating_add(releases_elapsed.min(u64::from(u32::MAX)) as u32);
-        slot.stats.next_due_us = slot
-            .stats
-            .next_due_us
-            .saturating_add(releases_elapsed.saturating_add(1).saturating_mul(period));
+        if periodic_release {
+            let period = u64::from(slot.meta.period_us);
+            let releases_elapsed = now_us.saturating_sub(slot.stats.next_due_us) / period;
+            slot.stats.missed_releases = slot
+                .stats
+                .missed_releases
+                .saturating_add(releases_elapsed.min(u64::from(u32::MAX)) as u32);
+            slot.stats.next_due_us = slot
+                .stats
+                .next_due_us
+                .saturating_add(releases_elapsed.saturating_add(1).saturating_mul(period));
+        }
         slot.stats.max_observed_us = slot.stats.max_observed_us.max(duration_us);
         if duration_us > slot.meta.budget_us {
             slot.stats.overruns = slot.stats.overruns.saturating_add(1);
@@ -724,7 +780,9 @@ impl<const N: usize> TaskTable<N> {
             slot.stats.ready = slot.stats.ready.saturating_add(1);
         }
         let stats = slot.stats;
-        self.insert_release(idx);
+        if periodic_release {
+            self.insert_release(idx);
+        }
         Some(stats)
     }
 
@@ -756,15 +814,22 @@ impl<const N: usize> TaskTable<N> {
             return;
         }
         self.remove_release(idx);
-        self.take_selected(idx);
+        let _ = self.take_selected(idx);
         self.finish_skip(idx, now_us);
     }
 
-    pub(crate) fn skip_selected_release(&mut self, idx: usize, now_us: u64) {
+    pub(crate) fn skip_selected_release(
+        &mut self,
+        idx: usize,
+        now_us: u64,
+        periodic_release: bool,
+    ) {
         if idx >= usize::from(self.len) {
             return;
         }
-        self.finish_skip(idx, now_us);
+        if periodic_release {
+            self.finish_skip(idx, now_us);
+        }
     }
 
     fn finish_skip(&mut self, idx: usize, now_us: u64) {
@@ -788,7 +853,13 @@ impl<const N: usize> TaskTable<N> {
     /// Earliest phase-anchored release over the whole set.
     pub fn next_due_us(&self) -> Option<u64> {
         self.ready_selection()
-            .map(|selection| selection.release_us)
+            .map(|selection| {
+                if self.periodic_ready_members & (1u32 << selection.index) == 0 {
+                    0
+                } else {
+                    selection.release_us
+                }
+            })
             .or_else(|| {
                 let index = self.release_root()?;
                 self.slots
@@ -883,6 +954,10 @@ mod tests {
         assert_eq!(actual.release_head, expected.release_head);
         assert_eq!(actual.release_next, expected.release_next);
         assert_eq!(actual.ready_members, expected.ready_members);
+        assert_eq!(
+            actual.periodic_ready_members,
+            expected.periodic_ready_members
+        );
         assert_eq!(actual.ready_criticalities, expected.ready_criticalities);
         assert_eq!(actual.ready_head, expected.ready_head);
         assert_eq!(actual.ready_tail, expected.ready_tail);
@@ -1226,6 +1301,56 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(err, TaskTableError::InvalidBlocking(ModuleId::App(1)));
+    }
+
+    #[test]
+    fn event_wakes_dedup_without_shifting_the_periodic_phase() {
+        let module = ModuleId::App(0);
+        let mut table = TaskTable::<1>::new();
+        table
+            .add(
+                TaskMeta::new(module, Criticality::Driver, 100, 20).with_deadline_us(100),
+                0,
+            )
+            .unwrap();
+
+        let first = table.select_due(0).unwrap();
+        assert_eq!(first.release_us, 0);
+        let first_periodic = table.take_selected(first.index);
+        assert!(first_periodic);
+        let first_stats = table
+            .record_selected_poll(first.index, 1, 1, Poll::Pending, first_periodic)
+            .unwrap();
+        assert_eq!(first_stats.next_due_us, 100);
+
+        assert!(table.wake_event(module).unwrap());
+        assert!(!table.wake_event(module).unwrap(), "event wakes dedup");
+        let event = table.select_due(25).unwrap();
+        assert_eq!(event.release_us, 25);
+        let event_periodic = table.take_selected(event.index);
+        assert!(!event_periodic);
+        let event_stats = table
+            .record_selected_poll(event.index, 26, 1, Poll::Pending, event_periodic)
+            .unwrap();
+        assert_eq!(event_stats.next_due_us, 100);
+        assert_eq!(event_stats.missed_releases, 0);
+
+        assert!(table.wake_event(module).unwrap());
+        let periodic_and_event = table.select_due(100).unwrap();
+        assert_eq!(periodic_and_event.release_us, 100);
+        let periodic = table.take_selected(periodic_and_event.index);
+        assert!(
+            periodic,
+            "one poll consumes the coincident release and event"
+        );
+        let final_stats = table
+            .record_selected_poll(periodic_and_event.index, 101, 1, Poll::Ready, periodic)
+            .unwrap();
+        assert_eq!(final_stats.next_due_us, 200);
+        assert_eq!(
+            table.wake_event(ModuleId::App(7)),
+            Err(TaskTableError::UnknownTask(ModuleId::App(7)))
+        );
     }
 
     #[test]

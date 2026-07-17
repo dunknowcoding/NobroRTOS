@@ -1980,4 +1980,137 @@ mod tests {
         let async_id = built.module_of("async").unwrap();
         assert!(kernel.runtime().object_usage(async_id).is_some());
     }
+
+    #[test]
+    fn kernel_compare_wakes_reactor_without_polling_or_phase_shift() {
+        use crate::{
+            AppGraph, ContainmentPolicy, FaultThresholds, KernelExecutor, Poll as TaskPoll,
+            Runtime, SystemProfile, TaskDecl,
+        };
+        use nobro_power::{PowerHookError, PowerMode, PowerPlatform};
+
+        #[derive(Default)]
+        struct CompareProvider {
+            armed_deadline: Option<u64>,
+            armed_ready_mask: u32,
+            entered: u32,
+            wake_latency_us: u32,
+        }
+
+        impl PowerPlatform for CompareProvider {
+            fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+                self.armed_deadline = deadline_us;
+                Ok(())
+            }
+
+            fn program_deadline_release(
+                &mut self,
+                deadline_us: Option<u64>,
+                ready_mask: u32,
+            ) -> Result<(), PowerHookError> {
+                self.armed_ready_mask = ready_mask;
+                self.program_wake(deadline_us)
+            }
+
+            fn take_deadline_releases(&mut self, now_us: u64) -> u32 {
+                if let Some(deadline) = self.armed_deadline.take() {
+                    self.wake_latency_us = now_us.saturating_sub(deadline) as u32;
+                }
+                let ready = self.armed_ready_mask;
+                self.armed_ready_mask = 0;
+                ready
+            }
+
+            fn observed_wake_latency_us(&self) -> u32 {
+                self.wake_latency_us
+            }
+
+            fn enter(&mut self, _: PowerMode) -> Result<(), PowerHookError> {
+                self.entered += 1;
+                Ok(())
+            }
+
+            fn suspend(&mut self, _: u16) -> Result<(), PowerHookError> {
+                Ok(())
+            }
+
+            fn resume(&mut self, _: u16) -> Result<(), PowerHookError> {
+                Ok(())
+            }
+        }
+
+        let built = AppGraph::<1>::new()
+            .task(TaskDecl::periodic("async", 100_000).reactor_domain(0))
+            .unwrap()
+            .build::<2>()
+            .unwrap();
+        let reactor_id = built.module_of("async").unwrap();
+        let mut runtime = Runtime::<3, 3, 2, 1, 1, 2, 4>::admit(
+            &built.manifest,
+            built.startup_nodes(),
+            SystemProfile::NRF52840_CORE,
+            FaultThresholds::DEFAULT,
+        )
+        .unwrap();
+        runtime.boot_to_running(0).unwrap();
+        let mut kernel =
+            KernelExecutor::<1, 3, 3, 2, 1, 1, 2, 4>::new(runtime, ContainmentPolicy::Cooperative);
+        kernel.add_task(built.tasks[0].unwrap(), 0).unwrap();
+        kernel.seal().unwrap();
+
+        static QUEUE: TimerQueue<1> = TimerQueue::new();
+        let core = leak_core::<1>();
+        let mut reactor = ReactorExecutor::bind(core);
+        static FINISHED: AtomicBool = AtomicBool::new(false);
+        FINISHED.store(false, Ordering::Relaxed);
+        let job = pin!(async {
+            assert!(QUEUE.sleep_until(30).await);
+            FINISHED.store(true, Ordering::Release);
+        });
+        reactor.spawn(job).unwrap();
+
+        let mut provider = CompareProvider::default();
+        let first = kernel
+            .run_cycle_with_reactor_deadlines(
+                || 0,
+                &mut provider,
+                reactor_id,
+                &QUEUE,
+                |_| {
+                    reactor.run_ready(4);
+                    Ok(TaskPoll::Pending)
+                },
+            )
+            .unwrap();
+        assert_eq!(first.polled, Some(reactor_id));
+        assert_eq!(first.async_timer_wakes, 0);
+        assert_eq!(first.idle_until_us, Some(30));
+        assert_eq!(provider.armed_deadline, Some(30));
+        assert_eq!(provider.armed_ready_mask, 0);
+        assert_eq!(provider.entered, 1);
+        assert!(!FINISHED.load(Ordering::Acquire));
+
+        let second = kernel
+            .run_cycle_with_reactor_deadlines(
+                || 35,
+                &mut provider,
+                reactor_id,
+                &QUEUE,
+                |_| {
+                    reactor.run_ready(4);
+                    Ok(TaskPoll::Ready)
+                },
+            )
+            .unwrap();
+        assert_eq!(second.async_timer_wakes, 1);
+        assert_eq!(second.polled, Some(reactor_id));
+        assert_eq!(second.observed_wake_latency_us, 5);
+        assert!(FINISHED.load(Ordering::Acquire));
+        assert_eq!(reactor.live(), 0);
+        assert_eq!(
+            kernel.tasks().get(reactor_id).unwrap().stats.next_due_us,
+            100_000,
+            "event-driven poll must preserve the periodic phase"
+        );
+    }
 }

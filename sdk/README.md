@@ -68,6 +68,13 @@ mapping rejects reserved priorities (including SoftDevice-owned levels), missing
 domains, priority sharing, nesting overflow, and urgency inversions. Portable
 priority bands are never written directly to an NVIC register.
 
+Drive deadline-guarded futures with
+`KernelExecutor::run_cycle_with_reactor_deadlines`: it merges the reactor
+`TimerQueue` with task and alarm deadlines before arming the platform compare.
+When the compare wakes the core, due timer slots event-wake the admitted reactor
+task without polling or shifting its periodic phase. The ordinary `run_cycle`
+path does not link this optional integration.
+
 ### Right-size from a device run
 
 Use one campaign file for the declared stacks, kernel mailbox, sample pool, and

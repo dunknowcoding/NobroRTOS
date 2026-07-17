@@ -129,7 +129,7 @@ impl PowerPlatform for NrfTimerPower {
     fn take_deadline_releases(&mut self, now_us: u64) -> u32 {
         let ready = PENDING_READY.swap(0, Ordering::AcqRel);
         let deadline = PENDING_DEADLINE.swap(0, Ordering::AcqRel);
-        if ready != 0 && deadline != 0 {
+        if deadline != 0 {
             self.wake_latency_max_us = self
                 .wake_latency_max_us
                 .max((now_us as u32).wrapping_sub(deadline));
