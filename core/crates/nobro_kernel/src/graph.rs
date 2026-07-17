@@ -974,6 +974,77 @@ impl<'a> GraphSpec<'a> {
         &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         GraphStartError,
     > {
+        let executor = self.prepare_executor(cell, profile, thresholds, containment)?;
+        self.finish_executor(executor, now_us, || now_us)
+    }
+
+    /// Build and start a graph with clock samples taken after graph assembly
+    /// and after the boot transition.
+    ///
+    /// Prefer this form when graph validation and runtime initialization happen
+    /// after the hardware clock has started. The first sample timestamps the
+    /// boot transition; the second anchors task phases after task-set
+    /// validation and immediately before the executor is returned. This
+    /// prevents initialization time from shortening the
+    /// first periodic interval while keeping
+    /// [`start_executor`](Self::start_executor) available for applications
+    /// that deliberately provide an external epoch.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the const capacities are inferred from the cell; callers provide only startup policy"
+    )]
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "the one-shot executor cell atomically proves unique mutable ownership"
+    )]
+    pub fn start_executor_with_clock<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    >(
+        &self,
+        cell: &'static KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+        mut clock: impl FnMut() -> u64,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        GraphStartError,
+    > {
+        let executor = self.prepare_executor(cell, profile, thresholds, containment)?;
+        let boot_now_us = clock();
+        self.finish_executor(executor, boot_now_us, clock)
+    }
+
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "the one-shot executor cell atomically proves unique mutable ownership"
+    )]
+    fn prepare_executor<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    >(
+        &self,
+        cell: &'static KernelExecutorCell<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        GraphStartError,
+    > {
         // SAFETY: the builder validates the exact manifest/profile pair
         // returned to the cell and bounds startup_len by the provided array.
         let executor = match unsafe {
@@ -1014,15 +1085,46 @@ impl<'a> GraphSpec<'a> {
                 .runtime_mut()
                 .configure_object_quota(module, decl.objects);
         }
+        Ok(executor)
+    }
+
+    fn finish_executor<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    >(
+        &self,
+        executor: &'static mut KernelExecutor<
+            TASKS,
+            STARTUP,
+            QUOTAS,
+            MAILBOX,
+            ALARMS,
+            KV,
+            HEALTH,
+            LOG,
+        >,
+        boot_now_us: u64,
+        task_epoch: impl FnOnce() -> u64,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        GraphStartError,
+    > {
         executor
             .runtime_mut()
-            .boot_to_running(now_us)
+            .boot_to_running(boot_now_us)
             .map_err(ExecError::Runtime)?;
         for (index, decl) in self.tasks.iter().enumerate() {
             let module = AppGraph::<TASKS>::module_for_index(self.tasks, index);
-            executor.add_task(AppGraph::<TASKS>::task_meta(decl, module), now_us)?;
+            executor.add_task(AppGraph::<TASKS>::task_meta(decl, module), boot_now_us)?;
         }
         executor.seal()?;
+        executor.rebase_unstarted_task_epoch(task_epoch())?;
         Ok(executor)
     }
 }
@@ -1032,6 +1134,7 @@ mod tests {
     use super::*;
     use crate::FaultThresholds;
     use std::boxed::Box;
+    use std::cell::Cell;
 
     fn demo_graph() -> AppGraph<4> {
         AppGraph::<4>::new()
@@ -1120,6 +1223,36 @@ mod tests {
         assert_eq!(
             executor.add_task(TaskMeta::new(motor, Criticality::System, 20_000, 2_000), 0),
             Err(ExecError::Sealed)
+        );
+    }
+
+    #[test]
+    fn clocked_graph_start_samples_boot_and_final_task_epochs() {
+        const TASKS: [TaskDecl; 1] = [TaskDecl::control("motor", 20_000)];
+        type ExecutorCell = KernelExecutorCell<1, 2, 2, 1, 0, 0, 2, 0>;
+
+        let cell: &'static ExecutorCell = Box::leak(Box::new(ExecutorCell::new()));
+        let clock_calls = Cell::new(0u32);
+        let graph = GraphSpec::new(&TASKS, &[]);
+        let executor = graph
+            .start_executor_with_clock(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                || {
+                    let call = clock_calls.get() + 1;
+                    clock_calls.set(call);
+                    41_000 + u64::from(call) * 1_000
+                },
+            )
+            .unwrap();
+
+        let motor = graph.module_of("motor").unwrap();
+        assert_eq!(clock_calls.get(), 2);
+        assert_eq!(
+            executor.tasks().get(motor).unwrap().stats.next_due_us,
+            43_000
         );
     }
 

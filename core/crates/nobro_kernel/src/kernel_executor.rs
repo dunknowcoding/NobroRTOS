@@ -864,6 +864,14 @@ impl<
         Ok(())
     }
 
+    pub(crate) fn rebase_unstarted_task_epoch(&mut self, now_us: u64) -> Result<(), ExecError> {
+        if self.tasks.rebase_unstarted_epoch(now_us) {
+            Ok(())
+        } else {
+            Err(ExecError::TaskStateCorrupt)
+        }
+    }
+
     /// Fail-closed schedulability admission: response-time analysis over the
     /// registered set (fixed priority = criticality, same-priority interference
     /// counted pessimistically) plus the utilization bound. Explicit phases

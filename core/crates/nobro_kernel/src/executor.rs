@@ -244,6 +244,29 @@ impl<const N: usize> TaskTable<N> {
         Ok(())
     }
 
+    pub(crate) fn rebase_unstarted_epoch(&mut self, now_us: u64) -> bool {
+        if self.ready_members != 0
+            || self
+                .slots
+                .iter()
+                .flatten()
+                .any(|slot| slot.stats.polls != 0)
+        {
+            return false;
+        }
+        self.release_head = READY_NONE;
+        self.release_next.fill(READY_NONE);
+        for slot in self.slots.iter_mut().flatten() {
+            slot.stats.next_due_us = now_us.saturating_add(u64::from(slot.meta.phase_us));
+        }
+        for index in 0..N {
+            if self.slots[index].is_some() {
+                self.insert_release(index);
+            }
+        }
+        true
+    }
+
     fn release_precedes(&self, left: usize, right: usize) -> bool {
         // Release-list indices normally name registered slots. Borrow the
         // records so ordering never copies a complete TaskSlot through an

@@ -187,6 +187,28 @@ impl<const N: usize> NanoKernel<N> {
         Ok(())
     }
 
+    /// Return the earliest periodic release in the wrap-safe `u32` time
+    /// domain. A due or overdue release is reported as `now_us`.
+    ///
+    /// This lets a Nano application compose its own tickless power provider
+    /// without enabling the managed executor. Call [`Self::release_due`]
+    /// before sleeping so every currently due task has been made ready.
+    pub fn next_release_us(&self, now_us: u32) -> Option<u32> {
+        let mut earliest_distance: Option<u32> = None;
+        for (index, task) in self.workload.tasks.iter().enumerate() {
+            if task.period_us == 0 || task.priority == u16::MAX {
+                continue;
+            }
+            let distance = self.next_release_us[index].wrapping_sub(now_us);
+            let distance = if distance < 0x8000_0000 { distance } else { 0 };
+            earliest_distance = Some(match earliest_distance {
+                Some(current) => current.min(distance),
+                None => distance,
+            });
+        }
+        earliest_distance.map(|distance| now_us.wrapping_add(distance))
+    }
+
     /// Return the admitted input index of the highest-priority ready task.
     pub fn take_next(&mut self) -> Option<usize> {
         if self.ready_priorities == 0 {
@@ -241,6 +263,27 @@ mod tests {
         assert_eq!(kernel.release_due(144), 0);
         assert_eq!(kernel.release_due(145), 1);
         assert_eq!(kernel.take_next(), Some(1));
+    }
+
+    #[test]
+    fn next_release_supports_tickless_provider_composition() {
+        let mut kernel = NanoKernel::new(&WORKLOAD, 100).unwrap();
+        assert_eq!(kernel.next_release_us(99), Some(100));
+        assert_eq!(kernel.next_release_us(100), Some(100));
+        kernel.release_due(100);
+        assert_eq!(kernel.next_release_us(100), Some(105));
+        kernel.release_due(105);
+        assert_eq!(kernel.next_release_us(105), Some(110));
+        kernel.release_due(139);
+        assert_eq!(kernel.next_release_us(139), Some(140));
+    }
+
+    #[test]
+    fn next_release_preserves_wrap_safe_phase() {
+        let epoch = u32::MAX - 3;
+        let mut kernel = NanoKernel::new(&WORKLOAD, epoch).unwrap();
+        kernel.release_due(epoch);
+        assert_eq!(kernel.next_release_us(epoch), Some(1));
     }
 
     #[test]
