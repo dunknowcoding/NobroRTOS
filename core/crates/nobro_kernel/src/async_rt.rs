@@ -177,6 +177,10 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
         self.count
     }
 
+    fn core_identity(&self) -> usize {
+        core::ptr::from_ref(self.core).addr()
+    }
+
     /// Poll ready tasks only, spending at most `fuel` polls. Wakes arriving
     /// during a task's own poll are honored on a later pass (dedup by bit), so
     /// a self-waking task cannot starve its peers or the cycle budget.
@@ -727,6 +731,264 @@ impl<const D: usize, const C: usize> ReactorPriorityPlan<D, C> {
 
     pub fn binding(&self, domain: u8) -> Option<&ReactorPriorityBinding> {
         self.bindings().find(|binding| binding.domain == domain)
+    }
+}
+
+trait ReactorCoreSource {
+    fn has_ready(&self) -> bool;
+    fn task_slots(&self) -> usize;
+    fn identity(&self) -> usize;
+}
+
+impl<const N: usize> ReactorCoreSource for AsyncCore<N> {
+    fn has_ready(&self) -> bool {
+        AsyncCore::has_ready(self)
+    }
+
+    fn task_slots(&self) -> usize {
+        N
+    }
+
+    fn identity(&self) -> usize {
+        core::ptr::from_ref(self).addr()
+    }
+}
+
+trait ReactorTimerSource {
+    fn advance(&self, now_us: u64) -> usize;
+    fn next_deadline_us(&self) -> Option<u64>;
+    fn timer_slots(&self) -> usize;
+    fn identity(&self) -> usize;
+}
+
+impl<const T: usize> ReactorTimerSource for TimerQueue<T> {
+    fn advance(&self, now_us: u64) -> usize {
+        TimerQueue::advance(self, now_us)
+    }
+
+    fn next_deadline_us(&self) -> Option<u64> {
+        TimerQueue::next_deadline_us(self)
+    }
+
+    fn timer_slots(&self) -> usize {
+        T
+    }
+
+    fn identity(&self) -> usize {
+        core::ptr::from_ref(self).addr()
+    }
+}
+
+/// Concrete bounded core/timer storage for one admitted reactor domain.
+///
+/// Construction does not admit the runtime by itself. Pass one value per
+/// domain to [`GraphReactorAdmission::bind_runtime`](crate::GraphReactorAdmission::bind_runtime);
+/// that step checks IDs, exact capacities, graph drivers, and scheduler
+/// priority order before a [`KernelExecutor`](crate::KernelExecutor) may use
+/// the set.
+#[derive(Clone, Copy)]
+pub struct ReactorRuntimeDomain<'a> {
+    id: u8,
+    core: &'a dyn ReactorCoreSource,
+    timers: &'a dyn ReactorTimerSource,
+}
+
+impl<'a> ReactorRuntimeDomain<'a> {
+    pub fn new<const TASKS: usize, const TIMERS: usize>(
+        id: u8,
+        core: &'a AsyncCore<TASKS>,
+        timers: &'a TimerQueue<TIMERS>,
+    ) -> Self {
+        Self { id, core, timers }
+    }
+
+    pub const fn id(&self) -> u8 {
+        self.id
+    }
+
+    pub fn task_slots(&self) -> usize {
+        self.core.task_slots()
+    }
+
+    pub fn timer_slots(&self) -> usize {
+        self.timers.timer_slots()
+    }
+
+    pub(crate) fn core_identity(&self) -> usize {
+        self.core.identity()
+    }
+
+    pub(crate) fn timer_identity(&self) -> usize {
+        self.timers.identity()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReactorRuntimeError {
+    UnknownDomain {
+        domain: u8,
+    },
+    DuplicateDomain {
+        domain: u8,
+    },
+    DuplicateCore {
+        first_domain: u8,
+        duplicate_domain: u8,
+    },
+    DuplicateTimerQueue {
+        first_domain: u8,
+        duplicate_domain: u8,
+    },
+    MissingDomain {
+        domain: u8,
+    },
+    TaskSlotsMismatch {
+        domain: u8,
+        admitted: u8,
+        runtime: usize,
+    },
+    TimerSlotsMismatch {
+        domain: u8,
+        admitted: u8,
+        runtime: usize,
+    },
+    DuplicatePriorityBand {
+        priority_band: u8,
+        first_domain: u8,
+        duplicate_domain: u8,
+    },
+    DriverPriorityOrderMismatch {
+        more_urgent_domain: u8,
+        less_urgent_domain: u8,
+    },
+    UnknownModule {
+        module: crate::ModuleId,
+    },
+    CoreMismatch {
+        domain: u8,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct BoundReactorRuntime<'a> {
+    domain: u8,
+    fuel_per_cycle: u32,
+    module: crate::ModuleId,
+    runtime: ReactorRuntimeDomain<'a>,
+}
+
+/// Fixed, graph-linked runtime sources for every admitted reactor domain.
+///
+/// The set contains references only: concrete [`ReactorExecutor`] instances
+/// remain application-owned and are polled by their normal admitted graph
+/// tasks. This integrates wake/deadline state without creating a hidden
+/// executor or allocating.
+#[derive(Clone, Copy)]
+pub struct ReactorRuntimeSet<'a, const D: usize> {
+    pub(crate) domains: [Option<BoundReactorRuntime<'a>>; D],
+    len: usize,
+}
+
+impl<'a, const D: usize> ReactorRuntimeSet<'a, D> {
+    pub(crate) const fn from_bound(
+        domains: [Option<BoundReactorRuntime<'a>>; D],
+        len: usize,
+    ) -> Self {
+        Self { domains, len }
+    }
+
+    pub(crate) const fn bind_domain(
+        domain: ReactorDomainContract,
+        module: crate::ModuleId,
+        runtime: ReactorRuntimeDomain<'a>,
+    ) -> BoundReactorRuntime<'a> {
+        BoundReactorRuntime {
+            domain: domain.id,
+            fuel_per_cycle: domain.fuel_per_cycle,
+            module,
+            runtime,
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Retained bytes for the binding set itself. Concrete cores, timer queues,
+    /// executors, futures, and channels remain separate admitted storage.
+    pub const fn storage_bytes() -> usize {
+        core::mem::size_of::<Self>()
+    }
+
+    pub fn module_for_domain(&self, domain: u8) -> Option<crate::ModuleId> {
+        self.domains
+            .iter()
+            .flatten()
+            .find(|bound| bound.domain == domain)
+            .map(|bound| bound.module)
+    }
+
+    pub fn fuel_for_module(&self, module: crate::ModuleId) -> Option<u32> {
+        self.domains
+            .iter()
+            .flatten()
+            .find(|bound| bound.module == module)
+            .map(|bound| bound.fuel_per_cycle)
+    }
+
+    /// Poll the concrete executor only with its admitted per-cycle fuel.
+    /// A different core, even with the same capacity, is rejected.
+    pub fn run_domain<const N: usize>(
+        &self,
+        module: crate::ModuleId,
+        reactor: &mut ReactorExecutor<'_, N>,
+    ) -> Result<ReactorStats, ReactorRuntimeError> {
+        let Some(bound) = self
+            .domains
+            .iter()
+            .flatten()
+            .find(|bound| bound.module == module)
+        else {
+            return Err(ReactorRuntimeError::UnknownModule { module });
+        };
+        if bound.runtime.core.identity() != reactor.core_identity() {
+            return Err(ReactorRuntimeError::CoreMismatch {
+                domain: bound.domain,
+            });
+        }
+        Ok(reactor.run_ready(bound.fuel_per_cycle))
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &BoundReactorRuntime<'a>> + '_ {
+        self.domains.iter().flatten()
+    }
+
+    pub(crate) fn next_deadline_us(&self) -> Option<u64> {
+        self.iter()
+            .filter_map(|bound| bound.runtime.timers.next_deadline_us())
+            .min()
+    }
+
+    pub(crate) fn has_ready(&self) -> bool {
+        self.iter().any(|bound| bound.runtime.core.has_ready())
+    }
+}
+
+impl BoundReactorRuntime<'_> {
+    pub(crate) const fn module(&self) -> crate::ModuleId {
+        self.module
+    }
+
+    pub(crate) fn advance(&self, now_us: u64) -> usize {
+        self.runtime.timers.advance(now_us)
+    }
+
+    pub(crate) fn has_ready(&self) -> bool {
+        self.runtime.core.has_ready()
     }
 }
 
@@ -2177,6 +2439,219 @@ mod tests {
             kernel.tasks().get(reactor_id).unwrap().stats.next_due_us,
             100_000,
             "hardware completion must preserve the periodic phase"
+        );
+    }
+
+    #[test]
+    fn graph_bound_multi_domain_runtime_merges_deadlines_and_preserves_priority() {
+        use crate::{
+            AppGraph, ContainmentPolicy, FaultThresholds, KernelExecutor, MpmcChannel,
+            Poll as TaskPoll, ReportIdentity, Runtime, SystemProfile, TaskDecl,
+        };
+        use core::sync::atomic::{AtomicU32, Ordering};
+        use nobro_power::{PowerHookError, PowerMode, PowerPlatform};
+
+        #[derive(Default)]
+        struct HostPower {
+            armed: Option<u64>,
+        }
+
+        impl PowerPlatform for HostPower {
+            fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+                self.armed = deadline_us;
+                Ok(())
+            }
+
+            fn enter(&mut self, _: PowerMode) -> Result<(), PowerHookError> {
+                Ok(())
+            }
+
+            fn suspend(&mut self, _: u16) -> Result<(), PowerHookError> {
+                Ok(())
+            }
+
+            fn resume(&mut self, _: u16) -> Result<(), PowerHookError> {
+                Ok(())
+            }
+        }
+
+        static CROSS_DOMAIN: MpmcChannel<u32, 1, 2> = MpmcChannel::new();
+        static RECEIVED: AtomicU32 = AtomicU32::new(0);
+        RECEIVED.store(0, Ordering::Release);
+
+        let built = AppGraph::<2>::new()
+            .task(TaskDecl::control("control-reactor", 100_000).reactor_domain(0))
+            .unwrap()
+            .task(
+                TaskDecl::service("telemetry-reactor", 100_000)
+                    .reactor_domain(1)
+                    .after("control-reactor"),
+            )
+            .unwrap()
+            .build::<3>()
+            .unwrap();
+        let admitted = built
+            .admit_reactor_domains::<2, 1>(
+                [
+                    Some(
+                        ReactorDomainContract::new(0, 0)
+                            .task_slots(1)
+                            .timer_slots(1)
+                            .fuel_per_cycle(1),
+                    ),
+                    Some(
+                        ReactorDomainContract::new(1, 3)
+                            .task_slots(1)
+                            .timer_slots(1)
+                            .fuel_per_cycle(1),
+                    ),
+                ],
+                [Some(ReactorChannelContract::new(0, 1, 1))],
+            )
+            .unwrap();
+        let control_module = built.module_of("control-reactor").unwrap();
+        let telemetry_module = built.module_of("telemetry-reactor").unwrap();
+
+        let control_core = leak_core::<1>();
+        let telemetry_core = leak_core::<1>();
+        let control_timers = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let telemetry_timers = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let runtime_set = admitted
+            .bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, control_core, control_timers)),
+                Some(ReactorRuntimeDomain::new(
+                    1,
+                    telemetry_core,
+                    telemetry_timers,
+                )),
+            ])
+            .unwrap();
+        assert_eq!(runtime_set.len(), 2);
+        assert_eq!(runtime_set.module_for_domain(0), Some(control_module));
+        assert_eq!(runtime_set.fuel_for_module(control_module), Some(1));
+        let unrelated_core = leak_core::<1>();
+        let mut unrelated_reactor = ReactorExecutor::bind(unrelated_core);
+        assert_eq!(
+            runtime_set.run_domain(control_module, &mut unrelated_reactor),
+            Err(ReactorRuntimeError::CoreMismatch { domain: 0 })
+        );
+
+        let mut control_reactor = ReactorExecutor::bind(control_core);
+        let mut telemetry_reactor = ReactorExecutor::bind(telemetry_core);
+        let control_job = pin!(async {
+            assert!(control_timers.sleep_until(1_000).await);
+            CROSS_DOMAIN.send(41).await.unwrap();
+        });
+        let telemetry_job = pin!(async {
+            let value = CROSS_DOMAIN
+                .recv()
+                .await
+                .unwrap()
+                .expect("channel remained open");
+            RECEIVED.store(value + 1, Ordering::Release);
+        });
+        control_reactor.spawn(control_job).unwrap();
+        telemetry_reactor.spawn(telemetry_job).unwrap();
+
+        let mut runtime = Runtime::<3, 3, 4, 0, 0, 3, 0>::admit(
+            &built.manifest,
+            built.startup_nodes(),
+            SystemProfile::NRF52840_CORE,
+            FaultThresholds::DEFAULT,
+        )
+        .unwrap();
+        runtime.boot_to_running(0).unwrap();
+        let mut kernel =
+            KernelExecutor::<2, 3, 3, 4, 0, 0, 3, 0>::new(runtime, ContainmentPolicy::Cooperative);
+        for meta in built.tasks.iter().flatten() {
+            kernel.add_task(*meta, 0).unwrap();
+        }
+        kernel.seal().unwrap();
+
+        let mut power = HostPower::default();
+        let mut instrumentation =
+            crate::ExecutorInstrumentation::<2>::with_identity(ReportIdentity::new(1, 2, 3));
+        {
+            let mut dispatch = |ctx: &mut crate::ModuleCtx<'_, 3, 3, 4, 0, 0, 3, 0>| {
+                if ctx.module() == control_module {
+                    runtime_set
+                        .run_domain(control_module, &mut control_reactor)
+                        .unwrap();
+                    Ok(if control_reactor.live() == 0 {
+                        TaskPoll::Ready
+                    } else {
+                        TaskPoll::Pending
+                    })
+                } else {
+                    assert_eq!(ctx.module(), telemetry_module);
+                    runtime_set
+                        .run_domain(telemetry_module, &mut telemetry_reactor)
+                        .unwrap();
+                    Ok(if telemetry_reactor.live() == 0 {
+                        TaskPoll::Ready
+                    } else {
+                        TaskPoll::Pending
+                    })
+                }
+            };
+
+            let first = kernel
+                .run_cycle_with_reactors_instrumented(
+                    || 0,
+                    &mut power,
+                    &runtime_set,
+                    &mut dispatch,
+                    &mut instrumentation,
+                )
+                .unwrap();
+            assert_eq!(first.async_domains_woken, 2);
+            assert_eq!(
+                first.polled,
+                Some(control_module),
+                "the more urgent domain wins simultaneous runtime wakes"
+            );
+
+            let second = kernel
+                .run_cycle_with_reactors(|| 0, &mut power, &runtime_set, &mut dispatch)
+                .unwrap();
+            assert_eq!(second.polled, Some(telemetry_module));
+            assert_eq!(second.idle_until_us, Some(1_000));
+            assert_eq!(power.armed, Some(1_000));
+
+            let third = kernel
+                .run_cycle_with_reactors(|| 1_000, &mut power, &runtime_set, &mut dispatch)
+                .unwrap();
+            assert_eq!(third.async_timer_wakes, 1);
+            assert_eq!(third.async_domains_woken, 1);
+            assert_eq!(third.polled, Some(control_module));
+
+            let fourth = kernel
+                .run_cycle_with_reactors(|| 1_000, &mut power, &runtime_set, &mut dispatch)
+                .unwrap();
+            assert!(fourth.async_event_wake);
+            assert_eq!(fourth.async_domains_woken, 1);
+            assert_eq!(fourth.polled, Some(telemetry_module));
+            assert_eq!(RECEIVED.load(Ordering::Acquire), 42);
+        }
+        assert_eq!(control_reactor.live(), 0);
+        assert_eq!(telemetry_reactor.live(), 0);
+        assert_eq!(
+            kernel
+                .tasks()
+                .get(control_module)
+                .unwrap()
+                .stats
+                .next_due_us,
+            100_000
+        );
+        assert_eq!(
+            kernel
+                .tasks()
+                .get(telemetry_module)
+                .unwrap()
+                .stats
+                .next_due_us,
+            100_000
         );
     }
 }

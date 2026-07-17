@@ -1284,7 +1284,7 @@ mod tests {
     #[test]
     fn system_profile_can_be_derived_from_board_package() {
         let package = nobro_hal::BoardPackage::new(
-            "test-platform",
+            "nrf52840",
             "test-board",
             nobro_hal::BootProfile::new(
                 nobro_hal::BootLayout::NoSoftDevice,
@@ -1307,7 +1307,7 @@ mod tests {
     #[test]
     fn system_profile_rejects_invalid_board_package() {
         let package = nobro_hal::BoardPackage::new(
-            "test-platform",
+            "nrf52840",
             "test-board",
             nobro_hal::BootProfile::new(
                 nobro_hal::BootLayout::NoSoftDevice,

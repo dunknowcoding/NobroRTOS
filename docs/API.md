@@ -631,11 +631,32 @@ let plan = built.admit_reactor_domains::<2, 1>(
     [Some(nobro_kernel::ReactorChannelContract::new(0, 1, 4))],
 )?;
 assert_eq!(plan.reactor.cross_domain_len, 1);
+
+static CONTROL_CORE: nobro_kernel::AsyncCore<4> = nobro_kernel::AsyncCore::new();
+static CONTROL_TIMERS: nobro_kernel::TimerQueue<2> = nobro_kernel::TimerQueue::new();
+static TELEMETRY_CORE: nobro_kernel::AsyncCore<8> = nobro_kernel::AsyncCore::new();
+static TELEMETRY_TIMERS: nobro_kernel::TimerQueue<4> = nobro_kernel::TimerQueue::new();
+let reactors = plan.bind_runtime([
+    Some(nobro_kernel::ReactorRuntimeDomain::new(
+        0, &CONTROL_CORE, &CONTROL_TIMERS)),
+    Some(nobro_kernel::ReactorRuntimeDomain::new(
+        1, &TELEMETRY_CORE, &TELEMETRY_TIMERS)),
+])?;
 ```
 
 Each domain is driven by exactly one normal admitted reactor task; the graph
 link rejects unknown, missing, or duplicate domain drivers before runtime
-wiring. Cross-domain channels are surfaced in the plan so applications can
+binding. `bind_runtime` also rejects capacity drift, duplicate/missing concrete
+domains, aliased cores or timer queues, and an urgency order that the graph-task
+criticalities would invert.
+Drive the kernel with `run_cycle_with_reactors`; inside its ordinary dispatch,
+call `reactors.run_domain(ctx.module(), &mut concrete_reactor)` to apply the
+domain's admitted fuel. The call rejects a reactor built over a different core.
+The kernel advances every domain timer queue, wakes each affected admitted
+module, and merges the earliest async deadline before idle. Concrete executors
+and futures stay application-owned; there is no allocator or hidden executor.
+
+Cross-domain channels are surfaced in the plan so applications can
 choose a multi-waiter transport such as `MpmcChannel` instead of accidentally
 sharing a single-waker SPSC channel across priority domains. A cross-domain
 channel must declare at least two waiter slots.

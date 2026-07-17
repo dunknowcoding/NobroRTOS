@@ -70,7 +70,8 @@ pub use async_rt::{
     Channel, DeadlineContractError, DeadlineFault, DeadlineFaultKind, DeadlineFuture, Either,
     ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract, ReactorDomainContract,
     ReactorError, ReactorExecutor, ReactorPriorityBinding, ReactorPriorityError,
-    ReactorPriorityPlan, ReactorStats, Signal, Sleep, TimerQueue,
+    ReactorPriorityPlan, ReactorRuntimeDomain, ReactorRuntimeError, ReactorRuntimeSet,
+    ReactorStats, Signal, Sleep, TimerQueue,
 };
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,

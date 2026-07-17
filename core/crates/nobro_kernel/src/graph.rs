@@ -31,7 +31,7 @@
 use crate::{
     async_rt::{
         admit_reactor_domains, ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract,
-        ReactorDomainContract,
+        ReactorDomainContract, ReactorRuntimeDomain, ReactorRuntimeError, ReactorRuntimeSet,
     },
     kernel_owned_capabilities, Capability, CapabilitySet, ContainmentPolicy, Criticality,
     DeadlineContract, DependencySet, ExecError, ExecutorInitError, FaultThresholds, KernelExecutor,
@@ -332,6 +332,7 @@ pub struct ReactorTaskBinding {
     pub task: &'static str,
     pub module: ModuleId,
     pub domain: u8,
+    pub criticality: Criticality,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -356,6 +357,126 @@ pub struct GraphReactorAdmission<const TASKS: usize, const DOMAINS: usize, const
     pub reactor: ReactorAdmissionPlan<DOMAINS, CHANNELS>,
     pub bindings: [Option<ReactorTaskBinding>; TASKS],
     pub binding_len: usize,
+}
+
+impl<const TASKS: usize, const DOMAINS: usize, const CHANNELS: usize>
+    GraphReactorAdmission<TASKS, DOMAINS, CHANNELS>
+{
+    /// Bind concrete async cores and timer queues to every graph-linked
+    /// reactor domain. Exact capacities and scheduler priority order are
+    /// checked here, before the kernel consumes any runtime wake source.
+    pub fn bind_runtime<'a>(
+        &self,
+        runtimes: [Option<ReactorRuntimeDomain<'a>>; DOMAINS],
+    ) -> Result<ReactorRuntimeSet<'a, DOMAINS>, ReactorRuntimeError> {
+        let mut bound = [None; DOMAINS];
+        let mut bound_len = 0usize;
+
+        for (index, runtime) in runtimes.iter().flatten().enumerate() {
+            for previous in runtimes.iter().flatten().take(index) {
+                if previous.id() == runtime.id() {
+                    return Err(ReactorRuntimeError::DuplicateDomain {
+                        domain: runtime.id(),
+                    });
+                }
+                if previous.core_identity() == runtime.core_identity() {
+                    return Err(ReactorRuntimeError::DuplicateCore {
+                        first_domain: previous.id(),
+                        duplicate_domain: runtime.id(),
+                    });
+                }
+                if previous.timer_identity() == runtime.timer_identity() {
+                    return Err(ReactorRuntimeError::DuplicateTimerQueue {
+                        first_domain: previous.id(),
+                        duplicate_domain: runtime.id(),
+                    });
+                }
+            }
+            let Some(domain) = self.reactor.domain(runtime.id()) else {
+                return Err(ReactorRuntimeError::UnknownDomain {
+                    domain: runtime.id(),
+                });
+            };
+            if runtime.task_slots() != usize::from(domain.task_slots) {
+                return Err(ReactorRuntimeError::TaskSlotsMismatch {
+                    domain: domain.id,
+                    admitted: domain.task_slots,
+                    runtime: runtime.task_slots(),
+                });
+            }
+            if runtime.timer_slots() != usize::from(domain.timer_slots) {
+                return Err(ReactorRuntimeError::TimerSlotsMismatch {
+                    domain: domain.id,
+                    admitted: domain.timer_slots,
+                    runtime: runtime.timer_slots(),
+                });
+            }
+            let Some(driver) = self
+                .bindings
+                .iter()
+                .flatten()
+                .find(|binding| binding.domain == domain.id)
+            else {
+                return Err(ReactorRuntimeError::MissingDomain { domain: domain.id });
+            };
+            bound[bound_len] = Some(ReactorRuntimeSet::<DOMAINS>::bind_domain(
+                *domain,
+                driver.module,
+                *runtime,
+            ));
+            bound_len += 1;
+        }
+
+        for domain in self.reactor.domains() {
+            if !runtimes
+                .iter()
+                .flatten()
+                .any(|runtime| runtime.id() == domain.id)
+            {
+                return Err(ReactorRuntimeError::MissingDomain { domain: domain.id });
+            }
+        }
+
+        for (index, domain) in self.reactor.domains().enumerate() {
+            let driver = self
+                .bindings
+                .iter()
+                .flatten()
+                .find(|binding| binding.domain == domain.id)
+                .ok_or(ReactorRuntimeError::MissingDomain { domain: domain.id })?;
+            for previous in self.reactor.domains().take(index) {
+                let previous_driver = self
+                    .bindings
+                    .iter()
+                    .flatten()
+                    .find(|binding| binding.domain == previous.id)
+                    .ok_or(ReactorRuntimeError::MissingDomain {
+                        domain: previous.id,
+                    })?;
+                if previous.priority_band == domain.priority_band {
+                    return Err(ReactorRuntimeError::DuplicatePriorityBand {
+                        priority_band: domain.priority_band,
+                        first_domain: previous.id,
+                        duplicate_domain: domain.id,
+                    });
+                }
+                let (more_urgent, more_driver, less_urgent, less_driver) =
+                    if previous.priority_band < domain.priority_band {
+                        (previous, previous_driver, domain, driver)
+                    } else {
+                        (domain, driver, previous, previous_driver)
+                    };
+                if more_driver.criticality <= less_driver.criticality {
+                    return Err(ReactorRuntimeError::DriverPriorityOrderMismatch {
+                        more_urgent_domain: more_urgent.id,
+                        less_urgent_domain: less_urgent.id,
+                    });
+                }
+            }
+        }
+
+        Ok(ReactorRuntimeSet::from_bound(bound, bound_len))
+    }
 }
 
 /// Everything the kernel needs, derived from one declaration set.
@@ -761,6 +882,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
                     task: decl.name,
                     module,
                     domain,
+                    criticality: decl.criticality,
                 });
                 reactor_binding_len += 1;
             }
@@ -1657,8 +1779,232 @@ mod tests {
                 task: "control-reactor",
                 module: ModuleId::App(0),
                 domain: 0,
+                criticality: Criticality::HardRealtime,
             })
         );
+    }
+
+    #[test]
+    fn reactor_runtime_binding_rejects_capacity_identity_and_priority_drift() {
+        use crate::{AsyncCore, TimerQueue};
+
+        let built = AppGraph::<2>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .task(
+                TaskDecl::service("telemetry-reactor", 100_000)
+                    .reactor_domain(1)
+                    .after("control-reactor"),
+            )
+            .unwrap()
+            .build::<3>()
+            .unwrap();
+        let admitted = built
+            .admit_reactor_domains::<2, 0>(
+                [
+                    Some(
+                        ReactorDomainContract::new(0, 0)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                    Some(
+                        ReactorDomainContract::new(1, 3)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                ],
+                [],
+            )
+            .unwrap();
+        let core0 = Box::leak(Box::new(AsyncCore::<1>::new()));
+        let core1 = Box::leak(Box::new(AsyncCore::<1>::new()));
+        let core2 = Box::leak(Box::new(AsyncCore::<2>::new()));
+        let timers0 = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let timers1 = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let timers2 = Box::leak(Box::new(TimerQueue::<2>::new()));
+
+        assert!(admitted
+            .bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers1)),
+            ])
+            .is_ok());
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(9, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers1)),
+            ]),
+            Err(ReactorRuntimeError::UnknownDomain { domain: 9 })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(0, core1, timers1)),
+            ]),
+            Err(ReactorRuntimeError::DuplicateDomain { domain: 0 })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core0, timers1)),
+            ]),
+            Err(ReactorRuntimeError::DuplicateCore {
+                first_domain: 0,
+                duplicate_domain: 1,
+            })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers0)),
+            ]),
+            Err(ReactorRuntimeError::DuplicateTimerQueue {
+                first_domain: 0,
+                duplicate_domain: 1,
+            })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([Some(ReactorRuntimeDomain::new(0, core0, timers0)), None,]),
+            Err(ReactorRuntimeError::MissingDomain { domain: 1 })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core2, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers1)),
+            ]),
+            Err(ReactorRuntimeError::TaskSlotsMismatch {
+                domain: 0,
+                admitted: 1,
+                runtime: 2,
+            })
+        ));
+        assert!(matches!(
+            admitted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers2)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers1)),
+            ]),
+            Err(ReactorRuntimeError::TimerSlotsMismatch {
+                domain: 0,
+                admitted: 1,
+                runtime: 2,
+            })
+        ));
+
+        let inverted = AppGraph::<2>::new()
+            .task(TaskDecl::periodic("urgent", 5_000).reactor_domain(0))
+            .unwrap()
+            .task(TaskDecl::control("background", 5_000).reactor_domain(1))
+            .unwrap()
+            .build::<3>()
+            .unwrap()
+            .admit_reactor_domains::<2, 0>(
+                [
+                    Some(
+                        ReactorDomainContract::new(0, 0)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                    Some(
+                        ReactorDomainContract::new(1, 3)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                ],
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            inverted.bind_runtime([
+                Some(ReactorRuntimeDomain::new(0, core0, timers0)),
+                Some(ReactorRuntimeDomain::new(1, core1, timers1)),
+            ]),
+            Err(ReactorRuntimeError::DriverPriorityOrderMismatch {
+                more_urgent_domain: 0,
+                less_urgent_domain: 1,
+            })
+        ));
+    }
+
+    #[test]
+    fn reactor_runtime_binding_fuzz_matches_shadow_model() {
+        use crate::{AsyncCore, TimerQueue};
+
+        let admitted = AppGraph::<2>::new()
+            .task(TaskDecl::control("control-reactor", 5_000).reactor_domain(0))
+            .unwrap()
+            .task(
+                TaskDecl::service("telemetry-reactor", 100_000)
+                    .reactor_domain(1)
+                    .after("control-reactor"),
+            )
+            .unwrap()
+            .build::<3>()
+            .unwrap()
+            .admit_reactor_domains::<2, 0>(
+                [
+                    Some(
+                        ReactorDomainContract::new(0, 0)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                    Some(
+                        ReactorDomainContract::new(1, 3)
+                            .task_slots(1)
+                            .timer_slots(1),
+                    ),
+                ],
+                [],
+            )
+            .unwrap();
+        let core0 = Box::leak(Box::new(AsyncCore::<1>::new()));
+        let core1 = Box::leak(Box::new(AsyncCore::<1>::new()));
+        let timers0 = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let timers1 = Box::leak(Box::new(TimerQueue::<1>::new()));
+        let cases: u64 = if cfg!(miri) { 32 } else { 1024 };
+
+        for seed in 1..=cases {
+            let mut rng = Rng(seed.wrapping_mul(0xD1B5_4A32_D192_ED03));
+            let first_id = rng.below(4);
+            let second_id = rng.below(4);
+            let include_second = rng.below(4) != 0;
+            let alias_core = rng.below(2) == 0;
+            let alias_timers = rng.below(2) == 0;
+            let second_core = if alias_core { &*core0 } else { &*core1 };
+            let second_timers = if alias_timers { &*timers0 } else { &*timers1 };
+            let second = include_second
+                .then(|| ReactorRuntimeDomain::new(second_id, second_core, second_timers));
+
+            let actual = admitted
+                .bind_runtime([
+                    Some(ReactorRuntimeDomain::new(first_id, &*core0, &*timers0)),
+                    second,
+                ])
+                .map(|_| ());
+            let expected = if first_id > 1 {
+                Err(ReactorRuntimeError::UnknownDomain { domain: first_id })
+            } else if !include_second {
+                Err(ReactorRuntimeError::MissingDomain {
+                    domain: 1 - first_id,
+                })
+            } else if second_id == first_id {
+                Err(ReactorRuntimeError::DuplicateDomain { domain: second_id })
+            } else if alias_core {
+                Err(ReactorRuntimeError::DuplicateCore {
+                    first_domain: first_id,
+                    duplicate_domain: second_id,
+                })
+            } else if alias_timers {
+                Err(ReactorRuntimeError::DuplicateTimerQueue {
+                    first_domain: first_id,
+                    duplicate_domain: second_id,
+                })
+            } else if second_id > 1 {
+                Err(ReactorRuntimeError::UnknownDomain { domain: second_id })
+            } else {
+                Ok(())
+            };
+            assert_eq!(actual, expected, "seed={seed}");
+        }
     }
 
     #[test]
