@@ -205,8 +205,7 @@ def rust_build(spec: dict) -> str:
         contract += (f".memory({int(task.get('flash', 0))}, {int(task.get('ram', 0))}, "
                      f"{int(task.get('pool', 0))})")
         capabilities = (1 << 13) if task["name"] in channel_users else 0
-        quota_bits = 8 | (8 << 8) | (8 << 16)
-        contract += f".bindings({capabilities}, {quota_bits})"
+        contract += f".capabilities({capabilities}).object_quotas(8, 8, 8)"
         contracts.append(f"        {contract},")
     labels = ", ".join(json.dumps(task["name"]) for task in tasks)
     profile = workload["profile"]

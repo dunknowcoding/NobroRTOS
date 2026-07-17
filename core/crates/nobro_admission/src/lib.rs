@@ -66,6 +66,8 @@ pub struct TaskContract {
     pub ram_bytes: u32,
     pub pool_slots: u16,
     pub capability_bits: u32,
+    /// Packed runtime object limits: mailbox, alarm, and KV counts in the
+    /// lowest three bytes. Prefer [`TaskContract::object_quotas`] to packing.
     pub quota_bits: u32,
 }
 
@@ -147,6 +149,19 @@ impl TaskContract {
     pub const fn bindings(mut self, capability_bits: u32, quota_bits: u32) -> Self {
         self.capability_bits = capability_bits;
         self.quota_bits = quota_bits;
+        self
+    }
+
+    /// Select admitted runtime capabilities without changing object quotas.
+    pub const fn capabilities(mut self, capability_bits: u32) -> Self {
+        self.capability_bits = capability_bits;
+        self
+    }
+
+    /// Select mailbox, alarm, and key-value entry limits without bit packing.
+    pub const fn object_quotas(mut self, mailbox_slots: u8, alarms: u8, kv_entries: u8) -> Self {
+        self.quota_bits =
+            (mailbox_slots as u32) | ((alarms as u32) << 8) | ((kv_entries as u32) << 16);
         self
     }
 
@@ -1462,6 +1477,15 @@ mod tests {
         assert_eq!(ADMITTED.tasks[2].priority, 1);
         assert!(ADMITTED.tasks[2].response_bound_us >= 1_300);
         assert_eq!(ADMITTED.flash_bytes, 4096);
+    }
+
+    #[test]
+    fn named_binding_builders_match_the_packed_compatibility_form() {
+        let packed = TaskContract::new(1).bindings(0xA5, 3 | (5 << 8) | (7 << 16));
+        let named = TaskContract::new(1)
+            .capabilities(0xA5)
+            .object_quotas(3, 5, 7);
+        assert_eq!(named, packed);
     }
 
     fn runtime_validation<const N: usize>(

@@ -40,6 +40,10 @@ The Rust presets are `L0NanoKernel`, `L1GuardedKernel`, `L2ManagedKernel`, and
 assembly retains the L3 runtime admission and `seal` path. An existing L0
 dispatcher can opt into L1 with `nano.with_stack_guards(guards)` without
 re-running admission, resetting its epoch, or losing pending releases.
+Capability checks and mailbox/alarm/KV limits are independently selectable with
+`let mut governance = nano.governance();`; they use the bindings already admitted
+by `.capabilities(...)` and `.object_quotas(...)` and do not pull in the managed
+runtime or require stack guards.
 
 ### Right-size from a device run
 
