@@ -120,7 +120,10 @@ mod tests {
 /// Per-task energy ledger: charge each task's active time at a measured power
 /// draw (uW) and report energy in uJ. Fixed capacity, no heap.
 pub struct EnergyLedger<const N: usize> {
-    entries: [(u16, u64); N], // (task id, energy uJ)
+    // Keep identifiers separate from 64-bit counters so every slot does not
+    // retain alignment padding.
+    energy_uj: [u64; N],
+    task_ids: [u16; N],
     len: usize,
 }
 
@@ -133,7 +136,8 @@ impl<const N: usize> Default for EnergyLedger<N> {
 impl<const N: usize> EnergyLedger<N> {
     pub const fn new() -> Self {
         Self {
-            entries: [(0, 0); N],
+            energy_uj: [0; N],
+            task_ids: [0; N],
             len: 0,
         }
     }
@@ -141,42 +145,51 @@ impl<const N: usize> EnergyLedger<N> {
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
     pub fn charge(&mut self, task: u16, active_us: u64, power_uw: u64) -> bool {
         let energy_uj = active_us.saturating_mul(power_uw) / 1_000_000;
-        for e in self.entries[..self.len].iter_mut() {
-            if e.0 == task {
-                e.1 = e.1.saturating_add(energy_uj);
+        for index in 0..self.len {
+            if self.task_ids[index] == task {
+                self.energy_uj[index] = self.energy_uj[index].saturating_add(energy_uj);
                 return true;
             }
         }
         if self.len >= N {
             return false;
         }
-        self.entries[self.len] = (task, energy_uj);
+        self.task_ids[self.len] = task;
+        self.energy_uj[self.len] = energy_uj;
         self.len += 1;
         true
     }
 
     pub fn energy_uj(&self, task: u16) -> Option<u64> {
-        self.entries[..self.len]
+        self.task_ids[..self.len]
             .iter()
-            .find(|e| e.0 == task)
-            .map(|e| e.1)
+            .position(|entry| *entry == task)
+            .map(|index| self.energy_uj[index])
     }
 
     pub fn total_uj(&self) -> u64 {
-        self.entries[..self.len].iter().map(|e| e.1).sum()
+        self.energy_uj[..self.len].iter().sum()
     }
 
     /// The hungriest task (id, energy uJ).
     pub fn top(&self) -> Option<(u16, u64)> {
-        self.entries[..self.len].iter().copied().max_by_key(|e| e.1)
+        self.task_ids[..self.len]
+            .iter()
+            .copied()
+            .zip(self.energy_uj[..self.len].iter().copied())
+            .max_by_key(|entry| entry.1)
     }
 }
+
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(core::mem::size_of::<EnergyLedger<5>>() == 56);
 
 /// Executor-owned power policy, task power profiles, and measured energy ledger.
 pub struct ExecutorPower<const N: usize> {
     manager: PowerManager,
     ledger: EnergyLedger<N>,
-    profiles: [(u16, u64); N],
+    profile_power_uw: [u64; N],
+    profile_task_ids: [u16; N],
     profile_len: usize,
     default_power_uw: u64,
 }
@@ -186,33 +199,35 @@ impl<const N: usize> ExecutorPower<N> {
         Self {
             manager: PowerManager::new(window_us, budget_us),
             ledger: EnergyLedger::new(),
-            profiles: [(0, 0); N],
+            profile_power_uw: [0; N],
+            profile_task_ids: [0; N],
             profile_len: 0,
             default_power_uw,
         }
     }
 
     pub fn set_task_power(&mut self, task_id: u16, power_uw: u64) -> bool {
-        if let Some(profile) = self.profiles[..self.profile_len]
-            .iter_mut()
-            .find(|profile| profile.0 == task_id)
+        if let Some(index) = self.profile_task_ids[..self.profile_len]
+            .iter()
+            .position(|profile| *profile == task_id)
         {
-            profile.1 = power_uw;
+            self.profile_power_uw[index] = power_uw;
             return true;
         }
         if self.profile_len == N {
             return false;
         }
-        self.profiles[self.profile_len] = (task_id, power_uw);
+        self.profile_task_ids[self.profile_len] = task_id;
+        self.profile_power_uw[self.profile_len] = power_uw;
         self.profile_len += 1;
         true
     }
 
     pub fn account_task(&mut self, task_id: u16, active_us: u64) -> bool {
-        let power_uw = self.profiles[..self.profile_len]
+        let power_uw = self.profile_task_ids[..self.profile_len]
             .iter()
-            .find(|profile| profile.0 == task_id)
-            .map(|profile| profile.1)
+            .position(|profile| *profile == task_id)
+            .map(|index| self.profile_power_uw[index])
             .unwrap_or(self.default_power_uw);
         let _ = self.manager.account_active(active_us);
         self.ledger.charge(task_id, active_us, power_uw)
@@ -253,6 +268,9 @@ impl<const N: usize> ExecutorPower<N> {
         &self.manager
     }
 }
+
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(core::mem::size_of::<ExecutorPower<5>>() == 144);
 
 #[cfg(test)]
 mod energy_tests {
@@ -295,6 +313,7 @@ mod energy_tests {
         assert_eq!(led.energy_uj(1), Some(2_000));
         assert_eq!(led.energy_uj(2), Some(2_000));
         assert_eq!(led.total_uj(), 4_000);
+        assert_eq!(led.top(), Some((2, 2_000)));
         assert!(led.charge(2, 1_000_000, 40_000)); // radio burns 40 mJ more
         assert_eq!(led.top(), Some((2, 42_000)));
     }
@@ -303,8 +322,11 @@ mod energy_tests {
     fn executor_power_accounts_and_programs_wake_before_sleep() {
         let mut power = ExecutorPower::<2>::new(1_000_000, 100_000, 1_000);
         assert!(power.set_task_power(7, 5_000));
+        assert!(power.set_task_power(7, 10_000));
+        assert!(power.set_task_power(8, 2_000));
+        assert!(!power.set_task_power(9, 1_000));
         assert!(power.account_task(7, 200_000));
-        assert_eq!(power.ledger().energy_uj(7), Some(1_000));
+        assert_eq!(power.ledger().energy_uj(7), Some(2_000));
 
         let mut hooks = Hooks::default();
         assert_eq!(
