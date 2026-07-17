@@ -53,6 +53,12 @@ Add a retained event ring only when needed with `recovery_with_trace::<N>` (or
 `recovery_with_trace_into`). For dependency-aware restart order, declare task-index
 edges once with `recovery_dependencies().depends_on(task, dependency)` and call
 `record_error_with_dependencies`; no runtime manifest or module IDs are required.
+If tasks are genuinely discovered at startup, opt into target-side admission with
+`NanoRuntimeAdmission::admit(contracts, profile)` and call `admission.start(epoch)`.
+The returned dispatcher borrows the retained admitted table. Generated/static task
+sets should continue using `NanoKernel::new`: it omits both target-side admission
+code and retained admission RAM. Long-lived target-side admission can use
+`NanoRuntimeAdmission::admit_into` to initialize caller-owned storage directly.
 
 ### Right-size from a device run
 

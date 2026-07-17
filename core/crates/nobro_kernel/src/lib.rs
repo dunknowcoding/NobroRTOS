@@ -136,9 +136,10 @@ pub use module_runtime::{
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
 pub use nano::{
-    GuardedNanoKernel, KernelLayer, NanoDependencies, NanoError, NanoGovernance,
+    GuardedNanoKernel, KernelLayer, NanoDependencies, NanoDispatcher, NanoError, NanoGovernance,
     NanoGovernanceError, NanoKernel, NanoObjectUsage, NanoRecovery, NanoRecoveryError,
-    NanoRecoveryOutcome, NanoRecoveryPlanning, NanoSubsystemReport, SUBSYSTEM_PRESENT,
+    NanoRecoveryOutcome, NanoRecoveryPlanning, NanoRuntimeAdmission, NanoRuntimeKernel,
+    NanoSubsystemReport, SUBSYSTEM_PRESENT,
 };
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{CompactImuPayload, SamplePool};

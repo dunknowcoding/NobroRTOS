@@ -794,6 +794,35 @@ fn runtime_higher_priority(
                 && (a.period_us < b.period_us || (a.period_us == b.period_us && left < right))))
 }
 
+fn runtime_priority_of(
+    index: usize,
+    task_count: usize,
+    task_at: &impl Fn(usize) -> TaskContract,
+) -> u16 {
+    let mut priority = 0u16;
+    let mut other = 0usize;
+    let task = task_at(index);
+    if task.participates() {
+        while other < task_count {
+            if runtime_higher_priority(other, index, task_at) {
+                priority += 1;
+            }
+            other += 1;
+        }
+    } else {
+        while other < task_count {
+            let candidate = task_at(other);
+            if candidate.active()
+                && (candidate.participates() || (!candidate.participates() && other < index))
+            {
+                priority += 1;
+            }
+            other += 1;
+        }
+    }
+    priority
+}
+
 fn runtime_response_time(
     index: usize,
     task_count: usize,
@@ -879,6 +908,23 @@ pub fn validate_runtime(
     profile: AdmissionProfile,
     task_at: impl Fn(usize) -> TaskContract,
 ) -> Result<(), AdmissionError> {
+    analyze_runtime(task_count, profile, task_at, |_, _| {}).map(|_| ())
+}
+
+struct RuntimeAdmissionSummary {
+    active_count: usize,
+    flash: u32,
+    ram: u32,
+    pool: u16,
+    utilization: u16,
+}
+
+fn analyze_runtime(
+    task_count: usize,
+    profile: AdmissionProfile,
+    task_at: impl Fn(usize) -> TaskContract,
+    mut admitted_task: impl FnMut(usize, AdmittedTask),
+) -> Result<RuntimeAdmissionSummary, AdmissionError> {
     let mut flash = 0u32;
     let mut ram = 0u32;
     let mut pool = 0u16;
@@ -1044,21 +1090,89 @@ pub fn validate_runtime(
     index = 0;
     while index < task_count {
         let task = task_at(index);
-        if task.active() && task.participates() {
-            let response =
-                runtime_response_time(index, task_count, profile.wake_latency_us, &task_at)?;
-            if response as u64 + task.jitter_us as u64 > task.deadline_us as u64 {
-                return Err(AdmissionError::task(
-                    AdmissionErrorCode::ResponseTimeExceeded,
-                    index,
-                    response as u64 + task.jitter_us as u64,
-                    task.deadline_us as u64,
-                ));
-            }
+        if task.active() {
+            let response = if task.participates() {
+                let response =
+                    runtime_response_time(index, task_count, profile.wake_latency_us, &task_at)?;
+                if response as u64 + task.jitter_us as u64 > task.deadline_us as u64 {
+                    return Err(AdmissionError::task(
+                        AdmissionErrorCode::ResponseTimeExceeded,
+                        index,
+                        response as u64 + task.jitter_us as u64,
+                        task.deadline_us as u64,
+                    ));
+                }
+                response
+            } else {
+                0
+            };
+            admitted_task(
+                index,
+                AdmittedTask {
+                    id: task.id,
+                    priority: runtime_priority_of(index, task_count, &task_at),
+                    phase_us: task.phase_us,
+                    period_us: task.period_us,
+                    deadline_us: task.deadline_us,
+                    response_bound_us: response,
+                    capability_bits: task.capability_bits,
+                    quota_bits: task.quota_bits,
+                },
+            );
         }
         index += 1;
     }
-    Ok(())
+    Ok(RuntimeAdmissionSummary {
+        active_count,
+        flash,
+        ram,
+        pool,
+        utilization: utilization as u16,
+    })
+}
+
+/// Admit a runtime-provided fixed array directly into caller-owned storage.
+///
+/// This applies the same checks and error ordering as [`admit`] and
+/// [`validate_runtime`], but avoids a capacity-sized admitted-table return
+/// value. On error, `destination` remains uninitialized and may be retried.
+pub fn admit_runtime_into<'a, const N: usize>(
+    destination: &'a mut core::mem::MaybeUninit<AdmittedWorkload<N>>,
+    tasks: &[TaskContract; N],
+    profile: AdmissionProfile,
+) -> Result<&'a mut AdmittedWorkload<N>, AdmissionError> {
+    let output = destination.as_mut_ptr();
+    let summary = analyze_runtime(
+        N,
+        profile,
+        |index| tasks[index],
+        |index, task| unsafe {
+            core::ptr::addr_of_mut!((*output).tasks)
+                .cast::<AdmittedTask>()
+                .add(index)
+                .write(task);
+        },
+    )?;
+
+    for (index, task) in tasks.iter().enumerate() {
+        if !task.active() {
+            unsafe {
+                core::ptr::addr_of_mut!((*output).tasks)
+                    .cast::<AdmittedTask>()
+                    .add(index)
+                    .write(AdmittedTask::EMPTY);
+            }
+        }
+    }
+    unsafe {
+        core::ptr::addr_of_mut!((*output).schema_version).write(ADMITTED_SCHEMA_VERSION);
+        core::ptr::addr_of_mut!((*output).task_count).write(summary.active_count as u16);
+        core::ptr::addr_of_mut!((*output).flash_bytes).write(summary.flash);
+        core::ptr::addr_of_mut!((*output).ram_bytes).write(summary.ram);
+        core::ptr::addr_of_mut!((*output).pool_slots).write(summary.pool);
+        core::ptr::addr_of_mut!((*output).utilization_permyriad).write(summary.utilization);
+        Ok(destination.assume_init_mut())
+    }
 }
 
 const fn interrupt_response<const I: usize>(
@@ -1480,6 +1594,34 @@ mod tests {
     }
 
     #[test]
+    fn caller_storage_runtime_admission_matches_const_and_can_retry() {
+        let mut storage = core::mem::MaybeUninit::uninit();
+        assert_eq!(
+            admit_runtime_into(&mut storage, &GOOD, PROFILE).map(|value| *value),
+            Ok(ADMITTED)
+        );
+
+        let duplicate = [
+            TaskContract::new(1),
+            TaskContract::new(1),
+            TaskContract::EMPTY,
+        ];
+        let mut retry = core::mem::MaybeUninit::uninit();
+        assert!(matches!(
+            admit_runtime_into(&mut retry, &duplicate, PROFILE),
+            Err(AdmissionError {
+                code: AdmissionErrorCode::DuplicateId,
+                task_index: 1,
+                ..
+            })
+        ));
+        assert_eq!(
+            admit_runtime_into(&mut retry, &GOOD, PROFILE).map(|value| *value),
+            Ok(ADMITTED)
+        );
+    }
+
+    #[test]
     fn named_binding_builders_match_the_packed_compatibility_form() {
         let packed = TaskContract::new(1).bindings(0xA5, 3 | (5 << 8) | (7 << 16));
         let named = TaskContract::new(1)
@@ -1493,6 +1635,14 @@ mod tests {
         profile: AdmissionProfile,
     ) -> Result<(), AdmissionError> {
         validate_runtime(N, profile, |index| tasks[index])
+    }
+
+    fn runtime_admission<const N: usize>(
+        tasks: [TaskContract; N],
+        profile: AdmissionProfile,
+    ) -> Result<AdmittedWorkload<N>, AdmissionError> {
+        let mut storage = core::mem::MaybeUninit::uninit();
+        admit_runtime_into(&mut storage, &tasks, profile).map(|value| *value)
     }
 
     #[test]
@@ -1521,6 +1671,7 @@ mod tests {
                 runtime_validation(tasks, PROFILE),
                 admit(tasks, PROFILE).map(|_| ())
             );
+            assert_eq!(runtime_admission(tasks, PROFILE), admit(tasks, PROFILE));
         }
 
         let periods = [0, 10, 1_000];
@@ -1548,6 +1699,11 @@ mod tests {
                                     runtime_validation(cases[0], profile),
                                     admit(cases[0], profile).map(|_| ()),
                                     "period={period} deadline={deadline} execution={execution} blocking={blocking} jitter={jitter} wake={wake_latency}"
+                                );
+                                assert_eq!(
+                                    runtime_admission(cases[0], profile),
+                                    admit(cases[0], profile),
+                                    "in-place period={period} deadline={deadline} execution={execution} blocking={blocking} jitter={jitter} wake={wake_latency}"
                                 );
                             }
                         }

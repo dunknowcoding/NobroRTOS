@@ -10,7 +10,8 @@ use crate::{
     RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, StackFault, StackGuardTable, SystemState,
 };
 use nobro_admission::{
-    AdmittedWorkload, ADMITTED_SCHEMA_VERSION, MAX_WRAP_SAFE_INTERVAL_US, SUBSYSTEM_ABSENT,
+    AdmissionError, AdmissionProfile, AdmittedWorkload, TaskContract, ADMITTED_SCHEMA_VERSION,
+    MAX_WRAP_SAFE_INTERVAL_US, SUBSYSTEM_ABSENT,
 };
 
 pub const SUBSYSTEM_PRESENT: u16 = 0;
@@ -86,6 +87,11 @@ impl NanoSubsystemReport {
 
     pub const TRACED: Self = Self {
         trace: SUBSYSTEM_PRESENT,
+        ..Self::ABSENT
+    };
+
+    pub const RUNTIME_ADMITTED: Self = Self {
+        admission_runtime: SUBSYSTEM_PRESENT,
         ..Self::ABSENT
     };
 
@@ -576,6 +582,60 @@ fn module_for<const N: usize>(
     Ok(ModuleId::App(task_index as u8))
 }
 
+/// Optional target-side admission for Nano workloads assembled at runtime.
+///
+/// The admitted table is retained by this value and can lend a dispatcher
+/// without an allocator, manifest, startup graph, or managed runtime. Prefer a
+/// generated [`AdmittedWorkload`] and [`NanoKernel`] when the task set is known
+/// before compilation; that path keeps both admission code and retained state
+/// out of the firmware.
+#[repr(transparent)]
+pub struct NanoRuntimeAdmission<const N: usize> {
+    workload: AdmittedWorkload<N>,
+}
+
+impl<const N: usize> NanoRuntimeAdmission<N> {
+    /// Run the same bounded admission used by generated/build-time workloads.
+    pub fn admit(
+        tasks: [TaskContract; N],
+        profile: AdmissionProfile,
+    ) -> Result<Self, AdmissionError> {
+        nobro_admission::admit(tasks, profile).map(|workload| Self { workload })
+    }
+
+    /// Admit directly into caller-owned storage to avoid a capacity-sized
+    /// admitted-table construction frame.
+    pub fn admit_into<'a>(
+        destination: &'a mut core::mem::MaybeUninit<Self>,
+        tasks: &[TaskContract; N],
+        profile: AdmissionProfile,
+    ) -> Result<&'a mut Self, AdmissionError> {
+        // SAFETY: `NanoRuntimeAdmission` is transparent over exactly one
+        // `AdmittedWorkload`, so both `MaybeUninit` slots have identical
+        // address, size, and alignment. The admission helper initializes every
+        // byte before this wrapper is exposed.
+        let workload_destination = unsafe {
+            &mut *(core::ptr::from_mut(destination)
+                .cast::<core::mem::MaybeUninit<AdmittedWorkload<N>>>())
+        };
+        nobro_admission::admit_runtime_into(workload_destination, tasks, profile)?;
+        Ok(unsafe { destination.assume_init_mut() })
+    }
+
+    /// Start a dispatcher that borrows this retained admitted table.
+    pub fn start(&self, epoch_us: u32) -> Result<NanoRuntimeKernel<'_, N>, NanoError> {
+        NanoDispatcher::from_workload(&self.workload, epoch_us)
+    }
+
+    pub const fn workload(&self) -> &AdmittedWorkload<N> {
+        &self.workload
+    }
+
+    pub const fn subsystem_report(&self) -> NanoSubsystemReport {
+        NanoSubsystemReport::RUNTIME_ADMITTED
+    }
+}
+
 /// L1 preset: L0 dispatch plus default-on stack watermark/canary sweeps.
 pub struct GuardedNanoKernel<const N: usize, const G: usize> {
     dispatch: NanoKernel<N>,
@@ -612,17 +672,31 @@ impl<const N: usize, const G: usize> GuardedNanoKernel<N, G> {
     }
 }
 
-/// Pre-admitted periodic dispatcher. `N` is limited to 32 so ready state is a
-/// single word and selecting the next fixed priority is one trailing-zero op.
-pub struct NanoKernel<const N: usize> {
-    workload: &'static AdmittedWorkload<N>,
+/// Periodic dispatcher over an admitted table. `N` is limited to 32 so ready
+/// state is one word and selecting the next fixed priority is one
+/// trailing-zero operation.
+pub struct NanoDispatcher<'a, const N: usize> {
+    workload: &'a AdmittedWorkload<N>,
     next_release_us: [u32; N],
     priority_to_task: [u8; 32],
     ready_priorities: u32,
 }
 
-impl<const N: usize> NanoKernel<N> {
+/// Compile/build-time admitted Nano dispatcher. Its table normally lives in
+/// firmware read-only data and retains no target-side admission service.
+pub type NanoKernel<const N: usize> = NanoDispatcher<'static, N>;
+
+/// Dispatcher borrowed from a [`NanoRuntimeAdmission`] retained by the caller.
+pub type NanoRuntimeKernel<'a, const N: usize> = NanoDispatcher<'a, N>;
+
+impl<const N: usize> NanoDispatcher<'static, N> {
     pub fn new(workload: &'static AdmittedWorkload<N>, epoch_us: u32) -> Result<Self, NanoError> {
+        Self::from_workload(workload, epoch_us)
+    }
+}
+
+impl<'a, const N: usize> NanoDispatcher<'a, N> {
+    fn from_workload(workload: &'a AdmittedWorkload<N>, epoch_us: u32) -> Result<Self, NanoError> {
         if workload.schema_version != ADMITTED_SCHEMA_VERSION {
             return Err(NanoError::UnsupportedSchema);
         }
@@ -727,7 +801,9 @@ impl<const N: usize> NanoKernel<N> {
     pub const fn is_idle(&self) -> bool {
         self.ready_priorities == 0
     }
+}
 
+impl<const N: usize> NanoDispatcher<'static, N> {
     /// Add stack guarding to an already configured Nano dispatcher.
     ///
     /// This is the zero-revalidation path from the L0 preset to L1: task
@@ -879,6 +955,53 @@ mod tests {
         let mut kernel = NanoKernel::new(&WORKLOAD, epoch).unwrap();
         kernel.release_due(epoch);
         assert_eq!(kernel.next_release_us(epoch), Some(1));
+    }
+
+    #[test]
+    fn runtime_admission_retains_the_table_and_lends_the_same_dispatcher() {
+        let admission =
+            NanoRuntimeAdmission::admit(CONTRACTS, AdmissionProfile::new(1024, 1024, 0, 3))
+                .unwrap();
+        assert_eq!(admission.workload(), &WORKLOAD);
+        assert_eq!(
+            admission.subsystem_report().admission_runtime,
+            SUBSYSTEM_PRESENT
+        );
+        assert_eq!(admission.subsystem_report().recovery, SUBSYSTEM_ABSENT);
+
+        let mut kernel = admission.start(100).unwrap();
+        assert_eq!(kernel.release_due(100), 1);
+        assert_eq!(kernel.take_next(), Some(0));
+        assert_eq!(kernel.next_release_us(100), Some(105));
+    }
+
+    #[test]
+    fn in_place_runtime_admission_matches_the_value_form() {
+        let profile = AdmissionProfile::new(1024, 1024, 0, 3);
+        let by_value = NanoRuntimeAdmission::admit(CONTRACTS, profile).unwrap();
+        let mut storage = core::mem::MaybeUninit::uninit();
+        let in_place = NanoRuntimeAdmission::admit_into(&mut storage, &CONTRACTS, profile).unwrap();
+        assert_eq!(in_place.workload(), by_value.workload());
+        assert_eq!(
+            in_place.start(100).unwrap().next_release_us(100),
+            by_value.start(100).unwrap().next_release_us(100)
+        );
+    }
+
+    #[test]
+    fn runtime_admission_rejects_an_invalid_contract_before_dispatch() {
+        let invalid = [
+            TaskContract::new(1).deadline(10, 10, 1, 1, 0),
+            TaskContract::new(1).deadline(20, 20, 1, 1, 0),
+        ];
+        assert!(matches!(
+            NanoRuntimeAdmission::admit(invalid, AdmissionProfile::new(1024, 1024, 0, 2)),
+            Err(AdmissionError {
+                code: nobro_admission::AdmissionErrorCode::DuplicateId,
+                task_index: 1,
+                ..
+            })
+        ));
     }
 
     #[test]
