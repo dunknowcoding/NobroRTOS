@@ -244,25 +244,26 @@ impl<const N: usize> TaskTable<N> {
         Ok(())
     }
 
-    fn fixed_higher_priority(&self, left: usize, right: usize) -> bool {
-        let left_meta = self.slots[left].expect("priority task slot").meta;
-        let right_meta = self.slots[right].expect("priority task slot").meta;
-        left_meta.criticality > right_meta.criticality
-            || (left_meta.criticality == right_meta.criticality
-                && (left_meta.period_us < right_meta.period_us
-                    || (left_meta.period_us == right_meta.period_us && left < right)))
-    }
-
     fn release_precedes(&self, left: usize, right: usize) -> bool {
-        let left_due = self.slots[left]
-            .expect("release task slot")
-            .stats
-            .next_due_us;
-        let right_due = self.slots[right]
-            .expect("release task slot")
-            .stats
-            .next_due_us;
-        left_due < right_due || (left_due == right_due && self.fixed_higher_priority(left, right))
+        // Release-list indices normally name registered slots. Borrow the
+        // records so ordering never copies a complete TaskSlot through an
+        // aggregate-return frame; a broken private link fails closed.
+        let Some(left_slot) = self.slots.get(left).and_then(Option::as_ref) else {
+            return false;
+        };
+        let Some(right_slot) = self.slots.get(right).and_then(Option::as_ref) else {
+            return true;
+        };
+        let left_due = left_slot.stats.next_due_us;
+        let right_due = right_slot.stats.next_due_us;
+        let left_meta = left_slot.meta;
+        let right_meta = right_slot.meta;
+        left_due < right_due
+            || (left_due == right_due
+                && (left_meta.criticality > right_meta.criticality
+                    || (left_meta.criticality == right_meta.criticality
+                        && (left_meta.period_us < right_meta.period_us
+                            || (left_meta.period_us == right_meta.period_us && left < right)))))
     }
 
     fn insert_release(&mut self, task_index: usize) {
@@ -479,10 +480,14 @@ impl<const N: usize> TaskTable<N> {
     }
 
     fn enqueue_ready(&mut self, task_index: usize) {
-        let criticality = self.slots[task_index]
-            .expect("ready task slot")
-            .meta
-            .criticality as usize;
+        let Some(criticality) = self
+            .slots
+            .get(task_index)
+            .and_then(Option::as_ref)
+            .map(|slot| slot.meta.criticality as usize)
+        else {
+            return;
+        };
         self.ready_next[task_index] = READY_NONE;
         let tail = self.ready_tail[criticality];
         if tail == READY_NONE {
@@ -565,11 +570,10 @@ impl<const N: usize> TaskTable<N> {
     pub fn has_due(&self, now_us: u64) -> bool {
         self.ready_members != 0
             || self.release_root().is_some_and(|index| {
-                self.slots[index]
-                    .expect("release heap task slot")
-                    .stats
-                    .next_due_us
-                    <= now_us
+                self.slots
+                    .get(index)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|slot| slot.stats.next_due_us <= now_us)
             })
     }
 
