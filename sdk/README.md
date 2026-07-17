@@ -60,6 +60,14 @@ sets should continue using `NanoKernel::new`: it omits both target-side admissio
 code and retained admission RAM. Long-lived target-side admission can use
 `NanoRuntimeAdmission::admit_into` to initialize caller-owned storage directly.
 
+For bounded async applications, declare one `ReactorDomainContract` per urgency
+domain and link it to graph tasks with `TaskDecl::reactor_domain`. Before a board
+backend enables ISR-driven wakes, call `bind_interrupt_priorities` with explicit
+`ReactorPriorityBinding` values and that target's `InterruptProfile`. The admitted
+mapping rejects reserved priorities (including SoftDevice-owned levels), missing
+domains, priority sharing, nesting overflow, and urgency inversions. Portable
+priority bands are never written directly to an NVIC register.
+
 ### Right-size from a device run
 
 Use one campaign file for the declared stacks, kernel mailbox, sample pool, and

@@ -5,6 +5,8 @@
 #[cfg(test)]
 extern crate std;
 
+pub use nobro_admission::InterruptProfile;
+
 pub mod admission;
 pub mod admission_analysis;
 pub mod alarm;
@@ -65,7 +67,8 @@ pub use async_rt::{
     admit_reactor_domains, join2, select2, with_deadline, AsyncCore, AsyncDeadline, CancelToken,
     Channel, DeadlineContractError, DeadlineFault, DeadlineFaultKind, DeadlineFuture, Either,
     ReactorAdmissionError, ReactorAdmissionPlan, ReactorChannelContract, ReactorDomainContract,
-    ReactorError, ReactorExecutor, ReactorStats, Signal, Sleep, TimerQueue,
+    ReactorError, ReactorExecutor, ReactorPriorityBinding, ReactorPriorityError,
+    ReactorPriorityPlan, ReactorStats, Signal, Sleep, TimerQueue,
 };
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,

@@ -31,6 +31,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 use critical_section::Mutex;
+use nobro_admission::InterruptProfile;
 // Drop-in atomics: native CAS where the ISA has it, critical-section fallback
 // on CAS-less cores (thumbv6m/AVR) — matches scheduler.rs.
 use portable_atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU8, Ordering};
@@ -634,6 +635,93 @@ pub struct ReactorAdmissionPlan<const D: usize, const C: usize> {
     pub cross_domain_len: usize,
 }
 
+/// Explicit target binding for one portable reactor urgency domain.
+///
+/// `logical_priority` uses the same convention as
+/// [`InterruptProfile`]: zero is most urgent, before any target-specific
+/// register shift. A board backend must consume an admitted
+/// [`ReactorPriorityPlan`] rather than programming priorities from the
+/// portable `priority_band` directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorPriorityBinding {
+    pub domain: u8,
+    pub logical_priority: u8,
+}
+
+impl ReactorPriorityBinding {
+    pub const fn new(domain: u8, logical_priority: u8) -> Self {
+        Self {
+            domain,
+            logical_priority,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReactorPriorityError {
+    InvalidInterruptProfile {
+        priority_levels: u8,
+        max_nesting: u8,
+    },
+    UnknownDomain {
+        domain: u8,
+    },
+    DuplicateDomainBinding {
+        domain: u8,
+    },
+    MissingDomainBinding {
+        domain: u8,
+    },
+    PriorityOutOfRange {
+        domain: u8,
+        priority: u8,
+        priority_levels: u8,
+    },
+    ReservedPriority {
+        domain: u8,
+        priority: u8,
+    },
+    DuplicatePriority {
+        priority: u8,
+        first_domain: u8,
+        duplicate_domain: u8,
+    },
+    DuplicatePriorityBand {
+        priority_band: u8,
+        first_domain: u8,
+        duplicate_domain: u8,
+    },
+    PriorityOrderMismatch {
+        more_urgent_domain: u8,
+        less_urgent_domain: u8,
+    },
+    NestingExceeded {
+        domains: usize,
+        max_nesting: u8,
+    },
+}
+
+/// Reactor plan whose portable urgency domains have been bound to concrete
+/// target logical interrupt priorities. This is the only mapping a board
+/// backend should use when arming ISR-driven reactor wakes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReactorPriorityPlan<const D: usize, const C: usize> {
+    pub reactor: ReactorAdmissionPlan<D, C>,
+    pub bindings: [Option<ReactorPriorityBinding>; D],
+    pub binding_len: usize,
+    pub interrupt_profile: InterruptProfile,
+}
+
+impl<const D: usize, const C: usize> ReactorPriorityPlan<D, C> {
+    pub fn bindings(&self) -> impl Iterator<Item = &ReactorPriorityBinding> + '_ {
+        self.bindings.iter().flatten()
+    }
+
+    pub fn binding(&self, domain: u8) -> Option<&ReactorPriorityBinding> {
+        self.bindings().find(|binding| binding.domain == domain)
+    }
+}
+
 impl<const D: usize, const C: usize> ReactorAdmissionPlan<D, C> {
     pub fn domains(&self) -> impl Iterator<Item = &ReactorDomainContract> + '_ {
         self.domains.iter().flatten()
@@ -649,6 +737,136 @@ impl<const D: usize, const C: usize> ReactorAdmissionPlan<D, C> {
 
     pub fn domain(&self, id: u8) -> Option<&ReactorDomainContract> {
         self.domains().find(|domain| domain.id == id)
+    }
+
+    /// Bind every portable reactor urgency domain to one target logical
+    /// interrupt priority using the same profile as P-ISR admission.
+    ///
+    /// The mapping rejects reserved/out-of-range levels, missing or duplicate
+    /// bindings, priority sharing, duplicate portable bands, target nesting
+    /// overflow, and any inversion of portable urgency. It does not enable an
+    /// interrupt; target code must program hardware only from the returned
+    /// admitted plan.
+    pub fn bind_interrupt_priorities(
+        self,
+        bindings: [Option<ReactorPriorityBinding>; D],
+        interrupt_profile: InterruptProfile,
+    ) -> Result<ReactorPriorityPlan<D, C>, ReactorPriorityError> {
+        if interrupt_profile.priority_levels == 0
+            || interrupt_profile.priority_levels > 8
+            || interrupt_profile.max_nesting == 0
+        {
+            return Err(ReactorPriorityError::InvalidInterruptProfile {
+                priority_levels: interrupt_profile.priority_levels,
+                max_nesting: interrupt_profile.max_nesting,
+            });
+        }
+
+        let mut binding_len = 0usize;
+        for binding in bindings.iter().flatten() {
+            binding_len += 1;
+            if self.domain(binding.domain).is_none() {
+                return Err(ReactorPriorityError::UnknownDomain {
+                    domain: binding.domain,
+                });
+            }
+            if binding.logical_priority >= interrupt_profile.priority_levels {
+                return Err(ReactorPriorityError::PriorityOutOfRange {
+                    domain: binding.domain,
+                    priority: binding.logical_priority,
+                    priority_levels: interrupt_profile.priority_levels,
+                });
+            }
+            if interrupt_profile.reserved_priorities & (1u8 << binding.logical_priority) != 0 {
+                return Err(ReactorPriorityError::ReservedPriority {
+                    domain: binding.domain,
+                    priority: binding.logical_priority,
+                });
+            }
+        }
+
+        for (index, binding) in bindings.iter().flatten().enumerate() {
+            for previous in bindings.iter().flatten().take(index) {
+                if previous.domain == binding.domain {
+                    return Err(ReactorPriorityError::DuplicateDomainBinding {
+                        domain: binding.domain,
+                    });
+                }
+                if previous.logical_priority == binding.logical_priority {
+                    return Err(ReactorPriorityError::DuplicatePriority {
+                        priority: binding.logical_priority,
+                        first_domain: previous.domain,
+                        duplicate_domain: binding.domain,
+                    });
+                }
+            }
+        }
+
+        for domain in self.domains() {
+            if !bindings
+                .iter()
+                .flatten()
+                .any(|binding| binding.domain == domain.id)
+            {
+                return Err(ReactorPriorityError::MissingDomainBinding { domain: domain.id });
+            }
+        }
+
+        if binding_len > usize::from(interrupt_profile.max_nesting) {
+            return Err(ReactorPriorityError::NestingExceeded {
+                domains: binding_len,
+                max_nesting: interrupt_profile.max_nesting,
+            });
+        }
+
+        for (index, domain) in self.domains().enumerate() {
+            let Some(binding) = bindings
+                .iter()
+                .flatten()
+                .find(|binding| binding.domain == domain.id)
+            else {
+                return Err(ReactorPriorityError::MissingDomainBinding { domain: domain.id });
+            };
+            for previous_domain in self.domains().take(index) {
+                let Some(previous_binding) = bindings
+                    .iter()
+                    .flatten()
+                    .find(|candidate| candidate.domain == previous_domain.id)
+                else {
+                    return Err(ReactorPriorityError::MissingDomainBinding {
+                        domain: previous_domain.id,
+                    });
+                };
+                if previous_domain.priority_band == domain.priority_band {
+                    return Err(ReactorPriorityError::DuplicatePriorityBand {
+                        priority_band: domain.priority_band,
+                        first_domain: previous_domain.id,
+                        duplicate_domain: domain.id,
+                    });
+                }
+                let previous_more_urgent = previous_domain.priority_band < domain.priority_band;
+                let previous_priority_higher =
+                    previous_binding.logical_priority < binding.logical_priority;
+                if previous_more_urgent != previous_priority_higher {
+                    let (more_urgent_domain, less_urgent_domain) = if previous_more_urgent {
+                        (previous_domain.id, domain.id)
+                    } else {
+                        (domain.id, previous_domain.id)
+                    };
+                    return Err(ReactorPriorityError::PriorityOrderMismatch {
+                        more_urgent_domain,
+                        less_urgent_domain,
+                    });
+                }
+            }
+        }
+
+        Ok(ReactorPriorityPlan {
+            reactor: self,
+            bindings,
+            binding_len,
+            interrupt_profile,
+        })
     }
 }
 
@@ -1364,6 +1582,239 @@ mod tests {
             ),
             Err(ReactorAdmissionError::InvalidWaiterSlots { index: 0 })
         );
+    }
+
+    #[test]
+    fn reactor_priorities_bind_through_the_p_isr_profile() {
+        let reactor = admit_reactor_domains::<2, 1>(
+            [
+                Some(ReactorDomainContract::new(7, 0).task_slots(4)),
+                Some(ReactorDomainContract::new(9, 3).task_slots(2)),
+            ],
+            [Some(ReactorChannelContract::new(7, 9, 4).waiter_slots(4))],
+        )
+        .unwrap();
+
+        let mapped = reactor
+            .bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(7, 2)),
+                    Some(ReactorPriorityBinding::new(9, 6)),
+                ],
+                InterruptProfile::NRF52840_S140,
+            )
+            .unwrap();
+
+        assert_eq!(mapped.binding_len, 2);
+        assert_eq!(mapped.binding(7), Some(&ReactorPriorityBinding::new(7, 2)));
+        assert_eq!(mapped.reactor.cross_domain_len, 1);
+        assert_eq!(mapped.interrupt_profile, InterruptProfile::NRF52840_S140);
+    }
+
+    #[test]
+    fn reactor_priority_mapping_rejects_unsafe_target_bindings() {
+        fn plan() -> ReactorAdmissionPlan<2, 0> {
+            admit_reactor_domains(
+                [
+                    Some(ReactorDomainContract::new(0, 0)),
+                    Some(ReactorDomainContract::new(1, 3)),
+                ],
+                [],
+            )
+            .unwrap()
+        }
+
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 1)),
+                    Some(ReactorPriorityBinding::new(1, 6)),
+                ],
+                InterruptProfile::NRF52840_S140,
+            ),
+            Err(ReactorPriorityError::ReservedPriority {
+                domain: 0,
+                priority: 1,
+            })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(1, 8)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::PriorityOutOfRange {
+                domain: 1,
+                priority: 8,
+                priority_levels: 8,
+            })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(0, 3)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::DuplicateDomainBinding { domain: 0 })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [Some(ReactorPriorityBinding::new(0, 2)), None],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::MissingDomainBinding { domain: 1 })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(1, 2)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::DuplicatePriority {
+                priority: 2,
+                first_domain: 0,
+                duplicate_domain: 1,
+            })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 6)),
+                    Some(ReactorPriorityBinding::new(1, 2)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::PriorityOrderMismatch {
+                more_urgent_domain: 0,
+                less_urgent_domain: 1,
+            })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(3, 6)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::UnknownDomain { domain: 3 })
+        );
+        assert_eq!(
+            plan().bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(1, 6)),
+                ],
+                InterruptProfile::new(0, 0, 1, 256),
+            ),
+            Err(ReactorPriorityError::InvalidInterruptProfile {
+                priority_levels: 0,
+                max_nesting: 1,
+            })
+        );
+
+        let duplicate_band = admit_reactor_domains::<2, 0>(
+            [
+                Some(ReactorDomainContract::new(0, 4)),
+                Some(ReactorDomainContract::new(1, 4)),
+            ],
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            duplicate_band.bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 2)),
+                    Some(ReactorPriorityBinding::new(1, 6)),
+                ],
+                InterruptProfile::NRF52840_BARE,
+            ),
+            Err(ReactorPriorityError::DuplicatePriorityBand {
+                priority_band: 4,
+                first_domain: 0,
+                duplicate_domain: 1,
+            })
+        );
+
+        let four_domains = admit_reactor_domains::<4, 0>(
+            [
+                Some(ReactorDomainContract::new(0, 0)),
+                Some(ReactorDomainContract::new(1, 1)),
+                Some(ReactorDomainContract::new(2, 2)),
+                Some(ReactorDomainContract::new(3, 3)),
+            ],
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            four_domains.bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(0, 0)),
+                    Some(ReactorPriorityBinding::new(1, 1)),
+                    Some(ReactorPriorityBinding::new(2, 2)),
+                    Some(ReactorPriorityBinding::new(3, 3)),
+                ],
+                InterruptProfile::new(8, 0, 3, 1_024),
+            ),
+            Err(ReactorPriorityError::NestingExceeded {
+                domains: 4,
+                max_nesting: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn reactor_priority_mapping_property_grid_preserves_urgency() {
+        let allowed = [2u8, 3, 6, 7];
+        let cases = if cfg!(miri) { 16 } else { 256 };
+        for seed in 0..cases {
+            let left_band = ((seed * 17 + 3) & 0x7f) as u8;
+            let right_band = left_band.saturating_add(1);
+            let lower_index = seed as usize % (allowed.len() - 1);
+            let higher_index = lower_index + 1;
+            let reactor = admit_reactor_domains::<2, 0>(
+                [
+                    Some(ReactorDomainContract::new(10, left_band)),
+                    Some(ReactorDomainContract::new(11, right_band)),
+                ],
+                [],
+            )
+            .unwrap();
+            let mapped = reactor
+                .bind_interrupt_priorities(
+                    [
+                        Some(ReactorPriorityBinding::new(10, allowed[lower_index])),
+                        Some(ReactorPriorityBinding::new(11, allowed[higher_index])),
+                    ],
+                    InterruptProfile::NRF52840_S140,
+                )
+                .unwrap();
+            assert!(
+                mapped.binding(10).unwrap().logical_priority
+                    < mapped.binding(11).unwrap().logical_priority
+            );
+
+            let inverted = mapped.reactor.bind_interrupt_priorities(
+                [
+                    Some(ReactorPriorityBinding::new(10, allowed[higher_index])),
+                    Some(ReactorPriorityBinding::new(11, allowed[lower_index])),
+                ],
+                InterruptProfile::NRF52840_S140,
+            );
+            assert_eq!(
+                inverted,
+                Err(ReactorPriorityError::PriorityOrderMismatch {
+                    more_urgent_domain: 10,
+                    less_urgent_domain: 11,
+                })
+            );
+        }
     }
 
     #[test]
