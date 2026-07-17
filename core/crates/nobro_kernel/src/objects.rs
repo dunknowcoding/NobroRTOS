@@ -59,7 +59,13 @@ impl ObjectUsage {
 struct ObjectEntry {
     module: ModuleId,
     quota: ObjectQuota,
-    usage: ObjectUsage,
+    // Keep the three byte-sized live counts beside the key/quota instead of
+    // nesting `ObjectUsage`. The public usage snapshot is eight-byte aligned
+    // for `cpu_us`; nesting it would retain its tail padding in every slot.
+    mailbox_slots: u8,
+    alarms: u8,
+    kv_entries: u8,
+    cpu_us: u64,
 }
 
 /// Fixed-capacity ledger of kernel-object charges, one entry per admitted module.
@@ -95,7 +101,10 @@ impl<const N: usize> ObjectLedger<N> {
             *slot = Some(ObjectEntry {
                 module,
                 quota,
-                usage: ObjectUsage::ZERO,
+                mailbox_slots: 0,
+                alarms: 0,
+                kv_entries: 0,
+                cpu_us: 0,
             });
         }
     }
@@ -138,12 +147,17 @@ impl<const N: usize> ObjectLedger<N> {
     /// evidence, and losing precision must never fault the executor.
     pub fn charge_cpu(&mut self, module: ModuleId, duration_us: u32) {
         if let Some(entry) = self.find_mut(module) {
-            entry.usage.cpu_us = entry.usage.cpu_us.saturating_add(u64::from(duration_us));
+            entry.cpu_us = entry.cpu_us.saturating_add(u64::from(duration_us));
         }
     }
 
     pub fn usage(&self, module: ModuleId) -> Option<ObjectUsage> {
-        self.find(module).map(|entry| entry.usage)
+        self.find(module).map(|entry| ObjectUsage {
+            mailbox_slots: entry.mailbox_slots,
+            alarms: entry.alarms,
+            kv_entries: entry.kv_entries,
+            cpu_us: entry.cpu_us,
+        })
     }
 
     pub fn quota(&self, module: ModuleId) -> Option<ObjectQuota> {
@@ -156,13 +170,12 @@ impl<const N: usize> ObjectLedger<N> {
         let Some(entry) = self.find(module) else {
             return Ok(());
         };
-        let usage = entry.usage;
-        if usage.mailbox_slots != 0 || usage.alarms != 0 || usage.kv_entries != 0 {
+        if entry.mailbox_slots != 0 || entry.alarms != 0 || entry.kv_entries != 0 {
             return Err(ObjectQuotaError::Leak {
                 module,
-                mailbox_slots: usage.mailbox_slots,
-                alarms: usage.alarms,
-                kv_entries: usage.kv_entries,
+                mailbox_slots: entry.mailbox_slots,
+                alarms: entry.alarms,
+                kv_entries: entry.kv_entries,
             });
         }
         Ok(())
@@ -170,9 +183,9 @@ impl<const N: usize> ObjectLedger<N> {
 
     fn select(entry: &mut ObjectEntry, kind: ObjectKind) -> (&mut u8, u8) {
         match kind {
-            ObjectKind::MailboxSlot => (&mut entry.usage.mailbox_slots, entry.quota.mailbox_slots),
-            ObjectKind::Alarm => (&mut entry.usage.alarms, entry.quota.alarms),
-            ObjectKind::KvEntry => (&mut entry.usage.kv_entries, entry.quota.kv_entries),
+            ObjectKind::MailboxSlot => (&mut entry.mailbox_slots, entry.quota.mailbox_slots),
+            ObjectKind::Alarm => (&mut entry.alarms, entry.quota.alarms),
+            ObjectKind::KvEntry => (&mut entry.kv_entries, entry.quota.kv_entries),
         }
     }
 
@@ -200,6 +213,11 @@ impl<const N: usize> Default for ObjectLedger<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn internal_entry_keeps_usage_without_nested_snapshot_padding() {
+        assert_eq!(core::mem::size_of::<ObjectEntry>(), 16);
+    }
 
     #[test]
     fn in_place_initialization_matches_const_constructor() {
@@ -242,6 +260,15 @@ mod tests {
         assert_eq!(
             ledger.charge(ModuleId::Sensor, ObjectKind::MailboxSlot),
             Ok(())
+        );
+        assert_eq!(
+            ledger.usage(ModuleId::Sensor),
+            Some(ObjectUsage {
+                mailbox_slots: 2,
+                alarms: 0,
+                kv_entries: 0,
+                cpu_us: 0,
+            })
         );
     }
 
