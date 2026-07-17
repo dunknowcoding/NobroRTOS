@@ -97,7 +97,10 @@ pub use power_nrf::NrfTimerPower;
 #[cfg(feature = "platform-nrf52840")]
 pub use ppi::{PpiWake, PpiWakeError, PpiWakeRoute};
 #[cfg(feature = "platform-nrf52840")]
-pub use priority_ceiling::{PriorityCeiling, PriorityCeilingError};
+pub use priority_ceiling::{
+    CompletionInterruptPriority, CompletionInterruptPriorityError, PriorityCeiling,
+    PriorityCeilingError,
+};
 #[cfg(feature = "platform-nrf52840")]
 pub use pwm::{PwmBank, PwmBankSession, PwmServo, PwmSession, SERVO_PIN};
 #[cfg(feature = "platform-nrf52840")]

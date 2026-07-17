@@ -12,6 +12,7 @@ use cortex_m::peripheral::NVIC;
 use crate::bus::BusError;
 use crate::completion::{CompletionCell, CompletionError};
 use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+use crate::priority_ceiling::CompletionInterruptPriority;
 
 const SPIM0_BASE: u32 = 0x4000_3000; // shared peripheral block with TWIM0
 const GPIO_PORT0_BASE: u32 = 0x5000_0000;
@@ -43,11 +44,6 @@ const SPIM_FREQ_250K: u32 = 0x0400_0000; // 250 kbps - robust over jumper wiring
 const SPIM_CONFIG_MODE3: u32 = 0b110; // CPOL=1, CPHA=1, MSB-first
 const SPIM_INT_END: u32 = 1 << 6;
 const TIMEOUT_SPINS: u32 = 200_000;
-#[cfg(feature = "board-nicenano-s140")]
-const SPIM0_PRIORITY_RAW: u8 = 6 << 5;
-#[cfg(not(feature = "board-nicenano-s140"))]
-const SPIM0_PRIORITY_RAW: u8 = 3 << 5;
-
 static SPIM0_COMPLETION: CompletionCell = CompletionCell::new();
 
 /// Max bytes per single EasyDMA transfer here (one register burst). 64 covers the
@@ -72,6 +68,7 @@ fn spin(cycles: u32) {
 pub struct Spim0 {
     cs: u8,
     lease: LeaseGuard,
+    interrupt_priority: CompletionInterruptPriority,
 }
 
 impl Spim0 {
@@ -87,6 +84,34 @@ impl Spim0 {
         mosi: u8,
         miso: u8,
         cs: u8,
+    ) -> Result<Self, LeaseError> {
+        Self::acquire_with_priority(
+            owner,
+            sck,
+            mosi,
+            miso,
+            cs,
+            CompletionInterruptPriority::board_default(),
+        )
+    }
+
+    /// Configure SPIM0 with an explicitly admitted completion-ISR priority.
+    ///
+    /// Convert the logical priority selected for this reactor domain through
+    /// [`CompletionInterruptPriority::new`] first. That validation prevents a
+    /// waker-bearing completion ISR from running above the process-wide
+    /// critical-section ceiling.
+    ///
+    /// # Safety
+    /// The same pin and peripheral-ownership requirements as [`Self::acquire`]
+    /// apply.
+    pub unsafe fn acquire_with_priority(
+        owner: u8,
+        sck: u8,
+        mosi: u8,
+        miso: u8,
+        cs: u8,
+        interrupt_priority: CompletionInterruptPriority,
     ) -> Result<Self, LeaseError> {
         let lease = ResourceLease::acquire_guard(Resource::Spim0, owner)?;
         let base = SPIM0_BASE;
@@ -113,7 +138,15 @@ impl Spim0 {
         *reg(base, SPIM_CONFIG) = SPIM_CONFIG_MODE3;
         *reg(base, SPIM_ENABLE) = SPIM_ENABLE_ENABLED;
 
-        Ok(Spim0 { cs, lease })
+        Ok(Spim0 {
+            cs,
+            lease,
+            interrupt_priority,
+        })
+    }
+
+    pub const fn interrupt_priority(&self) -> CompletionInterruptPriority {
+        self.interrupt_priority
     }
 
     /// Assert chip-select (active low).
@@ -343,7 +376,7 @@ impl<'a> SpimTransfer<'a> {
         let mut core = cortex_m::Peripherals::steal();
         core.NVIC.set_priority(
             nrf52840_pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0,
-            SPIM0_PRIORITY_RAW,
+            self.spi.interrupt_priority.raw(),
         );
         NVIC::unpend(nrf52840_pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
         NVIC::unmask(nrf52840_pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);

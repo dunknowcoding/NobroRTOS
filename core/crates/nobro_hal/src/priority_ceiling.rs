@@ -55,6 +55,59 @@ pub enum PriorityCeilingError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompletionInterruptPriorityError {
+    InvalidLogicalPriority,
+    WouldPreemptCriticalSection,
+}
+
+/// Validated NVIC priority for an ISR that uses [`CompletionCell`](crate::CompletionCell).
+///
+/// Completion ISRs briefly enter the process-wide critical section to publish
+/// and take a task waker. They must therefore run at or below the board's
+/// BASEPRI ceiling (numerically equal to or greater than it). Deadline and
+/// watchdog priorities above that ceiling remain reserved for lock-free
+/// handoffs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CompletionInterruptPriority {
+    logical: u8,
+}
+
+impl CompletionInterruptPriority {
+    const PRIORITY_LEVELS: u8 = 8;
+    const SHIFT: u8 = 5;
+
+    #[cfg(feature = "board-promicro-nosd")]
+    const MIN_LOGICAL: u8 = 3;
+    #[cfg(feature = "board-nicenano-s140")]
+    const MIN_LOGICAL: u8 = 6;
+
+    pub const fn new(logical: u8) -> Result<Self, CompletionInterruptPriorityError> {
+        if logical >= Self::PRIORITY_LEVELS {
+            return Err(CompletionInterruptPriorityError::InvalidLogicalPriority);
+        }
+        if logical < Self::MIN_LOGICAL {
+            return Err(CompletionInterruptPriorityError::WouldPreemptCriticalSection);
+        }
+        Ok(Self { logical })
+    }
+
+    /// Board-safe default used by compatibility constructors.
+    pub const fn board_default() -> Self {
+        Self {
+            logical: Self::MIN_LOGICAL,
+        }
+    }
+
+    pub const fn logical(self) -> u8 {
+        self.logical
+    }
+
+    pub(crate) const fn raw(self) -> u8 {
+        self.logical << Self::SHIFT
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PriorityCeiling {
     raw: u8,
 }
@@ -146,5 +199,31 @@ mod tests {
             Err(PriorityCeilingError::WatchdogWouldBeMasked)
         );
         assert_eq!(PriorityCeiling::NRF52840_S140.raw(), 6 << 5);
+    }
+
+    #[test]
+    fn completion_priorities_cannot_preempt_shared_waker_state() {
+        #[cfg(feature = "board-promicro-nosd")]
+        {
+            assert_eq!(
+                CompletionInterruptPriority::new(2),
+                Err(CompletionInterruptPriorityError::WouldPreemptCriticalSection)
+            );
+            assert_eq!(CompletionInterruptPriority::new(3).unwrap().logical(), 3);
+            assert_eq!(CompletionInterruptPriority::board_default().logical(), 3);
+        }
+        #[cfg(feature = "board-nicenano-s140")]
+        {
+            assert_eq!(
+                CompletionInterruptPriority::new(5),
+                Err(CompletionInterruptPriorityError::WouldPreemptCriticalSection)
+            );
+            assert_eq!(CompletionInterruptPriority::new(6).unwrap().logical(), 6);
+            assert_eq!(CompletionInterruptPriority::board_default().logical(), 6);
+        }
+        assert_eq!(
+            CompletionInterruptPriority::new(8),
+            Err(CompletionInterruptPriorityError::InvalidLogicalPriority)
+        );
     }
 }

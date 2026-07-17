@@ -10,6 +10,7 @@ use nrf52840_pac::{GPIOTE, PPI, TIMER0};
 use crate::board::{LED_PIN, MVK_TRIGGER_PIN};
 use crate::completion::{CompletionCell, CompletionError};
 use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+use crate::priority_ceiling::CompletionInterruptPriority;
 
 const PPI_CH: usize = 0;
 const WAKE_PPI_CH: usize = 2;
@@ -24,11 +25,6 @@ const PPI_CHENSET: u32 = 0x504;
 const PPI_CHENCLR: u32 = 0x508;
 const PPI_CH0_EEP: u32 = 0x510;
 const PPI_CH0_TEP: u32 = 0x514;
-#[cfg(feature = "board-nicenano-s140")]
-const EGU0_PRIORITY_RAW: u8 = 6 << 5;
-#[cfg(not(feature = "board-nicenano-s140"))]
-const EGU0_PRIORITY_RAW: u8 = 3 << 5;
-
 static PPI_WAKE_COMPLETION: CompletionCell = CompletionCell::new();
 
 fn raw_reg(base: u32, offset: u32) -> *mut u32 {
@@ -80,6 +76,7 @@ pub struct PpiWakeRoute {
     source_event: *mut u32,
     event_router: LeaseGuard,
     software_event: LeaseGuard,
+    interrupt_priority: CompletionInterruptPriority,
 }
 
 impl PpiWakeRoute {
@@ -90,6 +87,28 @@ impl PpiWakeRoute {
     /// register that remains valid for the route's lifetime. The caller must
     /// own and configure the source peripheral separately.
     pub unsafe fn acquire(owner: u8, source_event: *mut u32) -> Result<Self, PpiWakeError> {
+        Self::acquire_with_priority(
+            owner,
+            source_event,
+            CompletionInterruptPriority::board_default(),
+        )
+    }
+
+    /// Configure the route with an explicitly admitted completion-ISR
+    /// priority.
+    ///
+    /// Convert the logical priority selected for this reactor domain through
+    /// [`CompletionInterruptPriority::new`] first. The token guarantees that
+    /// the EGU ISR cannot preempt the critical section protecting its waker.
+    ///
+    /// # Safety
+    /// The same endpoint and peripheral-ownership requirements as
+    /// [`Self::acquire`] apply.
+    pub unsafe fn acquire_with_priority(
+        owner: u8,
+        source_event: *mut u32,
+        interrupt_priority: CompletionInterruptPriority,
+    ) -> Result<Self, PpiWakeError> {
         if source_event.is_null() || (source_event as usize) & 3 != 0 {
             return Err(PpiWakeError::InvalidEndpoint);
         }
@@ -108,7 +127,12 @@ impl PpiWakeRoute {
             source_event,
             event_router,
             software_event,
+            interrupt_priority,
         })
+    }
+
+    pub const fn interrupt_priority(&self) -> CompletionInterruptPriority {
+        self.interrupt_priority
     }
 
     /// Wait for the next routed event. `start` runs exactly once after the
@@ -141,8 +165,10 @@ impl PpiWakeRoute {
         *raw_reg(EGU0_BASE, EGU_INTENCLR) = 1 << WAKE_EGU_EVENT;
         NVIC::unpend(nrf52840_pac::Interrupt::SWI0_EGU0);
         let mut core = cortex_m::Peripherals::steal();
-        core.NVIC
-            .set_priority(nrf52840_pac::Interrupt::SWI0_EGU0, EGU0_PRIORITY_RAW);
+        core.NVIC.set_priority(
+            nrf52840_pac::Interrupt::SWI0_EGU0,
+            self.interrupt_priority.raw(),
+        );
         NVIC::unmask(nrf52840_pac::Interrupt::SWI0_EGU0);
         *raw_reg(EGU0_BASE, EGU_INTENSET) = 1 << WAKE_EGU_EVENT;
         *raw_reg(PPI_BASE, PPI_CHENSET) = 1 << WAKE_PPI_CH;

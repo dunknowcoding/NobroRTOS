@@ -632,6 +632,20 @@ let plan = built.admit_reactor_domains::<2, 1>(
 )?;
 assert_eq!(plan.reactor.cross_domain_len, 1);
 
+let priorities = plan.reactor.bind_interrupt_priorities(
+    [
+        Some(nobro_kernel::ReactorPriorityBinding::new(0, 3)),
+        Some(nobro_kernel::ReactorPriorityBinding::new(1, 6)),
+    ],
+    nobro_kernel::InterruptProfile::NRF52840_BARE,
+)?;
+let control_irq = nobro_hal::CompletionInterruptPriority::new(
+    priorities.binding(0).unwrap().logical_priority,
+)?;
+let telemetry_irq = nobro_hal::CompletionInterruptPriority::new(
+    priorities.binding(1).unwrap().logical_priority,
+)?;
+
 static CONTROL_CORE: nobro_kernel::AsyncCore<4> = nobro_kernel::AsyncCore::new();
 static CONTROL_TIMERS: nobro_kernel::TimerQueue<2> = nobro_kernel::TimerQueue::new();
 static TELEMETRY_CORE: nobro_kernel::AsyncCore<8> = nobro_kernel::AsyncCore::new();
@@ -643,6 +657,12 @@ let reactors = plan.bind_runtime([
         1, &TELEMETRY_CORE, &TELEMETRY_TIMERS)),
 ])?;
 ```
+
+Pass the resulting priority tokens to nRF completion providers through
+`PpiWakeRoute::acquire_with_priority` or `Spim0::acquire_with_priority`.
+The HAL rejects logical priorities that could preempt the board's
+critical-section ceiling because these ISRs publish stored task wakers. The
+compatibility `acquire` constructors retain the board-safe default.
 
 Each domain is driven by exactly one normal admitted reactor task; the graph
 link rejects unknown, missing, or duplicate domain drivers before runtime
