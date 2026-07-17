@@ -934,16 +934,18 @@ impl<'a> GraphSpec<'a> {
 
     /// Build, admit, boot, register, and seal a graph in one call.
     ///
-    /// Only the derived manifest and startup nodes are temporary scratch on
-    /// this call's stack; labels, task metadata, and reactor bindings are
-    /// regenerated directly from the declarations instead of retaining a
+    /// The derived manifest and startup nodes temporarily occupy an
+    /// initialization workspace overlaid with the still-uninitialized
+    /// executor cell; admission consumes them before the final runtime
+    /// overwrites that workspace. Labels, task metadata, and reactor bindings
+    /// are regenerated directly from the declarations instead of retaining a
     /// capacity-sized [`BuiltGraph`]. The executor's `STARTUP` capacity is also
     /// used as the manifest capacity, which is the normal coherent runtime
     /// configuration. Advanced layouts can keep using [`build_for_into`].
     ///
-    /// The destination cell is one-shot. Graph validation happens before it is
-    /// claimed; an execution-admission failure after construction leaves the
-    /// executor fail-closed and unavailable for a second initialization.
+    /// The destination cell is one-shot. It is claimed while its initialization
+    /// workspace derives and validates the graph; any graph failure restores
+    /// the empty state, while a successful initialization remains one-shot.
     #[allow(
         clippy::too_many_arguments,
         reason = "the const capacities are inferred from the cell; callers provide only startup policy"
@@ -972,37 +974,46 @@ impl<'a> GraphSpec<'a> {
         &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         GraphStartError,
     > {
-        let mut manifest_storage = MaybeUninit::<SystemManifest<STARTUP>>::uninit();
-        unsafe {
-            SystemManifest::init_in_place(manifest_storage.as_mut_ptr());
-        }
-        let manifest = unsafe { manifest_storage.assume_init_mut() };
-        let mut startup = [StartupNode::EMPTY; STARTUP];
-        let startup_len = AppGraph::<TASKS>::build_core_into(
-            self.tasks,
-            self.channels,
-            self.kernel_memory,
-            self.kernel_deadline,
-            manifest,
-            &mut startup,
-        )?;
-        manifest
-            .validate_profile(profile)
-            .map_err(|error| GraphError::Manifest {
-                task: "<profile>",
-                error,
-            })?;
-        // SAFETY: the exact borrowed manifest/profile pair was validated
-        // immediately above and neither can be mutated before this call.
-        let executor = unsafe {
-            cell.init_prevalidated(
-                manifest,
-                &startup[..startup_len],
+        // SAFETY: the builder validates the exact manifest/profile pair
+        // returned to the cell and bounds startup_len by the provided array.
+        let executor = match unsafe {
+            cell.init_prevalidated_with_graph_scratch(
                 profile,
                 thresholds,
                 containment,
+                |manifest, startup| {
+                    let startup_len = AppGraph::<TASKS>::build_core_into(
+                        self.tasks,
+                        self.channels,
+                        self.kernel_memory,
+                        self.kernel_deadline,
+                        manifest,
+                        startup,
+                    )?;
+                    manifest
+                        .validate_profile(profile)
+                        .map_err(|error| GraphError::Manifest {
+                            task: "<profile>",
+                            error,
+                        })?;
+                    Ok::<usize, GraphError>(startup_len)
+                },
             )
-        }?;
+        } {
+            Ok(executor) => executor,
+            Err(crate::kernel_executor::ExecutorGraphInitError::Graph(error)) => {
+                return Err(error.into());
+            }
+            Err(crate::kernel_executor::ExecutorGraphInitError::Executor(error)) => {
+                return Err(error.into());
+            }
+        };
+        for (index, decl) in self.tasks.iter().enumerate() {
+            let module = AppGraph::<TASKS>::module_for_index(self.tasks, index);
+            executor
+                .runtime_mut()
+                .configure_object_quota(module, decl.objects);
+        }
         executor
             .runtime_mut()
             .boot_to_running(now_us)
@@ -1079,7 +1090,7 @@ mod tests {
     #[test]
     fn graph_spec_starts_and_seals_executor_without_retained_built_graph() {
         const TASKS: [TaskDecl; 3] = [
-            TaskDecl::control("motor", 20_000),
+            TaskDecl::control("motor", 20_000).objects(ObjectQuota::new(7, 6, 5)),
             TaskDecl::periodic("imu", 100_000).after("motor"),
             TaskDecl::service("telemetry", 500_000).after("imu"),
         ];
@@ -1102,6 +1113,10 @@ mod tests {
         assert_eq!(motor, ModuleId::App(0));
         assert!(executor.tasks().get(motor).is_some());
         assert_eq!(executor.runtime().plan().module_count(), 4);
+        assert_eq!(
+            executor.runtime().object_quota(motor),
+            Some(ObjectQuota::new(7, 6, 5))
+        );
         assert_eq!(
             executor.add_task(TaskMeta::new(motor, Criticality::System, 20_000, 2_000), 0),
             Err(ExecError::Sealed)
@@ -1171,6 +1186,42 @@ mod tests {
         );
 
         GraphSpec::new(&VALID, &[])
+            .start_executor(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds::DEFAULT,
+                ContainmentPolicy::Cooperative,
+                0,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn graph_executor_init_failure_restores_the_cell_for_retry() {
+        const TASKS: [TaskDecl; 1] = [TaskDecl::periodic("imu", 10_000)];
+        type Cell = KernelExecutorCell<1, 2, 2, 1, 0, 0, 2, 0>;
+        let cell: &'static Cell = Box::leak(Box::new(Cell::new()));
+        let graph = GraphSpec::new(&TASKS, &[]);
+
+        let error = graph
+            .start_executor(
+                cell,
+                SystemProfile::NRF52840_CORE,
+                FaultThresholds {
+                    notify_after: 3,
+                    reboot_after: 2,
+                },
+                ContainmentPolicy::Cooperative,
+                0,
+            )
+            .err()
+            .unwrap();
+        assert!(matches!(
+            error,
+            GraphStartError::Executor(ExecutorInitError::Runtime(_))
+        ));
+
+        graph
             .start_executor(
                 cell,
                 SystemProfile::NRF52840_CORE,

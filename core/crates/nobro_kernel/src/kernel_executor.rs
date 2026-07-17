@@ -27,7 +27,10 @@
 //! module in real time — the bounded containment answer for cooperative
 //! execution; preemption is intentionally out of scope for this profile.
 
-use core::{cell::UnsafeCell, mem::MaybeUninit};
+use core::{
+    cell::UnsafeCell,
+    mem::{ManuallyDrop, MaybeUninit},
+};
 
 #[cfg(test)]
 use core::cell::Cell;
@@ -35,9 +38,9 @@ use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform};
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
-    module_code, ExecutorInstrumentation, FaultThresholds, KernelError, ModuleCtx, ModuleId,
-    ModuleRunState, Poll, Runtime, RuntimeError, StackFault, StackGuardTable, StartupNode,
-    SystemManifest, SystemProfile, TaskMeta, TaskTable, TaskTableError,
+    module_code, AdmissionPlan, ExecutorInstrumentation, FaultThresholds, KernelError, ModuleCtx,
+    ModuleId, ModuleRunState, Poll, Runtime, RuntimeError, StackFault, StackGuardTable,
+    StartupNode, SystemManifest, SystemProfile, TaskMeta, TaskTable, TaskTableError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -220,6 +223,7 @@ pub struct CycleOutcome {
     pub power_mode: Option<PowerMode>,
 }
 
+#[repr(C)]
 pub struct KernelExecutor<
     const TASKS: usize,
     const STARTUP: usize,
@@ -245,10 +249,11 @@ const CELL_READY: u8 = 2;
 
 /// One-shot static storage for constructing an admitted executor in place.
 ///
-/// This removes the duplicate by-value `Runtime`/`KernelExecutor` temporary
-/// from the entry stack.  It does **not** make the executor free: the complete
-/// [`storage_bytes`](Self::storage_bytes) value resides in `.bss` and must be
-/// included in total-RAM accounting alongside every measured stack peak.
+/// This removes duplicate by-value `Runtime`/`KernelExecutor` and graph-scratch
+/// temporaries from the entry stack. It does **not** make them free: the larger
+/// of the final executor and its disjoint admission/graph workspace resides in
+/// `.bss`, and the complete [`storage_bytes`](Self::storage_bytes) value must
+/// be included in total-RAM accounting alongside every measured stack peak.
 ///
 /// A cell never exposes a partial value.  Initialization is claimed with an
 /// atomic state transition; failures and unwinding panics restore the empty
@@ -266,8 +271,42 @@ pub struct KernelExecutorCell<
 > {
     state: AtomicU8,
     value: UnsafeCell<
-        MaybeUninit<KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>>,
+        MaybeUninit<
+            KernelExecutorStorage<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        >,
     >,
+}
+
+#[repr(C)]
+struct ExecutorGraphScratch<const MODULES: usize> {
+    manifest: MaybeUninit<SystemManifest<MODULES>>,
+    startup: MaybeUninit<[StartupNode; MODULES]>,
+}
+
+#[repr(C)]
+struct ExecutorGraphWorkspace<const STARTUP: usize, const QUOTAS: usize> {
+    admission: MaybeUninit<AdmissionPlan<STARTUP, QUOTAS>>,
+    scratch: ExecutorGraphScratch<STARTUP>,
+}
+
+union KernelExecutorStorage<
+    const TASKS: usize,
+    const STARTUP: usize,
+    const QUOTAS: usize,
+    const MAILBOX: usize,
+    const ALARMS: usize,
+    const KV: usize,
+    const HEALTH: usize,
+    const LOG: usize,
+> {
+    executor:
+        ManuallyDrop<KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>>,
+    graph: ManuallyDrop<ExecutorGraphWorkspace<STARTUP, QUOTAS>>,
+}
+
+pub(crate) enum ExecutorGraphInitError<E> {
+    Graph(E),
+    Executor(ExecutorInitError),
 }
 
 // The atomic state grants exactly one initializer exclusive access to the
@@ -439,7 +478,63 @@ impl<
     fn destination(
         &self,
     ) -> *mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG> {
-        self.value.get().cast()
+        type Storage<
+            const T: usize,
+            const S: usize,
+            const Q: usize,
+            const M: usize,
+            const A: usize,
+            const K: usize,
+            const H: usize,
+            const L: usize,
+        > = KernelExecutorStorage<T, S, Q, M, A, K, H, L>;
+        let storage =
+            self.value
+                .get()
+                .cast::<Storage<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>>();
+        unsafe {
+            core::ptr::addr_of_mut!((*storage).executor).cast::<KernelExecutor<
+                TASKS,
+                STARTUP,
+                QUOTAS,
+                MAILBOX,
+                ALARMS,
+                KV,
+                HEALTH,
+                LOG,
+            >>()
+        }
+    }
+
+    unsafe fn graph_scratch_destination(&self) -> *mut ExecutorGraphScratch<STARTUP> {
+        type Storage<
+            const T: usize,
+            const S: usize,
+            const Q: usize,
+            const M: usize,
+            const A: usize,
+            const K: usize,
+            const H: usize,
+            const L: usize,
+        > = KernelExecutorStorage<T, S, Q, M, A, K, H, L>;
+        let destination = self.destination();
+        let storage =
+            self.value
+                .get()
+                .cast::<Storage<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>>();
+        let workspace = core::ptr::addr_of_mut!((*storage).graph)
+            .cast::<ExecutorGraphWorkspace<STARTUP, QUOTAS>>();
+        let runtime = core::ptr::addr_of_mut!((*destination).runtime);
+        let (admission, admission_size) = Runtime::admission_storage_range(runtime);
+        debug_assert_eq!(
+            admission,
+            core::ptr::addr_of_mut!((*workspace).admission).cast()
+        );
+        debug_assert_eq!(
+            admission_size,
+            core::mem::size_of::<AdmissionPlan<STARTUP, QUOTAS>>()
+        );
+        core::ptr::addr_of_mut!((*workspace).scratch)
     }
 
     /// Admit and construct one executor directly in this static cell.
@@ -467,7 +562,6 @@ impl<
                 profile,
                 thresholds,
                 containment,
-                false,
                 &mut checkpoint,
             )
         }
@@ -479,61 +573,96 @@ impl<
                 profile,
                 thresholds,
                 containment,
-                false,
                 &mut checkpoint,
                 None,
             )
         }
     }
 
-    /// Claim and populate this cell after graph startup validated the same
-    /// borrowed manifest/profile pair.
+    /// Claim the cell, derive a prevalidated graph in storage that will later
+    /// belong to the executor, and overwrite that scratch only after admission
+    /// has consumed it.
+    ///
+    /// The cell's union workspace keeps the admission destination and graph
+    /// scratch disjoint. A graph error restores the empty cell state.
     ///
     /// # Safety
     ///
-    /// `manifest.validate_profile(profile)` must have returned `Ok` without an
-    /// intervening mutation of either input.
+    /// On `Ok(startup_len)`, `build` must have made `manifest` pass
+    /// `validate_profile(profile)`, initialized `startup[..startup_len]`, and
+    /// returned a length no greater than `STARTUP`.
     #[allow(
         clippy::mut_from_ref,
         reason = "the atomic one-shot claim proves this UnsafeCell can yield exactly one mutable borrow"
     )]
-    pub(crate) unsafe fn init_prevalidated<const MODULES: usize>(
+    pub(crate) unsafe fn init_prevalidated_with_graph_scratch<E>(
         &'static self,
-        manifest: &SystemManifest<MODULES>,
-        startup_nodes: &[StartupNode],
         profile: SystemProfile,
         thresholds: FaultThresholds,
         containment: ContainmentPolicy,
+        build: impl FnOnce(
+            &mut SystemManifest<STARTUP>,
+            &mut [StartupNode; STARTUP],
+        ) -> Result<usize, E>,
     ) -> Result<
         &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
-        ExecutorInitError,
+        ExecutorGraphInitError<E>,
     > {
+        let scratch = self.graph_scratch_destination();
+        self.state
+            .compare_exchange(
+                CELL_EMPTY,
+                CELL_INITIALIZING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map_err(|_| ExecutorGraphInitError::Executor(ExecutorInitError::AlreadyInitialized))?;
+
+        let destination = self.destination();
+        let mut guard = ExecutorInitGuard::new(
+            self,
+            #[cfg(test)]
+            None,
+        );
+        let manifest =
+            core::ptr::addr_of_mut!((*scratch).manifest).cast::<SystemManifest<STARTUP>>();
+        SystemManifest::init_in_place(manifest);
+        let startup = core::ptr::addr_of_mut!((*scratch).startup).cast::<StartupNode>();
+        for index in 0..STARTUP {
+            startup.add(index).write(StartupNode::EMPTY);
+        }
         let mut checkpoint = |_stage| Ok(());
-        #[cfg(not(test))]
-        {
-            self.init_admitted_inner(
+        let runtime = core::ptr::addr_of_mut!((*destination).runtime);
+        let module_count = {
+            let manifest = &mut *manifest;
+            let startup = &mut *startup.cast::<[StartupNode; STARTUP]>();
+            let startup_len = build(manifest, startup).map_err(ExecutorGraphInitError::Graph)?;
+            debug_assert!(startup_len <= STARTUP);
+            Runtime::admit_prevalidated_plan_in_place(
+                runtime,
                 manifest,
-                startup_nodes,
+                &startup[..startup_len],
                 profile,
-                thresholds,
-                containment,
-                true,
-                &mut checkpoint,
             )
-        }
-        #[cfg(test)]
-        {
-            self.init_admitted_inner(
-                manifest,
-                startup_nodes,
-                profile,
-                thresholds,
-                containment,
-                true,
-                &mut checkpoint,
-                None,
-            )
-        }
+            .map_err(ExecutorInitError::from)
+            .map_err(ExecutorGraphInitError::Executor)?
+        };
+        Runtime::finish_graph_plan_in_place(runtime, module_count, thresholds)
+            .map_err(ExecutorInitError::from)
+            .map_err(ExecutorGraphInitError::Executor)?;
+        guard.mark(ExecutorInitStage::Runtime);
+        checkpoint(ExecutorInitStage::Runtime).map_err(ExecutorGraphInitError::Executor)?;
+        self.populate_after_runtime(
+            destination,
+            profile,
+            containment,
+            &mut guard,
+            &mut checkpoint,
+        )
+        .map_err(ExecutorGraphInitError::Executor)?;
+
+        guard.finish();
+        Ok(&mut *destination)
     }
 
     #[allow(
@@ -551,7 +680,6 @@ impl<
         profile: SystemProfile,
         thresholds: FaultThresholds,
         containment: ContainmentPolicy,
-        profile_validated: bool,
         checkpoint: &mut impl FnMut(ExecutorInitStage) -> Result<(), ExecutorInitError>,
         #[cfg(test)] cleanup_mask: Option<&Cell<u8>>,
     ) -> Result<
@@ -574,53 +702,107 @@ impl<
             cleanup_mask,
         );
         unsafe {
-            if profile_validated {
-                Runtime::admit_prevalidated_in_place(
-                    core::ptr::addr_of_mut!((*destination).runtime),
-                    manifest,
-                    startup_nodes,
-                    profile,
-                    thresholds,
-                )?;
-            } else {
-                Runtime::admit_in_place(
-                    core::ptr::addr_of_mut!((*destination).runtime),
-                    manifest,
-                    startup_nodes,
-                    profile,
-                    thresholds,
-                )?;
-            }
-            guard.mark(ExecutorInitStage::Runtime);
-            checkpoint(ExecutorInitStage::Runtime)?;
-
-            TaskTable::init_in_place(core::ptr::addr_of_mut!((*destination).tasks));
-            guard.mark(ExecutorInitStage::Tasks);
-            checkpoint(ExecutorInitStage::Tasks)?;
-
-            core::ptr::addr_of_mut!((*destination).containment).write(containment);
-            guard.mark(ExecutorInitStage::Containment);
-            checkpoint(ExecutorInitStage::Containment)?;
-
-            core::ptr::addr_of_mut!((*destination).sentinel).write(ExecutionSentinel::new());
-            guard.mark(ExecutorInitStage::Sentinel);
-            checkpoint(ExecutorInitStage::Sentinel)?;
-
-            core::ptr::addr_of_mut!((*destination).power)
-                .write(ExecutorPower::new(1_000_000, 1_000_000, 1_000));
-            guard.mark(ExecutorInitStage::Power);
-            checkpoint(ExecutorInitStage::Power)?;
-
-            core::ptr::addr_of_mut!((*destination).wake_latency_us).write(profile.wake_latency_us);
-            core::ptr::addr_of_mut!((*destination).sealed).write(false);
-            guard.mark(ExecutorInitStage::Sealed);
-            checkpoint(ExecutorInitStage::Sealed)?;
+            self.populate_claimed(
+                destination,
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                containment,
+                &mut guard,
+                checkpoint,
+            )?;
         }
 
         guard.finish();
         // SAFETY: every field is initialized, the release store published the
         // ready state, and this one-shot cell can never yield another borrow.
         Ok(unsafe { &mut *destination })
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the shared claimed-cell constructor keeps graph scratch and ordinary admission on one initialization path"
+    )]
+    unsafe fn populate_claimed<const MODULES: usize>(
+        &'static self,
+        destination: *mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+        guard: &mut ExecutorInitGuard<
+            'static,
+            TASKS,
+            STARTUP,
+            QUOTAS,
+            MAILBOX,
+            ALARMS,
+            KV,
+            HEALTH,
+            LOG,
+        >,
+        checkpoint: &mut impl FnMut(ExecutorInitStage) -> Result<(), ExecutorInitError>,
+    ) -> Result<(), ExecutorInitError> {
+        unsafe {
+            Runtime::admit_in_place(
+                core::ptr::addr_of_mut!((*destination).runtime),
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+            )?;
+            guard.mark(ExecutorInitStage::Runtime);
+            checkpoint(ExecutorInitStage::Runtime)?;
+        }
+        self.populate_after_runtime(destination, profile, containment, guard, checkpoint)
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the shared post-runtime constructor preserves one cleanup checkpoint sequence"
+    )]
+    unsafe fn populate_after_runtime(
+        &'static self,
+        destination: *mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        profile: SystemProfile,
+        containment: ContainmentPolicy,
+        guard: &mut ExecutorInitGuard<
+            'static,
+            TASKS,
+            STARTUP,
+            QUOTAS,
+            MAILBOX,
+            ALARMS,
+            KV,
+            HEALTH,
+            LOG,
+        >,
+        checkpoint: &mut impl FnMut(ExecutorInitStage) -> Result<(), ExecutorInitError>,
+    ) -> Result<(), ExecutorInitError> {
+        TaskTable::init_in_place(core::ptr::addr_of_mut!((*destination).tasks));
+        guard.mark(ExecutorInitStage::Tasks);
+        checkpoint(ExecutorInitStage::Tasks)?;
+
+        core::ptr::addr_of_mut!((*destination).containment).write(containment);
+        guard.mark(ExecutorInitStage::Containment);
+        checkpoint(ExecutorInitStage::Containment)?;
+
+        core::ptr::addr_of_mut!((*destination).sentinel).write(ExecutionSentinel::new());
+        guard.mark(ExecutorInitStage::Sentinel);
+        checkpoint(ExecutorInitStage::Sentinel)?;
+
+        core::ptr::addr_of_mut!((*destination).power)
+            .write(ExecutorPower::new(1_000_000, 1_000_000, 1_000));
+        guard.mark(ExecutorInitStage::Power);
+        checkpoint(ExecutorInitStage::Power)?;
+
+        core::ptr::addr_of_mut!((*destination).wake_latency_us).write(profile.wake_latency_us);
+        core::ptr::addr_of_mut!((*destination).sealed).write(false);
+        guard.mark(ExecutorInitStage::Sealed);
+        checkpoint(ExecutorInitStage::Sealed)?;
+        Ok(())
     }
 }
 
@@ -1427,7 +1609,6 @@ mod tests {
                 SystemProfile::NRF52840_CORE,
                 FaultThresholds::DEFAULT,
                 ContainmentPolicy::Cooperative,
-                false,
                 &mut |stage| {
                     if stage == fail_stage {
                         Err(ExecutorInitError::Runtime(RuntimeError::PoolExhausted))
@@ -1480,7 +1661,6 @@ mod tests {
                     SystemProfile::NRF52840_CORE,
                     FaultThresholds::DEFAULT,
                     ContainmentPolicy::Cooperative,
-                    false,
                     &mut |stage| {
                         assert_ne!(stage, panic_stage, "injected executor init panic");
                         Ok(())
@@ -1522,6 +1702,35 @@ mod tests {
             KernelExecutorCell::<4, 4, 4, 8, 4, 8, 4, 32>::storage_bytes()
                 >= core::mem::size_of::<TestExecutor>()
         );
+    }
+
+    #[test]
+    fn executor_graph_workspace_keeps_scratch_disjoint_from_admission() {
+        type CellType = KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 32>;
+        type StorageType = KernelExecutorStorage<4, 4, 4, 8, 4, 8, 4, 32>;
+        type WorkspaceType = ExecutorGraphWorkspace<4, 4>;
+        static CELL: CellType = CellType::new();
+        let cell = &CELL;
+
+        unsafe {
+            let destination = cell.destination();
+            let runtime = core::ptr::addr_of_mut!((*destination).runtime);
+            let (admission, admission_size) = TestRuntime::admission_storage_range(runtime);
+            let scratch = cell.graph_scratch_destination().cast::<u8>();
+            let admission_start = admission as usize;
+            let admission_end = admission_start + admission_size;
+            let scratch_start = scratch as usize;
+            let scratch_end = scratch_start + core::mem::size_of::<ExecutorGraphScratch<4>>();
+
+            assert!(admission_end <= scratch_start || scratch_end <= admission_start);
+            assert_eq!(admission_start, destination as usize);
+        }
+        assert_eq!(
+            core::mem::size_of::<StorageType>(),
+            core::mem::size_of::<TestExecutor>().max(core::mem::size_of::<WorkspaceType>())
+        );
+        assert!(core::mem::size_of::<WorkspaceType>() <= core::mem::size_of::<TestExecutor>());
+        assert!(CellType::storage_bytes() >= core::mem::size_of::<StorageType>());
     }
 
     #[test]

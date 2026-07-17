@@ -120,17 +120,21 @@ jobs:
         run: >-
           cargo miri test --locked --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure -p nobro-hal
-      - name: Miri bounded async boundary
+      - name: Miri bounded async and executor-cell boundary
         working-directory: core
         env:
           # AsyncCore is embedded with static-cell lifetime; tests model that with Box::leak.
           MIRIFLAGS: -Zmiri-ignore-leaks
         # `cargo test` takes a single positional filter, so each bounded async
-        # surface is checked separately.
+        # or one-shot initialization surface is checked separately.
         run: |
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_rt::tests
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel async_mpmc::tests
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::reactor_domain_linkage
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_spec_starts_and_seals_executor_without_retained_built_graph
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_validation_failure_does_not_claim_the_executor_cell
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_executor_init_failure_restores_the_cell_for_retry
+          cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel kernel_executor::tests::executor_graph_workspace_keeps_scratch_disjoint_from_admission
       - name: address sanitizer smoke
         working-directory: core
         env:

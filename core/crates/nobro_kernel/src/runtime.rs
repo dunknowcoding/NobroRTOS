@@ -253,6 +253,7 @@ impl DegradeApplication {
     }
 }
 
+#[repr(C)]
 pub struct Runtime<
     const STARTUP: usize,
     const QUOTAS: usize,
@@ -437,6 +438,18 @@ impl<
         const LOG: usize,
     > Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
 {
+    /// Address range written by admission before any other runtime field.
+    ///
+    /// Graph startup uses this only to prove that temporary scratch placed
+    /// inside otherwise-uninitialized executor storage cannot be overwritten
+    /// while admission is still reading it.
+    pub(crate) unsafe fn admission_storage_range(destination: *mut Self) -> (*mut u8, usize) {
+        (
+            core::ptr::addr_of_mut!((*destination).plan).cast(),
+            core::mem::size_of::<AdmissionPlan<STARTUP, QUOTAS>>(),
+        )
+    }
+
     /// The capacities this instantiation was compiled with.
     pub const fn capacities() -> RuntimeCapacities {
         RuntimeCapacities {
@@ -491,7 +504,6 @@ impl<
                 startup_nodes,
                 profile,
                 thresholds,
-                false,
                 &mut checkpoint,
             )
         }
@@ -503,50 +515,59 @@ impl<
                 startup_nodes,
                 profile,
                 thresholds,
-                false,
                 &mut checkpoint,
                 None,
             )
         }
     }
 
-    /// Construct from a manifest/profile pair validated by the immediately
-    /// enclosing one-shot executor start.
+    /// Initialize only the admission plan from a prevalidated graph.
     ///
-    /// # Safety
-    ///
-    /// The destination requirements of [`Self::admit_in_place`] apply, and
-    /// `manifest.validate_profile(profile)` must have returned `Ok` without an
-    /// intervening input mutation.
-    pub(crate) unsafe fn admit_prevalidated_in_place<const MODULES: usize>(
+    /// The caller may end the manifest/startup borrows after this returns and
+    /// then finish the remaining runtime fields with
+    /// [`finish_graph_plan_in_place`](Self::finish_graph_plan_in_place). On
+    /// error, the destination remains uninitialized.
+    pub(crate) unsafe fn admit_prevalidated_plan_in_place<const MODULES: usize>(
         destination: *mut Self,
         manifest: &SystemManifest<MODULES>,
         startup_nodes: &[StartupNode],
         profile: SystemProfile,
+    ) -> Result<usize, RuntimeError> {
+        AdmissionController::admit_prevalidated_in_place::<MODULES, STARTUP, QUOTAS>(
+            core::ptr::addr_of_mut!((*destination).plan),
+            manifest,
+            startup_nodes,
+            profile,
+        )
+        .map_err(Into::into)
+    }
+
+    /// Finish a runtime whose admission plan is initialized, seeding default
+    /// object quotas. Graph startup applies declaration-specific overrides
+    /// before boot.
+    pub(crate) unsafe fn finish_graph_plan_in_place(
+        destination: *mut Self,
+        module_count: usize,
         thresholds: FaultThresholds,
     ) -> Result<(), RuntimeError> {
         let mut checkpoint = |_stage| Ok(());
         #[cfg(not(test))]
         {
-            Self::admit_in_place_inner(
+            Self::finish_admitted_plan_in_place_inner(
                 destination,
-                manifest,
-                startup_nodes,
-                profile,
+                module_count,
                 thresholds,
-                true,
+                |_| {},
                 &mut checkpoint,
             )
         }
         #[cfg(test)]
         {
-            Self::admit_in_place_inner(
+            Self::finish_admitted_plan_in_place_inner(
                 destination,
-                manifest,
-                startup_nodes,
-                profile,
+                module_count,
                 thresholds,
-                true,
+                |_| {},
                 &mut checkpoint,
                 None,
             )
@@ -563,26 +584,44 @@ impl<
         startup_nodes: &[StartupNode],
         profile: SystemProfile,
         thresholds: FaultThresholds,
-        profile_validated: bool,
         checkpoint: &mut impl FnMut(RuntimeInitStage) -> Result<(), RuntimeError>,
         #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
     ) -> Result<(), RuntimeError> {
         let plan = core::ptr::addr_of_mut!((*destination).plan);
-        let module_count = if profile_validated {
-            AdmissionController::admit_prevalidated_in_place::<MODULES, STARTUP, QUOTAS>(
-                plan,
-                manifest,
-                startup_nodes,
-                profile,
-            )?
-        } else {
-            AdmissionController::admit_in_place::<MODULES, STARTUP, QUOTAS>(
-                plan,
-                manifest,
-                startup_nodes,
-                profile,
-            )?
-        };
+        let module_count = AdmissionController::admit_in_place::<MODULES, STARTUP, QUOTAS>(
+            plan,
+            manifest,
+            startup_nodes,
+            profile,
+        )?;
+        Self::finish_admitted_plan_in_place_inner(
+            destination,
+            module_count,
+            thresholds,
+            |objects| {
+                for spec in manifest.iter() {
+                    objects.register(spec.id, spec.objects);
+                }
+            },
+            checkpoint,
+            #[cfg(test)]
+            cleanup_mask,
+        )
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the object-quota hook and test-only cleanup observer preserve one guarded constructor"
+    )]
+    unsafe fn finish_admitted_plan_in_place_inner(
+        destination: *mut Self,
+        module_count: usize,
+        thresholds: FaultThresholds,
+        configure_objects: impl FnOnce(&mut ObjectLedger<QUOTAS>),
+        checkpoint: &mut impl FnMut(RuntimeInitStage) -> Result<(), RuntimeError>,
+        #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
+    ) -> Result<(), RuntimeError> {
+        let plan = core::ptr::addr_of_mut!((*destination).plan);
         // Preserve `Runtime::admit` error precedence: admission is observable
         // before the `from_plan` threshold and capacity checks.
         if let Err(error) = thresholds.validate() {
@@ -644,10 +683,7 @@ impl<
         for module in (*startup).order.iter().flatten() {
             objects.register(*module, ObjectQuota::DEFAULT);
         }
-        // Manifest-declared object quotas replace the defaults seeded above.
-        for spec in manifest.iter() {
-            objects.register(spec.id, spec.objects);
-        }
+        configure_objects(objects);
         checkpoint(RuntimeInitStage::Objects)?;
 
         core::ptr::addr_of_mut!((*destination).trace).write(CapabilityTrace::new());
@@ -1452,6 +1488,10 @@ impl<
         self.objects.quota(module)
     }
 
+    pub(crate) fn configure_object_quota(&mut self, module: ModuleId, quota: ObjectQuota) {
+        self.objects.register(module, quota);
+    }
+
     /// Accumulate measured execution time for a module (executor-fed).
     pub fn charge_cpu(&mut self, module: ModuleId, duration_us: u32) {
         self.objects.charge_cpu(module, duration_us);
@@ -1653,7 +1693,6 @@ mod tests {
                         notify_after: 1,
                         reboot_after: 3,
                     },
-                    false,
                     &mut |stage| {
                         if stage == fail_stage {
                             Err(RuntimeError::PoolExhausted)
@@ -1687,7 +1726,6 @@ mod tests {
                         notify_after: 1,
                         reboot_after: 3,
                     },
-                    false,
                     &mut |stage| {
                         assert_ne!(stage, panic_stage, "injected init panic");
                         Ok(())
