@@ -85,6 +85,12 @@ reactor task; dropping the future, including through a deadline timeout, stops
 DMA before its staging storage is released. Existing synchronous SPI methods
 remain available and unchanged.
 
+For nRF peripherals that expose an event endpoint, `PpiWakeRoute::wait` arms
+the task waker first, enables a leased PPI-to-EGU route, and only then invokes
+the caller's one-shot start closure. The peripheral event therefore reaches EGU
+without CPU work; the EGU interrupt wakes the reactor task. Dropping the wait
+future disables both route endpoints before releasing its completion state.
+
 ### Right-size from a device run
 
 Use one campaign file for the declared stacks, kernel mailbox, sample pool, and
