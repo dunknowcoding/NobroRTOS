@@ -587,7 +587,9 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
             .lifecycle
             .transition(to, now_us)
             .map_err(RecoveryError::Lifecycle)?;
-        self.supervisor.events_mut().push(event);
+        if LOG_SLOTS != 0 {
+            self.supervisor.events_mut().push(event);
+        }
         Ok(())
     }
 
@@ -619,14 +621,18 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
                 coalesced: true,
             });
         }
-        self.supervisor
-            .events_mut()
-            .push_health(now_us, module, error, action);
+        if LOG_SLOTS != 0 {
+            self.supervisor
+                .events_mut()
+                .push_health(now_us, module, error, action);
+        }
         let event = self
             .lifecycle
             .apply_action(module, error, action, now_us)
             .map_err(RecoveryError::Lifecycle)?;
-        self.supervisor.events_mut().push(event);
+        if LOG_SLOTS != 0 {
+            self.supervisor.events_mut().push(event);
+        }
 
         Ok(RecoveryOutcome {
             module,
@@ -657,14 +663,18 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
                 coalesced: true,
             });
         }
-        self.supervisor
-            .events_mut()
-            .push_health(now_us, module, fault.error, action);
+        if LOG_SLOTS != 0 {
+            self.supervisor
+                .events_mut()
+                .push_health(now_us, module, fault.error, action);
+        }
         let event = self
             .lifecycle
             .apply_action(module, fault.error, action, now_us)
             .map_err(RecoveryError::Lifecycle)?;
-        self.supervisor.events_mut().push(event);
+        if LOG_SLOTS != 0 {
+            self.supervisor.events_mut().push(event);
+        }
         Ok(RecoveryOutcome {
             module,
             error: fault.error,
@@ -814,6 +824,26 @@ mod tests {
             expected.snapshot(ModuleId::Sensor)
         );
         assert_eq!(actual.events().latest(), expected.events().latest());
+    }
+
+    #[test]
+    fn zero_capacity_coordinator_omits_unavailable_event_recording() {
+        let mut recovery = RecoveryCoordinator::<2, 0>::new(FaultThresholds {
+            notify_after: 1,
+            reboot_after: 3,
+        });
+        recovery
+            .transition(SystemState::ValidateManifest, 10)
+            .unwrap();
+        recovery.transition(SystemState::InitDrivers, 20).unwrap();
+        recovery.transition(SystemState::Running, 30).unwrap();
+        let outcome = recovery
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 40)
+            .unwrap();
+
+        assert_eq!(outcome.state, SystemState::Degraded);
+        assert_eq!(recovery.events().len(), 0);
+        assert_eq!(recovery.events().dropped(), 0);
     }
 
     #[test]
