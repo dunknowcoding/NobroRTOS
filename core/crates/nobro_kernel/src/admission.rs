@@ -91,9 +91,46 @@ impl AdmissionController {
         startup_nodes: &[StartupNode],
         profile: SystemProfile,
     ) -> Result<usize, AdmissionError> {
-        manifest
-            .validate_profile(profile)
-            .map_err(AdmissionError::Manifest)?;
+        Self::admit_in_place_inner(destination, manifest, startup_nodes, profile, false)
+    }
+
+    /// Assemble an admission plan after the same borrowed manifest/profile
+    /// pair was validated immediately before entering a one-shot cell.
+    ///
+    /// # Safety
+    ///
+    /// In addition to [`Self::admit_in_place`]'s destination requirements,
+    /// `manifest.validate_profile(profile)` must have returned `Ok` since the
+    /// last possible mutation of either input.
+    pub(crate) unsafe fn admit_prevalidated_in_place<
+        const MODULES: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+    >(
+        destination: *mut AdmissionPlan<STARTUP, QUOTAS>,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+    ) -> Result<usize, AdmissionError> {
+        Self::admit_in_place_inner(destination, manifest, startup_nodes, profile, true)
+    }
+
+    unsafe fn admit_in_place_inner<
+        const MODULES: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+    >(
+        destination: *mut AdmissionPlan<STARTUP, QUOTAS>,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        profile_validated: bool,
+    ) -> Result<usize, AdmissionError> {
+        if !profile_validated {
+            manifest
+                .validate_profile(profile)
+                .map_err(AdmissionError::Manifest)?;
+        }
         Self::validate_startup_coverage(manifest, startup_nodes)?;
 
         let startup =

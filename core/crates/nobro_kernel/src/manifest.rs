@@ -616,47 +616,11 @@ impl<const N: usize> SystemManifest<N> {
             return Err(ManifestError::BudgetExceeded { used, limit });
         }
 
-        // The shared no-alloc admission core is also run by generated build.rs
-        // projects. Runtime Tier-C/dynamic admission and build-time static
-        // admission therefore cannot drift on utilization, blocking, or RTA.
-        let mut contracts = [nobro_admission::TaskContract::EMPTY; N];
-        for (index, spec) in self.iter().enumerate() {
-            let mut contract = nobro_admission::TaskContract::new(module_code(spec.id) as u16)
-                .priority(match spec.criticality {
-                    Criticality::HardRealtime => 0,
-                    Criticality::System => 1,
-                    Criticality::Driver => 2,
-                    Criticality::User => 3,
-                    Criticality::BestEffort => 4,
-                })
-                .memory(
-                    spec.memory.flash_bytes,
-                    spec.memory.ram_bytes,
-                    spec.memory.pool_slots,
-                )
-                .bindings(
-                    spec.requires.union(spec.owns).bits(),
-                    u32::from(spec.objects.mailbox_slots)
-                        | (u32::from(spec.objects.alarms) << 8)
-                        | (u32::from(spec.objects.kv_entries) << 16),
-                );
-            if let Some(deadline) = spec.deadline {
-                if deadline.execution_budget_us != 0 {
-                    contract = contract
-                        .deadline(
-                            deadline.period_us,
-                            deadline.deadline_us,
-                            deadline.max_jitter_us,
-                            deadline.execution_budget_us,
-                            deadline.blocking_us,
-                        )
-                        .phase(deadline.phase_us);
-                }
-            }
-            contracts[index] = contract;
-        }
-        if let Err(error) = nobro_admission::admit(
-            contracts,
+        // Build-time callers retain the const `admit` path. Runtime validation
+        // derives one identical contract at a time so manifest capacity no
+        // longer becomes a second capacity-sized stack array.
+        if let Err(error) = nobro_admission::validate_runtime(
+            self.len(),
             nobro_admission::AdmissionProfile::new(
                 profile.flash_limit_bytes,
                 profile.ram_limit_bytes,
@@ -664,6 +628,11 @@ impl<const N: usize> SystemManifest<N> {
                 profile.max_modules.min(u16::MAX as usize) as u16,
             )
             .wake_latency_us(profile.wake_latency_us),
+            |index| {
+                self.modules[index]
+                    .map(admission_contract)
+                    .unwrap_or(nobro_admission::TaskContract::EMPTY)
+            },
         ) {
             let module = if error.task_index == u16::MAX {
                 None
@@ -838,6 +807,42 @@ impl<const N: usize> SystemManifest<N> {
 
         Ok(())
     }
+}
+
+fn admission_contract(spec: ModuleSpec) -> nobro_admission::TaskContract {
+    let mut contract = nobro_admission::TaskContract::new(module_code(spec.id) as u16)
+        .priority(match spec.criticality {
+            Criticality::HardRealtime => 0,
+            Criticality::System => 1,
+            Criticality::Driver => 2,
+            Criticality::User => 3,
+            Criticality::BestEffort => 4,
+        })
+        .memory(
+            spec.memory.flash_bytes,
+            spec.memory.ram_bytes,
+            spec.memory.pool_slots,
+        )
+        .bindings(
+            spec.requires.union(spec.owns).bits(),
+            u32::from(spec.objects.mailbox_slots)
+                | (u32::from(spec.objects.alarms) << 8)
+                | (u32::from(spec.objects.kv_entries) << 16),
+        );
+    if let Some(deadline) = spec.deadline {
+        if deadline.execution_budget_us != 0 {
+            contract = contract
+                .deadline(
+                    deadline.period_us,
+                    deadline.deadline_us,
+                    deadline.max_jitter_us,
+                    deadline.execution_budget_us,
+                    deadline.blocking_us,
+                )
+                .phase(deadline.phase_us);
+        }
+    }
+    contract
 }
 
 #[repr(C)]

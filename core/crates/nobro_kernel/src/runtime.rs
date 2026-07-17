@@ -491,6 +491,7 @@ impl<
                 startup_nodes,
                 profile,
                 thresholds,
+                false,
                 &mut checkpoint,
             )
         }
@@ -502,28 +503,86 @@ impl<
                 startup_nodes,
                 profile,
                 thresholds,
+                false,
                 &mut checkpoint,
                 None,
             )
         }
     }
 
+    /// Construct from a manifest/profile pair validated by the immediately
+    /// enclosing one-shot executor start.
+    ///
+    /// # Safety
+    ///
+    /// The destination requirements of [`Self::admit_in_place`] apply, and
+    /// `manifest.validate_profile(profile)` must have returned `Ok` without an
+    /// intervening input mutation.
+    pub(crate) unsafe fn admit_prevalidated_in_place<const MODULES: usize>(
+        destination: *mut Self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+    ) -> Result<(), RuntimeError> {
+        let mut checkpoint = |_stage| Ok(());
+        #[cfg(not(test))]
+        {
+            Self::admit_in_place_inner(
+                destination,
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                true,
+                &mut checkpoint,
+            )
+        }
+        #[cfg(test)]
+        {
+            Self::admit_in_place_inner(
+                destination,
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                true,
+                &mut checkpoint,
+                None,
+            )
+        }
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the validation state and test-only cleanup observer keep the public constructor small"
+    )]
     unsafe fn admit_in_place_inner<const MODULES: usize>(
         destination: *mut Self,
         manifest: &SystemManifest<MODULES>,
         startup_nodes: &[StartupNode],
         profile: SystemProfile,
         thresholds: FaultThresholds,
+        profile_validated: bool,
         checkpoint: &mut impl FnMut(RuntimeInitStage) -> Result<(), RuntimeError>,
         #[cfg(test)] cleanup_mask: Option<&Cell<u16>>,
     ) -> Result<(), RuntimeError> {
         let plan = core::ptr::addr_of_mut!((*destination).plan);
-        let module_count = AdmissionController::admit_in_place::<MODULES, STARTUP, QUOTAS>(
-            plan,
-            manifest,
-            startup_nodes,
-            profile,
-        )?;
+        let module_count = if profile_validated {
+            AdmissionController::admit_prevalidated_in_place::<MODULES, STARTUP, QUOTAS>(
+                plan,
+                manifest,
+                startup_nodes,
+                profile,
+            )?
+        } else {
+            AdmissionController::admit_in_place::<MODULES, STARTUP, QUOTAS>(
+                plan,
+                manifest,
+                startup_nodes,
+                profile,
+            )?
+        };
         // Preserve `Runtime::admit` error precedence: admission is observable
         // before the `from_plan` threshold and capacity checks.
         if let Err(error) = thresholds.validate() {
@@ -1594,6 +1653,7 @@ mod tests {
                         notify_after: 1,
                         reboot_after: 3,
                     },
+                    false,
                     &mut |stage| {
                         if stage == fail_stage {
                             Err(RuntimeError::PoolExhausted)
@@ -1627,6 +1687,7 @@ mod tests {
                         notify_after: 1,
                         reboot_after: 3,
                     },
+                    false,
                     &mut |stage| {
                         assert_ne!(stage, panic_stage, "injected init panic");
                         Ok(())

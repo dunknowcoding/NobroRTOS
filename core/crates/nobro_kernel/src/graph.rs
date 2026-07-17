@@ -992,13 +992,17 @@ impl<'a> GraphSpec<'a> {
                 task: "<profile>",
                 error,
             })?;
-        let executor = cell.init_admitted(
-            manifest,
-            &startup[..startup_len],
-            profile,
-            thresholds,
-            containment,
-        )?;
+        // SAFETY: the exact borrowed manifest/profile pair was validated
+        // immediately above and neither can be mutated before this call.
+        let executor = unsafe {
+            cell.init_prevalidated(
+                manifest,
+                &startup[..startup_len],
+                profile,
+                thresholds,
+                containment,
+            )
+        }?;
         executor
             .runtime_mut()
             .boot_to_running(now_us)

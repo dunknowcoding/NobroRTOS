@@ -467,6 +467,7 @@ impl<
                 profile,
                 thresholds,
                 containment,
+                false,
                 &mut checkpoint,
             )
         }
@@ -478,6 +479,57 @@ impl<
                 profile,
                 thresholds,
                 containment,
+                false,
+                &mut checkpoint,
+                None,
+            )
+        }
+    }
+
+    /// Claim and populate this cell after graph startup validated the same
+    /// borrowed manifest/profile pair.
+    ///
+    /// # Safety
+    ///
+    /// `manifest.validate_profile(profile)` must have returned `Ok` without an
+    /// intervening mutation of either input.
+    #[allow(
+        clippy::mut_from_ref,
+        reason = "the atomic one-shot claim proves this UnsafeCell can yield exactly one mutable borrow"
+    )]
+    pub(crate) unsafe fn init_prevalidated<const MODULES: usize>(
+        &'static self,
+        manifest: &SystemManifest<MODULES>,
+        startup_nodes: &[StartupNode],
+        profile: SystemProfile,
+        thresholds: FaultThresholds,
+        containment: ContainmentPolicy,
+    ) -> Result<
+        &'static mut KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        ExecutorInitError,
+    > {
+        let mut checkpoint = |_stage| Ok(());
+        #[cfg(not(test))]
+        {
+            self.init_admitted_inner(
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                containment,
+                true,
+                &mut checkpoint,
+            )
+        }
+        #[cfg(test)]
+        {
+            self.init_admitted_inner(
+                manifest,
+                startup_nodes,
+                profile,
+                thresholds,
+                containment,
+                true,
                 &mut checkpoint,
                 None,
             )
@@ -499,6 +551,7 @@ impl<
         profile: SystemProfile,
         thresholds: FaultThresholds,
         containment: ContainmentPolicy,
+        profile_validated: bool,
         checkpoint: &mut impl FnMut(ExecutorInitStage) -> Result<(), ExecutorInitError>,
         #[cfg(test)] cleanup_mask: Option<&Cell<u8>>,
     ) -> Result<
@@ -521,13 +574,23 @@ impl<
             cleanup_mask,
         );
         unsafe {
-            Runtime::admit_in_place(
-                core::ptr::addr_of_mut!((*destination).runtime),
-                manifest,
-                startup_nodes,
-                profile,
-                thresholds,
-            )?;
+            if profile_validated {
+                Runtime::admit_prevalidated_in_place(
+                    core::ptr::addr_of_mut!((*destination).runtime),
+                    manifest,
+                    startup_nodes,
+                    profile,
+                    thresholds,
+                )?;
+            } else {
+                Runtime::admit_in_place(
+                    core::ptr::addr_of_mut!((*destination).runtime),
+                    manifest,
+                    startup_nodes,
+                    profile,
+                    thresholds,
+                )?;
+            }
             guard.mark(ExecutorInitStage::Runtime);
             checkpoint(ExecutorInitStage::Runtime)?;
 
@@ -1364,6 +1427,7 @@ mod tests {
                 SystemProfile::NRF52840_CORE,
                 FaultThresholds::DEFAULT,
                 ContainmentPolicy::Cooperative,
+                false,
                 &mut |stage| {
                     if stage == fail_stage {
                         Err(ExecutorInitError::Runtime(RuntimeError::PoolExhausted))
@@ -1416,6 +1480,7 @@ mod tests {
                     SystemProfile::NRF52840_CORE,
                     FaultThresholds::DEFAULT,
                     ContainmentPolicy::Cooperative,
+                    false,
                     &mut |stage| {
                         assert_ne!(stage, panic_stage, "injected executor init panic");
                         Ok(())

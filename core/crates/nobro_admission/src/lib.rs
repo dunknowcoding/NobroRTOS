@@ -764,6 +764,288 @@ pub const fn admit<const N: usize>(
     })
 }
 
+#[inline(always)]
+fn runtime_higher_priority(
+    left: usize,
+    right: usize,
+    task_at: &impl Fn(usize) -> TaskContract,
+) -> bool {
+    let a = task_at(left);
+    let b = task_at(right);
+    a.participates()
+        && (!b.participates()
+            || a.priority_key < b.priority_key
+            || (a.priority_key == b.priority_key
+                && (a.period_us < b.period_us || (a.period_us == b.period_us && left < right))))
+}
+
+fn runtime_response_time(
+    index: usize,
+    task_count: usize,
+    wake_latency_us: u32,
+    task_at: &impl Fn(usize) -> TaskContract,
+) -> Result<u32, AdmissionError> {
+    let task = task_at(index);
+    let execution_and_blocking =
+        checked_add_u32(task.execution_us, task.blocking_us).ok_or(AdmissionError::task(
+            AdmissionErrorCode::ArithmeticOverflow,
+            index,
+            u64::MAX,
+            u32::MAX as u64,
+        ))?;
+    let mut response =
+        checked_add_u32(execution_and_blocking, wake_latency_us).ok_or(AdmissionError::task(
+            AdmissionErrorCode::ArithmeticOverflow,
+            index,
+            u64::MAX,
+            u32::MAX as u64,
+        ))?;
+    let mut iteration = 0usize;
+    while iteration < 64 {
+        let mut next = checked_add_u32(execution_and_blocking, wake_latency_us).ok_or(
+            AdmissionError::task(
+                AdmissionErrorCode::ArithmeticOverflow,
+                index,
+                u64::MAX,
+                u32::MAX as u64,
+            ),
+        )?;
+        let mut other = 0usize;
+        while other < task_count {
+            if runtime_higher_priority(other, index, task_at) {
+                let hp = task_at(other);
+                let releases =
+                    (response as u64 + hp.jitter_us as u64).div_ceil(hp.period_us as u64);
+                let interference = releases * hp.execution_us as u64;
+                if interference > u32::MAX as u64 || next as u64 + interference > u32::MAX as u64 {
+                    return Err(AdmissionError::task(
+                        AdmissionErrorCode::ArithmeticOverflow,
+                        index,
+                        next as u64 + interference,
+                        u32::MAX as u64,
+                    ));
+                }
+                next += interference as u32;
+            }
+            other += 1;
+        }
+        if next == response {
+            return Ok(next);
+        }
+        if next as u64 + task.jitter_us as u64 > task.deadline_us as u64 {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::ResponseTimeExceeded,
+                index,
+                next as u64 + task.jitter_us as u64,
+                task.deadline_us as u64,
+            ));
+        }
+        response = next;
+        iteration += 1;
+    }
+    Err(AdmissionError::task(
+        AdmissionErrorCode::ResponseTimeExceeded,
+        index,
+        response as u64 + task.jitter_us as u64,
+        task.deadline_us as u64,
+    ))
+}
+
+/// Validate a runtime-provided workload without first copying it into a
+/// capacity-sized [`TaskContract`] array.
+///
+/// This is the dynamic counterpart to [`admit`]: it applies the same ordering
+/// of identity, resource, contract, utilization, and response-time checks but
+/// returns no admitted table. The callback may derive each contract directly
+/// from its owning runtime representation. It must return the same contract
+/// for an index throughout this call.
+pub fn validate_runtime(
+    task_count: usize,
+    profile: AdmissionProfile,
+    task_at: impl Fn(usize) -> TaskContract,
+) -> Result<(), AdmissionError> {
+    let mut flash = 0u32;
+    let mut ram = 0u32;
+    let mut pool = 0u16;
+    let mut utilization = 0u64;
+    let mut active_count = 0usize;
+    let mut index = 0usize;
+    while index < task_count {
+        let task = task_at(index);
+        if !task.active() {
+            index += 1;
+            continue;
+        }
+        active_count += 1;
+        let mut previous = 0usize;
+        while previous < index {
+            let prior = task_at(previous);
+            if prior.active() && prior.id == task.id {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::DuplicateId,
+                    index,
+                    task.id as u64,
+                    0,
+                ));
+            }
+            previous += 1;
+        }
+        flash = checked_add_u32(flash, task.flash_bytes).ok_or(AdmissionError::task(
+            AdmissionErrorCode::ArithmeticOverflow,
+            index,
+            u64::MAX,
+            u32::MAX as u64,
+        ))?;
+        ram = checked_add_u32(ram, task.ram_bytes).ok_or(AdmissionError::task(
+            AdmissionErrorCode::ArithmeticOverflow,
+            index,
+            u64::MAX,
+            u32::MAX as u64,
+        ))?;
+        pool = pool
+            .checked_add(task.pool_slots)
+            .ok_or(AdmissionError::task(
+                AdmissionErrorCode::ArithmeticOverflow,
+                index,
+                u64::MAX,
+                u16::MAX as u64,
+            ))?;
+
+        if task.participates() {
+            if task.period_us == 0
+                || task.period_us > MAX_WRAP_SAFE_INTERVAL_US
+                || task.deadline_us > task.period_us
+            {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidDeadline,
+                    index,
+                    task.deadline_us as u64,
+                    task.period_us as u64,
+                ));
+            }
+            if task.phase_us >= task.period_us {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidPhase,
+                    index,
+                    task.phase_us as u64,
+                    task.period_us.saturating_sub(1) as u64,
+                ));
+            }
+            if task.jitter_us >= task.deadline_us {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidJitter,
+                    index,
+                    task.jitter_us as u64,
+                    task.deadline_us.saturating_sub(1) as u64,
+                ));
+            }
+            if task.execution_us == 0 || task.execution_us > task.deadline_us {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidExecution,
+                    index,
+                    task.execution_us as u64,
+                    task.deadline_us as u64,
+                ));
+            }
+            let execution_and_blocking = task.execution_us as u64 + task.blocking_us as u64;
+            if execution_and_blocking > task.deadline_us as u64 {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::InvalidBlocking,
+                    index,
+                    execution_and_blocking,
+                    task.deadline_us as u64,
+                ));
+            }
+            let response_floor = execution_and_blocking + profile.wake_latency_us as u64;
+            if response_floor > task.deadline_us as u64 {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::WakeLatencyExceeded,
+                    index,
+                    response_floor,
+                    task.deadline_us as u64,
+                ));
+            }
+            utilization += (task.execution_us as u64 * 10_000).div_ceil(task.period_us as u64);
+            if utilization > 10_000 {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::UtilizationExceeded,
+                    index,
+                    utilization,
+                    10_000,
+                ));
+            }
+        } else if task.phase_us != 0
+            || task.period_us != 0
+            || task.jitter_us != 0
+            || task.execution_us != 0
+            || task.blocking_us != 0
+        {
+            return Err(AdmissionError::task(
+                AdmissionErrorCode::InvalidDeadline,
+                index,
+                task.deadline_us as u64,
+                0,
+            ));
+        }
+        index += 1;
+    }
+
+    if active_count == 0 {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::EmptyWorkload,
+            0,
+            1,
+        ));
+    }
+    if active_count > profile.max_tasks as usize {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::TooManyTasks,
+            active_count as u64,
+            profile.max_tasks as u64,
+        ));
+    }
+    if flash > profile.flash_limit_bytes {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::FlashExceeded,
+            flash as u64,
+            profile.flash_limit_bytes as u64,
+        ));
+    }
+    if ram > profile.ram_limit_bytes {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::RamExceeded,
+            ram as u64,
+            profile.ram_limit_bytes as u64,
+        ));
+    }
+    if pool > profile.pool_slot_limit {
+        return Err(AdmissionError::global(
+            AdmissionErrorCode::PoolExceeded,
+            pool as u64,
+            profile.pool_slot_limit as u64,
+        ));
+    }
+
+    index = 0;
+    while index < task_count {
+        let task = task_at(index);
+        if task.active() && task.participates() {
+            let response =
+                runtime_response_time(index, task_count, profile.wake_latency_us, &task_at)?;
+            if response as u64 + task.jitter_us as u64 > task.deadline_us as u64 {
+                return Err(AdmissionError::task(
+                    AdmissionErrorCode::ResponseTimeExceeded,
+                    index,
+                    response as u64 + task.jitter_us as u64,
+                    task.deadline_us as u64,
+                ));
+            }
+        }
+        index += 1;
+    }
+    Ok(())
+}
+
 const fn interrupt_response<const I: usize>(
     index: usize,
     interrupts: &[InterruptContract; I],
@@ -1180,6 +1462,88 @@ mod tests {
         assert_eq!(ADMITTED.tasks[2].priority, 1);
         assert!(ADMITTED.tasks[2].response_bound_us >= 1_300);
         assert_eq!(ADMITTED.flash_bytes, 4096);
+    }
+
+    fn runtime_validation<const N: usize>(
+        tasks: [TaskContract; N],
+        profile: AdmissionProfile,
+    ) -> Result<(), AdmissionError> {
+        validate_runtime(N, profile, |index| tasks[index])
+    }
+
+    #[test]
+    fn streamed_runtime_validation_matches_const_admission() {
+        let mut cases = [
+            GOOD,
+            [TaskContract::EMPTY; 3],
+            [
+                TaskContract::new(1),
+                TaskContract::new(1),
+                TaskContract::EMPTY,
+            ],
+            [
+                TaskContract::new(0).memory(u32::MAX, 0, 0),
+                TaskContract::new(1).memory(1, 0, 0),
+                TaskContract::EMPTY,
+            ],
+            [
+                TaskContract::new(0).deadline(5_000, 5_000, 100, 2_000, 0),
+                TaskContract::new(1).deadline(7_000, 3_000, 100, 1_500, 0),
+                TaskContract::EMPTY,
+            ],
+        ];
+        for tasks in cases {
+            assert_eq!(
+                runtime_validation(tasks, PROFILE),
+                admit(tasks, PROFILE).map(|_| ())
+            );
+        }
+
+        let periods = [0, 10, 1_000];
+        let deadlines = [0, 9, 1_000];
+        let executions = [0, 1, 900];
+        let blockings = [0, 2, 200];
+        let jitters = [0, 5, 999];
+        for period in periods {
+            for deadline in deadlines {
+                for execution in executions {
+                    for blocking in blockings {
+                        for jitter in jitters {
+                            let task = TaskContract::new(7)
+                                .deadline(period, deadline, jitter, execution, blocking);
+                            cases[0] = [
+                                TaskContract::new(0).memory(1, 1, 0),
+                                task,
+                                TaskContract::new(8)
+                                    .deadline(2_000, 1_500, 3, 300, 4)
+                                    .phase(100),
+                            ];
+                            for wake_latency in [0, 1, 100, u32::MAX] {
+                                let profile = PROFILE.wake_latency_us(wake_latency);
+                                assert_eq!(
+                                    runtime_validation(cases[0], profile),
+                                    admit(cases[0], profile).map(|_| ()),
+                                    "period={period} deadline={deadline} execution={execution} blocking={blocking} jitter={jitter} wake={wake_latency}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for profile in [
+            PROFILE,
+            AdmissionProfile::new(1, 16 * 1024, 8, 8),
+            AdmissionProfile::new(64 * 1024, 1, 8, 8),
+            AdmissionProfile::new(64 * 1024, 16 * 1024, 0, 8),
+            AdmissionProfile::new(64 * 1024, 16 * 1024, 8, 1),
+        ] {
+            assert_eq!(
+                runtime_validation(GOOD, profile),
+                admit(GOOD, profile).map(|_| ())
+            );
+        }
     }
 
     #[test]
