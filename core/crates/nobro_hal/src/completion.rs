@@ -19,6 +19,45 @@ pub enum CompletionError {
     Busy,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StagedTransferError {
+    Empty,
+    LengthMismatch,
+    TooLong,
+}
+
+/// Validated size contract for a DMA provider that copies through fixed
+/// staging instead of exposing caller memory to hardware.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StagedTransferPlan {
+    words: usize,
+}
+
+impl StagedTransferPlan {
+    pub const fn new(
+        source_words: usize,
+        destination_words: usize,
+        capacity_words: usize,
+    ) -> Result<Self, StagedTransferError> {
+        if source_words == 0 {
+            return Err(StagedTransferError::Empty);
+        }
+        if source_words != destination_words {
+            return Err(StagedTransferError::LengthMismatch);
+        }
+        if source_words > capacity_words {
+            return Err(StagedTransferError::TooLong);
+        }
+        Ok(Self {
+            words: source_words,
+        })
+    }
+
+    pub const fn words(self) -> usize {
+        self.words
+    }
+}
+
 /// A single reusable completion slot. It stores at most one task waker and is
 /// safe to place in static storage.
 pub struct CompletionCell {
@@ -153,5 +192,29 @@ mod tests {
         assert!(!cell.complete_from_isr());
         assert_eq!(count.0.load(Ordering::Acquire), 1);
         cell.arm(&waker).unwrap();
+    }
+
+    #[test]
+    fn staged_transfer_plan_matches_shadow_model() {
+        for capacity in 0..=16 {
+            for source in 0..=17 {
+                for destination in 0..=17 {
+                    let expected = if source == 0 {
+                        Err(StagedTransferError::Empty)
+                    } else if source != destination {
+                        Err(StagedTransferError::LengthMismatch)
+                    } else if source > capacity {
+                        Err(StagedTransferError::TooLong)
+                    } else {
+                        Ok(source)
+                    };
+                    assert_eq!(
+                        StagedTransferPlan::new(source, destination, capacity)
+                            .map(StagedTransferPlan::words),
+                        expected
+                    );
+                }
+            }
+        }
     }
 }

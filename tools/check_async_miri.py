@@ -47,6 +47,14 @@ def main() -> int:
     completed = subprocess.run(command, cwd=ROOT / "core", env=env)
     if completed.returncode != 0:
         return completed.returncode
+    command = [
+        "cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
+        "-p", "nobro-hal", "--no-default-features", "--features", "contract-only",
+        "completion::tests::staged_transfer_plan_matches_shadow_model",
+    ]
+    completed = subprocess.run(command, cwd=ROOT / "core", env=env)
+    if completed.returncode != 0:
+        return completed.returncode
     return 0
 
 

@@ -112,6 +112,9 @@ gate "esp32s3 port build (required Xtensa toolchain)" \
 gate "rp2350 port build" \
   python tools/check_platform_tiers.py --run-gate rp2350-target-build
 
+gate "rp2350 DMA completion provider build" \
+  python tools/check_platform_tiers.py --run-gate rp2350-dma-target-build
+
 gate "USB RA4M1 backend host tests" \
   python tools/check_platform_tiers.py --run-gate ra4m1-usb-host
 

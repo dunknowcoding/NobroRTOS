@@ -18,6 +18,11 @@ panic-halt = "0.2"
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 nobro-kernel = { path = "../../crates/nobro_kernel" }
 
+[features]
+default = []
+# Opt-in DMA_IRQ_0 completion future and boot-time functional self-test.
+dma-completion = []
+
 [profile.release]
 debug = 2
 lto = true

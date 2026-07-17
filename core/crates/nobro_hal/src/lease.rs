@@ -504,6 +504,7 @@ mod invariant_tests {
     }
 
     #[test]
+    #[cfg(feature = "platform-nrf52840")]
     fn recovery_denies_safe_bus_use_before_touching_hardware() {
         let _lock = test_lock();
         reset_all();

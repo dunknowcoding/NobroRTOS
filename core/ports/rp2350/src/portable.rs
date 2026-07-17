@@ -1,7 +1,7 @@
 //! Portable HAL provider contract on the RP2350.
 //!
 //! This implements the SAME portable `nobro_hal` provider traits the nRF52840
-//! deep HAL implements — a real Cortex-M33 backend, not an nRF-shaped
+//! deep HAL implements: a real Cortex-M33 backend, not an nRF-shaped
 //! placeholder. The foundational provider (a monotonic microsecond timebase)
 //! is implemented here against the RP2350 TIMER0 block, so kernel code that is
 //! generic over `HalClock`/`HalTimebaseProvider` runs unchanged on this chip.
@@ -12,7 +12,7 @@
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
 
-/// RP2350 TIMER0 register block. Offsets from the RP2350 datasheet §12.8.
+/// RP2350 TIMER0 register block. Offsets from RP2350 datasheet section 12.8.
 /// The timer increments once per microsecond (the watchdog tick divides the
 /// system clock to 1 MHz during `init_clocks_and_plls`).
 const TIMER0_BASE: usize = 0x400b_0000;

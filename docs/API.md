@@ -1099,6 +1099,19 @@ lifetimes in the provider type.
 The nRF52840 backend maps it to PPI. Future ports can map it to another trigger
 fabric without changing app code.
 
+With Cargo feature `dma-completion`, the RP2350 port provides an experimental
+`Dma0Completion` component backed by DMA channel 0 and `DMA_IRQ_0`. Its
+equal-length word-copy future registers the waker before starting the channel,
+disables the channel interrupt before cancellation, and waits for hardware
+abort before releasing its fixed static staging.
+This is a port-local implementation of the same completion discipline rather
+than an nRF-shaped PPI emulation. The feature-off port does not link its future,
+staging, completion cell, or IRQ handler. Target-build evidence does not imply
+physical wake latency, idle residence, cancellation, or buffer integrity.
+
+Portable staged providers use `StagedTransferPlan` to reject empty,
+length-mismatched, and over-capacity operations before claiming hardware.
+
 ### SAL API
 
 #### BusSal

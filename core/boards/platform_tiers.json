@@ -5,6 +5,7 @@
     "timebase",
     "deadline",
     "event_capture",
+    "dma_completion",
     "servo_pwm",
     "i2c",
     "spi",
@@ -71,7 +72,7 @@
         {
           "platform": "nrf52840",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event_capture", "dma_completion", "servo_pwm", "i2c", "spi", "lease"]
         }
       ]
     },
@@ -96,7 +97,7 @@
         {
           "platform": "nrf52840",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event_capture", "servo_pwm", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event_capture", "dma_completion", "servo_pwm", "i2c", "spi", "lease"]
         }
       ]
     },
@@ -157,6 +158,20 @@
           "platform": "rp2350",
           "composition": "native",
           "capabilities": ["timebase"]
+        }
+      ]
+    },
+    "rp2350-dma-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/rp2350",
+      "command": ["cargo", "build", "--locked", "--release", "--features", "dma-completion"],
+      "claim_scopes": [
+        {
+          "platform": "rp2350",
+          "composition": "native",
+          "capabilities": ["dma_completion"]
         }
       ]
     },
@@ -357,6 +372,7 @@
             "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "event_capture": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "servo_pwm": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
@@ -382,12 +398,13 @@
       "arch": "thumbv8m",
       "tier": "provider",
       "implementation_root": "core/ports/rp2350",
-      "limitations": "the target build proves compilation only; physical timebase behavior remains outside this public matrix",
+      "limitations": "the target build proves compilation only; physical timebase and DMA completion/cancellation behavior remain outside this public matrix",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
-            "timebase": {"maturity": "implemented", "evidence": ["rp2350-target-build"]}
+            "timebase": {"maturity": "implemented", "evidence": ["rp2350-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["rp2350-dma-target-build"]}
           }
         }
       }

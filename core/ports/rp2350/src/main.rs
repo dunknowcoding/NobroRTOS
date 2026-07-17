@@ -14,10 +14,14 @@ use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
 use core::sync::atomic::{AtomicU32, Ordering};
+#[cfg(feature = "dma-completion")]
+use hal::dma::DMAExt;
 use hal::multicore::{Multicore, Stack};
 
 use nobro_kernel::{AsyncCore, MpmcChannel, ReactorExecutor};
 
+#[cfg(feature = "dma-completion")]
+pub mod dma_completion;
 mod portable;
 
 /// RP2350 boot: the bootrom requires this image-definition block.
@@ -106,6 +110,15 @@ fn main() -> ! {
     )
     .unwrap();
     let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
+    #[cfg(feature = "dma-completion")]
+    let dma_report = {
+        let dma_channels = pac.DMA.split(&mut pac.RESETS);
+        let mut provider = dma_completion::Dma0Completion::new(
+            dma_channels.ch0,
+            dma_completion::DmaCompletionPriority::port_default(),
+        );
+        dma_completion::run_dma_selftest(&mut provider)
+    };
 
     // Bring up core1 with its own stack and reactor task.
     let mut sio = hal::Sio::new(pac.SIO);
@@ -133,11 +146,21 @@ fn main() -> ! {
         .build();
 
     let timebase_ok = portable::verify_timebase_provider();
+    #[cfg(feature = "dma-completion")]
+    let all = timebase_ok && dma_report.passed;
+    #[cfg(not(feature = "dma-completion"))]
     let all = timebase_ok;
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;
     let mut last_report = timer.get_counter();
+    let mut feed = 1u32;
+    #[cfg(feature = "dma-completion")]
+    let mut report = [0u8; 224];
+    #[cfg(not(feature = "dma-completion"))]
+    let mut report = [0u8; 128];
+    let mut report_len = 0usize;
+    let mut report_sent = 0usize;
 
     loop {
         let _ = usb_dev.poll(&mut [&mut serial]);
@@ -145,7 +168,6 @@ fn main() -> ! {
         // Feed a work item to core1 over the cross-core channel each iteration
         // (non-blocking; the 4-slot ring backpressures if core1 falls behind),
         // then wake core1's reactor so it drains and computes.
-        let mut feed: u32 = 1;
         if XCORE_WORK.try_send(feed).is_ok() {
             feed = feed.wrapping_add(1);
             cortex_m::asm::sev(); // wake core1's wfe
@@ -153,30 +175,67 @@ fn main() -> ! {
 
         // heartbeat once a second
         let now = timer.get_counter();
-        if (now - last_report).to_millis() >= 1000 {
+        if (now - last_report).to_millis() >= 1000 && report_sent == report_len {
             last_report = now;
-            let mut msg = [0u8; 128];
             let mut pos = 0;
+            #[cfg(feature = "dma-completion")]
             put_bytes(
-                &mut msg,
+                &mut report,
+                &mut pos,
+                b"NOBRO-RP2350 arch=thumbv8m providers=2 timebase=",
+            );
+            #[cfg(not(feature = "dma-completion"))]
+            put_bytes(
+                &mut report,
                 &mut pos,
                 b"NOBRO-RP2350 arch=thumbv8m providers=1 timebase=",
             );
-            put_u32(&mut msg, &mut pos, u32::from(timebase_ok));
-            put_bytes(&mut msg, &mut pos, b" all_pass=");
-            put_u32(&mut msg, &mut pos, u32::from(all));
+            put_u32(&mut report, &mut pos, u32::from(timebase_ok));
+            #[cfg(feature = "dma-completion")]
+            {
+                put_bytes(&mut report, &mut pos, b" dma=");
+                put_u32(&mut report, &mut pos, u32::from(dma_report.passed));
+                put_bytes(&mut report, &mut pos, b" dma_cancel=");
+                put_u32(
+                    &mut report,
+                    &mut pos,
+                    u32::from(dma_report.cancellation_output_untouched),
+                );
+                put_bytes(&mut report, &mut pos, b" dma_polls=");
+                put_u32(&mut report, &mut pos, dma_report.polls);
+                put_bytes(&mut report, &mut pos, b" dma_irq=");
+                put_u32(&mut report, &mut pos, dma_report.irq_wakes);
+                put_bytes(&mut report, &mut pos, b" dma_wake=");
+                put_u32(&mut report, &mut pos, dma_report.task_wakes);
+            }
+            put_bytes(&mut report, &mut pos, b" all_pass=");
+            put_u32(&mut report, &mut pos, u32::from(all));
             // Report the LIVE cross-core reactor result: how many work items
             // core1 processed and its running accumulator.
-            put_bytes(&mut msg, &mut pos, b" cores=2 core1_processed=");
-            put_u32(&mut msg, &mut pos, CORE1_PROCESSED.load(Ordering::Relaxed));
-            put_bytes(&mut msg, &mut pos, b" core1_acc=");
-            put_u32(&mut msg, &mut pos, CORE1_ACC.load(Ordering::Relaxed));
-            if pos + 2 <= msg.len() {
-                msg[pos] = b'\r';
-                msg[pos + 1] = b'\n';
+            put_bytes(&mut report, &mut pos, b" cores=2 core1_processed=");
+            put_u32(
+                &mut report,
+                &mut pos,
+                CORE1_PROCESSED.load(Ordering::Relaxed),
+            );
+            put_bytes(&mut report, &mut pos, b" core1_acc=");
+            put_u32(&mut report, &mut pos, CORE1_ACC.load(Ordering::Relaxed));
+            if pos + 2 <= report.len() {
+                report[pos] = b'\r';
+                report[pos + 1] = b'\n';
                 pos += 2;
             }
-            let _ = serial.write(&msg[..pos]);
+            report_len = pos;
+            report_sent = 0;
+        }
+
+        // USB CDC writes may accept only one endpoint packet. Retain the
+        // unsent suffix and advance it over later scheduler iterations rather
+        // than dropping a partial status line or busy-waiting.
+        if report_sent < report_len {
+            if let Ok(written) = serial.write(&report[report_sent..report_len]) {
+                report_sent += written;
+            }
         }
 
         // self-DFU: the line "DFU" reboots into the BOOTSEL UF2 bootloader
