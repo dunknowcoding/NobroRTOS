@@ -5,9 +5,9 @@
 //! only releases periodic work into a fixed-priority bitmap and dispatches it.
 
 use crate::{
-    Action, Capability, FaultThresholdError, FaultThresholds, HealthCounters, KernelError,
-    ModuleId, ObjectKind, RecoveryCoordinator, RecoveryError, StackFault, StackGuardTable,
-    SystemState,
+    Action, Capability, EventLog, FaultThresholdError, FaultThresholds, HealthCounters,
+    KernelError, ModuleId, ObjectKind, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
+    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, StackFault, StackGuardTable, SystemState,
 };
 use nobro_admission::{
     AdmittedWorkload, ADMITTED_SCHEMA_VERSION, MAX_WRAP_SAFE_INTERVAL_US, SUBSYSTEM_ABSENT,
@@ -81,6 +81,11 @@ impl NanoSubsystemReport {
     pub const SUPERVISED: Self = Self {
         recovery: SUBSYSTEM_PRESENT,
         health: SUBSYSTEM_PRESENT,
+        ..Self::ABSENT
+    };
+
+    pub const TRACED: Self = Self {
+        trace: SUBSYSTEM_PRESENT,
         ..Self::ABSENT
     };
 
@@ -265,22 +270,128 @@ pub struct NanoRecoveryOutcome {
 pub enum NanoRecoveryError {
     InvalidThresholds(FaultThresholdError),
     InvalidTask(usize),
+    MismatchedWorkload,
+    DuplicateDependency {
+        task_index: usize,
+        dependency_index: usize,
+    },
+    DependencyCycle,
     Coordinator(RecoveryError),
+    Plan(RecoveryPlanError),
     CannotRestore(SystemState),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NanoRecoveryPlanning<const STEPS: usize> {
+    pub outcome: NanoRecoveryOutcome,
+    pub plan: RecoveryPlan<STEPS>,
+}
+
+/// Task-index dependency graph for bounded Nano recovery planning.
+///
+/// Each dependency is declared once with [`Self::depends_on`]. Recovery plans
+/// quiesce transitive dependents before restarting the failed task, then resume
+/// them in dependency order.
+pub struct NanoDependencies<const N: usize> {
+    workload: &'static AdmittedWorkload<N>,
+    depends_on: [u32; N],
+}
+
+impl<const N: usize> NanoDependencies<N> {
+    fn new(workload: &'static AdmittedWorkload<N>) -> Self {
+        Self {
+            workload,
+            depends_on: [0; N],
+        }
+    }
+
+    pub fn depends_on(
+        &mut self,
+        task_index: usize,
+        dependency_index: usize,
+    ) -> Result<&mut Self, NanoRecoveryError> {
+        self.module(task_index)?;
+        self.module(dependency_index)?;
+        let dependency_bit = 1u32 << dependency_index;
+        if self.depends_on[task_index] & dependency_bit != 0 {
+            return Err(NanoRecoveryError::DuplicateDependency {
+                task_index,
+                dependency_index,
+            });
+        }
+        self.depends_on[task_index] |= dependency_bit;
+        Ok(self)
+    }
+
+    fn dependency_impact(
+        &self,
+        root_index: usize,
+    ) -> Result<crate::DependencyImpact<N>, NanoRecoveryError> {
+        self.module(root_index)?;
+        let count = usize::from(self.workload.task_count);
+        let mut order = [0usize; N];
+        let mut order_len = 0;
+        let mut emitted = 0u32;
+        while order_len < count {
+            let before = order_len;
+            for task_index in 0..count {
+                let task_bit = 1u32 << task_index;
+                if emitted & task_bit == 0 && self.depends_on[task_index] & !emitted == 0 {
+                    order[order_len] = task_index;
+                    order_len += 1;
+                    emitted |= task_bit;
+                }
+            }
+            if order_len == before {
+                return Err(NanoRecoveryError::DependencyCycle);
+            }
+        }
+
+        let root_bit = 1u32 << root_index;
+        let mut affected = 0u32;
+        loop {
+            let before = affected;
+            for task_index in 0..count {
+                let task_bit = 1u32 << task_index;
+                if task_index != root_index
+                    && affected & task_bit == 0
+                    && self.depends_on[task_index] & (root_bit | affected) != 0
+                {
+                    affected |= task_bit;
+                }
+            }
+            if affected == before {
+                break;
+            }
+        }
+
+        let mut impact = crate::DependencyImpact::new(ModuleId::App(root_index as u8));
+        for task_index in order.into_iter().take(order_len).rev() {
+            if affected & (1u32 << task_index) != 0 {
+                impact.affected[impact.affected_count] = Some(ModuleId::App(task_index as u8));
+                impact.affected_count += 1;
+            }
+        }
+        Ok(impact)
+    }
+
+    fn module(&self, task_index: usize) -> Result<ModuleId, NanoRecoveryError> {
+        module_for(self.workload, task_index)
+    }
 }
 
 /// Optional health escalation and lifecycle recovery for pre-admitted tasks.
 ///
 /// Tasks are addressed by their Nano input index; callers do not need to
-/// construct module identifiers or a runtime manifest. Retained event tracing,
-/// dependency recovery plans, watchdogs, and the managed runtime remain
-/// separate choices.
-pub struct NanoRecovery<const N: usize> {
+/// construct module identifiers or a runtime manifest. Retained event tracing
+/// is selected by its const capacity; dependency plans and the managed runtime
+/// remain separate choices.
+pub struct NanoRecovery<const N: usize, const LOG: usize = 0> {
     workload: &'static AdmittedWorkload<N>,
-    coordinator: RecoveryCoordinator<N, 0>,
+    coordinator: RecoveryCoordinator<N, LOG>,
 }
 
-impl<const N: usize> NanoRecovery<N> {
+impl<const N: usize, const LOG: usize> NanoRecovery<N, LOG> {
     fn new(
         workload: &'static AdmittedWorkload<N>,
         thresholds: FaultThresholds,
@@ -349,6 +460,45 @@ impl<const N: usize> NanoRecovery<N> {
         })
     }
 
+    /// Record one error and produce its bounded recovery plan.
+    pub fn record_error_with_plan<const STEPS: usize>(
+        &mut self,
+        task_index: usize,
+        error: KernelError,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<NanoRecoveryPlanning<STEPS>, NanoRecoveryError> {
+        let outcome = self.record_error(task_index, error, now_us)?;
+        let plan = RecoveryPlan::from_outcome(self.raw_outcome(outcome)?, now_us, policy)
+            .map_err(NanoRecoveryError::Plan)?;
+        Ok(NanoRecoveryPlanning { outcome, plan })
+    }
+
+    /// Record one error and include transitive task dependencies in its plan.
+    pub fn record_error_with_dependencies<const STEPS: usize>(
+        &mut self,
+        task_index: usize,
+        error: KernelError,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+        dependencies: &NanoDependencies<N>,
+    ) -> Result<NanoRecoveryPlanning<STEPS>, NanoRecoveryError> {
+        if !core::ptr::eq(self.workload, dependencies.workload) {
+            return Err(NanoRecoveryError::MismatchedWorkload);
+        }
+        self.module(task_index)?;
+        let impact = dependencies.dependency_impact(task_index)?;
+        let outcome = self.record_error(task_index, error, now_us)?;
+        let plan = RecoveryPlan::from_outcome_with_impact(
+            self.raw_outcome(outcome)?,
+            &impact,
+            now_us,
+            policy,
+        )
+        .map_err(NanoRecoveryError::Plan)?;
+        Ok(NanoRecoveryPlanning { outcome, plan })
+    }
+
     pub fn counters(&self, task_index: usize) -> Result<Option<HealthCounters>, NanoRecoveryError> {
         let module = self.module(task_index)?;
         Ok(self
@@ -382,18 +532,48 @@ impl<const N: usize> NanoRecovery<N> {
         self.coordinator.state()
     }
 
+    pub fn events(&self) -> &EventLog<LOG> {
+        self.coordinator.events()
+    }
+
     pub const fn subsystem_report(&self) -> NanoSubsystemReport {
-        NanoSubsystemReport::SUPERVISED
+        if LOG == 0 {
+            NanoSubsystemReport::SUPERVISED
+        } else {
+            NanoSubsystemReport::SUPERVISED.union(NanoSubsystemReport::TRACED)
+        }
     }
 
     fn module(&self, task_index: usize) -> Result<ModuleId, NanoRecoveryError> {
-        if task_index >= usize::from(self.workload.task_count)
-            || self.workload.tasks.get(task_index).is_none()
-        {
-            return Err(NanoRecoveryError::InvalidTask(task_index));
-        }
-        Ok(ModuleId::App(task_index as u8))
+        module_for(self.workload, task_index)
     }
+
+    fn raw_outcome(
+        &self,
+        outcome: NanoRecoveryOutcome,
+    ) -> Result<RecoveryOutcome, NanoRecoveryError> {
+        let module = self.module(outcome.task_index)?;
+        if self.workload.tasks[outcome.task_index].id != outcome.task_id {
+            return Err(NanoRecoveryError::InvalidTask(outcome.task_index));
+        }
+        Ok(RecoveryOutcome {
+            module,
+            error: outcome.error,
+            action: outcome.action,
+            state: outcome.state,
+            coalesced: outcome.coalesced,
+        })
+    }
+}
+
+fn module_for<const N: usize>(
+    workload: &AdmittedWorkload<N>,
+    task_index: usize,
+) -> Result<ModuleId, NanoRecoveryError> {
+    if task_index >= usize::from(workload.task_count) || workload.tasks.get(task_index).is_none() {
+        return Err(NanoRecoveryError::InvalidTask(task_index));
+    }
+    Ok(ModuleId::App(task_index as u8))
 }
 
 /// L1 preset: L0 dispatch plus default-on stack watermark/canary sweeps.
@@ -586,6 +766,20 @@ impl<const N: usize> NanoKernel<N> {
         NanoRecovery::new(self.workload, thresholds, now_us)
     }
 
+    /// Select recovery with a retained, fixed-capacity event trace.
+    pub fn recovery_with_trace<const LOG: usize>(
+        &self,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<NanoRecovery<N, LOG>, NanoRecoveryError> {
+        NanoRecovery::new(self.workload, thresholds, now_us)
+    }
+
+    /// Build a task-index dependency graph for bounded recovery plans.
+    pub fn recovery_dependencies(&self) -> NanoDependencies<N> {
+        NanoDependencies::new(self.workload)
+    }
+
     /// Initialize recovery directly in caller-owned storage.
     ///
     /// This is the bounded-stack form for static or long-lived MCU services;
@@ -596,6 +790,16 @@ impl<const N: usize> NanoKernel<N> {
         thresholds: FaultThresholds,
         now_us: u64,
     ) -> Result<&'a mut NanoRecovery<N>, NanoRecoveryError> {
+        self.recovery_with_trace_into(destination, thresholds, now_us)
+    }
+
+    /// Initialize traced recovery directly in caller-owned storage.
+    pub fn recovery_with_trace_into<'a, const LOG: usize>(
+        &self,
+        destination: &'a mut core::mem::MaybeUninit<NanoRecovery<N, LOG>>,
+        thresholds: FaultThresholds,
+        now_us: u64,
+    ) -> Result<&'a mut NanoRecovery<N, LOG>, NanoRecoveryError> {
         thresholds
             .validate()
             .map_err(NanoRecoveryError::InvalidThresholds)?;
@@ -897,5 +1101,126 @@ mod tests {
         );
         assert_eq!(in_place.counters(0), by_value.counters(0));
         assert_eq!(in_place.state(), by_value.state());
+    }
+
+    #[test]
+    fn retained_recovery_trace_is_an_independent_capacity_choice() {
+        let nano = NanoKernel::new(&GOVERNED_WORKLOAD, 0).unwrap();
+        let mut storage = core::mem::MaybeUninit::uninit();
+        let recovery = nano
+            .recovery_with_trace_into::<8>(
+                &mut storage,
+                FaultThresholds {
+                    notify_after: 1,
+                    reboot_after: 2,
+                },
+                10,
+            )
+            .unwrap();
+        assert_eq!(recovery.events().len(), 3);
+        assert_eq!(recovery.subsystem_report().trace, SUBSYSTEM_PRESENT);
+
+        let planned = recovery
+            .record_error_with_plan::<1>(
+                0,
+                KernelError::DeadlineMissed,
+                20,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+        assert_eq!(planned.plan.len, 1);
+        let mut recent = [crate::EventRecord::new(
+            0,
+            ModuleId::Kernel,
+            crate::EventSeverity::Trace,
+            crate::EventKind::Boot,
+            crate::EventPayload::None,
+        ); 8];
+        let copied = recovery.events().copy_recent(&mut recent);
+        assert_eq!(copied, 6);
+        assert!(recent[..copied]
+            .iter()
+            .any(|event| event.kind == crate::EventKind::Health));
+        assert!(recent[..copied]
+            .iter()
+            .any(|event| event.kind == crate::EventKind::Recovery));
+    }
+
+    #[test]
+    fn dependency_plans_use_task_indices_and_bounded_transitive_order() {
+        let nano = NanoKernel::new(&WORKLOAD, 0).unwrap();
+        let mut dependencies = nano.recovery_dependencies();
+        dependencies
+            .depends_on(1, 0)
+            .unwrap()
+            .depends_on(2, 1)
+            .unwrap();
+        let mut recovery = nano
+            .recovery(
+                FaultThresholds {
+                    notify_after: 1,
+                    reboot_after: 2,
+                },
+                10,
+            )
+            .unwrap();
+        recovery
+            .record_error(0, KernelError::ModuleCrash, 20)
+            .unwrap();
+        let planned = recovery
+            .record_error_with_dependencies::<8>(
+                0,
+                KernelError::ModuleCrash,
+                200_000,
+                RecoveryPlanPolicy::DEFAULT,
+                &dependencies,
+            )
+            .unwrap();
+
+        assert_eq!(planned.outcome.task_index, 0);
+        assert_eq!(planned.outcome.action, Action::RebootModule);
+        assert_eq!(planned.plan.len, 8);
+        let expected = [
+            (ModuleId::App(2), crate::RecoveryStepKind::QuiesceModule),
+            (ModuleId::App(1), crate::RecoveryStepKind::QuiesceModule),
+            (ModuleId::App(0), crate::RecoveryStepKind::QuiesceModule),
+            (ModuleId::App(0), crate::RecoveryStepKind::RestartModule),
+            (ModuleId::App(0), crate::RecoveryStepKind::VerifyHeartbeat),
+            (ModuleId::App(0), crate::RecoveryStepKind::ResumeModule),
+            (ModuleId::App(1), crate::RecoveryStepKind::ResumeModule),
+            (ModuleId::App(2), crate::RecoveryStepKind::ResumeModule),
+        ];
+        for (step, expected) in planned.plan.steps.iter().flatten().zip(expected) {
+            assert_eq!((step.module, step.kind), expected);
+        }
+    }
+
+    #[test]
+    fn invalid_dependency_graph_fails_before_health_state_changes() {
+        let nano = NanoKernel::new(&WORKLOAD, 0).unwrap();
+        let mut dependencies = nano.recovery_dependencies();
+        dependencies.depends_on(1, 0).unwrap();
+        assert!(matches!(
+            dependencies.depends_on(1, 0),
+            Err(NanoRecoveryError::DuplicateDependency {
+                task_index: 1,
+                dependency_index: 0,
+            })
+        ));
+        dependencies.depends_on(0, 1).unwrap();
+        let mut recovery = nano.recovery(FaultThresholds::DEFAULT, 10).unwrap();
+
+        assert_eq!(
+            recovery.record_error_with_dependencies::<8>(
+                0,
+                KernelError::ModuleCrash,
+                20,
+                RecoveryPlanPolicy::DEFAULT,
+                &dependencies,
+            ),
+            Err(NanoRecoveryError::DependencyCycle)
+        );
+        assert_eq!(recovery.state(), SystemState::Running);
+        assert_eq!(recovery.counters(0), Ok(None));
     }
 }

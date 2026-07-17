@@ -49,6 +49,10 @@ Health escalation and lifecycle recovery are another independent choice:
 Tasks use their Nano indices, and retained tracing or the managed runtime are not required.
 Long-lived MCU services can use `recovery_into` with caller-owned storage to avoid
 a capacity-sized construction frame.
+Add a retained event ring only when needed with `recovery_with_trace::<N>` (or
+`recovery_with_trace_into`). For dependency-aware restart order, declare task-index
+edges once with `recovery_dependencies().depends_on(task, dependency)` and call
+`record_error_with_dependencies`; no runtime manifest or module IDs are required.
 
 ### Right-size from a device run
 
