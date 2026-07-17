@@ -37,7 +37,9 @@ MPU, async, classic-compat, or formatting subsystems. The public gate verifies b
 symbol absence and the 3,000 B minimal / 3,400 B complex L0 flash ceilings.
 The Rust presets are `L0NanoKernel`, `L1GuardedKernel`, `L2ManagedKernel`, and
 `L3AssuredKernel`; generated one-file firmware selects L0, while dynamic/Tier-C
-assembly retains the L3 runtime admission and `seal` path.
+assembly retains the L3 runtime admission and `seal` path. An existing L0
+dispatcher can opt into L1 with `nano.with_stack_guards(guards)` without
+re-running admission, resetting its epoch, or losing pending releases.
 
 ### Right-size from a device run
 

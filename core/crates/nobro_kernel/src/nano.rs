@@ -78,13 +78,7 @@ impl<const N: usize, const G: usize> GuardedNanoKernel<N, G> {
         epoch_us: u32,
         guards: StackGuardTable<G>,
     ) -> Result<Self, NanoError> {
-        if guards.is_empty() {
-            return Err(NanoError::MissingStackGuard);
-        }
-        Ok(Self {
-            dispatch: NanoKernel::new(workload, epoch_us)?,
-            guards,
-        })
+        NanoKernel::new(workload, epoch_us)?.with_stack_guards(guards)
     }
 
     pub const fn dispatch(&self) -> &NanoKernel<N> {
@@ -224,6 +218,26 @@ impl<const N: usize> NanoKernel<N> {
         self.ready_priorities == 0
     }
 
+    /// Add stack guarding to an already configured Nano dispatcher.
+    ///
+    /// This is the zero-revalidation path from the L0 preset to L1: task
+    /// admission, epoch, pending releases, and ready membership stay intact.
+    /// The caller still owns the stack-region registration and its safety
+    /// contract; an empty table fails closed instead of advertising a guarded
+    /// profile that protects no execution context.
+    pub fn with_stack_guards<const G: usize>(
+        self,
+        guards: StackGuardTable<G>,
+    ) -> Result<GuardedNanoKernel<N, G>, NanoError> {
+        if guards.is_empty() {
+            return Err(NanoError::MissingStackGuard);
+        }
+        Ok(GuardedNanoKernel {
+            dispatch: self,
+            guards,
+        })
+    }
+
     pub const fn subsystem_report(&self) -> NanoSubsystemReport {
         NanoSubsystemReport::ABSENT
     }
@@ -326,7 +340,39 @@ mod tests {
             GuardedNanoKernel::new(&WORKLOAD, 0, StackGuardTable::<0>::new()),
             Err(NanoError::MissingStackGuard)
         ));
+        assert!(matches!(
+            NanoKernel::new(&WORKLOAD, 0)
+                .unwrap()
+                .with_stack_guards(StackGuardTable::<0>::new()),
+            Err(NanoError::MissingStackGuard)
+        ));
         assert_eq!(NanoSubsystemReport::GUARDED.stack_guard, SUBSYSTEM_PRESENT);
         assert_eq!(NanoSubsystemReport::GUARDED.recovery, SUBSYSTEM_ABSENT);
+    }
+
+    #[test]
+    fn adding_guards_preserves_dispatch_state_without_revalidation() {
+        let mut region = [0u8; 64];
+        let mut guards = StackGuardTable::<1>::new();
+        unsafe {
+            guards
+                .register_shared_msp(crate::StackRegion {
+                    base: region.as_mut_ptr() as usize,
+                    len: region.len(),
+                    canary_bytes: 8,
+                })
+                .unwrap();
+        }
+
+        let mut nano = NanoKernel::new(&WORKLOAD, 100).unwrap();
+        nano.release_due(100);
+        nano.mark_ready(2).unwrap();
+        let mut guarded = nano.with_stack_guards(guards).unwrap();
+
+        assert_eq!(guarded.dispatch_mut().take_next(), Some(0));
+        assert_eq!(guarded.dispatch_mut().take_next(), Some(2));
+        assert_eq!(guarded.dispatch().next_release_us(100), Some(105));
+        assert_eq!(guarded.sweep_stacks(), None);
+        assert_eq!(guarded.subsystem_report().stack_guard, SUBSYSTEM_PRESENT);
     }
 }
