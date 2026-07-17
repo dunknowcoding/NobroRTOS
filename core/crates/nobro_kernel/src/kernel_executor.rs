@@ -793,8 +793,12 @@ impl<
         guard.mark(ExecutorInitStage::Sentinel);
         checkpoint(ExecutorInitStage::Sentinel)?;
 
-        core::ptr::addr_of_mut!((*destination).power)
-            .write(ExecutorPower::new(1_000_000, 1_000_000, 1_000));
+        ExecutorPower::init_in_place(
+            core::ptr::addr_of_mut!((*destination).power),
+            1_000_000,
+            1_000_000,
+            1_000,
+        );
         guard.mark(ExecutorInitStage::Power);
         checkpoint(ExecutorInitStage::Power)?;
 

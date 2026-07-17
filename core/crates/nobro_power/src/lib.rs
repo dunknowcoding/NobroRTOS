@@ -142,6 +142,16 @@ impl<const N: usize> EnergyLedger<N> {
         }
     }
 
+    unsafe fn init_in_place(destination: *mut Self) {
+        let energy_uj = core::ptr::addr_of_mut!((*destination).energy_uj).cast::<u64>();
+        let task_ids = core::ptr::addr_of_mut!((*destination).task_ids).cast::<u16>();
+        for index in 0..N {
+            energy_uj.add(index).write(0);
+            task_ids.add(index).write(0);
+        }
+        core::ptr::addr_of_mut!((*destination).len).write(0);
+    }
+
     /// Charge `task` for `active_us` at `power_uw`. Returns false if the ledger is full.
     pub fn charge(&mut self, task: u16, active_us: u64, power_uw: u64) -> bool {
         let energy_uj = active_us.saturating_mul(power_uw) / 1_000_000;
@@ -204,6 +214,36 @@ impl<const N: usize> ExecutorPower<N> {
             profile_len: 0,
             default_power_uw,
         }
+    }
+
+    /// Initialize caller-owned static storage without a capacity-sized
+    /// aggregate temporary.
+    ///
+    /// # Safety
+    ///
+    /// `destination` must be aligned, writable storage for one uninitialized
+    /// `ExecutorPower<N>`.
+    #[doc(hidden)]
+    pub unsafe fn init_in_place(
+        destination: *mut Self,
+        window_us: u64,
+        budget_us: u64,
+        default_power_uw: u64,
+    ) {
+        core::ptr::addr_of_mut!((*destination).manager)
+            .write(PowerManager::new(window_us, budget_us));
+        EnergyLedger::init_in_place(core::ptr::addr_of_mut!((*destination).ledger));
+
+        let profile_power_uw =
+            core::ptr::addr_of_mut!((*destination).profile_power_uw).cast::<u64>();
+        let profile_task_ids =
+            core::ptr::addr_of_mut!((*destination).profile_task_ids).cast::<u16>();
+        for index in 0..N {
+            profile_power_uw.add(index).write(0);
+            profile_task_ids.add(index).write(0);
+        }
+        core::ptr::addr_of_mut!((*destination).profile_len).write(0);
+        core::ptr::addr_of_mut!((*destination).default_power_uw).write(default_power_uw);
     }
 
     pub fn set_task_power(&mut self, task_id: u16, power_uw: u64) -> bool {
@@ -335,6 +375,26 @@ mod energy_tests {
         );
         assert_eq!(hooks.wake, Some(20_000));
         assert_eq!(hooks.mode, Some(PowerMode::LowPower));
+    }
+
+    #[test]
+    fn in_place_executor_power_matches_value_constructor() {
+        let mut storage = core::mem::MaybeUninit::<ExecutorPower<2>>::uninit();
+        unsafe {
+            ExecutorPower::init_in_place(storage.as_mut_ptr(), 1_000_000, 100_000, 2_000);
+        }
+        let mut in_place = unsafe { storage.assume_init() };
+        let mut by_value = ExecutorPower::<2>::new(1_000_000, 100_000, 2_000);
+
+        for power in [&mut in_place, &mut by_value] {
+            assert!(power.set_task_power(7, 10_000));
+            assert!(power.account_task(7, 200_000));
+            assert!(power.account_task(8, 1_000));
+            assert_eq!(power.ledger().energy_uj(7), Some(2_000));
+            assert_eq!(power.ledger().energy_uj(8), Some(2));
+            assert_eq!(power.ledger().total_uj(), 2_002);
+            assert_eq!(power.manager().duty_milli(), 201);
+        }
     }
 }
 
