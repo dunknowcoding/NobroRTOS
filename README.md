@@ -123,6 +123,18 @@ Generated project workloads also have one optional-feature switchboard:
 target-scoped flash/RAM reserve, latency class, and evidence from
 `sdk/feature-catalog.json`; users do not duplicate prices or generated defines.
 Unavailable and unpriced combinations fail closed rather than appearing free.
+The same canonical workload builds native firmware directly:
+
+```bash
+python sdk/cli/nobro.py firmware _work/projects/rover/workload.json \
+  --out _work/firmware --build
+```
+
+For the recorded no-SoftDevice nano composition, the linked
+`capacity-report` delta is 296 B flash, 4 B static RAM, and 4 B total RAM;
+the catalog keeps tighter gated ceilings of 384/16/32 B. These are
+composition-specific static measurements, not physical latency, power, or
+cross-RTOS results. The S140 row stays unavailable until separately measured.
 
 The board line is mandatory: it selects the SoftDevice or no-SoftDevice linker layout
 instead of guessing. Role defaults infer an initial budget and memory estimate; review

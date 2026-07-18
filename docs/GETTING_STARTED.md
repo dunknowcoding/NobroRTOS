@@ -162,6 +162,17 @@ object, for example `"features": {"capacity-report": true}`. The SDK catalog dri
 validation, generation, and explanation; unavailable or unpriced combinations fail
 instead of being reported as free.
 
+That same file is a native-firmware input—there is no second feature file:
+
+```bash
+python sdk/cli/nobro.py firmware _work/projects/rover/workload.json \
+  --out _work/firmware --build
+```
+
+The no-SoftDevice catalog entry is checked by linked feature-off/feature-on images,
+including symbol absence/presence and measured resource deltas. Target rows without
+that evidence remain unavailable.
+
 ### One-file production firmware
 
 The concise firmware path starts from `tutorials/rover-one-file/app.nobro` and generates

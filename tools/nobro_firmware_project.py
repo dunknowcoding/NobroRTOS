@@ -2,7 +2,10 @@
 """Generate host-readable contracts and production firmware from one small app file.
 
 The input is either the compact declaration below or strict JSON exported by
-``nobro_rtos.NobroApp``. It is configuration, not generated Rust boilerplate::
+``nobro_rtos.NobroApp``. A ``nobro-workload-v1`` file produced by
+``nobro project new`` is also a direct native-firmware input, so its top-level
+``features`` object remains the only optional-feature switchboard. It is
+configuration, not generated Rust boilerplate::
 
     app rover
     board nrf52840-s140
@@ -26,8 +29,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bindings" / "python"))
+sys.path.insert(0, str(ROOT / "tools"))
 
 from nobro_rtos.app import NobroApp  # noqa: E402
+import nobro_project as project_model  # noqa: E402
 
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
@@ -137,6 +142,9 @@ def parse(text: str) -> dict:
             raise ValueError(f"{source}: a task cannot send to itself")
     _, flash_limit, ram_limit = BOARDS[board]
     workload = {
+        "schema": "nobro-workload-v1",
+        "target": board,
+        "features": {},
         "profile": {"flash": flash_limit, "ram": ram_limit,
                     "pool": max(8, len(tasks) + 1),
                     "wake_latency_us": wake_latency_us},
@@ -152,6 +160,32 @@ def parse(text: str) -> dict:
 
 def rust_main(spec: dict) -> str:
     task_count = len(spec["workload"]["tasks"])
+    enabled = {name for name, _ in project_model.selected_features(spec["workload"])}
+    capacity_import = ""
+    capacity_marker = ""
+    capacity_setup = ""
+    report_len = 4
+    report_tail = "first"
+    if "capacity-report" in enabled:
+        capacity_import = "use nobro_kernel::{CapacityRegistry, CapacityResource, NanoKernel};"
+        capacity_marker = """
+#[no_mangle]
+#[used]
+pub static NOBRO_FEATURE_CAPACITY_REPORT: u8 = 1;
+"""
+        capacity_setup = """
+    let mut capacity = CapacityRegistry::<1>::new();
+    let identity_byte = u8::try_from(admitted_schema).unwrap_or(u8::MAX);
+    let resource = CapacityResource::mailbox([identity_byte; 32], 1, 1);
+    let capacity_len = capacity
+        .register(resource)
+        .map(|()| capacity.len() as u32)
+        .unwrap_or(u32::MAX);
+"""
+        report_len = 5
+        report_tail = "first, capacity_len"
+    else:
+        capacity_import = "use nobro_kernel::NanoKernel;"
     return f'''//! Generated from app.nobro. Regenerate instead of editing this file.
 #![no_std]
 #![no_main]
@@ -159,13 +193,14 @@ use cortex_m::asm;
 use cortex_m_rt::entry;
 use panic_halt as _;
 use nobro_hal as _;
-use nobro_kernel::NanoKernel;
+{capacity_import}
 
 include!(concat!(env!("OUT_DIR"), "/nobro_admitted.rs"));
 
 #[no_mangle]
 #[used]
-static mut NOBRO_APP_REPORT: [u32; 4] = [0; 4];
+static mut NOBRO_APP_REPORT: [u32; {report_len}] = [0; {report_len}];
+{capacity_marker}
 
 #[entry]
 fn main() -> ! {{
@@ -177,10 +212,11 @@ fn main() -> ! {{
     let admitted_schema = unsafe {{
         core::ptr::read_volatile(core::ptr::addr_of!(NOBRO_ADMITTED_WORKLOAD.schema_version))
     }};
+{capacity_setup}
     unsafe {{
         core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_APP_REPORT),
             [0x4e42_4150 | u32::from(admitted_schema), NOBRO_ADMITTED_WORKLOAD.task_count as u32,
-             u32::from(released), first]);
+             u32::from(released), {report_tail}]);
     }}
     loop {{ asm::wfi(); }}
 }}
@@ -188,7 +224,7 @@ fn main() -> ! {{
 
 
 def rust_build(spec: dict, source_name: str = "app.nobro") -> str:
-    workload = spec["workload"]
+    workload, _ = project_model.priced_workload(spec["workload"])
     tasks = workload["tasks"]
     channel_users = {name for channel in workload["channels"] for name in channel}
     contracts = []
@@ -259,17 +295,40 @@ fn main() {{
 
 
 def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
-    """Load one compact-text or strict Python-JSON app without executing code."""
+    """Load compact text, Python JSON, or a canonical workload without executing code."""
 
     if source.suffix.lower() == ".json":
-        app = NobroApp.read_json(source)
-        return app.firmware_spec(), "python-json", "app.json"
+        record = json.loads(source.read_text(encoding="utf-8"))
+        if record.get("schema") == "nobro-python-app-v1":
+            app = NobroApp.from_dict(record)
+            return app.firmware_spec(), "python-json", "app.json"
+        if record.get("schema") == "nobro-workload-v1":
+            app = record.get("app")
+            if not isinstance(app, str) or not NAME.fullmatch(app):
+                raise ValueError("canonical workload needs an `app` name")
+            project_model.startup_order(record)
+            board = record.get("target")
+            if board not in BOARDS:
+                raise ValueError(
+                    f"unsupported workload target {board!r}; choose {', '.join(BOARDS)}"
+                )
+            return {
+                "app": app,
+                "board": board,
+                "workload": record,
+                "user_lines": len(record.get("tasks", [])),
+            }, "canonical-workload", "workload.json"
+        raise ValueError("JSON must use nobro-python-app-v1 or nobro-workload-v1")
     text = source.read_text(encoding="utf-8")
     return parse(text), "compact-text", "app.nobro"
 
 
 def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
     spec, source_format, source_name = load_source(source)
+    spec["workload"].setdefault("schema", "nobro-workload-v1")
+    spec["workload"].setdefault("target", spec["board"])
+    spec["workload"].setdefault("features", {})
+    project_model.startup_order(spec["workload"])
     project = (out_dir / spec["app"]).resolve()
     (project / "src").mkdir(parents=True, exist_ok=True)
     (project / ".cargo").mkdir(parents=True, exist_ok=True)
@@ -280,7 +339,7 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
             encoding="utf-8",
             newline="\n",
         )
-    else:
+    elif source_format == "compact-text":
         (project / source_name).write_text(
             source.read_text(encoding="utf-8"),
             encoding="utf-8",
@@ -305,6 +364,10 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
         hal_path = str(hal).replace("\\", "/")
     hal_feature = ("board-nicenano-s140" if spec["board"] == "nrf52840-s140"
                    else "board-promicro-nosd")
+    kernel_features = project_model.cargo_kernel_features(spec["workload"])
+    kernel_feature_clause = (
+        f", features = {json.dumps(kernel_features)}" if kernel_features else ""
+    )
     cargo = f'''[package]
 name = "nobro-app-{spec['app'].replace('_', '-')}"
 version = "0.1.0"
@@ -315,7 +378,7 @@ build = "build.rs"
 [workspace]
 
 [dependencies]
-nobro-kernel = {{ path = {json.dumps(kernel_path)} }}
+nobro-kernel = {{ path = {json.dumps(kernel_path)}{kernel_feature_clause} }}
 nobro-admission = {{ path = {json.dumps(admission_path)} }}
 nobro-hal = {{ path = {json.dumps(hal_path)}, default-features = false, features = [{json.dumps(hal_feature)}] }}
 cortex-m = "0.7"
@@ -350,7 +413,9 @@ rustflags = [
                 "board": spec["board"], "memory_profile": profile,
                 "source_format": source_format,
                 "user_lines": spec["user_lines"], "generated_rust_lines": len(rust_main(spec).splitlines()),
-                "task_count": len(spec["workload"]["tasks"]) - 1}
+                "task_count": len(spec["workload"]["tasks"]) - 1,
+                "features": [name for name, _ in project_model.selected_features(
+                    spec["workload"])]}
     (project / "generation.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n")
     return {"project": project, **metadata}
@@ -440,6 +505,38 @@ service camera every 40ms
         assert python_workload["wire_capacities"] == [["imu", "motor", 8]]
         assert "rerun-if-changed=app.json" in (
             python_result["project"] / "build.rs"
+        ).read_text(encoding="utf-8")
+
+        canonical = json.loads(
+            (result["project"] / "workload.json").read_text(encoding="utf-8")
+        )
+        canonical["target"] = "nrf52840-nosd"
+        canonical["app"] = "priced_rover"
+        canonical["features"] = {"capacity-report": True}
+        workload_source = pathlib.Path(tmp) / "priced-workload.json"
+        workload_source.write_text(
+            json.dumps(canonical, indent=2) + "\n", encoding="utf-8"
+        )
+        priced_result = generate(workload_source, pathlib.Path(tmp) / "priced-out")
+        assert priced_result["source_format"] == "canonical-workload"
+        assert priced_result["features"] == ["capacity-report"]
+        priced_main = (priced_result["project"] / "src" / "main.rs").read_text(
+            encoding="utf-8"
+        )
+        priced_cargo = (priced_result["project"] / "Cargo.toml").read_text(
+            encoding="utf-8"
+        )
+        assert "NOBRO_FEATURE_CAPACITY_REPORT" in priced_main
+        assert "CapacityResource::mailbox" in priced_main
+        assert 'features = ["capacity-report"]' in priced_cargo
+        canonical["app"] = "unpriced_rover"
+        canonical["features"] = {}
+        workload_source.write_text(
+            json.dumps(canonical, indent=2) + "\n", encoding="utf-8"
+        )
+        plain_result = generate(workload_source, pathlib.Path(tmp) / "plain-out")
+        assert "NOBRO_FEATURE_CAPACITY_REPORT" not in (
+            plain_result["project"] / "src" / "main.rs"
         ).read_text(encoding="utf-8")
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),

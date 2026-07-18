@@ -58,6 +58,7 @@ WORKLOAD_DIAGNOSTICS = {
     "feature-value": ("NOBRO-E046", "Feature values must match the catalog."),
     "feature-unavailable": ("NOBRO-E047", "Feature is unavailable for this target."),
     "feature-conflict": ("NOBRO-E048", "Enabled features conflict."),
+    "workload-schema": ("NOBRO-E049", "Workload schema version is unsupported."),
 }
 ADMISSION_DIAGNOSTIC_CODES = {f"NOBRO-E{number:03d}" for number in range(1, 22)}
 
@@ -90,6 +91,7 @@ def format_user_error(error: BaseException) -> str:
 # --------------------------------------------------------------- new (scaffold)
 
 WORKLOAD_TEMPLATE = {
+    "schema": "nobro-workload-v1",
     "target": "nrf52840-nosd",
     "features": {},
     "profile": {"flash": 128 * 1024, "ram": 32 * 1024, "pool": 8},
@@ -146,6 +148,37 @@ def feature_catalog() -> dict:
                     raise ValueError(f"catalog feature {name} needs a latency class")
                 if not isinstance(evidence, dict) or not evidence.get("level"):
                     raise ValueError(f"catalog feature {name} needs evidence")
+                if evidence.get("level") == "linked-embedded-ab":
+                    measured = evidence.get("measured")
+                    if not isinstance(measured, dict) or set(measured) != {
+                        "off", "on", "delta"
+                    }:
+                        raise ValueError(f"catalog feature {name} needs linked A/B evidence")
+                    measurement_fields = {
+                        "flash_bytes", "static_ram_bytes", "total_ram_bytes"
+                    }
+                    if any(
+                        not isinstance(measured.get(side), dict)
+                        or set(measured[side]) != measurement_fields
+                        or any(
+                            isinstance(value, bool)
+                            or not isinstance(value, int)
+                            or value < 0
+                            for value in measured[side].values()
+                        )
+                        for side in ("off", "on", "delta")
+                    ):
+                        raise ValueError(
+                            f"catalog feature {name} has invalid linked measurements"
+                        )
+                    if any(
+                        measured["on"][field] - measured["off"][field]
+                        != measured["delta"][field]
+                        for field in measurement_fields
+                    ):
+                        raise ValueError(
+                            f"catalog feature {name} linked deltas do not reconcile"
+                        )
             elif entry.get("status") == "unavailable":
                 if entry.get("price") is not None or not entry.get("reason"):
                     raise ValueError(f"unavailable feature {name} must remain unpriced")
@@ -332,13 +365,15 @@ def render_cargo(project: pathlib.Path, name: str, workload: dict) -> str:
 def scaffold(name: str, out_dir: pathlib.Path) -> dict:
     project = checked_project(name, out_dir)
     (project / "src").mkdir(parents=True, exist_ok=True)
+    workload = copy.deepcopy(WORKLOAD_TEMPLATE)
+    workload["app"] = name
     (project / "workload.json").write_text(
-        json.dumps(WORKLOAD_TEMPLATE, indent=2) + "\n", encoding="utf-8")
+        json.dumps(workload, indent=2) + "\n", encoding="utf-8")
     (project / "app_graph.rs").write_text(GRAPH_SKELETON, encoding="utf-8")
-    cargo = render_cargo(project, name, WORKLOAD_TEMPLATE)
+    cargo = render_cargo(project, name, workload)
     (project / "Cargo.toml").write_text(cargo, encoding="utf-8", newline="\n")
     (project / "src" / "main.rs").write_text(
-        render_host_main(WORKLOAD_TEMPLATE), encoding="utf-8")
+        render_host_main(workload), encoding="utf-8")
     (project / "README.txt").write_text(
         f"NobroRTOS project '{name}'\n\n"
         f"Explain the derived contract:\n"
@@ -392,6 +427,12 @@ def build_project(project: pathlib.Path) -> dict:
 
 
 def startup_order(workload: dict) -> list[str]:
+    schema = workload.get("schema", "nobro-workload-v1")
+    if schema != "nobro-workload-v1":
+        raise WorkloadDiagnostic(
+            "workload-schema",
+            f"`{schema}` is unsupported; use `nobro-workload-v1`.",
+        )
     selected_features(workload)
     tasks = workload.get("tasks")
     if not isinstance(tasks, list) or not tasks:
@@ -581,7 +622,7 @@ def explain(workload: dict) -> tuple[str, bool]:
                 f"latency={latency['class']}; evidence={entry['evidence']['level']}."
             )
         lines.append(
-            f"Feature reserve total: <= {feature_totals['flash']} B flash, "
+            f"Additive feature reserve total: <= {feature_totals['flash']} B flash, "
             f"<= {feature_totals['static_ram']} B static RAM, "
             f"<= {feature_totals['total_ram']} B total RAM."
         )
@@ -663,7 +704,7 @@ def selftest() -> int:
         # One feature object drives validation, pricing, Cargo features, and source.
         workload["features"] = {"capacity-report": True}
         text, ok = explain(workload)
-        assert ok and "Feature reserve total: <= 2048 B flash" in text, text
+        assert ok and "Additive feature reserve total: <= 384 B flash" in text, text
         (out / "blinky" / "workload.json").write_text(
             json.dumps(workload, indent=2) + "\n", encoding="utf-8")
         feature_build = build_project(out / "blinky")
@@ -708,6 +749,14 @@ def selftest() -> int:
         except WorkloadDiagnostic as error:
             assert error.code == "NOBRO-E044", error
 
+        invalid_schema = json.loads(json.dumps(WORKLOAD_TEMPLATE))
+        invalid_schema["schema"] = "nobro-workload-v999"
+        try:
+            startup_order(invalid_schema)
+            raise AssertionError("an unsupported workload schema must be rejected")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E049", error
+
         base_entry = copy.deepcopy(
             feature_catalog()["targets"]["nrf52840-nosd"]["capacity-report"]
         )
@@ -731,12 +780,14 @@ def selftest() -> int:
             assert error.code == "NOBRO-E048", error
         synthetic["targets"]["nrf52840-nosd"]["first"]["conflicts"] = []
         _, aggregate = priced_workload(pair, synthetic)
-        assert aggregate == {"flash": 4096, "static_ram": 256, "total_ram": 512}
+        assert aggregate == {"flash": 768, "static_ram": 32, "total_ram": 64}
 
         overflow = json.loads(json.dumps(WORKLOAD_TEMPLATE))
         overflow["features"] = {"capacity-report": True}
         overflow["profile"]["flash"] = sum(
-            int(task["flash"]) for task in overflow["tasks"]
+            int(task["flash"])
+            for task in overflow["tasks"]
+            if task["criticality"] != "driver"
         )
         _, ok = explain(overflow)
         assert not ok, "feature reserve must participate in admission overflow"

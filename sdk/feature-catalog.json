@@ -9,15 +9,21 @@
         "kernel_features": ["capacity-report"],
         "conflicts": [],
         "price": {
-          "flash_delta_bytes_max": 2048,
-          "static_ram_delta_bytes_max": 128,
-          "total_ram_delta_bytes_max": 256,
+          "flash_delta_bytes_max": 384,
+          "static_ram_delta_bytes_max": 16,
+          "total_ram_delta_bytes_max": 32,
           "latency": {"class": "diagnostic-path-only", "bound_us": null}
         },
         "evidence": {
-          "level": "cross-target-build-ceiling",
-          "composition": "generated AppGraph host plus thumbv7em-none-eabihf kernel feature build",
-          "limitations": "Admission ceilings for this composition, not universal measured deltas or physical timing."
+          "level": "linked-embedded-ab",
+          "composition": "nobro-workload-v1 nano_min, nrf52840-nosd, thumbv7em-none-eabihf, release opt-level=z, LTO=fat",
+          "toolchain": "rustc 1.97.0 (2d8144b78), LLVM 22.1.6",
+          "measured": {
+            "off": {"flash_bytes": 2584, "static_ram_bytes": 16, "total_ram_bytes": 24},
+            "on": {"flash_bytes": 2880, "static_ram_bytes": 20, "total_ram_bytes": 28},
+            "delta": {"flash_bytes": 296, "static_ram_bytes": 4, "total_ram_bytes": 4}
+          },
+          "limitations": "Linked static evidence for this exact composition; no physical timing or electrical-power measurement."
         }
       },
       "preemptive": {
@@ -32,22 +38,13 @@
     },
     "nrf52840-s140": {
       "capacity-report": {
-        "status": "selectable",
+        "status": "unavailable",
         "value_type": "boolean",
         "default": false,
         "kernel_features": ["capacity-report"],
         "conflicts": [],
-        "price": {
-          "flash_delta_bytes_max": 2048,
-          "static_ram_delta_bytes_max": 128,
-          "total_ram_delta_bytes_max": 256,
-          "latency": {"class": "diagnostic-path-only", "bound_us": null}
-        },
-        "evidence": {
-          "level": "cross-target-build-ceiling",
-          "composition": "generated AppGraph host plus thumbv7em-none-eabihf kernel feature build",
-          "limitations": "Admission ceilings for this composition, not universal measured deltas or physical timing."
-        }
+        "price": null,
+        "reason": "No linked S140 feature-on/off delta has been recorded for this composition."
       },
       "preemptive": {
         "status": "unavailable",

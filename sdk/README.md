@@ -6,6 +6,7 @@ metadata. The implementation lives in `core/`.
 ```text
 sdk/
 |-- cli/nobro.py       project, app, flash, budget, sign, package, and contract commands
+|-- feature-catalog.json  target-scoped optional-feature prices and evidence
 |-- include/           drift-gated copies of the canonical C headers
 |-- firmware/          prepared firmware images and their app metadata
 |-- python/            installation pointer for the Python host package

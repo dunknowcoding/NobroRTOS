@@ -8,6 +8,8 @@ subsystem reported as absent.
 """
 import pathlib
 import re
+import copy
+import json
 import os
 import subprocess
 import sys
@@ -109,12 +111,18 @@ def command(args: list[str | pathlib.Path]) -> str:
                                    encoding="utf-8", errors="replace")
 
 
-def build_case(root: pathlib.Path, source_text: str, ceiling: int,
+def build_case(root: pathlib.Path, source_text: str | dict, ceiling: int,
                ram_ceiling: int, stack_ceiling: int, total_ram_ceiling: int,
-               table_ceiling: int | None = None) -> dict:
-    source = root / "app.nobro"
+               table_ceiling: int | None = None,
+               allowed_forbidden: frozenset[str] = frozenset(),
+               required_symbols: tuple[str, ...] = ()) -> dict:
+    source = root / ("workload.json" if isinstance(source_text, dict) else "app.nobro")
     source.parent.mkdir(parents=True, exist_ok=True)
-    source.write_text(source_text, encoding="utf-8")
+    source.write_text(
+        json.dumps(source_text, indent=2) + "\n"
+        if isinstance(source_text, dict) else source_text,
+        encoding="utf-8",
+    )
     generated = firmware.generate(source, root / "projects")
     built = firmware.build(pathlib.Path(generated["project"]))
     if built.returncode:
@@ -169,12 +177,16 @@ def build_case(root: pathlib.Path, source_text: str, ceiling: int,
     if table_ceiling is not None and table > table_ceiling:
         raise AssertionError(f"{app}: admitted table {table} exceeds {table_ceiling}")
     violations = [f"{feature}:{token}" for feature, tokens in FORBIDDEN.items()
+                  if feature not in allowed_forbidden
                   for token in tokens if token in symbols]
     if violations:
         raise AssertionError(f"{app}: forbidden linked symbols: {', '.join(violations)}")
+    missing = [symbol for symbol in required_symbols if symbol not in symbols]
+    if missing:
+        raise AssertionError(f"{app}: required linked symbols missing: {', '.join(missing)}")
     return {"app": app, "flash": flash, "static_ram": static_ram,
             "stack": stack_worst, "total_ram": total_ram,
-            "table": table}
+            "table": table, "symbols": symbols}
 
 
 def main() -> int:
@@ -187,6 +199,68 @@ def main() -> int:
                 root / "scale10", SCALE_10, 3_300, 96, 128, 224, table_ceiling=360)
             scale_16 = build_case(
                 root / "scale16", SCALE_16, 3_600, 96, 128, 224, table_ceiling=560)
+
+            feature_off_workload = firmware.parse(SIMPLE)["workload"]
+            feature_off_workload["app"] = "feature_off"
+            feature_on_workload = copy.deepcopy(feature_off_workload)
+            feature_on_workload["app"] = "feature_on"
+            feature_on_workload["features"] = {"capacity-report": True}
+            feature_off = build_case(
+                root / "feature-off", feature_off_workload, 3_000, 64, 128, 192
+            )
+            feature_on = build_case(
+                root / "feature-on",
+                feature_on_workload,
+                5_000,
+                256,
+                256,
+                512,
+                allowed_forbidden=frozenset({"report"}),
+                required_symbols=("NOBRO_FEATURE_CAPACITY_REPORT",),
+            )
+            if "NOBRO_FEATURE_CAPACITY_REPORT" in feature_off["symbols"]:
+                raise AssertionError("feature-off image retained the capacity marker")
+            deltas = {
+                "flash_delta_bytes_max": feature_on["flash"] - feature_off["flash"],
+                "static_ram_delta_bytes_max": (
+                    feature_on["static_ram"] - feature_off["static_ram"]
+                ),
+                "total_ram_delta_bytes_max": (
+                    feature_on["total_ram"] - feature_off["total_ram"]
+                ),
+            }
+            if deltas["flash_delta_bytes_max"] <= 0:
+                raise AssertionError("capacity-report did not change linked flash")
+            catalog = firmware.project_model.feature_catalog()
+            entry = catalog["targets"]["nrf52840-nosd"]["capacity-report"]
+            price = entry["price"]
+            for field, delta in deltas.items():
+                if delta < 0 or delta > int(price[field]):
+                    raise AssertionError(
+                        f"capacity-report {field} delta {delta} exceeds catalog {price[field]}"
+                    )
+            measured = entry["evidence"]["measured"]
+            actual = {
+                "off": {
+                    "flash_bytes": feature_off["flash"],
+                    "static_ram_bytes": feature_off["static_ram"],
+                    "total_ram_bytes": feature_off["total_ram"],
+                },
+                "on": {
+                    "flash_bytes": feature_on["flash"],
+                    "static_ram_bytes": feature_on["static_ram"],
+                    "total_ram_bytes": feature_on["total_ram"],
+                },
+                "delta": {
+                    "flash_bytes": deltas["flash_delta_bytes_max"],
+                    "static_ram_bytes": deltas["static_ram_delta_bytes_max"],
+                    "total_ram_bytes": deltas["total_ram_delta_bytes_max"],
+                },
+            }
+            if measured != actual:
+                raise AssertionError(
+                    f"capacity-report linked evidence drift: catalog={measured} actual={actual}"
+                )
 
             reject_source = root / "reject" / "app.nobro"
             reject_source.parent.mkdir(parents=True)
@@ -208,7 +282,10 @@ def main() -> int:
           f"stack={scale_10['stack']} table={scale_10['table']}; "
           f"scale16 flash={scale_16['flash']} ram={scale_16['static_ram']} "
           f"stack={scale_16['stack']} table={scale_16['table']}; "
-          "build rejection attributed; feature symbols absent)")
+          f"capacity-report off/on flash={feature_off['flash']}/{feature_on['flash']} "
+          f"static={feature_off['static_ram']}/{feature_on['static_ram']} "
+          f"total={feature_off['total_ram']}/{feature_on['total_ram']}; "
+          "feature marker off/on verified; build rejection attributed)")
     return 0
 
 
