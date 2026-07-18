@@ -218,6 +218,16 @@ impl<const TASKS: usize, const WIRES: usize> CApp<TASKS, WIRES> {
         if capacity == 0 || capacity > 64 || self.wire_len == WIRES {
             return Err(CAppError::WireCapacity);
         }
+        if from == to {
+            return Err(CAppError::WireCapacity);
+        }
+        if self.wires[..self.wire_len]
+            .iter()
+            .flatten()
+            .any(|wire| wire.from == from && wire.to == to)
+        {
+            return Err(CAppError::WireCapacity);
+        }
         for endpoint in [from, to] {
             if !self.tasks[..self.task_len]
                 .iter()
@@ -226,13 +236,6 @@ impl<const TASKS: usize, const WIRES: usize> CApp<TASKS, WIRES> {
             {
                 return Err(CAppError::UnknownEndpoint);
             }
-        }
-        if self.wires[..self.wire_len]
-            .iter()
-            .flatten()
-            .any(|wire| wire.from == from && wire.to == to)
-        {
-            return Err(CAppError::WireCapacity);
         }
         self.wires[self.wire_len] = Some(CWire { from, to, capacity });
         self.wire_len += 1;

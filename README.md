@@ -87,7 +87,7 @@ both the admission workload and a `no_std` firmware graph:
 app rover
 board nrf52840-s140
 control motor every 5ms
-sensor imu every 10ms -> motor
+periodic imu every 10ms -> motor
 service camera every 40ms
 ```
 
@@ -104,7 +104,7 @@ from nobro_rtos import HZ, NobroApp
 
 app = (NobroApp("rover", board="nrf52840-nosd")
        .task("motor", HZ(200), role="control")
-       .task("imu", HZ(100), role="sensor")
+       .task("imu", HZ(100))
        .wire("imu", "motor", 8))
 app.run(50_000)
 app.write_json("app.json")
@@ -117,6 +117,9 @@ python sdk/cli/nobro.py firmware app.json --build
 Python callbacks run only in the host simulator. The generated device image is
 native Rust; NobroRTOS does not claim on-device Python. A wire in this authoring
 slice carries graph/capacity metadata, not Python objects or payload bytes.
+The shared role/default/name/capacity contract is published at
+`sdk/app-authoring-contract.json`; `sensor`, `channel`, and `connect` remain
+compatibility aliases, while new code uses `periodic`, `task`, and `wire`.
 
 Generated project workloads also have one optional-feature switchboard:
 `"features": {"capacity-report": true}`. `project explain` obtains its

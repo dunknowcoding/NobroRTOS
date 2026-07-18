@@ -12,7 +12,8 @@ from pathlib import Path
 import re
 from typing import Callable, Mapping
 
-APP_SCHEMA = "nobro-python-app-v1"
+APP_SCHEMA = "nobro-app-v1"
+APP_SCHEMA_ALIASES = {"nobro-python-app-v1"}
 MAX_TASKS = 8
 MAX_WIRES = 8
 MAX_SIMULATION_EVENTS = 100_000
@@ -24,10 +25,11 @@ _BOARDS = {
     "nrf52840-nosd": ("nosd", 128 * 1024, 32 * 1024),
 }
 _ROLES = {
-    "control": ("hard_realtime", 2048, 512, 5),
-    "sensor": ("driver", 1024, 256, 10),
-    "service": ("best_effort", 1024, 256, 20),
+    "periodic": ("driver", 1024, 256, 10),
+    "control": ("hard_realtime", 1024, 256, 10),
+    "service": ("best_effort", 1024, 256, 10),
 }
+_ROLE_ALIASES = {"sensor": "periodic"}
 _ROOT_KEYS = {"schema", "app", "board", "tasks", "wires"}
 _TASK_KEYS = {
     "name",
@@ -163,7 +165,7 @@ class NobroApp:
 
     def __init__(self, name: str, *, board: str = "nrf52840-nosd") -> None:
         _check_name(name, "app")
-        if board not in _BOARDS:
+        if not isinstance(board, str) or board not in _BOARDS:
             raise AppDeclarationError(
                 f"unsupported board {board!r}; choose {', '.join(_BOARDS)}"
             )
@@ -187,7 +189,7 @@ class NobroApp:
         period_us: int,
         step: TaskStep | None = None,
         *,
-        role: str = "sensor",
+        role: str = "periodic",
         phase_us: int = 0,
         deadline_us: int | None = None,
         budget_us: int | None = None,
@@ -199,15 +201,18 @@ class NobroApp:
 
         self._require_mutable()
         _check_name(name, "task")
-        if len(self._tasks) >= MAX_TASKS:
-            raise AppDeclarationError(f"task capacity exceeds {MAX_TASKS}")
+        period = _positive_interval(period_us, "period_us")
         if any(task.name == name for task in self._tasks):
             raise AppDeclarationError(f"duplicate task: {name}")
+        if len(self._tasks) >= MAX_TASKS:
+            raise AppDeclarationError(f"task capacity exceeds {MAX_TASKS}")
+        if not isinstance(role, str):
+            raise AppDeclarationError("role must be a string")
+        role = _ROLE_ALIASES.get(role, role)
         if role not in _ROLES:
             raise AppDeclarationError(
                 f"unsupported role {role!r}; choose {', '.join(_ROLES)}"
             )
-        period = _positive_interval(period_us, "period_us")
         phase = _integer(phase_us, "phase_us", minimum=0)
         if phase >= period:
             raise AppDeclarationError("phase_us must be below period_us")
@@ -260,13 +265,20 @@ class NobroApp:
         _check_name(source, "wire source")
         _check_name(destination, "wire destination")
         if len(self._wires) >= MAX_WIRES:
-            raise AppDeclarationError(f"wire capacity exceeds {MAX_WIRES}")
-        depth = _integer(capacity, "capacity", minimum=1, maximum=0xFFFF)
+            raise AppDeclarationError(f"wire count exceeds {MAX_WIRES}")
+        depth = _integer(capacity, "capacity", minimum=1, maximum=64)
         edge = (source, destination)
         if source == destination:
             raise AppDeclarationError("a task cannot wire to itself")
         if any((wire.source, wire.destination) == edge for wire in self._wires):
             raise AppDeclarationError(f"duplicate wire: {source}->{destination}")
+        names = {task.name for task in self._tasks}
+        if source not in names:
+            raise AppDeclarationError(f"wire source references unknown task: {source}")
+        if destination not in names:
+            raise AppDeclarationError(
+                f"wire destination references unknown task: {destination}"
+            )
         self._wires.append(WireDeclaration(source, destination, depth))
         return self
 
@@ -320,9 +332,12 @@ class NobroApp:
         """Validate and reconstruct one versioned Python app document."""
 
         root = _exact_object(value, _ROOT_KEYS, "app")
-        if root["schema"] != APP_SCHEMA:
+        schema = root["schema"]
+        if not isinstance(schema, str) or (
+            schema != APP_SCHEMA and schema not in APP_SCHEMA_ALIASES
+        ):
             raise AppDeclarationError(
-                f"unsupported app schema {root['schema']!r}; expected {APP_SCHEMA!r}"
+                f"unsupported app schema {schema!r}; expected {APP_SCHEMA!r}"
             )
         if not isinstance(root["tasks"], list) or not isinstance(root["wires"], list):
             raise AppDeclarationError("tasks and wires must be arrays")
@@ -352,7 +367,7 @@ class NobroApp:
             app.wire(
                 _text(wire["from"], "wire.from"),
                 _text(wire["to"], "wire.to"),
-                _integer(wire["capacity"], "wire.capacity", minimum=1, maximum=0xFFFF),
+                _integer(wire["capacity"], "wire.capacity", minimum=1, maximum=64),
             )
         app.validate()
         return app
@@ -507,7 +522,11 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise AppDeclarationError(f"{label} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
-        suffix = f"..{maximum}" if maximum is not None else f"at least {minimum}"
+        suffix = (
+            f"between {minimum} and {maximum}"
+            if maximum is not None
+            else f"at least {minimum}"
+        )
         raise AppDeclarationError(f"{label} must be {suffix}")
     return value
 

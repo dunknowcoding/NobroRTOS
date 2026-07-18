@@ -5,7 +5,7 @@ This folder contains the Arduino IDE library distribution surface.
 Current contents:
 
 - `library.properties` for Arduino Library Manager compatible metadata.
-- `src/NobroRTOS.h` with an allocation-free `NobroApp` task/channel facade and the
+- `src/NobroRTOS.h` with an allocation-free `NobroApp` task/wire facade and the
   canonical report ABI.
 - `src/NobroArduinoProviders.h` with bounded clock/deadline/ADC/generic-duty-PWM,
   optional I2C/SPI, and byte-I/O wrappers that delegate hardware ownership to the
@@ -48,9 +48,9 @@ Repository-local use:
 #include <NobroRTOS.h>
 
 nobro::NobroApp<3, 1> app;
-auto motor = app.control("motor", 5);
-auto imu = app.sensor("imu", 10);
-app.connect(imu, motor);
+auto motor = app.task("motor", nobro::hz(200), nobro::CONTROL);
+auto imu = app.task("imu", nobro::hz(100));
+app.wire(imu, motor, 8);
 if (!app.admit()) Serial.println(app.errorText());
 ```
 

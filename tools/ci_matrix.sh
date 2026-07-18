@@ -74,6 +74,11 @@ gate "Python-authored native firmware target build" \
       --flash-budget 4000 --static-ram-budget 64 --ram-budget 512 \
       --stack-budget 400 --cycle-budget 1200'
 
+gate "task/wire authoring parity + block-authored target build" \
+  bash -c 'python tools/check_app_authoring.py && \
+    python tools/nobro_firmware_project.py tutorials/hello-device/app.json \
+      --out _work/block-firmware --build'
+
 gate "static budget analyzer" python tools/static_budget.py --selftest
 
 gate "flash tool fail-closed parser" python tools/flash.py --selftest

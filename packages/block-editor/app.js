@@ -1,54 +1,16 @@
 "use strict";
 
-const catalog = {
-  boards: {
-    nrf52840: { pwm: 4 },
-    rp2350: { pwm: 8 },
-    esp32c3: { pwm: 4 },
-  },
-};
-
-// Checked-in model cards offered as inference blocks. models.json is authoritative when
-// served over HTTP; this seed preserves the motion-NN block when opened from file:// or
-// when the catalog cannot be fetched. Each contract mirrors AiModelContract.to_dict() so
-// an ML block emits app.json that the host contract tooling accepts unchanged.
-const mlModels = {
-  nn_motion: {
-    label: "Motion NN (idle/active)",
-    contract: {
-      model_id: 0x4e4e4d31,
-      backend: "on_device",
-      input_bytes_max: 64,
-      output_bytes_max: 4,
-      arena_bytes: 256,
-      timeout_us: 2000,
-      stale_after_us: 100000,
-    },
-  },
-};
-
-async function loadModels() {
-  try {
-    const res = await fetch("models.json", { cache: "no-store" });
-    if (!res.ok) return;
-    const cards = await res.json();
-    for (const [preset, card] of Object.entries(cards)) {
-      if (card && card.contract) {
-        mlModels[preset] = { label: card.label || preset, contract: card.contract };
-      }
-    }
-    render();
-  } catch (err) {
-    // Opened from file:// or served without models.json: keep the built-in seed.
-  }
-}
+const MAX_TASKS = 8;
+const MAX_WIRES = 8;
+const NAME = /^[a-z][a-z0-9_-]{0,47}$/;
+const ROLES = new Set(["periodic", "control", "service"]);
 
 const state = {
-  blocks: [
-    { kind: "actuator", name: "arm", brand: "sg90", channel: 0 },
-    { kind: "sensor", name: "imu", brand: "mpu6050", bus: "i2c", address: "0x68" },
-    { kind: "behavior", text: "sweep actuator when imu detects a tap" },
+  tasks: [
+    { name: "imu", role: "periodic", period_us: 10000 },
+    { name: "control", role: "control", period_us: 20000 },
   ],
+  wires: [{ from: "imu", to: "control", capacity: 8 }],
 };
 
 const els = {
@@ -62,191 +24,170 @@ const els = {
 };
 
 function slug(value, fallback) {
-  const out = value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  const out = value.toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return out || fallback;
 }
 
 function nextName(prefix) {
-  let i = 1;
-  const used = new Set(state.blocks.map((b) => b.name).filter(Boolean));
-  while (used.has(`${prefix}${i}`)) i += 1;
-  return `${prefix}${i}`;
+  let index = 1;
+  const used = new Set(state.tasks.map((task) => task.name));
+  while (used.has(`${prefix}${index}`)) index += 1;
+  return `${prefix}${index}`;
 }
 
-function addBlock(data) {
-  if (data.kind === "actuator") {
-    state.blocks.push({
-      kind: "actuator",
-      name: nextName("actuator"),
-      brand: data.brand,
-      channel: nextChannel(),
-    });
-  } else if (data.kind === "sensor") {
-    state.blocks.push({
-      kind: "sensor",
-      name: nextName("sensor"),
-      brand: data.brand,
-      bus: "i2c",
-      address: data.brand === "ina3221" ? "0x40" : "0x68",
-    });
-  } else if (data.kind === "ml") {
-    const preset = data.model && mlModels[data.model] ? data.model : "nn_motion";
-    state.blocks.push({
-      kind: "ml",
-      name: nextName("model"),
-      model: preset,
-      ...mlModels[preset].contract,
-    });
-  } else {
-    state.blocks.push({ kind: "behavior", text: data.text });
-  }
+function defaults(task) {
+  const period = Number(task.period_us);
+  return {
+    name: task.name,
+    role: task.role,
+    period_us: period,
+    phase_us: 0,
+    deadline_us: period,
+    budget_us: Math.max(1, Math.floor(period / 10)),
+    blocking_us: 0,
+    flash_bytes: 1024,
+    ram_bytes: 256,
+  };
+}
+
+function addTask(role) {
+  if (state.tasks.length >= MAX_TASKS) return;
+  state.tasks.push({
+    name: nextName(role === "periodic" ? "task" : role),
+    role,
+    period_us: role === "service" ? 100000 : 20000,
+  });
   render();
 }
 
-function nextChannel() {
-  const board = catalog.boards[els.boardSelect.value];
-  const used = new Set(state.blocks.filter((b) => b.kind === "actuator").map((b) => b.channel));
-  for (let i = 0; i < board.pwm; i += 1) {
-    if (!used.has(i)) return i;
-  }
-  return 0;
+function addWire() {
+  if (state.wires.length >= MAX_WIRES || state.tasks.length < 2) return;
+  const from = window.prompt("Wire from task", state.tasks[0].name);
+  if (!from) return;
+  const to = window.prompt("Wire to task", state.tasks[1].name);
+  if (!to) return;
+  state.wires.push({ from: slug(from, from), to: slug(to, to), capacity: 1 });
+  render();
 }
 
-function move(index, delta) {
+function move(kind, index, delta) {
+  const values = kind === "task" ? state.tasks : state.wires;
   const next = index + delta;
-  if (next < 0 || next >= state.blocks.length) return;
-  const [block] = state.blocks.splice(index, 1);
-  state.blocks.splice(next, 0, block);
+  if (next < 0 || next >= values.length) return;
+  const [item] = values.splice(index, 1);
+  values.splice(next, 0, item);
   render();
 }
 
-function remove(index) {
-  state.blocks.splice(index, 1);
+function remove(kind, index) {
+  const values = kind === "task" ? state.tasks : state.wires;
+  values.splice(index, 1);
   render();
 }
 
-function updateBlock(index, patch) {
-  state.blocks[index] = { ...state.blocks[index], ...patch };
+function editTask(index) {
+  const task = state.tasks[index];
+  const name = window.prompt("Task name", task.name);
+  if (!name) return;
+  const period = Number(window.prompt("Period (microseconds)", String(task.period_us)));
+  const role = window.prompt("Role: periodic, control, or service", task.role);
+  state.tasks[index] = {
+    name: slug(name, task.name),
+    role: ROLES.has(role) ? role : task.role,
+    period_us: Number.isInteger(period) && period > 0 ? period : task.period_us,
+  };
   render();
 }
 
-function blockTitle(block) {
-  if (block.kind === "actuator") return `${block.brand} actuator`;
-  if (block.kind === "sensor") return `${block.brand} sensor`;
-  if (block.kind === "ml") return `${(mlModels[block.model] || {}).label || block.model} model`;
-  return "behavior";
+function editWire(index) {
+  const wire = state.wires[index];
+  const from = window.prompt("Wire from task", wire.from);
+  if (!from) return;
+  const to = window.prompt("Wire to task", wire.to);
+  if (!to) return;
+  const capacity = Number(window.prompt("Capacity (1..64)", String(wire.capacity)));
+  state.wires[index] = {
+    from: slug(from, wire.from),
+    to: slug(to, wire.to),
+    capacity: Number.isInteger(capacity) ? capacity : wire.capacity,
+  };
+  render();
 }
 
-function blockDetail(block) {
-  if (block.kind === "actuator") return `${block.name} on PWM ${block.channel}`;
-  if (block.kind === "sensor") return `${block.name} on ${block.bus}${block.address ? ` @ ${block.address}` : ""}`;
-  if (block.kind === "ml") {
-    return `${block.name}: ${block.backend} ${block.input_bytes_max}\u2192${block.output_bytes_max}B, ${block.timeout_us}us`;
+function row(kind, item, index) {
+  const li = document.createElement("li");
+  li.className = "block";
+  const content = document.createElement("div");
+  if (kind === "task") {
+    content.innerHTML = `<strong>task ${item.name}</strong><small>${item.role}, every ${item.period_us} us</small>`;
+    content.addEventListener("click", () => editTask(index));
+  } else {
+    content.innerHTML = `<strong>wire ${item.from} \u2192 ${item.to}</strong><small>capacity ${item.capacity}</small>`;
+    content.addEventListener("click", () => editWire(index));
   }
-  return block.text;
+  const up = document.createElement("button");
+  up.type = "button";
+  up.textContent = "\u2191";
+  up.setAttribute("aria-label", `Move ${kind} up`);
+  up.addEventListener("click", () => move(kind, index, -1));
+  const del = document.createElement("button");
+  del.type = "button";
+  del.textContent = "\u00d7";
+  del.setAttribute("aria-label", `Remove ${kind}`);
+  del.addEventListener("click", () => remove(kind, index));
+  li.append(content, up, del);
+  return li;
 }
 
 function renderBlocks() {
   els.blockList.innerHTML = "";
-  state.blocks.forEach((block, index) => {
-    const li = document.createElement("li");
-    li.className = "block";
-    const content = document.createElement("div");
-    content.innerHTML = `<strong>${blockTitle(block)}</strong><small>${blockDetail(block)}</small>`;
-    content.addEventListener("click", () => editBlock(index));
-    const up = document.createElement("button");
-    up.type = "button";
-    up.textContent = "\u2191";
-    up.setAttribute("aria-label", "Move block up");
-    up.addEventListener("click", () => move(index, -1));
-    const del = document.createElement("button");
-    del.type = "button";
-    del.textContent = "\u00d7";
-    del.setAttribute("aria-label", "Remove block");
-    del.addEventListener("click", () => remove(index));
-    li.append(content, up, del);
-    els.blockList.appendChild(li);
-  });
-}
-
-function editBlock(index) {
-  const block = state.blocks[index];
-  if (block.kind === "behavior") {
-    const text = window.prompt("Behavior", block.text);
-    if (text) updateBlock(index, { text });
-    return;
-  }
-  const name = window.prompt("Name", block.name);
-  if (!name) return;
-  if (block.kind === "ml") {
-    const stale = Number(window.prompt("Stale-after (us)", String(block.stale_after_us)));
-    updateBlock(index, {
-      name: slug(name, block.name),
-      stale_after_us: Number.isFinite(stale) && stale > 0 ? stale : block.stale_after_us,
-    });
-    return;
-  }
-  if (block.kind === "actuator") {
-    const channel = Number(window.prompt("PWM channel", String(block.channel)));
-    updateBlock(index, { name: slug(name, block.name), channel: Number.isFinite(channel) ? channel : block.channel });
-  } else {
-    const address = window.prompt("I2C address", block.address || "");
-    updateBlock(index, { name: slug(name, block.name), address: address || block.address });
-  }
+  state.tasks.forEach((task, index) => els.blockList.appendChild(row("task", task, index)));
+  state.wires.forEach((wire, index) => els.blockList.appendChild(row("wire", wire, index)));
 }
 
 function appJson() {
-  const actuators = state.blocks
-    .filter((b) => b.kind === "actuator")
-    .map((b) => ({ name: b.name, brand: b.brand, channel: Number(b.channel) }));
-  const sensors = state.blocks
-    .filter((b) => b.kind === "sensor")
-    .map((b) => ({ name: b.name, brand: b.brand, bus: b.bus || "i2c", address: b.address || "0x68" }));
-  const behaviors = state.blocks.filter((b) => b.kind === "behavior").map((b) => b.text);
-  // ai_models[] matches AiModelContract.to_dict(): the same shape the host contract bundle
-  // and the AI_MODEL boot report consume. Only emitted when an ML block is present.
-  const aiModels = state.blocks
-    .filter((b) => b.kind === "ml")
-    .map((b) => ({
-      model_id: b.model_id,
-      backend: b.backend,
-      input_bytes_max: b.input_bytes_max,
-      output_bytes_max: b.output_bytes_max,
-      arena_bytes: b.arena_bytes,
-      timeout_us: b.timeout_us,
-      stale_after_us: b.stale_after_us,
-    }));
-  const app = {
-    name: slug(els.projectName.value, "nobro_app"),
+  return {
+    schema: "nobro-app-v1",
+    app: slug(els.projectName.value, "nobro_app"),
     board: els.boardSelect.value,
-    actuators,
-    sensors,
-    behaviors,
+    tasks: state.tasks.map(defaults),
+    wires: state.wires.map((wire) => ({
+      from: wire.from,
+      to: wire.to,
+      capacity: Number(wire.capacity),
+    })),
   };
-  if (aiModels.length) app.ai_models = aiModels;
-  return app;
 }
-
-const ML_BACKENDS = new Set(["on_device", "remote_api", "edge_sidecar", "hybrid"]);
 
 function validate(app) {
   const errors = [];
-  const board = catalog.boards[app.board];
   const names = new Set();
-  for (const item of [...app.actuators, ...app.sensors]) {
-    if (names.has(item.name)) errors.push(`duplicate name: ${item.name}`);
-    names.add(item.name);
-  }
-  for (const actuator of app.actuators) {
-    if (actuator.channel < 0 || actuator.channel >= board.pwm) {
-      errors.push(`${actuator.name}: PWM ${actuator.channel} outside 0..${board.pwm - 1}`);
+  if (app.tasks.length === 0) errors.push("at least one task is required");
+  if (app.tasks.length > MAX_TASKS) errors.push(`task capacity exceeds ${MAX_TASKS}`);
+  for (const task of app.tasks) {
+    if (!NAME.test(task.name)) errors.push(`invalid task name: ${task.name}`);
+    else if (names.has(task.name)) errors.push(`duplicate task: ${task.name}`);
+    names.add(task.name);
+    if (!ROLES.has(task.role)) errors.push(`unsupported role: ${task.role}`);
+    if (!Number.isInteger(task.period_us) || task.period_us <= 0) {
+      errors.push(`${task.name}: period_us must be positive`);
     }
   }
-  for (const model of app.ai_models || []) {
-    if (!ML_BACKENDS.has(model.backend)) errors.push(`model ${model.model_id}: bad backend`);
-    for (const key of ["model_id", "input_bytes_max", "output_bytes_max", "timeout_us", "stale_after_us"]) {
-      if (!(model[key] > 0)) errors.push(`model ${model.model_id}: ${key} must be > 0`);
+  if (app.wires.length > MAX_WIRES) errors.push(`wire count exceeds ${MAX_WIRES}`);
+  const edges = new Set();
+  for (const wire of app.wires) {
+    if (!Number.isInteger(wire.capacity) || wire.capacity < 1 || wire.capacity > 64) {
+      errors.push(`${wire.from}->${wire.to}: capacity must be 1..64`);
+    } else if (wire.from === wire.to) {
+      errors.push("a task cannot wire to itself");
+    } else if (edges.has(`${wire.from}\u0000${wire.to}`)) {
+      errors.push(`duplicate wire: ${wire.from}->${wire.to}`);
+    } else if (!names.has(wire.from)) {
+      errors.push(`wire source references unknown task: ${wire.from}`);
+    } else if (!names.has(wire.to)) {
+      errors.push(`wire destination references unknown task: ${wire.to}`);
     }
+    edges.add(`${wire.from}\u0000${wire.to}`);
   }
   return errors;
 }
@@ -255,7 +196,7 @@ function renderJson() {
   const app = appJson();
   const errors = validate(app);
   els.jsonOut.textContent = JSON.stringify(app, null, 2);
-  els.status.textContent = errors.length ? errors.join(" | ") : "Valid app.json";
+  els.status.textContent = errors.length ? errors[0] : "Valid task/wire app.json";
   els.status.className = errors.length ? "status error" : "status";
 }
 
@@ -272,22 +213,22 @@ async function copyJson() {
 function downloadJson() {
   const blob = new Blob([els.jsonOut.textContent + "\n"], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "app.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "app.json";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-document.querySelectorAll(".palette button").forEach((button) => {
-  button.addEventListener("click", () => addBlock(button.dataset));
+document.querySelectorAll(".palette button[data-role]").forEach((button) => {
+  button.addEventListener("click", () => addTask(button.dataset.role));
 });
+document.getElementById("addWire").addEventListener("click", addWire);
 els.projectName.addEventListener("input", renderJson);
 els.boardSelect.addEventListener("change", renderJson);
 els.copyBtn.addEventListener("click", copyJson);
 els.downloadBtn.addEventListener("click", downloadJson);
 
 render();
-loadModels();

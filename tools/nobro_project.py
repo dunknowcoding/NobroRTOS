@@ -260,7 +260,7 @@ pub fn app() -> AppGraph<2> {
     AppGraph::<2>::new()
         .task(TaskDecl::control("control", 20_000)).unwrap()
         .task(TaskDecl::periodic("sensor", 100_000)).unwrap()
-        .channel("sensor", "control").unwrap()
+        .wire("sensor", "control").unwrap()
 }
 '''
 
@@ -298,7 +298,7 @@ def render_host_main(workload: dict) -> str:
             expression += f".after({json.dumps(dependency)})"
         chain += f"        .task({expression}).unwrap()\n"
     for channel in workload.get("channels", []):
-        chain += (f"        .channel({json.dumps(channel[0])}, "
+        chain += (f"        .wire({json.dumps(channel[0])}, "
                   f"{json.dumps(channel[1])}).unwrap()\n")
     chain += (f"        .build_for::<{len(tasks) + 1}>"
               "(SystemProfile::NRF52840_CORE).unwrap()")

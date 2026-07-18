@@ -14,27 +14,36 @@ SOURCE = r'''
 #include "NobroRTOS.h"
 int main() {
   nobro::NobroApp<3, 1> ok;
-  nobro::TaskId motor = ok.control("motor", 5);
-  nobro::TaskId imu = ok.sensor("imu", 10);
-  ok.connect(imu, motor).budget(motor, 800);
-  assert(ok.admit() && ok.taskCount() == 2 && ok.channelCount() == 1);
+  nobro::TaskId motor = ok.task("motor", nobro::hz(200), nobro::CONTROL);
+  nobro::TaskId imu = ok.task("imu", nobro::hz(100));
+  ok.wire(imu, motor, 8).budget(motor, 800);
+  assert(ok.admit() && ok.taskCount() == 2 && ok.wireCount() == 1);
 
   nobro::NobroApp<1, 1> capacity;
-  capacity.control("a", 1);
-  assert(!capacity.sensor("b", 1).valid());
+  capacity.task("a", 1000);
+  assert(!capacity.task("b", 1000).valid());
   assert(!capacity.admit() && capacity.error() == nobro::APP_TASK_CAPACITY);
 
+  nobro::NobroApp<2, 1> duplicate;
+  duplicate.task("same", 1000);
+  assert(!duplicate.task("same", 2000).valid());
+  assert(duplicate.error() == nobro::APP_DUPLICATE_TASK);
+
+  nobro::NobroApp<1, 1> invalid_name;
+  assert(!invalid_name.task("BadName", 1000).valid());
+  assert(invalid_name.error() == nobro::APP_INVALID_NAME);
+
   nobro::NobroApp<1, 1> deadline;
-  nobro::TaskId task = deadline.control("a", 1);
+  nobro::TaskId task = deadline.task("a", 1000, nobro::CONTROL);
   deadline.budget(task, 1001);
   assert(!deadline.admit() && deadline.error() == nobro::APP_BUDGET_EXCEEDS_PERIOD);
 
   nobro::NobroApp<1, 1> memory(13000, 3300);
-  memory.service("large", 10);
+  memory.task("large", 10000, nobro::SERVICE);
   assert(!memory.admit() && memory.error() == nobro::APP_RESOURCE_BUDGET);
 
   nobro::NobroApp<1, 1> zero_execution_budget;
-  nobro::TaskId zero_task = zero_execution_budget.service("zero", 10);
+  nobro::TaskId zero_task = zero_execution_budget.task("zero", 10000, nobro::SERVICE);
   zero_execution_budget.budget(zero_task, 0);
   assert(!zero_execution_budget.admit());
   assert(zero_execution_budget.error() == nobro::APP_INVALID_BUDGET);
@@ -46,13 +55,14 @@ int main() {
   assert(zero_board_budget.error() == nobro::APP_RESOURCE_BUDGET);
 
   nobro::NobroApp<1, 1> zero_task_memory;
-  nobro::TaskId zero_memory_task = zero_task_memory.service("zero-memory", 10);
+  nobro::TaskId zero_memory_task =
+      zero_task_memory.task("zero-memory", 10000, nobro::SERVICE);
   zero_task_memory.memory(zero_memory_task, 0, 1);
   assert(!zero_task_memory.admit());
   assert(zero_task_memory.error() == nobro::APP_RESOURCE_BUDGET);
 
   nobro::NobroApp<1, 1> overflow(0xFFFFFFFFul, 0xFFFFFFFFul);
-  nobro::TaskId overflow_task = overflow.service("overflow", 10);
+  nobro::TaskId overflow_task = overflow.task("overflow", 10000, nobro::SERVICE);
   const uint32_t flash_before = overflow.flashUsed();
   const uint32_t ram_before = overflow.ramUsed();
   overflow.memory(overflow_task, 0xFFFFFFFFul, 0xFFFFFFFFul);

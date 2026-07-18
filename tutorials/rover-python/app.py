@@ -13,7 +13,7 @@ def build_app() -> NobroApp:
     return (
         NobroApp("python_rover", board="nrf52840-nosd")
         .task("motor", HZ(200), role="control")
-        .task("imu", HZ(100), role="sensor")
+        .task("imu", HZ(100))
         .task("camera", HZ(25), role="service")
         .wire("imu", "motor", 8)
     )

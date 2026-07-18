@@ -1,22 +1,36 @@
 {
-  "name": "hello_device",
-  "board": "nrf52840",
-  "actuators": [
-    {
-      "name": "arm",
-      "brand": "sg90",
-      "channel": 0
-    }
-  ],
-  "sensors": [
+  "schema": "nobro-app-v1",
+  "app": "hello_device",
+  "board": "nrf52840-s140",
+  "tasks": [
     {
       "name": "imu",
-      "brand": "mpu6050",
-      "bus": "i2c",
-      "address": "0x68"
+      "role": "periodic",
+      "period_us": 10000,
+      "phase_us": 0,
+      "deadline_us": 10000,
+      "budget_us": 1000,
+      "blocking_us": 0,
+      "flash_bytes": 1024,
+      "ram_bytes": 256
+    },
+    {
+      "name": "control",
+      "role": "control",
+      "period_us": 20000,
+      "phase_us": 0,
+      "deadline_us": 20000,
+      "budget_us": 2000,
+      "blocking_us": 0,
+      "flash_bytes": 1024,
+      "ram_bytes": 256
     }
   ],
-  "behaviors": [
-    "sweep arm when the IMU event classifier reports a tap"
+  "wires": [
+    {
+      "from": "imu",
+      "to": "control",
+      "capacity": 8
+    }
   ]
 }

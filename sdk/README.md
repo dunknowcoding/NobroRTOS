@@ -1,5 +1,9 @@
 # NobroRTOS SDK
 
+The SDK publishes `app-authoring-contract.json` as the versioned task/wire
+vocabulary shared by Rust, C, C++11, Arduino, Python, JSON, and the block
+editor. It records defaults and limits; kernel admission remains authoritative.
+
 The SDK collects the user-facing command, C headers, prepared firmware, and package
 metadata. The implementation lives in `core/`.
 

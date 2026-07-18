@@ -1,0 +1,67 @@
+{
+  "schema": "nobro-app-authoring-contract-v1",
+  "document_schema": "nobro-app-v1",
+  "nouns": {
+    "task": "one named periodic unit of work",
+    "wire": "one bounded directed relationship between two declared tasks"
+  },
+  "limits": {
+    "tasks": 8,
+    "wires": 8,
+    "wire_capacity_min": 1,
+    "wire_capacity_max": 64,
+    "name_pattern": "^[a-z][a-z0-9_-]{0,47}$"
+  },
+  "defaults": {
+    "role": "periodic",
+    "wire_capacity": 1,
+    "phase_us": 0,
+    "blocking_us": 0,
+    "deadline": "period",
+    "budget": "max(1, period_us / 10)",
+    "flash_bytes": 1024,
+    "ram_bytes": 256
+  },
+  "roles": {
+    "periodic": {
+      "criticality": "driver",
+      "deadline_participates": true,
+      "jitter": "min(period_us - 1, max(1, period_us / 100))"
+    },
+    "control": {
+      "criticality": "hard_realtime",
+      "deadline_participates": true,
+      "jitter": "min(period_us - 1, max(1, period_us / 200))"
+    },
+    "service": {
+      "criticality": "best_effort",
+      "deadline_participates": false,
+      "jitter": "min(period_us - 1, max(1, period_us / 100))"
+    }
+  },
+  "compatibility_aliases": {
+    "nobro-python-app-v1": "nobro-app-v1",
+    "sensor": "periodic",
+    "channel": "wire",
+    "connect": "wire"
+  },
+  "first_error_order": {
+    "task": [
+      "state",
+      "name",
+      "period",
+      "duplicate",
+      "capacity",
+      "options"
+    ],
+    "wire": [
+      "state",
+      "name",
+      "capacity",
+      "self",
+      "duplicate",
+      "endpoint"
+    ]
+  },
+  "boundary": "The document declares scheduling and topology. Hardware providers and payload transport bind separately."
+}

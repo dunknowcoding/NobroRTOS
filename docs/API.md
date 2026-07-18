@@ -62,14 +62,14 @@ from nobro_rtos import HZ, NobroApp
 
 app = (NobroApp("rover", board="nrf52840-nosd")
        .task("motor", HZ(200), role="control")
-       .task("imu", HZ(100), role="sensor")
+       .task("imu", HZ(100))
        .wire("imu", "motor", 8))
 report = app.run(50_000)
 app.write_json("app.json")
 ```
 
 `run()` and `simulate()` execute deterministic, bounded host callbacks.
-`write_json()` emits the strict `nobro-python-app-v1` graph accepted by
+`write_json()` emits the strict `nobro-app-v1` graph accepted by
 `nobro firmware`; callbacks are omitted. The firmware CLI validates JSON and
 does not evaluate Python source. Generated firmware is native Rust using the
 existing admission path. Current firmware generation supports the nRF52840

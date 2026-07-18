@@ -105,7 +105,7 @@ pub use foreign_host::{
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
 pub use graph::{
-    AppGraph, BuiltGraph, ChannelDecl, GraphError, GraphReactorAdmission, GraphReactorError,
+    hz, AppGraph, BuiltGraph, ChannelDecl, GraphError, GraphReactorAdmission, GraphReactorError,
     GraphSpec, GraphStartError, ReactorTaskBinding, TaskDecl,
 };
 pub use health::{

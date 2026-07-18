@@ -15,7 +15,7 @@ seen = []
 app = (NobroApp("rover", board="nrf52840-nosd")
        .task("motor", HZ(200), lambda event: seen.append(event.now_us),
              role="control")
-       .task("imu", HZ(100), role="sensor")
+       .task("imu", HZ(100))
        .wire("imu", "motor", 8))
 
 report = app.run(50_000)

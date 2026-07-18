@@ -4,12 +4,12 @@ nobro::NobroApp<8, 8> app;
 
 void setup() {
   Serial.begin(115200);
-  nobro::TaskId motor = app.control("motor", 5);
-  nobro::TaskId imu = app.sensor("imu", 10);
-  nobro::TaskId camera = app.service("camera_ai", 40);
-  nobro::TaskId radio = app.service("telemetry", 100);
+  nobro::TaskId motor = app.task("motor", nobro::hz(200), nobro::CONTROL);
+  nobro::TaskId imu = app.task("imu", nobro::hz(100));
+  nobro::TaskId camera = app.task("camera_ai", nobro::hz(25), nobro::SERVICE);
+  nobro::TaskId radio = app.task("telemetry", nobro::hz(10), nobro::SERVICE);
   app.budget(camera, 4000).memory(camera, 16 * 1024, 8 * 1024);
-  app.connect(imu, motor).connect(camera, radio);
+  app.wire(imu, motor).wire(camera, radio);
   if (!app.admit()) Serial.println(app.errorText());
 }
 

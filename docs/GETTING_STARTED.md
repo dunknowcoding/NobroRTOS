@@ -122,19 +122,24 @@ repository's Python report tools provide the decoder from a source checkout.)
 
 ### 3. Design your own app as blocks
 
-Open `packages/block-editor/index.html`, arrange board + servo + sensor (+ ML)
-blocks, and export `app.json`. Validate it instantly — this needs only Python:
+Open `packages/block-editor/index.html`, add periodic/control/service tasks and
+wires, and export `app.json`. Validate the exact firmware input:
 
 ```bash
-python tools/nobro_app.py your-app.json          # catalog-checked plan, PASS/FAIL
+python sdk/cli/nobro.py app your-app.json
 ```
 
 ### 4. When you outgrow no-code
 
-Turning your `app.json` into firmware is one command with the toolchain installed
-(`python tools/nobro_app.py your-app.json --gen main.rs`, then build) — or hand the
-JSON to anyone with the toolchain. Every path lands back at the same report console,
-so nothing you learned here is thrown away.
+Turn that same file into native firmware with one command:
+
+```bash
+python sdk/cli/nobro.py firmware your-app.json --build
+```
+
+The graph describes scheduling and topology. Bind physical sensors, actuators,
+and payload transport in the provider layer; the editor does not pretend those
+drivers exist merely because a task has a hardware-like name.
 
 | You are here | Next rung |
 | --- | --- |
@@ -193,7 +198,7 @@ Periodic task lines may also shape their first release and use a constrained dea
 
 ```text
 control motor every 5ms phase 1ms deadline 4ms budget 400us
-sensor imu every 10ms -> motor
+periodic imu every 10ms -> motor
 ```
 
 `phase` must be below `every`, and `deadline` must not exceed it. The generator checks
@@ -243,12 +248,13 @@ bash tools/lint_gate.sh           # clippy -D warnings gate
 ### Config-driven, no Rust knowledge
 
 ```bash
-python3 tools/nobro_app.py my_robot/app.json --gen main.rs
+python sdk/cli/nobro.py app my_robot/app.json
+python sdk/cli/nobro.py firmware my_robot/app.json --build
 ```
 
-Describe the board + actuators + sensors in JSON; the builder validates against the device
-catalog and generates the Rust. This is the on-ramp for beginners and for higher-level
-front-ends (a GUI, a block editor, or another language) that emit the JSON.
+Declare tasks and wires once. The validator, Python host simulator, block editor,
+and native generator consume the same strict JSON. Provider selection is a
+separate typed step so hardware metadata does not become a second scheduler model.
 
 ### Other OS / SDK surfaces
 

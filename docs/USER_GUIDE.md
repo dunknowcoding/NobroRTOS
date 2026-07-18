@@ -390,7 +390,7 @@ python sdk/cli/nobro.py project build _work/projects/rover
 python sdk/cli/nobro.py project simulate _work/projects/rover
 ```
 
-The concise `workload.json` task/channel graph regenerates the build input and is
+The concise `workload.json` task/wire graph regenerates the build input and is
 expanded into the same low-level contract the kernel admits. `project run` combines
 contract explanation, build, simulation, and report decoding.
 
@@ -440,12 +440,16 @@ python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 The Python authoring persona declares the same periodic tasks and wires, runs
 deterministic callbacks under pytest, and exports strict JSON:
 
+All public authoring surfaces share the versioned defaults in
+`sdk/app-authoring-contract.json`. New declarations use roles
+`periodic|control|service`; `sensor` is accepted only as a compatibility alias.
+
 ```python
 from nobro_rtos import HZ, NobroApp
 
 app = (NobroApp("rover", board="nrf52840-nosd")
        .task("motor", HZ(200), role="control")
-       .task("imu", HZ(100), role="sensor")
+       .task("imu", HZ(100))
        .wire("imu", "motor", 8))
 app.run(50_000)
 app.write_json("app.json")
@@ -531,16 +535,16 @@ kernel admits the C or C++ module and it drives a sensor to a passing report. Se
 
 ## The prebuilt UF2 loop
 
-**UX rung 0 target:** flash a prebuilt UF2 **once**, then iterate by editing *data*
-(`app.json` from the block editor) — no toolchain, no rebuild, code-free after first
-flash.
+The prebuilt UF2 is a diagnostic starting point. The block editor emits the
+same task/wire source document accepted by `nobro firmware`; changing that
+document currently requires a rebuild.
 
 ### The loop
 
 ```
 1. Drag-drop prebuilt UF2  →  board enumerates (DFU/COM)
 2. Open block editor       →  design app visually
-3. Export app.json         →  drop on serial / future UF2 data partition
+3. Export app.json         →  validate and rebuild native firmware
 4. Web console / ReportReader  →  plain-English PASS/FAIL from NOBRO_* reports
 ```
 
@@ -572,15 +576,9 @@ python tools/package_prebuilt_uf2.py --build
 
 ### What the user sees
 
-After the one-time UF2 flash:
-
-- Block editor exports `app.json`.
-- User validates the file and rebuilds firmware; live serial/mass-storage ingestion is not
-  currently supported.
-- Console shows: "✅ servo mounted, sensor alive" or the first-fault sentence.
-
-This matches the CircuitPython "edit `code.py`, save, it runs" bar — except the
-editable artifact is **contract data**, not Python source.
+The block editor exports strict task/wire `app.json`; the user validates it and
+rebuilds native firmware. Live serial or mass-storage ingestion is not
+implemented.
 
 ### Gate
 

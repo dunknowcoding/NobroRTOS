@@ -13,6 +13,9 @@
 - Profile-aware resource accounting and an explicit public limitations matrix.
 - RP2350, ESP32-C3, and ESP32-S3 provider ports with typed support tiers.
 - Categorized adapter and application trees plus a concise adapter catalog.
+- One versioned task/wire authoring contract now aligns Rust, C, C++11,
+  Arduino, Python, JSON, and the block editor; older `sensor`, `channel`, and
+  `connect` names remain compatibility aliases.
 
 ### Known boundaries
 

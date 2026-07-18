@@ -22,7 +22,7 @@ and omission checks rather than an adversarial attestation.
 | Async | No allocation; fixed task, timer, waiter, and channel capacities | Capacity is explicit and exhaustion is reported instead of allocating dynamically |
 | Composition | One graph derives manifest, startup, task metadata, labels, and mailbox grants | Capability kinds remain a closed bit set and stable numeric module codes remain on wire formats |
 | Project workflow | `nobro project` creates, explains, builds, simulates, and reports; `nobro firmware` emits nRF firmware from one declaration | Firmware generation currently covers explicit nRF52840 layouts and does not infer WCET or interrupt/DMA ownership |
-| Arduino authoring | `NobroApp` declares fixed-capacity tasks/channels and previews admission | The facade does not embed the Rust executor or prove device timing |
+| Arduino authoring | `NobroApp` declares fixed-capacity tasks/wires and previews admission | The facade does not embed the Rust executor or prove device timing |
 
 ## Resources
 

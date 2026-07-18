@@ -1,13 +1,13 @@
-# hello-device - a NobroRTOS app with no Rust required
+# hello-device - one task/wire app
 
-`app.json` declares a board, a servo (from the built-in catalog), and a sensor. No code:
+`app.json` is the same strict graph accepted by the validator, Python tooling,
+block editor, and native firmware generator:
 
+```bash
+python sdk/cli/nobro.py app tutorials/hello-device/app.json
+python sdk/cli/nobro.py firmware tutorials/hello-device/app.json --build
 ```
-python3 tools/nobro_app.py tutorials/hello-device/app.json          # validate + plan
-python3 tools/nobro_app.py tutorials/hello-device/app.json --gen main.rs   # generate Rust
-```
 
-Change `"brand": "sg90"` to `"mg996r"`, or `"board"` to `rp2350`, and re-run - the tool
-validates against the device + board catalogs and regenerates. This is the beginner path
-(config, not code) and the multi-language front-end: any tool that emits this JSON drives
-NobroRTOS.
+Tasks use `periodic`, `control`, or `service`; a wire records bounded topology.
+Hardware providers and payload transport bind separately, so this source file
+does not claim a sensor driver merely because one task is named `imu`.

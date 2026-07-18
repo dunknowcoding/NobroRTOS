@@ -1,62 +1,41 @@
-# 02 — Build with Blocks 🧩
+# 02 - Build with Blocks
 
-*Design a robot app with no syntax at all — blocks in, working plan out.*
+Design the scheduling graph without learning language syntax first.
 
-In NobroRTOS an app can be **data instead of code**: which board, which servo,
-which sensor, what behavior. You'll build that data with a visual editor and have
-the toolchain check it like a real engineer's plan.
+## 1. Open the editor
 
-## What you need
+Open [`packages/block-editor/index.html`](../../packages/block-editor/index.html).
+It runs locally in the browser and does not upload the graph.
 
-| Thing | Where to get it |
-| --- | --- |
-| A web browser | you have one |
-| This repository | download the ZIP from GitHub (green "Code" button → Download ZIP) and unzip it |
-| Python 3.10+ (for the verify step) | [python.org/downloads](https://www.python.org/downloads/) — tick "Add to PATH" during install |
+## 2. Declare tasks and wires
 
-## Step 1 — Open the block editor
+Add `periodic`, `control`, or `service` tasks, set their periods, then connect
+them with bounded wires. Export `app.json`.
 
-Double-click [`packages/block-editor/index.html`](../../packages/block-editor/index.html).
-It runs entirely in your browser — nothing to install, nothing leaves your computer.
-
-## Step 2 — Snap an app together
-
-Pick a **board** block (say, the nRF52840), snap in a **servo** (the SG90 is the
-classic little blue one), a **sensor** (the MPU6050 motion sensor), and a
-**behavior** ("sweep the arm when the sensor feels a tap"). Press **Export** —
-you get a small file called `app.json`. Open it in any text editor and look:
-it's readable! Every choice you made is right there as plain data.
-
-## Step 3 — Let the toolchain check your plan
-
-This is the magic step. Open a terminal (Windows: press Start, type `cmd`) in the
-unzipped folder and run:
+## 3. Validate the exact firmware input
 
 ```bash
-python tools/nobro_app.py path/to/your/app.json
+python sdk/cli/nobro.py app path/to/app.json
 ```
 
-You'll see the toolchain *validate* your design against real catalogs — does that
-servo exist? does the sensor's address make sense? — and print a plan:
+The validator uses the same strict task/wire document as Python and native
+firmware generation. Try the checked-in example:
 
-```
-  actuator arm: sg90 on PWM channel 0
-  sensor   imu: mpu6050 on i2c @ 0x68
-RESULT: PASS (app is valid)
+```bash
+python sdk/cli/nobro.py app tutorials/hello-device/app.json
 ```
 
-A ready-made example lives in [`../hello-device/app.json`](../hello-device/app.json) —
-try validating it first, then break it on purpose (change `"sg90"` to `"sg999"`)
-and watch the validator *catch your mistake and explain it*.
+Then change a wire endpoint to `missing`; validation must fail with that task
+name instead of silently dropping the edge.
 
-## ✔ Verify
+## 4. Build native firmware
 
-- [ ] Your exported `app.json` validates with `RESULT: PASS`
-- [ ] A deliberately wrong brand name gets **caught with a clear message**
+```bash
+python sdk/cli/nobro.py firmware path/to/app.json --build
+```
 
-## Where this leads
+The graph covers scheduling and topology. Physical sensors, actuators, model
+artifacts, and payload transport are selected in the provider layer rather than
+being guessed from task names.
 
-`--gen main.rs` turns your validated plan into real firmware source. Building that
-needs the pro toolchain from tier 05 — but notice what you already did: you designed
-a hardware app precisely enough for a compiler, without writing a line of code.
-Next: [03 — Arduino & Python](../03-arduino-and-python/README.md) →
+Next: [03 - Arduino & Python](../03-arduino-and-python/README.md).

@@ -88,6 +88,7 @@ EXPECTED_DISTRIBUTION_POLICY = {
 REGULAR_FILE_MODES = {"100644", "100755"}
 SDK_PUBLIC_CHILDREN = {
     "README.md",
+    "app-authoring-contract.json",
     "cli",
     "feature-catalog.json",
     "firmware",
@@ -329,6 +330,10 @@ def _validate_manifest(manifest: object) -> list[str]:
         "canonical contract": (
             manifest.get("canonical_contract"),
             "host/nobro-host-contract.json",
+        ),
+        "app authoring contract": (
+            manifest.get("app_authoring_contract"),
+            "sdk/app-authoring-contract.json",
         ),
         "feature catalog": (
             manifest.get("feature_catalog"),

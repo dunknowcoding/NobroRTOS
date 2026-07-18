@@ -2,5 +2,5 @@
 app rover
 board nrf52840-s140
 control motor every 5ms
-sensor imu every 10ms -> motor
+periodic imu every 10ms -> motor
 service camera every 40ms

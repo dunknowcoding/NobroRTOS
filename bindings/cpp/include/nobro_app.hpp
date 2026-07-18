@@ -15,6 +15,7 @@
 #define NOBRO_APP_HPP
 
 #include <stdint.h>
+#include "nobro_app.h"
 
 extern "C" {
 uint64_t nobro_now_us(void);
@@ -27,6 +28,23 @@ void nobro_publish_imu(uint8_t who, uint8_t dev_addr, int16_t ax, int16_t ay,
 }
 
 namespace nobro {
+
+/// Canonical task/wire authoring aliases over the allocation-free C facade.
+inline int32_t task(const char *name, uint32_t period_us, nobro_step_fn step) {
+    return nobro_task(name, period_us, step);
+}
+
+inline int32_t task(const char *name, uint32_t period_us, nobro_step_fn step,
+                    const nobro_task_options_t &options) {
+    return nobro_task_with(name, period_us, step, &options);
+}
+
+inline int32_t wire(const char *from, const char *to, uint32_t capacity = 1) {
+    return nobro_wire(from, to, capacity);
+}
+
+inline int32_t run() { return nobro_run(); }
+inline int32_t poll() { return nobro_poll(); }
 
 /// Monotonic microsecond timebase.
 inline uint64_t now_us() { return nobro_now_us(); }

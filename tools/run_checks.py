@@ -163,6 +163,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),
         ("tutorials", [py, "tools/tutorial_runner.py"], ROOT),
         ("app catalog", [py, "tools/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
+        ("app authoring parity", [py, "tools/check_app_authoring.py"], ROOT),
         ("ros msg codegen", [py, "tools/ros_msg_gen.py", "--selftest"], ROOT),
         ("dts import", [py, "tools/import_dts.py", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/package_prebuilt_uf2.py", "--check"], ROOT),

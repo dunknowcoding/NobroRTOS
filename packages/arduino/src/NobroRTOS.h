@@ -16,9 +16,14 @@
 
 namespace nobro {
 
+inline uint32_t hz(uint32_t rate) {
+    return rate == 0 ? 0 : 1000000ul / rate;
+}
+
 enum TaskRole : uint8_t {
     CONTROL = 1,
-    SENSOR = 2,
+    PERIODIC = 2,
+    SENSOR = PERIODIC, /* compatibility alias */
     SERVICE = 3,
 };
 
@@ -36,6 +41,9 @@ enum AppError : uint8_t {
     APP_BUDGET_EXCEEDS_PERIOD,
     APP_RESOURCE_BUDGET,
     APP_INVALID_BUDGET,
+    APP_INVALID_NAME,
+    APP_DUPLICATE_TASK,
+    APP_DUPLICATE_WIRE,
 };
 
 /* Allocation-free Arduino declaration and admission preview. The Rust firmware path
@@ -54,14 +62,17 @@ public:
                      ? APP_RESOURCE_BUDGET
                      : APP_OK) {}
 
+    TaskId task(const char *name, uint32_t period_us, TaskRole role = PERIODIC) {
+        return add(name, role, period_us);
+    }
     TaskId control(const char *name, uint32_t every_ms) {
-        return add(name, CONTROL, every_ms, 2048, 512, 5);
+        return task(name, milliseconds(every_ms), CONTROL);
     }
     TaskId sensor(const char *name, uint32_t every_ms) {
-        return add(name, SENSOR, every_ms, 1024, 256, 10);
+        return task(name, milliseconds(every_ms), PERIODIC);
     }
     TaskId service(const char *name, uint32_t every_ms) {
-        return add(name, SERVICE, every_ms, 1024, 256, 20);
+        return task(name, milliseconds(every_ms), SERVICE);
     }
 
     NobroApp &budget(TaskId id, uint32_t budget_us) {
@@ -86,15 +97,22 @@ public:
         ram_used_ = next_ram;
         return *this;
     }
-    NobroApp &connect(TaskId from, TaskId to) {
-        if (!contains(from) || !contains(to) || from.value == to.value)
-            return fail(APP_INVALID_TASK);
-        if (channel_count_ >= MaxChannels) return fail(APP_CHANNEL_CAPACITY);
+    NobroApp &wire(TaskId from, TaskId to, uint8_t capacity = 1) {
+        if (capacity == 0 || capacity > 64 || channel_count_ >= MaxChannels)
+            return fail(APP_CHANNEL_CAPACITY);
+        if (from.value == to.value) return fail(APP_INVALID_TASK);
+        for (uint8_t i = 0; i < channel_count_; ++i) {
+            if (channels_[i].from == from.value && channels_[i].to == to.value)
+                return fail(APP_DUPLICATE_WIRE);
+        }
+        if (!contains(from) || !contains(to)) return fail(APP_INVALID_TASK);
         channels_[channel_count_].from = from.value;
         channels_[channel_count_].to = to.value;
+        channels_[channel_count_].capacity = capacity;
         ++channel_count_;
         return *this;
     }
+    NobroApp &connect(TaskId from, TaskId to) { return wire(from, to); }
 
     bool admit() {
         if (error_ != APP_OK) return false;
@@ -121,11 +139,16 @@ public:
         case APP_RESOURCE_BUDGET:
             return "task memory is zero, overflows, or exceeds the board profile";
         case APP_INVALID_BUDGET: return "task budget must be greater than zero";
+        case APP_INVALID_NAME:
+            return "task name must match [a-z][a-z0-9_-]{0,47}";
+        case APP_DUPLICATE_TASK: return "task name is already declared";
+        case APP_DUPLICATE_WIRE: return "wire is already declared";
         default: return "unknown application error";
         }
     }
     uint8_t taskCount() const { return task_count_; }
     uint8_t channelCount() const { return channel_count_; }
+    uint8_t wireCount() const { return channel_count_; }
     uint32_t flashUsed() const { return flash_used_; }
     uint32_t ramUsed() const { return ram_used_; }
 
@@ -138,16 +161,29 @@ private:
         uint32_t ram_bytes;
         uint8_t role;
     };
-    struct Channel { uint8_t from; uint8_t to; };
+    struct Channel { uint8_t from; uint8_t to; uint8_t capacity; };
 
-    TaskId add(const char *name, TaskRole role, uint32_t every_ms,
-               uint32_t flash, uint32_t ram, uint8_t divisor) {
+    TaskId add(const char *name, TaskRole role, uint32_t period) {
+        if (!valid_name(name)) {
+            fail(APP_INVALID_NAME);
+            return invalid();
+        }
+        if (period == 0) {
+            fail(APP_INVALID_PERIOD);
+            return invalid();
+        }
+        for (uint8_t i = 0; i < task_count_; ++i) {
+            if (same_name(tasks_[i].name, name)) {
+                fail(APP_DUPLICATE_TASK);
+                return invalid();
+            }
+        }
         if (task_count_ >= MaxTasks) {
             fail(APP_TASK_CAPACITY);
             return invalid();
         }
-        uint32_t period = every_ms > (0xFFFFFFFFul / 1000ul)
-            ? 0ul : every_ms * 1000ul;
+        const uint32_t flash = 1024;
+        const uint32_t ram = 256;
         uint32_t next_flash = 0;
         uint32_t next_ram = 0;
         if (!checked_add(flash_used_, flash, next_flash) ||
@@ -159,7 +195,8 @@ private:
         task.name = name;
         task.role = (uint8_t)role;
         task.period_us = period;
-        task.budget_us = period / divisor;
+        task.budget_us = period / 10ul;
+        if (task.budget_us == 0) task.budget_us = 1;
         task.flash_bytes = flash;
         task.ram_bytes = ram;
         flash_used_ = next_flash;
@@ -169,6 +206,29 @@ private:
         return result;
     }
     bool contains(TaskId id) const { return id.valid() && id.value < task_count_; }
+    static uint32_t milliseconds(uint32_t value) {
+        return value > (0xFFFFFFFFul / 1000ul) ? 0ul : value * 1000ul;
+    }
+    static bool same_name(const char *left, const char *right) {
+        if (left == 0 || right == 0) return left == right;
+        while (*left != '\0' && *left == *right) {
+            ++left;
+            ++right;
+        }
+        return *left == *right;
+    }
+    static bool valid_name(const char *name) {
+        if (name == 0 || name[0] < 'a' || name[0] > 'z') return false;
+        uint8_t length = 0;
+        for (; name[length] != '\0'; ++length) {
+            const char value = name[length];
+            if (length >= 48 ||
+                !((value >= 'a' && value <= 'z') ||
+                  (value >= '0' && value <= '9') || value == '_' || value == '-'))
+                return false;
+        }
+        return length != 0;
+    }
     static bool checked_add(uint32_t current, uint32_t increment, uint32_t &result) {
         if (increment > 0xFFFFFFFFul - current) return false;
         result = current + increment;

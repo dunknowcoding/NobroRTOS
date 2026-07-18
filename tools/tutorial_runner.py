@@ -49,8 +49,12 @@ def check_hello_device() -> dict:
     require(app_path)
     app = json.loads(app_path.read_text(encoding="utf-8"))
     errors = nobro_app.validate(app)
-    skeleton = nobro_app.generate_rust(app)
-    passing = not errors and "SERVO_SG90" in skeleton and "sensor imu" in skeleton
+    skeleton = nobro_app.generate_rust(nobro_app.NobroApp.from_dict(app))
+    passing = (
+        not errors
+        and 'TaskDecl::periodic("imu"' in skeleton
+        and '.wire("imu", "control")' in skeleton
+    )
     return {
         "passing": passing,
         "errors": errors,

@@ -42,6 +42,16 @@ use core::mem::MaybeUninit;
 
 const MAX_DEPS: usize = 4;
 
+/// Convert a positive frequency to an integer microsecond period.
+///
+/// Zero returns zero and is rejected by graph admission as an invalid period.
+pub const fn hz(rate: u32) -> u32 {
+    match 1_000_000u32.checked_div(rate) {
+        Some(period) => period,
+        None => 0,
+    }
+}
+
 const fn clamp_nonzero(value: u32, upper: u32) -> u32 {
     let value = if value < 1 { 1 } else { value };
     if value > upper {
@@ -287,6 +297,13 @@ pub enum GraphError {
     },
     ChannelEndpointUnknown {
         endpoint: &'static str,
+    },
+    ChannelSelf {
+        task: &'static str,
+    },
+    DuplicateChannel {
+        from: &'static str,
+        to: &'static str,
     },
     TooManyChannels,
     InvalidBlocking {
@@ -609,7 +626,7 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         self.tasks[..self.len].iter()
     }
 
-    /// The declared channels as `(from, to)` label pairs.
+    /// The declared wires as `(from, to)` label pairs.
     pub fn channel_pairs(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
         self.channels[..self.channel_len]
             .iter()
@@ -634,10 +651,19 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         Ok(self)
     }
 
-    /// A message channel between two declared tasks: derives the `Mailbox`
+    /// A bounded relationship between two declared tasks: derives the `Mailbox`
     /// capability requirement on both endpoints (ownership pinned on the
     /// kernel), instead of a second hand-written declaration.
-    pub fn channel(mut self, from: &'static str, to: &'static str) -> Result<Self, GraphError> {
+    pub fn wire(mut self, from: &'static str, to: &'static str) -> Result<Self, GraphError> {
+        if from == to {
+            return Err(GraphError::ChannelSelf { task: from });
+        }
+        if self.channels[..self.channel_len]
+            .iter()
+            .any(|wire| wire.from == from && wire.to == to)
+        {
+            return Err(GraphError::DuplicateChannel { from, to });
+        }
         for endpoint in [from, to] {
             if !self.tasks[..self.len]
                 .iter()
@@ -652,6 +678,11 @@ impl<const TASKS: usize> AppGraph<TASKS> {
         self.channels[self.channel_len] = ChannelDecl::new(from, to);
         self.channel_len += 1;
         Ok(self)
+    }
+
+    /// Compatibility alias for [`Self::wire`].
+    pub fn channel(self, from: &'static str, to: &'static str) -> Result<Self, GraphError> {
+        self.wire(from, to)
     }
 
     fn decl_index_in(tasks: &[TaskDecl], name: &str) -> Option<usize> {
@@ -718,7 +749,19 @@ impl<const TASKS: usize> AppGraph<TASKS> {
 
         // Channel-derived capabilities.
         let mut mailbox_users = [false; TASKS];
-        for channel in channels {
+        for (index, channel) in channels.iter().enumerate() {
+            if channel.from == channel.to {
+                return Err(GraphError::ChannelSelf { task: channel.from });
+            }
+            if channels[..index]
+                .iter()
+                .any(|other| other.from == channel.from && other.to == channel.to)
+            {
+                return Err(GraphError::DuplicateChannel {
+                    from: channel.from,
+                    to: channel.to,
+                });
+            }
             for endpoint in [channel.from, channel.to] {
                 let index = Self::decl_index_in(tasks, endpoint)
                     .ok_or(GraphError::ChannelEndpointUnknown { endpoint })?;
@@ -1567,6 +1610,38 @@ mod tests {
         assert_eq!(
             unknown,
             Some(GraphError::ChannelEndpointUnknown { endpoint: "ghost" })
+        );
+    }
+
+    #[test]
+    fn wire_is_canonical_and_channel_remains_a_checked_alias() {
+        let graph = AppGraph::<2>::new()
+            .task(TaskDecl::periodic("imu", hz(100)))
+            .unwrap()
+            .task(TaskDecl::control("motor", 20_000))
+            .unwrap()
+            .wire("imu", "motor")
+            .unwrap();
+        let mut pairs = graph.channel_pairs();
+        assert_eq!(pairs.next(), Some(("imu", "motor")));
+        assert_eq!(pairs.next(), None);
+        drop(pairs);
+
+        assert_eq!(
+            graph.wire("imu", "motor").err().unwrap(),
+            GraphError::DuplicateChannel {
+                from: "imu",
+                to: "motor"
+            }
+        );
+        assert_eq!(
+            AppGraph::<1>::new()
+                .task(TaskDecl::periodic("imu", 10_000))
+                .unwrap()
+                .channel("imu", "imu")
+                .err()
+                .unwrap(),
+            GraphError::ChannelSelf { task: "imu" }
         );
     }
 

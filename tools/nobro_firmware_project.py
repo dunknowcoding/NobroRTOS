@@ -11,7 +11,7 @@ configuration, not generated Rust boilerplate::
     board nrf52840-s140
     wake 25us
     control motor every 5ms
-    sensor imu every 10ms -> motor
+    periodic imu every 10ms -> motor
     service camera every 40ms
 
 Safe budgets and memory estimates are inferred by role.  Advanced users can still
@@ -37,7 +37,7 @@ import nobro_project as project_model  # noqa: E402
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 LINE = re.compile(
-    r"^(control|sensor|service)\s+([a-z][a-z0-9_-]{0,47})\s+"
+    r"^(periodic|sensor|control|service)\s+([a-z][a-z0-9_-]{0,47})\s+"
     r"every\s+([1-9][0-9]*)(us|ms|s)"
     r"(?:\s+phase\s+([0-9]+)(us|ms|s))?"
     r"(?:\s+deadline\s+([1-9][0-9]*)(us|ms|s))?"
@@ -53,9 +53,9 @@ BOARDS = {
 }
 MAX_WRAP_SAFE_INTERVAL_US = 0x7FFF_FFFF
 ROLE = {
-    "control": ("hard_realtime", 2048, 512, 5),
-    "sensor": ("driver", 1024, 256, 10),
-    "service": ("best_effort", 1024, 256, 20),
+    "periodic": ("driver", 1024, 256, 10),
+    "control": ("hard_realtime", 1024, 256, 10),
+    "service": ("best_effort", 1024, 256, 10),
 }
 
 
@@ -93,7 +93,7 @@ def parse(text: str) -> dict:
         wake_latency_us = parse_duration(*match.groups())
         task_records = task_records[1:]
     if not task_records:
-        raise ValueError("at least one control, sensor, or service task is required")
+        raise ValueError("at least one periodic, control, or service task is required")
     tasks = []
     channels = []
     for number, line in task_records:
@@ -106,6 +106,7 @@ def parse(text: str) -> dict:
         (role, name, value, unit, phase_value, phase_unit,
          deadline_value, deadline_unit, destination, budget_value, budget_unit,
          blocking_value, blocking_unit, flash_override, ram_override) = match.groups()
+        role = "periodic" if role == "sensor" else role
         criticality, flash, ram, divisor = ROLE[role]
         period = parse_duration(value, unit)
         if period > MAX_WRAP_SAFE_INTERVAL_US:
@@ -299,7 +300,7 @@ def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
 
     if source.suffix.lower() == ".json":
         record = json.loads(source.read_text(encoding="utf-8"))
-        if record.get("schema") == "nobro-python-app-v1":
+        if record.get("schema") in {"nobro-app-v1", "nobro-python-app-v1"}:
             app = NobroApp.from_dict(record)
             return app.firmware_spec(), "python-json", "app.json"
         if record.get("schema") == "nobro-workload-v1":
@@ -318,7 +319,7 @@ def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
                 "workload": record,
                 "user_lines": len(record.get("tasks", [])),
             }, "canonical-workload", "workload.json"
-        raise ValueError("JSON must use nobro-python-app-v1 or nobro-workload-v1")
+        raise ValueError("JSON must use nobro-app-v1 or nobro-workload-v1")
     text = source.read_text(encoding="utf-8")
     return parse(text), "compact-text", "app.nobro"
 
@@ -451,13 +452,15 @@ def selftest() -> int:
     sample = """app rover
 board nrf52840-s140
 control motor every 5ms
-sensor imu every 10ms -> motor
+periodic imu every 10ms -> motor
 service camera every 40ms
 """
     spec = parse(sample)
     assert spec["user_lines"] == 5 and len(spec["workload"]["tasks"]) == 4
     assert spec["workload"]["channels"] == [["imu", "motor"]]
-    assert spec["workload"]["tasks"][1]["budget_us"] == 1000
+    assert spec["workload"]["tasks"][1]["budget_us"] == 500
+    alias = parse(sample.replace("periodic imu", "sensor imu"))
+    assert alias["workload"]["tasks"][2]["role"] == "periodic"
     overridden = parse(sample.replace(
         "control motor every 5ms",
         "control motor every 5ms phase 1ms deadline 4ms budget 400us blocking 100us memory 3072/640"))
