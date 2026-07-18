@@ -27,6 +27,7 @@ def main():
         return 1
     checks = []
     checks.append(("canonical_contract", man["canonical_contract"]))
+    checks.append(("feature_catalog", man["feature_catalog"]))
     checks.append(("core_workspace", man["core_workspace"]))
     for r in man.get("include_roots", []):
         checks.append(("include_root", r))

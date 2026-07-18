@@ -399,6 +399,22 @@ first workload error is reported with a stable `NOBRO-E03x`/`NOBRO-E04x` code, f
 unknown wire endpoint is `NOBRO-E041`, so CI logs and beginner-facing tutorials point
 to the same fix.
 
+Optional kernel capabilities are configured only in the top-level `features` object:
+
+```json
+{
+  "target": "nrf52840-nosd",
+  "features": {"capacity-report": true}
+}
+```
+
+Validation, generated Cargo features, and `project explain` all read the versioned
+SDK feature catalog. The explanation includes the feature's marginal and aggregate
+flash/RAM reserve plus its latency class and evidence level. Catalog values are
+conservative ceilings for the named target and composition—not universal binary-size
+or physical-latency measurements. An unsupported or unpriced feature fails closed;
+it is never treated as zero cost.
+
 If the desired output is production nRF firmware rather than a host scaffold, use one
 short `app.nobro` declaration:
 

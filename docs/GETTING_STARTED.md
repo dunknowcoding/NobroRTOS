@@ -157,6 +157,10 @@ python sdk/cli/nobro.py project report _work/projects/rover/reports/simulation.j
 `run` explains the graph-derived contract and admission headroom, compiles a host
 graph regenerated from the same `workload.json`, runs the bounded simulation, and
 decodes its report. The generated scaffold is a host model, not a flashable image.
+To opt into a priced capability, edit only the workload's top-level `features`
+object, for example `"features": {"capacity-report": true}`. The SDK catalog drives
+validation, generation, and explanation; unavailable or unpriced combinations fail
+instead of being reported as free.
 
 ### One-file production firmware
 

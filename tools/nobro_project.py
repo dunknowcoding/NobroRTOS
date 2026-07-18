@@ -21,6 +21,7 @@ unless `--out` says otherwise, so a scaffold never dirties the tree.
 Exit 0 on success; explain exits 1 only when the workload is INFEASIBLE.
 """
 import argparse
+import copy
 import json
 import os
 import pathlib
@@ -35,6 +36,7 @@ import nobro_shrink as shrink  # noqa: E402  (fail-closed capacity proposals)
 
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
+FEATURE_CATALOG_PATH = ROOT / "sdk" / "feature-catalog.json"
 
 WORKLOAD_DIAGNOSTICS = {
     "shape": ("NOBRO-E030", "Workload must contain a non-empty task list."),
@@ -50,6 +52,12 @@ WORKLOAD_DIAGNOSTICS = {
     "wire-shape": ("NOBRO-E040", "Each wire must be written as [from, to]."),
     "wire-endpoint": ("NOBRO-E041", "Wire endpoints must name existing tasks."),
     "cycle": ("NOBRO-E042", "Startup dependencies cannot form a cycle."),
+    "feature-shape": ("NOBRO-E043", "Features must be one object of boolean switches."),
+    "feature-target": ("NOBRO-E044", "Feature target is unsupported."),
+    "feature-name": ("NOBRO-E045", "Feature name is unknown for this target."),
+    "feature-value": ("NOBRO-E046", "Feature values must match the catalog."),
+    "feature-unavailable": ("NOBRO-E047", "Feature is unavailable for this target."),
+    "feature-conflict": ("NOBRO-E048", "Enabled features conflict."),
 }
 ADMISSION_DIAGNOSTIC_CODES = {f"NOBRO-E{number:03d}" for number in range(1, 22)}
 
@@ -82,6 +90,8 @@ def format_user_error(error: BaseException) -> str:
 # --------------------------------------------------------------- new (scaffold)
 
 WORKLOAD_TEMPLATE = {
+    "target": "nrf52840-nosd",
+    "features": {},
     "profile": {"flash": 128 * 1024, "ram": 32 * 1024, "pool": 8},
     "tasks": [
         {"name": "kernel", "criticality": "hard_realtime",
@@ -94,6 +104,119 @@ WORKLOAD_TEMPLATE = {
     ],
     "channels": [["sensor", "control"]],
 }
+
+
+def feature_catalog() -> dict:
+    catalog = json.loads(FEATURE_CATALOG_PATH.read_text(encoding="utf-8"))
+    if catalog.get("schema") != "nobro-feature-catalog-v1":
+        raise ValueError("unsupported Nobro feature catalog schema")
+    targets = catalog.get("targets")
+    if not isinstance(targets, dict) or not targets:
+        raise ValueError("feature catalog needs at least one target")
+    for target, entries in targets.items():
+        if not NAME.fullmatch(target) or not isinstance(entries, dict):
+            raise ValueError("feature catalog target entries are invalid")
+        for name, entry in entries.items():
+            if not NAME.fullmatch(name) or not isinstance(entry, dict):
+                raise ValueError("feature catalog feature entries are invalid")
+            if entry.get("value_type") != "boolean":
+                raise ValueError(f"catalog feature {name} has an unsupported value type")
+            if not isinstance(entry.get("kernel_features"), list):
+                raise ValueError(f"catalog feature {name} needs kernel_features")
+            if not isinstance(entry.get("conflicts"), list):
+                raise ValueError(f"catalog feature {name} needs conflicts")
+            if entry.get("status") == "selectable":
+                price = entry.get("price")
+                evidence = entry.get("evidence")
+                fields = (
+                    "flash_delta_bytes_max",
+                    "static_ram_delta_bytes_max",
+                    "total_ram_delta_bytes_max",
+                )
+                if not isinstance(price, dict) or any(
+                    isinstance(price.get(field), bool)
+                    or not isinstance(price.get(field), int)
+                    or price[field] < 0
+                    for field in fields
+                ):
+                    raise ValueError(f"catalog feature {name} needs non-negative prices")
+                if not isinstance(price.get("latency"), dict) or not isinstance(
+                    price["latency"].get("class"), str
+                ):
+                    raise ValueError(f"catalog feature {name} needs a latency class")
+                if not isinstance(evidence, dict) or not evidence.get("level"):
+                    raise ValueError(f"catalog feature {name} needs evidence")
+            elif entry.get("status") == "unavailable":
+                if entry.get("price") is not None or not entry.get("reason"):
+                    raise ValueError(f"unavailable feature {name} must remain unpriced")
+            else:
+                raise ValueError(f"catalog feature {name} has an invalid status")
+    return catalog
+
+
+def selected_features(
+    workload: dict, catalog: dict | None = None
+) -> list[tuple[str, dict]]:
+    target = workload.get("target", "nrf52840-nosd")
+    targets = (feature_catalog() if catalog is None else catalog).get("targets", {})
+    if target not in targets:
+        raise WorkloadDiagnostic("feature-target", f"`{target}` has no catalog entry.")
+    configured = workload.get("features", {})
+    if not isinstance(configured, dict):
+        raise WorkloadDiagnostic(
+            "feature-shape", "Use `features: {\"capacity-report\": true}`."
+        )
+    entries = targets[target]
+    selected = []
+    for name, value in configured.items():
+        if name not in entries:
+            raise WorkloadDiagnostic(
+                "feature-name", f"`{name}` is not a catalog feature for `{target}`."
+            )
+        entry = entries[name]
+        if entry.get("value_type") != "boolean" or not isinstance(value, bool):
+            raise WorkloadDiagnostic("feature-value", f"`{name}` expects true or false.")
+        if not value:
+            continue
+        if entry.get("status") != "selectable" or entry.get("price") is None:
+            raise WorkloadDiagnostic(
+                "feature-unavailable",
+                f"`{name}`: {entry.get('reason', 'no verified price is available')}",
+            )
+        selected.append((name, entry))
+    enabled = {name for name, _ in selected}
+    for name, entry in selected:
+        conflict = next((item for item in entry.get("conflicts", []) if item in enabled), None)
+        if conflict is not None:
+            raise WorkloadDiagnostic(
+                "feature-conflict", f"`{name}` cannot be combined with `{conflict}`."
+            )
+    return selected
+
+
+def priced_workload(
+    workload: dict, catalog: dict | None = None
+) -> tuple[dict, dict]:
+    priced = copy.deepcopy(workload)
+    selected = selected_features(priced, catalog)
+    totals = {"flash": 0, "static_ram": 0, "total_ram": 0}
+    for _, entry in selected:
+        price = entry["price"]
+        totals["flash"] += int(price["flash_delta_bytes_max"])
+        totals["static_ram"] += int(price["static_ram_delta_bytes_max"])
+        totals["total_ram"] += int(price["total_ram_delta_bytes_max"])
+    kernel = next(task for task in priced["tasks"] if task.get("name") == "kernel")
+    kernel["flash"] = int(kernel.get("flash", 0)) + totals["flash"]
+    kernel["ram"] = int(kernel.get("ram", 0)) + totals["total_ram"]
+    return priced, totals
+
+
+def cargo_kernel_features(workload: dict) -> list[str]:
+    return sorted({
+        feature
+        for _, entry in selected_features(workload)
+        for feature in entry.get("kernel_features", [])
+    })
 
 GRAPH_SKELETON = '''\
 // Generated by `nobro project new` - a graph-declared starting point.
@@ -146,11 +269,27 @@ def render_host_main(workload: dict) -> str:
                   f"{json.dumps(channel[1])}).unwrap()\n")
     chain += (f"        .build_for::<{len(tasks) + 1}>"
               "(SystemProfile::NRF52840_CORE).unwrap()")
+    enabled = {name for name, _ in selected_features(workload)}
+    feature_import = ""
+    feature_marker = ""
+    feature_body = ""
+    if "capacity-report" in enabled:
+        feature_import = "use nobro_kernel::CapacityRegistry;\n"
+        feature_marker = (
+            "\n#[no_mangle]\n#[used]\n"
+            "pub static NOBRO_FEATURE_CAPACITY_REPORT: u8 = 1;\n"
+        )
+        feature_body = (
+            "    let capacity = CapacityRegistry::<1>::new();\n"
+            "    std::hint::black_box(capacity.len());\n"
+        )
     return (
         "// Generated from workload.json by `nobro project build`; edit the workload.\n"
         "use nobro_kernel::{AppGraph, Criticality, SystemProfile, TaskDecl};\n\n"
+        f"{feature_import}{feature_marker}\n"
         "fn main() {\n"
         f"    let built = {chain};\n"
+        f"{feature_body}"
         "    println!(\"NOBRO_PROJECT tasks={} startup={} admitted=1\",\n"
         "             built.task_len, built.startup_len);\n"
         "}\n"
@@ -169,30 +308,34 @@ def checked_project(name: str, out_dir: pathlib.Path) -> pathlib.Path:
     return out_dir.resolve() / name
 
 
-def scaffold(name: str, out_dir: pathlib.Path) -> dict:
-    project = checked_project(name, out_dir)
-    (project / "src").mkdir(parents=True, exist_ok=True)
-    (project / "workload.json").write_text(
-        json.dumps(WORKLOAD_TEMPLATE, indent=2) + "\n", encoding="utf-8")
-    (project / "app_graph.rs").write_text(GRAPH_SKELETON, encoding="utf-8")
+def render_cargo(project: pathlib.Path, name: str, workload: dict) -> str:
     kernel_source = ROOT / "core" / "crates" / "nobro_kernel"
     try:
         kernel_path = os.path.relpath(kernel_source, project)
     except ValueError:
-        # Windows cannot express a relative path across volumes. This path exists only
-        # inside the user-selected generated project, never in a tracked artifact.
         kernel_path = str(kernel_source)
-    cargo = (
+    features = cargo_kernel_features(workload)
+    feature_clause = f", features = {json.dumps(features)}" if features else ""
+    return (
         "[package]\n"
         f"name = \"nobro-project-{name.replace('_', '-')}\"\n"
         "version = \"0.1.0\"\n"
         "edition = \"2021\"\n"
         "publish = false\n\n"
         "[dependencies]\n"
-        f"nobro-kernel = {{ path = {json.dumps(kernel_path)} }}\n"
+        f"nobro-kernel = {{ path = {json.dumps(kernel_path)}{feature_clause} }}\n"
         "critical-section = { version = \"1.2\", features = [\"std\"] }\n\n"
         "[workspace]\n"
     )
+
+
+def scaffold(name: str, out_dir: pathlib.Path) -> dict:
+    project = checked_project(name, out_dir)
+    (project / "src").mkdir(parents=True, exist_ok=True)
+    (project / "workload.json").write_text(
+        json.dumps(WORKLOAD_TEMPLATE, indent=2) + "\n", encoding="utf-8")
+    (project / "app_graph.rs").write_text(GRAPH_SKELETON, encoding="utf-8")
+    cargo = render_cargo(project, name, WORKLOAD_TEMPLATE)
     (project / "Cargo.toml").write_text(cargo, encoding="utf-8", newline="\n")
     (project / "src" / "main.rs").write_text(
         render_host_main(WORKLOAD_TEMPLATE), encoding="utf-8")
@@ -216,6 +359,9 @@ def build_project(project: pathlib.Path) -> dict:
     if not manifest.is_file():
         raise ValueError("project has no Cargo.toml; run `nobro project new` first")
     workload = json.loads((project / "workload.json").read_text(encoding="utf-8"))
+    (project / "Cargo.toml").write_text(
+        render_cargo(project, project.name, workload), encoding="utf-8", newline="\n"
+    )
     (project / "src" / "main.rs").write_text(
         render_host_main(workload), encoding="utf-8")
     lockfile = project / "Cargo.lock"
@@ -246,6 +392,7 @@ def build_project(project: pathlib.Path) -> dict:
 
 
 def startup_order(workload: dict) -> list[str]:
+    selected_features(workload)
     tasks = workload.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         raise WorkloadDiagnostic("shape", "Add `tasks: [...]` with at least `kernel`.")
@@ -350,7 +497,8 @@ def simulate(project: pathlib.Path) -> tuple[pathlib.Path, dict]:
     workload_path = project / "workload.json"
     workload = json.loads(workload_path.read_text(encoding="utf-8"))
     startup_order(workload)
-    analysis = adm.analyze(workload)
+    priced, _ = priced_workload(workload)
+    analysis = adm.analyze(priced)
     feasible = analysis["schedulable"] or analysis["shed_plan"].get("feasible", False)
     report = {
         "schema": "nobro-project-report-v1",
@@ -416,9 +564,29 @@ def shrink_report(
 def explain(workload: dict) -> tuple[str, bool]:
     """Plain-language account of the derived contract + admission verdict."""
     order = startup_order(workload)
-    result = adm.analyze(workload)
+    priced, feature_totals = priced_workload(workload)
+    result = adm.analyze(priced)
     tasks = [t for t in workload["tasks"] if t["name"] != "kernel"]
     lines = [f"This system has {len(tasks)} task(s) plus the kernel."]
+    selected = selected_features(workload)
+    if selected:
+        lines.append("Enabled optional features (catalog ceiling for this composition):")
+        for name, entry in selected:
+            price = entry["price"]
+            latency = price["latency"]
+            lines.append(
+                f"  {name}: <= {price['flash_delta_bytes_max']} B flash, "
+                f"<= {price['static_ram_delta_bytes_max']} B static RAM, "
+                f"<= {price['total_ram_delta_bytes_max']} B total RAM; "
+                f"latency={latency['class']}; evidence={entry['evidence']['level']}."
+            )
+        lines.append(
+            f"Feature reserve total: <= {feature_totals['flash']} B flash, "
+            f"<= {feature_totals['static_ram']} B static RAM, "
+            f"<= {feature_totals['total_ram']} B total RAM."
+        )
+    else:
+        lines.append("Optional features: none enabled (zero feature reserve).")
 
     # Derived capabilities: any task that shares a channel needs Mailbox; the
     # explain mirrors the graph's derivation rule.
@@ -491,6 +659,87 @@ def selftest() -> int:
         assert lockfile.read_bytes() == locked_graph, "a locked rebuild changed Cargo.lock"
         generated = (out / "blinky" / "src" / "main.rs").read_text(encoding="utf-8")
         assert 'TaskDecl::service("telemetry"' in generated and '.after("sensor")' in generated
+
+        # One feature object drives validation, pricing, Cargo features, and source.
+        workload["features"] = {"capacity-report": True}
+        text, ok = explain(workload)
+        assert ok and "Feature reserve total: <= 2048 B flash" in text, text
+        (out / "blinky" / "workload.json").write_text(
+            json.dumps(workload, indent=2) + "\n", encoding="utf-8")
+        feature_build = build_project(out / "blinky")
+        assert feature_build["ok"], "\n".join(feature_build["detail"])
+        generated = (out / "blinky" / "src" / "main.rs").read_text(encoding="utf-8")
+        cargo = (out / "blinky" / "Cargo.toml").read_text(encoding="utf-8")
+        assert "NOBRO_FEATURE_CAPACITY_REPORT" in generated
+        assert 'features = ["capacity-report"]' in cargo
+        workload["features"] = {}
+        assert "NOBRO_FEATURE_CAPACITY_REPORT" not in render_host_main(workload)
+        cargo_without_feature = render_cargo(out / "blinky", "blinky", workload)
+        assert 'nobro-kernel = { path =' in cargo_without_feature
+        assert 'features = ["capacity-report"]' not in cargo_without_feature
+
+        invalid_feature = json.loads(json.dumps(WORKLOAD_TEMPLATE))
+        invalid_feature["features"] = {"missing": True}
+        try:
+            selected_features(invalid_feature)
+            raise AssertionError("an unknown feature must be rejected")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E045", error
+
+        invalid_feature["features"] = {"capacity-report": "yes"}
+        try:
+            selected_features(invalid_feature)
+            raise AssertionError("a non-boolean feature must be rejected")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E046", error
+
+        invalid_feature["features"] = {"preemptive": True}
+        try:
+            selected_features(invalid_feature)
+            raise AssertionError("an unpriced feature must be unavailable")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E047", error
+
+        invalid_feature["target"] = "missing-target"
+        invalid_feature["features"] = {}
+        try:
+            selected_features(invalid_feature)
+            raise AssertionError("an unsupported target must be rejected")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E044", error
+
+        base_entry = copy.deepcopy(
+            feature_catalog()["targets"]["nrf52840-nosd"]["capacity-report"]
+        )
+        second_entry = copy.deepcopy(base_entry)
+        conflict_entry = copy.deepcopy(base_entry)
+        conflict_entry["conflicts"] = ["second"]
+        synthetic = {
+            "targets": {
+                "nrf52840-nosd": {
+                    "first": conflict_entry,
+                    "second": second_entry,
+                }
+            }
+        }
+        pair = json.loads(json.dumps(WORKLOAD_TEMPLATE))
+        pair["features"] = {"first": True, "second": True}
+        try:
+            selected_features(pair, synthetic)
+            raise AssertionError("a catalog conflict must be rejected")
+        except WorkloadDiagnostic as error:
+            assert error.code == "NOBRO-E048", error
+        synthetic["targets"]["nrf52840-nosd"]["first"]["conflicts"] = []
+        _, aggregate = priced_workload(pair, synthetic)
+        assert aggregate == {"flash": 4096, "static_ram": 256, "total_ram": 512}
+
+        overflow = json.loads(json.dumps(WORKLOAD_TEMPLATE))
+        overflow["features"] = {"capacity-report": True}
+        overflow["profile"]["flash"] = sum(
+            int(task["flash"]) for task in overflow["tasks"]
+        )
+        _, ok = explain(overflow)
+        assert not ok, "feature reserve must participate in admission overflow"
         report_path, report = simulate(out / "blinky")
         assert report["all_pass"] and report_path.is_file()
         rendered, ok = read_report(report_path)

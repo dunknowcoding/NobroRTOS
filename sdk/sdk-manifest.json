@@ -6,6 +6,7 @@
   "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "author": "dunknowcoding",
   "canonical_contract": "host/nobro-host-contract.json",
+  "feature_catalog": "sdk/feature-catalog.json",
   "core_workspace": "core",
   "include_roots": [
     "bindings/c/include",

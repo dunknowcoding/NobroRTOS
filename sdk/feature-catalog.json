@@ -1,0 +1,63 @@
+{
+  "schema": "nobro-feature-catalog-v1",
+  "targets": {
+    "nrf52840-nosd": {
+      "capacity-report": {
+        "status": "selectable",
+        "value_type": "boolean",
+        "default": false,
+        "kernel_features": ["capacity-report"],
+        "conflicts": [],
+        "price": {
+          "flash_delta_bytes_max": 2048,
+          "static_ram_delta_bytes_max": 128,
+          "total_ram_delta_bytes_max": 256,
+          "latency": {"class": "diagnostic-path-only", "bound_us": null}
+        },
+        "evidence": {
+          "level": "cross-target-build-ceiling",
+          "composition": "generated AppGraph host plus thumbv7em-none-eabihf kernel feature build",
+          "limitations": "Admission ceilings for this composition, not universal measured deltas or physical timing."
+        }
+      },
+      "preemptive": {
+        "status": "unavailable",
+        "value_type": "boolean",
+        "default": false,
+        "kernel_features": ["preemptive"],
+        "conflicts": [],
+        "price": null,
+        "reason": "The project generator does not yet emit target context-switch and stack ownership."
+      }
+    },
+    "nrf52840-s140": {
+      "capacity-report": {
+        "status": "selectable",
+        "value_type": "boolean",
+        "default": false,
+        "kernel_features": ["capacity-report"],
+        "conflicts": [],
+        "price": {
+          "flash_delta_bytes_max": 2048,
+          "static_ram_delta_bytes_max": 128,
+          "total_ram_delta_bytes_max": 256,
+          "latency": {"class": "diagnostic-path-only", "bound_us": null}
+        },
+        "evidence": {
+          "level": "cross-target-build-ceiling",
+          "composition": "generated AppGraph host plus thumbv7em-none-eabihf kernel feature build",
+          "limitations": "Admission ceilings for this composition, not universal measured deltas or physical timing."
+        }
+      },
+      "preemptive": {
+        "status": "unavailable",
+        "value_type": "boolean",
+        "default": false,
+        "kernel_features": ["preemptive"],
+        "conflicts": [],
+        "price": null,
+        "reason": "The S140 project profile has no verified preemptive platform composition."
+      }
+    }
+  }
+}

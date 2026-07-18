@@ -118,6 +118,12 @@ Python callbacks run only in the host simulator. The generated device image is
 native Rust; NobroRTOS does not claim on-device Python. A wire in this authoring
 slice carries graph/capacity metadata, not Python objects or payload bytes.
 
+Generated project workloads also have one optional-feature switchboard:
+`"features": {"capacity-report": true}`. `project explain` obtains its
+target-scoped flash/RAM reserve, latency class, and evidence from
+`sdk/feature-catalog.json`; users do not duplicate prices or generated defines.
+Unavailable and unpriced combinations fail closed rather than appearing free.
+
 The board line is mandatory: it selects the SoftDevice or no-SoftDevice linker layout
 instead of guessing. Role defaults infer an initial budget and memory estimate; review
 `workload.json` before hardware use. This is a measured five-line authoring path, not a
