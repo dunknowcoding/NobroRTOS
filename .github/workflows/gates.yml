@@ -64,7 +64,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: thumbv7em-none-eabihf
-          components: clippy,rustfmt,llvm-tools-preview
+          components: clippy,rustfmt,llvm-tools-preview,rust-src
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -87,6 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rust-src
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit,cargo-llvm-cov
@@ -158,7 +160,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
-          components: llvm-tools-preview
+          components: rust-src,llvm-tools-preview
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
