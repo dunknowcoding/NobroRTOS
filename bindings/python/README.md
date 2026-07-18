@@ -3,6 +3,36 @@
 This folder contains Python-facing host tooling and contract builders. The
 Python layer is for development workflows, not hard-realtime firmware paths.
 
+## Author one graph for pytest and native firmware
+
+`NobroApp` uses one small declaration for deterministic host callbacks and for
+strict JSON consumed by `nobro firmware`:
+
+```python
+from nobro_rtos import HZ, NobroApp
+
+seen = []
+app = (NobroApp("rover", board="nrf52840-nosd")
+       .task("motor", HZ(200), lambda event: seen.append(event.now_us),
+             role="control")
+       .task("imu", HZ(100), role="sensor")
+       .wire("imu", "motor", 8))
+
+report = app.run(50_000)
+app.write_json("app.json")
+assert report.runs["motor"] == 10
+```
+
+```bash
+python sdk/cli/nobro.py firmware app.json --build
+```
+
+The callable is deliberately omitted from JSON: it is a host-only pytest hook,
+not on-device Python. The firmware CLI validates data and never evaluates the
+authoring script. The generated image is native Rust admitted by the existing
+firmware path. Wire capacity is retained as graph metadata; it is not yet a
+Python payload channel.
+
 Initial priorities:
 
 - report decoding

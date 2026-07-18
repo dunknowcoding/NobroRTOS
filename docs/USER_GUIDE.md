@@ -407,6 +407,31 @@ python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
 python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 ```
 
+The Python authoring persona declares the same periodic tasks and wires, runs
+deterministic callbacks under pytest, and exports strict JSON:
+
+```python
+from nobro_rtos import HZ, NobroApp
+
+app = (NobroApp("rover", board="nrf52840-nosd")
+       .task("motor", HZ(200), role="control")
+       .task("imu", HZ(100), role="sensor")
+       .wire("imu", "motor", 8))
+app.run(50_000)
+app.write_json("app.json")
+```
+
+```bash
+python sdk/cli/nobro.py firmware app.json --build
+```
+
+The firmware command reads JSON; it does not execute the Python source. Task
+callbacks are host-only test hooks and are omitted from JSON. Device code is
+native Rust using the same admission generator as `app.nobro`. This path
+currently supports the generator's nRF52840 SoftDevice and no-SoftDevice
+profiles. Wire capacity is topology metadata until a native payload binding is
+selected.
+
 The generator emits `workload.json`, `generation.json`, and a compiling `no_std` Cargo
 crate from the same input. The explicit board profile selects the S140 or no-SoftDevice
 memory layout. Defaults reduce beginner boilerplate while keeping budget review visible.

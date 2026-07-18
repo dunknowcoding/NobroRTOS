@@ -9,7 +9,7 @@ corpora, and private reports are intentionally not tracked.
 | Tool | Purpose |
 | --- | --- |
 | `nobro_project.py` | Create, explain, build, simulate, and report a Nobro project |
-| `nobro_firmware_project.py` | Generate admitted firmware from a short app declaration |
+| `nobro_firmware_project.py` | Generate admitted native firmware from `app.nobro` or strict Python-app JSON |
 | `nobro_app.py` | Validate and generate an `app.json` application |
 | `nobro_contract_tool.py` | Inspect and decode public host contracts |
 | `flash.py` | Flash through supported J-Link, UF2, or Arduino backends |

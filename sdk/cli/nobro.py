@@ -12,7 +12,7 @@
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
 | contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
 | project  | create/explain/build/run/report/shrink apps   | tools/nobro_project.py |
-| firmware | generate/build nRF firmware from app.nobro   | tools/nobro_firmware_project.py |
+| firmware | build nRF firmware from app.nobro or Python app JSON | tools/nobro_firmware_project.py |
 
 Each command accepts its underlying tool's flags unchanged. The mapping is data, so
 adding a command is one table row.

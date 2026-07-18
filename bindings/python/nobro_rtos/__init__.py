@@ -1,5 +1,19 @@
 """Host-side helpers for NobroRTOS contracts."""
 
+from .app import (
+    APP_SCHEMA,
+    AppCallbackError,
+    AppDeclarationError,
+    AppSimulationError,
+    HZ,
+    MAX_SIMULATION_EVENTS,
+    NobroApp,
+    SimulationEvent,
+    SimulationReport,
+    TaskContext,
+    TaskDeclaration,
+    WireDeclaration,
+)
 from .contracts import (
     AiBackendKind,
     AiInvocationConstraints,
@@ -125,6 +139,18 @@ from .node import (
 )
 
 __all__ = [
+    "APP_SCHEMA",
+    "AppCallbackError",
+    "AppDeclarationError",
+    "AppSimulationError",
+    "HZ",
+    "MAX_SIMULATION_EVENTS",
+    "NobroApp",
+    "SimulationEvent",
+    "SimulationReport",
+    "TaskContext",
+    "TaskDeclaration",
+    "WireDeclaration",
     "AiBackendKind",
     "AiInvocationConstraints",
     "AiModelContract",

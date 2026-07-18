@@ -65,6 +65,15 @@ gate "accounting semantics" python tools/check_accounting_semantics.py
 gate "nano kernel build/admission/symbol budgets" \
   python tools/check_nano_kernel.py
 
+gate "Python-authored native firmware target build" \
+  bash -c 'python tutorials/rover-python/app.py _work/python-authoring/app.json && \
+    python tools/nobro_firmware_project.py _work/python-authoring/app.json \
+      --out _work/python-firmware --build && \
+    python tools/static_budget.py \
+      "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/nobro-app-python-rover" \
+      --flash-budget 4000 --static-ram-budget 64 --ram-budget 512 \
+      --stack-budget 400 --cycle-budget 1200'
+
 gate "static budget analyzer" python tools/static_budget.py --selftest
 
 gate "flash tool fail-closed parser" python tools/flash.py --selftest

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate host-readable contracts and production firmware from one small app file.
 
-The input is intentionally a declaration, not generated Rust boilerplate::
+The input is either the compact declaration below or strict JSON exported by
+``nobro_rtos.NobroApp``. It is configuration, not generated Rust boilerplate::
 
     app rover
     board nrf52840-s140
@@ -24,6 +25,10 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "bindings" / "python"))
+
+from nobro_rtos.app import NobroApp  # noqa: E402
+
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 LINE = re.compile(
@@ -182,7 +187,7 @@ fn main() -> ! {{
 '''
 
 
-def rust_build(spec: dict) -> str:
+def rust_build(spec: dict, source_name: str = "app.nobro") -> str:
     workload = spec["workload"]
     tasks = workload["tasks"]
     channel_users = {name for channel in workload["channels"] for name in channel}
@@ -235,7 +240,7 @@ fn main() {{
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::copy("memory.x", out.join("memory.x")).expect("copy memory.x");
     println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rerun-if-changed=app.nobro");
+    println!("cargo:rerun-if-changed={source_name}");
     println!("cargo:rustc-link-search={{}}", out.display());
     match admit(TASKS, PROFILE) {{
         Ok(table) => emit(table, &out),
@@ -253,13 +258,34 @@ fn main() {{
 '''
 
 
-def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
+def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
+    """Load one compact-text or strict Python-JSON app without executing code."""
+
+    if source.suffix.lower() == ".json":
+        app = NobroApp.read_json(source)
+        return app.firmware_spec(), "python-json", "app.json"
     text = source.read_text(encoding="utf-8")
-    spec = parse(text)
+    return parse(text), "compact-text", "app.nobro"
+
+
+def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
+    spec, source_format, source_name = load_source(source)
     project = (out_dir / spec["app"]).resolve()
     (project / "src").mkdir(parents=True, exist_ok=True)
     (project / ".cargo").mkdir(parents=True, exist_ok=True)
-    (project / "app.nobro").write_text(text, encoding="utf-8", newline="\n")
+    if source_format == "python-json":
+        canonical = NobroApp.read_json(source).to_dict()
+        (project / source_name).write_text(
+            json.dumps(canonical, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    else:
+        (project / source_name).write_text(
+            source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+            newline="\n",
+        )
     (project / "workload.json").write_text(
         json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n")
     kernel = ROOT / "core" / "crates" / "nobro_kernel"
@@ -316,10 +342,13 @@ rustflags = [
 ''', encoding="utf-8", newline="\n")
     profile = BOARDS[spec["board"]][0]
     shutil.copyfile(ROOT / "core" / f"memory-{profile}.x", project / "memory.x")
-    (project / "build.rs").write_text(rust_build(spec), encoding="utf-8", newline="\n")
+    (project / "build.rs").write_text(
+        rust_build(spec, source_name), encoding="utf-8", newline="\n"
+    )
     (project / "src" / "main.rs").write_text(rust_main(spec), encoding="utf-8", newline="\n")
     metadata = {"schema": "nobro-firmware-project-v1", "app": spec["app"],
                 "board": spec["board"], "memory_profile": profile,
+                "source_format": source_format,
                 "user_lines": spec["user_lines"], "generated_rust_lines": len(rust_main(spec).splitlines()),
                 "task_count": len(spec["workload"]["tasks"]) - 1}
     (project / "generation.json").write_text(
@@ -393,6 +422,25 @@ service camera every 40ms
         assert "TaskContract::new(3).priority(4).deadline(40000, 40000" in build_source
         assert ".phase(0)" in build_source
         assert ".wake_latency_us(0)" in build_source
+        python_app = (
+            NobroApp("python_rover", board="nrf52840-nosd")
+            .task("motor", 5_000, role="control")
+            .task("imu", 10_000)
+            .wire("imu", "motor", 8)
+        )
+        python_source = pathlib.Path(tmp) / "app.json"
+        python_app.write_json(python_source)
+        python_result = generate(python_source, pathlib.Path(tmp) / "python-out")
+        assert python_result["source_format"] == "python-json"
+        assert python_result["memory_profile"] == "nosd"
+        python_workload = json.loads(
+            (python_result["project"] / "workload.json").read_text(encoding="utf-8")
+        )
+        assert python_workload["channels"] == [["imu", "motor"]]
+        assert python_workload["wire_capacities"] == [["imu", "motor", 8]]
+        assert "rerun-if-changed=app.json" in (
+            python_result["project"] / "build.rs"
+        ).read_text(encoding="utf-8")
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown"),

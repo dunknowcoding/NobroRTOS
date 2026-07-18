@@ -53,6 +53,29 @@ validation, and late dispatch preserves phase while incrementing
 payload transport. See [the C binding guide](../bindings/c/README.md) for the
 complete specimen and current busy-poll timing limitation.
 
+### Python app authoring
+
+`NobroApp` exposes the same task/wire vocabulary to host tests:
+
+```python
+from nobro_rtos import HZ, NobroApp
+
+app = (NobroApp("rover", board="nrf52840-nosd")
+       .task("motor", HZ(200), role="control")
+       .task("imu", HZ(100), role="sensor")
+       .wire("imu", "motor", 8))
+report = app.run(50_000)
+app.write_json("app.json")
+```
+
+`run()` and `simulate()` execute deterministic, bounded host callbacks.
+`write_json()` emits the strict `nobro-python-app-v1` graph accepted by
+`nobro firmware`; callbacks are omitted. The firmware CLI validates JSON and
+does not evaluate Python source. Generated firmware is native Rust using the
+existing admission path. Current firmware generation supports the nRF52840
+SoftDevice and no-SoftDevice profiles. Wire capacity is retained as topology
+metadata, not exposed as a Python payload transport.
+
 ### Crate Overview
 
 | Crate | Purpose |

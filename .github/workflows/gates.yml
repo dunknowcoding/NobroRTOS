@@ -71,6 +71,9 @@ jobs:
       - name: build generated firmware and prebuilt UF2 experiences
         run: |
           python tools/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
+          python tutorials/rover-python/app.py _work/python-authoring/app.json
+          python tools/nobro_firmware_project.py _work/python-authoring/app.json --out _work/python-firmware --build
+          python tools/static_budget.py _work/python-firmware/python_rover/target/thumbv7em-none-eabihf/release/nobro-app-python-rover --flash-budget 4000 --static-ram-budget 64 --ram-budget 512 --stack-budget 400 --cycle-budget 1200
           python tools/package_prebuilt_uf2.py --build
       - name: comprehensive Rust gates
         run: |

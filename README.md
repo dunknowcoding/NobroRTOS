@@ -96,6 +96,28 @@ python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
 python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 ```
 
+Python uses the same task/wire vocabulary for host tests and native-firmware
+input:
+
+```python
+from nobro_rtos import HZ, NobroApp
+
+app = (NobroApp("rover", board="nrf52840-nosd")
+       .task("motor", HZ(200), role="control")
+       .task("imu", HZ(100), role="sensor")
+       .wire("imu", "motor", 8))
+app.run(50_000)
+app.write_json("app.json")
+```
+
+```bash
+python sdk/cli/nobro.py firmware app.json --build
+```
+
+Python callbacks run only in the host simulator. The generated device image is
+native Rust; NobroRTOS does not claim on-device Python. A wire in this authoring
+slice carries graph/capacity metadata, not Python objects or payload bytes.
+
 The board line is mandatory: it selects the SoftDevice or no-SoftDevice linker layout
 instead of guessing. Role defaults infer an initial budget and memory estimate; review
 `workload.json` before hardware use. This is a measured five-line authoring path, not a
