@@ -19,8 +19,14 @@ EXPECTED_LICENSE = "PolyForm-Noncommercial-1.0.0"
 EXPECTED_INCLUDE = "NobroRTOS.h"
 EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
 EXPECTED_PYTHON_PACKAGE = "bindings/python"
-EXPECTED_PYTHON_PROJECT_NAME = "nobro-rtos-tools"
+EXPECTED_PYTHON_PROJECT_NAME = "nobro-rtos"
 EXPECTED_PYTHON_REQUIRES = ">=3.10"
+EXPECTED_PYTHON_DEPENDENCIES: list[str] = []
+EXPECTED_PYTHON_OPTIONAL_DEPENDENCIES = {
+    "serial": ["pyserial>=3.5"],
+    "tflite": ["tensorflow>=2.15"],
+    "all": ["pyserial>=3.5", "tensorflow>=2.15"],
+}
 REQUIRED_REPORT_SURFACES = (
     ("board_profile", "nobro_board_profile_report_t", "BoardProfileReportView"),
     ("board_package", "nobro_board_package_report_t", "BoardPackageReportView"),
@@ -303,6 +309,16 @@ def validate_distribution_metadata(
         "Python project license files",
     )
     _require_equal(
+        project.get("dependencies"),
+        EXPECTED_PYTHON_DEPENDENCIES,
+        "Python default dependencies",
+    )
+    _require_equal(
+        project.get("optional-dependencies"),
+        EXPECTED_PYTHON_OPTIONAL_DEPENDENCIES,
+        "Python optional dependencies",
+    )
+    _require_equal(
         pyproject.get("tool", {}).get("setuptools", {}).get("packages"),
         ["nobro_rtos"],
         "Python package list",
@@ -344,7 +360,7 @@ def validate_distribution_metadata(
     )
     _require_equal(
         platformio.get("export", {}).get("include"),
-        ["include", "LICENSE", "README.md", "library.json"],
+        ["include", "examples", "LICENSE", "README.md", "library.json"],
         "PlatformIO export include",
     )
     canonical_license = root / "LICENSE"

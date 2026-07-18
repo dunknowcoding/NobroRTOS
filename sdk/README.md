@@ -133,7 +133,7 @@ emits no declarations.
 | --- | --- |
 | Arduino sketch | the Arduino library zip (`nobro package arduino --zip`) |
 | C module without Rust sources | the Tier C bundle plus `include/` |
-| Python host application | `pip install ./bindings/python` |
+| Python host application | `pip install nobro_rtos` (optional: `[serial]` or `[tflite]`) |
 | First device application | `firmware/nobrortos-starter-s140.uf2` and tutorial 01 |
 | Rust firmware | the workspace and [getting-started guide](../docs/GETTING_STARTED.md) |
 

@@ -3,8 +3,8 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nobro-rtos-tools"
-version = "0.3.0"
+name = "nobro-rtos"
+version = "0.3.1"
 description = "Host-side NobroRTOS contract builders and inspection helpers."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,6 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Embedded Systems",
 ]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/dunknowcoding/NobroRTOS"
@@ -26,6 +27,11 @@ Repository = "https://github.com/dunknowcoding/NobroRTOS"
 [project.optional-dependencies]
 # opening real serial ports (NobroNode live monitoring); parsing/simulators are stdlib
 serial = ["pyserial>=3.5"]
+# TensorFlow is intentionally detached from the default install. It is used only
+# to import existing .tflite files; exported models and reference inference stay
+# usable without it.
+tflite = ["tensorflow>=2.15"]
+all = ["pyserial>=3.5", "tensorflow>=2.15"]
 
 [project.scripts]
 nobro-rtos = "nobro_rtos.cli:main"

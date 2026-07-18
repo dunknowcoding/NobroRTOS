@@ -169,7 +169,13 @@ def compile_headers(work: Path, arduino_zip: Path, platformio_tar: Path) -> None
 
     source.write_text(
         "#include <NobroRTOS.h>\n"
-        "int main() { return NOBRO_REPORT_STATUS_PASS == 3 ? 0 : 1; }\n",
+        "int main() {\n"
+        "  nobro::NobroApp<2, 1> app;\n"
+        "  nobro::TaskId control = app.control(\"control\", 5);\n"
+        "  nobro::TaskId sensor = app.sensor(\"sensor\", 10);\n"
+        "  app.wire(sensor, control, 4);\n"
+        "  return app.admit() && NOBRO_REPORT_STATUS_PASS == 3 ? 0 : 1;\n"
+        "}\n",
         encoding="utf-8",
     )
     subprocess.run(

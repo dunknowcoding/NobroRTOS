@@ -1,15 +1,18 @@
 # Python SDK
 
-The Python surface ships as the `nobro-rtos-tools` package (source of truth:
+The Python surface ships as the `nobro-rtos` distribution (source of truth:
 [`bindings/python/`](../../bindings/python/)).
 
 ```bash
-pip install ./bindings/python            # parsing, contracts, simulators (stdlib-only)
-pip install "./bindings/python[serial]"  # + live serial monitoring (NobroNode)
+pip install nobro_rtos           # dependency-free core: contracts, reports, simulators
+pip install "nobro_rtos[serial]" # + live serial monitoring (pyserial)
+pip install "nobro_rtos[tflite]" # + large TensorFlow .tflite importer
 ```
 
+Python package names normalize `_` and `-`, so `pip install nobro_rtos`
+resolves the `nobro-rtos` distribution and imports as `nobro_rtos`.
 After install you have the `nobro-rtos` console command (contract inspection,
-report decoding, simulators — `nobro-rtos --help`) and the library:
+report decoding, simulators - `nobro-rtos --help`) and the library:
 
 ```python
 from nobro_rtos.node import NobroNode, parse_status_line   # live boards + decoding

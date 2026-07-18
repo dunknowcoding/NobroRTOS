@@ -4,6 +4,18 @@
 
 No changes yet.
 
+## 0.3.1 - 2026-07-18
+
+### Changed
+
+- The Python distribution is now named `nobro-rtos`, so the normalized
+  `pip install nobro_rtos` command installs the `nobro_rtos` package directly.
+- The default Python install remains dependency-free; live serial monitoring is
+  in the `serial` extra and the large TensorFlow importer is in `tflite`.
+- Arduino and PlatformIO package documentation now explains installation,
+  configuration, source ownership, and the boundary to native NobroRTOS
+  firmware. PlatformIO ships the same checked C++ facade as Arduino.
+
 ## 0.3.0 - 2026-07-18
 
 ### Added

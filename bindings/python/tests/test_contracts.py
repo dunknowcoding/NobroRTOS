@@ -174,7 +174,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.sdk_name, "NobroRTOS Standalone SDK")
         self.assertEqual(report.arduino_name, "NobroRTOS")
         self.assertEqual(report.platformio_name, "NobroRTOS")
-        self.assertEqual(report.python_package_name, "nobro-rtos-tools")
+        self.assertEqual(report.python_package_name, "nobro-rtos")
         self.assertEqual(report.python_requires, ">=3.10")
 
     def test_public_header_surface_keeps_c_and_cpp_abi_visible(self) -> None:
@@ -260,7 +260,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertGreater(report["host_contract"]["capability_count"], 0)
         self.assertEqual(
             report["distribution"]["python_package_name"],
-            "nobro-rtos-tools",
+            "nobro-rtos",
         )
         self.assertEqual(report["public_headers"]["c_report_count"], 12)
         self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])

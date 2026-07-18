@@ -41,7 +41,7 @@ VERDICT    : PASS
 | Thing | Where |
 | --- | --- |
 | Python 3.10+ | [python.org](https://www.python.org/downloads/) |
-| The `nobro-rtos-tools` package | from the repo: `pip install ./bindings/python` (add `[serial]` for live boards: `pip install "./bindings/python[serial]"`) |
+| The `nobro-rtos` distribution | `pip install nobro_rtos` (add `[serial]` for live boards or `[tflite]` for the large TensorFlow importer) |
 
 ### Steps
 

@@ -16,6 +16,26 @@ Current contents:
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
+## Install and select a board environment
+
+In Arduino IDE 2.x:
+
+1. Install the board package for your MCU in Boards Manager.
+2. Install **NobroRTOS** in Library Manager.
+3. Select the exact board and port under **Tools**.
+4. Open **File > Examples > NobroRTOS > BeginnerApp** and upload it.
+
+For a local checkout, install the release archive with:
+
+```bash
+arduino-cli lib install --zip-path NobroRTOS-Arduino-0.3.1.zip
+```
+
+Board cores own upload tools, bootloaders, USB configuration, pins, interrupts,
+and peripheral implementations. NobroRTOS does not replace those settings.
+
+## Configure only what the sketch uses
+
 The Arduino package remains a thin compatibility surface over the core contracts. The
 installed board package continues to own register setup, interrupts, and pin routing.
 Provider wrappers are opt-in: define `NOBRO_ARDUINO_ENABLE_PROVIDERS` before including
@@ -62,6 +82,20 @@ storage of its own; this is not a claim about memory or timing inside vendor pro
 calls. Zero execution/resource budgets and arithmetic overflow are rejected fail-closed.
 Production execution still uses generated/core firmware, so a passing preview is not
 measured WCET evidence.
+
+## Relationship to the full NobroRTOS repository
+
+This repository is the Arduino-facing distribution, not a duplicate Rust source
+tree. The full native kernel, ports, adapters, application compositions, generator,
+and host tooling live in
+<https://github.com/dunknowcoding/NobroRTOS>. Its canonical Arduino input is
+`packages/arduino/`; releases copy that directory into this package-root repository.
+
+Use the Arduino package for sketches, bounded contract declarations, report decoding,
+and optional board-core provider wrappers. Use the main repository when generating or
+building native NobroRTOS firmware, adding a port/adapter, or running the complete
+validation matrix. See
+<https://github.com/dunknowcoding/NobroRTOS/blob/master/docs/ARDUINO_PLATFORMIO.md>.
 
 `python tools/package_arduino.py --check` verifies the vendored canonical
 headers and license. `--zip` writes a self-contained installable archive under

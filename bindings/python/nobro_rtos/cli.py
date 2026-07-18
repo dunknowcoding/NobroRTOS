@@ -1331,7 +1331,7 @@ def _doctor() -> dict[str, object]:
             "mode": "installed",
             "host_contract": host_contract,
             "distribution": {
-                "python_package_name": "nobro-rtos-tools",
+                "python_package_name": "nobro-rtos",
                 "repository_checks": "not_available_outside_checkout",
             },
             "host_simulators": host_simulators,

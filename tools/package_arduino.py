@@ -55,6 +55,16 @@ def sync() -> int:
         (SDK_INC / h.name).write_text(vendored_text(h), encoding="utf-8", newline="\n")
         (PIO_INC / h.name).write_text(vendored_text(h), encoding="utf-8", newline="\n")
         print(f"synced Arduino + SDK + PlatformIO: {h.name}")
+    # packages/arduino/src is the canonical C++ compatibility surface. Keep the
+    # PlatformIO package byte-identical instead of maintaining a second facade.
+    for source in sorted(SRC.glob("*.h")):
+        destination = PIO_INC / source.name
+        destination.write_text(
+            source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+            newline="\n",
+        )
+        print(f"synced PlatformIO facade: {source.name}")
     license_text = LICENSE.read_text(encoding="utf-8")
     for destination in LICENSE_DESTINATIONS:
         destination.write_text(license_text, encoding="utf-8", newline="\n")
@@ -74,6 +84,14 @@ def check() -> int:
         for dst in (SRC / h.name, SDK_INC / h.name, PIO_INC / h.name):
             if not dst.exists() or dst.read_text(encoding="utf-8") != vendored_text(h):
                 stale.append(str(dst.relative_to(ROOT)))
+    for source in sorted(SRC.glob("*.h")):
+        destination = PIO_INC / source.name
+        if (
+            not destination.exists()
+            or destination.read_text(encoding="utf-8")
+            != source.read_text(encoding="utf-8")
+        ):
+            stale.append(str(destination.relative_to(ROOT)))
     license_text = LICENSE.read_text(encoding="utf-8")
     for destination in LICENSE_DESTINATIONS:
         if (

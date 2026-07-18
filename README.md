@@ -68,6 +68,12 @@ python tools/run_checks.py --quick
 That checks public contracts, packages, tutorials, bindings, and documentation without
 touching hardware. Use `python sdk/cli/nobro.py flash --help` for image deployment.
 
+Prefer a packaged environment? Install the dependency-free Python host core
+with `pip install nobro_rtos`, install **NobroRTOS** from Arduino Library
+Manager, or add `dunknowcoding/NobroRTOS` to PlatformIO `lib_deps`. The
+Arduino/PlatformIO source relationship and configuration boundary are described
+in [Arduino and PlatformIO packages](docs/ARDUINO_PLATFORMIO.md).
+
 Create and run a graph-declared application without hand-writing the expanded
 manifest, startup, capability, quota, and executor inputs:
 

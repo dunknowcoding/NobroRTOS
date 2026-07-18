@@ -3,6 +3,12 @@
 This folder contains Python-facing host tooling and contract builders. The
 Python layer is for development workflows, not hard-realtime firmware paths.
 
+Install the dependency-free core from PyPI with `pip install nobro_rtos`.
+Use `pip install "nobro_rtos[serial]"` for live serial ports or
+`pip install "nobro_rtos[tflite]"` for the large TensorFlow-based `.tflite`
+importer. Python normalizes `_` and `-`, so the install command resolves the
+`nobro-rtos` distribution and the import remains `nobro_rtos`.
+
 ## Author one graph for pytest and native firmware
 
 `NobroApp` uses one small declaration for deterministic host callbacks and for
