@@ -60,5 +60,6 @@ calls. Zero execution/resource budgets and arithmetic overflow are rejected fail
 Production execution still uses generated/core firmware, so a passing preview is not
 measured WCET evidence.
 
-Release packaging should copy the canonical C/C++ binding headers into the
-package archive while preserving the same public include names.
+`python tools/package_arduino.py --check` verifies the vendored canonical
+headers and license. `--zip` writes a self-contained installable archive under
+the ignored `_work/` directory.

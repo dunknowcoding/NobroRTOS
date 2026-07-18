@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
   "name": "NobroRTOS",
   "version": "0.1.0",
   "description": "Ultra-light embedded RTOS contracts for AI robotics, IoT, and intelligent control.",
@@ -20,7 +21,7 @@
       "maintainer": true
     }
   ],
-  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "frameworks": "*",
   "platforms": "*",
   "headers": [
@@ -28,5 +29,13 @@
   ],
   "build": {
     "includeDir": "include"
+  },
+  "export": {
+    "include": [
+      "include",
+      "LICENSE",
+      "README.md",
+      "library.json"
+    ]
   }
 }

@@ -156,6 +156,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("core layout", [py, "tools/check_core_layout.py"], ROOT),
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
         ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
+        ("distribution artifacts", [py, "tools/check_distribution_artifacts.py"], ROOT),
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
         ("NiusIMU adapter contracts", [py, "tools/check_niusimu_adapter.py", "--selftest"], ROOT),

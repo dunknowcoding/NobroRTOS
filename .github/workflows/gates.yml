@@ -36,6 +36,7 @@ jobs:
       - name: arduino package drift
         run: |
           python tools/package_arduino.py --check
+          python tools/check_distribution_artifacts.py
           python tools/check_arduino_facade.py
       - name: web flasher + block editor + tutorials
         run: |

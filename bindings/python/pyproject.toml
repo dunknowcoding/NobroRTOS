@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Host-side NobroRTOS contract builders and inspection helpers."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "LicenseRef-PolyForm-Noncommercial-1.0.0" }
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 authors = [{ name = "dunknowcoding (YouTube NiusRobotLab)" }]
 keywords = ["embedded", "rtos", "microcontroller", "diagnostics", "contracts"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: Free for non-commercial use",
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Embedded Systems",
 ]
@@ -32,3 +32,6 @@ nobro-rtos = "nobro_rtos.cli:main"
 
 [tool.setuptools]
 packages = ["nobro_rtos"]
+
+[tool.setuptools.package-data]
+nobro_rtos = ["*.json"]

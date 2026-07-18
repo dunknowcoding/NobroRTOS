@@ -19,6 +19,10 @@
 - One versioned error registry now gives Rust, C/C++11, Arduino, Python, and
   CLI/JSON failures stable `NOBRO-E0xx` identities, generated recovery docs,
   and checked compile-fail diagnostics.
+- Arduino, PlatformIO, and Python package surfaces now carry checked license
+  copies; PlatformIO archives vendor the canonical C headers instead of
+  escaping into the source repository, and clean-artifact smoke tests reject
+  private, cache, and compiler-output leakage.
 
 ### Known boundaries
 

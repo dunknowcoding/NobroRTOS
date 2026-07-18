@@ -12,6 +12,7 @@ from .contracts import AiBackendKind, AiRoutePreference, AiRouteTarget, Capabili
 
 
 DEFAULT_CONTRACT_RELATIVE_PATH = Path("host") / "nobro-host-contract.json"
+BUNDLED_CONTRACT_PATH = Path(__file__).with_name("nobro-host-contract.json")
 EXPECTED_TOP_LEVEL_KEYS = frozenset(
     {
         "cdc",
@@ -427,5 +428,10 @@ def find_repo_root(start: str | Path | None = None) -> Path:
 
 
 def load_repo_host_contract(start: str | Path | None = None) -> HostContract:
-    root = find_repo_root(start)
+    try:
+        root = find_repo_root(start)
+    except FileNotFoundError:
+        if start is not None or not BUNDLED_CONTRACT_PATH.is_file():
+            raise
+        return HostContract.from_path(BUNDLED_CONTRACT_PATH)
     return HostContract.from_path(root / DEFAULT_CONTRACT_RELATIVE_PATH)

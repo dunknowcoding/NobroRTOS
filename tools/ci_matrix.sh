@@ -82,6 +82,9 @@ gate "task/wire authoring parity + block-authored target build" \
 gate "stable diagnostic registry + generated index" \
   python tools/gen_error_codes.py --check
 
+gate "self-contained distribution artifacts" \
+  python tools/check_distribution_artifacts.py
+
 gate "static budget analyzer" python tools/static_budget.py --selftest
 
 gate "flash tool fail-closed parser" python tools/flash.py --selftest

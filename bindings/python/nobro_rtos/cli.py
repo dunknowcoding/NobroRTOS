@@ -40,7 +40,7 @@ from .distribution import (
     validate_public_header_surface,
     validate_python_public_surface,
 )
-from .host_contract import BootDiagnostic, load_repo_host_contract
+from .host_contract import BootDiagnostic, find_repo_root, load_repo_host_contract
 from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
 from .templates import (
     ProjectTarget,
@@ -1282,57 +1282,73 @@ def _bundle_error(bundle: NobroContractBundle) -> str | None:
 
 def _doctor() -> dict[str, object]:
     contract = load_repo_host_contract()
+    host_simulators = [
+        "sensor",
+        "actuator",
+        "recovery",
+        "recovery_matrix_gate",
+        "watchdog",
+        "watchdog_matrix_gate",
+        "scheduler",
+        "scheduler_matrix_gate",
+        "event_log",
+        "event_log_matrix_gate",
+        "quota",
+        "quota_matrix_gate",
+        "degrade",
+        "degrade_matrix_gate",
+        "startup_matrix_gate",
+        "boot_summary_matrix_gate",
+        "runtime_drill",
+        "runtime_drill_gate",
+        "ai_route_gate",
+        "ai_route_matrix_gate",
+        "ai_preflight_gate",
+        "ros_preflight_gate",
+        "bundle_matrix_gate",
+        "report_matrix_gate",
+        "project_templates",
+        "starter_template_gate",
+    ]
+    host_contract = {
+        "boot_stages": list(contract.boot_stage_order()),
+        "capability_count": len(contract.payload.get("capability_bits", {})),
+        "ai_backend_count": len(
+            contract.payload.get("ai_contracts", {}).get("backend_codes", {})
+        ),
+        "ros_transport_count": len(
+            contract.payload.get("ros_bridge_contracts", {}).get(
+                "transport_codes",
+                {},
+            )
+        ),
+    }
+    try:
+        find_repo_root()
+    except FileNotFoundError:
+        return {
+            "status": "ok",
+            "mode": "installed",
+            "host_contract": host_contract,
+            "distribution": {
+                "python_package_name": "nobro-rtos-tools",
+                "repository_checks": "not_available_outside_checkout",
+            },
+            "host_simulators": host_simulators,
+        }
     distribution = validate_distribution_metadata()
     headers = validate_public_header_surface()
     python_surface = validate_python_public_surface()
     cli_surface = validate_cli_command_surface()
     return {
         "status": "ok",
-        "host_contract": {
-            "boot_stages": list(contract.boot_stage_order()),
-            "capability_count": len(contract.payload.get("capability_bits", {})),
-            "ai_backend_count": len(
-                contract.payload.get("ai_contracts", {}).get("backend_codes", {})
-            ),
-            "ros_transport_count": len(
-                contract.payload.get("ros_bridge_contracts", {}).get(
-                    "transport_codes",
-                    {},
-                )
-            ),
-        },
+        "mode": "repository",
+        "host_contract": host_contract,
         "distribution": distribution.to_dict(),
         "public_headers": headers.to_dict(),
         "python_public_surface": python_surface.to_dict(),
         "cli_command_surface": cli_surface.to_dict(),
-        "host_simulators": [
-            "sensor",
-            "actuator",
-            "recovery",
-            "recovery_matrix_gate",
-            "watchdog",
-            "watchdog_matrix_gate",
-            "scheduler",
-            "scheduler_matrix_gate",
-            "event_log",
-            "event_log_matrix_gate",
-            "quota",
-            "quota_matrix_gate",
-            "degrade",
-            "degrade_matrix_gate",
-            "startup_matrix_gate",
-            "boot_summary_matrix_gate",
-            "runtime_drill",
-            "runtime_drill_gate",
-            "ai_route_gate",
-            "ai_route_matrix_gate",
-            "ai_preflight_gate",
-            "ros_preflight_gate",
-            "bundle_matrix_gate",
-            "report_matrix_gate",
-            "project_templates",
-            "starter_template_gate",
-        ],
+        "host_simulators": host_simulators,
     }
 
 

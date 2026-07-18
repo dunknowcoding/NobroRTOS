@@ -5,8 +5,9 @@ This folder contains the PlatformIO distribution surface.
 Current contents:
 
 - `library.json` for PlatformIO library metadata.
-- `include/NobroRTOS.h` as a thin forwarding include to the canonical C ABI
-  header.
+- `include/NobroRTOS.h` plus checked vendored C ABI headers, so a registry
+  archive does not depend on the surrounding monorepo.
+- the repository's noncommercial license.
 
 The PlatformIO package should reuse the same contracts as the standalone SDK and
 Arduino package.
@@ -17,5 +18,6 @@ Repository-local use:
 #include <NobroRTOS.h>
 ```
 
-Release packaging should copy the canonical C/C++ binding headers into the
-package archive while preserving the same public include names.
+`python tools/package_arduino.py --check` verifies the vendored headers and
+license. `python tools/check_distribution_artifacts.py` packs and clean-install
+checks the package without publishing it.

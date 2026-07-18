@@ -1,0 +1,311 @@
+{
+  "cdc": {
+    "maintenance_mi": "MI_00",
+    "user_mi": "MI_02"
+  },
+  "upload": {
+    "touch_baud": 1200,
+    "lock_per_port": true
+  },
+  "ina_monitor": {
+    "jsonl_line_rate_hz_max": 50
+  },
+  "boot_diagnostics": {
+    "stage_order": [
+      "board_profile",
+      "board_package",
+      "manifest",
+      "adapter_compatibility",
+      "admission",
+      "runtime"
+    ],
+    "status_labels": [
+      "missing",
+      "in_progress",
+      "pass",
+      "fail",
+      "corrupt"
+    ],
+    "diagnostic_code": "u32: stage_code << 24 | status_class << 16 | error_code_low16; status_class pass=0 missing=1 in_progress=2 corrupt=3 fail=4",
+    "first_non_pass": true,
+    "summary_fields": [
+      "diagnostic",
+      "slots",
+      "pass_count",
+      "missing_count",
+      "in_progress_count",
+      "fail_count",
+      "corrupt_count"
+    ]
+  },
+  "module_tags": {
+    "1": "kernel",
+    "2": "hal",
+    "3": "bus",
+    "4": "radio",
+    "5": "sensor",
+    "6": "actuator",
+    "7": "stream",
+    "8": "crypto",
+    "9": "ai",
+    "0x100..0x1FF": "app"
+  },
+  "capability_bits": {
+    "0": "timebase",
+    "1": "deadline_timer",
+    "2": "event_capture",
+    "3": "bus0",
+    "4": "bus1",
+    "5": "radio",
+    "6": "servo_pwm",
+    "7": "stream",
+    "8": "crypto",
+    "9": "sample_pool",
+    "10": "host_report",
+    "11": "ai_inference",
+    "12": "ai_endpoint",
+    "13": "mailbox",
+    "14": "alarm",
+    "15": "kv_store"
+  },
+  "ai_contracts": {
+    "report": {
+      "symbol": "NOBRO_AI_MODEL_REPORT",
+      "magic": "0x4E424149",
+      "version": 1,
+      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; route policy fields are zero when no policy is attached"
+    },
+    "backend_codes": {
+      "1": "on_device",
+      "2": "remote_api",
+      "3": "edge_sidecar",
+      "4": "hybrid"
+    },
+    "route_preferences": {
+      "1": "local_only",
+      "2": "prefer_local",
+      "3": "prefer_remote",
+      "4": "hybrid_fallback"
+    },
+    "route_targets": {
+      "1": "on_device",
+      "2": "remote_api",
+      "3": "edge_sidecar",
+      "4": "stale_snapshot",
+      "5": "degraded_fallback",
+      "6": "unavailable"
+    }
+  },
+  "ros_bridge_contracts": {
+    "report": {
+      "symbol": "NOBRO_ROS_BRIDGE_REPORT",
+      "magic": "0x4E425253",
+      "version": 1,
+      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; IDs and entity names use FNV-1a 32-bit hashes"
+    },
+    "hash": "fnv1a32_utf8",
+    "transport_codes": {
+      "1": "serial",
+      "2": "udp",
+      "3": "radio",
+      "4": "shared_memory",
+      "255": "custom"
+    },
+    "entity_kinds": [
+      "topic",
+      "service",
+      "action",
+      "parameter"
+    ]
+  },
+  "health_report": {
+    "symbol": "NOBRO_HEALTH_REPORT",
+    "magic": "0x4E42484C",
+    "version": 1,
+    "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
+  },
+  "event_log_report": {
+    "symbol": "NOBRO_EVENT_LOG_REPORT",
+    "magic": "0x4E42454C",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest event timestamp split into lo/hi",
+    "severity_codes": {
+      "0": "trace",
+      "1": "info",
+      "2": "warn",
+      "3": "error",
+      "4": "fatal"
+    },
+    "event_kind_codes": {
+      "1": "boot",
+      "2": "health",
+      "3": "recovery",
+      "4": "task_overrun",
+      "5": "lease",
+      "6": "sample_pool",
+      "7": "manifest",
+      "8": "host"
+    },
+    "payload_kind_codes": {
+      "0": "none",
+      "1": "error",
+      "2": "action",
+      "3": "counter",
+      "4": "pair"
+    }
+  },
+  "module_runtime_report": {
+    "symbol": "NOBRO_MODULE_RUNTIME_REPORT",
+    "magic": "0x4E424D52",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest module state timestamp split into lo/hi",
+    "state_codes": {
+      "1": "registered",
+      "2": "active",
+      "3": "suspended",
+      "4": "faulted",
+      "5": "recovering",
+      "6": "disabled"
+    }
+  },
+  "degrade_application_report": {
+    "symbol": "NOBRO_DEGRADE_APPLICATION_REPORT",
+    "magic": "0x4E424447",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; applied timestamp split into lo/hi",
+    "reason_codes": {
+      "0": "none",
+      "1": "flash_budget",
+      "2": "ram_budget",
+      "3": "pool_budget",
+      "4": "module_limit"
+    }
+  },
+  "runtime_report": {
+    "symbol": "NOBRO_RUNTIME_REPORT",
+    "magic": "0x4E425254",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; 64-bit alarm due timestamp split into lo/hi",
+    "state_codes": {
+      "0": "cold_boot",
+      "1": "validate_manifest",
+      "2": "init_drivers",
+      "3": "running",
+      "4": "degraded",
+      "5": "recovering",
+      "6": "halted"
+    }
+  },
+  "board_profile_report": {
+    "symbol": "NOBRO_BOARD_PROFILE_REPORT",
+    "magic": "0x4E424250",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "catalog": "nobro-hal::BOARD_PROFILES",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid",
+      "corrupt": "bad magic, version, or checksum"
+    }
+  },
+  "board_package_report": {
+    "symbol": "NOBRO_BOARD_PACKAGE_REPORT",
+    "magic": "0x4E42424B",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "catalog": "nobro-hal::BOARD_PACKAGES",
+    "boot_layout_codes": {
+      "1": "no_softdevice",
+      "2": "softdevice_s140_v6",
+      "255": "custom"
+    },
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and valid is non-zero",
+      "fail": "checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "empty_platform_id",
+      "2": "empty_board_id",
+      "3": "unaligned_flash_origin",
+      "4": "empty_flash_region",
+      "5": "empty_ram_region",
+      "6": "empty_capacity",
+      "7": "duplicate_critical_pin"
+    }
+  },
+  "manifest_report": {
+    "symbol": "NOBRO_MANIFEST_REPORT",
+    "magic": "0x4E424D46",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; fingerprint is FNV-1a over module contracts",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and valid is non-zero",
+      "fail": "checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "full",
+      "2": "duplicate_module",
+      "3": "capability_ownership_conflict",
+      "4": "missing_owned_capability",
+      "5": "missing_deadline",
+      "6": "invalid_deadline",
+      "7": "invalid_fault_threshold",
+      "8": "empty_memory_budget",
+      "9": "module_limit_exceeded",
+      "10": "budget_exceeded",
+      "11": "user_owns_kernel_capability",
+      "12": "empty_manifest",
+      "13": "missing_kernel",
+      "14": "invalid_kernel_contract",
+      "15": "overutilized"
+    }
+  },
+  "adapter_compat_report": {
+    "symbol": "NOBRO_ADAPTER_COMPAT_REPORT",
+    "magic": "0x4E424143",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and compatible is non-zero",
+      "fail": "checksum valid and compatible is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "full",
+      "2": "duplicate_module",
+      "3": "capability_ownership_conflict",
+      "4": "module_limit_exceeded",
+      "5": "budget_exceeded"
+    }
+  },
+  "admission_report": {
+    "symbol": "NOBRO_ADMISSION_REPORT",
+    "magic": "0x4E424144",
+    "version": 1,
+    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum",
+    "status": {
+      "missing": "magic/version/checksum are zero",
+      "in_progress": "magic/version valid but completed is zero",
+      "pass": "checksum valid and admitted is non-zero",
+      "fail": "checksum valid and admitted is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or checksum"
+    },
+    "error_codes": {
+      "1": "manifest",
+      "2": "startup",
+      "3": "quota",
+      "4": "capability",
+      "5": "missing_startup_node",
+      "6": "unknown_startup_node"
+    }
+  }
+}

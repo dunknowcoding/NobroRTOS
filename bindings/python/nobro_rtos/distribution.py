@@ -14,7 +14,7 @@ from .host_contract import find_repo_root
 
 EXPECTED_REPOSITORY = "https://github.com/dunknowcoding/NobroRTOS"
 EXPECTED_REPOSITORY_GIT = f"{EXPECTED_REPOSITORY}.git"
-EXPECTED_LICENSE = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+EXPECTED_LICENSE = "PolyForm-Noncommercial-1.0.0"
 EXPECTED_INCLUDE = "NobroRTOS.h"
 EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
 EXPECTED_PYTHON_PACKAGE = "bindings/python"
@@ -292,9 +292,14 @@ def validate_distribution_metadata(
         "Python requires-python",
     )
     _require_equal(
-        project.get("license", {}).get("text"),
+        project.get("license"),
         EXPECTED_LICENSE,
         "Python project license",
+    )
+    _require_equal(
+        project.get("license-files"),
+        ["LICENSE"],
+        "Python project license files",
     )
     _require_equal(
         pyproject.get("tool", {}).get("setuptools", {}).get("packages"),
@@ -323,10 +328,29 @@ def validate_distribution_metadata(
         "PlatformIO repository",
     )
     _require_equal(platformio.get("headers"), [EXPECTED_INCLUDE], "PlatformIO headers")
-    _require_forwarding_header(
+    _require_vendored_header(
         root / "packages" / "platformio" / "include" / EXPECTED_INCLUDE,
-        "../../../bindings/c/include/nobro_rtos.h",
+        "nobro_rtos.h",
+        root / "bindings" / "c" / "include" / "nobro_rtos.h",
     )
+    _require_equal(
+        platformio.get("$schema"),
+        "https://raw.githubusercontent.com/platformio/platformio-core/develop/"
+        "platformio/assets/schema/library.json",
+        "PlatformIO schema",
+    )
+    _require_equal(
+        platformio.get("export", {}).get("include"),
+        ["include", "LICENSE", "README.md", "library.json"],
+        "PlatformIO export include",
+    )
+    canonical_license = root / "LICENSE"
+    for relative in (
+        "packages/arduino/LICENSE",
+        "packages/platformio/LICENSE",
+        "bindings/python/LICENSE",
+    ):
+        _require_file_equal(root / relative, canonical_license, f"{relative} license")
 
     return DistributionMetadataReport(
         sdk_name=str(sdk_manifest.get("name")),
@@ -456,9 +480,10 @@ def validate_public_header_surface(
         "nobro_rtos.h",
         root / "bindings" / "c" / "include" / "nobro_rtos.h",
     )
-    _require_forwarding_header(
+    _require_vendored_header(
         platformio_header_path,
-        "../../../bindings/c/include/nobro_rtos.h",
+        "nobro_rtos.h",
+        root / "bindings" / "c" / "include" / "nobro_rtos.h",
     )
 
     return PublicHeaderSurfaceReport(
@@ -518,12 +543,6 @@ def _require_text(text: str, expected: str, label: str) -> None:
         raise ValueError(f"{label} missing {expected!r}")
 
 
-def _require_forwarding_header(path: Path, target: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    if f'#include "{target}"' not in text:
-        raise ValueError(f"{path} must forward to {target}")
-
-
 def _require_vendored_header(path: Path, local: str, canonical: Path) -> None:
     """Self-contained package contract: the umbrella header includes the LOCAL vendored
     header (a Library-Manager install has no repo around it), and the vendored copy's
@@ -537,6 +556,13 @@ def _require_vendored_header(path: Path, local: str, canonical: Path) -> None:
         raise ValueError(f"{vendored} missing - run tools/package_arduino.py --sync")
     if canonical.read_text(encoding="utf-8") not in vendored.read_text(encoding="utf-8"):
         raise ValueError(f"{vendored} drifted from {canonical} - re-run --sync")
+
+
+def _require_file_equal(path: Path, canonical: Path, label: str) -> None:
+    if not path.is_file():
+        raise ValueError(f"{label} missing")
+    if path.read_text(encoding="utf-8") != canonical.read_text(encoding="utf-8"):
+        raise ValueError(f"{label} drifted from {canonical}")
 
 
 def _extract_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:
