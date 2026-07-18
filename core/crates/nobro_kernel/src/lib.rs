@@ -14,6 +14,7 @@ pub mod async_exec;
 pub mod async_mpmc;
 pub mod async_rt;
 pub mod boot;
+pub mod c_app;
 pub mod capability;
 #[cfg(feature = "capacity-report")]
 pub mod capacity_report;
@@ -76,6 +77,7 @@ pub use async_rt::{
 pub use boot::{
     BootAssembly, BootAssemblyError, BootAssemblyFailure, BootAssemblyReports, StartupDependency,
 };
+pub use c_app::{CApp, CAppError, CDispatchReport, CTaskOptions, CTaskRole, CTaskStep};
 pub use capability::{
     CapabilityGrant, CapabilityGrantError, CapabilityGrantTable, CapabilityReplayScope,
     CapabilityTrace, CapabilityTraceError, CapabilityTraceInput, CapabilityTraceOp,

@@ -31,6 +31,28 @@ least once per approximately 89-second counter wrap and is not a sleep-stable ti
 Its 24-bit SysTick one-shot rejects delays above approximately 349 milliseconds. A
 stronger always-on clock and chained alarm are still pending.
 
+### Plain-C Tier-C facade
+
+`nobro_app.h` exposes an allocation-free task graph for C firmware linked with
+the Tier-C `libnobro.a`:
+
+```c
+nobro_task("imu", HZ(100), imu_step);
+nobro_task("control", HZ(50), control_step);
+nobro_wire("imu", "control", 8);
+nobro_run();
+```
+
+The default task is a periodic driver. `nobro_task_with()` accepts one
+`nobro_task_options_t` record for control/service role and timing overrides.
+`NOBRO_APP(configure)` generates the existing init/poll ABI callbacks.
+Registration is fixed at eight tasks and eight wire relationships; all failures
+return stable `nobro_result_t` values. `nobro_run()` reuses Rust `AppGraph`
+validation, and late dispatch preserves phase while incrementing
+`nobro_skipped_releases()`. A wire declaration is graph/mailbox metadata, not a
+payload transport. See [the C binding guide](../bindings/c/README.md) for the
+complete specimen and current busy-poll timing limitation.
+
 ### Crate Overview
 
 | Crate | Purpose |

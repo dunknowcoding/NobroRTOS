@@ -147,16 +147,28 @@ NOBRO_ARDUINO_MODULE()
 ```
 
 ```c
-/* C -- bindings/c/examples/imu_module.c */
+/* C -- bindings/c/examples/declarative_app.c */
 #include "nobro_app.h"
-int32_t nobro_app_init(void) { uint8_t w[2] = {0x6B, 0x01}; return nobro_i2c_write(0x68, w, 2); }
-int32_t nobro_app_poll(void) { /* nobro_i2c_write_read(...) + nobro_publish_imu(...) */ return 0; }
+static int32_t imu(void) { /* sample one IMU */ return 0; }
+static int32_t control(void) { /* update control output */ return 0; }
+static int32_t app(void) {
+    int32_t result = nobro_task("imu", HZ(100), imu);
+    if (result < 0) return result;
+    result = nobro_task("control", HZ(50), control);
+    if (result < 0) return result;
+    result = nobro_wire("imu", "control", 8);
+    if (result < 0) return result;
+    return nobro_run();
+}
+NOBRO_APP(app)
 ```
 
 Prefer pure config? A JSON contract generates a compiling Rust firmware. Prefer
 existing synchronous drivers? The `embedded-hal` adapters preserve compatible device
 logic while NobroRTOS supplies the bus; async-only drivers need an async adapter or a
-bounded executor wrapper. Authoring details: [bindings/c/README.md](bindings/c/README.md) and
+bounded executor wrapper. The C wire declaration derives the graph relationship and
+mailbox ownership; payload send/receive remains a separate API. Authoring details:
+[bindings/c/README.md](bindings/c/README.md) and
 [bindings/cpp/README.md](bindings/cpp/README.md).
 
 ## Why It Exists

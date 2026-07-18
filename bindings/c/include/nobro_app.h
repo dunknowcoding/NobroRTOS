@@ -35,6 +35,63 @@ void nobro_publish_imu(uint8_t who, uint8_t dev_addr, int16_t ax, int16_t ay,
                        int16_t az, int16_t gx, int16_t gy, int16_t gz,
                        int16_t temp_raw);
 
+/* ---- Declarative task graph (optional; allocation-free Tier-C facade) ---- */
+
+typedef int32_t (*nobro_step_fn)(void);
+
+typedef enum nobro_task_role {
+    NOBRO_TASK_PERIODIC = 0,
+    NOBRO_TASK_CONTROL = 1,
+    NOBRO_TASK_SERVICE = 2,
+} nobro_task_role_t;
+
+typedef struct nobro_task_options {
+    uint32_t role;
+    uint32_t budget_us;   /* zero = role default */
+    uint32_t deadline_us; /* zero = period */
+    uint32_t jitter_us;   /* zero = role default */
+    uint32_t blocking_us;
+} nobro_task_options_t;
+
+#define NOBRO_TASK_OPTIONS_INIT \
+    { NOBRO_TASK_PERIODIC, 0u, 0u, 0u, 0u }
+
+typedef enum nobro_result {
+    NOBRO_OK = 0,
+    NOBRO_ERR_STATE = -1,
+    NOBRO_ERR_NAME = -2,
+    NOBRO_ERR_PERIOD = -3,
+    NOBRO_ERR_TASK_CAPACITY = -4,
+    NOBRO_ERR_WIRE_CAPACITY = -5,
+    NOBRO_ERR_ENDPOINT = -6,
+    NOBRO_ERR_DUPLICATE_TASK = -7,
+    NOBRO_ERR_OPTIONS = -8,
+    NOBRO_ERR_ADMISSION = -9,
+    NOBRO_ERR_STEP = -10,
+} nobro_result_t;
+
+/* Convert a frequency to a period. Literal zero is a compile-time error. */
+#define NOBRO_HZ(rate) (1000000u / (uint32_t)(rate))
+#ifndef HZ
+#define HZ(rate) NOBRO_HZ(rate)
+#endif
+
+/* Names must be static lowercase labels (string literals are ideal). The
+ * default role is a deadline-aware periodic driver. */
+int32_t nobro_task(const char *name, uint32_t period_us, nobro_step_fn step);
+int32_t nobro_task_with(const char *name, uint32_t period_us, nobro_step_fn step,
+                        const nobro_task_options_t *options);
+
+/* Declares a bounded graph/mailbox relationship. `capacity` is retained and
+ * validated as declaration metadata; payload send/receive is a separate API. */
+int32_t nobro_wire(const char *from, const char *to, uint32_t capacity);
+
+/* Finalize through the shared Rust AppGraph validator, then dispatch due work. */
+int32_t nobro_run(void);
+int32_t nobro_poll(void);
+uint32_t nobro_skipped_releases(void);
+int32_t nobro_last_step_error(void);
+
 /* ---- Module callbacks (you implement these; the kernel calls them) ---- */
 
 /* Called once after admission, before polling. Return <0 to abort. */
@@ -45,6 +102,19 @@ int32_t nobro_app_poll(void);
 
 #ifdef __cplusplus
 }
+#define NOBRO_EXTERN_C extern "C"
+#else
+#define NOBRO_EXTERN_C
 #endif
+
+/* Generate the two legacy Tier-C callbacks from one declarative setup function.
+ * The setup function registers tasks/wires and returns nobro_run(). */
+#define NOBRO_APP(configure_fn)                                     \
+    NOBRO_EXTERN_C int32_t nobro_app_init(void) {                   \
+        return (configure_fn)();                                    \
+    }                                                               \
+    NOBRO_EXTERN_C int32_t nobro_app_poll(void) {                   \
+        return nobro_poll();                                        \
+    }
 
 #endif /* NOBRO_APP_H */

@@ -98,30 +98,59 @@ is contacted.
 ## Authoring a module in C
 
 `include/nobro_app.h` is a second, separate ABI for writing module **logic** in C
-(not just inspecting reports). A C module implements two callbacks and reaches
-hardware only through bounded host services - it never touches kernel internals:
+(not just inspecting reports). The declarative Tier-C facade keeps the same task
+mental model as the Rust graph: name the task, give it a rate, and provide its step.
+`NOBRO_APP` generates the legacy init/poll callbacks:
 
 ```c
 #include "nobro_app.h"
 
-int32_t nobro_app_init(void) {                 /* kernel calls once after admission */
-    uint8_t wake[2] = {0x6B, 0x01};
-    return nobro_i2c_write(0x68, wake, 2);
-}
-
-int32_t nobro_app_poll(void) {                 /* kernel calls every cycle */
-    uint8_t reg = 0x3B, raw[14];
-    if (nobro_i2c_write_read(0x68, &reg, 1, raw, 14) < 0) return -1;
-    /* ... parse + nobro_publish_imu(...) ... */
+static int32_t imu_step(void) {
+    /* one bounded sensor transaction */
     return 0;
 }
+
+static int32_t control_step(void) {
+    return 0;
+}
+
+static int32_t configure(void) {
+    nobro_task_options_t control = NOBRO_TASK_OPTIONS_INIT;
+    control.role = NOBRO_TASK_CONTROL;
+    control.budget_us = 2000;
+
+    int32_t result = nobro_task("imu", HZ(100), imu_step);
+    if (result < 0) return result;
+    result = nobro_task_with("control", HZ(50), control_step, &control);
+    if (result < 0) return result;
+    result = nobro_wire("imu", "control", 8);
+    if (result < 0) return result;
+    return nobro_run();
+}
+
+NOBRO_APP(configure)
 ```
 
-Callback dispatch is fail-closed. Admission denial prevents both callbacks;
-negative `nobro_app_init` or `nobro_app_poll` results revoke the module's host
-capabilities and prevent subsequent polls. The Tier-C packaging gate links both
-negative callback objects with the shipped archive, while portable kernel tests
-execute and verify the denial/failure state transitions.
+Registration is allocation-free and bounded to eight tasks plus eight wires in
+the current Tier-C runtime. Names are static lowercase labels. A task defaults to
+the periodic-driver role; `nobro_task_options_t` selects control/service policy
+and timing overrides without expanding the main call. `nobro_run()` admits the
+declaration through the same Rust `AppGraph` implementation. Late polling runs a
+task once, preserves its phase, and increments `nobro_skipped_releases()` instead
+of replaying a burst. A negative task result returns `NOBRO_ERR_STEP`;
+`nobro_last_step_error()` retains the task's original code.
+The current nRF Tier-C composition checks releases from the microsecond clock
+with a tight busy-poll loop. It does not yet provide a compare/WFE sleep path, so
+the target-link result is not an idle-residence or electrical-power claim.
+
+`nobro_wire()` declares and validates the graph/mailbox relationship and retains
+its bounded capacity metadata. It does not itself send or store payloads; use a
+separate bounded transport API for data.
+
+The original two-callback ABI remains supported by
+`examples/imu_module.c`. Callback dispatch is fail-closed. Admission denial
+prevents both callbacks; a negative init or poll result revokes the module's host
+capabilities and prevents subsequent polls.
 
 The NobroRTOS app provides the `extern "C"` host services, admits the module through
 `BootAssembly`, and drives the callbacks. Because the ABI is plain `extern "C"`, the
@@ -134,12 +163,14 @@ from one source of truth:
 - `--features c-source`: `build.rs` compiles `examples/imu_module.c` with
   `arm-none-eabi-gcc` and links it.
 
-Both paths are verified on hardware (nRF52840 + an IMU): the kernel admits the
+Both legacy callback paths are verified on hardware (nRF52840 + an IMU): the kernel admits the
 module and it reads the IMU to a passing `NOBRO_IMU_HEALTH_REPORT`. See
 `examples/imu_module.c` for the complete reference module.
+The declarative specimen is covered by portable behavior tests and a strict C11
+Arm target-link/symbol gate; that is not a physical timing claim.
 
 ## Scope
 
-The C binding focuses on fixed contracts and report inspection. Module builders,
-board package helpers, and adapter registration wrappers should stay layered on
-top of this ABI instead of changing these layouts.
+The C binding focuses on fixed contracts, report inspection, and the bounded
+Tier-C task facade. Board package helpers and adapter registration wrappers
+should stay layered on top of this ABI instead of changing report layouts.

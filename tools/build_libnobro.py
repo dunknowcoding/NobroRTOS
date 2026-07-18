@@ -4,8 +4,8 @@
   --build   cargo-build the nobro-tierc staticlib (nRF52840 no-SoftDevice layout),
             harvest the generated linker scripts (link.x/memory.x/defmt.x) from the
             cargo OUT_DIRs, and stage _work/tierc/ with the canonical C headers +
-            a reference module + build.sh/build.cmd one-liners.
-  --check   THE GATE: link the reference module and negative init/poll modules
+            legacy/declarative reference modules + build.sh/build.cmd one-liners.
+  --check   THE GATE: link both reference modules and negative init/poll modules
             against the staged archive with arm-none-eabi-gcc and verify each ELF
             has the vector table + resolved module symbols. Portable kernel tests
             execute the corresponding fail-closed callback state transitions.
@@ -28,7 +28,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE = os.path.join(ROOT, "core")
 OUT = os.path.join(ROOT, "_work", "tierc")
 TARGET = "thumbv7em-none-eabihf"
-GCC_FLAGS = ["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16"]
+GCC_FLAGS = [
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv4-sp-d16",
+    "-ffunction-sections",
+    "-fdata-sections",
+]
 
 
 def find_gcc():
@@ -93,17 +100,23 @@ def build() -> int:
     shutil.copy(os.path.join(CORE, "memory-nosd.x"), os.path.join(OUT, "memory.x"))
     for h in glob.glob(os.path.join(ROOT, "bindings", "c", "include", "*.h")):
         shutil.copy(h, OUT)
-    shutil.copy(os.path.join(ROOT, "bindings", "c", "examples", "imu_module.c"), OUT)
+    for source in glob.glob(os.path.join(ROOT, "bindings", "c", "examples", "*.c")):
+        shutil.copy(source, OUT)
     link_cmd = ("arm-none-eabi-gcc " + " ".join(GCC_FLAGS) +
-                " your_module.c -Wl,--whole-archive libnobro.a -Wl,--no-whole-archive"
-                " -T link.x -T defmt.x -nostartfiles -lm -o firmware.elf")
+                " -std=c11 -Wall -Wextra your_module.c"
+                " -Wl,--whole-archive libnobro.a -Wl,--no-whole-archive"
+                " -Wl,--gc-sections -T link.x -T defmt.x"
+                " -nostartfiles -lm -o firmware.elf")
     with open(os.path.join(OUT, "build.sh"), "w", newline="\n") as f:
         f.write("#!/bin/sh\n# Tier C: C module + prebuilt NobroRTOS runtime, no Rust.\n"
                 + link_cmd.replace("your_module.c", "${1:-imu_module.c}") + "\n")
     with open(os.path.join(OUT, "build.cmd"), "w", newline="\r\n") as f:
         f.write("@echo off\r\nrem Tier C: C module + prebuilt NobroRTOS runtime, no Rust.\r\n"
                 + link_cmd.replace("your_module.c", "%1") + "\r\n")
-    print(f"staged {OUT}: libnobro.a + link.x/defmt.x/memory.x + headers + imu_module.c + build.sh/.cmd")
+    print(
+        f"staged {OUT}: libnobro.a + linker scripts + headers + "
+        "legacy/declarative examples + build.sh/.cmd"
+    )
     return 0
 
 
@@ -132,12 +145,13 @@ def check() -> int:
             f.write(source)
 
     nm = shutil.which("arm-none-eabi-nm") or gcc.replace("gcc", "nm")
-    for source in ("imu_module.c", *negative_sources):
+    for source in ("imu_module.c", "declarative_app.c", *negative_sources):
         stem = os.path.splitext(source)[0]
         elf = os.path.join(OUT, stem + ".elf")
-        cmd = ([gcc] + GCC_FLAGS +
-               [os.path.join(OUT, source), "-I", OUT,
+        cmd = ([gcc] + GCC_FLAGS + ["-std=c11", "-Wall", "-Wextra", "-Werror"] +
+                [os.path.join(OUT, source), "-I", OUT,
                 "-Wl,--whole-archive", archive, "-Wl,--no-whole-archive",
+                "-Wl,--gc-sections",
                 "-T", os.path.join(OUT, "link.x"), "-T", os.path.join(OUT, "defmt.x"),
                 "-nostartfiles", "-lm", "-o", elf])
         print("+", " ".join(os.path.basename(c) if os.sep in c else c for c in cmd))
@@ -148,6 +162,18 @@ def check() -> int:
             return 1
         syms = subprocess.run([nm, elf], capture_output=True, text=True).stdout
         need = ["Reset", "nobro_app_init", "nobro_app_poll", "NOBRO_IMU_HEALTH_REPORT"]
+        if source == "declarative_app.c":
+            need.extend(
+                [
+                    "nobro_task",
+                    "nobro_task_with",
+                    "nobro_wire",
+                    "nobro_run",
+                    "nobro_poll",
+                    "nobro_skipped_releases",
+                    "nobro_last_step_error",
+                ]
+            )
         missing = [s for s in need if s not in syms]
         if missing:
             print("missing symbols:", missing)
@@ -155,6 +181,28 @@ def check() -> int:
             return 1
         size = os.path.getsize(elf)
         print(f"linked {os.path.basename(elf)} ({size} bytes); required symbols resolved")
+        size_tool = shutil.which("arm-none-eabi-size") or gcc.replace("gcc", "size")
+        section_sizes = subprocess.run(
+            [size_tool, elf], capture_output=True, text=True, check=True
+        ).stdout.splitlines()
+        if len(section_sizes) >= 2:
+            print("sections:", section_sizes[-1].strip())
+            fields = section_sizes[-1].split()
+            text_bytes, data_bytes, bss_bytes = map(int, fields[:3])
+            flash_bytes = text_bytes + data_bytes
+            ram_bytes = data_bytes + bss_bytes
+            limits = {
+                "imu_module.c": (36_000, 2_600),
+                "declarative_app.c": (45_000, 3_500),
+            }
+            if source in limits:
+                flash_limit, ram_limit = limits[source]
+                if flash_bytes > flash_limit or ram_bytes > ram_limit:
+                    print(
+                        f"RESULT: FAIL (budget {source}: flash {flash_bytes}/"
+                        f"{flash_limit}, RAM {ram_bytes}/{ram_limit})"
+                    )
+                    return 1
     print("RESULT: PASS")
     return 0
 

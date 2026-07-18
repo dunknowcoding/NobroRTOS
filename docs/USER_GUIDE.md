@@ -552,29 +552,39 @@ python tools/build_libnobro.py --build     # stages _work/tierc/
 ```
 
 The bundle: `libnobro.a`, the linker scripts it expects (`link.x`, `memory.x`,
-`defmt.x`), the C ABI headers (`nobro_app.h`, `nobro_rtos.h`), a reference module
-(`imu_module.c`), and one-line build scripts.
+`defmt.x`), the C ABI headers (`nobro_app.h`, `nobro_rtos.h`), legacy and
+declarative reference modules (`imu_module.c`, `declarative_app.c`), and one-line
+build scripts.
 
 ### 2. Write your module
 
-Your entire authoring surface is two functions against `nobro_app.h`:
+Declare each task as its name, rate, and step; declare graph wires; then run:
 
 ```c
 #include "nobro_app.h"
 
-int32_t nobro_app_init(void) {
-    uint8_t wake[2] = {0x6B, 0x01};
-    return nobro_i2c_write(0x68, wake, 2);      /* bounded host service */
+static int32_t imu(void) { /* one bounded sensor transaction */ return 0; }
+static int32_t control(void) { /* one bounded control update */ return 0; }
+
+static int32_t configure(void) {
+    int32_t result = nobro_task("imu", HZ(100), imu);
+    if (result < 0) return result;
+    result = nobro_task("control", HZ(50), control);
+    if (result < 0) return result;
+    result = nobro_wire("imu", "control", 8);
+    if (result < 0) return result;
+    return nobro_run();
 }
 
-int32_t nobro_app_poll(void) {
-    /* nobro_i2c_write_read(...) + nobro_publish_imu(...) */
-    return 0;
-}
+NOBRO_APP(configure)
 ```
 
-The kernel admits your module (capabilities, memory budget, deadlines) and drives
-`init`/`poll`; hardware is reachable only through the bounded host services.
+The fixed-capacity Tier-C registry admits the declaration through the shared Rust
+`AppGraph` validator and periodically drives the callbacks. Use
+`nobro_task_with()` plus `nobro_task_options_t` only when the periodic-driver
+defaults need a control/service role or explicit timing override. A wire derives
+the graph/mailbox relationship; it is not a payload send/receive function.
+Hardware remains reachable only through bounded host services.
 
 The shipped runtime owns callback state through `ForeignModuleRunner`: rejected
 admission never reaches `nobro_app_init`, and a negative init or poll result

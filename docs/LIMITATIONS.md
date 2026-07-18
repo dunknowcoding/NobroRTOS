@@ -55,6 +55,14 @@ seconds and may stop in low-power modes; the 24-bit SysTick alarm rejects one-sh
 above approximately 349 milliseconds. Stronger long-running/sleep timing needs an
 always-on timebase and chained alarm.
 
+The plain-C Tier-C task facade is currently fixed at eight tasks and eight wire
+relationships. It validates declarations through the shared Rust `AppGraph`, but the
+nRF Tier-C drive loop checks releases with a tight microsecond-clock busy poll rather
+than a compare/WFE sleep path. Late releases are phase-preserving and counted, not
+replayed in a burst. A wire declaration derives the graph/mailbox relationship and
+validates capacity metadata; it is not a payload transport. Portable tests plus Arm
+target linking do not establish physical jitter, idle residence, current, or energy.
+
 The opt-in RA4M1 event-DMA provider is a fixed GPT0 -> ICU/ELC -> DMAC0 path with
 GPT1 as its independent timeout/residence counter. It supports at most 64 staged
 words and exclusively claims GPT0, GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31
