@@ -457,7 +457,7 @@ mod hardware {
     }
 
     pub struct Ra4m1EventDma {
-        _private: (),
+        _sealed: (),
     }
 
     impl Ra4m1EventDma {
@@ -465,7 +465,7 @@ mod hardware {
             TAKEN
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .map_err(|_| EventDmaError::Busy)?;
-            Ok(Self { _private: () })
+            Ok(Self { _sealed: () })
         }
 
         pub fn copy<'a>(
