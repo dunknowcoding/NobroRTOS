@@ -14,6 +14,7 @@ from .host_contract import find_repo_root
 
 EXPECTED_REPOSITORY = "https://github.com/dunknowcoding/NobroRTOS"
 EXPECTED_REPOSITORY_GIT = f"{EXPECTED_REPOSITORY}.git"
+EXPECTED_ARDUINO_REPOSITORY = "https://github.com/dunknowcoding/NobroRTOS-Arduino"
 EXPECTED_LICENSE = "PolyForm-Noncommercial-1.0.0"
 EXPECTED_INCLUDE = "NobroRTOS.h"
 EXPECTED_CANONICAL_CONTRACT = "host/nobro-host-contract.json"
@@ -312,7 +313,9 @@ def validate_distribution_metadata(
         _require_equal(generated_policy.get(key), False, f"SDK generated policy {key}")
 
     _require_equal(arduino.get("name"), "NobroRTOS", "Arduino package name")
-    _require_equal(arduino.get("url"), EXPECTED_REPOSITORY, "Arduino repository")
+    _require_equal(
+        arduino.get("url"), EXPECTED_ARDUINO_REPOSITORY, "Arduino repository"
+    )
     _require_equal(arduino.get("includes"), EXPECTED_INCLUDE, "Arduino include")
     _require_vendored_header(
         root / "packages" / "arduino" / "src" / EXPECTED_INCLUDE,

@@ -91,10 +91,10 @@ metadata, not exposed as a Python payload transport.
 | `nobro-camera` | Frame leases, capture admission, stream backpressure, recovery, and diagnostics |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
-### Unreleased post-v0.2.0 API migration (next semantic version)
+### Version 0.3.0 API migration
 
-The changes in this section are on the development branch and target the next semantic
-version after v0.2.0; they are not part of the published v0.2.0 API contract.
+The changes in this section are the migration boundary from the historical v0.2.0
+source milestone to the v0.3.0 public package contract.
 
 #### USB
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No changes yet.
+
+## 0.3.0 - 2026-07-18
+
 ### Added
 
 - One graph declaration now derives the manifest, startup order, task metadata,

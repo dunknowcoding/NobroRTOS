@@ -1,6 +1,9 @@
 # NobroRTOS Arduino Package
 
 This folder contains the Arduino IDE library distribution surface.
+Its Library Manager source is the dedicated, package-root repository at
+<https://github.com/dunknowcoding/NobroRTOS-Arduino>; this monorepo copy is the
+gated canonical input used to produce it.
 
 Current contents:
 

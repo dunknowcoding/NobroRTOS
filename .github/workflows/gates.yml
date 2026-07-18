@@ -47,7 +47,7 @@ jobs:
         run: |
           python tools/ros_msg_gen.py --selftest
           python tools/import_dts.py --selftest
-          python tools/check_release_versions.py
+          python tools/check_release_versions.py --release
           python tools/check_ros_bridge.py --selftest
           python tools/check_udi.py --selftest
           python tools/nobro_shrink.py --selftest

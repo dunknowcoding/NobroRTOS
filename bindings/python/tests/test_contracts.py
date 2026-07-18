@@ -158,7 +158,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(arduino_properties["name"], "NobroRTOS")
         self.assertEqual(
             arduino_properties["url"],
-            "https://github.com/dunknowcoding/NobroRTOS",
+            "https://github.com/dunknowcoding/NobroRTOS-Arduino",
         )
         self.assertEqual(arduino_properties["includes"], "NobroRTOS.h")
 

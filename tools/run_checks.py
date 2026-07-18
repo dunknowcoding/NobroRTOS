@@ -175,7 +175,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("adapter catalog", [py, "tools/check_adapter_catalog.py"], ROOT),
         ("firmware project", [py, "tools/nobro_firmware_project.py", "--selftest"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
-        ("release versions", [py, "tools/check_release_versions.py"], ROOT),
+        ("release versions", [py, "tools/check_release_versions.py", "--release"], ROOT),
         ("ros bridge contract", [py, "tools/check_ros_bridge.py", "--selftest"], ROOT),
         ("udi surface", [py, "tools/check_udi.py", "--selftest"], ROOT),
     ]
