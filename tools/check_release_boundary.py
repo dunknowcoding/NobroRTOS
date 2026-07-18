@@ -90,6 +90,7 @@ SDK_PUBLIC_CHILDREN = {
     "README.md",
     "app-authoring-contract.json",
     "cli",
+    "error-codes.json",
     "feature-catalog.json",
     "firmware",
     "include",
@@ -334,6 +335,10 @@ def _validate_manifest(manifest: object) -> list[str]:
         "app authoring contract": (
             manifest.get("app_authoring_contract"),
             "sdk/app-authoring-contract.json",
+        ),
+        "error-code registry": (
+            manifest.get("error_code_registry"),
+            "sdk/error-codes.json",
         ),
         "feature catalog": (
             manifest.get("feature_catalog"),

@@ -11,6 +11,7 @@ HEADER = ROOT / "packages" / "arduino" / "src"
 PROVIDER_EXAMPLE = ROOT / "packages" / "arduino" / "examples" / "ProviderApp"
 SOURCE = r'''
 #include <cassert>
+#include <cstring>
 #include "NobroRTOS.h"
 int main() {
   nobro::NobroApp<3, 1> ok;
@@ -23,15 +24,19 @@ int main() {
   capacity.task("a", 1000);
   assert(!capacity.task("b", 1000).valid());
   assert(!capacity.admit() && capacity.error() == nobro::APP_TASK_CAPACITY);
+  assert(std::strcmp(capacity.errorCode(), "NOBRO-E053") == 0);
+  assert(std::strcmp(capacity.errorText(), "Application task capacity is exceeded.") == 0);
 
   nobro::NobroApp<2, 1> duplicate;
   duplicate.task("same", 1000);
   assert(!duplicate.task("same", 2000).valid());
   assert(duplicate.error() == nobro::APP_DUPLICATE_TASK);
+  assert(std::strcmp(duplicate.errorCode(), "NOBRO-E056") == 0);
 
   nobro::NobroApp<1, 1> invalid_name;
   assert(!invalid_name.task("BadName", 1000).valid());
   assert(invalid_name.error() == nobro::APP_INVALID_NAME);
+  assert(std::strcmp(invalid_name.errorCode(), "NOBRO-E051") == 0);
 
   nobro::NobroApp<1, 1> deadline;
   nobro::TaskId task = deadline.task("a", 1000, nobro::CONTROL);

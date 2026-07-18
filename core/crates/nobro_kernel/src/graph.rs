@@ -319,6 +319,44 @@ pub enum GraphError {
     },
 }
 
+impl GraphError {
+    /// Stable cross-binding identity for this authoring/admission failure.
+    pub const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::DuplicateName(_) => "NOBRO-E056",
+            Self::UnknownDependency { .. } | Self::ChannelEndpointUnknown { .. } => "NOBRO-E055",
+            Self::TooManyTasks { .. } => "NOBRO-E053",
+            Self::TooManyChannels => "NOBRO-E054",
+            Self::ChannelSelf { .. } => "NOBRO-E061",
+            Self::DuplicateChannel { .. } => "NOBRO-E060",
+            Self::TooManyDependencies { .. }
+            | Self::DuplicateRole { .. }
+            | Self::Cycle { .. }
+            | Self::InvalidBlocking { .. } => "NOBRO-E057",
+            Self::Manifest { .. } => "NOBRO-E058",
+        }
+    }
+
+    /// Plain-sentence meaning shared by the public bindings.
+    pub const fn diagnostic(self) -> &'static str {
+        match self {
+            Self::DuplicateName(_) => "Task name is already declared.",
+            Self::UnknownDependency { .. } | Self::ChannelEndpointUnknown { .. } => {
+                "Wire endpoints must name existing tasks."
+            }
+            Self::TooManyTasks { .. } => "Application task capacity is exceeded.",
+            Self::TooManyChannels => "Application wire capacity is exceeded.",
+            Self::ChannelSelf { .. } => "A task cannot wire to itself.",
+            Self::DuplicateChannel { .. } => "Wire is already declared.",
+            Self::TooManyDependencies { .. }
+            | Self::DuplicateRole { .. }
+            | Self::Cycle { .. }
+            | Self::InvalidBlocking { .. } => "Task timing or resource options are invalid.",
+            Self::Manifest { .. } => "Application graph admission failed.",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GraphStartError {
     Graph(GraphError),
@@ -1627,22 +1665,25 @@ mod tests {
         assert_eq!(pairs.next(), None);
         drop(pairs);
 
+        let duplicate = graph.wire("imu", "motor").err().unwrap();
         assert_eq!(
-            graph.wire("imu", "motor").err().unwrap(),
+            duplicate,
             GraphError::DuplicateChannel {
                 from: "imu",
                 to: "motor"
             }
         );
-        assert_eq!(
-            AppGraph::<1>::new()
-                .task(TaskDecl::periodic("imu", 10_000))
-                .unwrap()
-                .channel("imu", "imu")
-                .err()
-                .unwrap(),
-            GraphError::ChannelSelf { task: "imu" }
-        );
+        assert_eq!(duplicate.diagnostic_code(), "NOBRO-E060");
+        assert_eq!(duplicate.diagnostic(), "Wire is already declared.");
+        let self_wire = AppGraph::<1>::new()
+            .task(TaskDecl::periodic("imu", 10_000))
+            .unwrap()
+            .channel("imu", "imu")
+            .err()
+            .unwrap();
+        assert_eq!(self_wire, GraphError::ChannelSelf { task: "imu" });
+        assert_eq!(self_wire.diagnostic_code(), "NOBRO-E061");
+        assert_eq!(self_wire.diagnostic(), "A task cannot wire to itself.");
     }
 
     #[test]

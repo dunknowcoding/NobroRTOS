@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 from typing import Callable, Mapping
 
+from .diagnostics import diagnostic
+
 APP_SCHEMA = "nobro-app-v1"
 APP_SCHEMA_ALIASES = {"nobro-python-app-v1"}
 MAX_TASKS = 8
@@ -48,6 +50,13 @@ _WIRE_KEYS = {"from", "to", "capacity"}
 class AppDeclarationError(ValueError):
     """Raised when a Python-authored graph is invalid."""
 
+    def __init__(self, key: str, detail: str = "") -> None:
+        self.key = key
+        self.code, self.summary = diagnostic(key)
+        self.detail = detail
+        suffix = f" {detail}" if detail else ""
+        super().__init__(f"{self.code}: {self.summary}{suffix}")
+
 
 class AppSimulationError(RuntimeError):
     """Raised when deterministic host simulation cannot continue safely."""
@@ -61,9 +70,9 @@ def HZ(rate: int) -> int:
     """Return an integer microsecond period for a positive frequency."""
 
     if isinstance(rate, bool) or not isinstance(rate, int) or rate <= 0:
-        raise AppDeclarationError("rate must be a positive integer")
+        raise AppDeclarationError("app-period", "rate must be a positive integer")
     if rate > 1_000_000:
-        raise AppDeclarationError("rate exceeds one release per microsecond")
+        raise AppDeclarationError("app-period", "rate exceeds one release per microsecond")
     return 1_000_000 // rate
 
 
@@ -167,6 +176,7 @@ class NobroApp:
         _check_name(name, "app")
         if not isinstance(board, str) or board not in _BOARDS:
             raise AppDeclarationError(
+                "app-target",
                 f"unsupported board {board!r}; choose {', '.join(_BOARDS)}"
             )
         self.name = name
@@ -203,24 +213,31 @@ class NobroApp:
         _check_name(name, "task")
         period = _positive_interval(period_us, "period_us")
         if any(task.name == name for task in self._tasks):
-            raise AppDeclarationError(f"duplicate task: {name}")
+            raise AppDeclarationError("app-duplicate-task", f"duplicate task: {name}")
         if len(self._tasks) >= MAX_TASKS:
-            raise AppDeclarationError(f"task capacity exceeds {MAX_TASKS}")
+            raise AppDeclarationError(
+                "app-task-capacity", f"task capacity exceeds {MAX_TASKS}"
+            )
         if not isinstance(role, str):
-            raise AppDeclarationError("role must be a string")
+            raise AppDeclarationError("app-role", "role must be a string")
         role = _ROLE_ALIASES.get(role, role)
         if role not in _ROLES:
             raise AppDeclarationError(
+                "app-role",
                 f"unsupported role {role!r}; choose {', '.join(_ROLES)}"
             )
         phase = _integer(phase_us, "phase_us", minimum=0)
         if phase >= period:
-            raise AppDeclarationError("phase_us must be below period_us")
+            raise AppDeclarationError(
+                "app-options", "phase_us must be below period_us"
+            )
         deadline = period if deadline_us is None else _positive_interval(
             deadline_us, "deadline_us"
         )
         if deadline > period:
-            raise AppDeclarationError("deadline_us exceeds period_us")
+            raise AppDeclarationError(
+                "app-options", "deadline_us exceeds period_us"
+            )
         blocking = _integer(blocking_us, "blocking_us", minimum=0)
         _, default_flash, default_ram, divisor = _ROLES[role]
         budget = (
@@ -229,7 +246,9 @@ class NobroApp:
             else _positive_interval(budget_us, "budget_us")
         )
         if budget + blocking > deadline:
-            raise AppDeclarationError("budget_us + blocking_us exceeds deadline_us")
+            raise AppDeclarationError(
+                "app-options", "budget_us + blocking_us exceeds deadline_us"
+            )
         flash = (
             default_flash
             if flash_bytes is None
@@ -241,7 +260,7 @@ class NobroApp:
             else _integer(ram_bytes, "ram_bytes", minimum=1)
         )
         if step is not None and not callable(step):
-            raise AppDeclarationError("step must be callable or None")
+            raise AppDeclarationError("app-shape", "step must be callable or None")
         self._tasks.append(
             TaskDeclaration(
                 name,
@@ -265,18 +284,25 @@ class NobroApp:
         _check_name(source, "wire source")
         _check_name(destination, "wire destination")
         if len(self._wires) >= MAX_WIRES:
-            raise AppDeclarationError(f"wire count exceeds {MAX_WIRES}")
+            raise AppDeclarationError(
+                "app-wire-capacity", f"wire count exceeds {MAX_WIRES}"
+            )
         depth = _integer(capacity, "capacity", minimum=1, maximum=64)
         edge = (source, destination)
         if source == destination:
-            raise AppDeclarationError("a task cannot wire to itself")
+            raise AppDeclarationError("app-self-wire", "a task cannot wire to itself")
         if any((wire.source, wire.destination) == edge for wire in self._wires):
-            raise AppDeclarationError(f"duplicate wire: {source}->{destination}")
+            raise AppDeclarationError(
+                "app-duplicate-wire", f"duplicate wire: {source}->{destination}"
+            )
         names = {task.name for task in self._tasks}
         if source not in names:
-            raise AppDeclarationError(f"wire source references unknown task: {source}")
+            raise AppDeclarationError(
+                "app-endpoint", f"wire source references unknown task: {source}"
+            )
         if destination not in names:
             raise AppDeclarationError(
+                "app-endpoint",
                 f"wire destination references unknown task: {destination}"
             )
         self._wires.append(WireDeclaration(source, destination, depth))
@@ -286,15 +312,17 @@ class NobroApp:
         """Fail closed if the complete graph is not firmware-authorable."""
 
         if not self._tasks:
-            raise AppDeclarationError("at least one task is required")
+            raise AppDeclarationError("app-empty", "at least one task is required")
         names = {task.name for task in self._tasks}
         for wire in self._wires:
             if wire.source not in names:
                 raise AppDeclarationError(
+                    "app-endpoint",
                     f"wire source references unknown task: {wire.source}"
                 )
             if wire.destination not in names:
                 raise AppDeclarationError(
+                    "app-endpoint",
                     f"wire destination references unknown task: {wire.destination}"
                 )
 
@@ -337,10 +365,11 @@ class NobroApp:
             schema != APP_SCHEMA and schema not in APP_SCHEMA_ALIASES
         ):
             raise AppDeclarationError(
+                "app-target",
                 f"unsupported app schema {schema!r}; expected {APP_SCHEMA!r}"
             )
         if not isinstance(root["tasks"], list) or not isinstance(root["wires"], list):
-            raise AppDeclarationError("tasks and wires must be arrays")
+            raise AppDeclarationError("app-shape", "tasks and wires must be arrays")
         app = cls(_text(root["app"], "app"), board=_text(root["board"], "board"))
         callbacks = {} if steps is None else dict(steps)
         for index, item in enumerate(root["tasks"]):
@@ -360,6 +389,7 @@ class NobroApp:
             )
         if callbacks:
             raise AppDeclarationError(
+                "app-endpoint",
                 f"callbacks reference unknown tasks: {', '.join(sorted(callbacks))}"
             )
         for index, item in enumerate(root["wires"]):
@@ -384,7 +414,9 @@ class NobroApp:
         try:
             value = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise AppDeclarationError(f"cannot read Python app JSON: {error}") from error
+            raise AppDeclarationError(
+                "app-shape", f"cannot read Python app JSON: {error}"
+            ) from error
         return cls.from_dict(value, steps=steps)
 
     def firmware_spec(self) -> dict[str, object]:
@@ -509,7 +541,9 @@ class NobroApp:
 
 def _check_name(value: object, label: str) -> None:
     if not isinstance(value, str) or not _NAME.fullmatch(value):
-        raise AppDeclarationError(f"{label} name must match [a-z][a-z0-9_-]{{0,47}}")
+        raise AppDeclarationError(
+            "app-name", f"{label} name must match [a-z][a-z0-9_-]{{0,47}}"
+        )
 
 
 def _integer(
@@ -520,14 +554,17 @@ def _integer(
     maximum: int | None = None,
 ) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise AppDeclarationError(f"{label} must be an integer")
+        raise AppDeclarationError("app-shape", f"{label} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         suffix = (
             f"between {minimum} and {maximum}"
             if maximum is not None
             else f"at least {minimum}"
         )
-        raise AppDeclarationError(f"{label} must be {suffix}")
+        key = "app-period" if label in {"period_us", "deadline_us"} else "app-options"
+        if label in {"capacity", "wire.capacity"}:
+            key = "app-wire-capacity"
+        raise AppDeclarationError(key, f"{label} must be {suffix}")
     return value
 
 
@@ -537,7 +574,7 @@ def _positive_interval(value: object, label: str) -> int:
 
 def _text(value: object, label: str) -> str:
     if not isinstance(value, str):
-        raise AppDeclarationError(f"{label} must be a string")
+        raise AppDeclarationError("app-shape", f"{label} must be a string")
     return value
 
 
@@ -547,7 +584,7 @@ def _exact_object(
     label: str,
 ) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        raise AppDeclarationError(f"{label} must be an object")
+        raise AppDeclarationError("app-shape", f"{label} must be an object")
     actual = set(value)
     if actual != expected:
         missing = sorted(expected - actual)
@@ -557,5 +594,7 @@ def _exact_object(
             details.append(f"missing {', '.join(missing)}")
         if extra:
             details.append(f"unknown {', '.join(extra)}")
-        raise AppDeclarationError(f"{label} fields: {'; '.join(details)}")
+        raise AppDeclarationError(
+            "app-shape", f"{label} fields: {'; '.join(details)}"
+        )
     return value

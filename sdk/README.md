@@ -3,6 +3,8 @@
 The SDK publishes `app-authoring-contract.json` as the versioned task/wire
 vocabulary shared by Rust, C, C++11, Arduino, Python, JSON, and the block
 editor. It records defaults and limits; kernel admission remains authoritative.
+`error-codes.json` is the single registry for stable diagnostic identities,
+plain-sentence meanings, and first recovery steps.
 
 The SDK collects the user-facing command, C headers, prepared firmware, and package
 metadata. The implementation lives in `core/`.
@@ -10,6 +12,7 @@ metadata. The implementation lives in `core/`.
 ```text
 sdk/
 |-- cli/nobro.py       project, app, flash, budget, sign, package, and contract commands
+|-- error-codes.json   shared admission, project, and app diagnostics
 |-- feature-catalog.json  target-scoped optional-feature prices and evidence
 |-- include/           drift-gated copies of the canonical C headers
 |-- firmware/          prepared firmware images and their app metadata

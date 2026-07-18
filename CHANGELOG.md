@@ -16,6 +16,9 @@
 - One versioned task/wire authoring contract now aligns Rust, C, C++11,
   Arduino, Python, JSON, and the block editor; older `sensor`, `channel`, and
   `connect` names remain compatibility aliases.
+- One versioned error registry now gives Rust, C/C++11, Arduino, Python, and
+  CLI/JSON failures stable `NOBRO-E0xx` identities, generated recovery docs,
+  and checked compile-fail diagnostics.
 
 ### Known boundaries
 

@@ -116,7 +116,8 @@ def selftest() -> int:
     assert ".wire(\"imu\", \"control\")" in generate_rust(app)
     bad = json.loads(json.dumps(document))
     bad["wires"][0]["to"] = "missing"
-    assert len(validate(bad)) == 1
+    errors = validate(bad)
+    assert len(errors) == 1 and errors[0].startswith("NOBRO-E055:")
     print(plan(app))
     print("RESULT: PASS")
     return 0

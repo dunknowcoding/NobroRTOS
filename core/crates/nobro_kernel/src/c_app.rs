@@ -103,6 +103,36 @@ impl CAppError {
             Self::StepFailed { .. } => -10,
         }
     }
+
+    pub const fn diagnostic_code(self) -> &'static str {
+        match self {
+            Self::InvalidState => "NOBRO-E050",
+            Self::InvalidName => "NOBRO-E051",
+            Self::InvalidPeriod => "NOBRO-E052",
+            Self::TaskCapacity => "NOBRO-E053",
+            Self::WireCapacity => "NOBRO-E054",
+            Self::UnknownEndpoint => "NOBRO-E055",
+            Self::DuplicateTask => "NOBRO-E056",
+            Self::InvalidOptions => "NOBRO-E057",
+            Self::Admission => "NOBRO-E058",
+            Self::StepFailed { .. } => "NOBRO-E059",
+        }
+    }
+
+    pub const fn diagnostic(self) -> &'static str {
+        match self {
+            Self::InvalidState => "Application graph state does not allow this operation.",
+            Self::InvalidName => "Names must use stable lowercase labels.",
+            Self::InvalidPeriod => "Task rate and period must be valid.",
+            Self::TaskCapacity => "Application task capacity is exceeded.",
+            Self::WireCapacity => "Application wire capacity is exceeded.",
+            Self::UnknownEndpoint => "Wire endpoints must name existing tasks.",
+            Self::DuplicateTask => "Task name is already declared.",
+            Self::InvalidOptions => "Task timing or resource options are invalid.",
+            Self::Admission => "Application graph admission failed.",
+            Self::StepFailed { .. } => "Task callback failed.",
+        }
+    }
 }
 
 /// Result of one bounded dispatch pass.
@@ -383,6 +413,22 @@ mod tests {
 
     extern "C" fn noop() -> i32 {
         0
+    }
+
+    #[test]
+    fn c_app_errors_keep_cross_binding_diagnostics() {
+        assert_eq!(CAppError::InvalidPeriod.status(), -3);
+        assert_eq!(CAppError::InvalidPeriod.diagnostic_code(), "NOBRO-E052");
+        assert_eq!(
+            CAppError::InvalidPeriod.diagnostic(),
+            "Task rate and period must be valid."
+        );
+        let step = CAppError::StepFailed {
+            task: "control",
+            code: -2,
+        };
+        assert_eq!(step.diagnostic_code(), "NOBRO-E059");
+        assert_eq!(step.diagnostic(), "Task callback failed.");
     }
 
     fn profile() -> SystemProfile {

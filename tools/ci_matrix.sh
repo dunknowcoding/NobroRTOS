@@ -79,6 +79,9 @@ gate "task/wire authoring parity + block-authored target build" \
     python tools/nobro_firmware_project.py tutorials/hello-device/app.json \
       --out _work/block-firmware --build'
 
+gate "stable diagnostic registry + generated index" \
+  python tools/gen_error_codes.py --check
+
 gate "static budget analyzer" python tools/static_budget.py --selftest
 
 gate "flash tool fail-closed parser" python tools/flash.py --selftest

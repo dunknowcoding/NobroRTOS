@@ -72,6 +72,46 @@ typedef enum nobro_result {
     NOBRO_ERR_STEP = -10,
 } nobro_result_t;
 
+/* Stable diagnostic identity and plain-sentence rendering for every result.
+ * The negative ABI values remain unchanged; codes are shared with Rust,
+ * C++11, Arduino, Python, JSON, and the generated public error index. */
+static inline const char *nobro_app_error_code(int32_t status) {
+    switch (status) {
+    case NOBRO_ERR_STATE: return "NOBRO-E050";
+    case NOBRO_ERR_NAME: return "NOBRO-E051";
+    case NOBRO_ERR_PERIOD: return "NOBRO-E052";
+    case NOBRO_ERR_TASK_CAPACITY: return "NOBRO-E053";
+    case NOBRO_ERR_WIRE_CAPACITY: return "NOBRO-E054";
+    case NOBRO_ERR_ENDPOINT: return "NOBRO-E055";
+    case NOBRO_ERR_DUPLICATE_TASK: return "NOBRO-E056";
+    case NOBRO_ERR_OPTIONS: return "NOBRO-E057";
+    case NOBRO_ERR_ADMISSION: return "NOBRO-E058";
+    case NOBRO_ERR_STEP: return "NOBRO-E059";
+    default: return "";
+    }
+}
+
+static inline const char *nobro_app_error_text(int32_t status) {
+    switch (status) {
+    case NOBRO_OK: return "Application graph is ready.";
+    case NOBRO_ERR_STATE:
+        return "Application graph state does not allow this operation.";
+    case NOBRO_ERR_NAME: return "Names must use stable lowercase labels.";
+    case NOBRO_ERR_PERIOD: return "Task rate and period must be valid.";
+    case NOBRO_ERR_TASK_CAPACITY:
+        return "Application task capacity is exceeded.";
+    case NOBRO_ERR_WIRE_CAPACITY:
+        return "Application wire capacity is exceeded.";
+    case NOBRO_ERR_ENDPOINT: return "Wire endpoints must name existing tasks.";
+    case NOBRO_ERR_DUPLICATE_TASK: return "Task name is already declared.";
+    case NOBRO_ERR_OPTIONS:
+        return "Task timing or resource options are invalid.";
+    case NOBRO_ERR_ADMISSION: return "Application graph admission failed.";
+    case NOBRO_ERR_STEP: return "Task callback failed.";
+    default: return "Unknown application error.";
+    }
+}
+
 /* Convert a frequency to a period. Literal zero is a compile-time error. */
 #define NOBRO_HZ(rate) (1000000u / (uint32_t)(rate))
 #ifndef HZ

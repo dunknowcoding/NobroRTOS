@@ -23,13 +23,14 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def fails(callable_, text: str) -> None:
+def fails(callable_, code: str, text: str) -> None:
     try:
         callable_()
     except AppDeclarationError as error:
+        require(error.code == code, f"expected {code}, got {error.code}")
         require(text in str(error), f"expected {text!r}, got {error!r}")
         return
-    raise AssertionError(f"expected AppDeclarationError containing {text!r}")
+    raise AssertionError(f"expected {code} containing {text!r}")
 
 
 def main() -> int:
@@ -67,10 +68,11 @@ def main() -> int:
     full = NobroApp("full")
     for index in range(8):
         full.task(f"task{index}", 1000)
-    fails(lambda: full.task("task0", 1000), "duplicate task")
-    fails(lambda: NobroApp("period").task("task", 0), "period_us")
+    fails(lambda: full.task("task0", 1000), "NOBRO-E056", "duplicate task")
+    fails(lambda: NobroApp("period").task("task", 0), "NOBRO-E052", "period_us")
     fails(
         lambda: NobroApp("endpoint").task("task", 1000).wire("task", "missing"),
+        "NOBRO-E055",
         "unknown task",
     )
     fails(
@@ -81,10 +83,12 @@ def main() -> int:
             .wire("left", "right")
             .wire("left", "right")
         ),
+        "NOBRO-E060",
         "duplicate wire",
     )
     fails(
         lambda: NobroApp("capacity").task("task", 1000).wire("task", "task", 65),
+        "NOBRO-E054",
         "between 1 and 64",
     )
 
@@ -126,6 +130,8 @@ def main() -> int:
             "int configure() {\n"
             '  if (nobro::task("imu", HZ(100), step) != NOBRO_OK) return 1;\n'
             '  if (nobro::wire("imu", "control", 8) != NOBRO_OK) return 2;\n'
+            '  if (nobro_app_error_code(NOBRO_ERR_PERIOD)[0] != \'N\') return 3;\n'
+            '  if (nobro_app_error_text(NOBRO_ERR_PERIOD)[0] != \'T\') return 4;\n'
             "  return nobro::run();\n"
             "}\n",
             encoding="utf-8",

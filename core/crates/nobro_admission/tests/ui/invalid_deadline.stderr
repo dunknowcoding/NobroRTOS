@@ -1,0 +1,16 @@
+error[E0080]: evaluation panicked: NOBRO-E004 A task deadline or period is invalid.
+ --> tests/ui/invalid_deadline.rs:8:32
+  |
+8 | const _: AdmittedWorkload<1> = nobro_admit!([BAD_PERIOD], PROFILE);
+  |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E004 A task deadline or period is invalid.")
+  |             ---------------------------------------------------------- in this macro invocation

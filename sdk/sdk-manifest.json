@@ -7,6 +7,7 @@
   "author": "dunknowcoding",
   "canonical_contract": "host/nobro-host-contract.json",
   "app_authoring_contract": "sdk/app-authoring-contract.json",
+  "error_code_registry": "sdk/error-codes.json",
   "feature_catalog": "sdk/feature-catalog.json",
   "core_workspace": "core",
   "include_roots": [

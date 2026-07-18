@@ -12,7 +12,7 @@ DOCS = [
     *(ROOT / "docs" / name for name in (
         "README.md", "GETTING_STARTED.md", "USER_GUIDE.md", "API.md",
         "ARCHITECTURE.md", "PORTING.md", "LIMITATIONS.md", "CAMERA_SUPPORT.md",
-        "WIRELESS_SUPPORT.md", "api-index.md",
+        "WIRELESS_SUPPORT.md", "ERROR_CODES.md", "api-index.md",
     )),
 ]
 LINK = re.compile(r"\[[^]]*\]\(([^)]+)\)")
@@ -177,6 +177,11 @@ def main() -> int:
     )
     if generated.returncode:
         errors.append("generated API index is stale")
+    error_codes = subprocess.run(
+        [sys.executable, "tools/gen_error_codes.py", "--check"], cwd=ROOT
+    )
+    if error_codes.returncode:
+        errors.append("generated error-code index is stale")
     for error in errors:
         print(f"FAIL: {error}")
     print(

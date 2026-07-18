@@ -28,6 +28,7 @@ def main():
     checks = []
     checks.append(("canonical_contract", man["canonical_contract"]))
     checks.append(("app_authoring_contract", man["app_authoring_contract"]))
+    checks.append(("error_code_registry", man["error_code_registry"]))
     checks.append(("feature_catalog", man["feature_catalog"]))
     checks.append(("core_workspace", man["core_workspace"]))
     for r in man.get("include_roots", []):

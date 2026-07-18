@@ -466,6 +466,11 @@ currently supports the generator's nRF52840 SoftDevice and no-SoftDevice
 profiles. Wire capacity is topology metadata until a native payload binding is
 selected.
 
+Declaration failures carry a stable `NOBRO-E0xx` code plus a plain sentence.
+The code and meaning are identical across bindings; binding-native error types
+and extra field details remain available. Use the generated
+[error-code index](ERROR_CODES.md) for the first recovery step.
+
 The generator emits `workload.json`, `generation.json`, and a compiling `no_std` Cargo
 crate from the same input. The explicit board profile selects the S140 or no-SoftDevice
 memory layout. Defaults reduce beginner boilerplate while keeping budget review visible.

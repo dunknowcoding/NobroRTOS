@@ -44,6 +44,7 @@ enum AppError : uint8_t {
     APP_INVALID_NAME,
     APP_DUPLICATE_TASK,
     APP_DUPLICATE_WIRE,
+    APP_SELF_WIRE,
 };
 
 /* Allocation-free Arduino declaration and admission preview. The Rust firmware path
@@ -100,7 +101,7 @@ public:
     NobroApp &wire(TaskId from, TaskId to, uint8_t capacity = 1) {
         if (capacity == 0 || capacity > 64 || channel_count_ >= MaxChannels)
             return fail(APP_CHANNEL_CAPACITY);
-        if (from.value == to.value) return fail(APP_INVALID_TASK);
+        if (from.value == to.value) return fail(APP_SELF_WIRE);
         for (uint8_t i = 0; i < channel_count_; ++i) {
             if (channels_[i].from == from.value && channels_[i].to == to.value)
                 return fail(APP_DUPLICATE_WIRE);
@@ -128,22 +129,39 @@ public:
     }
 
     AppError error() const { return error_; }
+    const char *errorCode() const {
+        switch (error_) {
+        case APP_OK: return "";
+        case APP_TASK_CAPACITY: return "NOBRO-E053";
+        case APP_CHANNEL_CAPACITY: return "NOBRO-E054";
+        case APP_INVALID_TASK: return "NOBRO-E055";
+        case APP_INVALID_PERIOD: return "NOBRO-E052";
+        case APP_BUDGET_EXCEEDS_PERIOD:
+        case APP_INVALID_BUDGET: return "NOBRO-E057";
+        case APP_RESOURCE_BUDGET: return "NOBRO-E058";
+        case APP_INVALID_NAME: return "NOBRO-E051";
+        case APP_DUPLICATE_TASK: return "NOBRO-E056";
+        case APP_DUPLICATE_WIRE: return "NOBRO-E060";
+        case APP_SELF_WIRE: return "NOBRO-E061";
+        default: return "";
+        }
+    }
     const char *errorText() const {
         switch (error_) {
-        case APP_OK: return "ready";
-        case APP_TASK_CAPACITY: return "too many tasks; raise NobroApp task capacity";
-        case APP_CHANNEL_CAPACITY: return "too many channels; raise NobroApp channel capacity";
-        case APP_INVALID_TASK: return "channel or override names an invalid task";
-        case APP_INVALID_PERIOD: return "task period must be greater than zero";
-        case APP_BUDGET_EXCEEDS_PERIOD: return "task budget exceeds its period";
-        case APP_RESOURCE_BUDGET:
-            return "task memory is zero, overflows, or exceeds the board profile";
-        case APP_INVALID_BUDGET: return "task budget must be greater than zero";
-        case APP_INVALID_NAME:
-            return "task name must match [a-z][a-z0-9_-]{0,47}";
-        case APP_DUPLICATE_TASK: return "task name is already declared";
-        case APP_DUPLICATE_WIRE: return "wire is already declared";
-        default: return "unknown application error";
+        case APP_OK: return "Application graph is ready.";
+        case APP_TASK_CAPACITY: return "Application task capacity is exceeded.";
+        case APP_CHANNEL_CAPACITY: return "Application wire capacity is exceeded.";
+        case APP_INVALID_TASK: return "Wire endpoints must name existing tasks.";
+        case APP_INVALID_PERIOD: return "Task rate and period must be valid.";
+        case APP_BUDGET_EXCEEDS_PERIOD:
+        case APP_INVALID_BUDGET:
+            return "Task timing or resource options are invalid.";
+        case APP_RESOURCE_BUDGET: return "Application graph admission failed.";
+        case APP_INVALID_NAME: return "Names must use stable lowercase labels.";
+        case APP_DUPLICATE_TASK: return "Task name is already declared.";
+        case APP_DUPLICATE_WIRE: return "Wire is already declared.";
+        case APP_SELF_WIRE: return "A task cannot wire to itself.";
+        default: return "Unknown application error.";
         }
     }
     uint8_t taskCount() const { return task_count_; }

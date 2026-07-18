@@ -1,0 +1,356 @@
+error[E0080]: evaluation panicked: NOBRO-E001 The workload must contain at least one task.
+ --> tests/ui/all_codes.rs:3:15
+  |
+3 | const _: () = panic_admission(AdmissionErrorCode::EmptyWorkload);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E001 The workload must contain at least one task.")
+  |             ----------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E002 The workload exceeds the task capacity.
+ --> tests/ui/all_codes.rs:4:15
+  |
+4 | const _: () = panic_admission(AdmissionErrorCode::TooManyTasks);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E002 The workload exceeds the task capacity.")
+  |             ------------------------------------------------------------ in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E003 Each task identity must be unique.
+ --> tests/ui/all_codes.rs:5:15
+  |
+5 | const _: () = panic_admission(AdmissionErrorCode::DuplicateId);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E003 Each task identity must be unique.")
+  |             ------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E004 A task deadline or period is invalid.
+ --> tests/ui/all_codes.rs:6:15
+  |
+6 | const _: () = panic_admission(AdmissionErrorCode::InvalidDeadline);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E004 A task deadline or period is invalid.")
+  |             ---------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E005 Task jitter must be below its deadline.
+ --> tests/ui/all_codes.rs:7:15
+  |
+7 | const _: () = panic_admission(AdmissionErrorCode::InvalidJitter);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E005 Task jitter must be below its deadline.")
+  |             ------------------------------------------------------------ in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E006 A task execution bound is missing or too large.
+ --> tests/ui/all_codes.rs:8:15
+  |
+8 | const _: () = panic_admission(AdmissionErrorCode::InvalidExecution);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E006 A task execution bound is missing or too large.")
+  |             -------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E007 Task execution plus blocking exceeds its deadline.
+ --> tests/ui/all_codes.rs:9:15
+  |
+9 | const _: () = panic_admission(AdmissionErrorCode::InvalidBlocking);
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+  |
+note: inside `nobro_admission::panic_admission`
+ --> $RUST/core/src/panic.rs
+  |
+  |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/lib.rs
+  |
+  |             panic!("NOBRO-E007 Task execution plus blocking exceeds its deadline.")
+  |             ----------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E008 The workload utilization exceeds one core.
+  --> tests/ui/all_codes.rs:10:15
+   |
+10 | const _: () = panic_admission(AdmissionErrorCode::UtilizationExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E008 The workload utilization exceeds one core.")
+   |             --------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E009 Response-time analysis found a missed deadline.
+  --> tests/ui/all_codes.rs:11:15
+   |
+11 | const _: () = panic_admission(AdmissionErrorCode::ResponseTimeExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E009 Response-time analysis found a missed deadline.")
+   |             -------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E010 The workload exceeds its flash profile.
+  --> tests/ui/all_codes.rs:12:15
+   |
+12 | const _: () = panic_admission(AdmissionErrorCode::FlashExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E010 The workload exceeds its flash profile.")
+   |             ------------------------------------------------------------ in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E011 The workload exceeds its RAM profile.
+  --> tests/ui/all_codes.rs:13:15
+   |
+13 | const _: () = panic_admission(AdmissionErrorCode::RamExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E011 The workload exceeds its RAM profile.")
+   |             ---------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E012 The workload exceeds its sample-pool profile.
+  --> tests/ui/all_codes.rs:14:15
+   |
+14 | const _: () = panic_admission(AdmissionErrorCode::PoolExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E012 The workload exceeds its sample-pool profile.")
+   |             ------------------------------------------------------------------ in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E013 Admission arithmetic overflowed.
+  --> tests/ui/all_codes.rs:15:15
+   |
+15 | const _: () = panic_admission(AdmissionErrorCode::ArithmeticOverflow);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E013 Admission arithmetic overflowed.")
+   |             ----------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E014 The wake-latency bound exceeds a task deadline.
+  --> tests/ui/all_codes.rs:16:15
+   |
+16 | const _: () = panic_admission(AdmissionErrorCode::WakeLatencyExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E014 The wake-latency bound exceeds a task deadline.")
+   |             -------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E015 A task phase must be below its period.
+  --> tests/ui/all_codes.rs:17:15
+   |
+17 | const _: () = panic_admission(AdmissionErrorCode::InvalidPhase);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E015 A task phase must be below its period.")
+   |             ----------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E016 An interrupt priority is outside the target range.
+  --> tests/ui/all_codes.rs:18:15
+   |
+18 | const _: () = panic_admission(AdmissionErrorCode::InvalidInterruptPriority);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E016 An interrupt priority is outside the target range.")
+   |             ----------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E017 An interrupt priority is reserved by the platform stack.
+  --> tests/ui/all_codes.rs:19:15
+   |
+19 | const _: () = panic_admission(AdmissionErrorCode::ReservedInterruptPriority);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E017 An interrupt priority is reserved by the platform stack.")
+   |             ----------------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E018 An interrupt timing or stack contract is invalid.
+  --> tests/ui/all_codes.rs:20:15
+   |
+20 | const _: () = panic_admission(AdmissionErrorCode::InvalidInterruptContract);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E018 An interrupt timing or stack contract is invalid.")
+   |             ---------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E019 An interrupt step requests an unbounded operation.
+  --> tests/ui/all_codes.rs:21:15
+   |
+21 | const _: () = panic_admission(AdmissionErrorCode::UnsafeInterruptOperation);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E019 An interrupt step requests an unbounded operation.")
+   |             ----------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E020 The nested interrupt-stack budget is exceeded.
+  --> tests/ui/all_codes.rs:22:15
+   |
+22 | const _: () = panic_admission(AdmissionErrorCode::InterruptStackExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E020 The nested interrupt-stack budget is exceeded.")
+   |             ------------------------------------------------------------------- in this macro invocation
+
+error[E0080]: evaluation panicked: NOBRO-E021 Interrupt interference exceeds a deadline.
+  --> tests/ui/all_codes.rs:23:15
+   |
+23 | const _: () = panic_admission(AdmissionErrorCode::InterruptResponseExceeded);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed inside this call
+   |
+note: inside `nobro_admission::panic_admission`
+  --> $RUST/core/src/panic.rs
+   |
+   |         $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/lib.rs
+   |
+   |             panic!("NOBRO-E021 Interrupt interference exceeds a deadline.")
+   |             --------------------------------------------------------------- in this macro invocation

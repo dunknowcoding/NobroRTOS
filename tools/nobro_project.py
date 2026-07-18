@@ -32,35 +32,17 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import nobro_admission as adm  # noqa: E402  (marginal-cost + shed analysis)
+import nobro_diagnostics as diagnostics  # noqa: E402
 import nobro_shrink as shrink  # noqa: E402  (fail-closed capacity proposals)
 
 DEFAULT_OUT = ROOT / "_work" / "projects"
 NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 FEATURE_CATALOG_PATH = ROOT / "sdk" / "feature-catalog.json"
 
-WORKLOAD_DIAGNOSTICS = {
-    "shape": ("NOBRO-E030", "Workload must contain a non-empty task list."),
-    "task-name": ("NOBRO-E031", "Every task needs one stable lowercase name."),
-    "duplicate-task": ("NOBRO-E032", "Task names must be unique."),
-    "missing-kernel": ("NOBRO-E033", "Every workload needs the kernel task."),
-    "criticality": ("NOBRO-E034", "Task criticality must be one of the known roles."),
-    "nonnegative": ("NOBRO-E035", "Resource and timing numbers must be non-negative."),
-    "budget-period": ("NOBRO-E036", "A task budget must fit inside its period."),
-    "after-list": ("NOBRO-E037", "Task dependencies must be a short unique list."),
-    "dependency": ("NOBRO-E038", "Task dependencies must name existing tasks."),
-    "kernel-after": ("NOBRO-E039", "The kernel starts first and cannot depend on app tasks."),
-    "wire-shape": ("NOBRO-E040", "Each wire must be written as [from, to]."),
-    "wire-endpoint": ("NOBRO-E041", "Wire endpoints must name existing tasks."),
-    "cycle": ("NOBRO-E042", "Startup dependencies cannot form a cycle."),
-    "feature-shape": ("NOBRO-E043", "Features must be one object of boolean switches."),
-    "feature-target": ("NOBRO-E044", "Feature target is unsupported."),
-    "feature-name": ("NOBRO-E045", "Feature name is unknown for this target."),
-    "feature-value": ("NOBRO-E046", "Feature values must match the catalog."),
-    "feature-unavailable": ("NOBRO-E047", "Feature is unavailable for this target."),
-    "feature-conflict": ("NOBRO-E048", "Enabled features conflict."),
-    "workload-schema": ("NOBRO-E049", "Workload schema version is unsupported."),
+WORKLOAD_DIAGNOSTICS = diagnostics.surface("project")
+ADMISSION_DIAGNOSTIC_CODES = {
+    code for code, _ in diagnostics.surface("admission").values()
 }
-ADMISSION_DIAGNOSTIC_CODES = {f"NOBRO-E{number:03d}" for number in range(1, 22)}
 
 
 class WorkloadDiagnostic(ValueError):

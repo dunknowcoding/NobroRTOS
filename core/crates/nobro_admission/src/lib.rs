@@ -325,35 +325,135 @@ pub enum AdmissionErrorCode {
 impl AdmissionErrorCode {
     pub const fn diagnostic(self) -> &'static str {
         match self {
-            Self::EmptyWorkload => "NOBRO-E001 empty workload",
-            Self::TooManyTasks => "NOBRO-E002 task capacity exceeded",
-            Self::DuplicateId => "NOBRO-E003 duplicate task identity",
-            Self::InvalidDeadline => "NOBRO-E004 invalid deadline/period",
-            Self::InvalidJitter => "NOBRO-E005 jitter must be below deadline",
-            Self::InvalidExecution => "NOBRO-E006 execution bound is missing or too large",
-            Self::InvalidBlocking => "NOBRO-E007 execution plus blocking exceeds deadline",
-            Self::UtilizationExceeded => "NOBRO-E008 utilization exceeds one core",
-            Self::ResponseTimeExceeded => "NOBRO-E009 response-time analysis missed deadline",
-            Self::FlashExceeded => "NOBRO-E010 flash profile exceeded",
-            Self::RamExceeded => "NOBRO-E011 RAM profile exceeded",
-            Self::PoolExceeded => "NOBRO-E012 sample-pool profile exceeded",
-            Self::ArithmeticOverflow => "NOBRO-E013 admission arithmetic overflow",
-            Self::WakeLatencyExceeded => "NOBRO-E014 wake-latency bound exceeds deadline",
-            Self::InvalidPhase => "NOBRO-E015 phase must be below period",
+            Self::EmptyWorkload => "NOBRO-E001 The workload must contain at least one task.",
+            Self::TooManyTasks => "NOBRO-E002 The workload exceeds the task capacity.",
+            Self::DuplicateId => "NOBRO-E003 Each task identity must be unique.",
+            Self::InvalidDeadline => "NOBRO-E004 A task deadline or period is invalid.",
+            Self::InvalidJitter => "NOBRO-E005 Task jitter must be below its deadline.",
+            Self::InvalidExecution => "NOBRO-E006 A task execution bound is missing or too large.",
+            Self::InvalidBlocking => {
+                "NOBRO-E007 Task execution plus blocking exceeds its deadline."
+            }
+            Self::UtilizationExceeded => "NOBRO-E008 The workload utilization exceeds one core.",
+            Self::ResponseTimeExceeded => {
+                "NOBRO-E009 Response-time analysis found a missed deadline."
+            }
+            Self::FlashExceeded => "NOBRO-E010 The workload exceeds its flash profile.",
+            Self::RamExceeded => "NOBRO-E011 The workload exceeds its RAM profile.",
+            Self::PoolExceeded => "NOBRO-E012 The workload exceeds its sample-pool profile.",
+            Self::ArithmeticOverflow => "NOBRO-E013 Admission arithmetic overflowed.",
+            Self::WakeLatencyExceeded => {
+                "NOBRO-E014 The wake-latency bound exceeds a task deadline."
+            }
+            Self::InvalidPhase => "NOBRO-E015 A task phase must be below its period.",
             Self::InvalidInterruptPriority => {
-                "NOBRO-E016 interrupt priority is outside target range"
+                "NOBRO-E016 An interrupt priority is outside the target range."
             }
             Self::ReservedInterruptPriority => {
-                "NOBRO-E017 interrupt priority is reserved by the platform stack"
+                "NOBRO-E017 An interrupt priority is reserved by the platform stack."
             }
-            Self::InvalidInterruptContract => "NOBRO-E018 invalid interrupt timing/stack contract",
+            Self::InvalidInterruptContract => {
+                "NOBRO-E018 An interrupt timing or stack contract is invalid."
+            }
             Self::UnsafeInterruptOperation => {
-                "NOBRO-E019 interrupt step requests an unbounded operation"
+                "NOBRO-E019 An interrupt step requests an unbounded operation."
             }
-            Self::InterruptStackExceeded => "NOBRO-E020 nested interrupt-stack budget exceeded",
-            Self::InterruptResponseExceeded => "NOBRO-E021 interrupt interference exceeds deadline",
+            Self::InterruptStackExceeded => {
+                "NOBRO-E020 The nested interrupt-stack budget is exceeded."
+            }
+            Self::InterruptResponseExceeded => {
+                "NOBRO-E021 Interrupt interference exceeds a deadline."
+            }
         }
     }
+}
+
+/// Turn a retained admission code into a stable compile-time panic.
+///
+/// This is public so [`nobro_admit!`] can expand in downstream const contexts;
+/// applications should use the macro or inspect [`AdmissionError`] directly.
+#[doc(hidden)]
+pub const fn panic_admission(code: AdmissionErrorCode) -> ! {
+    match code {
+        AdmissionErrorCode::EmptyWorkload => {
+            panic!("NOBRO-E001 The workload must contain at least one task.")
+        }
+        AdmissionErrorCode::TooManyTasks => {
+            panic!("NOBRO-E002 The workload exceeds the task capacity.")
+        }
+        AdmissionErrorCode::DuplicateId => {
+            panic!("NOBRO-E003 Each task identity must be unique.")
+        }
+        AdmissionErrorCode::InvalidDeadline => {
+            panic!("NOBRO-E004 A task deadline or period is invalid.")
+        }
+        AdmissionErrorCode::InvalidJitter => {
+            panic!("NOBRO-E005 Task jitter must be below its deadline.")
+        }
+        AdmissionErrorCode::InvalidExecution => {
+            panic!("NOBRO-E006 A task execution bound is missing or too large.")
+        }
+        AdmissionErrorCode::InvalidBlocking => {
+            panic!("NOBRO-E007 Task execution plus blocking exceeds its deadline.")
+        }
+        AdmissionErrorCode::UtilizationExceeded => {
+            panic!("NOBRO-E008 The workload utilization exceeds one core.")
+        }
+        AdmissionErrorCode::ResponseTimeExceeded => {
+            panic!("NOBRO-E009 Response-time analysis found a missed deadline.")
+        }
+        AdmissionErrorCode::FlashExceeded => {
+            panic!("NOBRO-E010 The workload exceeds its flash profile.")
+        }
+        AdmissionErrorCode::RamExceeded => {
+            panic!("NOBRO-E011 The workload exceeds its RAM profile.")
+        }
+        AdmissionErrorCode::PoolExceeded => {
+            panic!("NOBRO-E012 The workload exceeds its sample-pool profile.")
+        }
+        AdmissionErrorCode::ArithmeticOverflow => {
+            panic!("NOBRO-E013 Admission arithmetic overflowed.")
+        }
+        AdmissionErrorCode::WakeLatencyExceeded => {
+            panic!("NOBRO-E014 The wake-latency bound exceeds a task deadline.")
+        }
+        AdmissionErrorCode::InvalidPhase => {
+            panic!("NOBRO-E015 A task phase must be below its period.")
+        }
+        AdmissionErrorCode::InvalidInterruptPriority => {
+            panic!("NOBRO-E016 An interrupt priority is outside the target range.")
+        }
+        AdmissionErrorCode::ReservedInterruptPriority => {
+            panic!("NOBRO-E017 An interrupt priority is reserved by the platform stack.")
+        }
+        AdmissionErrorCode::InvalidInterruptContract => {
+            panic!("NOBRO-E018 An interrupt timing or stack contract is invalid.")
+        }
+        AdmissionErrorCode::UnsafeInterruptOperation => {
+            panic!("NOBRO-E019 An interrupt step requests an unbounded operation.")
+        }
+        AdmissionErrorCode::InterruptStackExceeded => {
+            panic!("NOBRO-E020 The nested interrupt-stack budget is exceeded.")
+        }
+        AdmissionErrorCode::InterruptResponseExceeded => {
+            panic!("NOBRO-E021 Interrupt interference exceeds a deadline.")
+        }
+    }
+}
+
+/// Admit a task array in a const context and report one stable `NOBRO-E0xx`
+/// compile-time diagnostic at the invocation when the workload is invalid.
+///
+/// The ordinary [`admit`] function remains available when callers need a
+/// recoverable [`AdmissionError`] rather than a build failure.
+#[macro_export]
+macro_rules! nobro_admit {
+    ($tasks:expr, $profile:expr $(,)?) => {{
+        match $crate::admit($tasks, $profile) {
+            Ok(admitted) => admitted,
+            Err(error) => $crate::panic_admission(error.code),
+        }
+    }};
 }
 
 #[repr(C)]
@@ -1785,7 +1885,7 @@ mod tests {
         assert_eq!(error.limit, 1_000);
         assert_eq!(
             error.code.diagnostic(),
-            "NOBRO-E014 wake-latency bound exceeds deadline"
+            "NOBRO-E014 The wake-latency bound exceeds a task deadline."
         );
     }
 
@@ -1803,7 +1903,7 @@ mod tests {
         assert_eq!(error.task_index, 0);
         assert_eq!(
             error.code.diagnostic(),
-            "NOBRO-E015 phase must be below period"
+            "NOBRO-E015 A task phase must be below its period."
         );
 
         let too_long = TaskContract::new(4).deadline(
@@ -1840,7 +1940,7 @@ mod tests {
         assert_eq!(reserved.code, AdmissionErrorCode::ReservedInterruptPriority);
         assert_eq!(
             reserved.code.diagnostic(),
-            "NOBRO-E017 interrupt priority is reserved by the platform stack"
+            "NOBRO-E017 An interrupt priority is reserved by the platform stack."
         );
     }
 

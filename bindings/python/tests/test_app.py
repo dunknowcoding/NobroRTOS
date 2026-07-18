@@ -103,8 +103,9 @@ class PythonAppTests(unittest.TestCase):
         self.assertEqual([task.name for task in app.tasks], ["worker", "after"])
 
     def test_invalid_graphs_and_strict_schema_are_rejected(self) -> None:
-        with self.assertRaises(AppDeclarationError):
+        with self.assertRaises(AppDeclarationError) as name_error:
             NobroApp("BadName")
+        self.assertEqual(name_error.exception.code, "NOBRO-E051")
         with self.assertRaisesRegex(AppDeclarationError, "unsupported board"):
             NobroApp("bad_board", board=[])
         with self.assertRaisesRegex(AppDeclarationError, "role must be a string"):
@@ -112,10 +113,12 @@ class PythonAppTests(unittest.TestCase):
         with self.assertRaises(AppDeclarationError):
             HZ(0)
         app = NobroApp("invalid").task("one", 1_000)
-        with self.assertRaisesRegex(AppDeclarationError, "unknown task"):
+        with self.assertRaisesRegex(AppDeclarationError, "unknown task") as endpoint_error:
             app.wire("one", "missing")
-        with self.assertRaisesRegex(AppDeclarationError, "duplicate task"):
+        self.assertEqual(endpoint_error.exception.code, "NOBRO-E055")
+        with self.assertRaisesRegex(AppDeclarationError, "duplicate task") as duplicate_error:
             NobroApp("duplicate").task("one", 1_000).task("one", 2_000)
+        self.assertEqual(duplicate_error.exception.code, "NOBRO-E056")
 
         document = self.sample().to_dict()
         document["unexpected"] = True
@@ -130,8 +133,9 @@ class PythonAppTests(unittest.TestCase):
         app = NobroApp("capacity")
         for index in range(8):
             app.task(f"task{index}", 1)
-        with self.assertRaisesRegex(AppDeclarationError, "task capacity"):
+        with self.assertRaisesRegex(AppDeclarationError, "task capacity") as capacity_error:
             app.task("task8", 1)
+        self.assertEqual(capacity_error.exception.code, "NOBRO-E053")
         with self.assertRaisesRegex(AppSimulationError, "event limit"):
             app.run(2, max_events=8)
 
