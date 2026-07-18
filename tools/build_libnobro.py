@@ -18,6 +18,7 @@
 """
 import argparse
 import glob
+import json
 import os
 import shutil
 import subprocess
@@ -44,19 +45,51 @@ def target_dir(env):
 
 def build() -> int:
     env = dict(os.environ)
-    if subprocess.run(["cargo", "build", "--locked", "--release", "-p", "nobro-tierc"],
-                      cwd=CORE, env=env).returncode:
+    result = subprocess.run(
+        [
+            "cargo",
+            "build",
+            "--locked",
+            "--release",
+            "-p",
+            "nobro-tierc",
+            "--message-format=json-render-diagnostics",
+        ],
+        cwd=CORE,
+        env=env,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode:
         return 1
+    build_outputs = []
+    for line in result.stdout.splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("reason") == "build-script-executed":
+            build_outputs.append(
+                (message.get("package_id", ""), message.get("out_dir", ""))
+            )
     tdir = target_dir(env)
     rel = os.path.join(tdir, TARGET, "release")
     os.makedirs(OUT, exist_ok=True)
     shutil.copy(os.path.join(rel, "libnobro_tierc.a"), os.path.join(OUT, "libnobro.a"))
-    # harvest the build-generated linker scripts this archive expects
-    for script, pat in (("link.x", "cortex-m-rt-*"), ("defmt.x", "defmt-*")):
-        hits = sorted(glob.glob(os.path.join(rel, "build", pat, "out", script)))
-        if not hits:
-            sys.exit(f"generated {script} not found under {rel}/build")
-        shutil.copy(hits[-1], os.path.join(OUT, script))
+    # Use only scripts reported by this build. Selecting the last matching
+    # target-directory entry can accidentally stage a stale link.x generated
+    # for another package's cortex-m-rt feature set.
+    for script, package in (("link.x", "cortex-m-rt"), ("defmt.x", "defmt")):
+        hits = [
+            os.path.join(out_dir, script)
+            for package_id, out_dir in build_outputs
+            if package in package_id and os.path.isfile(os.path.join(out_dir, script))
+        ]
+        if len(hits) != 1:
+            sys.exit(
+                f"expected one current {package} {script}, found {len(hits)}: {hits}"
+            )
+        shutil.copy(hits[0], os.path.join(OUT, script))
     shutil.copy(os.path.join(CORE, "memory-nosd.x"), os.path.join(OUT, "memory.x"))
     for h in glob.glob(os.path.join(ROOT, "bindings", "c", "include", "*.h")):
         shutil.copy(h, OUT)

@@ -38,7 +38,7 @@ hardware and are not inferred from software coefficients alone.
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
 | Deep | nRF52840 | One native composition with implemented time, deadline, event, PWM, I2C, SPI, USB, and lease providers | Broader deep board families and physical USB fault/recovery evidence |
-| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase plus the fixed USB-Serial-JTAG backend; ESP32-S3 has a required hosted Xtensa build while its time/deadline/I2C/SPI/PWM paths remain experimental, and its USB state machine has required host evidence; native RA4M1 includes timebase, deadline, and USB only | Full lease/event/fault parity, physical recovery evidence, and unimplemented peripherals |
+| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase plus the fixed USB-Serial-JTAG backend; ESP32-S3 has a required hosted Xtensa build while its time/deadline/I2C/SPI/PWM paths remain experimental, and its USB state machine has required host evidence; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, physical recovery evidence, and unimplemented peripherals |
 | Core | SAMD21, AVR subset | Target startup and status integration | Portable peripheral providers |
 
 A provider row is not interchangeable with deep support. In particular, event routing
@@ -54,6 +54,14 @@ does not establish servo-period semantics. On the native RA4M1 port, the
 seconds and may stop in low-power modes; the 24-bit SysTick alarm rejects one-shot delays
 above approximately 349 milliseconds. Stronger long-running/sleep timing needs an
 always-on timebase and chained alarm.
+
+The opt-in RA4M1 event-DMA provider is a fixed GPT0 -> ICU/ELC -> DMAC0 path with
+GPT1 as its independent timeout/residence counter. It supports at most 64 staged
+words and exclusively claims GPT0, GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31
+for one operation. It is not a general scatter/gather engine or proof that every
+RA4M1 event route works. Its status image enables configurable interrupts after
+the stock bootloader handoff; ordinary integrations that leave `PRIMASK` or
+`FAULTMASK` masked receive `InterruptsMasked`.
 
 The nRF USB backend advances controller-ready, regulator `OUTPUTRDY`, detach, and wake
 authorization as poll-driven lifecycle states. Only bounded register transitions are made

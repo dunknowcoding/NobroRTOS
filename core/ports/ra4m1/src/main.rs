@@ -13,6 +13,12 @@
 
 use cortex_m_rt::entry;
 use nobro_hal::{HalAlarm, HalByteIo, HalClock};
+#[cfg(feature = "event-dma")]
+use nobro_port_ra4m1::event_dma::{
+    event_dma_irq, event_dma_timeout_irq, EVENT_DMA_IRQ, EVENT_DMA_TIMEOUT_IRQ,
+};
+#[cfg(feature = "event-dma-selftest")]
+use nobro_port_ra4m1::event_dma::{run_event_dma_selftest, EventDmaSelfTestReport, Ra4m1EventDma};
 use nobro_port_ra4m1::evidence::ProviderEvidence;
 use nobro_port_ra4m1::providers::{Ra4m1Alarm, Ra4m1Clock, Ra4m1Usb};
 use nobro_port_ra4m1::system::{
@@ -21,6 +27,27 @@ use nobro_port_ra4m1::system::{
 use nobro_port_ra4m1::usb_session::{HostCommand, UsbReportCursor};
 use nobro_usb::UsbIoError;
 use panic_halt as _;
+
+extern "C" {
+    fn DefaultHandler();
+}
+
+#[cfg(feature = "event-dma")]
+const fn interrupt_vectors() -> [unsafe extern "C" fn(); 32] {
+    let mut vectors = [DefaultHandler as unsafe extern "C" fn(); 32];
+    vectors[EVENT_DMA_TIMEOUT_IRQ] = event_dma_timeout_irq;
+    vectors[EVENT_DMA_IRQ] = event_dma_irq;
+    vectors
+}
+
+#[cfg(not(feature = "event-dma"))]
+const fn interrupt_vectors() -> [unsafe extern "C" fn(); 32] {
+    [DefaultHandler as unsafe extern "C" fn(); 32]
+}
+
+#[no_mangle]
+#[link_section = ".vector_table.interrupts"]
+pub static __INTERRUPTS: [unsafe extern "C" fn(); 32] = interrupt_vectors();
 
 // ---------------------------------------------------------------- system (own driver)
 
@@ -244,6 +271,23 @@ impl Sci {
         }
     }
 
+    #[cfg(feature = "event-dma-selftest")]
+    fn print_u32(&self, mut value: u32) {
+        let mut digits = [0u8; 10];
+        let mut cursor = digits.len();
+        loop {
+            cursor -= 1;
+            digits[cursor] = b'0' + (value % 10) as u8;
+            value /= 10;
+            if value == 0 {
+                break;
+            }
+        }
+        for &digit in &digits[cursor..] {
+            self.tx(digit);
+        }
+    }
+
     fn try_print_until(&self, s: &str, deadline_us: u64) -> bool {
         unsafe {
             let b = self.0;
@@ -381,6 +425,47 @@ fn drive_loopback() {
     }
 }
 
+#[cfg(feature = "event-dma-selftest")]
+fn print_event_dma_report(link: &Sci, report: EventDmaSelfTestReport) {
+    link.print("NOBRO-RA4M1 event_dma=");
+    link.tx(if report.passed { b'1' } else { b'0' });
+    link.print(" cancel=");
+    link.tx(if report.cancellation_output_untouched {
+        b'1'
+    } else {
+        b'0'
+    });
+    link.print(" timeout=");
+    link.tx(if report.timeout_path_passed {
+        b'1'
+    } else {
+        b'0'
+    });
+    link.print(" restore=");
+    link.tx(if report.state_restored { b'1' } else { b'0' });
+    link.print(" words=");
+    link.print_u32(report.words as u32);
+    link.print(" polls=");
+    link.print_u32(report.polls);
+    link.print(" dma_irq=");
+    link.print_u32(report.dma_irqs);
+    link.print(" timeout_irq=");
+    link.print_u32(report.timeout_irqs);
+    link.print(" wakes=");
+    link.print_u32(report.task_wakes);
+    link.print(" idle=");
+    link.print_u32(report.idle_entries);
+    link.print(" event_res_us=");
+    link.print_u32(report.idle_residence_us);
+    link.print(" total_us=");
+    link.print_u32(report.completion_us);
+    link.print(" wake_us=");
+    link.print_u32(report.wake_latency_us);
+    link.print(" all_pass=");
+    link.tx(if report.passed { b'1' } else { b'0' });
+    link.print("\r\n");
+}
+
 #[entry]
 fn main() -> ! {
     let system_ok = system_init();
@@ -406,6 +491,32 @@ fn main() -> ! {
         armed && (2_000..20_000).contains(&elapsed),
         false,
     );
+    #[cfg(feature = "event-dma-selftest")]
+    // The stock UNO R4 bootloader can jump with PRIMASK set. The ordinary
+    // provider rejects that state; this image owns all enabled vectors and
+    // deliberately opens the interrupt gate before its physical self-test.
+    unsafe {
+        cortex_m::interrupt::enable();
+    }
+    #[cfg(feature = "event-dma-selftest")]
+    let event_dma_report = match Ra4m1EventDma::take() {
+        Ok(mut provider) => run_event_dma_selftest(&mut provider),
+        Err(_) => EventDmaSelfTestReport {
+            passed: false,
+            cancellation_output_untouched: false,
+            timeout_path_passed: false,
+            state_restored: false,
+            words: 0,
+            polls: 0,
+            dma_irqs: 0,
+            timeout_irqs: 0,
+            task_wakes: 0,
+            idle_entries: 0,
+            idle_residence_us: 0,
+            completion_us: 0,
+            wake_latency_us: u32::MAX,
+        },
+    };
     let bridge_line = if core_evidence.core_passes() {
         "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=1 deadline=1 usb=0 all_pass=0\r\n"
     } else {
@@ -422,6 +533,8 @@ fn main() -> ! {
     // changes the RA-side baud when the host changes CDC line coding.
     route_usb_to_ra4(false);
     SCI9.print(bridge_line);
+    #[cfg(feature = "event-dma-selftest")]
+    print_event_dma_report(&SCI9, event_dma_report);
     SCI1.print("NOBRO-RA4M1 wifi_uart=ready\r\n");
 
     // Native RA4M1 USBFS is available on request; it is not the boot default on
@@ -529,6 +642,10 @@ fn main() -> ! {
         // Keep the bridge/header UARTs alive and use a non-blocking LED cadence.
         // Blocking blink delays can starve EP0 while native USB is enumerating.
         SCI9.print(bridge_line);
+        #[cfg(feature = "event-dma-selftest")]
+        if ticks.is_multiple_of(64) {
+            print_event_dma_report(&SCI9, event_dma_report);
+        }
         SCI2.print(bridge_line);
         let usb_stage = usb
             .as_ref()

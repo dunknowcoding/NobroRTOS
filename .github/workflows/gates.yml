@@ -137,6 +137,7 @@ jobs:
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel graph::tests::graph_executor_init_failure_restores_the_cell_for_retry
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-kernel kernel_executor::tests::executor_graph_workspace_keeps_scratch_disjoint_from_admission
           cargo miri test --locked --target x86_64-unknown-linux-gnu -p nobro-hal --no-default-features --features platform-nrf52840,board-promicro-nosd,nrf-twim-async twim_hw::async_provider::tests
+          cargo miri test --locked --target x86_64-unknown-linux-gnu --manifest-path ports/ra4m1/Cargo.toml --lib event_dma::tests
       - name: address sanitizer smoke
         working-directory: core
         env:

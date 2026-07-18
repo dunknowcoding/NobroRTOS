@@ -325,7 +325,8 @@ Cross-compile coverage is
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
-RA4M1's native row means timebase, deadline, and USB only. UNO R4 and ArduinoNRF wrappers
+RA4M1's native row means timebase, deadline, USB, and an opt-in GPT/ELC/DMAC
+completion future. UNO R4 and ArduinoNRF wrappers
 for clock/deadline/ADC/PWM/I2C/SPI/byte I/O are separate board-core compositions and do
 not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
 ArduinoNRF composition is compiled on its supported Windows toolchain with the exact

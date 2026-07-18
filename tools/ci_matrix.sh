@@ -130,6 +130,9 @@ gate "ra4m1 provider conformance" \
 gate "ra4m1 port build" \
   python tools/check_platform_tiers.py --run-gate ra4m1-target-build
 
+gate "ra4m1 event-paced DMA provider build" \
+  python tools/check_platform_tiers.py --run-gate ra4m1-event-dma-target-build
+
 gate "samd21 port build" \
   bash -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --locked --release'
 

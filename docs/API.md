@@ -1120,6 +1120,32 @@ electrical-current, energy, or universal power evidence.
 Portable staged providers use `StagedTransferPlan` to reject empty,
 length-mismatched, and over-capacity operations before claiming hardware.
 
+With the RA4M1 port's opt-in `event-dma` feature, a periodic GPT0 overflow is
+routed through ICU/ELC to DMAC0. Only the DMAC0 transfer-end event enters the
+registered completion future; the CPU does not issue individual transfers.
+The default surface is one call:
+
+```rust,ignore
+let mut dma = Ra4m1EventDma::take()?;
+let copied = dma.copy(&source, &mut destination).await?;
+```
+
+The operation accepts 1 to 64 equal-length words and defaults to one word every
+100 microseconds. `copy_every` exposes a typed 10-to-200-microsecond period
+override. Invalid lengths or periods are rejected before hardware is claimed,
+and a globally masked interrupt state returns `InterruptsMasked` rather than
+entering sleep. Caller output is published only after completion; dropping the
+future stops the timers and DMA first.
+
+While active, this provider exclusively owns GPT0, GPT1, DMAC0, DELSR0, and
+ICU/NVIC slots 30 and 31. Occupied resources are rejected, and their prior
+register, priority, enable, sleep-event, and module-stop state is restored after
+completion, error, or cancellation, including pre-existing NVIC pending state.
+The separate `event-dma-selftest` feature
+adds the boot diagnostic to the RA4M1 status image; it is not a baseline cost.
+Its `event_res_us` field is System-ON `WFE` residence, not electrical-current or
+energy evidence.
+
 ### SAL API
 
 #### BusSal

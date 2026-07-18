@@ -17,6 +17,8 @@ FILES = {
     "samd_manifest": ROOT / "core/ports/samd21/Cargo.toml",
     "samd_provider": ROOT / "core/ports/samd21/src/masked_critical_section.rs",
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",
+    "ra_event_dma": ROOT / "core/ports/ra4m1/src/event_dma.rs",
+    "ra_selftest": ROOT / "core/ports/ra4m1/src/main.rs",
 }
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
 RAW_MASK_TOKENS = (
@@ -27,6 +29,8 @@ RAW_MASK_TOKENS = (
 )
 RAW_MASK_ALLOWLIST = {
     ROOT / "core/apps/connectivity/usb_cdc_demo/src/main.rs",
+    FILES["ra_event_dma"],
+    FILES["ra_selftest"],
     ROOT / "core/ports/samd21/src/masked_critical_section.rs",
 }
 
@@ -93,7 +97,11 @@ def _raw_masking_allowlist() -> list[str]:
       * the pre-RAM USB bootloader-handoff sanitizer, which deliberately masks
         before Rust statics exist and re-enables at the start of `main`; and
       * the SAMD21 Cortex-M0+ measured fallback, because the architecture has no
-        BASEPRI and the provider reports its maximum masked time.
+        BASEPRI and the provider reports its maximum masked time;
+      * the RA4M1 event-DMA provider's read-only PRIMASK/FAULTMASK fail-closed
+        check; and
+      * the feature-gated RA4M1 physical self-test handoff, which is the only
+        path allowed to unmask the stock bootloader's inherited PRIMASK state.
     """
     failures: list[str] = []
     for path in sorted((ROOT / "core").rglob("*.rs")):
@@ -111,6 +119,40 @@ def _raw_masking_allowlist() -> list[str]:
                     failures.append(
                         f"{path.relative_to(ROOT)}: measured PRIMASK fallback missing {token!r}"
                     )
+        elif path == FILES["ra_event_dma"]:
+            required = (
+                "cortex_m::register::primask::read().is_inactive()",
+                "cortex_m::register::faultmask::read().is_inactive()",
+                "return Err(EventDmaError::InterruptsMasked);",
+            )
+            for token in required:
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: RA4M1 fail-closed mask check missing {token!r}"
+                    )
+            for token in (
+                "cortex_m::interrupt::disable(",
+                "cortex_m::interrupt::enable(",
+            ):
+                if token in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: reusable RA4M1 provider must not change global masks"
+                    )
+        elif path == FILES["ra_selftest"]:
+            required = (
+                '#[cfg(feature = "event-dma-selftest")]',
+                "stock UNO R4 bootloader can jump with PRIMASK set",
+                "cortex_m::interrupt::enable();",
+            )
+            for token in required:
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: RA4M1 self-test handoff exception missing {token!r}"
+                    )
+            if "cortex_m::interrupt::disable(" in text:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: RA4M1 self-test must not globally disable interrupts"
+                )
         else:
             required = (
                 "sanitize_bootloader_interrupt_handoff",
@@ -199,7 +241,8 @@ def main() -> int:
     print(
         "TIMEBASE MASKING GATE: PASS "
         "(nRF BASEPRI leaves deadline/watchdog-feeder priorities live; "
-        "Cortex-M0 fallback reports maximum PRIMASK time)"
+        "Cortex-M0 fallback reports maximum PRIMASK time; "
+        "RA4M1 provider only observes masks and its physical self-test owns the handoff)"
     )
     return 0
 

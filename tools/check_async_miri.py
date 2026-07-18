@@ -55,6 +55,13 @@ def main() -> int:
     completed = subprocess.run(command, cwd=ROOT / "core", env=env)
     if completed.returncode != 0:
         return completed.returncode
+    command = [
+        "cargo", "+nightly", "miri", "test", "--locked", "--target", host_target(),
+        "--manifest-path", "ports/ra4m1/Cargo.toml", "--lib", "event_dma::tests",
+    ]
+    completed = subprocess.run(command, cwd=ROOT / "core", env=env)
+    if completed.returncode != 0:
+        return completed.returncode
     return 0
 
 

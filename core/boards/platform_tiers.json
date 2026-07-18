@@ -263,7 +263,7 @@
         {
           "platform": "ra4m1",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "usb"]
+          "capabilities": ["timebase", "deadline", "dma_completion", "usb"]
         }
       ]
     },
@@ -303,6 +303,20 @@
           "platform": "ra4m1",
           "composition": "native",
           "capabilities": ["timebase", "deadline", "usb"]
+        }
+      ]
+    },
+    "ra4m1-event-dma-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/ra4m1",
+      "command": ["cargo", "build", "--locked", "--release", "--features", "event-dma-selftest"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "native",
+          "capabilities": ["dma_completion"]
         }
       ]
     },
@@ -447,13 +461,14 @@
       "arch": "thumbv7em",
       "tier": "provider",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "native Rust provides timebase/deadline/USB only; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap and SysTick one-shots are limited to approximately 349 milliseconds",
+      "limitations": "native Rust provides timebase/deadline/USB plus an opt-in GPT/ELC/DMAC completion future; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap and SysTick one-shots are limited to approximately 349 milliseconds",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-event-dma-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]}
           }
         },
