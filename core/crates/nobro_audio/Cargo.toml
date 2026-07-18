@@ -1,0 +1,10 @@
+[package]
+name = "nobro-audio"
+version.workspace = true
+edition.workspace = true
+
+# Allocation-free audio-domain contracts. Concrete codecs and I2S/PDM/DAC
+# transports remain independently selectable adapters.
+
+[features]
+default = []

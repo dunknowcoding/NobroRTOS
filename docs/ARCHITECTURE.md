@@ -31,6 +31,13 @@ and diagnosable recovery.
 | HAL | `nobro-hal` | Board profiles, platform traits, leases, timers, PWM, bus, capture |
 | Host | `nobro-host`, `host/nobro-host-contract.json` | Report decoding and external contracts |
 
+`core/adapters/catalog.json` uses stable component IDs to relate contracts,
+adapters, external libraries, and host products to domains. Deployment,
+maturity, evidence class, supported targets, limitations, and provenance are
+orthogonal fields. A component may belong to multiple domains by reference
+without duplicating its source or provenance. Board profiles remain outside
+this relationship catalog because platform tiers already own board support.
+
 ### Compatibility Strategy
 
 Hardware is described as structured data that can be validated before driver code

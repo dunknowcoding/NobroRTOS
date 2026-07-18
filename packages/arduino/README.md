@@ -28,7 +28,7 @@ In Arduino IDE 2.x:
 For a local checkout, install the release archive with:
 
 ```bash
-arduino-cli lib install --zip-path NobroRTOS-Arduino-0.3.1.zip
+arduino-cli lib install --zip-path NobroRTOS-Arduino-0.3.2.zip
 ```
 
 Board cores own upload tools, bootloaders, USB configuration, pins, interrupts,

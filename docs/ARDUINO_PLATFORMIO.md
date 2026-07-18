@@ -18,7 +18,7 @@ vendored C ABI headers to match the Arduino/canonical sources byte-for-byte.
 | Goal | Install | What it provides |
 | --- | --- | --- |
 | Arduino sketch | Arduino Library Manager: **NobroRTOS** | Fixed-capacity task/wire declaration, reports, optional Arduino provider wrappers and external-library facades |
-| PlatformIO Arduino project | `lib_deps = dunknowcoding/NobroRTOS@^0.3.1` | The same checked C/C++ facade in a self-contained registry archive |
+| PlatformIO Arduino project | `lib_deps = dunknowcoding/NobroRTOS@^0.3.2` | The same checked C/C++ facade in a self-contained registry archive |
 | Native NobroRTOS firmware | Clone the main repository | Rust kernel, admission, ports, adapters, firmware generation, target builds, and full validation |
 | Python host workflow | `pip install nobro_rtos` | Dependency-free contracts, reports, simulations, project helpers, and CLI |
 
@@ -52,7 +52,7 @@ forced dependencies of the base package.
 platform = atmelavr
 board = uno
 framework = arduino
-lib_deps = dunknowcoding/NobroRTOS@^0.3.1
+lib_deps = dunknowcoding/NobroRTOS@^0.3.2
 monitor_speed = 115200
 ```
 

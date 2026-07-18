@@ -13,6 +13,7 @@
 | contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
 | project  | create/explain/build/run/report/shrink apps   | tools/nobro_project.py |
 | firmware | build nRF firmware from app.nobro or Python app JSON | tools/nobro_firmware_project.py |
+| adapter  | scaffold and register a bounded adapter              | tools/nobro_adapter.py |
 
 Each command accepts its underlying tool's flags unchanged. The mapping is data, so
 adding a command is one table row.
@@ -33,9 +34,11 @@ COMMANDS = {
     "contract": "nobro_contract_tool.py",
     "project": "nobro_project.py",
     "firmware": "nobro_firmware_project.py",
+    "adapter": "nobro_adapter.py",
 }
 PACKAGE_KINDS = {
     "arduino": "package_arduino.py",
+    "platformio": "package_platformio.py",
     "uf2": "package_prebuilt_uf2.py",
     "tierc": "build_libnobro.py",
 }

@@ -25,15 +25,33 @@ capacity through Nobro contracts.
 
 ## Add a device adapter
 
-1. Choose the domain under `core/adapters/` (`imu`, `wireless`, `power`, and so on).
-2. Implement the domain contract without embedding board policy.
-3. Accept a bus/provider through a trait instead of constructing global hardware.
-4. Bound every buffer, retry count, and recovery window.
-5. Add the adapter path to `core/adapters/catalog.json`.
-6. Compose it in an application under `core/apps/<use-case>/`.
+Start with one command:
+
+```bash
+python sdk/cli/nobro.py adapter new sensors my-part
+```
+
+The command refuses unknown domains and duplicate names. It creates the crate,
+registers its stable component ID in catalog v2, adds the workspace member, and
+generates mutually exclusive `native`, `embedded-hal`, `c-module`, and
+`arduino-shim` backend slots. Use repeated `--backend` options when only a subset
+applies.
+
+Then:
+
+1. Implement the domain contract without embedding board policy.
+2. Accept a bus/provider through a trait instead of constructing global hardware.
+3. Bound every buffer, retry count, and recovery window.
+4. Advance `maturity`, `evidence`, and `supported_targets` independently in
+   `core/adapters/catalog.json`; a compile is not physical evidence.
+5. Pin external source, revision, version, and license once in `provenance`, then
+   reference that ID from the member component.
+6. Compose the adapter in an application under `core/apps/<use-case>/`.
 
 Crates hold shared domain contracts. Adapters hold device or library implementations.
-Applications select and connect them. Avoid another parallel “ecosystem” hierarchy.
+Applications select and connect them. Ecosystem names are catalog relationships,
+never another source hierarchy. `environment` and `actuator` remain migration aliases
+for the canonical `sensors` and `servo` domains; aliases never duplicate source.
 
 ## Add a board profile
 

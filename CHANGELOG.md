@@ -4,6 +4,24 @@
 
 No changes yet.
 
+## 0.3.2 - 2026-07-18
+
+### Added
+
+- Adapter catalog v2 separates domain relationships, component deployment,
+  maturity, evidence, target scope, limitations, and immutable provenance.
+- `nobro adapter new` creates a bounded multi-backend adapter, registers its
+  stable component ID, and adds it to the core workspace.
+- Allocation-free `nobro-audio` and `nobro-servo` contracts establish the
+  portable domain boundary before hardware-specific backends are promoted.
+
+### Changed
+
+- Canonical adapter categories are now `sensors` and `servo`; `environment`
+  and `actuator` remain metadata-only migration aliases.
+- PlatformIO release archives are deterministic and verified byte-for-byte
+  against the tracked package source before publication.
+
 ## 0.3.1 - 2026-07-18
 
 ### Changed

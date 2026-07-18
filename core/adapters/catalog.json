@@ -1,112 +1,594 @@
 {
-  "schema": "nobro-adapter-catalog-v1",
+  "schema": "nobro-adapter-catalog-v2",
   "ownership": {
     "contracts": "core/crates",
     "implementations": "core/adapters/<domain>/<implementation>",
     "applications": "core/apps/<use-case>/<application>",
     "board_profiles": "core/boards/<platform>/<board>",
-    "mcu_ports": "core/ports/<mcu-family>"
+    "mcu_ports": "core/ports/<mcu-family>",
+    "ecosystems": "relationships in this catalog; never source directories"
   },
+  "provenance": [
+    {
+      "id": "source-arduino-nrf-crypto",
+      "source": "https://github.com/dunknowcoding/ArduinoNRF-Crypto",
+      "revision": "6dcfc8636329de005218cde4896e9ac3e474aca2",
+      "version": "0.7.1",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-arduino-nrf-imu",
+      "source": "https://github.com/dunknowcoding/ArduinoNRF-IMU",
+      "revision": "7c8248b8d37294be6cc545c3cf549e907ccbc955",
+      "version": "0.3.0",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-arduino-nrf-thread",
+      "source": "https://github.com/dunknowcoding/ArduinoNRF-Thread",
+      "revision": "ef80a7e053234a4d5cb78eee2ef95ec492f00e84",
+      "version": "0.1.2",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-arduino-nrf-zigbee",
+      "source": "https://github.com/dunknowcoding/ArduinoNRF-Zigbee",
+      "revision": "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-difinders",
+      "source": "https://github.com/dunknowcoding/DiFinders",
+      "revision": "2fedc4012f0eb4737bbb4c6fa3c3a91194f9f987",
+      "version": "0.1.1",
+      "license": "MIT",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-ina-monitor",
+      "source": "https://github.com/dunknowcoding/NiusRobotLab_INA_monitor",
+      "revision": "44bd23033a9008223f65b9b0f7685993f0eff2cb",
+      "version": "0.3.0",
+      "license": "MIT",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-ina-series-sensor",
+      "source": "https://github.com/dunknowcoding/INA_series_sensor",
+      "revision": "c806fb8d1ad75c85f86413aee5a1306eff191918",
+      "version": "0.5.4",
+      "license": "MIT",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-niuscam",
+      "source": "https://github.com/dunknowcoding/NiusCam",
+      "revision": "b03560adf4da07e4a16b4d9e658a01d74ccb9340",
+      "version": "0.2.0",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-niuswireless",
+      "source": "https://github.com/dunknowcoding/NiusWireless",
+      "revision": "30422e6985d46a54d9e384d1f0a301bac804819c",
+      "version": "0.1.0",
+      "license": "MIT",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-roboservo",
+      "source": "https://github.com/dunknowcoding/RoboServo",
+      "revision": "38fa23cde947766f9c3da7ac650fffb67b1f5668",
+      "version": "0.5.1",
+      "license": "MIT",
+      "pinned": true,
+      "clean": true
+    }
+  ],
+  "components": [
+    {
+      "id": "contract-ai",
+      "name": "nobro-ai",
+      "kind": "contract",
+      "path": "core/crates/nobro_ai",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Model execution backends are admitted separately."]
+    },
+    {
+      "id": "contract-audio",
+      "name": "nobro-audio",
+      "kind": "contract",
+      "path": "core/crates/nobro_audio",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["No codec or transport backend is promoted yet."]
+    },
+    {
+      "id": "contract-camera",
+      "name": "nobro-camera",
+      "kind": "contract",
+      "path": "core/crates/nobro_camera",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Sensor and DMA ownership remain backend-specific."]
+    },
+    {
+      "id": "contract-crypto",
+      "name": "nobro-crypto",
+      "kind": "contract",
+      "path": "core/crates/nobro_crypto",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Hardware protected-key behavior requires a separate backend."]
+    },
+    {
+      "id": "contract-imu",
+      "name": "nobro-imu",
+      "kind": "contract",
+      "path": "core/crates/nobro_imu",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["portable"],
+      "limitations": []
+    },
+    {
+      "id": "contract-power",
+      "name": "nobro-power",
+      "kind": "contract",
+      "path": "core/crates/nobro_power",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Electrical current and energy require external measurement."]
+    },
+    {
+      "id": "contract-sensors",
+      "name": "nobro-sensor",
+      "kind": "contract",
+      "path": "core/crates/nobro_sensor",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Concrete sensor units and bus recovery remain adapter-specific."]
+    },
+    {
+      "id": "contract-servo",
+      "name": "nobro-servo",
+      "kind": "contract",
+      "path": "core/crates/nobro_servo",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["Motor control is intentionally outside this contract."]
+    },
+    {
+      "id": "contract-wireless",
+      "name": "nobro-wireless",
+      "kind": "contract",
+      "path": "core/crates/nobro_wireless",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["portable"],
+      "limitations": ["Protocol lifecycle and vendor-managed resources remain backend-specific."]
+    },
+    {
+      "id": "adapter-ai-motion",
+      "name": "motion-ai",
+      "kind": "adapter",
+      "path": "core/adapters/ai/motion-ai",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": []
+    },
+    {
+      "id": "adapter-ai-nn-motion",
+      "name": "nn-motion-ai",
+      "kind": "adapter",
+      "path": "core/adapters/ai/nn-motion-ai",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": []
+    },
+    {
+      "id": "adapter-bus-embedded-hal-i2c",
+      "name": "embedded-hal-i2c",
+      "kind": "adapter",
+      "path": "core/adapters/bus/embedded-hal-i2c",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["The current Nobro bus provider is nRF52840-scoped."]
+    },
+    {
+      "id": "adapter-bus-embedded-hal-spi",
+      "name": "embedded-hal-spi",
+      "kind": "adapter",
+      "path": "core/adapters/bus/embedded-hal-spi",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["The current Nobro bus provider is nRF52840-scoped."]
+    },
+    {
+      "id": "adapter-imu-icm45686",
+      "name": "icm45686",
+      "kind": "adapter",
+      "path": "core/adapters/imu/icm45686",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["embedded-hal-1"],
+      "limitations": ["No public target-build or physical promotion is recorded."]
+    },
+    {
+      "id": "adapter-imu-mpu9250",
+      "name": "mpu9250-imu",
+      "kind": "adapter",
+      "path": "core/adapters/imu/mpu9250-imu",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["The native transport path is nRF52840-scoped."]
+    },
+    {
+      "id": "adapter-power-ina3221",
+      "name": "ina3221",
+      "kind": "adapter",
+      "path": "core/adapters/power/ina3221",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["embedded-hal-1"],
+      "limitations": ["No public physical promotion is recorded."]
+    },
+    {
+      "id": "adapter-protocol-ros-imu-bridge",
+      "name": "ros-imu-bridge",
+      "kind": "adapter",
+      "path": "core/adapters/protocol/ros-imu-bridge",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["portable"],
+      "limitations": ["This is a bounded message bridge, not a full ROS runtime."]
+    },
+    {
+      "id": "adapter-sensors-bmp280",
+      "name": "bmp280",
+      "kind": "adapter",
+      "path": "core/adapters/sensors/bmp280",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["embedded-hal-1"],
+      "limitations": ["No public target-build or physical promotion is recorded."]
+    },
+    {
+      "id": "adapter-servo-roboservo",
+      "name": "robo-servo",
+      "kind": "adapter",
+      "path": "core/adapters/servo/robo-servo",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["The in-tree native PWM implementation is nRF52840-scoped."]
+    },
+    {
+      "id": "adapter-virtual-sensor-stub",
+      "name": "sensor-stub",
+      "kind": "adapter",
+      "path": "core/adapters/virtual/sensor-stub",
+      "deployment": "firmware",
+      "maturity": "stub",
+      "evidence": ["host-test"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["Fixture-only adapter; never hardware evidence."]
+    },
+    {
+      "id": "adapter-wireless-radio-comms",
+      "name": "radio-comms",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/radio-comms",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["nrf52840"],
+      "limitations": ["Proprietary nRF radio framing; deliberately not TCP/IP."]
+    },
+    {
+      "id": "library-difinders",
+      "name": "DiFinders",
+      "kind": "library",
+      "provenance_id": "source-difinders",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["upstream:arduino"],
+      "limitations": ["Nobro target scope is not promoted until a pinned integration gate exists."]
+    },
+    {
+      "id": "library-ina-series-sensor",
+      "name": "INA Series Sensor",
+      "kind": "library",
+      "provenance_id": "source-ina-series-sensor",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["upstream:arduino"],
+      "limitations": ["Nobro target scope is not promoted until a pinned integration gate exists."]
+    },
+    {
+      "id": "library-niuscam",
+      "name": "NiusCam",
+      "kind": "library",
+      "provenance_id": "source-niuscam",
+      "facade": "packages/arduino/src/NobroNiusCam.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["arduino:esp32"],
+      "limitations": ["Per-sensor runtime promotion remains separate from facade compilation."]
+    },
+    {
+      "id": "library-niuscrypto",
+      "name": "NiusCrypto",
+      "kind": "library",
+      "provenance_id": "source-arduino-nrf-crypto",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["arduino:nrf52"],
+      "limitations": ["Not yet mounted behind the Nobro protected-key backend contract."]
+    },
+    {
+      "id": "library-niusimu",
+      "name": "NiusIMU",
+      "kind": "library",
+      "provenance_id": "source-arduino-nrf-imu",
+      "facade": "packages/arduino/src/NobroNiusIMU.h",
+      "surface": "nimu::IMUSensor",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["target-build"],
+      "supported_targets": ["arduino:nrf52"],
+      "limitations": ["Pinned revision uses ArduinoNRF-specific bus recovery on its promoted path."],
+      "sensor_drivers": [
+        "ADXL345", "BMI088", "BMI160", "BMI270", "BMI323", "BMP180",
+        "BMP280", "BMX055", "BNO055", "BNO08x", "HMC5883L", "ICM20602",
+        "ICM20689", "ICM20948", "ICM42688P", "ICM45686", "ITG3205",
+        "L3G4200D", "L3GD20", "LSM303D", "LSM303DLHC", "LSM6DS3",
+        "LSM6DS3TRC", "LSM6DSOX", "LSM6DSV", "LSM6DSV320X", "LSM9DS1",
+        "MMA8452Q", "MPU6050", "MPU6500", "MPU6886", "MPU9250", "MPU9255",
+        "MS5611", "QMC5883L", "QMC6309", "QMI8658"
+      ],
+      "board_modules": [
+        "CJMCU055", "CJMCU633", "GY271", "GY273", "GY291", "GY45", "GY50",
+        "GY511", "GY521", "GY601N1", "GY63", "GY68", "GY80", "GY801", "GY85",
+        "GY86", "GY87", "GY88", "GY91", "GY9250", "GYBNO055", "GYBNO085",
+        "GYLSM6DS3", "LSM303_L3GD20", "MUMO"
+      ]
+    },
+    {
+      "id": "library-niusthread",
+      "name": "NiusThread",
+      "kind": "library",
+      "provenance_id": "source-arduino-nrf-thread",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["arduino:nrf52"],
+      "limitations": ["OpenThread lifecycle and resource ownership are not yet mounted behind the Nobro wireless contract."]
+    },
+    {
+      "id": "library-niuswireless",
+      "name": "NiusWireless",
+      "kind": "library",
+      "provenance_id": "source-niuswireless",
+      "facade": "packages/arduino/src/NobroNiusWireless.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["upstream:arduino"],
+      "limitations": ["Backend state remains per protocol; a facade build is not physical support."]
+    },
+    {
+      "id": "library-niuszigbee",
+      "name": "NiusZigbee",
+      "kind": "library",
+      "provenance_id": "source-arduino-nrf-zigbee",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["arduino:nrf52"],
+      "limitations": ["External CC2530 lifecycle remains composition-specific."]
+    },
+    {
+      "id": "library-roboservo",
+      "name": "RoboServo",
+      "kind": "library",
+      "provenance_id": "source-roboservo",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "supported_targets": ["upstream:arduino"],
+      "limitations": ["The upstream library matrix is not a Nobro target-support claim."]
+    },
+    {
+      "id": "host-ina-monitor",
+      "name": "INA Monitor",
+      "kind": "host-product",
+      "provenance_id": "source-ina-monitor",
+      "deployment": "host",
+      "maturity": "implemented",
+      "evidence": ["host-test"],
+      "supported_targets": ["host"],
+      "limitations": ["Consumes the versioned INA JSONL interface and contributes no firmware code."]
+    }
+  ],
   "domains": [
     {
-      "id": "imu",
-      "contract": "core/crates/nobro_imu",
-      "adapters": [
-        "core/adapters/imu/icm45686",
-        "core/adapters/imu/mpu9250-imu"
-      ],
-      "library_members": [
-        {
-          "id": "niusimu",
-          "name": "NiusIMU",
-          "version": "0.3.0",
-          "source": "https://github.com/dunknowcoding/ArduinoNRF-IMU",
-          "revision": "7c8248b8d37294be6cc545c3cf549e907ccbc955",
-          "facade": "packages/arduino/src/NobroNiusIMU.h",
-          "surface": "nimu::IMUSensor",
-          "sensor_drivers": [
-            "ADXL345", "BMI088", "BMI160", "BMI270", "BMI323", "BMP180",
-            "BMP280", "BMX055", "BNO055", "BNO08x", "HMC5883L", "ICM20602",
-            "ICM20689", "ICM20948", "ICM42688P", "ICM45686", "ITG3205",
-            "L3G4200D", "L3GD20", "LSM303D", "LSM303DLHC", "LSM6DS3",
-            "LSM6DS3TRC", "LSM6DSOX", "LSM6DSV", "LSM6DSV320X", "LSM9DS1",
-            "MMA8452Q", "MPU6050", "MPU6500", "MPU6886", "MPU9250", "MPU9255",
-            "MS5611", "QMC5883L", "QMC6309", "QMI8658"
-          ],
-          "board_modules": [
-            "CJMCU055", "CJMCU633", "GY271", "GY273", "GY291", "GY45", "GY50",
-            "GY511", "GY521", "GY601N1", "GY63", "GY68", "GY80", "GY801", "GY85",
-            "GY86", "GY87", "GY88", "GY91", "GY9250", "GYBNO055", "GYBNO085",
-            "GYLSM6DS3", "LSM303_L3GD20", "MUMO"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "wireless",
-      "contract": "core/crates/nobro_wireless",
-      "adapters": [
-        "core/adapters/wireless/radio-comms"
-      ],
-      "library_members": [
-        {
-          "name": "NiusWireless",
-          "version": "0.1.0",
-          "facade": "packages/arduino/src/NobroNiusWireless.h"
-        },
-        {
-          "name": "NiusZigbee",
-          "version": "1.0.0"
-        }
-      ]
-    },
-    {
-      "id": "camera",
-      "contract": "core/crates/nobro_camera",
-      "adapters": [],
-      "library_members": [
-        {
-          "name": "NiusCam",
-          "version": "0.2.0",
-          "facade": "packages/arduino/src/NobroNiusCam.h"
-        }
-      ]
-    },
-    {
-      "id": "actuator",
-      "adapters": ["core/adapters/actuator/robo-servo"]
-    },
-    {
       "id": "ai",
-      "contract": "core/crates/nobro_ai",
-      "adapters": [
-        "core/adapters/ai/motion-ai",
-        "core/adapters/ai/nn-motion-ai"
-      ]
+      "ecosystem": "nobro-ai",
+      "aliases": [],
+      "contract_ids": ["contract-ai"],
+      "component_ids": ["adapter-ai-motion", "adapter-ai-nn-motion"]
+    },
+    {
+      "id": "audio",
+      "ecosystem": "nobro-audio",
+      "aliases": [],
+      "contract_ids": ["contract-audio"],
+      "component_ids": []
     },
     {
       "id": "bus",
-      "adapters": [
-        "core/adapters/bus/embedded-hal-i2c",
-        "core/adapters/bus/embedded-hal-spi"
-      ]
+      "ecosystem": "nobro-bus",
+      "aliases": [],
+      "contract_ids": [],
+      "component_ids": ["adapter-bus-embedded-hal-i2c", "adapter-bus-embedded-hal-spi"]
     },
     {
-      "id": "environment",
-      "adapters": ["core/adapters/environment/bmp280"]
+      "id": "camera",
+      "ecosystem": "nobro-camera",
+      "aliases": [],
+      "contract_ids": ["contract-camera"],
+      "component_ids": ["library-niuscam"]
+    },
+    {
+      "id": "crypto",
+      "ecosystem": "nobro-crypto",
+      "aliases": [],
+      "contract_ids": ["contract-crypto"],
+      "component_ids": ["library-niuscrypto"]
+    },
+    {
+      "id": "imu",
+      "ecosystem": "nobro-imu",
+      "aliases": [],
+      "contract_ids": ["contract-imu"],
+      "component_ids": ["adapter-imu-icm45686", "adapter-imu-mpu9250", "library-niusimu"]
     },
     {
       "id": "power",
-      "contract": "core/crates/nobro_power",
-      "adapters": ["core/adapters/power/ina3221"]
+      "ecosystem": "nobro-power",
+      "aliases": [],
+      "contract_ids": ["contract-power"],
+      "component_ids": ["adapter-power-ina3221", "host-ina-monitor", "library-ina-series-sensor"]
     },
     {
       "id": "protocol",
-      "adapters": ["core/adapters/protocol/ros-imu-bridge"]
+      "ecosystem": "nobro-protocol",
+      "aliases": [],
+      "contract_ids": [],
+      "component_ids": ["adapter-protocol-ros-imu-bridge"]
+    },
+    {
+      "id": "sensors",
+      "ecosystem": "nobro-sensors",
+      "aliases": ["environment"],
+      "contract_ids": ["contract-sensors"],
+      "component_ids": ["adapter-sensors-bmp280", "library-difinders", "library-ina-series-sensor"]
+    },
+    {
+      "id": "servo",
+      "ecosystem": "nobro-servo",
+      "aliases": ["actuator"],
+      "contract_ids": ["contract-servo"],
+      "component_ids": ["adapter-servo-roboservo", "library-roboservo"]
     },
     {
       "id": "virtual",
-      "adapters": ["core/adapters/virtual/sensor-stub"]
+      "ecosystem": "nobro-virtual",
+      "aliases": [],
+      "contract_ids": [],
+      "component_ids": ["adapter-virtual-sensor-stub"]
+    },
+    {
+      "id": "wireless",
+      "ecosystem": "nobro-wireless",
+      "aliases": [],
+      "contract_ids": ["contract-wireless"],
+      "component_ids": [
+        "adapter-wireless-radio-comms",
+        "library-niusthread",
+        "library-niuswireless",
+        "library-niuszigbee"
+      ]
+    }
+  ],
+  "intake_candidates": [
+    {
+      "id": "candidate-niusaudio",
+      "name": "NiusAudio",
+      "desired_domain": "audio",
+      "source": "https://github.com/dunknowcoding/NiusAudio",
+      "status": "blocked",
+      "limitations": [
+        "No public license is available.",
+        "The public repository has no commit to pin."
+      ]
+    },
+    {
+      "id": "candidate-ironengine-host",
+      "name": "IronEngine host integration",
+      "desired_domain": "ai",
+      "source": "https://github.com/dunknowcoding/IronEngine",
+      "status": "blocked",
+      "limitations": [
+        "No firmware source may be imported from a host product.",
+        "No versioned Nobro telemetry, report, or policy-artifact interface is published."
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "desktop-automation",
+      "reason": "Desktop document and booking automation without an embedded-side Nobro interface is not an ecosystem member."
+    },
+    {
+      "id": "usb-driver-installers",
+      "reason": "Host USB driver installers are toolchain artifacts, not runtime components."
+    },
+    {
+      "id": "generated-build-and-registry-trees",
+      "reason": "Generated build, cache, package-registry, and release-staging trees are not ecosystem members."
     }
   ]
 }

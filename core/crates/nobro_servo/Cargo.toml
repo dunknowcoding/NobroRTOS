@@ -1,0 +1,7 @@
+[package]
+name = "nobro-servo"
+version.workspace = true
+edition.workspace = true
+
+# Small allocation-free servo-domain contract. Motor control remains separate
+# until it has its own contract and pinned implementation.

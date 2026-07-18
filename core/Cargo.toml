@@ -8,6 +8,7 @@ members = [
     "crates/nobro_ai",
     "crates/nobro_wireless",
     "crates/nobro_camera",
+    "crates/nobro_audio",
     "crates/nobro_imu",
     "crates/nobro_crypto",
     "crates/nobro_ml",
@@ -20,11 +21,12 @@ members = [
     "crates/nobro_storage",
     "crates/nobro_power",
     "crates/nobro_sensor",
+    "crates/nobro_servo",
     "crates/nobro_sal",
     "crates/nobro_hal",
     "crates/nobro_kernel",
     "crates/nobro_host",
-    "adapters/actuator/robo-servo",
+    "adapters/servo/robo-servo",
     "adapters/virtual/sensor-stub",
     "adapters/imu/mpu9250-imu",
     "adapters/bus/embedded-hal-i2c",
@@ -33,7 +35,7 @@ members = [
     "adapters/ai/nn-motion-ai",
     "adapters/wireless/radio-comms",
     "adapters/power/ina3221",
-    "adapters/environment/bmp280",
+    "adapters/sensors/bmp280",
     "adapters/imu/icm45686",
     "adapters/protocol/ros-imu-bridge",
     "apps/kernel/mvk_ppi_timestamp",
@@ -78,7 +80,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 license = "PolyForm-Noncommercial-1.0.0"
 authors = ["dunknowcoding (YouTube NiusRobotLab)"]

@@ -1,4 +1,4 @@
-//! BMP280 pressure + temperature sensor driver, generic over `embedded_hal::i2c::I2c`.
+//! BMP280 pressure + temperature sensor adapter, generic over `embedded_hal::i2c::I2c`.
 //!
 //! Runs on NobroRTOS via the `NobroI2c` adapter. The temperature/pressure compensation is
 //! the Bosch BMP280 datasheet fixed-point algorithm; the temperature path is host-verified

@@ -8,6 +8,7 @@ description = "RoboServo ActuatorSal adapter for NobroRTOS (nRF52840 PWM backend
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }
 nobro-sal = { path = "../../../crates/nobro_sal" }
+nobro-servo = { path = "../../../crates/nobro_servo" }
 
 [features]
 default = ["board-promicro-nosd"]

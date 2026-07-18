@@ -11,7 +11,7 @@ metadata. The implementation lives in `core/`.
 
 ```text
 sdk/
-|-- cli/nobro.py       project, app, flash, budget, sign, package, and contract commands
+|-- cli/nobro.py       project, app, adapter, flash, budget, sign, package, and contract commands
 |-- error-codes.json   shared admission, project, and app diagnostics
 |-- feature-catalog.json  target-scoped optional-feature prices and evidence
 |-- include/           drift-gated copies of the canonical C headers
@@ -27,8 +27,10 @@ python sdk/cli/nobro.py app my-app.json
 python sdk/cli/nobro.py project new rover
 python sdk/cli/nobro.py project run _work/projects/rover
 python sdk/cli/nobro.py project shrink occupancy.json --json capacities.json
+python sdk/cli/nobro.py adapter new sensors my-part
 python sdk/cli/nobro.py flash --help
 python sdk/cli/nobro.py package arduino --zip
+python sdk/cli/nobro.py package platformio --archive
 ```
 
 `project` creates a graph-declared application, explains its derived admission

@@ -333,6 +333,10 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
     project = (out_dir / spec["app"]).resolve()
     (project / "src").mkdir(parents=True, exist_ok=True)
     (project / ".cargo").mkdir(parents=True, exist_ok=True)
+    # Generation rewrites the manifest, so a lockfile from an earlier SDK
+    # version is not evidence for the new project graph. Remove it here and let
+    # build() perform one explicit resolution before enforcing --locked.
+    (project / "Cargo.lock").unlink(missing_ok=True)
     if source_format == "python-json":
         canonical = NobroApp.read_json(source).to_dict()
         (project / source_name).write_text(
@@ -490,6 +494,10 @@ service camera every 40ms
         assert "TaskContract::new(3).priority(4).deadline(40000, 40000" in build_source
         assert ".phase(0)" in build_source
         assert ".wake_latency_us(0)" in build_source
+        stale_lock = result["project"] / "Cargo.lock"
+        stale_lock.write_text("# stale SDK graph\n", encoding="utf-8")
+        generate(source, pathlib.Path(tmp) / "out")
+        assert not stale_lock.exists()
         python_app = (
             NobroApp("python_rover", board="nrf52840-nosd")
             .task("motor", 5_000, role="control")

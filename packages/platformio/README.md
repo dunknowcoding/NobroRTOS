@@ -21,14 +21,14 @@ After the registry package is available:
 platform = atmelavr
 board = uno
 framework = arduino
-lib_deps = dunknowcoding/NobroRTOS@^0.3.1
+lib_deps = dunknowcoding/NobroRTOS@^0.3.2
 monitor_speed = 115200
 ```
 
 Or install the checked archive directly:
 
 ```bash
-pio pkg install --library /absolute/path/NobroRTOS-PlatformIO-0.3.1.tar.gz
+pio pkg install --library /absolute/path/NobroRTOS-PlatformIO-0.3.2.tar.gz
 ```
 
 PlatformIO treats a relative archive argument as a possible VCS specification;

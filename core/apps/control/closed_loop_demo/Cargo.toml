@@ -13,7 +13,7 @@ path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
 [dependencies]
-nobro-adapter-robo-servo = { path = "../../../adapters/actuator/robo-servo", default-features = false }
+nobro-adapter-robo-servo = { path = "../../../adapters/servo/robo-servo", default-features = false }
 nobro-adapter-mpu9250-imu = { path = "../../../adapters/imu/mpu9250-imu", default-features = false }
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }

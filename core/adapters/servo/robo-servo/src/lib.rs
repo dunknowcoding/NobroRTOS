@@ -75,6 +75,19 @@ impl nobro_sal::ActuatorSal for RoboServoAdapter {
     }
 }
 
+impl nobro_servo::ServoBackend for RoboServoAdapter {
+    type Error = RoboServoError;
+
+    fn command(&mut self, command: nobro_servo::ServoCommand) -> Result<(), Self::Error> {
+        nobro_sal::ActuatorSal::set_duty_us(
+            self,
+            command.channel,
+            command.pulse_us,
+            command.deadline_us,
+        )
+    }
+}
+
 pub fn module_spec() -> ModuleSpec {
     RoboServoAdapter::module_spec()
 }

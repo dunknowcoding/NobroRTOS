@@ -28,7 +28,9 @@ jobs:
       - name: scalable core layout
         run: python tools/check_core_layout.py
       - name: adapter catalog
-        run: python tools/check_adapter_catalog.py
+        run: |
+          python tools/check_adapter_catalog.py
+          python tools/nobro_adapter.py --selftest
       - name: one-file firmware project
         run: python tools/nobro_firmware_project.py --selftest
       - name: sdk manifest
@@ -36,6 +38,7 @@ jobs:
       - name: arduino package drift
         run: |
           python tools/package_arduino.py --check
+          python tools/package_platformio.py --check
           python tools/check_distribution_artifacts.py
           python tools/check_arduino_facade.py
       - name: web flasher + block editor + tutorials
@@ -107,6 +110,7 @@ jobs:
         run: >-
           cargo llvm-cov --locked -p nobro-kernel -p nobro-net -p nobro-secure
           -p nobro-admission -p nobro-storage -p nobro-database -p nobro-power -p nobro-sal
+          -p nobro-audio -p nobro-servo
           --target x86_64-unknown-linux-gnu --lcov --output-path ../coverage.lcov
       - uses: actions/upload-artifact@v4
         with:
@@ -125,6 +129,7 @@ jobs:
         run: >-
           cargo miri test --locked --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure -p nobro-hal
+          -p nobro-audio -p nobro-servo
       - name: Miri bounded async and executor-cell boundary
         working-directory: core
         env:

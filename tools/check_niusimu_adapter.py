@@ -157,8 +157,14 @@ def verify_checkout(library: pathlib.Path) -> None:
         raise RuntimeError("NiusIMU checkout has local modifications")
     catalog = json.loads((ROOT / "core" / "adapters" / "catalog.json").read_text(encoding="utf-8"))
     domain = next(item for item in catalog["domains"] if item["id"] == "imu")
-    member = next(item for item in domain["library_members"] if item["id"] == "niusimu")
-    if member["version"] != VERSION or member["revision"] != PIN:
+    if "library-niusimu" not in domain["component_ids"]:
+        raise RuntimeError("NiusIMU is not related to the imu domain")
+    member = next(item for item in catalog["components"] if item["id"] == "library-niusimu")
+    provenance = next(
+        item for item in catalog["provenance"]
+        if item["id"] == member["provenance_id"]
+    )
+    if provenance["version"] != VERSION or provenance["revision"] != PIN:
         raise RuntimeError("NiusIMU catalog pin differs from the integration pin")
     actual_sensors = sorted(path.name for path in (library / "src" / "sensors").iterdir() if path.is_dir())
     actual_boards = sorted(path.name for path in (library / "src" / "boards").iterdir() if path.is_dir())
