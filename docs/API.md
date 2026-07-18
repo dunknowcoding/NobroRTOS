@@ -1106,8 +1106,16 @@ disables the channel interrupt before cancellation, and waits for hardware
 abort before releasing its fixed static staging.
 This is a port-local implementation of the same completion discipline rather
 than an nRF-shaped PPI emulation. The feature-off port does not link its future,
-staging, completion cell, or IRQ handler. Target-build evidence does not imply
-physical wake latency, idle residence, cancellation, or buffer integrity.
+staging, completion cell, or owned IRQ handler.
+
+The feature-on status image runs a bounded boot self-test. It first cancels a
+transfer and checks that staged output was not published, then uses DMA timer 0
+to pace a test-only copy while the core waits in System-ON `WFE`. The status
+fields `dma_idle`, `dma_res_us`, `dma_total_us`, and `dma_wake_us` respectively
+report idle entries, measured WFE residence, completion time, and
+IRQ-to-ready-task latency. The ordinary `copy` API remains unpaced. These fields
+are functional and residence evidence on the observed image; they are not
+electrical-current, energy, or universal power evidence.
 
 Portable staged providers use `StagedTransferPlan` to reject empty,
 length-mismatched, and over-capacity operations before claiming hardware.

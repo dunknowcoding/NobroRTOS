@@ -48,7 +48,7 @@ impl HalClock for Rp2350 {
     fn now_us() -> u64 {
         // Latched 64-bit read: reading TIMELR copies the current high word into
         // TIMEHR, so the pair is consistent without a retry loop (datasheet
-        // §12.8.2 "Reading the counter").
+        // section 12.8.2, "Reading the counter").
         // SAFETY: read-only access to fixed, always-mapped timer MMIO.
         unsafe {
             let lo = core::ptr::read_volatile(reg(TIMELR));

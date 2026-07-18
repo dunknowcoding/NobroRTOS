@@ -15,6 +15,8 @@ use usbd_serial::SerialPort;
 
 use core::sync::atomic::{AtomicU32, Ordering};
 #[cfg(feature = "dma-completion")]
+use hal::clocks::Clock;
+#[cfg(feature = "dma-completion")]
 use hal::dma::DMAExt;
 use hal::multicore::{Multicore, Stack};
 
@@ -117,7 +119,7 @@ fn main() -> ! {
             dma_channels.ch0,
             dma_completion::DmaCompletionPriority::port_default(),
         );
-        dma_completion::run_dma_selftest(&mut provider)
+        dma_completion::run_dma_selftest(&mut provider, clocks.system_clock.freq().to_Hz())
     };
 
     // Bring up core1 with its own stack and reactor task.
@@ -156,7 +158,7 @@ fn main() -> ! {
     let mut last_report = timer.get_counter();
     let mut feed = 1u32;
     #[cfg(feature = "dma-completion")]
-    let mut report = [0u8; 224];
+    let mut report = [0u8; 288];
     #[cfg(not(feature = "dma-completion"))]
     let mut report = [0u8; 128];
     let mut report_len = 0usize;
@@ -207,6 +209,14 @@ fn main() -> ! {
                 put_u32(&mut report, &mut pos, dma_report.irq_wakes);
                 put_bytes(&mut report, &mut pos, b" dma_wake=");
                 put_u32(&mut report, &mut pos, dma_report.task_wakes);
+                put_bytes(&mut report, &mut pos, b" dma_idle=");
+                put_u32(&mut report, &mut pos, dma_report.idle_entries);
+                put_bytes(&mut report, &mut pos, b" dma_res_us=");
+                put_u32(&mut report, &mut pos, dma_report.idle_residence_us);
+                put_bytes(&mut report, &mut pos, b" dma_total_us=");
+                put_u32(&mut report, &mut pos, dma_report.completion_us);
+                put_bytes(&mut report, &mut pos, b" dma_wake_us=");
+                put_u32(&mut report, &mut pos, dma_report.wake_latency_us);
             }
             put_bytes(&mut report, &mut pos, b" all_pass=");
             put_u32(&mut report, &mut pos, u32::from(all));
