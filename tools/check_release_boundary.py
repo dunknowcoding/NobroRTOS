@@ -89,6 +89,7 @@ REGULAR_FILE_MODES = {"100644", "100755"}
 SDK_PUBLIC_CHILDREN = {
     "README.md",
     "cli",
+    "feature-catalog.json",
     "firmware",
     "include",
     "python",
@@ -328,6 +329,10 @@ def _validate_manifest(manifest: object) -> list[str]:
         "canonical contract": (
             manifest.get("canonical_contract"),
             "host/nobro-host-contract.json",
+        ),
+        "feature catalog": (
+            manifest.get("feature_catalog"),
+            "sdk/feature-catalog.json",
         ),
         "core workspace": (manifest.get("core_workspace"), "core"),
     }
