@@ -216,14 +216,14 @@ IEEE 802.15.4 PSDU transport with the 127-byte PHY limit; it does not join a Zig
 network or implement APS. `ZIGBEE_APS` remains descriptor metadata, not evidence of an
 implemented Zigbee stack. A descriptor or packet builder by itself is not board support.
 
-WiFi association/socket lifecycle, BLE scanning/connection/GATT lifecycle, shared-radio
-ownership, and one-backend-per-logical-instance selection are not implemented yet.
-Future WiFi and BLE instances may coexist when an explicit shared-radio lease admits them;
-their Cargo features must be additive rather than globally exclusive.
-Future board-specific WiFi and BLE stacks will extend `nobro-wireless` beneath the
-existing `ManagedLink`/`WirelessBackend` data plane, following the proven `nobro-usb`
-composition pattern. They must not be inferred from `link_catalog` entries or created
-as a duplicate wireless domain.
+`WifiStack` and `BleStack` provide separate lifecycle contracts beneath
+`ManagedLink`/`WirelessBackend`; `MountedWifi` and `MountedBle` return backend ownership
+when mounting fails. WiFi credentials borrow runtime storage, while `BleEventQueue`
+makes callback capacity explicit. Each identity reports stable MTU, queue, and GATT
+limits. These contracts do not implement association, IP sockets, a BLE controller, or
+a board backend. Concrete WiFi/BLE adapters, shared-radio leases, and resource prices
+remain required before support is promoted. Additive WiFi and BLE instances must not be
+replaced by one global wireless feature.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

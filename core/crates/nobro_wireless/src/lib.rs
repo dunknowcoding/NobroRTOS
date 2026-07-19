@@ -3,11 +3,10 @@
 //! Concrete transports can implement [`WirelessBackend`], apps talk bytes + link state,
 //! and protocol identity/limits are **data** ([`LinkDescriptor`]) so schedulers can
 //! reason about different links uniformly. Implementations are constructed explicitly;
-//! unlike `nobro_usb`, this crate does not yet provide feature-selected WiFi/BLE
-//! lifecycle stacks. Future vendor-stack selection extends this domain beneath
-//! [`ManagedLink`] instead of creating a second link crate. Pure-logic helpers live here
-//! too: [`BleAdvBuilder`] constructs advertising PDUs, and the RFID code carries ISO
-//! 14443A anticollision arithmetic.
+//! protocol-specific WiFi/BLE lifecycle stacks compose beneath [`ManagedLink`] instead
+//! of creating a second link crate. The traits do not select or claim a board backend.
+//! Pure-logic helpers live here too: [`BleAdvBuilder`] constructs advertising PDUs, and
+//! the RFID code carries ISO 14443A anticollision arithmetic.
 #![cfg_attr(not(test), no_std)]
 
 /// Protocol identities a link descriptor can carry.
@@ -115,8 +114,8 @@ pub enum LinkState {
 
 /// Bounded data-plane surface implemented by an explicitly constructed transport.
 ///
-/// This trait does not select a board or vendor stack. Future WiFi/BLE lifecycle and
-/// backend-selection contracts will compose beneath it and [`ManagedLink`].
+/// This trait does not select a board or vendor stack. Protocol lifecycle contracts
+/// compose beneath it and [`ManagedLink`]; concrete backend selection remains separate.
 pub trait WirelessBackend {
     fn descriptor(&self) -> LinkDescriptor;
     fn link_state(&mut self) -> LinkState;
@@ -341,6 +340,462 @@ impl<B: WirelessBackend> ManagedLink<B> {
     pub fn backend_mut(&mut self) -> &mut B {
         &mut self.backend
     }
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+// -------------------------------------------------------- WiFi / BLE stack contracts
+
+/// Protocol stack family, kept separate from a board or vendor backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackFamily {
+    Wifi,
+    Ble,
+    Thread,
+}
+
+/// Observable lifecycle shared by mountable connectivity stacks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackState {
+    Down,
+    Starting,
+    Ready,
+    Quiesced,
+    Faulted,
+}
+
+/// Stable, admission-relevant bounds for one concrete stack instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackIdentity {
+    /// Stable public backend id; never a local device or port name.
+    pub backend_id: &'static str,
+    pub family: StackFamily,
+    pub mtu: u16,
+    pub rx_queue_slots: u16,
+    pub tx_queue_slots: u16,
+    /// WiFi reports zero; BLE reports the admitted GATT service capacity.
+    pub service_slots: u16,
+    /// WiFi reports zero; BLE reports the admitted GATT characteristic capacity.
+    pub characteristic_slots: u16,
+}
+
+impl StackIdentity {
+    pub fn valid_for(self, family: StackFamily) -> bool {
+        !self.backend_id.is_empty()
+            && self.family == family
+            && self.mtu != 0
+            && self.rx_queue_slots != 0
+            && self.tx_queue_slots != 0
+    }
+}
+
+/// Protocol-control failure. Vendor-specific detail remains in provider diagnostics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackError {
+    InvalidConfig,
+    InvalidIdentity,
+    NotReady,
+    Busy,
+    DeadlineElapsed,
+    QueueFull,
+    BackendFault,
+}
+
+/// A mount failure returns ownership so callers can inspect, replace, or retry a backend.
+pub struct StackMountError<B> {
+    backend: B,
+    error: StackError,
+}
+
+impl<B> StackMountError<B> {
+    pub const fn error(&self) -> StackError {
+        self.error
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+/// Runtime-only WiFi association material.
+///
+/// This value borrows caller storage and is never part of board metadata or a provider
+/// identity. The portable layer validates only representation bounds; authentication
+/// policy belongs to the selected stack.
+#[derive(Clone, Copy)]
+pub struct WifiCredentials<'a> {
+    ssid: &'a [u8],
+    secret: &'a [u8],
+}
+
+impl<'a> WifiCredentials<'a> {
+    pub fn new(ssid: &'a [u8], secret: &'a [u8]) -> Result<Self, StackError> {
+        if ssid.is_empty() || ssid.len() > 32 || secret.len() > 63 {
+            return Err(StackError::InvalidConfig);
+        }
+        Ok(Self { ssid, secret })
+    }
+
+    pub const fn ssid(&self) -> &[u8] {
+        self.ssid
+    }
+
+    pub const fn secret(&self) -> &[u8] {
+        self.secret
+    }
+}
+
+/// One allocation-free WiFi scan result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WifiNetwork {
+    ssid: [u8; 32],
+    ssid_len: u8,
+    pub channel: u8,
+    pub rssi_dbm: i8,
+    pub secured: bool,
+}
+
+impl WifiNetwork {
+    pub const fn empty() -> Self {
+        Self {
+            ssid: [0; 32],
+            ssid_len: 0,
+            channel: 0,
+            rssi_dbm: 0,
+            secured: false,
+        }
+    }
+
+    pub fn set_ssid(&mut self, ssid: &[u8]) -> Result<(), StackError> {
+        if ssid.is_empty() || ssid.len() > self.ssid.len() {
+            return Err(StackError::InvalidConfig);
+        }
+        self.ssid.fill(0);
+        self.ssid[..ssid.len()].copy_from_slice(ssid);
+        self.ssid_len = ssid.len() as u8;
+        Ok(())
+    }
+
+    pub fn ssid(&self) -> &[u8] {
+        &self.ssid[..usize::from(self.ssid_len)]
+    }
+}
+
+impl Default for WifiNetwork {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+/// WiFi association and lifecycle control.
+///
+/// IP addressing, TCP, UDP, and sockets deliberately do not appear here. An IP-capable
+/// backend composes its data plane with `nobro_net` or a bounded external bridge.
+pub trait WifiStack: WirelessBackend {
+    fn stack_identity(&self) -> StackIdentity;
+    fn stack_state(&mut self) -> StackState;
+    fn mount_stack(&mut self) -> Result<(), StackError>;
+    fn scan(&mut self, results: &mut [WifiNetwork]) -> Result<usize, StackError>;
+    fn join(
+        &mut self,
+        credentials: WifiCredentials<'_>,
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError>;
+    fn leave(&mut self) -> Result<(), StackError>;
+    fn quiesce_stack(&mut self) -> Result<(), StackError>;
+    fn recover_stack(&mut self) -> Result<(), StackError>;
+}
+
+/// An owned, successfully mounted WiFi stack.
+pub struct MountedWifi<B> {
+    backend: B,
+}
+
+impl<B: WifiStack> MountedWifi<B> {
+    pub fn mount(mut backend: B) -> Result<Self, StackMountError<B>> {
+        if !backend.stack_identity().valid_for(StackFamily::Wifi) {
+            return Err(StackMountError {
+                backend,
+                error: StackError::InvalidIdentity,
+            });
+        }
+        if let Err(error) = backend.mount_stack() {
+            return Err(StackMountError { backend, error });
+        }
+        if backend.stack_state() != StackState::Ready {
+            return Err(StackMountError {
+                backend,
+                error: StackError::BackendFault,
+            });
+        }
+        Ok(Self { backend })
+    }
+
+    pub fn state(&mut self) -> StackState {
+        self.backend.stack_state()
+    }
+
+    pub fn scan(&mut self, results: &mut [WifiNetwork]) -> Result<usize, StackError> {
+        let count = self.backend.scan(results)?;
+        if count > results.len() {
+            return Err(StackError::BackendFault);
+        }
+        Ok(count)
+    }
+
+    pub fn join(
+        &mut self,
+        credentials: WifiCredentials<'_>,
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError> {
+        self.backend.join(credentials, now_us, deadline_us)?;
+        if self.backend.link_state() != LinkState::Up {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn leave(&mut self) -> Result<(), StackError> {
+        self.backend.leave()
+    }
+
+    pub fn quiesce(&mut self) -> Result<(), StackError> {
+        self.backend.quiesce_stack()?;
+        if self.backend.stack_state() != StackState::Quiesced {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn recover(&mut self) -> Result<(), StackError> {
+        self.backend.recover_stack()?;
+        if self.backend.stack_state() != StackState::Ready {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+/// BLE callback/event kind. GATT remains distinct from the WiFi/IP control plane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BleEventKind {
+    Connected,
+    Disconnected,
+    GattRead,
+    GattWrite,
+    NotificationComplete,
+}
+
+/// One fixed-capacity BLE event copied out of vendor callback context.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BleEvent<const N: usize> {
+    pub kind: BleEventKind,
+    pub connection_id: u16,
+    pub attribute_handle: u16,
+    bytes: [u8; N],
+    len: u16,
+}
+
+impl<const N: usize> BleEvent<N> {
+    pub const fn empty() -> Self {
+        Self {
+            kind: BleEventKind::Disconnected,
+            connection_id: 0,
+            attribute_handle: 0,
+            bytes: [0; N],
+            len: 0,
+        }
+    }
+
+    pub fn set_payload(&mut self, payload: &[u8]) -> Result<(), StackError> {
+        if payload.len() > N || payload.len() > usize::from(u16::MAX) {
+            return Err(StackError::InvalidConfig);
+        }
+        self.bytes[..payload.len()].copy_from_slice(payload);
+        self.len = payload.len() as u16;
+        Ok(())
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.bytes[..usize::from(self.len)]
+    }
+}
+
+/// Caller-sized queue used to move BLE events out of vendor callback context.
+pub struct BleEventQueue<const EVENTS: usize, const BYTES: usize> {
+    events: [BleEvent<BYTES>; EVENTS],
+    head: usize,
+    len: usize,
+}
+
+impl<const EVENTS: usize, const BYTES: usize> BleEventQueue<EVENTS, BYTES> {
+    pub const fn new() -> Self {
+        Self {
+            events: [BleEvent::empty(); EVENTS],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    pub fn push(&mut self, event: BleEvent<BYTES>) -> Result<(), StackError> {
+        if self.len == EVENTS {
+            return Err(StackError::QueueFull);
+        }
+        if EVENTS == 0 {
+            return Err(StackError::QueueFull);
+        }
+        let tail = (self.head + self.len) % EVENTS;
+        self.events[tail] = event;
+        self.len += 1;
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<BleEvent<BYTES>> {
+        if self.len == 0 {
+            return None;
+        }
+        let event = self.events[self.head];
+        self.head = (self.head + 1) % EVENTS;
+        self.len -= 1;
+        Some(event)
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<const EVENTS: usize, const BYTES: usize> Default for BleEventQueue<EVENTS, BYTES> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// BLE advertising, GATT, and lifecycle control for one logical stack instance.
+pub trait BleStack: WirelessBackend {
+    fn stack_identity(&self) -> StackIdentity;
+    fn stack_state(&mut self) -> StackState;
+    fn mount_stack(&mut self) -> Result<(), StackError>;
+    fn advertise(
+        &mut self,
+        payload: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError>;
+    fn stop_advertising(&mut self) -> Result<(), StackError>;
+    fn poll_event<const N: usize>(&mut self, event: &mut BleEvent<N>) -> Result<bool, StackError>;
+    fn respond_gatt(
+        &mut self,
+        connection_id: u16,
+        attribute_handle: u16,
+        value: &[u8],
+    ) -> Result<(), StackError>;
+    fn quiesce_stack(&mut self) -> Result<(), StackError>;
+    fn recover_stack(&mut self) -> Result<(), StackError>;
+}
+
+/// An owned, successfully mounted BLE stack.
+pub struct MountedBle<B> {
+    backend: B,
+}
+
+impl<B: BleStack> MountedBle<B> {
+    pub fn mount(mut backend: B) -> Result<Self, StackMountError<B>> {
+        if !backend.stack_identity().valid_for(StackFamily::Ble) {
+            return Err(StackMountError {
+                backend,
+                error: StackError::InvalidIdentity,
+            });
+        }
+        if let Err(error) = backend.mount_stack() {
+            return Err(StackMountError { backend, error });
+        }
+        if backend.stack_state() != StackState::Ready {
+            return Err(StackMountError {
+                backend,
+                error: StackError::BackendFault,
+            });
+        }
+        Ok(Self { backend })
+    }
+
+    pub fn state(&mut self) -> StackState {
+        self.backend.stack_state()
+    }
+
+    pub fn advertise(
+        &mut self,
+        payload: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError> {
+        self.backend.advertise(payload, now_us, deadline_us)
+    }
+
+    pub fn stop_advertising(&mut self) -> Result<(), StackError> {
+        self.backend.stop_advertising()
+    }
+
+    pub fn poll_event<const N: usize>(
+        &mut self,
+        event: &mut BleEvent<N>,
+    ) -> Result<bool, StackError> {
+        self.backend.poll_event(event)
+    }
+
+    pub fn respond_gatt(
+        &mut self,
+        connection_id: u16,
+        attribute_handle: u16,
+        value: &[u8],
+    ) -> Result<(), StackError> {
+        self.backend
+            .respond_gatt(connection_id, attribute_handle, value)
+    }
+
+    pub fn quiesce(&mut self) -> Result<(), StackError> {
+        self.backend.quiesce_stack()?;
+        if self.backend.stack_state() != StackState::Quiesced {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn recover(&mut self) -> Result<(), StackError> {
+        self.backend.recover_stack()?;
+        if self.backend.stack_state() != StackState::Ready {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
     pub fn into_backend(self) -> B {
         self.backend
     }
@@ -1026,6 +1481,330 @@ mod tests {
         assert_eq!(link_catalog::RFID_14443A.mtu, 18);
         assert_eq!(rfid_readers::MFRC522_SPI.host_bus, "spi");
         assert_eq!(rfid_readers::MFRC522_SPI.max_uid_len, 10);
+    }
+
+    struct MockWifi {
+        state: StackState,
+        fail_mount: bool,
+        joined: bool,
+        scan_count: usize,
+    }
+
+    impl MockWifi {
+        const fn new(fail_mount: bool) -> Self {
+            Self {
+                state: StackState::Down,
+                fail_mount,
+                joined: false,
+                scan_count: 1,
+            }
+        }
+
+        const fn hostile_scan_count() -> Self {
+            Self {
+                state: StackState::Down,
+                fail_mount: false,
+                joined: false,
+                scan_count: usize::MAX,
+            }
+        }
+    }
+
+    impl WirelessBackend for MockWifi {
+        fn descriptor(&self) -> LinkDescriptor {
+            link_catalog::WIFI_TCP
+        }
+
+        fn link_state(&mut self) -> LinkState {
+            if self.joined {
+                LinkState::Up
+            } else {
+                LinkState::Down
+            }
+        }
+
+        fn send(&mut self, _payload: &[u8]) -> bool {
+            self.joined
+        }
+
+        fn recv(&mut self, _buf: &mut [u8]) -> usize {
+            0
+        }
+    }
+
+    impl WifiStack for MockWifi {
+        fn stack_identity(&self) -> StackIdentity {
+            StackIdentity {
+                backend_id: "test-wifi",
+                family: StackFamily::Wifi,
+                mtu: 1460,
+                rx_queue_slots: 2,
+                tx_queue_slots: 2,
+                service_slots: 0,
+                characteristic_slots: 0,
+            }
+        }
+
+        fn stack_state(&mut self) -> StackState {
+            self.state
+        }
+
+        fn mount_stack(&mut self) -> Result<(), StackError> {
+            if self.fail_mount {
+                self.state = StackState::Faulted;
+                return Err(StackError::BackendFault);
+            }
+            self.state = StackState::Ready;
+            Ok(())
+        }
+
+        fn scan(&mut self, results: &mut [WifiNetwork]) -> Result<usize, StackError> {
+            if self.state != StackState::Ready {
+                return Err(StackError::NotReady);
+            }
+            let Some(first) = results.first_mut() else {
+                return Ok(0);
+            };
+            first.set_ssid(b"test-network")?;
+            first.channel = 6;
+            first.rssi_dbm = -42;
+            first.secured = true;
+            Ok(self.scan_count)
+        }
+
+        fn join(
+            &mut self,
+            credentials: WifiCredentials<'_>,
+            now_us: u64,
+            deadline_us: u64,
+        ) -> Result<(), StackError> {
+            if self.state != StackState::Ready {
+                return Err(StackError::NotReady);
+            }
+            if now_us > deadline_us {
+                return Err(StackError::DeadlineElapsed);
+            }
+            if credentials.ssid() != b"test-network" {
+                return Err(StackError::BackendFault);
+            }
+            self.joined = true;
+            Ok(())
+        }
+
+        fn leave(&mut self) -> Result<(), StackError> {
+            self.joined = false;
+            Ok(())
+        }
+
+        fn quiesce_stack(&mut self) -> Result<(), StackError> {
+            self.joined = false;
+            self.state = StackState::Quiesced;
+            Ok(())
+        }
+
+        fn recover_stack(&mut self) -> Result<(), StackError> {
+            self.joined = false;
+            self.state = StackState::Ready;
+            Ok(())
+        }
+    }
+
+    struct MockBle {
+        state: StackState,
+        advertising: bool,
+        event_pending: bool,
+    }
+
+    impl MockBle {
+        const fn new() -> Self {
+            Self {
+                state: StackState::Down,
+                advertising: false,
+                event_pending: true,
+            }
+        }
+    }
+
+    impl WirelessBackend for MockBle {
+        fn descriptor(&self) -> LinkDescriptor {
+            link_catalog::BLE_ADV
+        }
+
+        fn link_state(&mut self) -> LinkState {
+            if self.advertising {
+                LinkState::Up
+            } else {
+                LinkState::Down
+            }
+        }
+
+        fn send(&mut self, _payload: &[u8]) -> bool {
+            self.advertising
+        }
+
+        fn recv(&mut self, _buf: &mut [u8]) -> usize {
+            0
+        }
+    }
+
+    impl BleStack for MockBle {
+        fn stack_identity(&self) -> StackIdentity {
+            StackIdentity {
+                backend_id: "test-ble",
+                family: StackFamily::Ble,
+                mtu: 23,
+                rx_queue_slots: 2,
+                tx_queue_slots: 2,
+                service_slots: 1,
+                characteristic_slots: 2,
+            }
+        }
+
+        fn stack_state(&mut self) -> StackState {
+            self.state
+        }
+
+        fn mount_stack(&mut self) -> Result<(), StackError> {
+            self.state = StackState::Ready;
+            Ok(())
+        }
+
+        fn advertise(
+            &mut self,
+            payload: &[u8],
+            now_us: u64,
+            deadline_us: u64,
+        ) -> Result<(), StackError> {
+            if self.state != StackState::Ready {
+                return Err(StackError::NotReady);
+            }
+            if now_us > deadline_us {
+                return Err(StackError::DeadlineElapsed);
+            }
+            if payload.len() > 31 {
+                return Err(StackError::InvalidConfig);
+            }
+            self.advertising = true;
+            Ok(())
+        }
+
+        fn stop_advertising(&mut self) -> Result<(), StackError> {
+            self.advertising = false;
+            Ok(())
+        }
+
+        fn poll_event<const N: usize>(
+            &mut self,
+            event: &mut BleEvent<N>,
+        ) -> Result<bool, StackError> {
+            if !self.event_pending {
+                return Ok(false);
+            }
+            event.kind = BleEventKind::GattWrite;
+            event.connection_id = 7;
+            event.attribute_handle = 11;
+            event.set_payload(b"ok")?;
+            self.event_pending = false;
+            Ok(true)
+        }
+
+        fn respond_gatt(
+            &mut self,
+            connection_id: u16,
+            attribute_handle: u16,
+            value: &[u8],
+        ) -> Result<(), StackError> {
+            if connection_id != 7 || attribute_handle != 11 || value.len() > 23 {
+                return Err(StackError::InvalidConfig);
+            }
+            Ok(())
+        }
+
+        fn quiesce_stack(&mut self) -> Result<(), StackError> {
+            self.advertising = false;
+            self.state = StackState::Quiesced;
+            Ok(())
+        }
+
+        fn recover_stack(&mut self) -> Result<(), StackError> {
+            self.advertising = false;
+            self.state = StackState::Ready;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn wifi_mount_is_owned_bounded_and_runtime_configured() {
+        let failed = match MountedWifi::mount(MockWifi::new(true)) {
+            Ok(_) => panic!("faulting backend mounted"),
+            Err(error) => error,
+        };
+        assert_eq!(failed.error(), StackError::BackendFault);
+        assert!(failed.into_backend().fail_mount);
+
+        assert!(matches!(
+            WifiCredentials::new(&[], b"secret"),
+            Err(StackError::InvalidConfig)
+        ));
+        let credentials = WifiCredentials::new(b"test-network", b"secret").unwrap();
+        let mut mounted = MountedWifi::mount(MockWifi::new(false)).ok().unwrap();
+        let mut networks = [WifiNetwork::empty(); 2];
+        assert_eq!(mounted.scan(&mut networks).unwrap(), 1);
+        assert_eq!(networks[0].ssid(), b"test-network");
+        assert_eq!(
+            mounted.join(credentials, 101, 100),
+            Err(StackError::DeadlineElapsed)
+        );
+        mounted.join(credentials, 100, 100).unwrap();
+        assert_eq!(mounted.backend_mut().link_state(), LinkState::Up);
+        mounted.quiesce().unwrap();
+        assert_eq!(mounted.state(), StackState::Quiesced);
+        mounted.recover().unwrap();
+        assert_eq!(mounted.state(), StackState::Ready);
+
+        let mut hostile = MountedWifi::mount(MockWifi::hostile_scan_count())
+            .ok()
+            .unwrap();
+        assert_eq!(hostile.scan(&mut networks), Err(StackError::BackendFault));
+    }
+
+    #[test]
+    fn ble_mount_gatt_and_callback_queue_are_bounded() {
+        let mut mounted = MountedBle::mount(MockBle::new()).ok().unwrap();
+        assert_eq!(
+            mounted.advertise(b"payload", 11, 10),
+            Err(StackError::DeadlineElapsed)
+        );
+        mounted.advertise(b"payload", 10, 10).unwrap();
+
+        let mut event = BleEvent::<8>::empty();
+        assert!(mounted.poll_event(&mut event).unwrap());
+        assert_eq!(event.payload(), b"ok");
+        mounted
+            .respond_gatt(event.connection_id, event.attribute_handle, b"reply")
+            .unwrap();
+
+        let mut queue = BleEventQueue::<1, 8>::new();
+        queue.push(event).unwrap();
+        assert_eq!(queue.push(event), Err(StackError::QueueFull));
+        assert_eq!(queue.pop().unwrap().payload(), b"ok");
+        assert!(queue.is_empty());
+
+        let mut zero = BleEventQueue::<0, 8>::new();
+        assert_eq!(zero.push(event), Err(StackError::QueueFull));
+
+        mounted.quiesce().unwrap();
+        assert_eq!(mounted.state(), StackState::Quiesced);
+        mounted.recover().unwrap();
+        assert_eq!(mounted.state(), StackState::Ready);
+    }
+
+    #[test]
+    fn wifi_and_ble_instances_are_additive_not_global_selection() {
+        let wifi = MountedWifi::mount(MockWifi::new(false)).ok().unwrap();
+        let ble = MountedBle::mount(MockBle::new()).ok().unwrap();
+        assert_eq!(wifi.backend().stack_identity().family, StackFamily::Wifi);
+        assert_eq!(ble.backend().stack_identity().family, StackFamily::Ble);
     }
 
     #[test]

@@ -776,21 +776,23 @@ Implemented today in `nobro-wireless`:
   `ZIGBEE_APS` is catalog descriptor metadata only.
 - `BleAdvBuilder` constructs advertising packets. It is not a BLE controller/host
   stack, and a protocol descriptor is not proof that a board implements that protocol.
+- `WifiStack` and `BleStack` are distinct allocation-free lifecycle contracts beneath
+  the common data plane. `MountedWifi`/`MountedBle` own fallible mounting; credentials
+  remain runtime-only, and `BleEventQueue` bounds callback-to-task transfer.
 
-WiFi join/socket control, BLE scan/connect/GATT control, Zigbee co-processor lifecycle,
-shared-radio arbitration, and vendor backend selection remain future work. They will
-extend the existing `nobro-wireless` domain rather than create a parallel link crate.
-Each protocol control trait will sit beneath `ManagedLink`, each logical instance will
-select exactly one backend, and board/firmware composition will state vendor-managed
-memory, interrupts, coexistence, and radio ownership explicitly. Concrete names and
-features become public only when their implementations and exclusivity gates exist.
+Concrete WiFi join/IP adapters, BLE controller/GATT adapters, Zigbee co-processor
+lifecycle, shared-radio arbitration, and vendor backend selection remain future work.
+They extend the existing `nobro-wireless` domain rather than create a parallel link
+crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
+may coexist when board composition explicitly admits shared memory, interrupts,
+coexistence, and radio ownership. A portable trait is not a board-support claim.
 
 ### Why mountable, not `#[cfg]` sprinkled
 
 One trait plus one selected implementation keeps apps backend-agnostic when the whole
-selection path exists. USB demonstrates that rule now. Future wireless control stacks
-must earn the same property through explicit composition, ownership, and conformance
-gates; adding a board profile or a catalog descriptor alone is insufficient.
+selection path exists. USB demonstrates that rule now. Wireless backends must earn the
+same property through explicit composition, ownership, and conformance gates; adding a
+portable trait, board profile, or catalog descriptor alone is insufficient.
 
 ## The Universal Driver Interface
 

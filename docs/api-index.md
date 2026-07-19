@@ -234,7 +234,7 @@ Modular, mountable USB device stack for NobroRTOS.
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.
-- **trait**: `WirelessBackend`, `SpiIo`, `ByteIo`
-- **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
-- **enum**: `Protocol`, `LinkState`, `LinkError`, `AdvKind`, `RfidError`, `MacFrameType`
-- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `initialize`, `join`, `poll_frame`
+- **trait**: `WirelessBackend`, `WifiStack`, `BleStack`, `SpiIo`, `ByteIo`
+- **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `StackIdentity`, `StackMountError`, `WifiCredentials`, `WifiNetwork`, `MountedWifi`, `BleEvent`, `BleEventQueue`, `MountedBle`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
+- **enum**: `Protocol`, `LinkState`, `LinkError`, `StackFamily`, `StackState`, `StackError`, `BleEventKind`, `AdvKind`, `RfidError`, `MacFrameType`
+- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `valid_for`, `into_backend`, `new`, `set_ssid`, `ssid`, `mount`, `state`, `scan`, `join`, `leave`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `set_payload`, `payload`, `push`, `pop`, `mount`, `state`, `advertise`, `stop_advertising`, `poll_event`, `respond_gatt`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `initialize`, `join`, `poll_frame`

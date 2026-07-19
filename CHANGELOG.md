@@ -4,6 +4,11 @@
 
 ### Changed
 
+- `nobro-wireless` now separates the bounded byte data plane from
+  allocation-free `WifiStack` and `BleStack` lifecycle contracts. Owned
+  fallible mounts, runtime-only WiFi credentials, stable instance limits,
+  deadline-aware control calls, and caller-sized BLE callback queues are
+  available without selecting or claiming a board backend.
 - ESP32 Arduino users can select either the compact continuous-ADC transport
   or a fixed-capacity persistent ESP-IDF transport with no per-frame heap
   allocation; unused transports remain link-dead.
