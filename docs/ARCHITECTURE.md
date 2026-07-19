@@ -691,12 +691,15 @@ ecosystem or a board-specific application hierarchy:
 
 `NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
 Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
-driver state internally. A state-restoring classic ESP32 campaign verifies
-continuous sampling, LEDC frequency/duty, RMT pulse timing, lifecycle recovery,
-and immediate runtime reservations. The C3, S3, and P4 rows remain target-build
-evidence only. No exact binding is promoted until stack, CPU, interrupt, DMA,
-coexistence, and other registry price dimensions are measured; compilation
-never turns an unknown price into zero.
+driver state internally. State-restoring classic ESP32 and single-core
+ESP32-C3 campaigns verify continuous sampling, LEDC frequency/duty, RMT pulse
+timing, lifecycle recovery/release, and immediate runtime reservations. The C3
+campaign measured 19,999 conversions/s, 1,002 Hz at 249 permille, and
+499-500 us RMT levels. Its unreferenced ADC input is not calibration evidence.
+The S3 and P4 rows remain target-build evidence only. No exact binding is
+promoted until stack, CPU, interrupt, DMA, coexistence, and other registry
+price dimensions are measured; compilation never turns an unknown price into
+zero.
 
 Provider lifecycle distinguishes temporary quiescence from unmount:
 `quiesce` preserves logical configuration for `recover`, while `release`

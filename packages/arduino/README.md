@@ -125,12 +125,15 @@ The template capacities are the maximum retained pins or pulse symbols, so RAM
 is visible at compile time. Calls reject invalid shapes and report lifecycle,
 transport, partial-frame, and deadline failures. The wrapper itself performs no
 heap allocation; Arduino-ESP32 owns continuous-ADC DMA storage and peripheral
-drivers. A state-restoring classic ESP32 campaign verifies continuous sampling,
-LEDC frequency/duty, RMT pulse timing, quiescence/recovery, and immediate
-runtime reservations. ESP32-C3, ESP32-S3, and ESP32-P4 remain target-build
-evidence only, and no exact board binding is promoted until every price
-dimension is measured. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the
-include removes all three providers and their vendor symbols.
+drivers. State-restoring classic ESP32 and single-core ESP32-C3 campaigns
+verify continuous sampling, LEDC frequency/duty, RMT pulse timing,
+quiescence/recovery/release, and immediate runtime reservations. The C3
+campaign measured 19,999 conversions/s, 1,002 Hz at 249 permille, and
+499-500 us RMT levels. Its unreferenced ADC input is transport evidence, not
+accuracy evidence. ESP32-S3 and ESP32-P4 remain target-build evidence only,
+and no exact board binding is promoted until every price dimension is
+measured. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the include
+removes all three providers and their vendor symbols.
 
 Use `quiesce()` when the configuration must remain recoverable. Use
 `release()` to stop and deinitialize/detach the vendor engine, forget its
