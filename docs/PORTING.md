@@ -127,7 +127,7 @@ a platform claim.
 
 The in-tree `audio/esp32s3-es8311` bridge is the reference split for a vendor
 audio stack: keep frame/lifecycle/admission policy in `nobro-audio`, keep the
-board core’s I2S/DMA ownership in its transport, and pin an external Arduino
+board core's I2S/DMA ownership in its transport, and pin an external Arduino
 library as a catalog member rather than copying it into the adapter. Use
 `NobroNiusAudio.h` as the C++ facade pattern. Do not fill unknown runtime heap
 or DMA reservations with zero; defer the board binding until the exact
@@ -140,6 +140,10 @@ Register each stack separately (`adc_dma`, `pwm_ledc`, or `pulse_rmt`) because
 one board may combine or replace them independently. A target build establishes
 API compatibility only; add an exact binding after resource measurement,
 disabled-state zero-cost proof, report wiring, and physical evidence.
+Two implementations of one capability are separate backends, not new
+ecosystems: for example, the compact Arduino continuous-ADC path and the
+fixed-capacity ESP-IDF persistent-buffer path share `adc_dma` and the portable
+sensor contract, while retaining independent prices and evidence.
 
 ## Boot layout rules
 

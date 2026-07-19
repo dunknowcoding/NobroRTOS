@@ -93,6 +93,16 @@ def main() -> int:
         display = "<redacted tracked path>" if path_is_sensitive else str(relative)
         if path_is_sensitive:
             errors.append("tracked path contains a local privacy marker")
+        if "\ufffd" in text:
+            lines = {
+                text.count("\n", 0, index) + 1
+                for index, value in enumerate(text)
+                if value == "\ufffd"
+            }
+            errors.append(
+                f"{display}:{','.join(map(str, sorted(lines)))}: "
+                "Unicode replacement character (invalid or mojibake text)"
+            )
         patterns = {} if path == pathlib.Path(__file__).resolve() else PRIVATE
         for label, pattern in patterns.items():
             for match in pattern.finditer(text):

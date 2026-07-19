@@ -4,6 +4,11 @@
 
 ### Changed
 
+- ESP32 Arduino users can select either the compact continuous-ADC transport
+  or a fixed-capacity persistent ESP-IDF transport with no per-frame heap
+  allocation; unused transports remain link-dead.
+- Physical C3/P4 campaigns now price transient heap, stack high-water, active
+  cycles, p99/max latency, and ADC/LEDC/RMT coexistence for both ADC paths.
 - Board-feature pricing now separates fixed mount ownership from transient
   heap, stack high-water, CPU, and latency evidence bound to an exact provider
   configuration and admitted operation rate.

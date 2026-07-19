@@ -58,8 +58,8 @@ reports `not_exercised`. Its PWM result means the generic duty request was accep
 the facade, not that pulse timing or physical output was measured.
 
 Resolution requests are validated before any pin or core state is changed. The current
-facade policy accepts ADC/PWM widths of 10/8 bits on classic AVR, 1–16/1–14 on ESP32,
-{8, 10, 12, 14, 16}/1–16 on Renesas, and 1–14/1–16 on ArduinoNRF. An unrecognized
+facade policy accepts ADC/PWM widths of 10/8 bits on classic AVR, 1-16/1-14 on ESP32,
+{8, 10, 12, 14, 16}/1-16 on Renesas, and 1-14/1-16 on ArduinoNRF. An unrecognized
 Arduino core is kept at the portable 10-bit ADC and 8-bit duty interface; other widths
 are rejected and no possibly-missing resolution setter is called. SPI transfers likewise
 return `false` until `begin()` succeeds, including for otherwise valid buffers.
@@ -117,27 +117,32 @@ Include the optional facade only in ESP32 sketches:
 #include <NobroEsp32Peripherals.h>
 
 nobro::Esp32ContinuousAdc<2> adc;
+nobro::Esp32PersistentContinuousAdc<2, 32> sustainedAdc;
 nobro::Esp32LedcPwm pwm(4);
 nobro::Esp32RmtPulse<8> pulse(5);
 ```
 
-The template capacities are the maximum retained pins or pulse symbols, so RAM
-is visible at compile time. Calls reject invalid shapes and report lifecycle,
-transport, partial-frame, and deadline failures. The wrapper itself performs no
-heap allocation; Arduino-ESP32 owns continuous-ADC DMA storage and peripheral
-drivers. `Esp32ContinuousAdc::alignedConversionsPerChannel()` reports the exact
-per-channel count required by the board core's DMA alignment. `configure()`
-rejects a request the vendor core would silently widen, preserving averaging
-and deadline meaning. State-restoring classic ESP32, single-core ESP32-C3, and
-dual-core ESP32-P4 campaigns verify continuous sampling, LEDC frequency/duty,
-RMT pulse timing, quiescence/recovery/release, and immediate runtime
-reservations. C3 measured 19,999 conversions/s, 1,002 Hz at 249 permille, and
-499-500 us RMT levels. P4 measured 19,795 conversions/s with an exact aligned
-frame, 1,002 Hz at 249 permille, and 499-500 us RMT levels. Unreferenced ADC
-inputs are transport evidence, not accuracy evidence. ESP32-S3 remains
-target-build evidence only, and no exact board binding is promoted until every
-price dimension, including peripheral-channel ownership distinct from DMA,
-is measured or explicitly established as zero. Defining
+The template capacities are the maximum retained pins, conversions per
+channel, or pulse symbols, so RAM is visible at compile time. Calls reject
+invalid shapes and report lifecycle, transport, partial-frame, and deadline
+failures. `Esp32ContinuousAdc` is the compact Arduino convenience path.
+`Esp32PersistentContinuousAdc` is preferable for sustained sampling: ESP-IDF
+reads into its DMA-aligned object storage, so no heap allocation occurs per
+frame. Both expose `alignedConversionsPerChannel()` and reject a request the
+vendor core would silently widen, preserving averaging and deadline meaning.
+Only one process-wide continuous ADC provider may be mounted at a time.
+
+Three-run physical comparisons on C3 and P4 found zero ADC-specific transient
+heap above the common measurement floor for the persistent path, versus
+80/144 bytes for the convenience path. Worst active cycles/read improved by
+about 39-40% with unchanged p99 latency. The persistent path traded
+40/192 bytes of observed task-stack high-water; in an equivalent S3 build it
+used 20,520 B flash / 456 B static RAM versus 21,108 B / 368 B for the compact
+path. Interleaved ADC, LEDC, and RMT, quiescence/recovery/release, and exact
+flash restoration passed on both physical targets. Unreferenced ADC inputs
+are transport evidence, not accuracy evidence. ESP32-S3 remains target-build
+evidence only, and no exact board binding is promoted until every fixed price
+dimension is measured or explicitly established as zero. Defining
 `NOBRO_ESP32_PERIPHERALS_DISABLED`
 before the include removes all three providers and their vendor symbols.
 

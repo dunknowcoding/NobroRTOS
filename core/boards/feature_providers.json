@@ -182,7 +182,29 @@
       "limitations": [
         "Physical rate, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; conversion accuracy and the ESP32-S3 physical path remain unverified.",
         "ESP32-P4 DMA alignment can widen a requested conversion frame, so the facade rejects non-exact frame shapes.",
-        "The Arduino core owns process-wide ADC-DMA state and allocates an aligned DMA-capable frame on each read; transient peak, allocator-tail, and remaining runtime prices are unverified."
+        "The Arduino convenience path owns process-wide ADC-DMA state and allocates an aligned DMA-capable frame on each read; physical C3/P4 campaigns measured the allocator tail, but no complete exact binding is promoted."
+      ]
+    },
+    {
+      "id": "backend-adc-esp32-idf-persistent",
+      "capability_kind": "adc_dma",
+      "stack_family": "adc-dma",
+      "adapter_component_id": "adapter-sensors-esp32-adc-continuous",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "target-build",
+        "physical"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "The fixed-capacity ESP-IDF transport is target-built on classic ESP32, ESP32-C3, ESP32-S3, and ESP32-P4; physical lifecycle, timing, allocator, and coexistence evidence currently covers C3 and P4.",
+        "The caller must size the compile-time conversion capacity for the exact DMA-aligned frame; conversion accuracy and complete fixed ownership prices remain unverified, so no exact binding is promoted."
       ]
     },
     {

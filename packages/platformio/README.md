@@ -59,6 +59,13 @@ The base facade is dependency-free. For Arduino board-core providers, define
 External integration facades such as NiusIMU remain optional and require their
 corresponding library in `lib_deps`.
 
+ESP32 Arduino projects may include `NobroEsp32Peripherals.h` directly. Use
+`Esp32ContinuousAdc` for the compact board-core path or
+`Esp32PersistentContinuousAdc<Pins, Conversions>` for fixed DMA-aligned object
+storage with no per-frame heap allocation. LEDC and RMT providers remain
+independently optional. All capacities and the exact aligned conversion count
+are explicit at compile time.
+
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade
 validates a bounded declaration; native execution and target evidence remain in

@@ -699,11 +699,17 @@ ecosystem or a board-specific application hierarchy:
 - `servo/esp32-rmt` mounts bounded pulse-symbol output.
 
 `NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
-Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
-driver state internally, including a transient aligned DMA-capable buffer in
-the current continuous-read path. A provider price therefore separates
-retained ownership from transient peak, stack high-water, CPU cycles, and
-p99/maximum latency for one exact configuration and admitted call rate.
+It offers two interchangeable ADC transports with the same bounded lifecycle:
+
+- `Esp32ContinuousAdc` uses Arduino's compact convenience path.
+- `Esp32PersistentContinuousAdc<Pins, Conversions>` reads through the public
+  ESP-IDF API into DMA-aligned object storage and performs no per-frame heap
+  allocation.
+
+The persistent path is opt-in, so an unused transport contributes no linked
+code. A provider price separates retained ownership from transient peak,
+stack high-water, CPU cycles, and p99/maximum latency for one exact
+configuration and admitted call rate.
 The adapter rejects a requested configuration or declared rate that differs
 from the evidence; the scheduler remains responsible for enforcing that
 admitted call rate at runtime.
@@ -715,11 +721,29 @@ campaigns verify continuous sampling, LEDC frequency/duty, RMT pulse timing,
 lifecycle recovery/release, and immediate runtime reservations. C3 measured
 19,999 conversions/s, 1,002 Hz at 249 permille, and 499-500 us RMT levels.
 P4 measured 19,795 conversions/s with an exact aligned frame, 1,002 Hz at
-249 permille, and 499-500 us RMT levels. Unreferenced ADC inputs are not
-calibration evidence. S3 remains target-build evidence only. No exact binding
-is promoted until stack, CPU, interrupt, DMA, peripheral-channel, coexistence,
-and other registry price dimensions are measured; compilation never turns an
-unknown price into zero.
+249 permille, and 499-500 us RMT levels.
+
+The configuration-bound C3/P4 comparison used three runs per transport. The
+heap monitor itself consumes 36 bytes; values in parentheses subtract that
+common floor.
+
+| Workload | Transport | transient heap | task stack high-water | worst cycles/read | p99 / max |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 channel, 12-bit, 16 conversions, 20 kHz | Arduino C3 | 116 B (80 B) | 1,376 B | 5,338 | 803 / 803 us |
+| same | persistent C3 | 36 B (0 B) | 1,416 B | 3,268 | 803 / 803 us |
+| 1 channel, 12-bit, 32 conversions, 20 kHz | Arduino P4 | 180 B (144 B) | 1,476 B | 11,220 | 1,601 / 1,601 us |
+| same | persistent P4 | 36 B (0 B) | 1,668 B | 6,756 | 1,601 / 1,601 us |
+
+All runs preserved the largest free block and returned to their pre-batch
+heap value. Interleaved ADC, LEDC, and RMT kept the ADC latency envelope while
+the persistent path reduced worst composite active cycles by about 20% on
+both targets. An equivalent S3 application build prices the compact ADC path
+at 21,108 B flash / 368 B static RAM and the persistent path at
+20,520 B / 456 B; the disabled build remains byte-for-byte equal to baseline.
+Unreferenced ADC inputs are not calibration evidence. S3 remains target-build
+evidence only. No exact binding is promoted until fixed ownership and the
+remaining provenance fields are complete; compilation never turns an unknown
+price into zero.
 
 Provider lifecycle distinguishes temporary quiescence from unmount:
 `quiesce` preserves logical configuration for `recover`, while `release`

@@ -54,6 +54,7 @@ FEATURE = r'''#include <NobroRTOS.h>
 #include <NobroEsp32Peripherals.h>
 
 nobro::Esp32ContinuousAdc<1> adc;
+nobro::Esp32PersistentContinuousAdc<1, 32> persistentAdc;
 nobro::Esp32LedcPwm pwm(4);
 nobro::Esp32RmtPulse<2> pulse(5);
 nobro::NobroApp<2, 1> app;
@@ -79,6 +80,17 @@ void setup() {
     adc.recover();
     adc.release();
 
+    const uint16_t persistentConversions =
+        decltype(persistentAdc)::alignedConversionsPerChannel(1, 16);
+    const nobro_adc_dma_config_t persistentConfig = {
+        1, 12, persistentConversions, 20000};
+    persistentAdc.configure(pins, persistentConfig);
+    persistentAdc.start();
+    persistentAdc.readFrame(samples, 1, 1000, count);
+    persistentAdc.quiesce();
+    persistentAdc.recover();
+    persistentAdc.release();
+
     const nobro_pwm_config_t pwmConfig = {20000, 10};
     pwm.configure(pwmConfig);
     pwm.setDuty(512);
@@ -94,7 +106,8 @@ void setup() {
     pulse.release();
   }
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
-  Serial.println(adc.staticRamBytes() + pwm.staticRamBytes() + pulse.staticRamBytes());
+  Serial.println(adc.staticRamBytes() + persistentAdc.staticRamBytes() +
+                 pwm.staticRamBytes() + pulse.staticRamBytes());
 }
 void loop() {}
 '''
@@ -126,6 +139,37 @@ void setup() {
   Serial.begin(115200);
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
   Serial.println(adc.staticRamBytes());
+}
+void loop() {}
+'''
+
+PERSISTENT_ADC_FEATURE = r'''#include <NobroRTOS.h>
+#include <NobroEsp32Peripherals.h>
+nobro::Esp32PersistentContinuousAdc<1, 32> adc;
+nobro::NobroApp<2, 1> app;
+volatile bool exerciseProvider = false;
+void setup() {
+  auto source = app.sensor("source", 10);
+  auto sink = app.service("sink", 20);
+  app.wire(source, sink);
+  if (exerciseProvider) {
+    const uint8_t pins[1] = {1};
+    const uint16_t conversions =
+        decltype(adc)::alignedConversionsPerChannel(1, 16);
+    const nobro_adc_dma_config_t config = {
+        1, 12, conversions, 20000};
+    nobro_adc_sample_t samples[1] = {};
+    size_t count = 0;
+    adc.configure(pins, config);
+    adc.start();
+    adc.readFrame(samples, 1, 1000, count);
+    adc.quiesce();
+    adc.recover();
+    adc.release();
+  }
+  Serial.begin(115200);
+  Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
+  Serial.println(adc.staticRamBytes() + adc.persistentBufferBytes());
 }
 void loop() {}
 '''
@@ -180,9 +224,11 @@ void loop() {}
 
 FORBIDDEN_DISABLED = (
     "analogContinuous",
+    "adc_continuous_read",
     "ledcAttach",
     "rmtInit",
     "Esp32ContinuousAdc",
+    "Esp32PersistentContinuousAdc",
     "Esp32LedcPwm",
     "Esp32RmtPulse",
 )
@@ -264,6 +310,7 @@ def main() -> int:
             for index, (provider, source) in enumerate(
                 (
                     ("adc_dma", ADC_FEATURE),
+                    ("adc_dma_persistent", PERSISTENT_ADC_FEATURE),
                     ("pwm_ledc", LEDC_FEATURE),
                     ("pulse_rmt", RMT_FEATURE),
                 )
