@@ -44,6 +44,7 @@ private, state-restoring campaign.
 failure/lifecycle contracts against deterministic fakes.
 `check_esp32_peripheral_integrations.py` proves exact Arduino-ESP32 family
 target builds, target-specific persistent-ADC flash/static-RAM prices, and a
-zero-cost disabled composition. These remain software and target-build
-evidence, not ADC accuracy, waveform, loopback, or vendor-runtime memory
-evidence.
+zero-cost disabled composition, including calibration symbols. Physical
+runtime and coexistence measurements remain state-restoring private inputs to
+the exact registry price; the public gate does not claim absolute ADC
+accuracy.

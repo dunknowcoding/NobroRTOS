@@ -63,7 +63,7 @@
       "portable_contract_id": "contract-sensors",
       "stack_family": "adc-dma",
       "limitations": [
-        "No board binding is promoted yet."
+        "Exact persistent-transport bindings cover one measured configuration on ESP32-C3, ESP32-P4, and ESP32-S3; other configurations and the convenience transport remain independently priced."
       ]
     },
     {
@@ -188,9 +188,9 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "Physical rate, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; conversion accuracy and the ESP32-S3 physical path remain unverified.",
+        "Physical rate, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, ESP32-P4, and ESP32-S3; absolute conversion accuracy remains unverified.",
         "ESP32-P4 DMA alignment can widen a requested conversion frame, so the facade rejects non-exact frame shapes.",
-        "The Arduino convenience path owns process-wide ADC-DMA state and allocates an aligned DMA-capable frame on each read; physical C3/P4 campaigns measured the allocator tail, but no complete exact binding is promoted."
+        "The Arduino convenience path owns process-wide ADC-DMA state and allocates an aligned DMA-capable frame on each read; physical C3/P4 campaigns measured the allocator tail, but no exact convenience-path binding is promoted."
       ]
     },
     {
@@ -212,8 +212,8 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "The fixed-capacity ESP-IDF transport is target-built on classic ESP32, ESP32-C3, ESP32-S3, and ESP32-P4; physical lifecycle, timing, allocator, and coexistence evidence currently covers C3 and P4.",
-        "The caller must size the compile-time conversion capacity for the exact DMA-aligned frame; conversion accuracy and the ESP32-S3 physical path remain unverified."
+        "The fixed-capacity ESP-IDF transport is target-built on classic ESP32, ESP32-C3, ESP32-S3, and ESP32-P4; physical lifecycle, timing, allocator, and coexistence evidence covers C3, P4, and S3.",
+        "The caller must size the compile-time conversion capacity for the exact DMA-aligned frame; absolute conversion accuracy remains unverified."
       ]
     },
     {
@@ -330,6 +330,9 @@
         "feature": "nobro-esp32-peripherals-disabled",
         "forbidden_symbols": [
           "analogContinuous",
+          "adc_cali_create_scheme_curve_fitting",
+          "adc_cali_create_scheme_line_fitting",
+          "adc_cali_raw_to_voltage",
           "adc_continuous_read",
           "ledcAttach",
           "rmtInit",
@@ -418,6 +421,9 @@
         "feature": "nobro-esp32-peripherals-disabled",
         "forbidden_symbols": [
           "analogContinuous",
+          "adc_cali_create_scheme_curve_fitting",
+          "adc_cali_create_scheme_line_fitting",
+          "adc_cali_raw_to_voltage",
           "adc_continuous_read",
           "ledcAttach",
           "rmtInit",
@@ -438,6 +444,97 @@
         "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4",
         "fixed": "same-target isolated link delta, running retained-heap delta, and pinned source ownership",
         "runtime": "conservative maximum from three state-restoring runs"
+      }
+    },
+    {
+      "id": "binding-adc-persistent-esp32s3",
+      "backend_id": "backend-adc-esp32-idf-persistent",
+      "capability_kind": "adc_dma",
+      "platform": "esp32s3",
+      "composition": "arduino",
+      "instance": "adc0",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "esp32-arduino-peripheral-target-build"
+      ],
+      "workload": {
+        "namespace": "esp32-arduino-continuous-adc",
+        "configuration_words": [1, 12, 16, 20000],
+        "configuration_fingerprint": "87395ee8d16c2d2d",
+        "operations_per_second": 1250
+      },
+      "measured_fixed_price": {
+        "flash_bytes": 20520,
+        "static_ram_bytes": 456,
+        "retained_heap_bytes": 1476,
+        "stack_bytes": 0,
+        "vendor_reserved_ram_bytes": 0,
+        "worker_threads": 0,
+        "interrupt_slots": 1,
+        "dma_channels": 1,
+        "controller_firmware_bytes": 0,
+        "peripheral_channels": 1
+      },
+      "fixed_price_provenance": {
+        "flash_bytes": "measured",
+        "static_ram_bytes": "measured",
+        "retained_heap_bytes": "measured",
+        "stack_bytes": "source-derived",
+        "vendor_reserved_ram_bytes": "source-derived",
+        "worker_threads": "measured",
+        "interrupt_slots": "source-derived",
+        "dma_channels": "source-derived",
+        "controller_firmware_bytes": "source-derived",
+        "peripheral_channels": "source-derived"
+      },
+      "measured_runtime_price": {
+        "transient_heap_peak_bytes": 0,
+        "stack_high_water_bytes": 2308,
+        "cpu_cycles_per_second": 6028800,
+        "latency_p99_cycles": 192347,
+        "latency_max_cycles": 192347
+      },
+      "runtime_price_provenance": {
+        "transient_heap_peak_bytes": "measured",
+        "stack_high_water_bytes": "measured",
+        "cpu_cycles_per_second": "measured",
+        "latency_p99_cycles": "measured",
+        "latency_max_cycles": "measured"
+      },
+      "coexistence": {
+        "leases": ["adc1-continuous-mode"],
+        "exclusive_resources": ["adc1-digital-controller", "gdma-rx-channel"],
+        "compatible_instances": ["audio0"],
+        "core_affinity": []
+      },
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp32-peripherals-disabled",
+        "forbidden_symbols": [
+          "analogContinuous",
+          "adc_cali_create_scheme_curve_fitting",
+          "adc_cali_create_scheme_line_fitting",
+          "adc_cali_raw_to_voltage",
+          "adc_continuous_read",
+          "ledcAttach",
+          "rmtInit",
+          "Esp32ContinuousAdc",
+          "Esp32PersistentContinuousAdc",
+          "Esp32LedcPwm",
+          "Esp32RmtPulse"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "adc_dma",
+        "status_field": "esp32s3_adc0",
+        "evidence_gate": "esp32-arduino-peripheral-target-build"
+      },
+      "price_basis": {
+        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4",
+        "fixed": "same-target isolated link delta, active retained-heap delta after repeated recovery, and pinned source ownership",
+        "runtime": "conservative maximum from three physical runs at 1250 reads per second; task runtime excludes blocked wall time"
       }
     },
     {
@@ -498,7 +595,7 @@
       "coexistence": {
         "leases": ["i2s0-full-duplex"],
         "exclusive_resources": ["i2s0-tx", "i2s0-rx", "gdma-tx-channel", "gdma-rx-channel"],
-        "compatible_instances": [],
+        "compatible_instances": ["adc0"],
         "core_affinity": []
       },
       "disabled_symbol_gate": {

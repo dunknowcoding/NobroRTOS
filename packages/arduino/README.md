@@ -133,6 +133,8 @@ failures. `Esp32ContinuousAdc` is the compact Arduino convenience path.
 reads into its DMA-aligned object storage, so no heap allocation occurs per
 frame. Both expose `alignedConversionsPerChannel()` and reject a request the
 vendor core would silently widen, preserving averaging and deadline meaning.
+Each sample contains the averaged raw code and the factory-calibrated
+millivolt result from the pinned ESP-IDF calibration scheme.
 Only one process-wide continuous ADC provider may be mounted at a time.
 
 Three-run physical comparisons on C3 and P4 found zero ADC-specific transient
@@ -142,11 +144,11 @@ about 39-40% with unchanged p99 latency. The persistent path traded
 40/192 bytes of observed task-stack high-water; in an equivalent S3 build it
 used 20,520 B flash / 456 B static RAM versus 21,108 B / 368 B for the compact
 path. Interleaved ADC, LEDC, and RMT, quiescence/recovery/release, and exact
-flash restoration passed on both physical targets. Unreferenced ADC inputs
-are transport evidence, not accuracy evidence. ESP32-S3 remains target-build
-only for this ADC/pulse family; its separate audio composition has physical
-playback/capture evidence. No exact ADC/pulse binding is promoted until every
-fixed price dimension is measured or explicitly established as zero. Defining
+flash restoration passed on both physical targets. The exact S3 persistent
+binding additionally passed 1,250 reads/s, ten recoveries, zero transient
+heap, and concurrent physical ES8311 playback/capture. Its fixed/runtime
+price is configuration-specific. Unreferenced ADC inputs prove transport and
+calibrated conversion execution, not absolute voltage accuracy. Defining
 `NOBRO_ESP32_PERIPHERALS_DISABLED`
 before the include removes all three providers and their vendor symbols.
 

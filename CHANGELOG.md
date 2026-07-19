@@ -18,9 +18,14 @@
   and provenance. Workload fingerprints are recomputed from explicit
   configuration words, and source-derived ownership is distinct from measured
   values and declared zeroes.
-- Configuration-specific persistent ADC-DMA bindings for ESP32-C3 and ESP32-P4
+- Configuration-specific persistent ADC-DMA bindings for ESP32-C3, ESP32-P4,
+  and ESP32-S3
   carry complete fixed/runtime prices, upstream source pins, coexistence
   ownership, and exact target-build gates.
+- The S3 ADC binding covers one 20 ksample/s factory-calibrated workload,
+  repeated recovery, zero per-frame heap, and physical coexistence with the
+  exact ES8311 audio binding. Absolute voltage accuracy remains unclaimed
+  without a known electrical reference.
 - The ESP32-S3 Arduino ES8311 composition now has one exact 16 kHz mono
   signed-16 full-duplex binding with zero-disabled proof, isolated
   flash/static cost, retained heap, caller-stack/CPU/latency measurements,

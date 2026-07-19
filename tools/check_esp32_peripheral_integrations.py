@@ -27,6 +27,7 @@ PERSISTENT_PRICE_FQBNS = (
 PERSISTENT_BINDINGS = {
     "esp32:esp32:esp32c3": "binding-adc-persistent-esp32c3",
     "esp32:esp32:esp32p4": "binding-adc-persistent-esp32p4",
+    "esp32:esp32:esp32s3": "binding-adc-persistent-esp32s3",
 }
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
@@ -234,6 +235,9 @@ void loop() {}
 
 FORBIDDEN_DISABLED = (
     "analogContinuous",
+    "adc_cali_create_scheme_curve_fitting",
+    "adc_cali_create_scheme_line_fitting",
+    "adc_cali_raw_to_voltage",
     "adc_continuous_read",
     "ledcAttach",
     "rmtInit",
@@ -334,6 +338,25 @@ def verify_binding_price(fqbn: str, delta: tuple[int, int]) -> str:
         or disabled.get("max_ram_delta_bytes") != 0
     ):
         raise RuntimeError(f"{binding_id}: disabled-state proof is stale")
+    if fqbn == "esp32:esp32:esp32s3":
+        audio = next(
+            (
+                item
+                for item in registry.get("bindings", [])
+                if item.get("id") == "binding-audio-esp32s3-es8311"
+            ),
+            None,
+        )
+        if (
+            binding.get("coexistence", {}).get("compatible_instances")
+            != ["audio0"]
+            or not isinstance(audio, dict)
+            or audio.get("coexistence", {}).get("compatible_instances")
+            != ["adc0"]
+        ):
+            raise RuntimeError(
+                "ESP32-S3 ADC/audio coexistence receipt is missing or asymmetric"
+            )
     return report["status_field"]
 
 
@@ -397,6 +420,13 @@ def main() -> int:
                     f"  PASS ESP32-S3 {provider} delta "
                     f"flash={delta[0]} ram={delta[1]}"
                 )
+            s3_status_field = verify_binding_price(
+                reference_fqbn, individual["adc_dma_persistent"]
+            )
+            print(
+                f"  PASS {reference_fqbn} adc_dma_persistent exact price; "
+                f"report {s3_status_field}=target-build"
+            )
             for index, fqbn in enumerate(PERSISTENT_PRICE_FQBNS):
                 target_baseline = compile_sketch(
                     cli,

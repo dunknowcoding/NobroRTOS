@@ -231,6 +231,11 @@
           "platform": "esp32p4",
           "composition": "arduino",
           "capabilities": ["adc_dma"]
+        },
+        {
+          "platform": "esp32s3",
+          "composition": "arduino",
+          "capabilities": ["adc_dma"]
         }
       ]
     },
@@ -510,7 +515,7 @@
       "arch": "xtensa",
       "tier": "provider",
       "implementation_root": "core/ports/esp32s3",
-      "limitations": "Native Xtensa and USB claims remain build/host-test scoped. The separate Arduino composition has one exact, configuration-specific full-duplex audio binding; it does not promote a native audio provider or other codecs and rates.",
+      "limitations": "Native Xtensa and USB claims remain build/host-test scoped. The separate Arduino composition has exact, configuration-specific persistent ADC and full-duplex audio bindings; it does not promote native providers, other ADC shapes, codecs, or rates.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -526,6 +531,11 @@
         "arduino": {
           "surface": "arduino",
           "claims": {
+            "adc_dma": {
+              "maturity": "experimental",
+              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "limitations": "Exact only for one ADC1 channel, 12-bit calibrated output, 16 conversions per frame, 20 ksample/s, and 1250 reads per second. Absolute input accuracy remains unverified."
+            },
             "audio_i2s": {
               "maturity": "experimental",
               "evidence": ["esp32s3-arduino-audio-target-build"],
