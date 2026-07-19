@@ -52,6 +52,14 @@ public:
             config.sample_rate_hz == 0 || running_) {
             return NOBRO_ADC_DMA_INVALID_CONFIG;
         }
+        // Arduino-ESP32 widens DMA frames to its cache-line alignment. Reject
+        // a shape that would be silently changed so deadlines and averaging
+        // counts retain the caller's exact meaning.
+        if (alignedConversionsPerChannel(
+                config.channels, config.conversions_per_channel) !=
+            config.conversions_per_channel) {
+            return NOBRO_ADC_DMA_INVALID_CONFIG;
+        }
         if (configured_) {
             if (started_ && !analogContinuousStop()) return transportFault();
             started_ = false;
@@ -170,6 +178,23 @@ public:
 
     nobro_adc_dma_state_t state() const { return state_; }
     nobro_adc_dma_diagnostics_t diagnostics() const { return diagnostics_; }
+    static uint16_t alignedConversionsPerChannel(uint8_t channels,
+                                                 uint16_t requested) {
+        if (channels == 0 || requested == 0) return 0;
+#if defined(ESP_ARDUINO_DMA_BUF_ALIGN)
+        const uint32_t alignment = ESP_ARDUINO_DMA_BUF_ALIGN;
+#else
+        const uint32_t alignment = 4;
+#endif
+        const uint32_t bytes_per_conversion_round =
+            static_cast<uint32_t>(channels) * 4u;
+        uint32_t conversions = requested;
+        while ((conversions * bytes_per_conversion_round) % alignment != 0u) {
+            ++conversions;
+            if (conversions > UINT16_MAX) return 0;
+        }
+        return static_cast<uint16_t>(conversions);
+    }
     static constexpr size_t staticRamBytes() {
         return sizeof(Esp32ContinuousAdc<MaxPins>);
     }

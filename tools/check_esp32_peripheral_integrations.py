@@ -66,7 +66,10 @@ void setup() {
   app.wire(source, sink);
   if (exerciseProviders) {
     const uint8_t pins[1] = {1};
-    const nobro_adc_dma_config_t adcConfig = {1, 12, 16, 20000};
+    const uint16_t adcConversions =
+        decltype(adc)::alignedConversionsPerChannel(1, 16);
+    const nobro_adc_dma_config_t adcConfig = {
+        1, 12, adcConversions, 20000};
     nobro_adc_sample_t samples[1] = {};
     size_t count = 0;
     adc.configure(pins, adcConfig);
@@ -107,7 +110,10 @@ void setup() {
   app.wire(source, sink);
   if (exerciseProvider) {
     const uint8_t pins[1] = {1};
-    const nobro_adc_dma_config_t config = {1, 12, 16, 20000};
+    const uint16_t conversions =
+        decltype(adc)::alignedConversionsPerChannel(1, 16);
+    const nobro_adc_dma_config_t config = {
+        1, 12, conversions, 20000};
     nobro_adc_sample_t samples[1] = {};
     size_t count = 0;
     adc.configure(pins, config);

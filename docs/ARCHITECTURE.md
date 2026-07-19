@@ -691,13 +691,17 @@ ecosystem or a board-specific application hierarchy:
 
 `NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
 Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
-driver state internally. State-restoring classic ESP32 and single-core
-ESP32-C3 campaigns verify continuous sampling, LEDC frequency/duty, RMT pulse
-timing, lifecycle recovery/release, and immediate runtime reservations. The C3
-campaign measured 19,999 conversions/s, 1,002 Hz at 249 permille, and
-499-500 us RMT levels. Its unreferenced ADC input is not calibration evidence.
-The S3 and P4 rows remain target-build evidence only. No exact binding is
-promoted until stack, CPU, interrupt, DMA, coexistence, and other registry
+driver state internally. The ADC facade reports the aligned conversions per
+channel required by the board core and rejects a frame shape that Arduino-
+ESP32 would silently widen, keeping averaging and deadline semantics exact.
+State-restoring classic ESP32, single-core ESP32-C3, and dual-core ESP32-P4
+campaigns verify continuous sampling, LEDC frequency/duty, RMT pulse timing,
+lifecycle recovery/release, and immediate runtime reservations. C3 measured
+19,999 conversions/s, 1,002 Hz at 249 permille, and 499-500 us RMT levels.
+P4 measured 19,795 conversions/s with an exact aligned frame, 1,002 Hz at
+249 permille, and 499-500 us RMT levels. Unreferenced ADC inputs are not
+calibration evidence. S3 remains target-build evidence only. No exact binding
+is promoted until stack, CPU, interrupt, DMA, coexistence, and other registry
 price dimensions are measured; compilation never turns an unknown price into
 zero.
 

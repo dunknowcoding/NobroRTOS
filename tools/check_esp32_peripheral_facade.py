@@ -93,9 +93,21 @@ bool rmtDeinit(int) {
 }
 
 #define NOBRO_ESP32_PERIPHERALS_TEST 1
+#define ESP_ARDUINO_DMA_BUF_ALIGN 128
 #include <NobroEsp32Peripherals.h>
 
 int main() {
+  nobro::Esp32ContinuousAdc<1> aligned_adc;
+  const uint8_t aligned_pin[1] = {1};
+  const nobro_adc_dma_config_t unaligned_config = {1, 12, 16, 20000};
+  const nobro_adc_dma_config_t aligned_config = {1, 12, 32, 20000};
+  assert(nobro::Esp32ContinuousAdc<1>::alignedConversionsPerChannel(1, 16) == 32);
+  assert(aligned_adc.configure(aligned_pin, unaligned_config) ==
+         NOBRO_ADC_DMA_INVALID_CONFIG);
+  assert(aligned_adc.configure(aligned_pin, aligned_config) ==
+         NOBRO_ADC_DMA_OK);
+  assert(aligned_adc.release() == NOBRO_ADC_DMA_OK);
+
   nobro::Esp32ContinuousAdc<2> adc;
   const uint8_t pins[2] = {1, 2};
   const nobro_adc_dma_config_t adc_config = {2, 12, 16, 20000};
