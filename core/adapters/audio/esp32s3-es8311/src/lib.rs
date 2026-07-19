@@ -87,7 +87,7 @@ impl<T> Esp32s3Es8311<T> {
             && config.format == SampleFormat::Signed16
             && self.max_frame_bytes != 0
             && self.price.frame_bytes == self.max_frame_bytes
-            && self.price.has_bounded_queue()
+            && self.price.is_complete()
     }
 
     fn transport_error(&mut self) -> AudioError {
@@ -228,16 +228,18 @@ mod tests {
         AudioResourcePrice {
             frame_bytes: 192,
             queue_slots: 2,
-            flash_bytes: 4096,
-            static_ram_bytes: 512,
-            heap_bytes: 8192,
-            stack_bytes: 512,
-            vendor_reserved_ram_bytes: 4096,
-            worker_threads: 1,
-            cpu_cycles_per_second: 320_000,
-            interrupt_slots: 1,
-            dma_channels: 1,
-            controller_firmware_bytes: 0,
+            provider: nobro_audio::ProviderResourcePrice::unknown()
+                .with_flash_bytes(4096)
+                .with_static_ram_bytes(512)
+                .with_heap_bytes(8192)
+                .with_stack_bytes(512)
+                .with_vendor_reserved_ram_bytes(4096)
+                .with_worker_threads(1)
+                .with_cpu_cycles_per_second(320_000)
+                .with_interrupt_slots(1)
+                .with_dma_channels(1)
+                .with_controller_firmware_bytes(0)
+                .with_peripheral_channels(1),
         }
     }
 
@@ -280,8 +282,13 @@ mod tests {
             Err(AudioError::InvalidConfig)
         );
         let mut unpriced = price();
-        unpriced.static_ram_bytes = 383;
+        unpriced.provider.static_ram_bytes = 383;
         let mut adapter = Esp32s3Es8311::new(Fake::default(), 192, unpriced);
+        assert_eq!(adapter.configure(config()), Err(AudioError::InvalidConfig));
+
+        let mut unknown = price();
+        unknown.provider = nobro_audio::ProviderResourcePrice::default();
+        let mut adapter = Esp32s3Es8311::new(Fake::default(), 192, unknown);
         assert_eq!(adapter.configure(config()), Err(AudioError::InvalidConfig));
     }
 

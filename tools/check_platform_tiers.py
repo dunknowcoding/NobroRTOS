@@ -880,6 +880,9 @@ def selftest() -> int:
             "maturity": "compile-only",
             "evidence_gates": ["esp32s3-target-build"],
             "measured_price": {field: 0 for field in check_board_features.PRICE_FIELDS},
+            "price_provenance": {
+                field: "declared-zero" for field in check_board_features.PRICE_FIELDS
+            },
             "coexistence": {
                 field: [] for field in check_board_features.COEXISTENCE_FIELDS
             },

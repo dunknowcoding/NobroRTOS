@@ -5,3 +5,6 @@ edition.workspace = true
 
 # Small allocation-free servo-domain contract. Motor control remains separate
 # until it has its own contract and pinned implementation.
+
+[dependencies]
+nobro-device = { path = "../nobro_device" }

@@ -136,7 +136,9 @@ reservations. C3 measured 19,999 conversions/s, 1,002 Hz at 249 permille, and
 frame, 1,002 Hz at 249 permille, and 499-500 us RMT levels. Unreferenced ADC
 inputs are transport evidence, not accuracy evidence. ESP32-S3 remains
 target-build evidence only, and no exact board binding is promoted until every
-price dimension is measured. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED`
+price dimension, including peripheral-channel ownership distinct from DMA,
+is measured or explicitly established as zero. Defining
+`NOBRO_ESP32_PERIPHERALS_DISABLED`
 before the include removes all three providers and their vendor symbols.
 
 Use `quiesce()` when the configuration must remain recoverable. Use

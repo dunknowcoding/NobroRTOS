@@ -64,7 +64,7 @@ impl<T: Esp32LedcTransport> PwmEngineBackend for Esp32Ledc<T> {
     }
 
     fn configure(&mut self, config: PwmConfig) -> Result<(), PulseError> {
-        if !config.is_valid() || self.state == PulseState::Busy {
+        if !config.is_valid() || !self.price.is_complete() || self.state == PulseState::Busy {
             return Err(PulseError::InvalidConfig);
         }
         if self.attached && !self.transport.detach() {
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn duty_bounds_lifecycle_and_recovery_hold() {
-        let mut ledc = Esp32Ledc::new(Fake::default(), PulseResourcePrice::default());
+        let mut ledc = Esp32Ledc::new(Fake::default(), PulseResourcePrice::known_zero());
         let config = PwmConfig {
             frequency_hz: 20_000,
             resolution_bits: 10,
@@ -184,5 +184,17 @@ mod tests {
         assert_eq!(ledc.release(), Ok(()));
         assert_eq!(ledc.set_duty(1), Err(PulseError::NotReady));
         assert_eq!(ledc.configure(config), Ok(()));
+    }
+
+    #[test]
+    fn unknown_price_cannot_mount_as_zero_cost() {
+        let mut ledc = Esp32Ledc::new(Fake::default(), PulseResourcePrice::default());
+        assert_eq!(
+            ledc.configure(PwmConfig {
+                frequency_hz: 20_000,
+                resolution_bits: 10,
+            }),
+            Err(PulseError::InvalidConfig)
+        );
     }
 }

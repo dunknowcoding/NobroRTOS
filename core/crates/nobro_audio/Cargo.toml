@@ -8,3 +8,6 @@ edition.workspace = true
 
 [features]
 default = []
+
+[dependencies]
+nobro-device = { path = "../nobro_device" }

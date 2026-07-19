@@ -128,19 +128,10 @@ pub struct AdcSample {
 }
 
 /// Complete admission price for one mounted ADC-DMA provider.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct AdcDmaResourcePrice {
-    pub flash_bytes: u32,
-    pub static_ram_bytes: u32,
-    pub heap_bytes: u32,
-    pub stack_bytes: u32,
-    pub vendor_reserved_ram_bytes: u32,
-    pub worker_threads: u8,
-    pub cpu_cycles_per_second: u64,
-    pub interrupt_slots: u8,
-    pub dma_channels: u8,
-    pub controller_firmware_bytes: u32,
-}
+///
+/// The shared type distinguishes unknown fields from evidenced zeroes and
+/// includes peripheral-channel ownership alongside DMA/interrupt ownership.
+pub use nobro_device::ProviderResourcePrice as AdcDmaResourcePrice;
 
 /// Allocation-free ADC-DMA contract. A backend returns at most one sample per
 /// configured channel for each read; vendor averaging and DMA storage remain

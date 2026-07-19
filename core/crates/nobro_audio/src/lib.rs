@@ -1,6 +1,8 @@
 //! Allocation-free audio contracts with explicit format, lifecycle, and backpressure.
 #![cfg_attr(not(test), no_std)]
 
+pub use nobro_device::ProviderResourcePrice;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SampleFormat {
     Signed16,
@@ -58,16 +60,7 @@ pub enum AudioError {
 pub struct AudioResourcePrice {
     pub frame_bytes: usize,
     pub queue_slots: usize,
-    pub flash_bytes: u32,
-    pub static_ram_bytes: u32,
-    pub heap_bytes: u32,
-    pub stack_bytes: u32,
-    pub vendor_reserved_ram_bytes: u32,
-    pub worker_threads: u8,
-    pub cpu_cycles_per_second: u64,
-    pub interrupt_slots: u8,
-    pub dma_channels: u8,
-    pub controller_firmware_bytes: u32,
+    pub provider: ProviderResourcePrice,
 }
 
 impl AudioResourcePrice {
@@ -77,8 +70,22 @@ impl AudioResourcePrice {
 
     pub const fn has_bounded_queue(self) -> bool {
         match self.frame_storage_bytes() {
-            Some(bytes) => bytes != 0 && bytes <= self.static_ram_bytes as usize,
+            Some(bytes) => bytes != 0 && bytes <= self.provider.static_ram_bytes as usize,
             None => false,
+        }
+    }
+
+    pub const fn is_complete(self) -> bool {
+        self.has_bounded_queue() && self.provider.is_complete()
+    }
+}
+
+impl Default for AudioResourcePrice {
+    fn default() -> Self {
+        Self {
+            frame_bytes: 0,
+            queue_slots: 0,
+            provider: ProviderResourcePrice::unknown(),
         }
     }
 }
@@ -243,18 +250,26 @@ mod tests {
         let price = AudioResourcePrice {
             frame_bytes: 192,
             queue_slots: 2,
-            flash_bytes: 4096,
-            static_ram_bytes: 512,
-            heap_bytes: 2048,
-            stack_bytes: 512,
-            vendor_reserved_ram_bytes: 4096,
-            worker_threads: 1,
-            cpu_cycles_per_second: 320_000,
-            interrupt_slots: 1,
-            dma_channels: 1,
-            controller_firmware_bytes: 0,
+            provider: ProviderResourcePrice::unknown()
+                .with_flash_bytes(4096)
+                .with_static_ram_bytes(512)
+                .with_heap_bytes(2048)
+                .with_stack_bytes(512)
+                .with_vendor_reserved_ram_bytes(4096)
+                .with_worker_threads(1)
+                .with_cpu_cycles_per_second(320_000)
+                .with_interrupt_slots(1)
+                .with_dma_channels(1)
+                .with_controller_firmware_bytes(0)
+                .with_peripheral_channels(1),
         };
         assert!(price.has_bounded_queue());
+        assert!(price.is_complete());
         assert_eq!(price.frame_storage_bytes(), Some(384));
+    }
+
+    #[test]
+    fn unpriced_zeroes_are_not_a_complete_price() {
+        assert!(!AudioResourcePrice::default().is_complete());
     }
 }

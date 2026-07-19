@@ -141,8 +141,8 @@ Fixed-capacity structured data store for NobroRTOS (database-style operations,
 
 ## `nobro-device`
 Extensible device-module framework for NobroRTOS.
-- **struct**: `ServoProfile`, `MotorProfile`, `SensorDescriptor`, `SensorRegistry`, `StepperProfile`, `LedStripProfile`, `RelayProfile`, `DisplayProfile`, `GpsProfile`, `RangerProfile`, `BoardModule`, `BoardRegistry`
-- **enum**: `ActuatorKind`, `SensorKind`, `Bus`, `ColorOrder`
+- **struct**: `ProviderResourcePrice`, `ServoProfile`, `MotorProfile`, `SensorDescriptor`, `SensorRegistry`, `StepperProfile`, `LedStripProfile`, `RelayProfile`, `DisplayProfile`, `GpsProfile`, `RangerProfile`, `BoardModule`, `BoardRegistry`
+- **enum**: `ResourceDimension`, `ActuatorKind`, `SensorKind`, `Bus`, `ColorOrder`
 - **fn**: `angle_to_pulse`, `speed_to_pulse`, `throttle_to_pulse`, `arm_pulse`, `identify`, `register`, `len`, `is_empty`, `find_kind`, `identify_at`, `angle_to_steps`, `rpm_to_sps`, `frame_bytes`, `drive_level`, `framebuffer_bytes`, `nmea_checksum`, `echo_us_to_mm`, `register`, `find`, `len`, `is_empty`
 
 ## `nobro-hal`
@@ -205,14 +205,14 @@ Security + data-integrity primitives.
 ## `nobro-sensor`
 No-heap sensor utilities, transport-agnostic.
 - **trait**: `AdcDmaBackend`
-- **struct**: `SensorHealth`, `Calibration`, `Decimator`, `AdcDmaConfig`, `AdcSample`, `AdcDmaResourcePrice`
+- **struct**: `SensorHealth`, `Calibration`, `Decimator`, `AdcDmaConfig`, `AdcSample`
 - **enum**: `AdcDmaState`, `AdcDmaError`
 - **fn**: `update`, `is_stuck`, `out_of_range`, `observe`, `finalize`, `apply`, `bias`, `tick`, `tmr_vote`
 
 ## `nobro-servo`
 Allocation-free servo command contract.
 - **trait**: `ServoBackend`, `PwmEngineBackend`, `PulseEngineBackend`
-- **struct**: `ServoCommand`, `ServoBounds`, `PwmConfig`, `PulseSymbol`, `PulseResourcePrice`
+- **struct**: `ServoCommand`, `ServoBounds`, `PwmConfig`, `PulseSymbol`
 - **enum**: `PulseState`, `PulseError`
 
 ## `nobro-storage`

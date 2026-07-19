@@ -4,3 +4,6 @@ version.workspace = true
 edition.workspace = true
 # No-heap sensor utilities: health/fault detection, offset calibration,
 # and sample-rate decimation.
+
+[dependencies]
+nobro-device = { path = "../nobro_device" }

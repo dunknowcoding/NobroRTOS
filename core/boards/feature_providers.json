@@ -25,7 +25,8 @@
     "cpu_cycles_per_second",
     "interrupt_slots",
     "dma_channels",
-    "controller_firmware_bytes"
+    "controller_firmware_bytes",
+    "peripheral_channels"
   ],
   "coexistence_dimensions": [
     "leases",
@@ -164,7 +165,8 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "supported_targets": [
         "arduino:esp32",
@@ -173,7 +175,8 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "Physical rate, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; conversion accuracy and the C3, S3, and P4 physical paths remain unverified.",
+        "Physical rate, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; conversion accuracy and the ESP32-S3 physical path remain unverified.",
+        "ESP32-P4 DMA alignment can widen a requested conversion frame, so the facade rejects non-exact frame shapes.",
         "The Arduino core owns process-wide ADC-DMA state; an exact binding awaits every measured price dimension."
       ]
     },
@@ -196,7 +199,7 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "Physical frequency, duty, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; coexistence and the C3, S3, and P4 physical paths remain unverified.",
+        "Physical frequency, duty, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; coexistence and the ESP32-S3 physical path remain unverified.",
         "An exact binding awaits every measured price dimension."
       ]
     },
@@ -219,7 +222,7 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "Physical waveform, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; coexistence and the C3, S3, and P4 physical paths remain unverified.",
+        "Physical waveform, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; coexistence and the ESP32-S3 physical path remain unverified.",
         "The board core owns RMT memory, channel, ISR, and DMA resources; an exact binding awaits every measured price dimension."
       ]
     }

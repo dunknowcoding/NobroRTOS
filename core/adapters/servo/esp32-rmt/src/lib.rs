@@ -85,7 +85,11 @@ impl<T: Esp32RmtTransport> PulseEngineBackend for Esp32Rmt<T> {
     }
 
     fn configure(&mut self, tick_hz: u32) -> Result<(), PulseError> {
-        if tick_hz == 0 || self.max_symbols == 0 || self.state == PulseState::Busy {
+        if tick_hz == 0
+            || self.max_symbols == 0
+            || !self.price.is_complete()
+            || self.state == PulseState::Busy
+        {
             return Err(PulseError::InvalidConfig);
         }
         if self.attached && !self.transport.deinit() {
@@ -201,7 +205,7 @@ mod tests {
 
     #[test]
     fn symbol_bounds_deadline_and_recovery_are_attributed() {
-        let mut rmt = Esp32Rmt::new(Fake::default(), 2, PulseResourcePrice::default());
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, PulseResourcePrice::known_zero());
         rmt.configure(1_000_000).unwrap();
         let symbols = [
             PulseSymbol {
@@ -230,5 +234,11 @@ mod tests {
         rmt.release().unwrap();
         assert_eq!(rmt.transmit(&symbols, 100), Err(PulseError::NotReady));
         rmt.configure(1_000_000).unwrap();
+    }
+
+    #[test]
+    fn unknown_price_cannot_mount_as_zero_cost() {
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, PulseResourcePrice::default());
+        assert_eq!(rmt.configure(1_000_000), Err(PulseError::InvalidConfig));
     }
 }

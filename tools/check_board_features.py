@@ -28,6 +28,7 @@ PRICE_FIELDS = {
     "interrupt_slots",
     "dma_channels",
     "controller_firmware_bytes",
+    "peripheral_channels",
 }
 COEXISTENCE_FIELDS = {
     "leases",
@@ -177,6 +178,24 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             not isinstance(value, int) or value < 0 for value in price.values()
         ):
             errors.append(f"{prefix}: measured_price must contain every non-negative dimension")
+        price_provenance = binding.get("price_provenance")
+        if (
+            not isinstance(price_provenance, dict)
+            or set(price_provenance) != PRICE_FIELDS
+            or any(
+                value not in {"measured", "declared-zero"}
+                for value in price_provenance.values()
+            )
+        ):
+            errors.append(
+                f"{prefix}: price_provenance must classify every dimension as "
+                "measured or declared-zero"
+            )
+        elif isinstance(price, dict) and any(
+            price.get(field) != 0 and price_provenance[field] == "declared-zero"
+            for field in PRICE_FIELDS
+        ):
+            errors.append(f"{prefix}: declared-zero price provenance has a non-zero value")
         coexistence = binding.get("coexistence")
         if not isinstance(coexistence, dict) or set(coexistence) != COEXISTENCE_FIELDS or any(
             not isinstance(value, list)
@@ -236,6 +255,40 @@ def selftest() -> int:
     broken = copy.deepcopy(registry)
     broken["capability_kinds"][0]["portable_contract_id"] = "missing"
     assert any("portable contract" in error for error in validate(broken, catalog))
+    binding = {
+        "id": "selftest-binding",
+        "backend_id": registry["backends"][0]["id"],
+        "capability_kind": registry["backends"][0]["capability_kind"],
+        "platform": "esp32s3",
+        "composition": "arduino",
+        "instance": "audio0",
+        "maturity": "compile-only",
+        "evidence_gates": ["selftest-gate"],
+        "measured_price": {field: 0 for field in PRICE_FIELDS},
+        "price_provenance": {field: "declared-zero" for field in PRICE_FIELDS},
+        "coexistence": {field: [] for field in COEXISTENCE_FIELDS},
+        "disabled_symbol_gate": {
+            "baseline": "selftest-baseline",
+            "feature": "audio_i2s",
+            "forbidden_symbols": ["selftest_backend"],
+            "max_flash_delta_bytes": 0,
+            "max_ram_delta_bytes": 0,
+        },
+        "report_wiring": {
+            "provider_id": registry["backends"][0]["capability_kind"],
+            "status_field": "audio0",
+            "evidence_gate": "selftest-gate",
+        },
+    }
+    priced = copy.deepcopy(registry)
+    priced["bindings"].append(binding)
+    assert not validate(priced, catalog)
+    broken = copy.deepcopy(priced)
+    broken["bindings"][0]["price_provenance"].pop("heap_bytes")
+    assert any("price_provenance" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(priced)
+    broken["bindings"][0]["measured_price"]["heap_bytes"] = 1
+    assert any("declared-zero" in error for error in validate(broken, catalog))
     print("BOARD FEATURES SELFTEST: PASS (vocabulary, backend, binding, price, zero-delta)")
     return 0
 

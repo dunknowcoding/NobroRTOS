@@ -784,6 +784,9 @@ version = "0.3.2"
 [[package]]
 name = "nobro-audio"
 version = "0.3.2"
+dependencies = [
+ "nobro-device",
+]
 
 [[package]]
 name = "nobro-c-abi-demo"
@@ -916,10 +919,16 @@ dependencies = [
 [[package]]
 name = "nobro-sensor"
 version = "0.3.2"
+dependencies = [
+ "nobro-device",
+]
 
 [[package]]
 name = "nobro-servo"
 version = "0.3.2"
+dependencies = [
+ "nobro-device",
+]
 
 [[package]]
 name = "nobro-storage"

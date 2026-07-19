@@ -45,7 +45,11 @@ coexistence policy, evidence, and report wiring. Candidate capability kinds do
 not become platform claims: `platform_tiers.json` accepts a kind only when the
 registry contains an exact binding and the ordinary scoped evidence gate.
 Disabled bindings must declare the same-board baseline, zero flash/RAM delta,
-and forbidden backend symbols.
+and forbidden backend symbols. Resource prices share one typed contract across
+audio, sensor, and pulse domains. Default numeric zeroes remain *unknown*;
+every exact binding must classify each field as measured or explicitly
+declared zero. Peripheral/controller channels are priced independently from
+DMA channels and interrupt slots.
 
 ### Compatibility Strategy
 
@@ -701,9 +705,9 @@ lifecycle recovery/release, and immediate runtime reservations. C3 measured
 P4 measured 19,795 conversions/s with an exact aligned frame, 1,002 Hz at
 249 permille, and 499-500 us RMT levels. Unreferenced ADC inputs are not
 calibration evidence. S3 remains target-build evidence only. No exact binding
-is promoted until stack, CPU, interrupt, DMA, coexistence, and other registry
-price dimensions are measured; compilation never turns an unknown price into
-zero.
+is promoted until stack, CPU, interrupt, DMA, peripheral-channel, coexistence,
+and other registry price dimensions are measured; compilation never turns an
+unknown price into zero.
 
 Provider lifecycle distinguishes temporary quiescence from unmount:
 `quiesce` preserves logical configuration for `recover`, while `release`

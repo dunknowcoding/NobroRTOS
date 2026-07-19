@@ -8,6 +8,172 @@
 //! approachability of an Arduino library.
 #![cfg_attr(not(test), no_std)]
 
+// ---------------------------------------------------------------- provider resources
+
+/// One independently measurable resource dimension owned by a mounted provider.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ResourceDimension {
+    FlashBytes = 0,
+    StaticRamBytes = 1,
+    HeapBytes = 2,
+    StackBytes = 3,
+    VendorReservedRamBytes = 4,
+    WorkerThreads = 5,
+    CpuCyclesPerSecond = 6,
+    InterruptSlots = 7,
+    DmaChannels = 8,
+    ControllerFirmwareBytes = 9,
+    PeripheralChannels = 10,
+}
+
+impl ResourceDimension {
+    const fn mask(self) -> u16 {
+        1_u16 << self as u8
+    }
+}
+
+/// Complete admission price for one mounted board-feature provider.
+///
+/// Values and knowledge are deliberately separate: zero can be a measured or
+/// declared result, while [`ProviderResourcePrice::unknown`] keeps every
+/// dimension unknown. This prevents a default value from silently becoming a
+/// claim that a vendor stack consumes no heap, stack, interrupt, DMA, or
+/// peripheral channels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProviderResourcePrice {
+    pub flash_bytes: u32,
+    pub static_ram_bytes: u32,
+    pub heap_bytes: u32,
+    pub stack_bytes: u32,
+    pub vendor_reserved_ram_bytes: u32,
+    pub worker_threads: u8,
+    pub cpu_cycles_per_second: u64,
+    pub interrupt_slots: u8,
+    pub dma_channels: u8,
+    pub controller_firmware_bytes: u32,
+    pub peripheral_channels: u8,
+    known_dimensions: u16,
+}
+
+impl ProviderResourcePrice {
+    pub const ALL_KNOWN: u16 = (1_u16 << (ResourceDimension::PeripheralChannels as u8 + 1)) - 1;
+
+    /// Construct an unpriced provider. Every numeric field is a placeholder,
+    /// not a zero-cost claim, until its typed builder marks the field known.
+    pub const fn unknown() -> Self {
+        Self {
+            flash_bytes: 0,
+            static_ram_bytes: 0,
+            heap_bytes: 0,
+            stack_bytes: 0,
+            vendor_reserved_ram_bytes: 0,
+            worker_threads: 0,
+            cpu_cycles_per_second: 0,
+            interrupt_slots: 0,
+            dma_channels: 0,
+            controller_firmware_bytes: 0,
+            peripheral_channels: 0,
+            known_dimensions: 0,
+        }
+    }
+
+    /// Explicitly declare every resource dimension known and zero.
+    ///
+    /// Use this only when evidence establishes zero; [`Default`] intentionally
+    /// returns [`Self::unknown`].
+    pub const fn known_zero() -> Self {
+        Self {
+            known_dimensions: Self::ALL_KNOWN,
+            ..Self::unknown()
+        }
+    }
+
+    pub const fn is_known(self, dimension: ResourceDimension) -> bool {
+        self.known_dimensions & dimension.mask() != 0
+    }
+
+    pub const fn is_complete(self) -> bool {
+        self.known_dimensions == Self::ALL_KNOWN
+    }
+
+    pub const fn known_dimensions(self) -> u16 {
+        self.known_dimensions
+    }
+
+    pub const fn with_flash_bytes(mut self, value: u32) -> Self {
+        self.flash_bytes = value;
+        self.known_dimensions |= ResourceDimension::FlashBytes.mask();
+        self
+    }
+
+    pub const fn with_static_ram_bytes(mut self, value: u32) -> Self {
+        self.static_ram_bytes = value;
+        self.known_dimensions |= ResourceDimension::StaticRamBytes.mask();
+        self
+    }
+
+    pub const fn with_heap_bytes(mut self, value: u32) -> Self {
+        self.heap_bytes = value;
+        self.known_dimensions |= ResourceDimension::HeapBytes.mask();
+        self
+    }
+
+    pub const fn with_stack_bytes(mut self, value: u32) -> Self {
+        self.stack_bytes = value;
+        self.known_dimensions |= ResourceDimension::StackBytes.mask();
+        self
+    }
+
+    pub const fn with_vendor_reserved_ram_bytes(mut self, value: u32) -> Self {
+        self.vendor_reserved_ram_bytes = value;
+        self.known_dimensions |= ResourceDimension::VendorReservedRamBytes.mask();
+        self
+    }
+
+    pub const fn with_worker_threads(mut self, value: u8) -> Self {
+        self.worker_threads = value;
+        self.known_dimensions |= ResourceDimension::WorkerThreads.mask();
+        self
+    }
+
+    pub const fn with_cpu_cycles_per_second(mut self, value: u64) -> Self {
+        self.cpu_cycles_per_second = value;
+        self.known_dimensions |= ResourceDimension::CpuCyclesPerSecond.mask();
+        self
+    }
+
+    pub const fn with_interrupt_slots(mut self, value: u8) -> Self {
+        self.interrupt_slots = value;
+        self.known_dimensions |= ResourceDimension::InterruptSlots.mask();
+        self
+    }
+
+    pub const fn with_dma_channels(mut self, value: u8) -> Self {
+        self.dma_channels = value;
+        self.known_dimensions |= ResourceDimension::DmaChannels.mask();
+        self
+    }
+
+    pub const fn with_controller_firmware_bytes(mut self, value: u32) -> Self {
+        self.controller_firmware_bytes = value;
+        self.known_dimensions |= ResourceDimension::ControllerFirmwareBytes.mask();
+        self
+    }
+
+    pub const fn with_peripheral_channels(mut self, value: u8) -> Self {
+        self.peripheral_channels = value;
+        self.known_dimensions |= ResourceDimension::PeripheralChannels.mask();
+        self
+    }
+}
+
+impl Default for ProviderResourcePrice {
+    fn default() -> Self {
+        Self::unknown()
+    }
+}
+
 // ---------------------------------------------------------------- taxonomy
 
 /// Actuator category (extend as new kinds appear).
@@ -48,6 +214,43 @@ pub enum Bus {
     Spi,
     Analog,
     Pwm,
+}
+
+#[cfg(test)]
+mod resource_price_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_zero_and_measured_zero_are_distinct() {
+        let unknown = ProviderResourcePrice::default();
+        assert_eq!(unknown.flash_bytes, 0);
+        assert!(!unknown.is_complete());
+        assert!(!unknown.is_known(ResourceDimension::FlashBytes));
+
+        let zero = ProviderResourcePrice::known_zero();
+        assert!(zero.is_complete());
+        assert!(zero.is_known(ResourceDimension::PeripheralChannels));
+        assert_eq!(zero.known_dimensions(), ProviderResourcePrice::ALL_KNOWN);
+    }
+
+    #[test]
+    fn typed_builders_complete_every_dimension_without_sentinels() {
+        let price = ProviderResourcePrice::unknown()
+            .with_flash_bytes(1)
+            .with_static_ram_bytes(2)
+            .with_heap_bytes(3)
+            .with_stack_bytes(4)
+            .with_vendor_reserved_ram_bytes(5)
+            .with_worker_threads(1)
+            .with_cpu_cycles_per_second(6)
+            .with_interrupt_slots(1)
+            .with_dma_channels(1)
+            .with_controller_firmware_bytes(7)
+            .with_peripheral_channels(1);
+        assert!(price.is_complete());
+        assert_eq!(price.heap_bytes, 3);
+        assert_eq!(price.peripheral_channels, 1);
+    }
 }
 
 // ---------------------------------------------------------------- actuators

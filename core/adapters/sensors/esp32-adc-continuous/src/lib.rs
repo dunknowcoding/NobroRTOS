@@ -99,7 +99,10 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
     }
 
     fn configure(&mut self, config: AdcDmaConfig) -> Result<(), AdcDmaError> {
-        if !config.is_valid() || matches!(self.state, AdcDmaState::Running) {
+        if !config.is_valid()
+            || !self.price.is_complete()
+            || matches!(self.state, AdcDmaState::Running)
+        {
             return Err(AdcDmaError::InvalidConfig);
         }
         if self.configured {
@@ -298,7 +301,7 @@ mod tests {
 
     #[test]
     fn lifecycle_and_frame_bounds_are_explicit() {
-        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::default());
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::known_zero());
         assert_eq!(adc.configure(config()), Ok(()));
         assert_eq!(adc.start(), Ok(()));
         let mut short = [AdcSample::default(); 1];
@@ -327,7 +330,7 @@ mod tests {
 
     #[test]
     fn partial_and_deadline_paths_fault_and_attribute() {
-        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::default());
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::known_zero());
         adc.configure(config()).unwrap();
         adc.start().unwrap();
         adc.transport.partial = true;
@@ -346,5 +349,11 @@ mod tests {
             Err(AdcDmaError::DeadlineMiss)
         );
         assert_eq!(adc.diagnostics().deadline_misses, 1);
+    }
+
+    #[test]
+    fn unknown_price_cannot_mount_as_zero_cost() {
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::default());
+        assert_eq!(adc.configure(config()), Err(AdcDmaError::InvalidConfig));
     }
 }

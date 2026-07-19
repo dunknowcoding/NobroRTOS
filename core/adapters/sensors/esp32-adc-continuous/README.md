@@ -4,6 +4,9 @@ This adapter mounts a board-core continuous ADC/DMA implementation behind the
 allocation-free `nobro-sensor` contract. NobroRTOS owns configuration bounds,
 lifecycle, deadline and partial-frame reporting, while the mounted transport
 owns ADC conversion, DMA storage, interrupts, and vendor runtime resources.
+The Rust adapter refuses to mount until every shared resource-price dimension
+is known. A measured or declared zero is distinct from the default unknown
+state, and ADC-controller/channel ownership is priced separately from DMA.
 
 The in-tree transport split has host tests and Arduino-ESP32 target builds.
 The Arduino facade exposes the DMA-aligned conversions-per-channel count and

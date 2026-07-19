@@ -90,19 +90,11 @@ impl PulseSymbol {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PulseResourcePrice {
-    pub flash_bytes: u32,
-    pub static_ram_bytes: u32,
-    pub heap_bytes: u32,
-    pub stack_bytes: u32,
-    pub vendor_reserved_ram_bytes: u32,
-    pub worker_threads: u8,
-    pub cpu_cycles_per_second: u64,
-    pub interrupt_slots: u8,
-    pub dma_channels: u8,
-    pub controller_firmware_bytes: u32,
-}
+/// Complete admission price for one mounted pulse provider.
+///
+/// Unknown fields do not masquerade as zero and peripheral-channel ownership
+/// is priced separately from DMA channels.
+pub use nobro_device::ProviderResourcePrice as PulseResourcePrice;
 
 /// Fixed-frequency duty engine such as ESP32 LEDC.
 pub trait PwmEngineBackend {

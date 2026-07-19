@@ -7,6 +7,9 @@ Nobro owns format validation, frame bounds, lifecycle, backpressure, and
 admission accounting. The mounted Arduino-ESP32/NiusAudio transport owns codec
 register control plus I2S/DMA. Vendor resources remain explicit in
 `AudioResourcePrice`; the adapter does not relabel them as portable Rust costs.
+The embedded provider price distinguishes unknown fields from evidenced zeroes
+and includes I2S peripheral channels separately from DMA channels. Incomplete
+prices fail configuration instead of mounting as apparent zero-cost providers.
 
 The public crate has host conformance tests. Target compilation and physical
 promotion are separate evidence gates.
