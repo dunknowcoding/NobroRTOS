@@ -19,6 +19,8 @@ Current contents:
 - `src/NobroEsp32Peripherals.h` with bounded continuous ADC/DMA frames, LEDC
   duty output, and RMT pulse symbols. Each provider is optional and keeps
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
+- `src/NobroArduinoWiFiS3.h` with an opt-in UNO R4 WiFi association facade,
+  caller-sized scan output, runtime-only credentials, and explicit lifecycle.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
@@ -157,6 +159,30 @@ Use `quiesce()` when the configuration must remain recoverable. Use
 configuration, and return the provider to `Down`; configure it again before
 reuse. This explicit split makes optional modules detachable without hiding
 vendor resources behind object lifetime.
+
+## UNO R4 WiFiS3 association
+
+Include the optional facade only in an UNO R4 WiFi sketch:
+
+```cpp
+#include <NobroArduinoWiFiS3.h>
+
+nobro::ArduinoWiFiS3Stack wifi;
+```
+
+`mount()`, `scan()`, `join()`, `poll()`, `leave()`, `quiesce()`, and
+`recover()` keep association lifecycle explicit. `scan()` copies no more than
+the caller-provided record capacity. `join()` accepts borrowed byte spans, so
+credentials are never retained in the adapter. The Arduino Renesas WiFiS3
+library remains authoritative for the board's UART/coprocessor protocol.
+
+WiFiS3 internally uses dynamic strings and synchronous modem calls. The
+facade reports a deadline miss after a call returns; it cannot preempt that
+call. TCP/UDP clients and endpoints remain separate caller-owned objects.
+Physical association, socket traffic, controller resources, and exact runtime
+prices are not established by the current target-build gate. Define
+`NOBRO_WIFI_S3_DISABLED` before including the facade to remove both Nobro and
+WiFiS3 symbols from that composition.
 
 ## Relationship to the full NobroRTOS repository
 

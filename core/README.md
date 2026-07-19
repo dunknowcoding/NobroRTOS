@@ -4,6 +4,8 @@ The directory tree is the ownership model:
 
 - `crates/<nobro_domain>` contains reusable contracts and runtime capabilities.
 - `adapters/<domain>/<implementation>` contains device or external-library bridges.
+  A large protocol domain may add one stack-family level, for example
+  `adapters/wireless/wifi/<implementation>`.
 - `apps/<use-case>/<composition>` contains complete firmware compositions.
 - `boards/<platform>/<board>` contains data-only board profiles.
 - `ports/<mcu-family>` contains target provider implementations.

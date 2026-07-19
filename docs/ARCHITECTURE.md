@@ -24,7 +24,7 @@ and diagnosable recovery.
 | Layer | Crate or path | Responsibility |
 | ----- | ------------- | -------------- |
 | App | `core/apps/<use-case>/*` | Compose board, adapters, manifest, startup graph, and runtime |
-| Adapter | `core/adapters/<domain>/*` | Translate devices or libraries into SAL traits |
+| Adapter | `core/adapters/<domain>/*` or `core/adapters/<domain>/<stack-family>/*` | Translate devices or libraries into SAL traits |
 | Domain | `core/crates/nobro_<domain>` | Shared bounded contracts; no board or external-library ownership |
 | SAL | `nobro-sal` | Stable service traits for hardware, communication, AI, and edge services |
 | Kernel | `nobro-kernel` | Admission, quota, IPC, alarms, recovery, health, reports |
@@ -769,7 +769,7 @@ Implemented today in `nobro-wireless`:
   resource accounting plus a deadline check for one immediate send attempt.
   `TxContract` does not schedule priority or execute retries: priority belongs to the
   scheduler and retry state belongs to the caller. Implementations are constructed
-  explicitly; the crate does not yet select a vendor stack from a board profile.
+  explicitly; the portable crate does not select a vendor stack from a board profile.
 - `Mfrc522<SpiIo>` implements bounded ISO 14443A UID polling, and `Cc2530<ByteIo>`
   implements an initialized raw IEEE 802.15.4 PSDU transport behind `WirelessBackend`,
   bounded by the 127-byte PHY frame limit. It is not a Zigbee join/network/APS stack;
@@ -779,9 +779,16 @@ Implemented today in `nobro-wireless`:
 - `WifiStack` and `BleStack` are distinct allocation-free lifecycle contracts beneath
   the common data plane. `MountedWifi`/`MountedBle` own fallible mounting; credentials
   remain runtime-only, and `BleEventQueue` bounds callback-to-task transfer.
+- `wireless/wifi/arduino-wifis3` and `NobroArduinoWiFiS3.h` form the first
+  concrete compile-only WiFi bridge. The facade owns no credentials or heap,
+  copies at most the caller's scan capacity, and keeps TCP/UDP endpoints
+  separate. The UNO R4 board core still owns its process-wide
+  UART/coprocessor stack, blocking calls, dynamic strings, sockets, and
+  controller resources.
 
-Concrete WiFi join/IP adapters, BLE controller/GATT adapters, Zigbee co-processor
-lifecycle, shared-radio arbitration, and vendor backend selection remain future work.
+Physical WiFi association/socket evidence, additional WiFi backends, BLE
+controller/GATT adapters, Zigbee co-processor lifecycle, shared-radio
+arbitration, and measured vendor resource prices remain future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link
 crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
 may coexist when board composition explicitly admits shared memory, interrupts,

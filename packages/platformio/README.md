@@ -66,6 +66,11 @@ storage with no per-frame heap allocation. LEDC and RMT providers remain
 independently optional. All capacities and the exact aligned conversion count
 are explicit at compile time.
 
+UNO R4 WiFi projects may include `NobroArduinoWiFiS3.h` directly. The
+compile-only facade uses the platform's own WiFiS3 library for bounded
+association lifecycle and caller-sized scan output; it does not promote
+physical traffic or measured vendor resource bounds.
+
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade
 validates a bounded declaration; native execution and target evidence remain in

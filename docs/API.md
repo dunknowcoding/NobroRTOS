@@ -220,10 +220,15 @@ implemented Zigbee stack. A descriptor or packet builder by itself is not board 
 `ManagedLink`/`WirelessBackend`; `MountedWifi` and `MountedBle` return backend ownership
 when mounting fails. WiFi credentials borrow runtime storage, while `BleEventQueue`
 makes callback capacity explicit. Each identity reports stable MTU, queue, and GATT
-limits. These contracts do not implement association, IP sockets, a BLE controller, or
-a board backend. Concrete WiFi/BLE adapters, shared-radio leases, and resource prices
-remain required before support is promoted. Additive WiFi and BLE instances must not be
-replaced by one global wireless feature.
+limits. These contracts do not themselves implement association, IP sockets,
+or a BLE controller. `wireless/wifi/arduino-wifis3` is the first concrete
+compile-only bridge: its Arduino facade copies scan results into caller
+storage, borrows runtime credentials, and exposes
+scan/join/leave/quiesce/recovery over the UNO R4 board core. WiFiS3 remains
+synchronous and heap-using internally, so a post-call deadline miss is not
+hard cancellation. Physical association, sockets, resource prices, and
+shared-radio evidence remain required before promotion. Additive WiFi and BLE
+instances must not be replaced by one global wireless feature.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

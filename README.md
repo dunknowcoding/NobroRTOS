@@ -335,7 +335,7 @@ NobroRTOS/
 |   |   |-- nobro_hal/      # board data, leases, timers, PWM, bus, capture
 |   |   |-- nobro_sal/      # portable service traits
 |   |   `-- nobro_host/     # host report decoders and stable labels
-|   |-- adapters/<domain>/  # thin device/library implementations
+|   |-- adapters/<domain>/  # thin implementations; large protocol domains may add one family level
 |   |-- apps/<use-case>/    # reusable firmware compositions and examples
 |   |-- boards/<platform>/  # data-only real-board profiles
 |   `-- ports/              # flat MCU-family provider implementations
@@ -421,6 +421,7 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
+| Board connectivity adapters | In progress | Portable WiFi/BLE contracts are present; UNO R4 WiFiS3 has a compile-only, zero-disabled association facade while physical traffic and resource pricing remain gated |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 
 </details>

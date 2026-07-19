@@ -230,6 +230,7 @@ jobs:
           python tools/check_platform_tiers.py --begin-receipts arduino-package
           python tools/check_platform_tiers.py --run-gate arduino-facade-contract
           python tools/check_platform_tiers.py --run-gate arduino-ra4m1-compile
+          python tools/check_platform_tiers.py --run-gate arduino-wifis3-target-build
           python tools/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
           python tools/check_platform_tiers.py --assert-receipts arduino-package

@@ -12,7 +12,7 @@ its dependencies through traits, and has explicit buffer capacities.
 | Existing element | NobroRTOS destination |
 | --- | --- |
 | Pure algorithm, DSP, or control law | Call from a module task or bounded async task |
-| Synchronous `embedded-hal` driver | Mount behind an adapter in `core/adapters/<domain>/` |
+| Synchronous `embedded-hal` driver | Mount behind an adapter in `core/adapters/<domain>/`; use one stack-family level only when a protocol domain needs it |
 | Message schema | Fixed-capacity record or generated bounded ROS record |
 | Periodic task | Graph task with period, budget, criticality, and dependencies |
 | Queue | Bounded mailbox or channel with explicit capacity |

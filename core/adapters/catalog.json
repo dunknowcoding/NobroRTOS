@@ -2,7 +2,7 @@
   "schema": "nobro-adapter-catalog-v2",
   "ownership": {
     "contracts": "core/crates",
-    "implementations": "core/adapters/<domain>/<implementation>",
+    "implementations": "core/adapters/<domain>/<implementation> or core/adapters/<domain>/<stack-family>/<implementation>",
     "applications": "core/apps/<use-case>/<application>",
     "board_profiles": "core/boards/<platform>/<board>",
     "mcu_ports": "core/ports/<mcu-family>",
@@ -42,6 +42,15 @@
       "revision": "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9",
       "version": "1.0.0",
       "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
+      "id": "source-arduino-renesas",
+      "source": "https://github.com/arduino/ArduinoCore-renesas",
+      "revision": "424e86eff92d37f72123c2b641dd8bbf06a38b47",
+      "version": "1.6.0",
+      "license": "MIT",
       "pinned": true,
       "clean": true
     },
@@ -397,6 +406,23 @@
       ]
     },
     {
+      "id": "adapter-wireless-wifi-arduino-wifis3",
+      "name": "arduino-wifis3",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/wifi/arduino-wifis3",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "Target compilation covers bounded association/lifecycle only; physical association, sockets, vendor heap, controller resources, and exact pricing remain unverified."
+      ]
+    },
+    {
       "id": "contract-ai",
       "name": "nobro-ai",
       "kind": "contract",
@@ -564,6 +590,24 @@
       ],
       "limitations": [
         "Consumes the versioned INA JSONL interface and contributes no firmware code."
+      ]
+    },
+    {
+      "id": "library-arduino-wifis3",
+      "name": "Arduino WiFiS3",
+      "kind": "library",
+      "provenance_id": "source-arduino-renesas",
+      "facade": "packages/arduino/src/NobroArduinoWiFiS3.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "The vendor stack is synchronous and heap-using; compile evidence is not physical association, socket, coexistence, or resource evidence."
       ]
     },
     {
@@ -950,6 +994,8 @@
       ],
       "component_ids": [
         "adapter-wireless-radio-comms",
+        "adapter-wireless-wifi-arduino-wifis3",
+        "library-arduino-wifis3",
         "library-niusthread",
         "library-niuswireless",
         "library-niuszigbee"

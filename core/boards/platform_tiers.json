@@ -401,6 +401,20 @@
         }
       ]
     },
+    "arduino-wifis3-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_wifis3_integrations.py"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "arduino",
+          "capabilities": ["wifi_link"]
+        }
+      ]
+    },
     "arduino-nrf52840-compile": {
       "kind": "target-build",
       "runner": "arduino-nrf-package",
@@ -569,7 +583,12 @@
             "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "i2c": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
-            "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]}
+            "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "wifi_link": {
+              "maturity": "experimental",
+              "evidence": ["arduino-wifis3-target-build"],
+              "limitations": "Compile-only association/lifecycle facade; physical association, sockets, vendor resource prices, and coexistence remain unverified."
+            }
           }
         }
       }

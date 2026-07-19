@@ -7,7 +7,8 @@ remain independently selectable members exposed through small Nobro facades.
 
 | Member or backend | Public integration | Current boundary |
 | --- | --- | --- |
-| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle only; no board backend promoted |
+| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus one compile-only UNO R4 bridge; no physical backend promoted |
+| Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | UNO R4 target build and zero-disabled proof; association/socket/resource behavior unpromoted |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle and bounded GATT events only; no board backend promoted |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
@@ -21,6 +22,14 @@ runtime caller storage and never enter board metadata. BLE callbacks move
 through a caller-sized fixed queue. Backend id, MTU, queue capacity, and GATT
 limits are stable per logical instance; a board or vendor stack is supported
 only after its separate adapter and evidence gates pass.
+
+The WiFiS3 facade uses the installed Arduino Renesas board driver rather than
+reimplementing its coprocessor protocol. It retains no credentials and copies
+scan results into caller-owned fixed records. WiFiS3 itself uses dynamic
+strings and synchronous modem calls; Nobro can report elapsed deadline misses
+after those calls return but cannot preempt them. TCP/UDP clients, endpoints,
+vendor heap, controller firmware, and shared-radio resources remain outside
+the compile-only claim.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

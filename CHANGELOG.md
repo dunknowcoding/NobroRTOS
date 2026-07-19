@@ -9,6 +9,11 @@
   fallible mounts, runtime-only WiFi credentials, stable instance limits,
   deadline-aware control calls, and caller-sized BLE callback queues are
   available without selecting or claiming a board backend.
+- UNO R4 WiFi now has an opt-in, compile-only Arduino WiFiS3 association
+  facade and categorized Rust bridge. Its zero-disabled target build is
+  gated separately from physical behavior and resource-price promotion.
+- Board-feature metadata can represent an exact compile-only binding with an
+  explicitly unmeasured price instead of encoding unknown resources as zero.
 - ESP32 Arduino users can select either the compact continuous-ADC transport
   or a fixed-capacity persistent ESP-IDF transport with no per-frame heap
   allocation; unused transports remain link-dead.
@@ -47,6 +52,8 @@
   stable component ID, and adds it to the core workspace.
 - Allocation-free `nobro-audio` and `nobro-servo` contracts establish the
   portable domain boundary before hardware-specific backends are promoted.
+- Expandable protocol domains may use one family level, such as
+  `wireless/wifi/<implementation>`, without adding a duplicate ecosystem tree.
 
 ### Changed
 

@@ -400,6 +400,7 @@ pub enum StackError {
     DeadlineElapsed,
     QueueFull,
     BackendFault,
+    AssociationRejected,
 }
 
 /// A mount failure returns ownership so callers can inspect, replace, or retry a backend.

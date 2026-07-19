@@ -898,31 +898,8 @@ def selftest() -> int:
             "instance": "audio0",
             "maturity": "compile-only",
             "evidence_gates": ["esp32s3-target-build"],
-            "workload": {
-                "namespace": "selftest-provider",
-                "configuration_words": [1, 2, 3],
-                "configuration_fingerprint": check_board_features.workload_fingerprint(
-                    "selftest-provider", [1, 2, 3]
-                ),
-                "operations_per_second": 100,
-            },
-            "measured_fixed_price": {
-                field: 0 for field in check_board_features.FIXED_PRICE_FIELDS
-            },
-            "fixed_price_provenance": {
-                field: "declared-zero"
-                for field in check_board_features.FIXED_PRICE_FIELDS
-            },
-            "measured_runtime_price": {
-                field: 0 for field in check_board_features.RUNTIME_PRICE_FIELDS
-            },
-            "runtime_price_provenance": {
-                field: "declared-zero"
-                for field in check_board_features.RUNTIME_PRICE_FIELDS
-            },
-            "coexistence": {
-                field: [] for field in check_board_features.COEXISTENCE_FIELDS
-            },
+            "price_state": "unmeasured",
+            "limitations": ["Selftest target build; provider price remains unknown."],
             "disabled_symbol_gate": {
                 "baseline": "same-board-no-audio",
                 "feature": "audio_i2s",
@@ -1148,6 +1125,17 @@ def selftest() -> int:
                     execute_gate, good, "arduino-ra4m1-compile", receipt_root, source_root
                 ) == 0,
                 "Arduino compile gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "arduino-wifis3-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino WiFiS3 gate success",
             )
             _expect(
                 _quiet_call(

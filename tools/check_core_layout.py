@@ -35,11 +35,33 @@ def validate() -> list[str]:
         if (category_path / "Cargo.toml").exists():
             errors.append(f"adapters/{category}: uncategorized crate at category root")
         for implementation in directories(category_path):
-            manifest = category_path / implementation / "Cargo.toml"
-            if not manifest.is_file():
-                errors.append(f"adapters/{category}/{implementation}: missing Cargo.toml")
-            else:
+            implementation_path = category_path / implementation
+            manifest = implementation_path / "Cargo.toml"
+            if manifest.is_file():
                 packages.append(manifest.parent)
+                continue
+            if any(
+                item.is_file() and item.name != "README.md"
+                for item in implementation_path.iterdir()
+            ):
+                errors.append(
+                    f"adapters/{category}/{implementation}: family may contain only "
+                    "implementation directories and an optional README.md"
+                )
+            nested = directories(implementation_path)
+            if not nested:
+                errors.append(
+                    f"adapters/{category}/{implementation}: empty adapter family"
+                )
+            for name in nested:
+                nested_manifest = implementation_path / name / "Cargo.toml"
+                if not nested_manifest.is_file():
+                    errors.append(
+                        f"adapters/{category}/{implementation}/{name}: "
+                        "missing Cargo.toml"
+                    )
+                else:
+                    packages.append(nested_manifest.parent)
     for category in policy["app_categories"]:
         category_path = CORE / "apps" / category
         if (category_path / "Cargo.toml").exists():

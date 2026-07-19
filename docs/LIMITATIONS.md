@@ -106,15 +106,20 @@ SoftDevice/no-SoftDevice flash layout, modify bootloader descriptors, or enter r
 firmware. Host-visible absence alone cannot distinguish failure to execute a bootloader
 from failure to enumerate its USB identity.
 
-`nobro-wireless` supplies a bounded data plane, selected concrete transports, and
-portable WiFi/BLE lifecycle contracts. It does not yet supply a promoted WiFi or BLE
-vendor backend, IP/socket integration, shared-radio arbitration, or measured
-vendor-stack resource prices. Different board technologies must declare per-instance
-backend selection, radio ownership, coexistence, and vendor-managed resources before
-support is promoted. `ManagedLink::send_at` checks the deadline for one immediate
-attempt; scheduling priority and retry execution remain outside it. The CC2530 backend
-is a raw initialized 127-byte IEEE 802.15.4 PSDU transport, while `ZIGBEE_APS` is
-metadata rather than an implemented Zigbee APS stack.
+`nobro-wireless` supplies a bounded data plane, selected concrete transports,
+and portable WiFi/BLE lifecycle contracts. UNO R4 WiFiS3 now has a
+compile-only association facade with an exact unpriced binding and
+zero-disabled proof; this is not a promoted physical backend. WiFiS3 uses
+synchronous modem calls and vendor-managed dynamic strings, so Nobro records
+an overrun only after a call returns and does not claim hard cancellation.
+IP/socket integration, shared-radio arbitration, and measured vendor-stack
+resource prices remain absent. Different board technologies must declare
+per-instance backend selection, radio ownership, coexistence, and
+vendor-managed resources before support is promoted. `ManagedLink::send_at`
+checks the deadline for one immediate attempt; scheduling priority and retry
+execution remain outside it. The CC2530 backend is a raw initialized 127-byte
+IEEE 802.15.4 PSDU transport, while `ZIGBEE_APS` is metadata rather than an
+implemented Zigbee APS stack.
 
 ## Isolation, boot, and recovery
 

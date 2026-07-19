@@ -1,0 +1,12 @@
+[package]
+name = "nobro-adapter-wireless-wifi-arduino-wifis3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nobro-wireless = { path = "../../../../crates/nobro_wireless" }
+
+[features]
+default = []
+backend-arduino-shim = []

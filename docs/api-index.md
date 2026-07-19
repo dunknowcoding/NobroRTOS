@@ -90,6 +90,13 @@ Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **enum**: `RadioCommsError`
 - **fn**: `acquire`, `release`
 
+## `nobro-adapter-wireless-wifi-arduino-wifis3`
+Bounded bridge for the Arduino UNO R4 WiFiS3 stack.
+- **trait**: `ArduinoWifiS3Transport`
+- **struct**: `TimedJoin`, `WifiS3Diagnostics`, `ArduinoWifiS3`
+- **enum**: `TransportError`
+- **fn**: `into_inner`
+
 ## `nobro-admission`
 Allocation-free admission shared by firmware build scripts and the kernel.
 - **struct**: `AdmissionProfile`, `TaskContract`, `IsrOperations`, `InterruptContract`, `InterruptProfile`, `AdmissionError`, `AdmittedTask`, `AdmittedWorkload`

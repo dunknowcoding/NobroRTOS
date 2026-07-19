@@ -45,6 +45,12 @@ Add `NOBRO_ARDUINO_ENABLE_SPI` only when used. Optional NiusIMU,
 NiusWireless, and NiusCam facades require the matching library; they are not
 forced dependencies of the base package.
 
+UNO R4 WiFi uses its board package's WiFiS3 implementation through the
+explicit `NobroArduinoWiFiS3.h` facade. It is not included by the base
+package. The current evidence is target-build plus zero-disabled behavior;
+physical association, socket traffic, and vendor resource prices remain
+separate gates.
+
 ## PlatformIO
 
 ```ini

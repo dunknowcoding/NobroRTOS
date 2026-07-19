@@ -197,7 +197,8 @@ def validate() -> list[str]:
 
     actual_adapters = {
         path.parent.relative_to(ROOT).as_posix()
-        for path in (ROOT / "core" / "adapters").glob("*/*/Cargo.toml")
+        for path in (ROOT / "core" / "adapters").glob("**/Cargo.toml")
+        if len(path.parent.relative_to(ROOT / "core" / "adapters").parts) in (2, 3)
     }
     for path_value in sorted(actual_adapters - related_adapters):
         errors.append(f"uncatalogued adapter: {path_value}")

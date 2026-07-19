@@ -48,3 +48,9 @@ zero-cost disabled composition, including calibration symbols. Physical
 runtime and coexistence measurements remain state-restoring private inputs to
 the exact registry price; the public gate does not claim absolute ADC
 accuracy.
+
+`check_wifis3_integrations.py` compiles the categorized UNO R4 WiFiS3
+association facade against the board package, proves an identical
+zero-disabled baseline, and locks its exact binding to the explicit
+`unmeasured` price state. It does not convert compilation into physical
+association, socket, or vendor-resource evidence.

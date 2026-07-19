@@ -215,6 +215,69 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in evidence_gates
         ):
             errors.append(f"{prefix}: evidence_gates must be a unique string list")
+        if binding.get("maturity") == "compile-only":
+            expected_fields = {
+                "id",
+                "backend_id",
+                "capability_kind",
+                "platform",
+                "composition",
+                "instance",
+                "maturity",
+                "evidence_gates",
+                "price_state",
+                "limitations",
+                "disabled_symbol_gate",
+                "report_wiring",
+            }
+            if set(binding) != expected_fields:
+                errors.append(
+                    f"{prefix}: compile-only binding must use the unpriced target-build form"
+                )
+            if binding.get("price_state") != "unmeasured":
+                errors.append(f"{prefix}: compile-only binding price must remain unmeasured")
+            limitations = binding.get("limitations")
+            if not isinstance(limitations, list) or not limitations or not all(
+                isinstance(value, str) and value for value in limitations
+            ):
+                errors.append(f"{prefix}: compile-only binding needs explicit limitations")
+            gate = binding.get("disabled_symbol_gate")
+            if not isinstance(gate, dict) or set(gate) != {
+                "baseline",
+                "feature",
+                "forbidden_symbols",
+                "max_flash_delta_bytes",
+                "max_ram_delta_bytes",
+            }:
+                errors.append(f"{prefix}: disabled_symbol_gate is incomplete")
+            elif (
+                not isinstance(gate.get("baseline"), str)
+                or not isinstance(gate.get("feature"), str)
+                or not isinstance(gate.get("forbidden_symbols"), list)
+                or not all(
+                    isinstance(value, str) and value
+                    for value in gate["forbidden_symbols"]
+                )
+                or gate.get("max_flash_delta_bytes") != 0
+                or gate.get("max_ram_delta_bytes") != 0
+            ):
+                errors.append(
+                    f"{prefix}: disabled gate must prove zero delta and forbidden symbols"
+                )
+            report = binding.get("report_wiring")
+            if not isinstance(report, dict) or not all(
+                isinstance(report.get(field), str) and report[field]
+                for field in ("provider_id", "status_field", "evidence_gate")
+            ):
+                errors.append(f"{prefix}: report wiring is incomplete")
+            elif (
+                report["provider_id"] != binding.get("capability_kind")
+                or report["evidence_gate"] not in (evidence_gates or [])
+            ):
+                errors.append(
+                    f"{prefix}: report wiring differs from capability/evidence"
+                )
+            continue
         workload = binding.get("workload")
         if (
             not isinstance(workload, dict)
@@ -368,7 +431,7 @@ def selftest() -> int:
         "platform": "esp32s3",
         "composition": "arduino",
         "instance": "selftest0",
-        "maturity": "compile-only",
+        "maturity": "implemented",
         "evidence_gates": ["selftest-gate"],
         "workload": {
             "namespace": "selftest-provider",
@@ -427,9 +490,41 @@ def selftest() -> int:
     broken["bindings"][-1]["runtime_price_provenance"]["latency_p99_cycles"] = "measured"
     broken["bindings"][-1]["runtime_price_provenance"]["latency_max_cycles"] = "measured"
     assert any("p99 latency" in error for error in validate(broken, catalog))
+    unpriced = copy.deepcopy(registry)
+    unpriced["bindings"].append(
+        {
+            "id": "selftest-unpriced-binding",
+            "backend_id": registry["backends"][0]["id"],
+            "capability_kind": registry["backends"][0]["capability_kind"],
+            "platform": "esp32s3",
+            "composition": "arduino",
+            "instance": "selftest1",
+            "maturity": "compile-only",
+            "evidence_gates": ["selftest-target-build"],
+            "price_state": "unmeasured",
+            "limitations": ["Target build only; every resource price remains unknown."],
+            "disabled_symbol_gate": {
+                "baseline": "selftest-baseline",
+                "feature": "selftest-disabled",
+                "forbidden_symbols": ["selftest_backend"],
+                "max_flash_delta_bytes": 0,
+                "max_ram_delta_bytes": 0,
+            },
+            "report_wiring": {
+                "provider_id": registry["backends"][0]["capability_kind"],
+                "status_field": "selftest1",
+                "evidence_gate": "selftest-target-build",
+            },
+        }
+    )
+    assert not validate(unpriced, catalog)
+    broken = copy.deepcopy(unpriced)
+    broken["bindings"][-1]["price_state"] = "measured"
+    assert any("price must remain unmeasured" in error for error in validate(broken, catalog))
     print(
         "BOARD FEATURES SELFTEST: PASS "
-        "(vocabulary, backend, workload, fixed/runtime price, zero-delta)"
+        "(vocabulary, backend, unpriced target binding, workload, "
+        "fixed/runtime price, zero-delta)"
     )
     return 0
 

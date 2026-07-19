@@ -42,6 +42,13 @@
   ],
   "provenance": [
     {
+      "id": "source-arduino-renesas",
+      "source": "https://github.com/arduino/ArduinoCore-renesas",
+      "revision": "424e86eff92d37f72123c2b641dd8bbf06a38b47",
+      "version": "1.6.0",
+      "license": "MIT"
+    },
+    {
       "id": "source-niusaudio",
       "source": "https://github.com/dunknowcoding/NiusAudio",
       "revision": "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2",
@@ -144,7 +151,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
       "limitations": [
-        "No board binding is promoted yet."
+        "UNO R4 WiFiS3 has an exact compile-only association/lifecycle binding; no priced binding, socket path, physical behavior, or resource promotion exists yet."
       ]
     }
   ],
@@ -261,9 +268,61 @@
         "Physical waveform, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; coexistence and the ESP32-S3 physical path remain unverified.",
         "Pinned source establishes one RMT channel, interrupt callback, event group, and queue with DMA disabled; an exact binding still awaits configuration-bound runtime measurements."
       ]
+    },
+    {
+      "id": "backend-wifi-arduino-wifis3",
+      "capability_kind": "wifi_link",
+      "stack_family": "wifi",
+      "adapter_component_id": "adapter-wireless-wifi-arduino-wifis3",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "provenance_id": "source-arduino-renesas",
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials.",
+        "WiFiS3 internally uses dynamic strings and blocking modem calls; target compilation and zero-disabled proof do not establish physical association, sockets, deadline enforcement, vendor resource bounds, or coexistence."
+      ]
     }
   ],
   "bindings": [
+    {
+      "id": "binding-wifi-arduino-wifis3-ra4m1",
+      "backend_id": "backend-wifi-arduino-wifis3",
+      "capability_kind": "wifi_link",
+      "platform": "ra4m1",
+      "composition": "arduino",
+      "instance": "wifi0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-wifis3-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "This exact UNO R4 WiFiS3 binding has target-build and zero-disabled evidence only; physical association, socket traffic, controller firmware, heap, stack, CPU, latency, and coexistence prices remain unknown."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-wifis3-disabled",
+        "forbidden_symbols": [
+          "ArduinoWiFiS3Stack",
+          "CWifi",
+          "ModemClass",
+          "WiFiS3"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "wifi_link",
+        "status_field": "ra4m1_wifi0",
+        "evidence_gate": "arduino-wifis3-target-build"
+      }
+    },
     {
       "id": "binding-adc-persistent-esp32c3",
       "backend_id": "backend-adc-esp32-idf-persistent",

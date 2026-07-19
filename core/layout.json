@@ -3,7 +3,7 @@
   "rules": {
     "crates": "flat public capability packages",
     "ports": "flat MCU-family providers",
-    "adapters": "one domain category, then implementation",
+    "adapters": "one domain category, optional stack family, then implementation",
     "apps": "one use-case category, then composition",
     "boards": "one platform-family category, then data-only board profile"
   },
