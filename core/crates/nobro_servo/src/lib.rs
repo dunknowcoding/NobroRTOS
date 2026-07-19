@@ -92,9 +92,12 @@ impl PulseSymbol {
 
 /// Complete admission price for one mounted pulse provider.
 ///
-/// Unknown fields do not masquerade as zero and peripheral-channel ownership
-/// is priced separately from DMA channels.
-pub use nobro_device::ProviderResourcePrice as PulseResourcePrice;
+/// Fixed ownership is separate from runtime evidence for the exact configured
+/// workload. Unknown fields cannot masquerade as zero.
+pub use nobro_device::{
+    ProviderAdmissionPrice as PulseResourcePrice, ProviderResourcePrice, ProviderRuntimePrice,
+    ProviderWorkload,
+};
 
 /// Fixed-frequency duty engine such as ESP32 LEDC.
 pub trait PwmEngineBackend {

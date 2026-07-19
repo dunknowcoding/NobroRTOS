@@ -186,8 +186,8 @@ def scaffold(
     if capability_kind is not None:
         feature_text = feature_path.read_text(encoding="utf-8")
         feature_registry = json.loads(feature_text)
-        if feature_registry.get("schema") != "nobro-board-feature-registry-v1":
-            raise ScaffoldError("board-feature scaffolding requires feature registry v1")
+        if feature_registry.get("schema") != "nobro-board-feature-registry-v2":
+            raise ScaffoldError("board-feature scaffolding requires feature registry v2")
         kind = next(
             (
                 record
@@ -307,7 +307,7 @@ def selftest() -> int:
             (boards / "feature_providers.json").write_text(
                 json.dumps(
                     {
-                        "schema": "nobro-board-feature-registry-v1",
+                        "schema": "nobro-board-feature-registry-v2",
                         "capability_kinds": [
                             {
                                 "id": "audio_i2s",

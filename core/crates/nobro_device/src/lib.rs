@@ -16,15 +16,14 @@
 pub enum ResourceDimension {
     FlashBytes = 0,
     StaticRamBytes = 1,
-    HeapBytes = 2,
+    RetainedHeapBytes = 2,
     StackBytes = 3,
     VendorReservedRamBytes = 4,
     WorkerThreads = 5,
-    CpuCyclesPerSecond = 6,
-    InterruptSlots = 7,
-    DmaChannels = 8,
-    ControllerFirmwareBytes = 9,
-    PeripheralChannels = 10,
+    InterruptSlots = 6,
+    DmaChannels = 7,
+    ControllerFirmwareBytes = 8,
+    PeripheralChannels = 9,
 }
 
 impl ResourceDimension {
@@ -33,26 +32,26 @@ impl ResourceDimension {
     }
 }
 
-/// Complete admission price for one mounted board-feature provider.
+/// Fixed admission price for one mounted board-feature provider.
 ///
 /// Values and knowledge are deliberately separate: zero can be a measured or
 /// declared result, while [`ProviderResourcePrice::unknown`] keeps every
 /// dimension unknown. This prevents a default value from silently becoming a
 /// claim that a vendor stack consumes no heap, stack, interrupt, DMA, or
-/// peripheral channels.
+/// peripheral channels. Workload-dependent CPU, transient heap, stack
+/// high-water, and latency costs live in [`ProviderRuntimePrice`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProviderResourcePrice {
-    pub flash_bytes: u32,
-    pub static_ram_bytes: u32,
-    pub heap_bytes: u32,
-    pub stack_bytes: u32,
-    pub vendor_reserved_ram_bytes: u32,
-    pub worker_threads: u8,
-    pub cpu_cycles_per_second: u64,
-    pub interrupt_slots: u8,
-    pub dma_channels: u8,
-    pub controller_firmware_bytes: u32,
-    pub peripheral_channels: u8,
+    flash_bytes: u32,
+    static_ram_bytes: u32,
+    retained_heap_bytes: u32,
+    stack_bytes: u32,
+    vendor_reserved_ram_bytes: u32,
+    worker_threads: u8,
+    interrupt_slots: u8,
+    dma_channels: u8,
+    controller_firmware_bytes: u32,
+    peripheral_channels: u8,
     known_dimensions: u16,
 }
 
@@ -65,11 +64,10 @@ impl ProviderResourcePrice {
         Self {
             flash_bytes: 0,
             static_ram_bytes: 0,
-            heap_bytes: 0,
+            retained_heap_bytes: 0,
             stack_bytes: 0,
             vendor_reserved_ram_bytes: 0,
             worker_threads: 0,
-            cpu_cycles_per_second: 0,
             interrupt_slots: 0,
             dma_channels: 0,
             controller_firmware_bytes: 0,
@@ -101,6 +99,46 @@ impl ProviderResourcePrice {
         self.known_dimensions
     }
 
+    pub const fn flash_bytes(self) -> u32 {
+        self.flash_bytes
+    }
+
+    pub const fn static_ram_bytes(self) -> u32 {
+        self.static_ram_bytes
+    }
+
+    pub const fn retained_heap_bytes(self) -> u32 {
+        self.retained_heap_bytes
+    }
+
+    pub const fn stack_bytes(self) -> u32 {
+        self.stack_bytes
+    }
+
+    pub const fn vendor_reserved_ram_bytes(self) -> u32 {
+        self.vendor_reserved_ram_bytes
+    }
+
+    pub const fn worker_threads(self) -> u8 {
+        self.worker_threads
+    }
+
+    pub const fn interrupt_slots(self) -> u8 {
+        self.interrupt_slots
+    }
+
+    pub const fn dma_channels(self) -> u8 {
+        self.dma_channels
+    }
+
+    pub const fn controller_firmware_bytes(self) -> u32 {
+        self.controller_firmware_bytes
+    }
+
+    pub const fn peripheral_channels(self) -> u8 {
+        self.peripheral_channels
+    }
+
     pub const fn with_flash_bytes(mut self, value: u32) -> Self {
         self.flash_bytes = value;
         self.known_dimensions |= ResourceDimension::FlashBytes.mask();
@@ -113,9 +151,9 @@ impl ProviderResourcePrice {
         self
     }
 
-    pub const fn with_heap_bytes(mut self, value: u32) -> Self {
-        self.heap_bytes = value;
-        self.known_dimensions |= ResourceDimension::HeapBytes.mask();
+    pub const fn with_retained_heap_bytes(mut self, value: u32) -> Self {
+        self.retained_heap_bytes = value;
+        self.known_dimensions |= ResourceDimension::RetainedHeapBytes.mask();
         self
     }
 
@@ -134,12 +172,6 @@ impl ProviderResourcePrice {
     pub const fn with_worker_threads(mut self, value: u8) -> Self {
         self.worker_threads = value;
         self.known_dimensions |= ResourceDimension::WorkerThreads.mask();
-        self
-    }
-
-    pub const fn with_cpu_cycles_per_second(mut self, value: u64) -> Self {
-        self.cpu_cycles_per_second = value;
-        self.known_dimensions |= ResourceDimension::CpuCyclesPerSecond.mask();
         self
     }
 
@@ -171,6 +203,225 @@ impl ProviderResourcePrice {
 impl Default for ProviderResourcePrice {
     fn default() -> Self {
         Self::unknown()
+    }
+}
+
+/// Exact provider configuration and admitted operation rate.
+///
+/// The fingerprint is deterministic and allocation-free, but is an identity
+/// check rather than a cryptographic digest. Providers own the order and
+/// meaning of `configuration_words`; the identity combines the resulting
+/// fingerprint with the admitted operation rate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProviderWorkload {
+    configuration_fingerprint: u64,
+    operations_per_second: u32,
+}
+
+impl ProviderWorkload {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    pub const fn new(
+        namespace: &str,
+        configuration_words: &[u32],
+        operations_per_second: u32,
+    ) -> Self {
+        let mut hash = Self::FNV_OFFSET;
+        let namespace = namespace.as_bytes();
+        let mut index = 0;
+        while index < namespace.len() {
+            hash ^= namespace[index] as u64;
+            hash = hash.wrapping_mul(Self::FNV_PRIME);
+            index += 1;
+        }
+        index = 0;
+        while index < configuration_words.len() {
+            let bytes = configuration_words[index].to_le_bytes();
+            let mut byte = 0;
+            while byte < bytes.len() {
+                hash ^= bytes[byte] as u64;
+                hash = hash.wrapping_mul(Self::FNV_PRIME);
+                byte += 1;
+            }
+            index += 1;
+        }
+        Self {
+            configuration_fingerprint: hash,
+            operations_per_second,
+        }
+    }
+
+    pub const fn is_valid(self) -> bool {
+        self.operations_per_second != 0
+    }
+
+    pub const fn configuration_fingerprint(self) -> u64 {
+        self.configuration_fingerprint
+    }
+
+    pub const fn operations_per_second(self) -> u32 {
+        self.operations_per_second
+    }
+}
+
+/// Workload-dependent resource price for one exact provider configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProviderRuntimePrice {
+    workload: ProviderWorkload,
+    transient_heap_peak_bytes: u32,
+    stack_high_water_bytes: u32,
+    cpu_cycles_per_second: u64,
+    latency_p99_cycles: u64,
+    latency_max_cycles: u64,
+    known_dimensions: u8,
+}
+
+impl ProviderRuntimePrice {
+    const TRANSIENT_HEAP: u8 = 1 << 0;
+    const STACK_HIGH_WATER: u8 = 1 << 1;
+    const CPU_CYCLES: u8 = 1 << 2;
+    const LATENCY_P99: u8 = 1 << 3;
+    const LATENCY_MAX: u8 = 1 << 4;
+    pub const ALL_KNOWN: u8 = (1 << 5) - 1;
+
+    pub const fn unknown(workload: ProviderWorkload) -> Self {
+        Self {
+            workload,
+            transient_heap_peak_bytes: 0,
+            stack_high_water_bytes: 0,
+            cpu_cycles_per_second: 0,
+            latency_p99_cycles: 0,
+            latency_max_cycles: 0,
+            known_dimensions: 0,
+        }
+    }
+
+    /// Explicitly declare every runtime dimension known and zero.
+    ///
+    /// This is useful for allocation-free host fakes. Physical providers
+    /// should use the typed builders with evidence for their exact workload.
+    pub const fn known_zero(workload: ProviderWorkload) -> Self {
+        Self {
+            known_dimensions: Self::ALL_KNOWN,
+            ..Self::unknown(workload)
+        }
+    }
+
+    pub const fn workload(self) -> ProviderWorkload {
+        self.workload
+    }
+
+    pub const fn transient_heap_peak_bytes(self) -> u32 {
+        self.transient_heap_peak_bytes
+    }
+
+    pub const fn stack_high_water_bytes(self) -> u32 {
+        self.stack_high_water_bytes
+    }
+
+    pub const fn cpu_cycles_per_second(self) -> u64 {
+        self.cpu_cycles_per_second
+    }
+
+    pub const fn cpu_cycles_per_operation(self) -> Option<u64> {
+        let rate = self.workload.operations_per_second as u64;
+        if rate == 0 || self.known_dimensions & Self::CPU_CYCLES == 0 {
+            None
+        } else {
+            Some(self.cpu_cycles_per_second.div_ceil(rate))
+        }
+    }
+
+    pub const fn latency_p99_cycles(self) -> u64 {
+        self.latency_p99_cycles
+    }
+
+    pub const fn latency_max_cycles(self) -> u64 {
+        self.latency_max_cycles
+    }
+
+    pub const fn is_complete(self) -> bool {
+        self.workload.is_valid()
+            && self.known_dimensions == Self::ALL_KNOWN
+            && self.latency_p99_cycles <= self.latency_max_cycles
+    }
+
+    pub const fn matches(self, workload: ProviderWorkload) -> bool {
+        self.is_complete()
+            && self.workload.configuration_fingerprint == workload.configuration_fingerprint
+            && self.workload.operations_per_second == workload.operations_per_second
+    }
+
+    pub const fn with_transient_heap_peak_bytes(mut self, value: u32) -> Self {
+        self.transient_heap_peak_bytes = value;
+        self.known_dimensions |= Self::TRANSIENT_HEAP;
+        self
+    }
+
+    pub const fn with_stack_high_water_bytes(mut self, value: u32) -> Self {
+        self.stack_high_water_bytes = value;
+        self.known_dimensions |= Self::STACK_HIGH_WATER;
+        self
+    }
+
+    pub const fn with_cpu_cycles_per_second(mut self, value: u64) -> Self {
+        self.cpu_cycles_per_second = value;
+        self.known_dimensions |= Self::CPU_CYCLES;
+        self
+    }
+
+    pub const fn with_latency_p99_cycles(mut self, value: u64) -> Self {
+        self.latency_p99_cycles = value;
+        self.known_dimensions |= Self::LATENCY_P99;
+        self
+    }
+
+    pub const fn with_latency_max_cycles(mut self, value: u64) -> Self {
+        self.latency_max_cycles = value;
+        self.known_dimensions |= Self::LATENCY_MAX;
+        self
+    }
+}
+
+/// Fixed ownership plus runtime evidence for one exact workload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProviderAdmissionPrice {
+    fixed: ProviderResourcePrice,
+    runtime: ProviderRuntimePrice,
+}
+
+impl ProviderAdmissionPrice {
+    pub const fn new(fixed: ProviderResourcePrice, runtime: ProviderRuntimePrice) -> Self {
+        Self { fixed, runtime }
+    }
+
+    pub const fn known_zero(workload: ProviderWorkload) -> Self {
+        Self::new(
+            ProviderResourcePrice::known_zero(),
+            ProviderRuntimePrice::known_zero(workload),
+        )
+    }
+
+    pub const fn fixed(self) -> ProviderResourcePrice {
+        self.fixed
+    }
+
+    pub const fn runtime(self) -> ProviderRuntimePrice {
+        self.runtime
+    }
+
+    pub const fn is_complete_for(self, workload: ProviderWorkload) -> bool {
+        self.fixed.is_complete() && self.runtime.matches(workload)
+    }
+}
+
+impl Default for ProviderAdmissionPrice {
+    fn default() -> Self {
+        Self::new(
+            ProviderResourcePrice::unknown(),
+            ProviderRuntimePrice::unknown(ProviderWorkload::new("unpriced-provider", &[], 0)),
+        )
     }
 }
 
@@ -223,7 +474,7 @@ mod resource_price_tests {
     #[test]
     fn unknown_zero_and_measured_zero_are_distinct() {
         let unknown = ProviderResourcePrice::default();
-        assert_eq!(unknown.flash_bytes, 0);
+        assert_eq!(unknown.flash_bytes(), 0);
         assert!(!unknown.is_complete());
         assert!(!unknown.is_known(ResourceDimension::FlashBytes));
 
@@ -238,18 +489,52 @@ mod resource_price_tests {
         let price = ProviderResourcePrice::unknown()
             .with_flash_bytes(1)
             .with_static_ram_bytes(2)
-            .with_heap_bytes(3)
+            .with_retained_heap_bytes(3)
             .with_stack_bytes(4)
             .with_vendor_reserved_ram_bytes(5)
             .with_worker_threads(1)
-            .with_cpu_cycles_per_second(6)
             .with_interrupt_slots(1)
             .with_dma_channels(1)
             .with_controller_firmware_bytes(7)
             .with_peripheral_channels(1);
         assert!(price.is_complete());
-        assert_eq!(price.heap_bytes, 3);
-        assert_eq!(price.peripheral_channels, 1);
+        assert_eq!(price.retained_heap_bytes(), 3);
+        assert_eq!(price.peripheral_channels(), 1);
+    }
+
+    #[test]
+    fn runtime_price_is_bound_to_one_exact_workload() {
+        let workload = ProviderWorkload::new("adc", &[2, 12, 16, 20_000], 625);
+        let other_rate = ProviderWorkload::new("adc", &[2, 12, 16, 20_000], 1_250);
+        let runtime = ProviderRuntimePrice::unknown(workload)
+            .with_transient_heap_peak_bytes(128)
+            .with_stack_high_water_bytes(96)
+            .with_cpu_cycles_per_second(62_500)
+            .with_latency_p99_cycles(120)
+            .with_latency_max_cycles(180);
+        assert!(runtime.is_complete());
+        assert!(runtime.matches(workload));
+        assert!(!runtime.matches(other_rate));
+        assert_eq!(runtime.cpu_cycles_per_operation(), Some(100));
+
+        let admission = ProviderAdmissionPrice::new(ProviderResourcePrice::known_zero(), runtime);
+        assert!(admission.is_complete_for(workload));
+        assert!(!admission.is_complete_for(other_rate));
+    }
+
+    #[test]
+    fn runtime_price_rejects_invalid_rate_and_latency_order() {
+        let no_rate = ProviderWorkload::new("pwm", &[1_000, 10], 0);
+        assert!(!ProviderRuntimePrice::known_zero(no_rate).is_complete());
+
+        let workload = ProviderWorkload::new("pwm", &[1_000, 10], 100);
+        let reversed = ProviderRuntimePrice::unknown(workload)
+            .with_transient_heap_peak_bytes(0)
+            .with_stack_high_water_bytes(0)
+            .with_cpu_cycles_per_second(0)
+            .with_latency_p99_cycles(11)
+            .with_latency_max_cycles(10);
+        assert!(!reversed.is_complete());
     }
 }
 

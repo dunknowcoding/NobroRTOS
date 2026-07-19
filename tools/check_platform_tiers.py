@@ -879,9 +879,23 @@ def selftest() -> int:
             "instance": "audio0",
             "maturity": "compile-only",
             "evidence_gates": ["esp32s3-target-build"],
-            "measured_price": {field: 0 for field in check_board_features.PRICE_FIELDS},
-            "price_provenance": {
-                field: "declared-zero" for field in check_board_features.PRICE_FIELDS
+            "workload": {
+                "configuration_fingerprint": "0123456789abcdef",
+                "operations_per_second": 100,
+            },
+            "measured_fixed_price": {
+                field: 0 for field in check_board_features.FIXED_PRICE_FIELDS
+            },
+            "fixed_price_provenance": {
+                field: "declared-zero"
+                for field in check_board_features.FIXED_PRICE_FIELDS
+            },
+            "measured_runtime_price": {
+                field: 0 for field in check_board_features.RUNTIME_PRICE_FIELDS
+            },
+            "runtime_price_provenance": {
+                field: "declared-zero"
+                for field in check_board_features.RUNTIME_PRICE_FIELDS
             },
             "coexistence": {
                 field: [] for field in check_board_features.COEXISTENCE_FIELDS

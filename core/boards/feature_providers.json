@@ -1,5 +1,5 @@
 {
-  "schema": "nobro-board-feature-registry-v1",
+  "schema": "nobro-board-feature-registry-v2",
   "deployment_values": [
     "firmware",
     "host"
@@ -15,18 +15,24 @@
     "target-build",
     "physical"
   ],
-  "price_dimensions": [
+  "fixed_price_dimensions": [
     "flash_bytes",
     "static_ram_bytes",
-    "heap_bytes",
+    "retained_heap_bytes",
     "stack_bytes",
     "vendor_reserved_ram_bytes",
     "worker_threads",
-    "cpu_cycles_per_second",
     "interrupt_slots",
     "dma_channels",
     "controller_firmware_bytes",
     "peripheral_channels"
+  ],
+  "runtime_price_dimensions": [
+    "transient_heap_peak_bytes",
+    "stack_high_water_bytes",
+    "cpu_cycles_per_second",
+    "latency_p99_cycles",
+    "latency_max_cycles"
   ],
   "coexistence_dimensions": [
     "leases",
@@ -145,15 +151,14 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build",
-        "physical"
+        "target-build"
       ],
       "provenance_id": "source-niusaudio",
       "supported_targets": [
         "arduino:esp32s3"
       ],
       "limitations": [
-        "The exact board binding awaits measured vendor-runtime and physical evidence."
+        "The exact board binding awaits configuration-bound vendor-runtime and Nobro adapter physical evidence."
       ]
     },
     {
@@ -177,7 +182,7 @@
       "limitations": [
         "Physical rate, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; conversion accuracy and the ESP32-S3 physical path remain unverified.",
         "ESP32-P4 DMA alignment can widen a requested conversion frame, so the facade rejects non-exact frame shapes.",
-        "The Arduino core owns process-wide ADC-DMA state; an exact binding awaits every measured price dimension."
+        "The Arduino core owns process-wide ADC-DMA state and allocates an aligned DMA-capable frame on each read; transient peak, allocator-tail, and remaining runtime prices are unverified."
       ]
     },
     {
@@ -200,7 +205,7 @@
       ],
       "limitations": [
         "Physical frequency, duty, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; coexistence and the ESP32-S3 physical path remain unverified.",
-        "An exact binding awaits every measured price dimension."
+        "Pinned source establishes one interrupt-disabled, non-DMA LEDC channel; an exact binding still awaits configuration-bound runtime measurements."
       ]
     },
     {
@@ -223,7 +228,7 @@
       ],
       "limitations": [
         "Physical waveform, lifecycle, and immediate heap evidence covers classic ESP32, ESP32-C3, and ESP32-P4; coexistence and the ESP32-S3 physical path remain unverified.",
-        "The board core owns RMT memory, channel, ISR, and DMA resources; an exact binding awaits every measured price dimension."
+        "Pinned source establishes one RMT channel, interrupt callback, event group, and queue with DMA disabled; an exact binding still awaits configuration-bound runtime measurements."
       ]
     }
   ],

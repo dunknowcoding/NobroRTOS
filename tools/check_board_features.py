@@ -14,21 +14,28 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "core" / "boards" / "feature_providers.json"
 CATALOG = ROOT / "core" / "adapters" / "catalog.json"
-SCHEMA = "nobro-board-feature-registry-v1"
+SCHEMA = "nobro-board-feature-registry-v2"
 NAME = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
+FINGERPRINT = re.compile(r"^[0-9a-f]{16}$")
 CLASSES = {"peripheral", "connectivity"}
-PRICE_FIELDS = {
+FIXED_PRICE_FIELDS = {
     "flash_bytes",
     "static_ram_bytes",
-    "heap_bytes",
+    "retained_heap_bytes",
     "stack_bytes",
     "vendor_reserved_ram_bytes",
     "worker_threads",
-    "cpu_cycles_per_second",
     "interrupt_slots",
     "dma_channels",
     "controller_firmware_bytes",
     "peripheral_channels",
+}
+RUNTIME_PRICE_FIELDS = {
+    "transient_heap_peak_bytes",
+    "stack_high_water_bytes",
+    "cpu_cycles_per_second",
+    "latency_p99_cycles",
+    "latency_max_cycles",
 }
 COEXISTENCE_FIELDS = {
     "leases",
@@ -79,8 +86,10 @@ def validate(registry: dict, catalog: dict) -> list[str]:
     deployment_set = set(deployment) if isinstance(deployment, list) else set()
     maturity_set = set(maturities) if isinstance(maturities, list) else set()
     evidence_set = set(evidence_values) if isinstance(evidence_values, list) else set()
-    if set(registry.get("price_dimensions", [])) != PRICE_FIELDS:
-        errors.append("price_dimensions: incomplete or unknown dimensions")
+    if set(registry.get("fixed_price_dimensions", [])) != FIXED_PRICE_FIELDS:
+        errors.append("fixed_price_dimensions: incomplete or unknown dimensions")
+    if set(registry.get("runtime_price_dimensions", [])) != RUNTIME_PRICE_FIELDS:
+        errors.append("runtime_price_dimensions: incomplete or unknown dimensions")
     if set(registry.get("coexistence_dimensions", [])) != COEXISTENCE_FIELDS:
         errors.append("coexistence_dimensions: incomplete or unknown dimensions")
 
@@ -173,29 +182,77 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in evidence_gates
         ):
             errors.append(f"{prefix}: evidence_gates must be a unique string list")
-        price = binding.get("measured_price")
-        if not isinstance(price, dict) or set(price) != PRICE_FIELDS or any(
-            not isinstance(value, int) or value < 0 for value in price.values()
-        ):
-            errors.append(f"{prefix}: measured_price must contain every non-negative dimension")
-        price_provenance = binding.get("price_provenance")
+        workload = binding.get("workload")
         if (
-            not isinstance(price_provenance, dict)
-            or set(price_provenance) != PRICE_FIELDS
+            not isinstance(workload, dict)
+            or set(workload) != {"configuration_fingerprint", "operations_per_second"}
+            or not isinstance(workload.get("configuration_fingerprint"), str)
+            or not FINGERPRINT.fullmatch(workload["configuration_fingerprint"])
+            or not isinstance(workload.get("operations_per_second"), int)
+            or workload["operations_per_second"] <= 0
+        ):
+            errors.append(f"{prefix}: workload identity and positive operation rate are required")
+        fixed_price = binding.get("measured_fixed_price")
+        if (
+            not isinstance(fixed_price, dict)
+            or set(fixed_price) != FIXED_PRICE_FIELDS
+            or any(not isinstance(value, int) or value < 0 for value in fixed_price.values())
+        ):
+            errors.append(
+                f"{prefix}: measured_fixed_price must contain every non-negative dimension"
+            )
+        fixed_provenance = binding.get("fixed_price_provenance")
+        if (
+            not isinstance(fixed_provenance, dict)
+            or set(fixed_provenance) != FIXED_PRICE_FIELDS
             or any(
                 value not in {"measured", "declared-zero"}
-                for value in price_provenance.values()
+                for value in fixed_provenance.values()
             )
         ):
             errors.append(
-                f"{prefix}: price_provenance must classify every dimension as "
+                f"{prefix}: fixed_price_provenance must classify every dimension as "
                 "measured or declared-zero"
             )
-        elif isinstance(price, dict) and any(
-            price.get(field) != 0 and price_provenance[field] == "declared-zero"
-            for field in PRICE_FIELDS
+        elif isinstance(fixed_price, dict) and any(
+            fixed_price.get(field) != 0
+            and fixed_provenance[field] == "declared-zero"
+            for field in FIXED_PRICE_FIELDS
         ):
-            errors.append(f"{prefix}: declared-zero price provenance has a non-zero value")
+            errors.append(f"{prefix}: declared-zero fixed price has a non-zero value")
+        runtime_price = binding.get("measured_runtime_price")
+        if (
+            not isinstance(runtime_price, dict)
+            or set(runtime_price) != RUNTIME_PRICE_FIELDS
+            or any(
+                not isinstance(value, int) or value < 0
+                for value in runtime_price.values()
+            )
+        ):
+            errors.append(
+                f"{prefix}: measured_runtime_price must contain every non-negative dimension"
+            )
+        elif runtime_price["latency_p99_cycles"] > runtime_price["latency_max_cycles"]:
+            errors.append(f"{prefix}: p99 latency exceeds maximum latency")
+        runtime_provenance = binding.get("runtime_price_provenance")
+        if (
+            not isinstance(runtime_provenance, dict)
+            or set(runtime_provenance) != RUNTIME_PRICE_FIELDS
+            or any(
+                value not in {"measured", "declared-zero"}
+                for value in runtime_provenance.values()
+            )
+        ):
+            errors.append(
+                f"{prefix}: runtime_price_provenance must classify every dimension as "
+                "measured or declared-zero"
+            )
+        elif isinstance(runtime_price, dict) and any(
+            runtime_price.get(field) != 0
+            and runtime_provenance[field] == "declared-zero"
+            for field in RUNTIME_PRICE_FIELDS
+        ):
+            errors.append(f"{prefix}: declared-zero runtime price has a non-zero value")
         coexistence = binding.get("coexistence")
         if not isinstance(coexistence, dict) or set(coexistence) != COEXISTENCE_FIELDS or any(
             not isinstance(value, list)
@@ -250,8 +307,11 @@ def selftest() -> int:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     assert not validate(registry, catalog)
     broken = copy.deepcopy(registry)
-    broken["price_dimensions"].remove("heap_bytes")
-    assert any("price_dimensions" in error for error in validate(broken, catalog))
+    broken["fixed_price_dimensions"].remove("retained_heap_bytes")
+    assert any("fixed_price_dimensions" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
+    broken["runtime_price_dimensions"].remove("transient_heap_peak_bytes")
+    assert any("runtime_price_dimensions" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(registry)
     broken["capability_kinds"][0]["portable_contract_id"] = "missing"
     assert any("portable contract" in error for error in validate(broken, catalog))
@@ -264,8 +324,18 @@ def selftest() -> int:
         "instance": "audio0",
         "maturity": "compile-only",
         "evidence_gates": ["selftest-gate"],
-        "measured_price": {field: 0 for field in PRICE_FIELDS},
-        "price_provenance": {field: "declared-zero" for field in PRICE_FIELDS},
+        "workload": {
+            "configuration_fingerprint": "0123456789abcdef",
+            "operations_per_second": 100,
+        },
+        "measured_fixed_price": {field: 0 for field in FIXED_PRICE_FIELDS},
+        "fixed_price_provenance": {
+            field: "declared-zero" for field in FIXED_PRICE_FIELDS
+        },
+        "measured_runtime_price": {field: 0 for field in RUNTIME_PRICE_FIELDS},
+        "runtime_price_provenance": {
+            field: "declared-zero" for field in RUNTIME_PRICE_FIELDS
+        },
         "coexistence": {field: [] for field in COEXISTENCE_FIELDS},
         "disabled_symbol_gate": {
             "baseline": "selftest-baseline",
@@ -284,12 +354,24 @@ def selftest() -> int:
     priced["bindings"].append(binding)
     assert not validate(priced, catalog)
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["price_provenance"].pop("heap_bytes")
-    assert any("price_provenance" in error for error in validate(broken, catalog))
+    broken["bindings"][0]["fixed_price_provenance"].pop("retained_heap_bytes")
+    assert any("fixed_price_provenance" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["measured_price"]["heap_bytes"] = 1
-    assert any("declared-zero" in error for error in validate(broken, catalog))
-    print("BOARD FEATURES SELFTEST: PASS (vocabulary, backend, binding, price, zero-delta)")
+    broken["bindings"][0]["measured_runtime_price"]["transient_heap_peak_bytes"] = 1
+    assert any("declared-zero runtime" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(priced)
+    broken["bindings"][0]["workload"]["operations_per_second"] = 0
+    assert any("operation rate" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(priced)
+    broken["bindings"][0]["measured_runtime_price"]["latency_p99_cycles"] = 2
+    broken["bindings"][0]["measured_runtime_price"]["latency_max_cycles"] = 1
+    broken["bindings"][0]["runtime_price_provenance"]["latency_p99_cycles"] = "measured"
+    broken["bindings"][0]["runtime_price_provenance"]["latency_max_cycles"] = "measured"
+    assert any("p99 latency" in error for error in validate(broken, catalog))
+    print(
+        "BOARD FEATURES SELFTEST: PASS "
+        "(vocabulary, backend, workload, fixed/runtime price, zero-delta)"
+    )
     return 0
 
 

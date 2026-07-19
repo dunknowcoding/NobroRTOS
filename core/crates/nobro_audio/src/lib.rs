@@ -1,7 +1,9 @@
 //! Allocation-free audio contracts with explicit format, lifecycle, and backpressure.
 #![cfg_attr(not(test), no_std)]
 
-pub use nobro_device::ProviderResourcePrice;
+pub use nobro_device::{
+    ProviderAdmissionPrice, ProviderResourcePrice, ProviderRuntimePrice, ProviderWorkload,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SampleFormat {
@@ -60,7 +62,7 @@ pub enum AudioError {
 pub struct AudioResourcePrice {
     pub frame_bytes: usize,
     pub queue_slots: usize,
-    pub provider: ProviderResourcePrice,
+    pub provider: ProviderAdmissionPrice,
 }
 
 impl AudioResourcePrice {
@@ -70,13 +72,13 @@ impl AudioResourcePrice {
 
     pub const fn has_bounded_queue(self) -> bool {
         match self.frame_storage_bytes() {
-            Some(bytes) => bytes != 0 && bytes <= self.provider.static_ram_bytes as usize,
+            Some(bytes) => bytes != 0 && bytes <= self.provider.fixed().static_ram_bytes() as usize,
             None => false,
         }
     }
 
-    pub const fn is_complete(self) -> bool {
-        self.has_bounded_queue() && self.provider.is_complete()
+    pub const fn is_complete_for(self, workload: ProviderWorkload) -> bool {
+        self.has_bounded_queue() && self.provider.is_complete_for(workload)
     }
 }
 
@@ -85,7 +87,10 @@ impl Default for AudioResourcePrice {
         Self {
             frame_bytes: 0,
             queue_slots: 0,
-            provider: ProviderResourcePrice::unknown(),
+            provider: ProviderAdmissionPrice::new(
+                ProviderResourcePrice::unknown(),
+                ProviderRuntimePrice::unknown(ProviderWorkload::new("unpriced-audio", &[], 0)),
+            ),
         }
     }
 }
@@ -247,29 +252,38 @@ mod tests {
 
     #[test]
     fn admission_price_tracks_bounded_queue_and_vendor_costs() {
+        let workload = ProviderWorkload::new("test-audio", &[16_000, 1, 192], 100);
         let price = AudioResourcePrice {
             frame_bytes: 192,
             queue_slots: 2,
-            provider: ProviderResourcePrice::unknown()
-                .with_flash_bytes(4096)
-                .with_static_ram_bytes(512)
-                .with_heap_bytes(2048)
-                .with_stack_bytes(512)
-                .with_vendor_reserved_ram_bytes(4096)
-                .with_worker_threads(1)
-                .with_cpu_cycles_per_second(320_000)
-                .with_interrupt_slots(1)
-                .with_dma_channels(1)
-                .with_controller_firmware_bytes(0)
-                .with_peripheral_channels(1),
+            provider: ProviderAdmissionPrice::new(
+                ProviderResourcePrice::unknown()
+                    .with_flash_bytes(4096)
+                    .with_static_ram_bytes(512)
+                    .with_retained_heap_bytes(2048)
+                    .with_stack_bytes(512)
+                    .with_vendor_reserved_ram_bytes(4096)
+                    .with_worker_threads(1)
+                    .with_interrupt_slots(1)
+                    .with_dma_channels(1)
+                    .with_controller_firmware_bytes(0)
+                    .with_peripheral_channels(1),
+                ProviderRuntimePrice::unknown(workload)
+                    .with_transient_heap_peak_bytes(192)
+                    .with_stack_high_water_bytes(384)
+                    .with_cpu_cycles_per_second(320_000)
+                    .with_latency_p99_cycles(1_000)
+                    .with_latency_max_cycles(2_000),
+            ),
         };
         assert!(price.has_bounded_queue());
-        assert!(price.is_complete());
+        assert!(price.is_complete_for(workload));
         assert_eq!(price.frame_storage_bytes(), Some(384));
     }
 
     #[test]
     fn unpriced_zeroes_are_not_a_complete_price() {
-        assert!(!AudioResourcePrice::default().is_complete());
+        let price = AudioResourcePrice::default();
+        assert!(!price.is_complete_for(price.provider.runtime().workload()));
     }
 }

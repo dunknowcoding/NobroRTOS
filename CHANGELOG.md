@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-No changes yet.
+### Changed
+
+- Board-feature pricing now separates fixed mount ownership from transient
+  heap, stack high-water, CPU, and latency evidence bound to an exact provider
+  configuration and admitted operation rate.
+- ESP32 continuous-ADC, LEDC, RMT, and ES8311 adapters reject incomplete,
+  workload-mismatched, or impossible zero-ownership prices.
+- Board-feature registry schema v2 requires independent fixed/runtime values
+  and provenance; no exact binding is promoted without both.
 
 ## 0.3.2 - 2026-07-18
 

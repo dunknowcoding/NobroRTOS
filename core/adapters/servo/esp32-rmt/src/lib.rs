@@ -1,8 +1,25 @@
 #![cfg_attr(not(test), no_std)]
 
-use nobro_servo::{PulseEngineBackend, PulseError, PulseResourcePrice, PulseState, PulseSymbol};
+use nobro_servo::{
+    ProviderWorkload, PulseEngineBackend, PulseError, PulseResourcePrice, PulseState, PulseSymbol,
+};
 
 pub const BACKEND_ID: &str = "esp32-arduino-rmt";
+
+/// Build the runtime-price identity for one RMT configuration and admitted
+/// transmit call rate.
+pub const fn workload(
+    tick_hz: u32,
+    max_symbols: usize,
+    transmissions_per_second: u32,
+) -> ProviderWorkload {
+    let max_symbols = max_symbols as u64;
+    ProviderWorkload::new(
+        BACKEND_ID,
+        &[tick_hz, max_symbols as u32, (max_symbols >> 32) as u32],
+        transmissions_per_second,
+    )
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransportError {
@@ -22,6 +39,7 @@ pub struct Esp32Rmt<T> {
     tick_hz: u32,
     attached: bool,
     max_symbols: usize,
+    transmissions_per_second: u32,
     price: PulseResourcePrice,
     writes: u32,
     symbols: u32,
@@ -32,13 +50,19 @@ pub struct Esp32Rmt<T> {
 }
 
 impl<T: Esp32RmtTransport> Esp32Rmt<T> {
-    pub const fn new(transport: T, max_symbols: usize, price: PulseResourcePrice) -> Self {
+    pub const fn new(
+        transport: T,
+        max_symbols: usize,
+        transmissions_per_second: u32,
+        price: PulseResourcePrice,
+    ) -> Self {
         Self {
             transport,
             state: PulseState::Down,
             tick_hz: 0,
             attached: false,
             max_symbols,
+            transmissions_per_second,
             price,
             writes: 0,
             symbols: 0,
@@ -51,6 +75,10 @@ impl<T: Esp32RmtTransport> Esp32Rmt<T> {
 
     pub const fn admission_price(&self) -> PulseResourcePrice {
         self.price
+    }
+
+    pub const fn admitted_transmissions_per_second(&self) -> u32 {
+        self.transmissions_per_second
     }
 
     pub const fn diagnostics(&self) -> (u32, u32, u32, u32, u32, u32) {
@@ -85,9 +113,14 @@ impl<T: Esp32RmtTransport> PulseEngineBackend for Esp32Rmt<T> {
     }
 
     fn configure(&mut self, tick_hz: u32) -> Result<(), PulseError> {
+        let fixed = self.price.fixed();
+        let expected_workload = workload(tick_hz, self.max_symbols, self.transmissions_per_second);
         if tick_hz == 0
             || self.max_symbols == 0
-            || !self.price.is_complete()
+            || !self.price.is_complete_for(expected_workload)
+            || fixed.peripheral_channels() == 0
+            || fixed.interrupt_slots() == 0
+            || fixed.dma_channels() != 0
             || self.state == PulseState::Busy
         {
             return Err(PulseError::InvalidConfig);
@@ -203,9 +236,23 @@ mod tests {
         }
     }
 
+    fn price(
+        tick_hz: u32,
+        max_symbols: usize,
+        transmissions_per_second: u32,
+    ) -> PulseResourcePrice {
+        let workload = workload(tick_hz, max_symbols, transmissions_per_second);
+        PulseResourcePrice::new(
+            nobro_servo::ProviderResourcePrice::known_zero()
+                .with_peripheral_channels(1)
+                .with_interrupt_slots(1),
+            nobro_servo::ProviderRuntimePrice::known_zero(workload),
+        )
+    }
+
     #[test]
     fn symbol_bounds_deadline_and_recovery_are_attributed() {
-        let mut rmt = Esp32Rmt::new(Fake::default(), 2, PulseResourcePrice::known_zero());
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, 100, price(1_000_000, 2, 100));
         rmt.configure(1_000_000).unwrap();
         let symbols = [
             PulseSymbol {
@@ -238,7 +285,17 @@ mod tests {
 
     #[test]
     fn unknown_price_cannot_mount_as_zero_cost() {
-        let mut rmt = Esp32Rmt::new(Fake::default(), 2, PulseResourcePrice::default());
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, 100, PulseResourcePrice::default());
+        assert_eq!(rmt.configure(1_000_000), Err(PulseError::InvalidConfig));
+
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, 100, price(1_000_000, 2, 100));
+        assert_eq!(rmt.configure(2_000_000), Err(PulseError::InvalidConfig));
+
+        let zero_ownership = PulseResourcePrice::known_zero(workload(1_000_000, 2, 100));
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, 100, zero_ownership);
+        assert_eq!(rmt.configure(1_000_000), Err(PulseError::InvalidConfig));
+
+        let mut rmt = Esp32Rmt::new(Fake::default(), 2, 101, price(1_000_000, 2, 100));
         assert_eq!(rmt.configure(1_000_000), Err(PulseError::InvalidConfig));
     }
 }

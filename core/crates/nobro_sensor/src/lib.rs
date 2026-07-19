@@ -129,9 +129,12 @@ pub struct AdcSample {
 
 /// Complete admission price for one mounted ADC-DMA provider.
 ///
-/// The shared type distinguishes unknown fields from evidenced zeroes and
-/// includes peripheral-channel ownership alongside DMA/interrupt ownership.
-pub use nobro_device::ProviderResourcePrice as AdcDmaResourcePrice;
+/// Fixed ownership is separate from runtime evidence for the exact configured
+/// workload. Unknown fields cannot masquerade as zero.
+pub use nobro_device::{
+    ProviderAdmissionPrice as AdcDmaResourcePrice, ProviderResourcePrice, ProviderRuntimePrice,
+    ProviderWorkload,
+};
 
 /// Allocation-free ADC-DMA contract. A backend returns at most one sample per
 /// configured channel for each read; vendor averaging and DMA storage remain

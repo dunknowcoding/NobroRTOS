@@ -1,8 +1,20 @@
 #![cfg_attr(not(test), no_std)]
 
-use nobro_servo::{PulseError, PulseResourcePrice, PulseState, PwmConfig, PwmEngineBackend};
+use nobro_servo::{
+    ProviderWorkload, PulseError, PulseResourcePrice, PulseState, PwmConfig, PwmEngineBackend,
+};
 
 pub const BACKEND_ID: &str = "esp32-arduino-ledc";
+
+/// Build the runtime-price identity for one PWM configuration and admitted
+/// duty-update rate.
+pub const fn workload(config: PwmConfig, writes_per_second: u32) -> ProviderWorkload {
+    ProviderWorkload::new(
+        BACKEND_ID,
+        &[config.frequency_hz, config.resolution_bits as u32],
+        writes_per_second,
+    )
+}
 
 pub trait Esp32LedcTransport {
     fn attach(&mut self, config: PwmConfig) -> bool;
@@ -15,6 +27,7 @@ pub struct Esp32Ledc<T> {
     state: PulseState,
     config: Option<PwmConfig>,
     attached: bool,
+    writes_per_second: u32,
     price: PulseResourcePrice,
     writes: u32,
     transport_errors: u32,
@@ -22,12 +35,13 @@ pub struct Esp32Ledc<T> {
 }
 
 impl<T: Esp32LedcTransport> Esp32Ledc<T> {
-    pub const fn new(transport: T, price: PulseResourcePrice) -> Self {
+    pub const fn new(transport: T, writes_per_second: u32, price: PulseResourcePrice) -> Self {
         Self {
             transport,
             state: PulseState::Down,
             config: None,
             attached: false,
+            writes_per_second,
             price,
             writes: 0,
             transport_errors: 0,
@@ -37,6 +51,10 @@ impl<T: Esp32LedcTransport> Esp32Ledc<T> {
 
     pub const fn admission_price(&self) -> PulseResourcePrice {
         self.price
+    }
+
+    pub const fn admitted_writes_per_second(&self) -> u32 {
+        self.writes_per_second
     }
 
     pub const fn writes(&self) -> u32 {
@@ -64,7 +82,15 @@ impl<T: Esp32LedcTransport> PwmEngineBackend for Esp32Ledc<T> {
     }
 
     fn configure(&mut self, config: PwmConfig) -> Result<(), PulseError> {
-        if !config.is_valid() || !self.price.is_complete() || self.state == PulseState::Busy {
+        let fixed = self.price.fixed();
+        let expected_workload = workload(config, self.writes_per_second);
+        if !config.is_valid()
+            || !self.price.is_complete_for(expected_workload)
+            || fixed.peripheral_channels() == 0
+            || fixed.interrupt_slots() != 0
+            || fixed.dma_channels() != 0
+            || self.state == PulseState::Busy
+        {
             return Err(PulseError::InvalidConfig);
         }
         if self.attached && !self.transport.detach() {
@@ -166,13 +192,21 @@ mod tests {
         }
     }
 
+    fn price(config: PwmConfig, writes_per_second: u32) -> PulseResourcePrice {
+        let workload = workload(config, writes_per_second);
+        PulseResourcePrice::new(
+            nobro_servo::ProviderResourcePrice::known_zero().with_peripheral_channels(1),
+            nobro_servo::ProviderRuntimePrice::known_zero(workload),
+        )
+    }
+
     #[test]
     fn duty_bounds_lifecycle_and_recovery_hold() {
-        let mut ledc = Esp32Ledc::new(Fake::default(), PulseResourcePrice::known_zero());
         let config = PwmConfig {
             frequency_hz: 20_000,
             resolution_bits: 10,
         };
+        let mut ledc = Esp32Ledc::new(Fake::default(), 100, price(config, 100));
         assert_eq!(ledc.configure(config), Ok(()));
         assert_eq!(ledc.set_duty(1023), Ok(()));
         assert_eq!(ledc.set_duty(1024), Err(PulseError::InvalidConfig));
@@ -188,7 +222,7 @@ mod tests {
 
     #[test]
     fn unknown_price_cannot_mount_as_zero_cost() {
-        let mut ledc = Esp32Ledc::new(Fake::default(), PulseResourcePrice::default());
+        let mut ledc = Esp32Ledc::new(Fake::default(), 100, PulseResourcePrice::default());
         assert_eq!(
             ledc.configure(PwmConfig {
                 frequency_hz: 20_000,
@@ -196,5 +230,21 @@ mod tests {
             }),
             Err(PulseError::InvalidConfig)
         );
+
+        let config = PwmConfig {
+            frequency_hz: 20_000,
+            resolution_bits: 10,
+        };
+        let mut changed = config;
+        changed.frequency_hz += 1;
+        let mut ledc = Esp32Ledc::new(Fake::default(), 100, price(config, 100));
+        assert_eq!(ledc.configure(changed), Err(PulseError::InvalidConfig));
+
+        let zero_ownership = PulseResourcePrice::known_zero(workload(config, 100));
+        let mut ledc = Esp32Ledc::new(Fake::default(), 100, zero_ownership);
+        assert_eq!(ledc.configure(config), Err(PulseError::InvalidConfig));
+
+        let mut ledc = Esp32Ledc::new(Fake::default(), 101, price(config, 100));
+        assert_eq!(ledc.configure(config), Err(PulseError::InvalidConfig));
     }
 }

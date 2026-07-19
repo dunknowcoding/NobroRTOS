@@ -46,10 +46,13 @@ not become platform claims: `platform_tiers.json` accepts a kind only when the
 registry contains an exact binding and the ordinary scoped evidence gate.
 Disabled bindings must declare the same-board baseline, zero flash/RAM delta,
 and forbidden backend symbols. Resource prices share one typed contract across
-audio, sensor, and pulse domains. Default numeric zeroes remain *unknown*;
-every exact binding must classify each field as measured or explicitly
-declared zero. Peripheral/controller channels are priced independently from
-DMA channels and interrupt slots.
+audio, sensor, and pulse domains. Schema v2 keeps fixed mount ownership
+separate from transient heap, stack high-water, CPU, and latency measurements
+for one exact configuration fingerprint and positive operation rate. Default
+numeric zeroes remain *unknown*; every exact binding must classify each fixed
+and runtime field as measured or explicitly declared zero.
+Peripheral/controller channels are priced independently from DMA channels and
+interrupt slots.
 
 ### Compatibility Strategy
 
@@ -664,7 +667,9 @@ rejected during allocation rather than reaching the regular endpoint arrays.
 
 `nobro-audio` defines allocation-free codec configuration, lifecycle,
 capture/playback, an optional measured-I/O deadline extension, explicit
-admission price, and a fixed-capacity backpressuring frame ring. It does not
+admission price, and a fixed-capacity backpressuring frame ring. Fixed mount
+ownership is separate from transient heap, stack high-water, CPU, and latency
+evidence for an exact format/frame/rate workload. It does not
 reimplement a vendor DMA engine.
 
 The first concrete bridge is `audio/esp32s3-es8311`. Its Rust side validates
@@ -689,13 +694,20 @@ ecosystem or a board-specific application hierarchy:
 
 - `sensors/esp32-adc-continuous` mounts the Arduino-ESP32 process-wide
   continuous ADC/DMA service behind bounded channel/frame, deadline,
-  lifecycle, recovery, and complete resource-price contracts.
+  lifecycle, recovery, and configuration-bound resource-price contracts.
 - `servo/esp32-ledc` mounts fixed-frequency duty output.
 - `servo/esp32-rmt` mounts bounded pulse-symbol output.
 
 `NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
 Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
-driver state internally. The ADC facade reports the aligned conversions per
+driver state internally, including a transient aligned DMA-capable buffer in
+the current continuous-read path. A provider price therefore separates
+retained ownership from transient peak, stack high-water, CPU cycles, and
+p99/maximum latency for one exact configuration and admitted call rate.
+The adapter rejects a requested configuration or declared rate that differs
+from the evidence; the scheduler remains responsible for enforcing that
+admitted call rate at runtime.
+The ADC facade reports the aligned conversions per
 channel required by the board core and rejects a frame shape that Arduino-
 ESP32 would silently widen, keeping averaging and deadline semantics exact.
 State-restoring classic ESP32, single-core ESP32-C3, and dual-core ESP32-P4

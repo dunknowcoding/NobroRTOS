@@ -2,9 +2,25 @@
 
 use nobro_sensor::{
     AdcDmaBackend, AdcDmaConfig, AdcDmaError, AdcDmaResourcePrice, AdcDmaState, AdcSample,
+    ProviderWorkload,
 };
 
 pub const BACKEND_ID: &str = "esp32-arduino-continuous-adc";
+
+/// Build the runtime-price identity for one ADC configuration and admitted
+/// `read_frame` call rate.
+pub const fn workload(config: AdcDmaConfig, reads_per_second: u32) -> ProviderWorkload {
+    ProviderWorkload::new(
+        BACKEND_ID,
+        &[
+            config.channels as u32,
+            config.resolution_bits as u32,
+            config.conversions_per_channel as u32,
+            config.sample_rate_hz,
+        ],
+        reads_per_second,
+    )
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransportError {
@@ -40,18 +56,20 @@ pub struct Esp32AdcContinuous<T> {
     config: Option<AdcDmaConfig>,
     configured: bool,
     started: bool,
+    reads_per_second: u32,
     price: AdcDmaResourcePrice,
     diagnostics: AdcDiagnostics,
 }
 
 impl<T: Esp32AdcContinuousTransport> Esp32AdcContinuous<T> {
-    pub const fn new(transport: T, price: AdcDmaResourcePrice) -> Self {
+    pub const fn new(transport: T, reads_per_second: u32, price: AdcDmaResourcePrice) -> Self {
         Self {
             transport,
             state: AdcDmaState::Down,
             config: None,
             configured: false,
             started: false,
+            reads_per_second,
             price,
             diagnostics: AdcDiagnostics {
                 frames: 0,
@@ -66,6 +84,10 @@ impl<T: Esp32AdcContinuousTransport> Esp32AdcContinuous<T> {
 
     pub const fn admission_price(&self) -> AdcDmaResourcePrice {
         self.price
+    }
+
+    pub const fn admitted_reads_per_second(&self) -> u32 {
+        self.reads_per_second
     }
 
     pub const fn diagnostics(&self) -> AdcDiagnostics {
@@ -99,8 +121,13 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
     }
 
     fn configure(&mut self, config: AdcDmaConfig) -> Result<(), AdcDmaError> {
+        let fixed = self.price.fixed();
+        let expected_workload = workload(config, self.reads_per_second);
         if !config.is_valid()
-            || !self.price.is_complete()
+            || !self.price.is_complete_for(expected_workload)
+            || fixed.peripheral_channels() == 0
+            || fixed.interrupt_slots() == 0
+            || fixed.dma_channels() == 0
             || matches!(self.state, AdcDmaState::Running)
         {
             return Err(AdcDmaError::InvalidConfig);
@@ -299,9 +326,20 @@ mod tests {
         }
     }
 
+    fn price(config: AdcDmaConfig, reads_per_second: u32) -> AdcDmaResourcePrice {
+        let workload = workload(config, reads_per_second);
+        AdcDmaResourcePrice::new(
+            nobro_sensor::ProviderResourcePrice::known_zero()
+                .with_peripheral_channels(1)
+                .with_interrupt_slots(1)
+                .with_dma_channels(1),
+            nobro_sensor::ProviderRuntimePrice::known_zero(workload),
+        )
+    }
+
     #[test]
     fn lifecycle_and_frame_bounds_are_explicit() {
-        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::known_zero());
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, price(config(), 625));
         assert_eq!(adc.configure(config()), Ok(()));
         assert_eq!(adc.start(), Ok(()));
         let mut short = [AdcSample::default(); 1];
@@ -330,7 +368,7 @@ mod tests {
 
     #[test]
     fn partial_and_deadline_paths_fault_and_attribute() {
-        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::known_zero());
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, price(config(), 625));
         adc.configure(config()).unwrap();
         adc.start().unwrap();
         adc.transport.partial = true;
@@ -353,7 +391,19 @@ mod tests {
 
     #[test]
     fn unknown_price_cannot_mount_as_zero_cost() {
-        let mut adc = Esp32AdcContinuous::new(Fake::default(), AdcDmaResourcePrice::default());
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, AdcDmaResourcePrice::default());
+        assert_eq!(adc.configure(config()), Err(AdcDmaError::InvalidConfig));
+
+        let mut mismatched = config();
+        mismatched.sample_rate_hz += 1;
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, price(config(), 625));
+        assert_eq!(adc.configure(mismatched), Err(AdcDmaError::InvalidConfig));
+
+        let zero_ownership = AdcDmaResourcePrice::known_zero(workload(config(), 625));
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, zero_ownership);
+        assert_eq!(adc.configure(config()), Err(AdcDmaError::InvalidConfig));
+
+        let mut adc = Esp32AdcContinuous::new(Fake::default(), 626, price(config(), 625));
         assert_eq!(adc.configure(config()), Err(AdcDmaError::InvalidConfig));
     }
 }
