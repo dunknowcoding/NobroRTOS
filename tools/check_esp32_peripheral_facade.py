@@ -57,10 +57,19 @@ bool analogContinuousDeinit() {
 }
 
 static bool ledc_ok = true;
+static bool ledc_attached = false;
 static uint32_t ledc_duty = 0;
-bool ledcAttach(uint8_t, uint32_t, uint8_t) { return ledc_ok; }
+bool ledcAttach(uint8_t, uint32_t, uint8_t) {
+  if (!ledc_ok || ledc_attached) return false;
+  ledc_attached = true;
+  return true;
+}
 bool ledcWrite(uint8_t, uint32_t duty) { ledc_duty = duty; return ledc_ok; }
-bool ledcDetach(uint8_t) { return ledc_ok; }
+bool ledcDetach(uint8_t) {
+  if (!ledc_ok || !ledc_attached) return false;
+  ledc_attached = false;
+  return true;
+}
 
 typedef enum { RMT_RX_MODE = 0, RMT_TX_MODE = 1 } rmt_ch_dir_t;
 typedef enum { RMT_MEM_NUM_BLOCKS_1 = 1 } rmt_reserve_memsize_t;
@@ -105,6 +114,11 @@ int main() {
   assert(adc.recover() == NOBRO_ADC_DMA_OK);
   assert(adc.diagnostics().recoveries == 1);
   assert(adc.quiesce() == NOBRO_ADC_DMA_OK);
+  assert(adc.release() == NOBRO_ADC_DMA_OK);
+  assert(adc.state() == NOBRO_ADC_DMA_DOWN);
+  assert(adc.release() == NOBRO_ADC_DMA_OK);
+  assert(adc.start() == NOBRO_ADC_DMA_NOT_READY);
+  assert(adc.configure(pins, adc_config) == NOBRO_ADC_DMA_OK);
 
   nobro::Esp32LedcPwm ledc(3);
   const nobro_pwm_config_t pwm = {20000, 10};
@@ -113,6 +127,11 @@ int main() {
   assert(ledc.setDuty(1024) == NOBRO_PULSE_INVALID_CONFIG);
   assert(ledc.quiesce() == NOBRO_PULSE_OK);
   assert(ledc.recover() == NOBRO_PULSE_OK);
+  assert(ledc.release() == NOBRO_PULSE_OK && !ledc_attached);
+  assert(ledc.state() == NOBRO_PULSE_DOWN);
+  assert(ledc.release() == NOBRO_PULSE_OK);
+  assert(ledc.setDuty(1) == NOBRO_PULSE_NOT_READY);
+  assert(ledc.configure(pwm) == NOBRO_PULSE_OK);
 
   nobro::Esp32RmtPulse<2> rmt(4);
   assert(rmt.configure(1000000) == NOBRO_PULSE_OK);
@@ -126,6 +145,11 @@ int main() {
   rmt_ok = true;
   assert(rmt.recover() == NOBRO_PULSE_OK);
   assert(rmt.diagnostics().recoveries == 2);
+  assert(rmt.release() == NOBRO_PULSE_OK && !rmt_attached);
+  assert(rmt.state() == NOBRO_PULSE_DOWN);
+  assert(rmt.release() == NOBRO_PULSE_OK);
+  assert(rmt.transmit(symbols, 2, 100) == NOBRO_PULSE_NOT_READY);
+  assert(rmt.configure(1000000) == NOBRO_PULSE_OK);
   return 0;
 }
 '''

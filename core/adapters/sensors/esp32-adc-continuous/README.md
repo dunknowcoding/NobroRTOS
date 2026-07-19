@@ -9,3 +9,5 @@ The in-tree transport split has host tests and Arduino-ESP32 target builds.
 A state-restoring classic ESP32 campaign verifies sampling rate, lifecycle
 recovery, and immediate runtime reservation. Conversion accuracy and complete
 price dimensions remain open, so no exact board binding is promoted.
+`quiesce` preserves configuration for recovery; `release` stops and
+deinitializes the process-wide ADC engine and returns the adapter to `Down`.

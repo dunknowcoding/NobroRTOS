@@ -111,6 +111,9 @@ pub trait PwmEngineBackend {
     fn set_duty(&mut self, duty: u32) -> Result<(), PulseError>;
     fn quiesce(&mut self) -> Result<(), PulseError>;
     fn recover(&mut self) -> Result<(), PulseError>;
+    /// Detach the engine and forget configuration. A released provider must
+    /// be configured again before use.
+    fn release(&mut self) -> Result<(), PulseError>;
 }
 
 /// Bounded symbol engine such as ESP32 RMT.
@@ -120,6 +123,9 @@ pub trait PulseEngineBackend {
     fn transmit(&mut self, symbols: &[PulseSymbol], max_block_us: u32) -> Result<(), PulseError>;
     fn quiesce(&mut self) -> Result<(), PulseError>;
     fn recover(&mut self) -> Result<(), PulseError>;
+    /// Detach the engine and forget configuration. A released provider must
+    /// be configured again before use.
+    fn release(&mut self) -> Result<(), PulseError>;
 }
 
 #[cfg(test)]

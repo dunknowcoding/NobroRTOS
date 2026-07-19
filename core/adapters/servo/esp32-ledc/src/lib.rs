@@ -14,6 +14,7 @@ pub struct Esp32Ledc<T> {
     transport: T,
     state: PulseState,
     config: Option<PwmConfig>,
+    attached: bool,
     price: PulseResourcePrice,
     writes: u32,
     transport_errors: u32,
@@ -26,6 +27,7 @@ impl<T: Esp32LedcTransport> Esp32Ledc<T> {
             transport,
             state: PulseState::Down,
             config: None,
+            attached: false,
             price,
             writes: 0,
             transport_errors: 0,
@@ -65,10 +67,15 @@ impl<T: Esp32LedcTransport> PwmEngineBackend for Esp32Ledc<T> {
         if !config.is_valid() || self.state == PulseState::Busy {
             return Err(PulseError::InvalidConfig);
         }
+        if self.attached && !self.transport.detach() {
+            return Err(self.transport_failure());
+        }
+        self.attached = false;
         if !self.transport.attach(config) {
             return Err(self.transport_failure());
         }
         self.config = Some(config);
+        self.attached = true;
         self.state = PulseState::Ready;
         Ok(())
     }
@@ -89,9 +96,10 @@ impl<T: Esp32LedcTransport> PwmEngineBackend for Esp32Ledc<T> {
     }
 
     fn quiesce(&mut self) -> Result<(), PulseError> {
-        if self.config.is_some() && !self.transport.detach() {
+        if self.attached && !self.transport.detach() {
             return Err(self.transport_failure());
         }
+        self.attached = false;
         if self.config.is_some() {
             self.state = PulseState::Suspended;
         }
@@ -100,12 +108,26 @@ impl<T: Esp32LedcTransport> PwmEngineBackend for Esp32Ledc<T> {
 
     fn recover(&mut self) -> Result<(), PulseError> {
         let config = self.config.ok_or(PulseError::NotReady)?;
-        let _ = self.transport.detach();
+        if self.attached && !self.transport.detach() {
+            return Err(self.transport_failure());
+        }
+        self.attached = false;
         if !self.transport.attach(config) {
             return Err(self.transport_failure());
         }
+        self.attached = true;
         self.state = PulseState::Ready;
         self.recoveries = self.recoveries.saturating_add(1);
+        Ok(())
+    }
+
+    fn release(&mut self) -> Result<(), PulseError> {
+        if self.attached && !self.transport.detach() {
+            return Err(self.transport_failure());
+        }
+        self.attached = false;
+        self.config = None;
+        self.state = PulseState::Down;
         Ok(())
     }
 }
@@ -119,19 +141,28 @@ mod tests {
         fail: bool,
         duty: u32,
         attaches: u8,
+        attached: bool,
     }
 
     impl Esp32LedcTransport for Fake {
         fn attach(&mut self, _: PwmConfig) -> bool {
+            if self.fail || self.attached {
+                return false;
+            }
             self.attaches += 1;
-            !self.fail
+            self.attached = true;
+            true
         }
         fn write(&mut self, duty: u32) -> bool {
             self.duty = duty;
             !self.fail
         }
         fn detach(&mut self) -> bool {
-            !self.fail
+            if self.fail || !self.attached {
+                return false;
+            }
+            self.attached = false;
+            true
         }
     }
 
@@ -148,5 +179,10 @@ mod tests {
         assert_eq!(ledc.quiesce(), Ok(()));
         assert_eq!(ledc.recover(), Ok(()));
         assert_eq!(ledc.recoveries(), 1);
+        assert_eq!(ledc.release(), Ok(()));
+        assert_eq!(ledc.state(), PulseState::Down);
+        assert_eq!(ledc.release(), Ok(()));
+        assert_eq!(ledc.set_duty(1), Err(PulseError::NotReady));
+        assert_eq!(ledc.configure(config), Ok(()));
     }
 }

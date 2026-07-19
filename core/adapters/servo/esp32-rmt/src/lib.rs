@@ -20,6 +20,7 @@ pub struct Esp32Rmt<T> {
     transport: T,
     state: PulseState,
     tick_hz: u32,
+    attached: bool,
     max_symbols: usize,
     price: PulseResourcePrice,
     writes: u32,
@@ -36,6 +37,7 @@ impl<T: Esp32RmtTransport> Esp32Rmt<T> {
             transport,
             state: PulseState::Down,
             tick_hz: 0,
+            attached: false,
             max_symbols,
             price,
             writes: 0,
@@ -86,10 +88,15 @@ impl<T: Esp32RmtTransport> PulseEngineBackend for Esp32Rmt<T> {
         if tick_hz == 0 || self.max_symbols == 0 || self.state == PulseState::Busy {
             return Err(PulseError::InvalidConfig);
         }
+        if self.attached && !self.transport.deinit() {
+            return Err(self.transport_failure(TransportError::Failed));
+        }
+        self.attached = false;
         if !self.transport.init(tick_hz) {
             return Err(self.transport_failure(TransportError::Failed));
         }
         self.tick_hz = tick_hz;
+        self.attached = true;
         self.state = PulseState::Ready;
         Ok(())
     }
@@ -118,9 +125,10 @@ impl<T: Esp32RmtTransport> PulseEngineBackend for Esp32Rmt<T> {
     }
 
     fn quiesce(&mut self) -> Result<(), PulseError> {
-        if self.tick_hz != 0 && !self.transport.deinit() {
+        if self.attached && !self.transport.deinit() {
             return Err(self.transport_failure(TransportError::Failed));
         }
+        self.attached = false;
         if self.tick_hz != 0 {
             self.state = PulseState::Suspended;
         }
@@ -131,11 +139,26 @@ impl<T: Esp32RmtTransport> PulseEngineBackend for Esp32Rmt<T> {
         if self.tick_hz == 0 {
             return Err(PulseError::NotReady);
         }
-        if !self.transport.deinit() || !self.transport.init(self.tick_hz) {
+        if self.attached && !self.transport.deinit() {
             return Err(self.transport_failure(TransportError::Failed));
         }
+        self.attached = false;
+        if !self.transport.init(self.tick_hz) {
+            return Err(self.transport_failure(TransportError::Failed));
+        }
+        self.attached = true;
         self.state = PulseState::Ready;
         self.recoveries = self.recoveries.saturating_add(1);
+        Ok(())
+    }
+
+    fn release(&mut self) -> Result<(), PulseError> {
+        if self.attached && !self.transport.deinit() {
+            return Err(self.transport_failure(TransportError::Failed));
+        }
+        self.attached = false;
+        self.tick_hz = 0;
+        self.state = PulseState::Down;
         Ok(())
     }
 }
@@ -148,10 +171,15 @@ mod tests {
     struct Fake {
         deadline: bool,
         writes: u8,
+        attached: bool,
     }
 
     impl Esp32RmtTransport for Fake {
         fn init(&mut self, _: u32) -> bool {
+            if self.attached {
+                return false;
+            }
+            self.attached = true;
             true
         }
         fn write(&mut self, _: &[PulseSymbol], _: u32) -> Result<(), TransportError> {
@@ -163,6 +191,10 @@ mod tests {
             }
         }
         fn deinit(&mut self) -> bool {
+            if !self.attached {
+                return false;
+            }
+            self.attached = false;
             true
         }
     }
@@ -191,5 +223,12 @@ mod tests {
         rmt.transport.deadline = false;
         rmt.recover().unwrap();
         assert_eq!(rmt.diagnostics(), (1, 2, 1, 0, 1, 1));
+        rmt.quiesce().unwrap();
+        rmt.recover().unwrap();
+        rmt.release().unwrap();
+        assert_eq!(rmt.state(), PulseState::Down);
+        rmt.release().unwrap();
+        assert_eq!(rmt.transmit(&symbols, 100), Err(PulseError::NotReady));
+        rmt.configure(1_000_000).unwrap();
     }
 }

@@ -74,18 +74,21 @@ void setup() {
     adc.readFrame(samples, 1, 1000, count);
     adc.quiesce();
     adc.recover();
+    adc.release();
 
     const nobro_pwm_config_t pwmConfig = {20000, 10};
     pwm.configure(pwmConfig);
     pwm.setDuty(512);
     pwm.quiesce();
     pwm.recover();
+    pwm.release();
 
     const nobro_pulse_symbol_t symbols[2] = {{4, 6}, {8, 2}};
     pulse.configure(1000000);
     pulse.transmit(symbols, 2, 1000);
     pulse.quiesce();
     pulse.recover();
+    pulse.release();
   }
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
   Serial.println(adc.staticRamBytes() + pwm.staticRamBytes() + pulse.staticRamBytes());
@@ -112,6 +115,7 @@ void setup() {
     adc.readFrame(samples, 1, 1000, count);
     adc.quiesce();
     adc.recover();
+    adc.release();
   }
   Serial.begin(115200);
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
@@ -135,6 +139,7 @@ void setup() {
     pwm.setDuty(512);
     pwm.quiesce();
     pwm.recover();
+    pwm.release();
   }
   Serial.begin(115200);
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());
@@ -158,6 +163,7 @@ void setup() {
     pulse.transmit(symbols, 2, 1000);
     pulse.quiesce();
     pulse.recover();
+    pulse.release();
   }
   Serial.begin(115200);
   Serial.println(app.admit() ? "NOBRO:READY" : app.errorCode());

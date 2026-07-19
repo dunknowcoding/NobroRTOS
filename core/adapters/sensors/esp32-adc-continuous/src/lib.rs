@@ -38,6 +38,8 @@ pub struct Esp32AdcContinuous<T> {
     transport: T,
     state: AdcDmaState,
     config: Option<AdcDmaConfig>,
+    configured: bool,
+    started: bool,
     price: AdcDmaResourcePrice,
     diagnostics: AdcDiagnostics,
 }
@@ -48,6 +50,8 @@ impl<T: Esp32AdcContinuousTransport> Esp32AdcContinuous<T> {
             transport,
             state: AdcDmaState::Down,
             config: None,
+            configured: false,
+            started: false,
             price,
             diagnostics: AdcDiagnostics {
                 frames: 0,
@@ -98,9 +102,22 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
         if !config.is_valid() || matches!(self.state, AdcDmaState::Running) {
             return Err(AdcDmaError::InvalidConfig);
         }
+        if self.configured {
+            if self.started {
+                self.transport
+                    .stop()
+                    .map_err(|error| self.transport_failure(error))?;
+                self.started = false;
+            }
+            self.transport
+                .deinit()
+                .map_err(|error| self.transport_failure(error))?;
+            self.configured = false;
+        }
         self.transport
             .configure(config)
             .map_err(|error| self.transport_failure(error))?;
+        self.configured = true;
         self.config = Some(config);
         self.state = AdcDmaState::Ready;
         Ok(())
@@ -113,6 +130,7 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
         self.transport
             .start()
             .map_err(|error| self.transport_failure(error))?;
+        self.started = true;
         self.state = AdcDmaState::Running;
         Ok(())
     }
@@ -147,10 +165,11 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
     }
 
     fn quiesce(&mut self) -> Result<(), AdcDmaError> {
-        if self.state == AdcDmaState::Running {
+        if self.started {
             self.transport
                 .stop()
                 .map_err(|error| self.transport_failure(error))?;
+            self.started = false;
         }
         if self.config.is_some() {
             self.state = AdcDmaState::Suspended;
@@ -160,13 +179,46 @@ impl<T: Esp32AdcContinuousTransport> AdcDmaBackend for Esp32AdcContinuous<T> {
 
     fn recover(&mut self) -> Result<(), AdcDmaError> {
         let config = self.config.ok_or(AdcDmaError::NotReady)?;
+        if self.started {
+            self.transport
+                .stop()
+                .map_err(|error| self.transport_failure(error))?;
+            self.started = false;
+        }
+        if self.configured {
+            self.transport
+                .deinit()
+                .map_err(|error| self.transport_failure(error))?;
+            self.configured = false;
+        }
         self.transport
-            .deinit()
-            .and_then(|()| self.transport.configure(config))
-            .and_then(|()| self.transport.start())
+            .configure(config)
             .map_err(|error| self.transport_failure(error))?;
+        self.configured = true;
+        self.transport
+            .start()
+            .map_err(|error| self.transport_failure(error))?;
+        self.started = true;
         self.state = AdcDmaState::Running;
         self.diagnostics.recoveries = self.diagnostics.recoveries.saturating_add(1);
+        Ok(())
+    }
+
+    fn release(&mut self) -> Result<(), AdcDmaError> {
+        if self.started {
+            self.transport
+                .stop()
+                .map_err(|error| self.transport_failure(error))?;
+            self.started = false;
+        }
+        if self.configured {
+            self.transport
+                .deinit()
+                .map_err(|error| self.transport_failure(error))?;
+            self.configured = false;
+        }
+        self.config = None;
+        self.state = AdcDmaState::Down;
         Ok(())
     }
 }
@@ -182,14 +234,26 @@ mod tests {
         starts: u8,
         stops: u8,
         deinits: u8,
+        configured: bool,
+        started: bool,
+        fail_next_configure: bool,
     }
 
     impl Esp32AdcContinuousTransport for Fake {
         fn configure(&mut self, _: AdcDmaConfig) -> Result<(), TransportError> {
+            if self.configured || self.fail_next_configure {
+                self.fail_next_configure = false;
+                return Err(TransportError::Failed);
+            }
+            self.configured = true;
             Ok(())
         }
         fn start(&mut self) -> Result<(), TransportError> {
+            if !self.configured || self.started {
+                return Err(TransportError::Failed);
+            }
             self.starts += 1;
+            self.started = true;
             Ok(())
         }
         fn read(&mut self, output: &mut [AdcSample], _: u32) -> Result<usize, TransportError> {
@@ -206,11 +270,19 @@ mod tests {
             Ok(output.len().saturating_sub(usize::from(self.partial)))
         }
         fn stop(&mut self) -> Result<(), TransportError> {
+            if !self.started {
+                return Err(TransportError::Failed);
+            }
             self.stops += 1;
+            self.started = false;
             Ok(())
         }
         fn deinit(&mut self) -> Result<(), TransportError> {
+            if !self.configured || self.started {
+                return Err(TransportError::Failed);
+            }
             self.deinits += 1;
+            self.configured = false;
             Ok(())
         }
     }
@@ -241,6 +313,16 @@ mod tests {
         assert_eq!(adc.state(), AdcDmaState::Suspended);
         assert_eq!(adc.recover(), Ok(()));
         assert_eq!(adc.diagnostics().recoveries, 1);
+        assert_eq!(adc.release(), Ok(()));
+        assert_eq!(adc.state(), AdcDmaState::Down);
+        assert_eq!(adc.release(), Ok(()));
+        assert_eq!(adc.start(), Err(AdcDmaError::NotReady));
+        assert_eq!(adc.configure(config()), Ok(()));
+        adc.transport.fail_next_configure = true;
+        assert_eq!(adc.configure(config()), Err(AdcDmaError::Transport));
+        let deinits = adc.transport.deinits;
+        assert_eq!(adc.release(), Ok(()));
+        assert_eq!(adc.transport.deinits, deinits);
     }
 
     #[test]

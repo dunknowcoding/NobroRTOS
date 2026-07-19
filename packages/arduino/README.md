@@ -132,6 +132,12 @@ evidence only, and no exact board binding is promoted until every price
 dimension is measured. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the
 include removes all three providers and their vendor symbols.
 
+Use `quiesce()` when the configuration must remain recoverable. Use
+`release()` to stop and deinitialize/detach the vendor engine, forget its
+configuration, and return the provider to `Down`; configure it again before
+reuse. This explicit split makes optional modules detachable without hiding
+vendor resources behind object lifetime.
+
 ## Relationship to the full NobroRTOS repository
 
 This repository is the Arduino-facing distribution, not a duplicate Rust source

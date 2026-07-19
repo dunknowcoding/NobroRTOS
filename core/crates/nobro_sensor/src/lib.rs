@@ -156,6 +156,9 @@ pub trait AdcDmaBackend {
     ) -> Result<usize, AdcDmaError>;
     fn quiesce(&mut self) -> Result<(), AdcDmaError>;
     fn recover(&mut self) -> Result<(), AdcDmaError>;
+    /// Stop and deinitialize the mounted provider. Unlike `quiesce`, release
+    /// forgets configuration and returns the provider to `Down`.
+    fn release(&mut self) -> Result<(), AdcDmaError>;
 }
 
 impl Decimator {

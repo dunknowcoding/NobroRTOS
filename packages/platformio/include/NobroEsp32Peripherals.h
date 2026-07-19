@@ -56,6 +56,7 @@ public:
             if (started_ && !analogContinuousStop()) return transportFault();
             started_ = false;
             if (!analogContinuousDeinit()) return transportFault();
+            configured_ = false;
         }
         for (size_t index = 0; index < config.channels; ++index)
             pins_[index] = pins[index];
@@ -140,17 +141,30 @@ public:
         if (started_ && !analogContinuousStop()) return transportFault();
         started_ = false;
         if (!analogContinuousDeinit()) return transportFault();
+        configured_ = false;
         analogContinuousSetWidth(config_.resolution_bits);
         if (!analogContinuous(pins_, pin_count_,
                               config_.conversions_per_channel,
-                              config_.sample_rate_hz, nullptr) ||
-            !analogContinuousStart()) {
+                              config_.sample_rate_hz, nullptr)) {
             return transportFault();
         }
+        configured_ = true;
+        if (!analogContinuousStart()) return transportFault();
         started_ = true;
         running_ = true;
         state_ = NOBRO_ADC_DMA_RUNNING;
         ++diagnostics_.recoveries;
+        return NOBRO_ADC_DMA_OK;
+    }
+
+    nobro_adc_dma_error_t release() {
+        if (started_ && !analogContinuousStop()) return transportFault();
+        started_ = false;
+        running_ = false;
+        if (configured_ && !analogContinuousDeinit()) return transportFault();
+        configured_ = false;
+        pin_count_ = 0;
+        state_ = NOBRO_ADC_DMA_DOWN;
         return NOBRO_ADC_DMA_OK;
     }
 
@@ -181,7 +195,8 @@ private:
 class Esp32LedcPwm {
 public:
     explicit Esp32LedcPwm(uint8_t pin)
-        : pin_(pin), configured_(false), state_(NOBRO_PULSE_DOWN),
+        : pin_(pin), configured_(false), attached_(false),
+          state_(NOBRO_PULSE_DOWN),
           diagnostics_{} {}
 
     nobro_pulse_error_t configure(const nobro_pwm_config_t &config) {
@@ -189,17 +204,19 @@ public:
             config.resolution_bits > 20) {
             return NOBRO_PULSE_INVALID_CONFIG;
         }
-        if (configured_) (void)ledcDetach(pin_);
+        if (attached_ && !ledcDetach(pin_)) return transportFault();
+        attached_ = false;
         if (!ledcAttach(pin_, config.frequency_hz, config.resolution_bits))
             return transportFault();
         config_ = config;
         configured_ = true;
+        attached_ = true;
         state_ = NOBRO_PULSE_READY;
         return NOBRO_PULSE_OK;
     }
 
     nobro_pulse_error_t setDuty(uint32_t duty) {
-        if (!configured_ || state_ != NOBRO_PULSE_READY)
+        if (!configured_ || !attached_ || state_ != NOBRO_PULSE_READY)
             return NOBRO_PULSE_NOT_READY;
         const uint32_t max_duty =
             config_.resolution_bits >= 31
@@ -212,18 +229,29 @@ public:
     }
 
     nobro_pulse_error_t quiesce() {
-        if (configured_ && !ledcDetach(pin_)) return transportFault();
+        if (attached_ && !ledcDetach(pin_)) return transportFault();
+        attached_ = false;
         if (configured_) state_ = NOBRO_PULSE_SUSPENDED;
         return NOBRO_PULSE_OK;
     }
 
     nobro_pulse_error_t recover() {
         if (!configured_) return NOBRO_PULSE_NOT_READY;
-        (void)ledcDetach(pin_);
+        if (attached_ && !ledcDetach(pin_)) return transportFault();
+        attached_ = false;
         if (!ledcAttach(pin_, config_.frequency_hz, config_.resolution_bits))
             return transportFault();
+        attached_ = true;
         state_ = NOBRO_PULSE_READY;
         ++diagnostics_.recoveries;
+        return NOBRO_PULSE_OK;
+    }
+
+    nobro_pulse_error_t release() {
+        if (attached_ && !ledcDetach(pin_)) return transportFault();
+        attached_ = false;
+        configured_ = false;
+        state_ = NOBRO_PULSE_DOWN;
         return NOBRO_PULSE_OK;
     }
 
@@ -241,6 +269,7 @@ private:
     uint8_t pin_;
     nobro_pwm_config_t config_;
     bool configured_;
+    bool attached_;
     nobro_pulse_state_t state_;
     nobro_pulse_diagnostics_t diagnostics_;
 };
@@ -321,6 +350,15 @@ public:
         attached_ = true;
         state_ = NOBRO_PULSE_READY;
         ++diagnostics_.recoveries;
+        return NOBRO_PULSE_OK;
+    }
+
+    nobro_pulse_error_t release() {
+        if (attached_ && !rmtDeinit(pin_)) return transportFault();
+        attached_ = false;
+        configured_ = false;
+        tick_hz_ = 0;
+        state_ = NOBRO_PULSE_DOWN;
         return NOBRO_PULSE_OK;
     }
 

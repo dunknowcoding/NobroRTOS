@@ -698,6 +698,12 @@ evidence only. No exact binding is promoted until stack, CPU, interrupt, DMA,
 coexistence, and other registry price dimensions are measured; compilation
 never turns an unknown price into zero.
 
+Provider lifecycle distinguishes temporary quiescence from unmount:
+`quiesce` preserves logical configuration for `recover`, while `release`
+stops/deinitializes or detaches the transport, forgets configuration, and
+returns `Down`. Rust adapters and the Arduino facade share this rule so a
+detachable module cannot retain vendor resources by API accident.
+
 ### Radio / BLE / WiFi / Zigbee / RFID - current boundary and planned shape
 
 Implemented today in `nobro-wireless`:
