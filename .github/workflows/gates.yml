@@ -31,6 +31,7 @@ jobs:
         run: |
           python tools/check_adapter_catalog.py
           python tools/nobro_adapter.py --selftest
+          python tools/check_board_features.py --selftest
       - name: one-file firmware project
         run: python tools/nobro_firmware_project.py --selftest
       - name: sdk manifest

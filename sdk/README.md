@@ -28,6 +28,7 @@ python sdk/cli/nobro.py project new rover
 python sdk/cli/nobro.py project run _work/projects/rover
 python sdk/cli/nobro.py project shrink occupancy.json --json capacities.json
 python sdk/cli/nobro.py adapter new sensors my-part
+python sdk/cli/nobro.py adapter new audio my-codec --capability-kind audio_i2s
 python sdk/cli/nobro.py flash --help
 python sdk/cli/nobro.py package arduino --zip
 python sdk/cli/nobro.py package platformio --archive

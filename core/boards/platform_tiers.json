@@ -1,5 +1,6 @@
 {
   "schema": "nobro-platform-support-v2",
+  "feature_registry": "core/boards/feature_providers.json",
   "reference_platform": "nrf52840",
   "providers": [
     "timebase",

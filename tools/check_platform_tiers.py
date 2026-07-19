@@ -37,9 +37,13 @@ import sys
 import tempfile
 from unittest import mock
 
+import check_board_features
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "core" / "boards" / "platform_tiers.json"
+FEATURE_REGISTRY = ROOT / "core" / "boards" / "feature_providers.json"
+ADAPTER_CATALOG = ROOT / "core" / "adapters" / "catalog.json"
 SCHEMA = "nobro-platform-support-v2"
 SURFACE_VOCABULARY = {"native": "providers", "arduino": "facade_offers"}
 HOST_EVIDENCE = "host-test"
@@ -87,9 +91,30 @@ def _workflow_job_block(workflow_text: str, job: str) -> str | None:
     return match.group(0) if match else None
 
 
-def validate(matrix: dict, *, check_runner_bindings: bool = True) -> list[str]:
+def validate(
+    matrix: dict,
+    *,
+    check_runner_bindings: bool = True,
+    feature_registry: dict | None = None,
+) -> list[str]:
     """Return every semantic error; do not depend on a fixed board or claim set."""
     errors: list[str] = []
+    if feature_registry is None:
+        feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
+    adapter_catalog = json.loads(ADAPTER_CATALOG.read_text(encoding="utf-8"))
+    errors.extend(check_board_features.validate(feature_registry, adapter_catalog))
+    if matrix.get("feature_registry") != "core/boards/feature_providers.json":
+        errors.append("feature_registry must name the public board-feature registry")
+    feature_capabilities = check_board_features.capability_ids(feature_registry)
+    feature_bindings = {
+        (
+            binding.get("platform"),
+            binding.get("composition"),
+            binding.get("capability_kind"),
+        )
+        for binding in feature_registry.get("bindings", [])
+        if isinstance(binding, dict)
+    }
     if matrix.get("schema") != SCHEMA:
         errors.append(f"schema must be {SCHEMA!r}")
 
@@ -102,6 +127,7 @@ def validate(matrix: dict, *, check_runner_bindings: bool = True) -> list[str]:
     gates = matrix.get("evidence_gates", {})
     platforms = matrix.get("platforms", {})
     providers = set(providers_list)
+    native_vocabulary = providers | feature_capabilities
     facade_offers = set(facade_list)
 
     unsupported_evidence = set(evidence_kinds) - {HOST_EVIDENCE, TARGET_EVIDENCE}
@@ -207,7 +233,13 @@ def validate(matrix: dict, *, check_runner_bindings: bool = True) -> list[str]:
                 composition = compositions[composition_id]
                 surface = composition.get("surface") if isinstance(composition, dict) else None
                 vocabulary_name = SURFACE_VOCABULARY.get(surface)
-                vocabulary = set(matrix.get(vocabulary_name, [])) if vocabulary_name else set()
+                vocabulary = (
+                    native_vocabulary
+                    if vocabulary_name == "providers"
+                    else set(matrix.get(vocabulary_name, []))
+                    if vocabulary_name
+                    else set()
+                )
                 if not isinstance(capabilities, list) or not capabilities or not all(
                     isinstance(capability, str) and capability for capability in capabilities
                 ):
@@ -272,7 +304,7 @@ def validate(matrix: dict, *, check_runner_bindings: bool = True) -> list[str]:
             if surface not in SURFACE_VOCABULARY:
                 errors.append(f"{comp_prefix}: unknown surface {surface!r}")
                 continue
-            vocabulary = providers if surface == "native" else facade_offers
+            vocabulary = native_vocabulary if surface == "native" else facade_offers
             claims = composition.get("claims")
             if not isinstance(claims, dict) or not claims:
                 errors.append(f"{comp_prefix}: claims must be a non-empty object")
@@ -284,6 +316,14 @@ def validate(matrix: dict, *, check_runner_bindings: bool = True) -> list[str]:
                 claim_prefix = f"{comp_prefix}.claims.{capability}"
                 if capability not in vocabulary:
                     errors.append(f"{claim_prefix}: capability is not in the {surface} vocabulary")
+                if capability in feature_capabilities and (
+                    platform_id,
+                    composition_id,
+                    capability,
+                ) not in feature_bindings:
+                    errors.append(
+                        f"{claim_prefix}: board-feature claim has no exact registry binding"
+                    )
                 if not isinstance(claim, dict):
                     errors.append(f"{claim_prefix}: expected an object")
                     continue
@@ -796,6 +836,7 @@ def _quiet_call(function, *args, **kwargs):
 
 def selftest() -> int:
     good = json.loads(MATRIX.read_text(encoding="utf-8"))
+    feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
     _expect(validate(good) == [], f"real matrix should be clean: {validate(good)}")
 
     bad_reference = copy.deepcopy(good)
@@ -812,6 +853,70 @@ def selftest() -> int:
         "evidence": ["rp2350-target-build"],
     }
     _expect_error(validate(unknown_claim), "capability is not")
+
+    future_feature_registry = copy.deepcopy(feature_registry)
+    future_feature_registry["backends"].append(
+        {
+            "id": "test-audio-backend",
+            "capability_kind": "audio_i2s",
+            "stack_family": "audio-i2s",
+            "adapter_component_id": "adapter-servo-roboservo",
+            "deployment": "firmware",
+            "maturity": "compile-only",
+            "evidence": ["target-build"],
+            "provenance_id": None,
+            "supported_targets": ["esp32s3"],
+            "limitations": ["Selftest fixture only."],
+        }
+    )
+    future_feature_registry["bindings"].append(
+        {
+            "id": "test-audio-binding",
+            "backend_id": "test-audio-backend",
+            "capability_kind": "audio_i2s",
+            "platform": "esp32s3",
+            "composition": "native",
+            "instance": "audio0",
+            "maturity": "compile-only",
+            "evidence_gates": ["esp32s3-target-build"],
+            "measured_price": {field: 0 for field in check_board_features.PRICE_FIELDS},
+            "coexistence": {
+                field: [] for field in check_board_features.COEXISTENCE_FIELDS
+            },
+            "disabled_symbol_gate": {
+                "baseline": "same-board-no-audio",
+                "feature": "audio_i2s",
+                "forbidden_symbols": ["test_audio_backend"],
+                "max_flash_delta_bytes": 0,
+                "max_ram_delta_bytes": 0,
+            },
+            "report_wiring": {
+                "provider_id": "audio_i2s",
+                "status_field": "audio0",
+                "evidence_gate": "esp32s3-target-build",
+            },
+        }
+    )
+    future_feature = copy.deepcopy(good)
+    future_feature["platforms"]["esp32s3"]["compositions"]["native"]["claims"][
+        "audio_i2s"
+    ] = {
+        "maturity": "experimental",
+        "evidence": ["esp32s3-target-build"],
+        "limitations": "selftest target-build only",
+    }
+    future_feature["evidence_gates"]["esp32s3-target-build"]["claim_scopes"][0][
+        "capabilities"
+    ].append("audio_i2s")
+    _expect(
+        validate(
+            future_feature,
+            check_runner_bindings=False,
+            feature_registry=future_feature_registry,
+        )
+        == [],
+        "a registry-defined capability with an exact binding must need no validator edit",
+    )
 
     no_evidence = copy.deepcopy(good)
     no_evidence["platforms"]["rp2350"]["compositions"]["native"]["claims"]["timebase"][

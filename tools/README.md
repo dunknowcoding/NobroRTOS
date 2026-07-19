@@ -9,6 +9,7 @@ corpora, and private reports are intentionally not tracked.
 | Tool | Purpose |
 | --- | --- |
 | `nobro_project.py` | Create, explain, build, simulate, and report a Nobro project |
+| `nobro_adapter.py` | Scaffold categorized adapters and optional board-feature backends |
 | `nobro_firmware_project.py` | Generate admitted native firmware from `app.nobro` or strict Python-app JSON |
 | `nobro_app.py` | Validate and generate an `app.json` application |
 | `nobro_contract_tool.py` | Inspect and decode public host contracts |
@@ -22,7 +23,8 @@ corpora, and private reports are intentionally not tracked.
 ## Build and package utilities
 
 `build_libnobro.py`, `bin2uf2.py`, `firmware_image.py`, `gen_memory_x.py`,
-`package_arduino.py`, and `package_prebuilt_uf2.py` produce public SDK artifacts.
+`package_arduino.py`, `package_platformio.py`, and `package_prebuilt_uf2.py`
+produce public SDK artifacts.
 
 ## Reproducible checks
 

@@ -173,6 +173,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("admission analysis", [py, "tools/nobro_admission.py", "--selftest"], ROOT),
         ("capacity right-sizing", [py, "tools/nobro_shrink.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/check_platform_tiers.py", "--selftest"], ROOT),
+        ("board-feature registry", [py, "tools/check_board_features.py", "--selftest"], ROOT),
         ("adapter catalog", [py, "tools/check_adapter_catalog.py"], ROOT),
         ("adapter scaffold", [py, "tools/nobro_adapter.py", "--selftest"], ROOT),
         ("firmware project", [py, "tools/nobro_firmware_project.py", "--selftest"], ROOT),

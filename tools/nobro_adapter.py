@@ -131,6 +131,7 @@ def scaffold(
     domain: str,
     name: str,
     backends: tuple[str, ...],
+    capability_kind: str | None = None,
 ) -> pathlib.Path:
     if not NAME.fullmatch(domain) or not NAME.fullmatch(name):
         raise ScaffoldError("domain and name must be lowercase kebab-case identifiers")
@@ -139,6 +140,7 @@ def scaffold(
 
     catalog_path = root / "core" / "adapters" / "catalog.json"
     workspace_path = root / "core" / "Cargo.toml"
+    feature_path = root / "core" / "boards" / "feature_providers.json"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     if catalog.get("schema") != "nobro-adapter-catalog-v2":
         raise ScaffoldError("adapter scaffolding requires catalog v2")
@@ -179,6 +181,47 @@ def scaffold(
     catalog["components"].sort(key=lambda item: item["id"].casefold())
     domain_record["component_ids"].append(component_id)
     domain_record["component_ids"].sort(key=str.casefold)
+    feature_registry = None
+    feature_text = None
+    if capability_kind is not None:
+        feature_text = feature_path.read_text(encoding="utf-8")
+        feature_registry = json.loads(feature_text)
+        if feature_registry.get("schema") != "nobro-board-feature-registry-v1":
+            raise ScaffoldError("board-feature scaffolding requires feature registry v1")
+        kind = next(
+            (
+                record
+                for record in feature_registry.get("capability_kinds", [])
+                if record.get("id") == capability_kind
+            ),
+            None,
+        )
+        if kind is None:
+            raise ScaffoldError(f"unknown board-feature capability kind: {capability_kind}")
+        backend_id = f"backend-{domain}-{name}"
+        if any(
+            record.get("id") == backend_id
+            or record.get("adapter_component_id") == component_id
+            for record in feature_registry.get("backends", [])
+        ):
+            raise ScaffoldError(f"board-feature backend already exists: {backend_id}")
+        feature_registry["backends"].append(
+            {
+                "id": backend_id,
+                "capability_kind": capability_kind,
+                "stack_family": kind["stack_family"],
+                "adapter_component_id": component_id,
+                "deployment": "firmware",
+                "maturity": "stub",
+                "evidence": [],
+                "provenance_id": None,
+                "supported_targets": [],
+                "limitations": [
+                    "Generated scaffold; no board binding or target support is claimed."
+                ],
+            }
+        )
+        feature_registry["backends"].sort(key=lambda item: item["id"].casefold())
     original_catalog = catalog_path.read_text(encoding="utf-8")
     original_workspace = workspace_path.read_text(encoding="utf-8")
     catalog_text = json.dumps(catalog, indent=2, ensure_ascii=False) + "\n"
@@ -198,9 +241,16 @@ def scaffold(
         _atomic_write(destination / "README.md", _render_readme(domain, name, backends))
         _atomic_write(catalog_path, catalog_text)
         _atomic_write(workspace_path, workspace_text)
+        if feature_registry is not None:
+            _atomic_write(
+                feature_path,
+                json.dumps(feature_registry, indent=2, ensure_ascii=False) + "\n",
+            )
     except BaseException:
         _atomic_write(catalog_path, original_catalog)
         _atomic_write(workspace_path, original_workspace)
+        if feature_text is not None:
+            _atomic_write(feature_path, feature_text)
         for file in sorted(destination.rglob("*"), reverse=True):
             if file.is_file():
                 file.unlink()
@@ -252,11 +302,32 @@ def selftest() -> int:
             workspace.write_text(
                 "[workspace]\nmembers = [\n]\n", encoding="utf-8"
             )
+            boards = root / "core" / "boards"
+            boards.mkdir()
+            (boards / "feature_providers.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "nobro-board-feature-registry-v1",
+                        "capability_kinds": [
+                            {
+                                "id": "audio_i2s",
+                                "portable_contract_id": "contract-sensors",
+                                "stack_family": "audio-i2s",
+                            }
+                        ],
+                        "provenance": [],
+                        "backends": [],
+                        "bindings": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
             destination = scaffold(
                 root,
                 "sensors",
                 "demo-part",
                 ("native", "embedded-hal"),
+                "audio_i2s",
             )
             result = json.loads((adapters / "catalog.json").read_text(encoding="utf-8"))
             assert (destination / "src" / "lib.rs").is_file()
@@ -267,6 +338,13 @@ def selftest() -> int:
             assert result["domains"][0]["component_ids"] == [
                 "adapter-sensors-demo-part"
             ]
+            feature = json.loads(
+                (boards / "feature_providers.json").read_text(encoding="utf-8")
+            )
+            assert feature["backends"][0]["capability_kind"] == "audio_i2s"
+            assert feature["backends"][0]["adapter_component_id"] == (
+                "adapter-sensors-demo-part"
+            )
             assert "adapters/sensors/demo-part" in workspace.read_text(encoding="utf-8")
             try:
                 scaffold(root, "sensors", "demo-part", ("native",))
@@ -294,6 +372,10 @@ def main() -> int:
         choices=BACKENDS,
         help="backend module to include; repeat as needed (default: all)",
     )
+    new.add_argument(
+        "--capability-kind",
+        help="also register this adapter as a stub backend for a board-feature kind",
+    )
     args = parser.parse_args()
     if args.selftest:
         return selftest()
@@ -306,6 +388,7 @@ def main() -> int:
             args.domain,
             args.name,
             tuple(args.backend or BACKENDS),
+            args.capability_kind,
         )
     except (OSError, ScaffoldError, ValueError) as error:
         print(f"nobro adapter: {error}", file=sys.stderr)

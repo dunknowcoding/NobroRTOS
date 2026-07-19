@@ -96,6 +96,35 @@ The public provider traits are in `nobro_hal::traits`. A provider tier means at 
 one real trait implementation exists for the target. A deep tier requires one native
 composition to implement every capability in the current provider vocabulary.
 
+## Add a board-varying feature stack
+
+Use `core/boards/feature_providers.json` for facilities whose implementation
+changes with the board or vendor stack, such as I2S, WiFi, BLE, ADC-DMA, CAN,
+or Ethernet. Do not put credentials, endpoints, or local tool paths in it.
+
+1. Reuse or add one portable domain contract.
+2. Add the capability kind and stack family as data.
+3. Scaffold the backend without editing a validator:
+
+   ```bash
+   python sdk/cli/nobro.py adapter new audio my-codec \
+     --capability-kind audio_i2s
+   ```
+
+4. Add a board binding only after its backend exists. Record every price
+   dimension, coexistence/lease ownership, limitations, report wiring, and
+   scoped evidence gates.
+5. Prove the disabled configuration against the same-board baseline with zero
+   Nobro/vendor flash and RAM delta plus forbidden-symbol checks.
+6. Add the capability claim to `platform_tiers.json`; its validator loads the
+   feature vocabulary and exact binding from the registry, so a new kind needs
+   no Python source edit.
+
+Run `python tools/check_board_features.py`,
+`python tools/check_platform_tiers.py --selftest`, and the exact target gate.
+`compile-only` is not physical support, and an unbound capability kind is not
+a platform claim.
+
 ## Boot layout rules
 
 - Keep application flash origins in board data and linker scripts synchronized.

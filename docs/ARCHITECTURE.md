@@ -38,6 +38,15 @@ orthogonal fields. A component may belong to multiple domains by reference
 without duplicating its source or provenance. Board profiles remain outside
 this relationship catalog because platform tiers already own board support.
 
+Board-varying engines use a second, data-only extension boundary in
+`core/boards/feature_providers.json`. It separates the portable contract,
+stack family, adapter backend, exact board/firmware binding, resource price,
+coexistence policy, evidence, and report wiring. Candidate capability kinds do
+not become platform claims: `platform_tiers.json` accepts a kind only when the
+registry contains an exact binding and the ordinary scoped evidence gate.
+Disabled bindings must declare the same-board baseline, zero flash/RAM delta,
+and forbidden backend symbols.
+
 ### Compatibility Strategy
 
 Hardware is described as structured data that can be validated before driver code
