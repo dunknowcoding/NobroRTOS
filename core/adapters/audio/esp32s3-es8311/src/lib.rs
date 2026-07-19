@@ -294,6 +294,13 @@ mod tests {
     }
 
     #[test]
+    fn workload_identity_matches_the_exact_registry_binding() {
+        let workload = workload(config(), 192, 100);
+        assert_eq!(workload.configuration_fingerprint(), 0xcc5c_58e7_6e50_5756);
+        assert_eq!(workload.operations_per_second(), 100);
+    }
+
+    #[test]
     fn bounds_lifecycle_and_price_are_explicit() {
         let mut adapter = Esp32s3Es8311::new(Fake::default(), 192, 100, price());
         assert_eq!(adapter.playback(&[1]), Err(AudioError::NotReady));

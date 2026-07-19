@@ -134,9 +134,11 @@ The in-tree `audio/esp32s3-es8311` bridge is the reference split for a vendor
 audio stack: keep frame/lifecycle/admission policy in `nobro-audio`, keep the
 board core's I2S/DMA ownership in its transport, and pin an external Arduino
 library as a catalog member rather than copying it into the adapter. Use
-`NobroNiusAudio.h` as the C++ facade pattern. Do not fill unknown runtime heap
-or DMA reservations with zero; defer the board binding until the exact
-composition measures them.
+`NobroNiusAudio.h` as the C++ facade pattern. The reference binding shows the
+required closure shape: exact format/frame/rate identity, same-target
+enabled/disabled pricing, pinned source ownership, measured runtime cost,
+repeated recovery, and physical playback/capture. Do not reuse that price for
+another codec or fill unknown runtime heap or DMA reservations with zero.
 
 The same split applies to ADC-DMA, LEDC, and RMT. Put a new implementation
 under the existing `sensors` or `servo` adapter category, keep the portable

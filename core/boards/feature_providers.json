@@ -81,7 +81,7 @@
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-i2s",
       "limitations": [
-        "No board binding is promoted yet."
+        "The first exact binding covers one ESP32-S3 Arduino full-duplex ES8311 composition; other codecs, formats, and rates remain independently priced."
       ]
     },
     {
@@ -158,14 +158,15 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "provenance_id": "source-niusaudio",
       "supported_targets": [
         "arduino:esp32s3"
       ],
       "limitations": [
-        "The exact board binding awaits configuration-bound vendor-runtime and Nobro adapter physical evidence."
+        "The exact binding covers 16 kHz mono signed-16 audio, a 192-byte maximum frame, two queue slots, and 100 capture/playback transfers per second; other configurations remain unpriced."
       ]
     },
     {
@@ -437,6 +438,90 @@
         "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4",
         "fixed": "same-target isolated link delta, running retained-heap delta, and pinned source ownership",
         "runtime": "conservative maximum from three state-restoring runs"
+      }
+    },
+    {
+      "id": "binding-audio-esp32s3-es8311",
+      "backend_id": "backend-audio-esp32s3-es8311",
+      "capability_kind": "audio_i2s",
+      "platform": "esp32s3",
+      "composition": "arduino",
+      "instance": "audio0",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "esp32s3-arduino-audio-target-build"
+      ],
+      "workload": {
+        "namespace": "esp32s3-es8311-arduino",
+        "configuration_words": [16000, 1, 0, 192, 0],
+        "configuration_fingerprint": "cc5c58e76e505756",
+        "operations_per_second": 100
+      },
+      "measured_fixed_price": {
+        "flash_bytes": 87589,
+        "static_ram_bytes": 2508,
+        "retained_heap_bytes": 16164,
+        "stack_bytes": 0,
+        "vendor_reserved_ram_bytes": 0,
+        "worker_threads": 0,
+        "interrupt_slots": 2,
+        "dma_channels": 2,
+        "controller_firmware_bytes": 0,
+        "peripheral_channels": 2
+      },
+      "fixed_price_provenance": {
+        "flash_bytes": "measured",
+        "static_ram_bytes": "measured",
+        "retained_heap_bytes": "measured",
+        "stack_bytes": "source-derived",
+        "vendor_reserved_ram_bytes": "source-derived",
+        "worker_threads": "measured",
+        "interrupt_slots": "source-derived",
+        "dma_channels": "source-derived",
+        "controller_firmware_bytes": "source-derived",
+        "peripheral_channels": "source-derived"
+      },
+      "measured_runtime_price": {
+        "transient_heap_peak_bytes": 0,
+        "stack_high_water_bytes": 2608,
+        "cpu_cycles_per_second": 71918002,
+        "latency_p99_cycles": 3583845,
+        "latency_max_cycles": 3592082
+      },
+      "runtime_price_provenance": {
+        "transient_heap_peak_bytes": "source-derived",
+        "stack_high_water_bytes": "measured",
+        "cpu_cycles_per_second": "measured",
+        "latency_p99_cycles": "measured",
+        "latency_max_cycles": "measured"
+      },
+      "coexistence": {
+        "leases": ["i2s0-full-duplex"],
+        "exclusive_resources": ["i2s0-tx", "i2s0-rx", "gdma-tx-channel", "gdma-rx-channel"],
+        "compatible_instances": [],
+        "core_affinity": []
+      },
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-audio-disabled",
+        "forbidden_symbols": [
+          "NiusAudio",
+          "NiusEs8311AudioAdapter",
+          "i2s_new_channel",
+          "NiusAudioEs8311Codec"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "audio_i2s",
+        "status_field": "esp32s3_audio0",
+        "evidence_gate": "esp32s3-arduino-audio-target-build"
+      },
+      "price_basis": {
+        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.1",
+        "fixed": "same-target isolated link delta, active retained-heap delta after repeated recovery, and pinned source ownership",
+        "runtime": "conservative maximum from three physical runs at 100 transfers per second"
       }
     }
   ]

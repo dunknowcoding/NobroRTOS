@@ -367,7 +367,7 @@ def selftest() -> int:
         "capability_kind": registry["backends"][0]["capability_kind"],
         "platform": "esp32s3",
         "composition": "arduino",
-        "instance": "audio0",
+        "instance": "selftest0",
         "maturity": "compile-only",
         "evidence_gates": ["selftest-gate"],
         "workload": {
@@ -396,7 +396,7 @@ def selftest() -> int:
         },
         "report_wiring": {
             "provider_id": registry["backends"][0]["capability_kind"],
-            "status_field": "audio0",
+            "status_field": "selftest0",
             "evidence_gate": "selftest-gate",
         },
     }

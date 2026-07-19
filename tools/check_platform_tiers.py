@@ -1160,6 +1160,17 @@ def selftest() -> int:
                 == 0,
                 "Arduino ESP32 peripheral gate success",
             )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "esp32s3-arduino-audio-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino ESP32-S3 audio gate success",
+            )
             compile_call = run.call_args_list[1]
             _expect(
                 compile_call.args[0][0] == sys.executable,

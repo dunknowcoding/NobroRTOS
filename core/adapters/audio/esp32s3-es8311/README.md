@@ -15,5 +15,10 @@ zero-ownership, or workload-mismatched prices fail configuration instead of
 mounting as apparent zero-cost providers. The scheduler must enforce the
 admitted transfer rate at runtime.
 
-The public crate has host conformance tests. Target compilation and physical
-promotion are separate evidence gates.
+The exact Arduino composition is priced only for 16 kHz mono signed-16
+full-duplex audio, a 192-byte maximum frame, two queue slots, and 100
+capture/playback transfers per second. Its same-target build delta, retained
+heap, caller-stack high-water, active cycles, latency, full-duplex DMA/IRQ
+ownership, physical playback/capture, and repeated recovery are recorded in
+the board-feature registry. Other formats, rates, codecs, and queue shapes
+remain unpriced rather than inheriting this binding.

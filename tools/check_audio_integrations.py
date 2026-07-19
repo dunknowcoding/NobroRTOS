@@ -12,12 +12,66 @@ import subprocess
 import sys
 import tempfile
 
+import check_board_features
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "arduino"
 FEATURES = ROOT / "core" / "boards" / "feature_providers.json"
 PIN = "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2"
 VERSION = "0.3.1"
 FQBN = "esp32:esp32:esp32s3"
+BINDING_ID = "binding-audio-esp32s3-es8311"
+EVIDENCE_GATE = "esp32s3-arduino-audio-target-build"
+WORKLOAD_NAMESPACE = "esp32s3-es8311-arduino"
+WORKLOAD_WORDS = [16_000, 1, 0, 192, 0]
+EXPECTED_FIXED_PRICE = {
+    "flash_bytes": 87_589,
+    "static_ram_bytes": 2_508,
+    "retained_heap_bytes": 16_164,
+    "stack_bytes": 0,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 0,
+    "interrupt_slots": 2,
+    "dma_channels": 2,
+    "controller_firmware_bytes": 0,
+    "peripheral_channels": 2,
+}
+EXPECTED_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 0,
+    "stack_high_water_bytes": 2_608,
+    "cpu_cycles_per_second": 71_918_002,
+    "latency_p99_cycles": 3_583_845,
+    "latency_max_cycles": 3_592_082,
+}
+EXPECTED_FIXED_PROVENANCE = {
+    "flash_bytes": "measured",
+    "static_ram_bytes": "measured",
+    "retained_heap_bytes": "measured",
+    "stack_bytes": "source-derived",
+    "vendor_reserved_ram_bytes": "source-derived",
+    "worker_threads": "measured",
+    "interrupt_slots": "source-derived",
+    "dma_channels": "source-derived",
+    "controller_firmware_bytes": "source-derived",
+    "peripheral_channels": "source-derived",
+}
+EXPECTED_RUNTIME_PROVENANCE = {
+    "transient_heap_peak_bytes": "source-derived",
+    "stack_high_water_bytes": "measured",
+    "cpu_cycles_per_second": "measured",
+    "latency_p99_cycles": "measured",
+    "latency_max_cycles": "measured",
+}
+EXPECTED_PRICE_BASIS = {
+    "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.1",
+    "fixed": (
+        "same-target isolated link delta, active retained-heap delta after repeated "
+        "recovery, and pinned source ownership"
+    ),
+    "runtime": (
+        "conservative maximum from three physical runs at 100 transfers per second"
+    ),
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -91,6 +145,52 @@ def run(command: list[str], cwd: pathlib.Path = ROOT) -> str:
     return completed.stdout + completed.stderr
 
 
+def verify_binding(registry: dict) -> dict:
+    binding = next(
+        (
+            item
+            for item in registry.get("bindings", [])
+            if item.get("id") == BINDING_ID
+        ),
+        None,
+    )
+    if binding is None:
+        raise RuntimeError("exact ESP32-S3 audio binding is missing")
+    expected_workload = {
+        "namespace": WORKLOAD_NAMESPACE,
+        "configuration_words": WORKLOAD_WORDS,
+        "configuration_fingerprint": check_board_features.workload_fingerprint(
+            WORKLOAD_NAMESPACE, WORKLOAD_WORDS
+        ),
+        "operations_per_second": 100,
+    }
+    if binding.get("workload") != expected_workload:
+        raise RuntimeError("audio binding workload identity is stale")
+    if binding.get("measured_fixed_price") != EXPECTED_FIXED_PRICE:
+        raise RuntimeError("audio binding fixed price is stale")
+    if binding.get("measured_runtime_price") != EXPECTED_RUNTIME_PRICE:
+        raise RuntimeError("audio binding runtime price is stale")
+    if binding.get("fixed_price_provenance") != EXPECTED_FIXED_PROVENANCE:
+        raise RuntimeError("audio binding fixed-price provenance is stale")
+    if binding.get("runtime_price_provenance") != EXPECTED_RUNTIME_PROVENANCE:
+        raise RuntimeError("audio binding runtime-price provenance is stale")
+    if binding.get("price_basis") != EXPECTED_PRICE_BASIS:
+        raise RuntimeError("audio binding price basis is stale")
+    if binding.get("evidence_gates") != [EVIDENCE_GATE]:
+        raise RuntimeError("audio binding evidence gate is stale")
+    if binding.get("report_wiring") != {
+        "provider_id": "audio_i2s",
+        "status_field": "esp32s3_audio0",
+        "evidence_gate": EVIDENCE_GATE,
+    }:
+        raise RuntimeError("audio binding report wiring is stale")
+    if set(binding.get("disabled_symbol_gate", {}).get("forbidden_symbols", [])) != set(
+        FORBIDDEN_DISABLED
+    ):
+        raise RuntimeError("audio binding disabled-symbol proof is stale")
+    return binding
+
+
 def verify_checkout(library: pathlib.Path) -> pathlib.Path:
     library = library.resolve(strict=True)
     properties = (library / "library.properties").read_text(encoding="utf-8")
@@ -120,6 +220,17 @@ def verify_checkout(library: pathlib.Path) -> pathlib.Path:
         "license": "Apache-2.0",
     }:
         raise RuntimeError("board-feature NiusAudio provenance is stale")
+    backend = next(
+        (
+            item
+            for item in registry.get("backends", [])
+            if item.get("id") == "backend-audio-esp32s3-es8311"
+        ),
+        None,
+    )
+    if not isinstance(backend, dict) or "physical" not in backend.get("evidence", []):
+        raise RuntimeError("audio backend physical evidence state is stale")
+    verify_binding(registry)
     required = (
         "src/modules/weact_es8311_ns4150b/NiusAudioWeActEs8311.h",
         "src/platform/generic/NiusAudioGenericBackend.cpp",
@@ -197,11 +308,20 @@ def compile_matrix(library: pathlib.Path) -> None:
                 f"feature price is not observable: baseline={baseline[:2]} "
                 f"feature={feature[:2]}"
             )
+        delta = (feature[0] - baseline[0], feature[1] - baseline[1])
+        binding = verify_binding(json.loads(FEATURES.read_text(encoding="utf-8")))
+        fixed = binding["measured_fixed_price"]
+        registry_delta = (fixed["flash_bytes"], fixed["static_ram_bytes"])
+        if delta != registry_delta:
+            raise RuntimeError(
+                "audio isolated build price differs: "
+                f"registry={registry_delta} build={delta}"
+            )
         print(
             "  PASS zero-disabled "
             f"flash={baseline[0]} ram={baseline[1]}; "
-            f"enabled-delta flash={feature[0] - baseline[0]} "
-            f"ram={feature[1] - baseline[1]}"
+            f"enabled-delta flash={delta[0]} ram={delta[1]}; "
+            "report esp32s3_audio0=target-build"
         )
 
 

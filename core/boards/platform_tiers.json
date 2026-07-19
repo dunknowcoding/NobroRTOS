@@ -234,6 +234,26 @@
         }
       ]
     },
+    "esp32s3-arduino-audio-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": [
+        "python",
+        "tools/check_audio_integrations.py",
+        "--library",
+        "_work/NiusAudio",
+        "--compile"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32s3",
+          "composition": "arduino",
+          "capabilities": ["audio_i2s"]
+        }
+      ]
+    },
     "esp32s3-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
@@ -490,7 +510,7 @@
       "arch": "xtensa",
       "tier": "provider",
       "implementation_root": "core/ports/esp32s3",
-      "limitations": "the required Xtensa target build and USB Serial/JTAG host state tests prove compilation and modeled contracts only; provider behavior and physical recovery are not inferred from them",
+      "limitations": "Native Xtensa and USB claims remain build/host-test scoped. The separate Arduino composition has one exact, configuration-specific full-duplex audio binding; it does not promote a native audio provider or other codecs and rates.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -501,6 +521,16 @@
             "i2c": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "spi": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["esp32s3-usb-host", "esp32s3-target-build"]}
+          }
+        },
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "audio_i2s": {
+              "maturity": "experimental",
+              "evidence": ["esp32s3-arduino-audio-target-build"],
+              "limitations": "Exact only for 16 kHz mono signed-16 full-duplex ES8311 audio with 192-byte frames, two queue slots, and 100 transfers per second."
+            }
           }
         }
       }

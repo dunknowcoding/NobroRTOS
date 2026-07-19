@@ -35,8 +35,10 @@ hosted CI can run the same checks without private configuration.
 Board-feature integrations remain evidence scoped. For example,
 `check_audio_facade.py` executes the bounded audio lifecycle against a fake
 transport, while `check_audio_integrations.py` verifies an exact NiusAudio
-revision and the enabled/disabled ESP32-S3 build delta. Neither check represents
-physical codec, speaker, microphone, timing, or vendor-runtime memory evidence.
+revision, zero-disabled behavior, the ESP32-S3 isolated build delta, and its
+configuration-specific registry/report binding. Physical codec, speaker,
+microphone, timing, and vendor-runtime memory evidence remains a separate
+private, state-restoring campaign.
 
 `check_esp32_peripheral_facade.py` executes continuous-ADC, LEDC, and RMT
 failure/lifecycle contracts against deterministic fakes.

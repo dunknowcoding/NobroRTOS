@@ -107,7 +107,10 @@ The adapter stores exactly two frames of at most 96 signed 16-bit samples.
 most one frame, and `capture(..., max_block_us)` records partial transfers and
 deadline misses. NiusAudio and Arduino-ESP32 still own codec and I2S/DMA
 implementation details; their runtime reservations are priced at the exact
-board binding rather than hidden inside the portable contract.
+board binding rather than hidden inside the portable contract. That binding
+is limited to the shown 16 kHz mono signed-16 format, 96-sample frames, two
+queue slots, and 100 capture/playback transfers per second; another shape
+requires its own evidence and price.
 
 ## ESP32 continuous ADC, LEDC, and RMT
 
@@ -141,8 +144,9 @@ used 20,520 B flash / 456 B static RAM versus 21,108 B / 368 B for the compact
 path. Interleaved ADC, LEDC, and RMT, quiescence/recovery/release, and exact
 flash restoration passed on both physical targets. Unreferenced ADC inputs
 are transport evidence, not accuracy evidence. ESP32-S3 remains target-build
-evidence only, and no exact board binding is promoted until every fixed price
-dimension is measured or explicitly established as zero. Defining
+only for this ADC/pulse family; its separate audio composition has physical
+playback/capture evidence. No exact ADC/pulse binding is promoted until every
+fixed price dimension is measured or explicitly established as zero. Defining
 `NOBRO_ESP32_PERIPHERALS_DISABLED`
 before the include removes all three providers and their vendor symbols.
 

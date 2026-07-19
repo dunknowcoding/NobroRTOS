@@ -218,7 +218,11 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install arduino:avr
           arduino-cli core install arduino:renesas_uno
-          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: prepare pinned audio member
+        run: |
+          git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
+          git -C _work/NiusAudio checkout fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
       - name: compile public package examples (AVR, UNO R4, ESP32-S3)
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
@@ -227,6 +231,7 @@ jobs:
           python tools/check_platform_tiers.py --run-gate arduino-facade-contract
           python tools/check_platform_tiers.py --run-gate arduino-ra4m1-compile
           python tools/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
+          python tools/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
           python tools/check_platform_tiers.py --assert-receipts arduino-package
       - name: pinned NiusIMU integration
         run: |
@@ -248,11 +253,6 @@ jobs:
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
           git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
           python tools/check_camera_integrations.py --library _work/NiusCam --compile
-      - name: pinned audio integration
-        run: |
-          git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
-          git -C _work/NiusAudio checkout fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
-          python tools/check_audio_integrations.py --library _work/NiusAudio --compile
       - name: bounded ESP32 peripheral integrations
         run: |
           python tools/check_esp32_peripheral_facade.py

@@ -21,6 +21,11 @@
 - Configuration-specific persistent ADC-DMA bindings for ESP32-C3 and ESP32-P4
   carry complete fixed/runtime prices, upstream source pins, coexistence
   ownership, and exact target-build gates.
+- The ESP32-S3 Arduino ES8311 composition now has one exact 16 kHz mono
+  signed-16 full-duplex binding with zero-disabled proof, isolated
+  flash/static cost, retained heap, caller-stack/CPU/latency measurements,
+  explicit TX/RX DMA and interrupt ownership, repeated recovery, and physical
+  playback/capture evidence.
 
 ## 0.3.2 - 2026-07-18
 

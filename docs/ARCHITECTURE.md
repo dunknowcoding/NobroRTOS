@@ -683,6 +683,13 @@ compile-time queue. Arduino-ESP32 owns I2S/DMA and codec control; Nobro owns
 what the application can submit, how much it retains, the completion budget,
 backpressure, and diagnostics.
 
+The first exact Arduino binding is deliberately narrow: 16 kHz mono
+signed-16 full-duplex audio, 192-byte maximum frames, two queue slots, and
+100 transfers per second. The registry prices the isolated link delta,
+retained heap, caller-stack high-water, active cycles, p99/max latency, two
+I2S directions, and their two GDMA/interrupt paths. Repeated recovery and
+physical playback/capture pass; this does not price another codec or format.
+
 NiusAudio is a member of `nobro-audio`, not a parallel ecosystem or copied
 source tree. A new codec remains a module/library implementation under the
 same contract. A board claim appears only when the feature registry has an
