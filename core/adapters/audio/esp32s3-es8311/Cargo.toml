@@ -1,0 +1,12 @@
+[package]
+name = "nobro-adapter-audio-esp32s3-es8311"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nobro-audio = { path = "../../../crates/nobro_audio" }
+
+[features]
+default = []
+backend-arduino-shim = []

@@ -656,6 +656,27 @@ poll-driven transfer state machine close that gap, they are a liveness containme
 interrupt-blackout or deadline guarantee. Unsupported nRF isochronous endpoints are
 rejected during allocation rather than reaching the regular endpoint arrays.
 
+### Audio - bounded contract over board-owned I2S
+
+`nobro-audio` defines allocation-free codec configuration, lifecycle,
+capture/playback, an optional measured-I/O deadline extension, explicit
+admission price, and a fixed-capacity backpressuring frame ring. It does not
+reimplement a vendor DMA engine.
+
+The first concrete bridge is `audio/esp32s3-es8311`. Its Rust side validates
+signed-16 formats, frame bounds, state transitions, recovery, and resource
+accounting over a mountable transport. Its Arduino side,
+`NobroNiusAudio.h`, wraps the pinned NiusAudio ES8311 driver with a
+compile-time queue. Arduino-ESP32 owns I2S/DMA and codec control; Nobro owns
+what the application can submit, how much it retains, the completion budget,
+backpressure, and diagnostics.
+
+NiusAudio is a member of `nobro-audio`, not a parallel ecosystem or copied
+source tree. A new codec remains a module/library implementation under the
+same contract. A board claim appears only when the feature registry has an
+exact backend, composition binding, price, disabled-symbol proof, report
+wiring, and executable evidence.
+
 ### Radio / BLE / WiFi / Zigbee / RFID - current boundary and planned shape
 
 Implemented today in `nobro-wireless`:

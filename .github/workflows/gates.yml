@@ -42,6 +42,7 @@ jobs:
           python tools/package_platformio.py --check
           python tools/check_distribution_artifacts.py
           python tools/check_arduino_facade.py
+          python tools/check_audio_facade.py
       - name: web flasher + block editor + tutorials
         run: |
           python tools/check_web_flasher.py
@@ -246,6 +247,11 @@ jobs:
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
           git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
           python tools/check_camera_integrations.py --library _work/NiusCam --compile
+      - name: pinned audio integration
+        run: |
+          git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
+          git -C _work/NiusAudio checkout fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
+          python tools/check_audio_integrations.py --library _work/NiusAudio --compile
 
   arduino-nrf-package:
     runs-on: windows-latest

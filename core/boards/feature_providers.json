@@ -1,8 +1,20 @@
 {
   "schema": "nobro-board-feature-registry-v1",
-  "deployment_values": ["firmware", "host"],
-  "maturity_values": ["absent", "stub", "compile-only", "implemented"],
-  "evidence_values": ["host-test", "target-build", "physical"],
+  "deployment_values": [
+    "firmware",
+    "host"
+  ],
+  "maturity_values": [
+    "absent",
+    "stub",
+    "compile-only",
+    "implemented"
+  ],
+  "evidence_values": [
+    "host-test",
+    "target-build",
+    "physical"
+  ],
   "price_dimensions": [
     "flash_bytes",
     "static_ram_bytes",
@@ -21,79 +33,127 @@
     "compatible_instances",
     "core_affinity"
   ],
-  "provenance": [],
+  "provenance": [
+    {
+      "id": "source-niusaudio",
+      "source": "https://github.com/dunknowcoding/NiusAudio",
+      "revision": "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2",
+      "version": "0.3.1",
+      "license": "Apache-2.0"
+    }
+  ],
   "capability_kinds": [
     {
       "id": "adc_dma",
       "class": "peripheral",
       "portable_contract_id": "contract-sensors",
       "stack_family": "adc-dma",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "audio_dac",
       "class": "peripheral",
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-dac",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "audio_i2s",
       "class": "peripheral",
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-i2s",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "audio_pdm",
       "class": "peripheral",
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-pdm",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "ble_link",
       "class": "connectivity",
       "portable_contract_id": "contract-wireless",
       "stack_family": "ble",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "can_link",
       "class": "connectivity",
       "portable_contract_id": "contract-wireless",
       "stack_family": "can",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "ethernet_link",
       "class": "connectivity",
       "portable_contract_id": "contract-wireless",
       "stack_family": "ethernet",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "pwm_ledc",
       "class": "peripheral",
       "portable_contract_id": "contract-servo",
       "stack_family": "pwm-ledc",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "pulse_rmt",
       "class": "peripheral",
       "portable_contract_id": "contract-servo",
       "stack_family": "pulse-rmt",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     },
     {
       "id": "wifi_link",
       "class": "connectivity",
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
-      "limitations": ["No board binding is promoted yet."]
+      "limitations": [
+        "No board binding is promoted yet."
+      ]
     }
   ],
-  "backends": [],
+  "backends": [
+    {
+      "id": "backend-audio-esp32s3-es8311",
+      "capability_kind": "audio_i2s",
+      "stack_family": "audio-i2s",
+      "adapter_component_id": "adapter-audio-esp32s3-es8311",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "provenance_id": "source-niusaudio",
+      "supported_targets": [
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "The exact board binding awaits measured vendor-runtime and physical evidence."
+      ]
+    }
+  ],
   "bindings": []
 }

@@ -14,6 +14,13 @@ Neural-network motion classifier: a bounded on-device inference adapter
 - **enum**: `NnError`
 - **fn**: `new`, `new`
 
+## `nobro-adapter-audio-esp32s3-es8311`
+Bounded ESP32-S3 + ES8311 bridge.
+- **trait**: `Esp32s3Es8311Transport`
+- **struct**: `AudioDiagnostics`, `Esp32s3Es8311`
+- **enum**: `TransportError`
+- **fn**: `into_inner`
+
 ## `nobro-eh-i2c`
 `embedded-hal` 1.0 I2C adapter over the NobroRTOS TWIM bus.
 - **struct**: `NobroI2cError`, `NobroI2c`
@@ -82,8 +89,8 @@ AI deployment + cloud-API management for NobroRTOS.
 
 ## `nobro-audio`
 Allocation-free audio contracts with explicit format, lifecycle, and backpressure.
-- **trait**: `AudioBackend`
-- **struct**: `CodecConfig`, `AudioRing`
+- **trait**: `AudioBackend`, `TimedAudioBackend`
+- **struct**: `CodecConfig`, `AudioResourcePrice`, `AudioRing`
 - **enum**: `SampleFormat`, `AudioState`, `AudioError`
 - **fn**: `push`, `pop_into`
 

@@ -125,6 +125,14 @@ Run `python tools/check_board_features.py`,
 `compile-only` is not physical support, and an unbound capability kind is not
 a platform claim.
 
+The in-tree `audio/esp32s3-es8311` bridge is the reference split for a vendor
+audio stack: keep frame/lifecycle/admission policy in `nobro-audio`, keep the
+board core’s I2S/DMA ownership in its transport, and pin an external Arduino
+library as a catalog member rather than copying it into the adapter. Use
+`NobroNiusAudio.h` as the C++ facade pattern. Do not fill unknown runtime heap
+or DMA reservations with zero; defer the board binding until the exact
+composition measures them.
+
 ## Boot layout rules
 
 - Keep application flash origins in board data and linker scripts synchronized.

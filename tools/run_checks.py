@@ -160,6 +160,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("PlatformIO release archive", [py, "tools/package_platformio.py", "--check"], ROOT),
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
+        ("audio facade contracts", [py, "tools/check_audio_facade.py"], ROOT),
         ("NiusIMU adapter contracts", [py, "tools/check_niusimu_adapter.py", "--selftest"], ROOT),
         ("web flasher", [py, "tools/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),

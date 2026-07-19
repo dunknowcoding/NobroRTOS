@@ -661,6 +661,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-audio-esp32s3-es8311"
+version = "0.3.2"
+dependencies = [
+ "nobro-audio",
+]
+
+[[package]]
 name = "nobro-adapter-bmp280"
 version = "0.3.2"
 dependencies = [

@@ -31,3 +31,9 @@ produce public SDK artifacts.
 `run_checks.py` runs the portable source/package suite. The narrower `check_*.py`,
 `ci_matrix.sh`, and `lint_gate.sh` entry points are kept small so contributors and
 hosted CI can run the same checks without private configuration.
+
+Board-feature integrations remain evidence scoped. For example,
+`check_audio_facade.py` executes the bounded audio lifecycle against a fake
+transport, while `check_audio_integrations.py` verifies an exact NiusAudio
+revision and the enabled/disabled ESP32-S3 build delta. Neither check represents
+physical codec, speaker, microphone, timing, or vendor-runtime memory evidence.

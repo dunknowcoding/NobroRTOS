@@ -45,6 +45,42 @@ pub enum AudioError {
     Backpressured,
     Empty,
     Transport,
+    PartialIo,
+    DeadlineMiss,
+}
+
+/// Admission-time cost for one mounted audio instance.
+///
+/// The price dimensions mirror the board-feature registry. Vendor-managed
+/// reservations and workers stay visible instead of being relabeled as
+/// portable Rust costs; zero is a measured/declared value, never "unknown".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioResourcePrice {
+    pub frame_bytes: usize,
+    pub queue_slots: usize,
+    pub flash_bytes: u32,
+    pub static_ram_bytes: u32,
+    pub heap_bytes: u32,
+    pub stack_bytes: u32,
+    pub vendor_reserved_ram_bytes: u32,
+    pub worker_threads: u8,
+    pub cpu_cycles_per_second: u64,
+    pub interrupt_slots: u8,
+    pub dma_channels: u8,
+    pub controller_firmware_bytes: u32,
+}
+
+impl AudioResourcePrice {
+    pub const fn frame_storage_bytes(self) -> Option<usize> {
+        self.frame_bytes.checked_mul(self.queue_slots)
+    }
+
+    pub const fn has_bounded_queue(self) -> bool {
+        match self.frame_storage_bytes() {
+            Some(bytes) => bytes != 0 && bytes <= self.static_ram_bytes as usize,
+            None => false,
+        }
+    }
 }
 
 /// One mountable codec/transport implementation.
@@ -58,6 +94,17 @@ pub trait AudioBackend {
     fn playback(&mut self, frame: &[u8]) -> Result<(), AudioError>;
     fn quiesce(&mut self) -> Result<(), AudioError>;
     fn recover(&mut self) -> Result<(), AudioError>;
+}
+
+/// Optional deadline-aware extension used by transports that can measure or
+/// bound their vendor I/O calls. The base trait stays small for beginners.
+pub trait TimedAudioBackend: AudioBackend {
+    fn capture_with_budget(
+        &mut self,
+        output: &mut [u8],
+        max_block_us: u32,
+    ) -> Result<usize, AudioError>;
+    fn playback_with_budget(&mut self, frame: &[u8], max_block_us: u32) -> Result<(), AudioError>;
 }
 
 #[derive(Clone, Copy)]
@@ -189,5 +236,25 @@ mod tests {
         assert!(CodecConfig::new(48_000, 2, SampleFormat::Signed16).is_valid());
         assert!(!CodecConfig::new(0, 2, SampleFormat::Signed16).is_valid());
         assert!(!CodecConfig::new(48_000, 0, SampleFormat::Signed16).is_valid());
+    }
+
+    #[test]
+    fn admission_price_tracks_bounded_queue_and_vendor_costs() {
+        let price = AudioResourcePrice {
+            frame_bytes: 192,
+            queue_slots: 2,
+            flash_bytes: 4096,
+            static_ram_bytes: 512,
+            heap_bytes: 2048,
+            stack_bytes: 512,
+            vendor_reserved_ram_bytes: 4096,
+            worker_threads: 1,
+            cpu_cycles_per_second: 320_000,
+            interrupt_slots: 1,
+            dma_channels: 1,
+            controller_firmware_bytes: 0,
+        };
+        assert!(price.has_bounded_queue());
+        assert_eq!(price.frame_storage_bytes(), Some(384));
     }
 }

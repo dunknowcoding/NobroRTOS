@@ -13,6 +13,9 @@ Current contents:
 - `src/NobroArduinoProviders.h` with bounded clock/deadline/ADC/generic-duty-PWM,
   optional I2C/SPI, and byte-I/O wrappers that delegate hardware ownership to the
   selected Arduino board package.
+- `src/NobroNiusAudio.h` with a fixed-capacity ES8311 playback/capture queue,
+  deadline accounting, backpressure, lifecycle, and recovery over the pinned
+  NiusAudio library.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
@@ -83,6 +86,26 @@ calls. Zero execution/resource budgets and arithmetic overflow are rejected fail
 Production execution still uses generated/core firmware, so a passing preview is not
 measured WCET evidence.
 
+## NiusAudio composition
+
+Install NiusAudio 0.3.1 and include its facade explicitly:
+
+```cpp
+#include <NiusAudio.h>
+#include <NobroRTOS.h>
+#include <NobroNiusAudio.h>
+
+NiusAudioWeActEs8311Board codec;
+nobro::NiusEs8311AudioAdapter<2, 96> audio(codec);
+```
+
+The adapter stores exactly two frames of at most 96 signed 16-bit samples.
+`submit()` rejects an oversized or full queue, `pump(max_block_us)` sends at
+most one frame, and `capture(..., max_block_us)` records partial transfers and
+deadline misses. NiusAudio and Arduino-ESP32 still own codec and I2S/DMA
+implementation details; their runtime reservations are priced at the exact
+board binding rather than hidden inside the portable contract.
+
 ## Relationship to the full NobroRTOS repository
 
 This repository is the Arduino-facing distribution, not a duplicate Rust source
@@ -98,5 +121,5 @@ validation matrix. See
 <https://github.com/dunknowcoding/NobroRTOS/blob/master/docs/ARDUINO_PLATFORMIO.md>.
 
 `python tools/package_arduino.py --check` verifies the vendored canonical
-headers and license. `--zip` writes a self-contained installable archive under
-the ignored `_work/` directory.
+headers and license. Release archives are generated from that verified package
+surface and are not source-controlled.
