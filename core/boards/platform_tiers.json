@@ -215,6 +215,25 @@
         }
       ]
     },
+    "esp32-arduino-peripheral-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_esp32_peripheral_integrations.py"],
+      "claim_scopes": [
+        {
+          "platform": "esp32c3",
+          "composition": "arduino",
+          "capabilities": ["adc_dma"]
+        },
+        {
+          "platform": "esp32p4",
+          "composition": "arduino",
+          "capabilities": ["adc_dma"]
+        }
+      ]
+    },
     "esp32s3-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
@@ -435,6 +454,34 @@
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["esp32c3-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["esp32c3-usb-host", "esp32c3-target-build"]}
+          }
+        },
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "adc_dma": {
+              "maturity": "experimental",
+              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "limitations": "The exact persistent-buffer binding is configuration-specific; calibrated accuracy remains unverified."
+            }
+          }
+        }
+      }
+    },
+    "esp32p4": {
+      "arch": "riscv32imafc",
+      "tier": "core",
+      "implementation_root": "packages/arduino",
+      "limitations": "Only the configuration-specific Arduino persistent ADC-DMA composition is claimed; no native Rust provider tier is inferred.",
+      "compositions": {
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "adc_dma": {
+              "maturity": "experimental",
+              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "limitations": "The exact binding uses a DMA-aligned 32-conversion frame; calibrated accuracy remains unverified."
+            }
           }
         }
       }

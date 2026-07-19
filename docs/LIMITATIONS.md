@@ -38,8 +38,8 @@ hardware and are not inferred from software coefficients alone.
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
 | Deep | nRF52840 | One native composition with implemented time, deadline, event, PWM, I2C, SPI, USB, and lease providers | Broader deep board families and physical USB fault/recovery evidence |
-| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase plus the fixed USB-Serial-JTAG backend; ESP32-S3 has a required hosted Xtensa build while its time/deadline/I2C/SPI/PWM paths remain experimental, and its USB state machine has required host evidence; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, physical recovery evidence, and unimplemented peripherals |
-| Core | SAMD21, AVR subset | Target startup and status integration | Portable peripheral providers |
+| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, and a separate configuration-priced Arduino persistent ADC-DMA composition; ESP32-S3 has a required hosted Xtensa build while its time/deadline/I2C/SPI/PWM paths remain experimental, and its USB state machine has required host evidence; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, physical recovery evidence, calibrated ADC accuracy, and unimplemented peripherals |
+| Core | ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; ESP32-P4 additionally has a configuration-priced Arduino persistent ADC-DMA composition | Native ESP32-P4 providers and portable peripheral providers for the remaining core-tier targets |
 
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs

@@ -113,7 +113,12 @@ or Ethernet. Do not put credentials, endpoints, or local tool paths in it.
 
 4. Add a board binding only after its backend exists. Record every price
    dimension, coexistence/lease ownership, limitations, report wiring, and
-   scoped evidence gates.
+   scoped evidence gate. Store the workload namespace and configuration words;
+   the validator recomputes their fingerprint instead of trusting an opaque
+   digest. Classify prices as measured, source-derived, or declared zero.
+   Fixed stack means provider-created worker stacks, while caller-task
+   high-water is runtime evidence. Ordinary heap-backed DMA pools belong to
+   retained heap rather than vendor-reserved RAM.
 5. Prove the disabled configuration against the same-board baseline with zero
    Nobro/vendor flash and RAM delta plus forbidden-symbol checks.
 6. Add the capability claim to `platform_tiers.json`; its validator loads the

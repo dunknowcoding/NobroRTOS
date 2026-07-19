@@ -18,6 +18,7 @@ SCHEMA = "nobro-board-feature-registry-v2"
 NAME = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
 FINGERPRINT = re.compile(r"^[0-9a-f]{16}$")
 CLASSES = {"peripheral", "connectivity"}
+PRICE_PROVENANCE_VALUES = {"measured", "source-derived", "declared-zero"}
 FIXED_PRICE_FIELDS = {
     "flash_bytes",
     "static_ram_bytes",
@@ -43,6 +44,23 @@ COEXISTENCE_FIELDS = {
     "compatible_instances",
     "core_affinity",
 }
+WORKLOAD_FIELDS = {
+    "namespace",
+    "configuration_words",
+    "configuration_fingerprint",
+    "operations_per_second",
+}
+
+
+def workload_fingerprint(namespace: str, configuration_words: list[int]) -> str:
+    """Mirror ProviderWorkload's allocation-free FNV-1a identity."""
+    value = 0xCBF29CE484222325
+    for byte in namespace.encode("utf-8"):
+        value = ((value ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    for word in configuration_words:
+        for byte in word.to_bytes(4, "little"):
+            value = ((value ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{value:016x}"
 
 
 def _duplicates(values: list[str]) -> set[str]:
@@ -107,6 +125,21 @@ def validate(registry: dict, catalog: dict) -> list[str]:
         for item in catalog.get("components", [])
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
+    for identifier, record in provenance.items():
+        prefix = f"provenance.{identifier}"
+        if set(record) != {"id", "source", "revision", "version", "license"}:
+            errors.append(f"{prefix}: expected one exact source pin")
+        if (
+            not isinstance(record.get("source"), str)
+            or not record["source"].startswith("https://")
+            or not isinstance(record.get("revision"), str)
+            or not re.fullmatch(r"[0-9a-f]{40}", record["revision"])
+            or not isinstance(record.get("version"), str)
+            or not record["version"]
+            or not isinstance(record.get("license"), str)
+            or not record["license"]
+        ):
+            errors.append(f"{prefix}: source, revision, version, and license must be pinned")
     for identifier, kind in kinds.items():
         prefix = f"capability_kinds.{identifier}"
         if kind.get("class") not in CLASSES:
@@ -185,13 +218,25 @@ def validate(registry: dict, catalog: dict) -> list[str]:
         workload = binding.get("workload")
         if (
             not isinstance(workload, dict)
-            or set(workload) != {"configuration_fingerprint", "operations_per_second"}
+            or set(workload) != WORKLOAD_FIELDS
+            or not isinstance(workload.get("namespace"), str)
+            or not NAME.fullmatch(workload["namespace"])
+            or not isinstance(workload.get("configuration_words"), list)
+            or not workload["configuration_words"]
+            or any(
+                not isinstance(value, int) or not 0 <= value <= 0xFFFFFFFF
+                for value in workload["configuration_words"]
+            )
             or not isinstance(workload.get("configuration_fingerprint"), str)
             or not FINGERPRINT.fullmatch(workload["configuration_fingerprint"])
             or not isinstance(workload.get("operations_per_second"), int)
             or workload["operations_per_second"] <= 0
         ):
             errors.append(f"{prefix}: workload identity and positive operation rate are required")
+        elif workload["configuration_fingerprint"] != workload_fingerprint(
+            workload["namespace"], workload["configuration_words"]
+        ):
+            errors.append(f"{prefix}: workload fingerprint differs from its explicit configuration")
         fixed_price = binding.get("measured_fixed_price")
         if (
             not isinstance(fixed_price, dict)
@@ -206,13 +251,12 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             not isinstance(fixed_provenance, dict)
             or set(fixed_provenance) != FIXED_PRICE_FIELDS
             or any(
-                value not in {"measured", "declared-zero"}
+                value not in PRICE_PROVENANCE_VALUES
                 for value in fixed_provenance.values()
             )
         ):
             errors.append(
-                f"{prefix}: fixed_price_provenance must classify every dimension as "
-                "measured or declared-zero"
+                f"{prefix}: fixed_price_provenance must classify every dimension"
             )
         elif isinstance(fixed_price, dict) and any(
             fixed_price.get(field) != 0
@@ -239,13 +283,12 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             not isinstance(runtime_provenance, dict)
             or set(runtime_provenance) != RUNTIME_PRICE_FIELDS
             or any(
-                value not in {"measured", "declared-zero"}
+                value not in PRICE_PROVENANCE_VALUES
                 for value in runtime_provenance.values()
             )
         ):
             errors.append(
-                f"{prefix}: runtime_price_provenance must classify every dimension as "
-                "measured or declared-zero"
+                f"{prefix}: runtime_price_provenance must classify every dimension"
             )
         elif isinstance(runtime_price, dict) and any(
             runtime_price.get(field) != 0
@@ -315,6 +358,9 @@ def selftest() -> int:
     broken = copy.deepcopy(registry)
     broken["capability_kinds"][0]["portable_contract_id"] = "missing"
     assert any("portable contract" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
+    broken["provenance"][0]["revision"] = "floating"
+    assert any("must be pinned" in error for error in validate(broken, catalog))
     binding = {
         "id": "selftest-binding",
         "backend_id": registry["backends"][0]["id"],
@@ -325,7 +371,11 @@ def selftest() -> int:
         "maturity": "compile-only",
         "evidence_gates": ["selftest-gate"],
         "workload": {
-            "configuration_fingerprint": "0123456789abcdef",
+            "namespace": "selftest-provider",
+            "configuration_words": [1, 2, 3],
+            "configuration_fingerprint": workload_fingerprint(
+                "selftest-provider", [1, 2, 3]
+            ),
             "operations_per_second": 100,
         },
         "measured_fixed_price": {field: 0 for field in FIXED_PRICE_FIELDS},
@@ -353,20 +403,29 @@ def selftest() -> int:
     priced = copy.deepcopy(registry)
     priced["bindings"].append(binding)
     assert not validate(priced, catalog)
+    source_priced = copy.deepcopy(priced)
+    source_priced["bindings"][-1]["measured_fixed_price"]["interrupt_slots"] = 1
+    source_priced["bindings"][-1]["fixed_price_provenance"][
+        "interrupt_slots"
+    ] = "source-derived"
+    assert not validate(source_priced, catalog)
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["fixed_price_provenance"].pop("retained_heap_bytes")
+    broken["bindings"][-1]["fixed_price_provenance"].pop("retained_heap_bytes")
     assert any("fixed_price_provenance" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["measured_runtime_price"]["transient_heap_peak_bytes"] = 1
+    broken["bindings"][-1]["measured_runtime_price"]["transient_heap_peak_bytes"] = 1
     assert any("declared-zero runtime" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["workload"]["operations_per_second"] = 0
+    broken["bindings"][-1]["workload"]["operations_per_second"] = 0
     assert any("operation rate" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(priced)
-    broken["bindings"][0]["measured_runtime_price"]["latency_p99_cycles"] = 2
-    broken["bindings"][0]["measured_runtime_price"]["latency_max_cycles"] = 1
-    broken["bindings"][0]["runtime_price_provenance"]["latency_p99_cycles"] = "measured"
-    broken["bindings"][0]["runtime_price_provenance"]["latency_max_cycles"] = "measured"
+    broken["bindings"][-1]["workload"]["configuration_words"][0] += 1
+    assert any("fingerprint differs" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(priced)
+    broken["bindings"][-1]["measured_runtime_price"]["latency_p99_cycles"] = 2
+    broken["bindings"][-1]["measured_runtime_price"]["latency_max_cycles"] = 1
+    broken["bindings"][-1]["runtime_price_provenance"]["latency_p99_cycles"] = "measured"
+    broken["bindings"][-1]["runtime_price_provenance"]["latency_max_cycles"] = "measured"
     assert any("p99 latency" in error for error in validate(broken, catalog))
     print(
         "BOARD FEATURES SELFTEST: PASS "

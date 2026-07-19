@@ -40,6 +40,14 @@ impl ResourceDimension {
 /// claim that a vendor stack consumes no heap, stack, interrupt, DMA, or
 /// peripheral channels. Workload-dependent CPU, transient heap, stack
 /// high-water, and latency costs live in [`ProviderRuntimePrice`].
+///
+/// `stack_bytes` counts fixed stacks of provider-created workers; caller-task
+/// use belongs to runtime `stack_high_water_bytes`. `vendor_reserved_ram_bytes`
+/// counts RAM removed from the ordinary allocator by opaque firmware or
+/// hardware. Driver pools and DMA buffers allocated from the ordinary heap
+/// belong to `retained_heap_bytes` instead. `controller_firmware_bytes` counts
+/// an image loaded into a separate controller, not code already included in
+/// `flash_bytes`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProviderResourcePrice {
     flash_bytes: u32,

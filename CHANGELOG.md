@@ -15,7 +15,12 @@
 - ESP32 continuous-ADC, LEDC, RMT, and ES8311 adapters reject incomplete,
   workload-mismatched, or impossible zero-ownership prices.
 - Board-feature registry schema v2 requires independent fixed/runtime values
-  and provenance; no exact binding is promoted without both.
+  and provenance. Workload fingerprints are recomputed from explicit
+  configuration words, and source-derived ownership is distinct from measured
+  values and declared zeroes.
+- Configuration-specific persistent ADC-DMA bindings for ESP32-C3 and ESP32-P4
+  carry complete fixed/runtime prices, upstream source pins, coexistence
+  ownership, and exact target-build gates.
 
 ## 0.3.2 - 2026-07-18
 

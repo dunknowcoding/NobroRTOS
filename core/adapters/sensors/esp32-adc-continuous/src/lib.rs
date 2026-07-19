@@ -338,6 +338,23 @@ mod tests {
     }
 
     #[test]
+    fn published_configuration_fingerprints_are_stable() {
+        let mut c3 = config();
+        c3.channels = 1;
+        assert_eq!(
+            workload(c3, 1_250).configuration_fingerprint(),
+            0x8739_5ee8_d16c_2d2d
+        );
+
+        let mut p4 = c3;
+        p4.conversions_per_channel = 32;
+        assert_eq!(
+            workload(p4, 625).configuration_fingerprint(),
+            0x563e_b09a_de4a_135d
+        );
+    }
+
+    #[test]
     fn lifecycle_and_frame_bounds_are_explicit() {
         let mut adc = Esp32AdcContinuous::new(Fake::default(), 625, price(config(), 625));
         assert_eq!(adc.configure(config()), Ok(()));

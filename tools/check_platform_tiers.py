@@ -106,14 +106,18 @@ def validate(
     if matrix.get("feature_registry") != "core/boards/feature_providers.json":
         errors.append("feature_registry must name the public board-feature registry")
     feature_capabilities = check_board_features.capability_ids(feature_registry)
+    feature_binding_records = [
+        binding
+        for binding in feature_registry.get("bindings", [])
+        if isinstance(binding, dict)
+    ]
     feature_bindings = {
         (
             binding.get("platform"),
             binding.get("composition"),
             binding.get("capability_kind"),
         )
-        for binding in feature_registry.get("bindings", [])
-        if isinstance(binding, dict)
+        for binding in feature_binding_records
     }
     if matrix.get("schema") != SCHEMA:
         errors.append(f"schema must be {SCHEMA!r}")
@@ -129,6 +133,7 @@ def validate(
     providers = set(providers_list)
     native_vocabulary = providers | feature_capabilities
     facade_offers = set(facade_list)
+    arduino_vocabulary = facade_offers | feature_capabilities
 
     unsupported_evidence = set(evidence_kinds) - {HOST_EVIDENCE, TARGET_EVIDENCE}
     if unsupported_evidence:
@@ -232,12 +237,11 @@ def validate(
                     continue
                 composition = compositions[composition_id]
                 surface = composition.get("surface") if isinstance(composition, dict) else None
-                vocabulary_name = SURFACE_VOCABULARY.get(surface)
                 vocabulary = (
                     native_vocabulary
-                    if vocabulary_name == "providers"
-                    else set(matrix.get(vocabulary_name, []))
-                    if vocabulary_name
+                    if surface == "native"
+                    else arduino_vocabulary
+                    if surface == "arduino"
                     else set()
                 )
                 if not isinstance(capabilities, list) or not capabilities or not all(
@@ -268,6 +272,21 @@ def validate(
             errors.append(f"{prefix}: environment must map safe variable names to strings")
         if gate.get("required") is False and not gate.get("condition"):
             errors.append(f"{prefix}: conditional gate must explain its condition")
+
+    for binding in feature_binding_records:
+        prefix = f"feature_bindings.{binding.get('id', '<invalid>')}"
+        scope = (
+            binding.get("platform"),
+            binding.get("composition"),
+            binding.get("capability_kind"),
+        )
+        for gate_id in binding.get("evidence_gates", []):
+            if gate_id not in gates:
+                errors.append(f"{prefix}: unknown evidence gate {gate_id!r}")
+            elif scope not in gate_claim_scopes.get(gate_id, set()):
+                errors.append(
+                    f"{prefix}: gate {gate_id!r} is not scoped to its exact binding"
+                )
 
     claim_scope_uses: set[tuple[str, str, str, str]] = set()
     for platform_id, platform in platforms.items():
@@ -304,7 +323,7 @@ def validate(
             if surface not in SURFACE_VOCABULARY:
                 errors.append(f"{comp_prefix}: unknown surface {surface!r}")
                 continue
-            vocabulary = native_vocabulary if surface == "native" else facade_offers
+            vocabulary = native_vocabulary if surface == "native" else arduino_vocabulary
             claims = composition.get("claims")
             if not isinstance(claims, dict) or not claims:
                 errors.append(f"{comp_prefix}: claims must be a non-empty object")
@@ -880,7 +899,11 @@ def selftest() -> int:
             "maturity": "compile-only",
             "evidence_gates": ["esp32s3-target-build"],
             "workload": {
-                "configuration_fingerprint": "0123456789abcdef",
+                "namespace": "selftest-provider",
+                "configuration_words": [1, 2, 3],
+                "configuration_fingerprint": check_board_features.workload_fingerprint(
+                    "selftest-provider", [1, 2, 3]
+                ),
                 "operations_per_second": 100,
             },
             "measured_fixed_price": {
@@ -1125,6 +1148,17 @@ def selftest() -> int:
                     execute_gate, good, "arduino-ra4m1-compile", receipt_root, source_root
                 ) == 0,
                 "Arduino compile gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "esp32-arduino-peripheral-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino ESP32 peripheral gate success",
             )
             compile_call = run.call_args_list[1]
             _expect(

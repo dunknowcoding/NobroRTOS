@@ -48,9 +48,12 @@ Disabled bindings must declare the same-board baseline, zero flash/RAM delta,
 and forbidden backend symbols. Resource prices share one typed contract across
 audio, sensor, and pulse domains. Schema v2 keeps fixed mount ownership
 separate from transient heap, stack high-water, CPU, and latency measurements
-for one exact configuration fingerprint and positive operation rate. Default
-numeric zeroes remain *unknown*; every exact binding must classify each fixed
-and runtime field as measured or explicitly declared zero.
+for one explicit configuration-word sequence, its checked fingerprint, and a
+positive operation rate. Default numeric zeroes remain *unknown*; every exact
+binding must classify each fixed and runtime field as measured, source-derived,
+or explicitly declared zero. Fixed stack counts provider-created worker stacks;
+caller-task high-water remains runtime evidence. Heap-backed driver pools are
+retained heap, not opaque vendor-reserved RAM.
 Peripheral/controller channels are priced independently from DMA channels and
 interrupt slots.
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import shutil
@@ -12,12 +13,21 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "arduino"
+FEATURE_REGISTRY = ROOT / "core" / "boards" / "feature_providers.json"
 FQBNS = (
     "esp32:esp32:esp32",
     "esp32:esp32:esp32c3",
     "esp32:esp32:esp32s3",
     "esp32:esp32:esp32p4",
 )
+PERSISTENT_PRICE_FQBNS = (
+    "esp32:esp32:esp32c3",
+    "esp32:esp32:esp32p4",
+)
+PERSISTENT_BINDINGS = {
+    "esp32:esp32:esp32c3": "binding-adc-persistent-esp32c3",
+    "esp32:esp32:esp32p4": "binding-adc-persistent-esp32p4",
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -289,6 +299,44 @@ def verify_disabled_map(build: pathlib.Path) -> None:
         raise RuntimeError(f"disabled peripheral providers retained symbols: {hits}")
 
 
+def verify_binding_price(fqbn: str, delta: tuple[int, int]) -> str:
+    registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
+    binding_id = PERSISTENT_BINDINGS[fqbn]
+    binding = next(
+        (
+            item
+            for item in registry.get("bindings", [])
+            if item.get("id") == binding_id
+        ),
+        None,
+    )
+    if binding is None:
+        raise RuntimeError(f"{fqbn}: exact persistent ADC binding is missing")
+    fixed = binding.get("measured_fixed_price", {})
+    expected = (fixed.get("flash_bytes"), fixed.get("static_ram_bytes"))
+    if expected != delta:
+        raise RuntimeError(
+            f"{binding_id}: isolated build price differs: "
+            f"registry={expected} build={delta}"
+        )
+    report = binding.get("report_wiring", {})
+    if (
+        report.get("provider_id") != "adc_dma"
+        or report.get("evidence_gate")
+        != "esp32-arduino-peripheral-target-build"
+        or not report.get("status_field")
+    ):
+        raise RuntimeError(f"{binding_id}: target-build report wiring is stale")
+    disabled = binding.get("disabled_symbol_gate", {})
+    if (
+        set(disabled.get("forbidden_symbols", [])) != set(FORBIDDEN_DISABLED)
+        or disabled.get("max_flash_delta_bytes") != 0
+        or disabled.get("max_ram_delta_bytes") != 0
+    ):
+        raise RuntimeError(f"{binding_id}: disabled-state proof is stale")
+    return report["status_field"]
+
+
 def main() -> int:
     cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
     if not cli:
@@ -348,6 +396,39 @@ def main() -> int:
                 print(
                     f"  PASS ESP32-S3 {provider} delta "
                     f"flash={delta[0]} ram={delta[1]}"
+                )
+            for index, fqbn in enumerate(PERSISTENT_PRICE_FQBNS):
+                target_baseline = compile_sketch(
+                    cli,
+                    fqbn,
+                    root,
+                    f"persistent-price-baseline-{index}",
+                    BASELINE,
+                )[:2]
+                target_feature = compile_sketch(
+                    cli,
+                    fqbn,
+                    root,
+                    f"persistent-price-feature-{index}",
+                    PERSISTENT_ADC_FEATURE,
+                )[:2]
+                if (
+                    target_feature[0] <= target_baseline[0]
+                    or target_feature[1] < target_baseline[1]
+                ):
+                    raise RuntimeError(
+                        f"{fqbn}/adc_dma_persistent: enabled price is not observable: "
+                        f"baseline={target_baseline} feature={target_feature}"
+                    )
+                delta = (
+                    target_feature[0] - target_baseline[0],
+                    target_feature[1] - target_baseline[1],
+                )
+                status_field = verify_binding_price(fqbn, delta)
+                print(
+                    f"  PASS {fqbn} adc_dma_persistent delta "
+                    f"flash={delta[0]} ram={delta[1]}; "
+                    f"report {status_field}=target-build"
                 )
             for fqbn, price in prices.items():
                 print(f"  PASS target-build {fqbn} flash={price[0]} ram={price[1]}")
