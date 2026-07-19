@@ -110,10 +110,11 @@ from failure to enumerate its USB identity.
 and portable WiFi/BLE lifecycle contracts. UNO R4 WiFiS3 remains compile-only.
 The pinned Arduino-ESP32 3.3.10 backend has C3 zero-disabled proof plus
 state-restoring association, DNS, TCP, leave, quiesce, and recovery evidence,
-but its exact binding remains unpriced. Synchronous vendor calls and managed
-heap/tasks prevent Nobro from claiming hard cancellation or allocation-free
-operation. Complete vendor stack/task/CPU/latency prices, shared-radio
-arbitration, and WiFi/BLE coexistence remain absent. Different board
+and one exact no-debug C3 workload is completely configuration-priced at
+four HTTP transactions/s. Synchronous vendor calls and managed heap/tasks
+still prevent Nobro from claiming hard cancellation or allocation-free
+operation. Other rates, boards, socket workloads, shared-radio arbitration,
+and WiFi/BLE coexistence remain absent. Different board
 technologies must declare
 per-instance backend selection, radio ownership, coexistence, and
 vendor-managed resources before support is promoted. `ManagedLink::send_at`

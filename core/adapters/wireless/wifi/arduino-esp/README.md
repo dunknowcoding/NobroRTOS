@@ -9,5 +9,6 @@ The implementation is optional. Credentials stay in caller storage and are
 never board metadata. The exact C3 composition passed repeated association,
 DNS, TCP, leave, quiesce, and recovery with byte-exact firmware restoration.
 Arduino-ESP32/ESP-IDF owns its tasks, event loop, heap, radio, sockets, and
-controller resources, so incomplete resource/coexistence pricing still keeps
-the board binding unpriced.
+controller resources. One exact no-debug C3 binding is completely priced for
+four HTTP transactions/s; the price does not transfer to other boards, rates,
+socket workloads, or WiFi/BLE compositions.

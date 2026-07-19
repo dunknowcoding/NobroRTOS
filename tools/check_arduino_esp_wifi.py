@@ -109,6 +109,65 @@ FORBIDDEN_DISABLED = (
     "WiFiGenericClass",
     "esp_wifi_init",
 )
+EXPECTED_WORKLOAD = {
+    "namespace": "esp32c3-arduino-wifi-http",
+    "configuration_words": [160, 4, 100, 3, 250000, 100, 300, 8500],
+    "configuration_fingerprint": "a094361059836d28",
+    "operations_per_second": 4,
+}
+EXPECTED_FIXED_PRICE = {
+    "flash_bytes": 650013,
+    "static_ram_bytes": 21788,
+    "retained_heap_bytes": 60348,
+    "stack_bytes": 0,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 4,
+    "interrupt_slots": 0,
+    "dma_channels": 0,
+    "controller_firmware_bytes": 0,
+    "peripheral_channels": 1,
+}
+EXPECTED_FIXED_PROVENANCE = {
+    "flash_bytes": "measured",
+    "static_ram_bytes": "measured",
+    "retained_heap_bytes": "measured",
+    "stack_bytes": "source-derived",
+    "vendor_reserved_ram_bytes": "source-derived",
+    "worker_threads": "measured",
+    "interrupt_slots": "source-derived",
+    "dma_channels": "source-derived",
+    "controller_firmware_bytes": "source-derived",
+    "peripheral_channels": "source-derived",
+}
+EXPECTED_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 14028,
+    "stack_high_water_bytes": 6756,
+    "cpu_cycles_per_second": 6431243,
+    "latency_p99_cycles": 11243200,
+    "latency_max_cycles": 16704480,
+}
+EXPECTED_RUNTIME_PROVENANCE = {
+    field: "measured" for field in EXPECTED_RUNTIME_PRICE
+}
+EXPECTED_COEXISTENCE = {
+    "leases": ["esp32c3-shared-radio"],
+    "exclusive_resources": ["wifi-station-netif"],
+    "compatible_instances": [],
+    "core_affinity": ["cpu0"],
+}
+EXPECTED_PRICE_BASIS = {
+    "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 at 160 MHz",
+    "fixed": (
+        "same-target no-debug isolated link delta, maximum active "
+        "retained-heap delta across three physical cycles, and pinned "
+        "board-package ownership"
+    ),
+    "runtime": (
+        "conservative maximum from three state-restoring cycles of 100 HTTP "
+        "transactions at four operations per second; task runtime excludes "
+        "blocked wall time"
+    ),
+}
 
 
 def run(command: list[str]) -> str:
@@ -210,10 +269,19 @@ def verify_metadata() -> None:
         or binding.get("platform") != "esp32c3"
         or binding.get("composition") != "arduino"
         or binding.get("instance") != "wifi0"
-        or binding.get("maturity") != "compile-only"
+        or binding.get("maturity") != "implemented"
         or binding.get("evidence_gates") != [GATE_ID]
-        or binding.get("price_state") != "unmeasured"
-        or any(key.startswith("measured_") for key in binding)
+        or binding.get("workload") != EXPECTED_WORKLOAD
+        or binding.get("measured_fixed_price") != EXPECTED_FIXED_PRICE
+        or binding.get("fixed_price_provenance")
+        != EXPECTED_FIXED_PROVENANCE
+        or binding.get("measured_runtime_price") != EXPECTED_RUNTIME_PRICE
+        or binding.get("runtime_price_provenance")
+        != EXPECTED_RUNTIME_PROVENANCE
+        or binding.get("coexistence") != EXPECTED_COEXISTENCE
+        or binding.get("price_basis") != EXPECTED_PRICE_BASIS
+        or "price_state" in binding
+        or "limitations" in binding
         or binding.get("report_wiring")
         != {
             "provider_id": "wifi_link",
@@ -252,7 +320,7 @@ def verify_metadata() -> None:
     )
     if (
         not isinstance(claim, dict)
-        or claim.get("maturity") != "experimental"
+        or claim.get("maturity") != "implemented"
         or claim.get("evidence") != [GATE_ID]
         or not claim.get("limitations")
     ):
@@ -321,6 +389,20 @@ def main() -> int:
                     "enabled ESP32-C3 WiFi price is not observable: "
                     f"baseline={baseline[:2]} enabled={c3_enabled[1:]}"
                 )
+            c3_delta = (
+                c3_enabled[1] - baseline[0],
+                c3_enabled[2] - baseline[1],
+            )
+            if (
+                c3_delta[0] > EXPECTED_FIXED_PRICE["flash_bytes"]
+                or c3_delta[1] > EXPECTED_FIXED_PRICE["static_ram_bytes"]
+            ):
+                raise RuntimeError(
+                    "enabled ESP32-C3 WiFi exceeds its admitted fixed price: "
+                    f"measured={c3_delta} admitted="
+                    f"({EXPECTED_FIXED_PRICE['flash_bytes']}, "
+                    f"{EXPECTED_FIXED_PRICE['static_ram_bytes']})"
+                )
 
             print(
                 "  PASS zero-disabled "
@@ -335,7 +417,7 @@ def main() -> int:
         return 1
     print(
         "ARDUINO ESP WIFI: PASS "
-        "(pinned 3.3.10 family target-build; physical backend, unpriced binding)"
+        "(pinned 3.3.10 family target-build; exact C3 binding priced)"
     )
     return 0
 

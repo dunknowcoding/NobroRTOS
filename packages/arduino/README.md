@@ -201,7 +201,9 @@ driver, keeps credentials runtime-only, and exposes a bounded scan and
 association lifecycle. The exact C3 path has repeated association, DNS, TCP,
 leave, quiesce, and recovery evidence as well as a byte-identical disabled
 composition. Arduino-ESP32/ESP-IDF still owns its radio, event loop, TCP/IP
-stack, heap, and tasks; the complete exact resource price remains unmeasured.
+stack, heap, and tasks. The exact no-debug C3 workload is configuration-priced
+for four HTTP transactions/s; other workloads, ESP32-family targets, and
+WiFi/BLE coexistence are not inferred from it.
 Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove the facade and
 vendor WiFi symbols from that composition.
 

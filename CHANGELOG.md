@@ -14,10 +14,12 @@
   gated separately from physical behavior and resource-price promotion.
 - ESP32, ESP32-C3, and ESP32-S3 Arduino compositions now share one opt-in
   station facade over the pinned Arduino-ESP32 3.3.10 `WiFi` stack. C3 has
-  an explicit unpriced binding, and the disabled C3 composition remains
-  byte-identical to baseline. Repeated isolated association, DNS, TCP,
-  leave, quiesce, and recovery pass; complete ESP-IDF resource and
-  coexistence prices remain separate evidence.
+  an exact configuration-priced binding, and the disabled C3 composition
+  remains byte-identical to baseline. Repeated isolated association, DNS,
+  TCP, leave, quiesce, and recovery pass. At four HTTP transactions/s the
+  conservative price records fixed flash/static RAM, retained/transient
+  heap, four worker tasks, stack high-water, CPU cycles/s, and p99/max
+  latency; other boards, workloads, and WiFi/BLE coexistence remain separate.
 - The Arduino-ESP32 facade avoids the board core's asynchronous scan-status
   race with the bundled ESP-IDF blocking scan path and performs bounded,
   fail-closed cleanup after rejected association.

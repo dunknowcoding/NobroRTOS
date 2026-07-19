@@ -791,11 +791,13 @@ Implemented today in `nobro-wireless`:
   persistence for its calls and retains no credentials, but ESP-IDF still owns
   process-wide radio, event-loop, TCP/IP, task, socket, and heap resources.
   The exact C3 path has state-restoring association, DNS, TCP, and lifecycle
-  evidence, while its complete resource price remains unmeasured.
+  evidence plus one complete configuration price at four HTTP transactions/s.
+  That price does not transfer to another board, rate, socket workload, or
+  WiFi/BLE composition.
 
 UNO R4 physical WiFi evidence, additional WiFi backends, BLE controller/GATT
 adapters, Zigbee co-processor lifecycle, shared-radio arbitration, and
-complete vendor resource prices remain future work.
+prices for unmeasured compositions remain future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link
 crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
 may coexist when board composition explicitly admits shared memory, interrupts,

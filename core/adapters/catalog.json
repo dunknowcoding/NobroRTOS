@@ -641,7 +641,7 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "The vendor stack owns process-wide ESP-IDF radio, event-loop, TCP/IP, task, and heap resources; exact C3 physical behavior is verified, but incomplete resource and coexistence prices keep the board binding unpriced."
+        "The vendor stack owns process-wide ESP-IDF radio, event-loop, TCP/IP, task, and heap resources. One exact C3 workload is configuration-priced; other boards, rates, socket workloads, and WiFi/BLE coexistence remain unpriced."
       ]
     },
     {

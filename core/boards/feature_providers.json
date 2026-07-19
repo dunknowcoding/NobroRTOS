@@ -158,7 +158,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
       "limitations": [
-        "UNO R4 WiFiS3 and Arduino-ESP32 have exact compile-only association/lifecycle bindings; neither has priced socket, physical-behavior, or resource evidence yet."
+        "Arduino-ESP32 has one configuration-priced ESP32-C3 station binding; UNO R4 WiFiS3 remains compile-only, and other boards, rates, socket workloads, and WiFi/BLE coexistence require separate evidence."
       ]
     }
   ],
@@ -295,8 +295,8 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; an exact ESP32-C3 composition passed repeated isolated association, DNS, TCP, quiesce, and recovery.",
-        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources; incomplete stack/task/CPU/latency and coexistence prices keep the exact binding unpriced and ineligible for promotion."
+        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; one exact ESP32-C3 composition is priced and passed repeated isolated association, DNS, TCP, quiesce, and recovery.",
+        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources. Classic ESP32, ESP32-S3, other workloads, and WiFi/BLE coexistence remain independently unpriced."
       ]
     },
     {
@@ -327,14 +327,60 @@
       "platform": "esp32c3",
       "composition": "arduino",
       "instance": "wifi0",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence_gates": [
         "arduino-esp-wifi-target-build"
       ],
-      "price_state": "unmeasured",
-      "limitations": [
-        "This exact ESP32-C3 Arduino binding has target-build, zero-disabled, and private state-restoring physical association/DNS/TCP/lifecycle evidence, but its complete stack, task, CPU, latency, and coexistence price remains unmeasured."
-      ],
+      "workload": {
+        "namespace": "esp32c3-arduino-wifi-http",
+        "configuration_words": [160, 4, 100, 3, 250000, 100, 300, 8500],
+        "configuration_fingerprint": "a094361059836d28",
+        "operations_per_second": 4
+      },
+      "measured_fixed_price": {
+        "flash_bytes": 650013,
+        "static_ram_bytes": 21788,
+        "retained_heap_bytes": 60348,
+        "stack_bytes": 0,
+        "vendor_reserved_ram_bytes": 0,
+        "worker_threads": 4,
+        "interrupt_slots": 0,
+        "dma_channels": 0,
+        "controller_firmware_bytes": 0,
+        "peripheral_channels": 1
+      },
+      "fixed_price_provenance": {
+        "flash_bytes": "measured",
+        "static_ram_bytes": "measured",
+        "retained_heap_bytes": "measured",
+        "stack_bytes": "source-derived",
+        "vendor_reserved_ram_bytes": "source-derived",
+        "worker_threads": "measured",
+        "interrupt_slots": "source-derived",
+        "dma_channels": "source-derived",
+        "controller_firmware_bytes": "source-derived",
+        "peripheral_channels": "source-derived"
+      },
+      "measured_runtime_price": {
+        "transient_heap_peak_bytes": 14028,
+        "stack_high_water_bytes": 6756,
+        "cpu_cycles_per_second": 6431243,
+        "latency_p99_cycles": 11243200,
+        "latency_max_cycles": 16704480
+      },
+      "runtime_price_provenance": {
+        "transient_heap_peak_bytes": "measured",
+        "stack_high_water_bytes": "measured",
+        "cpu_cycles_per_second": "measured",
+        "latency_p99_cycles": "measured",
+        "latency_max_cycles": "measured"
+      },
+      "coexistence": {
+        "leases": ["esp32c3-shared-radio"],
+        "exclusive_resources": ["wifi-station-netif"],
+        "compatible_instances": [],
+        "core_affinity": ["cpu0"]
+      },
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",
         "feature": "nobro-esp-wifi-disabled",
@@ -351,6 +397,11 @@
         "provider_id": "wifi_link",
         "status_field": "esp32c3_wifi0",
         "evidence_gate": "arduino-esp-wifi-target-build"
+      },
+      "price_basis": {
+        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 at 160 MHz",
+        "fixed": "same-target no-debug isolated link delta, maximum active retained-heap delta across three physical cycles, and pinned board-package ownership",
+        "runtime": "conservative maximum from three state-restoring cycles of 100 HTTP transactions at four operations per second; task runtime excludes blocked wall time"
       }
     },
     {

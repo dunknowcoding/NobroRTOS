@@ -518,9 +518,9 @@
               "limitations": "The exact persistent-buffer binding is configuration-specific; calibrated accuracy remains unverified."
             },
             "wifi_link": {
-              "maturity": "experimental",
+              "maturity": "implemented",
               "evidence": ["arduino-esp-wifi-target-build"],
-              "limitations": "The pinned Arduino-ESP32 station facade has target-build, zero-disabled, and exact C3 physical association/DNS/TCP/lifecycle evidence; complete runtime-resource pricing and WiFi/BLE coexistence remain unverified, so the binding is still unpriced."
+              "limitations": "One exact pinned Arduino-ESP32 C3 station composition is configuration-priced at four HTTP transactions per second and has state-restoring association/DNS/TCP/lifecycle evidence. Other workloads, boards, and WiFi/BLE coexistence remain unverified."
             }
           }
         }
