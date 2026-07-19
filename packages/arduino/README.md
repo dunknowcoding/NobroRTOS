@@ -125,9 +125,12 @@ The template capacities are the maximum retained pins or pulse symbols, so RAM
 is visible at compile time. Calls reject invalid shapes and report lifecycle,
 transport, partial-frame, and deadline failures. The wrapper itself performs no
 heap allocation; Arduino-ESP32 owns continuous-ADC DMA storage and peripheral
-drivers, whose vendor reservations must be measured for an exact board
-composition. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the include
-removes all three providers and their vendor symbols.
+drivers. A state-restoring classic ESP32 campaign verifies continuous sampling,
+LEDC frequency/duty, RMT pulse timing, quiescence/recovery, and immediate
+runtime reservations. ESP32-C3, ESP32-S3, and ESP32-P4 remain target-build
+evidence only, and no exact board binding is promoted until every price
+dimension is measured. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the
+include removes all three providers and their vendor symbols.
 
 ## Relationship to the full NobroRTOS repository
 

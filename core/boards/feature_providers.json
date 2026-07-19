@@ -144,7 +144,8 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "provenance_id": "source-niusaudio",
       "supported_targets": [
@@ -172,7 +173,8 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "The Arduino core owns process-wide ADC-DMA state and vendor heap; an exact binding awaits measured runtime and physical evidence."
+        "Physical rate, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; conversion accuracy and the C3, S3, and P4 physical paths remain unverified.",
+        "The Arduino core owns process-wide ADC-DMA state; an exact binding awaits every measured price dimension."
       ]
     },
     {
@@ -184,7 +186,8 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "supported_targets": [
         "arduino:esp32",
@@ -193,7 +196,8 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "Target builds do not establish output frequency, duty accuracy, coexistence, or physical loopback."
+        "Physical frequency, duty, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; coexistence and the C3, S3, and P4 physical paths remain unverified.",
+        "An exact binding awaits every measured price dimension."
       ]
     },
     {
@@ -205,7 +209,8 @@
       "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "supported_targets": [
         "arduino:esp32",
@@ -214,7 +219,8 @@
         "arduino:esp32s3"
       ],
       "limitations": [
-        "The board core owns RMT memory, channel, ISR, and DMA resources; exact resource and waveform evidence remain binding-specific."
+        "Physical waveform, lifecycle, and runtime-reservation evidence currently covers classic ESP32 only; coexistence and the C3, S3, and P4 physical paths remain unverified.",
+        "The board core owns RMT memory, channel, ISR, and DMA resources; an exact binding awaits every measured price dimension."
       ]
     }
   ],

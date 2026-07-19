@@ -4,5 +4,7 @@ This adapter mounts one board-core LEDC instance behind the allocation-free
 `nobro-servo` PWM engine contract. Frequency, resolution, duty bounds,
 lifecycle, recovery, and resource pricing stay explicit.
 
-Target compilation is not physical PWM evidence; exact board promotion needs a
-measured binding and loopback or waveform evidence.
+A state-restoring classic ESP32 campaign verifies physical frequency, duty,
+lifecycle recovery, and immediate runtime reservation. Other ESP32 families
+remain target-build evidence only, and exact board promotion still requires
+complete price and coexistence measurements.

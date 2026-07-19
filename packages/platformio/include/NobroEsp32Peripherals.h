@@ -40,7 +40,7 @@ template <size_t MaxPins>
 class Esp32ContinuousAdc {
 public:
     Esp32ContinuousAdc()
-        : pin_count_(0), configured_(false), running_(false),
+        : pin_count_(0), configured_(false), started_(false), running_(false),
           state_(NOBRO_ADC_DMA_DOWN), diagnostics_{} {}
 
     nobro_adc_dma_error_t configure(const uint8_t *pins,
@@ -52,7 +52,11 @@ public:
             config.sample_rate_hz == 0 || running_) {
             return NOBRO_ADC_DMA_INVALID_CONFIG;
         }
-        if (configured_ && !analogContinuousDeinit()) return transportFault();
+        if (configured_) {
+            if (started_ && !analogContinuousStop()) return transportFault();
+            started_ = false;
+            if (!analogContinuousDeinit()) return transportFault();
+        }
         for (size_t index = 0; index < config.channels; ++index)
             pins_[index] = pins[index];
         config_ = config;
@@ -73,6 +77,7 @@ public:
         if (!configured_ || state_ != NOBRO_ADC_DMA_READY)
             return NOBRO_ADC_DMA_NOT_READY;
         if (!analogContinuousStart()) return transportFault();
+        started_ = true;
         running_ = true;
         state_ = NOBRO_ADC_DMA_RUNNING;
         return NOBRO_ADC_DMA_OK;
@@ -123,7 +128,8 @@ public:
     }
 
     nobro_adc_dma_error_t quiesce() {
-        if (running_ && !analogContinuousStop()) return transportFault();
+        if (started_ && !analogContinuousStop()) return transportFault();
+        started_ = false;
         running_ = false;
         if (configured_) state_ = NOBRO_ADC_DMA_SUSPENDED;
         return NOBRO_ADC_DMA_OK;
@@ -131,7 +137,8 @@ public:
 
     nobro_adc_dma_error_t recover() {
         if (!configured_) return NOBRO_ADC_DMA_NOT_READY;
-        (void)analogContinuousStop();
+        if (started_ && !analogContinuousStop()) return transportFault();
+        started_ = false;
         if (!analogContinuousDeinit()) return transportFault();
         analogContinuousSetWidth(config_.resolution_bits);
         if (!analogContinuous(pins_, pin_count_,
@@ -140,6 +147,7 @@ public:
             !analogContinuousStart()) {
             return transportFault();
         }
+        started_ = true;
         running_ = true;
         state_ = NOBRO_ADC_DMA_RUNNING;
         ++diagnostics_.recoveries;
@@ -164,6 +172,7 @@ private:
     size_t pin_count_;
     nobro_adc_dma_config_t config_;
     bool configured_;
+    bool started_;
     bool running_;
     nobro_adc_dma_state_t state_;
     nobro_adc_dma_diagnostics_t diagnostics_;
@@ -240,17 +249,19 @@ template <size_t MaxSymbols>
 class Esp32RmtPulse {
 public:
     explicit Esp32RmtPulse(uint8_t pin)
-        : pin_(pin), tick_hz_(0), configured_(false),
+        : pin_(pin), tick_hz_(0), configured_(false), attached_(false),
           state_(NOBRO_PULSE_DOWN), diagnostics_{} {}
 
     nobro_pulse_error_t configure(uint32_t tick_hz) {
         if (tick_hz == 0 || MaxSymbols == 0)
             return NOBRO_PULSE_INVALID_CONFIG;
-        if (configured_) (void)rmtDeinit(pin_);
+        if (attached_ && !rmtDeinit(pin_)) return transportFault();
+        attached_ = false;
         if (!rmtInit(pin_, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, tick_hz))
             return transportFault();
         tick_hz_ = tick_hz;
         configured_ = true;
+        attached_ = true;
         state_ = NOBRO_PULSE_READY;
         return NOBRO_PULSE_OK;
     }
@@ -258,7 +269,7 @@ public:
     nobro_pulse_error_t transmit(const nobro_pulse_symbol_t *symbols,
                                  size_t count,
                                  uint32_t max_block_us) {
-        if (!configured_ || state_ != NOBRO_PULSE_READY)
+        if (!configured_ || !attached_ || state_ != NOBRO_PULSE_READY)
             return NOBRO_PULSE_NOT_READY;
         if (symbols == nullptr || count == 0 || count > MaxSymbols) {
             ++diagnostics_.oversized_rejections;
@@ -295,16 +306,19 @@ public:
     }
 
     nobro_pulse_error_t quiesce() {
-        if (configured_ && !rmtDeinit(pin_)) return transportFault();
+        if (attached_ && !rmtDeinit(pin_)) return transportFault();
+        attached_ = false;
         if (configured_) state_ = NOBRO_PULSE_SUSPENDED;
         return NOBRO_PULSE_OK;
     }
 
     nobro_pulse_error_t recover() {
         if (!configured_) return NOBRO_PULSE_NOT_READY;
-        if (!rmtDeinit(pin_)) return transportFault();
+        if (attached_ && !rmtDeinit(pin_)) return transportFault();
+        attached_ = false;
         if (!rmtInit(pin_, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, tick_hz_))
             return transportFault();
+        attached_ = true;
         state_ = NOBRO_PULSE_READY;
         ++diagnostics_.recoveries;
         return NOBRO_PULSE_OK;
@@ -326,6 +340,7 @@ private:
     uint8_t pin_;
     uint32_t tick_hz_;
     bool configured_;
+    bool attached_;
     nobro_pulse_state_t state_;
     rmt_data_t storage_[MaxSymbols == 0 ? 1 : MaxSymbols];
     nobro_pulse_diagnostics_t diagnostics_;

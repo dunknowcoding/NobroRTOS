@@ -29,13 +29,32 @@ typedef struct {
 } adc_continuous_result_t;
 static adc_continuous_result_t adc_results[2] = {{1, 0, 100, 500}, {2, 1, 200, 1000}};
 static bool adc_ok = true;
+static bool adc_configured = false;
+static bool adc_started = false;
 static unsigned adc_starts = 0;
 void analogContinuousSetWidth(uint8_t) {}
-bool analogContinuous(const uint8_t *, size_t, uint32_t, uint32_t, void (*)(void)) { return adc_ok; }
+bool analogContinuous(const uint8_t *, size_t, uint32_t, uint32_t, void (*)(void)) {
+  if (!adc_ok || adc_configured) return false;
+  adc_configured = true;
+  return true;
+}
 bool analogContinuousRead(adc_continuous_result_t **out, uint32_t) { *out = adc_results; return adc_ok; }
-bool analogContinuousStart() { ++adc_starts; return adc_ok; }
-bool analogContinuousStop() { return adc_ok; }
-bool analogContinuousDeinit() { return adc_ok; }
+bool analogContinuousStart() {
+  if (!adc_ok || !adc_configured || adc_started) return false;
+  ++adc_starts;
+  adc_started = true;
+  return true;
+}
+bool analogContinuousStop() {
+  if (!adc_ok || !adc_started) return false;
+  adc_started = false;
+  return true;
+}
+bool analogContinuousDeinit() {
+  if (!adc_ok || !adc_configured || adc_started) return false;
+  adc_configured = false;
+  return true;
+}
 
 static bool ledc_ok = true;
 static uint32_t ledc_duty = 0;
@@ -50,10 +69,19 @@ typedef union {
   uint32_t val;
 } rmt_data_t;
 static bool rmt_ok = true;
+static bool rmt_attached = false;
 static size_t rmt_count = 0;
-bool rmtInit(int, rmt_ch_dir_t, rmt_reserve_memsize_t, uint32_t) { return rmt_ok; }
+bool rmtInit(int, rmt_ch_dir_t, rmt_reserve_memsize_t, uint32_t) {
+  if (!rmt_ok || rmt_attached) return false;
+  rmt_attached = true;
+  return true;
+}
 bool rmtWrite(int, rmt_data_t *, size_t count, uint32_t) { rmt_count = count; return rmt_ok; }
-bool rmtDeinit(int) { return rmt_ok; }
+bool rmtDeinit(int) {
+  if (!rmt_ok || !rmt_attached) return false;
+  rmt_attached = false;
+  return true;
+}
 
 #define NOBRO_ESP32_PERIPHERALS_TEST 1
 #include <NobroEsp32Peripherals.h>
@@ -76,6 +104,7 @@ int main() {
   assert(adc.quiesce() == NOBRO_ADC_DMA_OK);
   assert(adc.recover() == NOBRO_ADC_DMA_OK);
   assert(adc.diagnostics().recoveries == 1);
+  assert(adc.quiesce() == NOBRO_ADC_DMA_OK);
 
   nobro::Esp32LedcPwm ledc(3);
   const nobro_pwm_config_t pwm = {20000, 10};
@@ -90,11 +119,13 @@ int main() {
   const nobro_pulse_symbol_t symbols[2] = {{4, 6}, {8, 2}};
   assert(rmt.transmit(symbols, 2, 100) == NOBRO_PULSE_OK && rmt_count == 2);
   assert(rmt.transmit(symbols, 3, 100) == NOBRO_PULSE_TOO_MANY_SYMBOLS);
+  assert(rmt.quiesce() == NOBRO_PULSE_OK && !rmt_attached);
+  assert(rmt.recover() == NOBRO_PULSE_OK && rmt_attached);
   rmt_ok = false;
   assert(rmt.transmit(symbols, 2, 100) == NOBRO_PULSE_DEADLINE_MISS);
   rmt_ok = true;
   assert(rmt.recover() == NOBRO_PULSE_OK);
-  assert(rmt.diagnostics().recoveries == 1);
+  assert(rmt.diagnostics().recoveries == 2);
   return 0;
 }
 '''

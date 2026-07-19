@@ -691,9 +691,12 @@ ecosystem or a board-specific application hierarchy:
 
 `NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
 Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
-driver state internally, so those vendor reservations remain unknown until an
-exact binding measures them. Target compilation never turns an unknown vendor
-price into zero or a physical waveform claim.
+driver state internally. A state-restoring classic ESP32 campaign verifies
+continuous sampling, LEDC frequency/duty, RMT pulse timing, lifecycle recovery,
+and immediate runtime reservations. The C3, S3, and P4 rows remain target-build
+evidence only. No exact binding is promoted until stack, CPU, interrupt, DMA,
+coexistence, and other registry price dimensions are measured; compilation
+never turns an unknown price into zero.
 
 ### Radio / BLE / WiFi / Zigbee / RFID - current boundary and planned shape
 
