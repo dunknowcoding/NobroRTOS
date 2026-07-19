@@ -196,13 +196,14 @@ Include `NobroArduinoEspWiFi.h` explicitly on an ESP32-family Arduino target:
 nobro::ArduinoEspWiFiStack wifi;
 ```
 
-The facade uses the board package's official `WiFi` stack, keeps credentials
-runtime-only, and exposes the same bounded scan and association lifecycle as
-the WiFiS3 facade. Arduino-ESP32/ESP-IDF still owns its radio, event loop,
-TCP/IP stack, heap, and tasks. Current evidence covers family target builds
-and a byte-identical disabled ESP32-C3 composition, not physical traffic or
-runtime prices. Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove
-the facade and vendor WiFi symbols from that composition.
+The facade uses the board package's official `WiFi` stack and bundled ESP-IDF
+driver, keeps credentials runtime-only, and exposes a bounded scan and
+association lifecycle. The exact C3 path has repeated association, DNS, TCP,
+leave, quiesce, and recovery evidence as well as a byte-identical disabled
+composition. Arduino-ESP32/ESP-IDF still owns its radio, event loop, TCP/IP
+stack, heap, and tasks; the complete exact resource price remains unmeasured.
+Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove the facade and
+vendor WiFi symbols from that composition.
 
 ## Relationship to the full NobroRTOS repository
 

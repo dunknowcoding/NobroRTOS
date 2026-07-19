@@ -7,8 +7,8 @@ remain independently selectable members exposed through small Nobro facades.
 
 | Member or backend | Public integration | Current boundary |
 | --- | --- | --- |
-| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus compile-only UNO R4 and Arduino-ESP32 bridges; no physical backend promoted |
-| Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled proof; association/socket/resource behavior unpromoted |
+| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle, a compile-only UNO R4 bridge, and a physically verified but unpriced Arduino-ESP32 backend |
+| Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus association/DNS/TCP/lifecycle evidence; complete resource price unmeasured |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | UNO R4 target build and zero-disabled proof; association/socket/resource behavior unpromoted |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle and bounded GATT events only; no board backend promoted |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
@@ -33,12 +33,15 @@ vendor heap, controller firmware, and shared-radio resources remain outside
 the compile-only claim.
 
 The Arduino-ESP32 facade follows the same board-driver-first rule: it includes
-the pinned core's official `WiFi.h` instead of copying ESP-IDF or maintaining a
-parallel driver. `persistent(false)` prevents the facade from requesting
-credential persistence, and its fixed stack copies are discarded when
-`join()` returns. ESP-IDF still owns the radio, event loop, TCP/IP objects,
-heap, and tasks. Family target builds and zero-disabled linkage therefore do
-not imply a physical connection or a zero runtime price.
+the pinned core's official `WiFi.h` and uses the ESP-IDF driver bundled with
+that package instead of maintaining a parallel driver. Blocking scan avoids
+the core's asynchronous completion race and consumes one fixed record
+workspace. `persistent(false)` plus bounded failed-association cleanup keeps
+credentials out of persistent storage and clears the vendor RAM copy.
+Repeated C3 association, DNS, TCP, leave, quiesce, and recovery passed in a
+state-restoring isolated test. ESP-IDF still owns the radio, event loop,
+TCP/IP objects, heap, and tasks; incomplete resource and coexistence prices
+keep the exact binding unpriced.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

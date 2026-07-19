@@ -282,10 +282,11 @@
       "stack_family": "wifi",
       "adapter_component_id": "adapter-wireless-wifi-arduino-esp",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "host-test",
-        "target-build"
+        "target-build",
+        "physical"
       ],
       "provenance_id": "source-arduino-esp32",
       "supported_targets": [
@@ -294,8 +295,8 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials.",
-        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources; target compilation and zero-disabled proof do not establish physical association, socket traffic, runtime bounds, or coexistence."
+        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; an exact ESP32-C3 composition passed repeated isolated association, DNS, TCP, quiesce, and recovery.",
+        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources; incomplete stack/task/CPU/latency and coexistence prices keep the exact binding unpriced and ineligible for promotion."
       ]
     },
     {
@@ -332,7 +333,7 @@
       ],
       "price_state": "unmeasured",
       "limitations": [
-        "This exact ESP32-C3 Arduino binding has target-build and zero-disabled evidence only; physical association, sockets, heap, stack, tasks, CPU, latency, and coexistence prices remain unknown."
+        "This exact ESP32-C3 Arduino binding has target-build, zero-disabled, and private state-restoring physical association/DNS/TCP/lifecycle evidence, but its complete stack, task, CPU, latency, and coexistence price remains unmeasured."
       ],
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",

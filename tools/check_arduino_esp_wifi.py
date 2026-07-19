@@ -196,13 +196,13 @@ def verify_metadata() -> None:
         backend.get("adapter_component_id") != COMPONENT_ID
         or backend.get("capability_kind") != "wifi_link"
         or backend.get("stack_family") != "wifi"
-        or backend.get("maturity") != "compile-only"
-        or backend.get("evidence") != ["host-test", "target-build"]
+        or backend.get("maturity") != "implemented"
+        or backend.get("evidence")
+        != ["host-test", "target-build", "physical"]
         or backend.get("provenance_id") != SOURCE_ID
         or backend.get("supported_targets") != targets
-        or "physical" in backend.get("evidence", [])
     ):
-        raise RuntimeError("Arduino-ESP32 WiFi claim exceeds compile evidence")
+        raise RuntimeError("Arduino-ESP32 WiFi backend evidence is stale")
 
     binding = record(features["bindings"], BINDING_ID, "binding")
     if (
@@ -229,12 +229,14 @@ def verify_metadata() -> None:
     library = record(catalog["components"], LIBRARY_ID, "library")
     if (
         component.get("path") != "core/adapters/wireless/wifi/arduino-esp"
-        or component.get("maturity") != "compile-only"
-        or component.get("evidence") != ["host-test", "target-build"]
+        or component.get("maturity") != "implemented"
+        or component.get("evidence")
+        != ["host-test", "physical", "target-build"]
         or component.get("supported_targets") != targets
         or library.get("facade") != "packages/arduino/src/NobroArduinoEspWiFi.h"
         or library.get("provenance_id") != SOURCE_ID
-        or library.get("maturity") != "compile-only"
+        or library.get("maturity") != "implemented"
+        or library.get("evidence") != ["physical", "target-build"]
         or library.get("supported_targets") != targets
     ):
         raise RuntimeError("Arduino-ESP32 WiFi catalog relationship is stale")
@@ -269,7 +271,13 @@ def verify_metadata() -> None:
         "#if !defined(NOBRO_ESP_WIFI_DISABLED)",
         "#if !defined(ARDUINO_ARCH_ESP32)",
         "#include <WiFi.h>",
+        "#include <esp_wifi.h>",
         "WiFi.persistent(false);",
+        "WiFi.STA.begin(false)",
+        "esp_wifi_scan_start(&config, true)",
+        "esp_wifi_scan_get_ap_record(&record)",
+        "clearFailedAssociation()",
+        "cleared != ESP_ERR_WIFI_STATE",
         "vendorManagedHeap() const { return true; }",
         "runtime-only",
     ):
@@ -327,7 +335,7 @@ def main() -> int:
         return 1
     print(
         "ARDUINO ESP WIFI: PASS "
-        "(pinned 3.3.10 family target-build; no physical promotion)"
+        "(pinned 3.3.10 family target-build; physical backend, unpriced binding)"
     )
     return 0
 

@@ -54,9 +54,10 @@ separate gates.
 ESP32, ESP32-C3, and ESP32-S3 sketches use the installed Arduino-ESP32 board
 package's official `WiFi` implementation through the explicit
 `NobroArduinoEspWiFi.h` facade. It is also opt-in. The pinned 3.3.10 family
-target gate proves C3 zero-disabled linkage and compiles all three targets; it
-does not claim physical association, socket traffic, or bounded ESP-IDF
-heap/task ownership.
+target gate proves C3 zero-disabled linkage and compiles all three targets.
+The exact C3 composition also passed repeated isolated association, DNS, TCP,
+leave, quiesce, and recovery. ESP-IDF heap/task ownership remains vendor
+managed, and the complete exact resource/coexistence price is not yet known.
 
 ## PlatformIO
 

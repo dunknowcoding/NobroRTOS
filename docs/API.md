@@ -221,15 +221,18 @@ implemented Zigbee stack. A descriptor or packet builder by itself is not board 
 when mounting fails. WiFi credentials borrow runtime storage, while `BleEventQueue`
 makes callback capacity explicit. Each identity reports stable MTU, queue, and GATT
 limits. These contracts do not themselves implement association, IP sockets,
-or a BLE controller. Concrete compile-only bridges now exist under
+or a BLE controller. A compile-only WiFiS3 bridge and a physically verified
+but unpriced Arduino-ESP32 backend exist under
 `wireless/wifi/arduino-wifis3` and `wireless/wifi/arduino-esp`. Their Arduino
 facades copy scan results into caller storage, borrow runtime credentials, and
 expose scan/join/leave/quiesce/recovery through the selected board package.
 The ESP facade delegates to the pinned Arduino-ESP32 3.3.10 `WiFi` stack on
 ESP32, ESP32-C3, and ESP32-S3; the UNO R4 facade delegates to WiFiS3. Both
 vendor stacks remain synchronous and heap-using internally, so a post-call
-deadline miss is not hard cancellation. Physical association, sockets,
-resource prices, and shared-radio evidence remain required before promotion.
+deadline miss is not hard cancellation. The exact C3 backend has repeated
+association, DNS, TCP, and lifecycle evidence; complete resource prices and
+shared-radio evidence remain required before its exact binding can be
+promoted.
 Additive WiFi and BLE instances must not be replaced by one global wireless
 feature.
 

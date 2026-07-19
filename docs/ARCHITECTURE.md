@@ -790,10 +790,12 @@ Implemented today in `nobro-wireless`:
   Arduino-ESP32 3.3.10 board package. The facade disables credential
   persistence for its calls and retains no credentials, but ESP-IDF still owns
   process-wide radio, event-loop, TCP/IP, task, socket, and heap resources.
+  The exact C3 path has state-restoring association, DNS, TCP, and lifecycle
+  evidence, while its complete resource price remains unmeasured.
 
-Physical WiFi association/socket evidence, additional WiFi backends, BLE
-controller/GATT adapters, Zigbee co-processor lifecycle, shared-radio
-arbitration, and measured vendor resource prices remain future work.
+UNO R4 physical WiFi evidence, additional WiFi backends, BLE controller/GATT
+adapters, Zigbee co-processor lifecycle, shared-radio arbitration, and
+complete vendor resource prices remain future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link
 crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
 may coexist when board composition explicitly admits shared memory, interrupts,

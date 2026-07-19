@@ -10,6 +10,7 @@
 #endif
 
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 namespace nobro {
 
@@ -53,7 +54,14 @@ public:
         state_ = NOBRO_STACK_STARTING;
         link_state_ = NOBRO_WIRELESS_DOWN;
         WiFi.persistent(false);
-        if (!WiFi.mode(WIFI_STA)) {
+        /*
+         * Arduino-ESP32 mode(WIFI_STA) accepts the interface mode before the
+         * station netif has necessarily emitted ESP_NETIF_STARTED_BIT.
+         * STA.begin(false) performs the board-core-owned bounded readiness
+         * wait. Skipping it can make an immediate esp_wifi_scan_start fail
+         * even though mode() returned true.
+         */
+        if (!WiFi.mode(WIFI_STA) || !WiFi.STA.begin(false)) {
             fault();
             return NOBRO_STACK_BACKEND_FAULT;
         }
@@ -72,10 +80,33 @@ public:
             return NOBRO_STACK_INVALID_CONFIG;
         }
 
+        /*
+         * Arduino-ESP32 3.3.10 starts its asynchronous scan before it sets
+         * WIFI_SCANNING_BIT. A fast WIFI_EVENT_SCAN_DONE can therefore be
+         * discarded by WiFiScanClass::_scanDone(). Use the ESP-IDF driver
+         * bundled with that same board package in blocking mode instead.
+         * Fetching one record at a time keeps Nobro's workspace fixed and
+         * avoids Arduino String/calloc result storage.
+         */
+        wifi_scan_config_t config = {};
+        config.show_hidden = false;
+        config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+        config.scan_time.active.min = 100;
+        config.scan_time.active.max = 300;
+
+        esp_wifi_clear_ap_list();
         const uint32_t started = micros();
-        const int16_t found = WiFi.scanNetworks(false, true);
+        const esp_err_t scan_result = esp_wifi_scan_start(&config, true);
         last_call_us_ = static_cast<uint32_t>(micros() - started);
-        if (found < 0) {
+        if (scan_result != ESP_OK) {
+            esp_wifi_clear_ap_list();
+            fault();
+            return NOBRO_STACK_BACKEND_FAULT;
+        }
+
+        uint16_t found = 0;
+        if (esp_wifi_scan_get_ap_num(&found) != ESP_OK) {
+            esp_wifi_clear_ap_list();
             fault();
             return NOBRO_STACK_BACKEND_FAULT;
         }
@@ -83,33 +114,40 @@ public:
         const size_t available = static_cast<size_t>(found);
         written = available < capacity ? available : capacity;
         for (size_t index = 0; index < written; ++index) {
+            wifi_ap_record_t record = {};
+            if (esp_wifi_scan_get_ap_record(&record) != ESP_OK) {
+                esp_wifi_clear_ap_list();
+                fault();
+                written = index;
+                return NOBRO_STACK_BACKEND_FAULT;
+            }
             nobro_wifi_network_t &network = results[index];
             clearNetwork(network);
-            const String ssid = WiFi.SSID(static_cast<int>(index));
-            const size_t length = ssid.length();
+            size_t length = 0;
+            while (length < sizeof(record.ssid) && record.ssid[length] != 0) {
+                ++length;
+            }
             if (length == 0 || length > sizeof(network.ssid)) {
-                WiFi.scanDelete();
+                esp_wifi_clear_ap_list();
                 fault();
                 written = index;
                 return NOBRO_STACK_BACKEND_FAULT;
             }
             for (size_t byte = 0; byte < length; ++byte) {
-                network.ssid[byte] = static_cast<uint8_t>(ssid[byte]);
+                network.ssid[byte] = record.ssid[byte];
             }
             network.ssid_len = static_cast<uint8_t>(length);
-            network.channel = static_cast<uint8_t>(
-                WiFi.channel(static_cast<int>(index)));
-            const int32_t rssi = WiFi.RSSI(static_cast<int>(index));
+            network.channel = record.primary;
+            const int32_t rssi = record.rssi;
             network.rssi_dbm =
                 rssi < -128 ? -128 : (rssi > 127 ? 127 : static_cast<int8_t>(rssi));
-            network.secured =
-                WiFi.encryptionType(static_cast<int>(index)) != WIFI_AUTH_OPEN;
+            network.secured = record.authmode != WIFI_AUTH_OPEN;
         }
         add(diagnostics_.scan_results, written);
         if (available > written) {
             add(diagnostics_.truncated_scan_results, available - written);
         }
-        WiFi.scanDelete();
+        esp_wifi_clear_ap_list();
         return NOBRO_STACK_OK;
     }
 
@@ -157,7 +195,10 @@ public:
             state_ = NOBRO_STACK_READY;
             return NOBRO_STACK_OK;
         }
-        WiFi.disconnect(false, true);
+        if (!clearFailedAssociation()) {
+            fault();
+            return NOBRO_STACK_BACKEND_FAULT;
+        }
         link_state_ = NOBRO_WIRELESS_DOWN;
         state_ = NOBRO_STACK_READY;
         increment(diagnostics_.join_failures);
@@ -225,7 +266,8 @@ public:
         const uint32_t started = micros();
         WiFi.disconnect(true, true);
         WiFi.persistent(false);
-        const bool ok = WiFi.mode(WIFI_STA);
+        const bool ok =
+            WiFi.mode(WIFI_STA) && WiFi.STA.begin(false);
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         link_state_ = NOBRO_WIRELESS_DOWN;
         state_ = ok ? NOBRO_STACK_READY : NOBRO_STACK_FAULTED;
@@ -247,6 +289,39 @@ public:
 
 private:
     static uint32_t maxCallUs() { return 60000000UL; }
+
+    static bool clearFailedAssociation() {
+        const esp_err_t disconnected = esp_wifi_disconnect();
+        if (disconnected != ESP_OK &&
+            disconnected != ESP_ERR_WIFI_NOT_CONNECT) {
+            return false;
+        }
+
+        /*
+         * Arduino-ESP32 STA.disconnect(eraseap=true) can call
+         * esp_wifi_set_config() before an in-progress association has
+         * delivered its disconnect event. Retry only that transient
+         * ESP_ERR_WIFI_STATE case for a bounded interval. The board package
+         * is already configured for RAM-only WiFi storage by persistent(false).
+         */
+        wifi_config_t empty = {};
+        const uint32_t started = micros();
+        do {
+            const esp_err_t cleared =
+                esp_wifi_set_config(WIFI_IF_STA, &empty);
+            if (cleared == ESP_OK) {
+                return true;
+            }
+            if (cleared != ESP_ERR_WIFI_STATE) {
+                return false;
+            }
+            delay(1);
+        } while (static_cast<uint32_t>(micros() - started) <
+                 failedCleanupUs());
+        return false;
+    }
+
+    static uint32_t failedCleanupUs() { return 250000UL; }
 
     static bool validCredentials(const nobro_wifi_credentials_t &value) {
         if (value.ssid == 0 || value.ssid_len == 0 || value.ssid_len > 32 ||

@@ -420,9 +420,10 @@
       "kind": "adapter",
       "path": "core/adapters/wireless/wifi/arduino-esp",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "host-test",
+        "physical",
         "target-build"
       ],
       "supported_targets": [
@@ -431,7 +432,8 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "Target compilation covers bounded station association and lifecycle only; physical association, sockets, ESP-IDF heap/tasks, coexistence, and exact pricing remain unverified."
+        "ESP-IDF heap/tasks have preliminary physical observations, but complete exact pricing and WiFi/BLE coexistence remain unverified.",
+        "Target compilation covers ESP32/C3/S3; repeated isolated association, DNS, TCP, leave, quiesce, and recovery are physically verified on the exact C3 composition."
       ]
     },
     {
@@ -628,8 +630,9 @@
       "provenance_id": "source-arduino-esp32",
       "facade": "packages/arduino/src/NobroArduinoEspWiFi.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "physical",
         "target-build"
       ],
       "supported_targets": [
@@ -638,7 +641,7 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "The vendor stack owns process-wide ESP-IDF radio, event-loop, TCP/IP, task, and heap resources; compile evidence is not physical or priced evidence."
+        "The vendor stack owns process-wide ESP-IDF radio, event-loop, TCP/IP, task, and heap resources; exact C3 physical behavior is verified, but incomplete resource and coexistence prices keep the board binding unpriced."
       ]
     },
     {

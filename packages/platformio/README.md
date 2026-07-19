@@ -73,8 +73,9 @@ physical traffic or measured vendor resource bounds.
 
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps
-credentials runtime-only. ESP32/C3/S3 compilation and C3 zero-disabled
-linkage do not promote physical traffic or measured ESP-IDF resource bounds.
+credentials runtime-only. ESP32/C3/S3 compilation, C3 zero-disabled linkage,
+and exact C3 association/DNS/TCP/lifecycle evidence are present; incomplete
+ESP-IDF resource and coexistence prices keep the binding unpriced.
 
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade
