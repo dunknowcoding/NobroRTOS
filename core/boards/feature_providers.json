@@ -520,7 +520,7 @@
       },
       "price_basis": {
         "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.1",
-        "fixed": "same-target isolated link delta, active retained-heap delta after repeated recovery, and pinned source ownership",
+        "fixed": "conservative maximum of pinned Windows/Linux same-target isolated link deltas, active retained-heap delta after repeated recovery, and pinned source ownership",
         "runtime": "conservative maximum from three physical runs at 100 transfers per second"
       }
     }

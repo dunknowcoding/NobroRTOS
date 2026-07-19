@@ -43,6 +43,10 @@ EXPECTED_RUNTIME_PRICE = {
     "latency_p99_cycles": 3_583_845,
     "latency_max_cycles": 3_592_082,
 }
+EXPECTED_TARGET_BUILD_PRICES = {
+    (87_557, 2_508),
+    (87_589, 2_508),
+}
 EXPECTED_FIXED_PROVENANCE = {
     "flash_bytes": "measured",
     "static_ram_bytes": "measured",
@@ -65,8 +69,9 @@ EXPECTED_RUNTIME_PROVENANCE = {
 EXPECTED_PRICE_BASIS = {
     "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.1",
     "fixed": (
-        "same-target isolated link delta, active retained-heap delta after repeated "
-        "recovery, and pinned source ownership"
+        "conservative maximum of pinned Windows/Linux same-target isolated link "
+        "deltas, active retained-heap delta after repeated recovery, and pinned "
+        "source ownership"
     ),
     "runtime": (
         "conservative maximum from three physical runs at 100 transfers per second"
@@ -312,10 +317,19 @@ def compile_matrix(library: pathlib.Path) -> None:
         binding = verify_binding(json.loads(FEATURES.read_text(encoding="utf-8")))
         fixed = binding["measured_fixed_price"]
         registry_delta = (fixed["flash_bytes"], fixed["static_ram_bytes"])
-        if delta != registry_delta:
+        conservative_delta = tuple(
+            max(price[index] for price in EXPECTED_TARGET_BUILD_PRICES)
+            for index in range(2)
+        )
+        if registry_delta != conservative_delta:
             raise RuntimeError(
-                "audio isolated build price differs: "
-                f"registry={registry_delta} build={delta}"
+                "audio registry is not the conservative build price: "
+                f"registry={registry_delta} conservative={conservative_delta}"
+            )
+        if delta not in EXPECTED_TARGET_BUILD_PRICES:
+            raise RuntimeError(
+                "audio isolated build price is unknown or exceeds the registry: "
+                f"allowed={sorted(EXPECTED_TARGET_BUILD_PRICES)} build={delta}"
             )
         print(
             "  PASS zero-disabled "
