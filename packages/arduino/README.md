@@ -16,6 +16,9 @@ Current contents:
 - `src/NobroNiusAudio.h` with a fixed-capacity ES8311 playback/capture queue,
   deadline accounting, backpressure, lifecycle, and recovery over the pinned
   NiusAudio library.
+- `src/NobroEsp32Peripherals.h` with bounded continuous ADC/DMA frames, LEDC
+  duty output, and RMT pulse symbols. Each provider is optional and keeps
+  lifecycle, deadline, recovery, and vendor-resource ownership visible.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
@@ -105,6 +108,26 @@ most one frame, and `capture(..., max_block_us)` records partial transfers and
 deadline misses. NiusAudio and Arduino-ESP32 still own codec and I2S/DMA
 implementation details; their runtime reservations are priced at the exact
 board binding rather than hidden inside the portable contract.
+
+## ESP32 continuous ADC, LEDC, and RMT
+
+Include the optional facade only in ESP32 sketches:
+
+```cpp
+#include <NobroEsp32Peripherals.h>
+
+nobro::Esp32ContinuousAdc<2> adc;
+nobro::Esp32LedcPwm pwm(4);
+nobro::Esp32RmtPulse<8> pulse(5);
+```
+
+The template capacities are the maximum retained pins or pulse symbols, so RAM
+is visible at compile time. Calls reject invalid shapes and report lifecycle,
+transport, partial-frame, and deadline failures. The wrapper itself performs no
+heap allocation; Arduino-ESP32 owns continuous-ADC DMA storage and peripheral
+drivers, whose vendor reservations must be measured for an exact board
+composition. Defining `NOBRO_ESP32_PERIPHERALS_DISABLED` before the include
+removes all three providers and their vendor symbols.
 
 ## Relationship to the full NobroRTOS repository
 

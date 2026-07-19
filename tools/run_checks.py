@@ -29,6 +29,8 @@ HOST_CRATES = [
     "nobro-adapter-mpu9250-imu", "nobro-adapter-nn-motion-ai",
     "nobro-adapter-radio-comms", "nobro-adapter-robo-servo",
     "nobro-adapter-ros-imu-bridge", "nobro-adapter-sensor-stub",
+    "nobro-adapter-sensors-esp32-adc-continuous",
+    "nobro-adapter-servo-esp32-ledc", "nobro-adapter-servo-esp32-rmt",
 ]
 
 
@@ -161,6 +163,8 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
         ("audio facade contracts", [py, "tools/check_audio_facade.py"], ROOT),
+        ("ESP32 peripheral facade contracts",
+         [py, "tools/check_esp32_peripheral_facade.py"], ROOT),
         ("NiusIMU adapter contracts", [py, "tools/check_niusimu_adapter.py", "--selftest"], ROOT),
         ("web flasher", [py, "tools/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/check_block_editor.py"], ROOT),

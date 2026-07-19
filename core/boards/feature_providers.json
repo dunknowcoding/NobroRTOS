@@ -153,6 +153,69 @@
       "limitations": [
         "The exact board binding awaits measured vendor-runtime and physical evidence."
       ]
+    },
+    {
+      "id": "backend-adc-esp32-arduino-continuous",
+      "capability_kind": "adc_dma",
+      "stack_family": "adc-dma",
+      "adapter_component_id": "adapter-sensors-esp32-adc-continuous",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "The Arduino core owns process-wide ADC-DMA state and vendor heap; an exact binding awaits measured runtime and physical evidence."
+      ]
+    },
+    {
+      "id": "backend-pwm-esp32-arduino-ledc",
+      "capability_kind": "pwm_ledc",
+      "stack_family": "pwm-ledc",
+      "adapter_component_id": "adapter-servo-esp32-ledc",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "Target builds do not establish output frequency, duty accuracy, coexistence, or physical loopback."
+      ]
+    },
+    {
+      "id": "backend-pulse-esp32-arduino-rmt",
+      "capability_kind": "pulse_rmt",
+      "stack_family": "pulse-rmt",
+      "adapter_component_id": "adapter-servo-esp32-rmt",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "The board core owns RMT memory, channel, ISR, and DMA resources; exact resource and waveform evidence remain binding-specific."
+      ]
     }
   ],
   "bindings": []

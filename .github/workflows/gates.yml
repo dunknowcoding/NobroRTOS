@@ -252,6 +252,10 @@ jobs:
           git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
           git -C _work/NiusAudio checkout fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
           python tools/check_audio_integrations.py --library _work/NiusAudio --compile
+      - name: bounded ESP32 peripheral integrations
+        run: |
+          python tools/check_esp32_peripheral_facade.py
+          python tools/check_esp32_peripheral_integrations.py
 
   arduino-nrf-package:
     runs-on: windows-latest

@@ -57,6 +57,21 @@ BMP280 pressure + temperature sensor adapter, generic over `embedded_hal::i2c::I
 - **struct**: `Bmp280Calib`, `Bmp280`
 - **fn**: `compensate_temp`, `compensate_pressure`, `new`, `chip_id`, `load_calibration`, `calibration`
 
+## `nobro-adapter-sensors-esp32-adc-continuous`
+- **trait**: `Esp32AdcContinuousTransport`
+- **struct**: `AdcDiagnostics`, `Esp32AdcContinuous`
+- **enum**: `TransportError`
+- **fn**: `into_inner`
+
+## `nobro-adapter-servo-esp32-ledc`
+- **trait**: `Esp32LedcTransport`
+- **struct**: `Esp32Ledc`
+
+## `nobro-adapter-servo-esp32-rmt`
+- **trait**: `Esp32RmtTransport`
+- **struct**: `Esp32Rmt`
+- **enum**: `TransportError`
+
 ## `nobro-adapter-robo-servo`
 RoboServo-style ActuatorSal using the nRF52840 PWM backend.
 - **struct**: `RoboServoAdapter`
@@ -189,13 +204,16 @@ Security + data-integrity primitives.
 
 ## `nobro-sensor`
 No-heap sensor utilities, transport-agnostic.
-- **struct**: `SensorHealth`, `Calibration`, `Decimator`
+- **trait**: `AdcDmaBackend`
+- **struct**: `SensorHealth`, `Calibration`, `Decimator`, `AdcDmaConfig`, `AdcSample`, `AdcDmaResourcePrice`
+- **enum**: `AdcDmaState`, `AdcDmaError`
 - **fn**: `update`, `is_stuck`, `out_of_range`, `observe`, `finalize`, `apply`, `bias`, `tick`, `tmr_vote`
 
 ## `nobro-servo`
 Allocation-free servo command contract.
-- **trait**: `ServoBackend`
-- **struct**: `ServoCommand`, `ServoBounds`
+- **trait**: `ServoBackend`, `PwmEngineBackend`, `PulseEngineBackend`
+- **struct**: `ServoCommand`, `ServoBounds`, `PwmConfig`, `PulseSymbol`, `PulseResourcePrice`
+- **enum**: `PulseState`, `PulseError`
 
 ## `nobro-storage`
 Power-fail-safe, wear-leveled key-value flash store.

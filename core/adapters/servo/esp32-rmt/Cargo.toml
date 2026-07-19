@@ -1,0 +1,12 @@
+[package]
+name = "nobro-adapter-servo-esp32-rmt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bounded ESP32 RMT pulse bridge for NobroRTOS"
+
+[dependencies]
+nobro-servo = { path = "../../../crates/nobro_servo" }
+
+[features]
+default = []

@@ -281,6 +281,69 @@
       ]
     },
     {
+      "id": "adapter-sensors-esp32-adc-continuous",
+      "name": "esp32-adc-continuous",
+      "kind": "adapter",
+      "path": "core/adapters/sensors/esp32-adc-continuous",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "The board core owns process-wide ADC-DMA state and vendor heap; exact resource and physical evidence remain binding-specific."
+      ]
+    },
+    {
+      "id": "adapter-servo-esp32-ledc",
+      "name": "esp32-ledc",
+      "kind": "adapter",
+      "path": "core/adapters/servo/esp32-ledc",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "No public physical waveform or loopback promotion is recorded."
+      ]
+    },
+    {
+      "id": "adapter-servo-esp32-rmt",
+      "name": "esp32-rmt",
+      "kind": "adapter",
+      "path": "core/adapters/servo/esp32-rmt",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32c3",
+        "arduino:esp32p4",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "No public physical waveform or loopback promotion is recorded."
+      ]
+    },
+    {
       "id": "adapter-servo-roboservo",
       "name": "robo-servo",
       "kind": "adapter",
@@ -848,6 +911,7 @@
       ],
       "component_ids": [
         "adapter-sensors-bmp280",
+        "adapter-sensors-esp32-adc-continuous",
         "library-difinders",
         "library-ina-series-sensor"
       ]
@@ -862,6 +926,8 @@
         "contract-servo"
       ],
       "component_ids": [
+        "adapter-servo-esp32-ledc",
+        "adapter-servo-esp32-rmt",
         "adapter-servo-roboservo",
         "library-roboservo"
       ]

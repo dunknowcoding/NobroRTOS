@@ -1,0 +1,54 @@
+#ifndef NOBRO_ADC_DMA_H
+#define NOBRO_ADC_DMA_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    NOBRO_ADC_DMA_DOWN = 0,
+    NOBRO_ADC_DMA_READY,
+    NOBRO_ADC_DMA_RUNNING,
+    NOBRO_ADC_DMA_SUSPENDED,
+    NOBRO_ADC_DMA_FAULTED
+} nobro_adc_dma_state_t;
+
+typedef enum {
+    NOBRO_ADC_DMA_OK = 0,
+    NOBRO_ADC_DMA_INVALID_CONFIG,
+    NOBRO_ADC_DMA_NOT_READY,
+    NOBRO_ADC_DMA_OUTPUT_TOO_SMALL,
+    NOBRO_ADC_DMA_TRANSPORT,
+    NOBRO_ADC_DMA_PARTIAL_FRAME,
+    NOBRO_ADC_DMA_DEADLINE_MISS
+} nobro_adc_dma_error_t;
+
+typedef struct {
+    uint8_t channels;
+    uint8_t resolution_bits;
+    uint16_t conversions_per_channel;
+    uint32_t sample_rate_hz;
+} nobro_adc_dma_config_t;
+
+typedef struct {
+    uint8_t channel;
+    uint16_t raw;
+    uint16_t millivolts;
+} nobro_adc_sample_t;
+
+typedef struct {
+    uint32_t frames;
+    uint32_t samples;
+    uint32_t partial_frames;
+    uint32_t transport_errors;
+    uint32_t deadline_misses;
+    uint32_t recoveries;
+} nobro_adc_dma_diagnostics_t;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

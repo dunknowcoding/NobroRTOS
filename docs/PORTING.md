@@ -133,6 +133,14 @@ library as a catalog member rather than copying it into the adapter. Use
 or DMA reservations with zero; defer the board binding until the exact
 composition measures them.
 
+The same split applies to ADC-DMA, LEDC, and RMT. Put a new implementation
+under the existing `sensors` or `servo` adapter category, keep the portable
+shape in `nobro-sensor` or `nobro-servo`, and expose a small optional facade.
+Register each stack separately (`adc_dma`, `pwm_ledc`, or `pulse_rmt`) because
+one board may combine or replace them independently. A target build establishes
+API compatibility only; add an exact binding after resource measurement,
+disabled-state zero-cost proof, report wiring, and physical evidence.
+
 ## Boot layout rules
 
 - Keep application flash origins in board data and linker scripts synchronized.

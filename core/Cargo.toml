@@ -78,6 +78,9 @@ members = [
     "apps/imu/udi_imu_demo",
     "apps/kernel/async_exec_demo",
     "adapters/audio/esp32s3-es8311",
+    "adapters/sensors/esp32-adc-continuous",
+    "adapters/servo/esp32-ledc",
+    "adapters/servo/esp32-rmt",
 ]
 
 [workspace.package]

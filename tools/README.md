@@ -37,3 +37,10 @@ Board-feature integrations remain evidence scoped. For example,
 transport, while `check_audio_integrations.py` verifies an exact NiusAudio
 revision and the enabled/disabled ESP32-S3 build delta. Neither check represents
 physical codec, speaker, microphone, timing, or vendor-runtime memory evidence.
+
+`check_esp32_peripheral_facade.py` executes continuous-ADC, LEDC, and RMT
+failure/lifecycle contracts against deterministic fakes.
+`check_esp32_peripheral_integrations.py` proves exact Arduino-ESP32 family
+target builds plus a zero-cost disabled composition. These remain software and
+target-build evidence, not ADC accuracy, waveform, loopback, or vendor-runtime
+memory evidence.

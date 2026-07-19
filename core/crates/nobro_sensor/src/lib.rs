@@ -81,6 +81,83 @@ pub struct Decimator {
     count: u16,
 }
 
+/// Lifecycle of one continuous, DMA-fed ADC instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdcDmaState {
+    Down,
+    Ready,
+    Running,
+    Suspended,
+    Faulted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdcDmaError {
+    InvalidConfig,
+    NotReady,
+    OutputTooSmall,
+    Transport,
+    PartialFrame,
+    DeadlineMiss,
+}
+
+/// Portable configuration for a bounded continuous-ADC frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AdcDmaConfig {
+    pub channels: u8,
+    pub resolution_bits: u8,
+    pub conversions_per_channel: u16,
+    pub sample_rate_hz: u32,
+}
+
+impl AdcDmaConfig {
+    pub const fn is_valid(self) -> bool {
+        self.channels > 0
+            && self.resolution_bits >= 8
+            && self.resolution_bits <= 16
+            && self.conversions_per_channel > 0
+            && self.sample_rate_hz > 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdcSample {
+    pub channel: u8,
+    pub raw: u16,
+    pub millivolts: u16,
+}
+
+/// Complete admission price for one mounted ADC-DMA provider.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AdcDmaResourcePrice {
+    pub flash_bytes: u32,
+    pub static_ram_bytes: u32,
+    pub heap_bytes: u32,
+    pub stack_bytes: u32,
+    pub vendor_reserved_ram_bytes: u32,
+    pub worker_threads: u8,
+    pub cpu_cycles_per_second: u64,
+    pub interrupt_slots: u8,
+    pub dma_channels: u8,
+    pub controller_firmware_bytes: u32,
+}
+
+/// Allocation-free ADC-DMA contract. A backend returns at most one sample per
+/// configured channel for each read; vendor averaging and DMA storage remain
+/// explicit backend responsibilities.
+pub trait AdcDmaBackend {
+    fn state(&self) -> AdcDmaState;
+    fn configure(&mut self, config: AdcDmaConfig) -> Result<(), AdcDmaError>;
+    fn start(&mut self) -> Result<(), AdcDmaError>;
+    fn read_frame(
+        &mut self,
+        output: &mut [AdcSample],
+        max_block_us: u32,
+    ) -> Result<usize, AdcDmaError>;
+    fn quiesce(&mut self) -> Result<(), AdcDmaError>;
+    fn recover(&mut self) -> Result<(), AdcDmaError>;
+}
+
 impl Decimator {
     pub const fn new(factor: u16) -> Self {
         Self {
@@ -133,6 +210,32 @@ mod tests {
         let mut d = Decimator::new(4);
         let emits: u32 = (0..16).map(|_| u32::from(d.tick())).sum();
         assert_eq!(emits, 4); // 16 in / 4 = 4 out
+    }
+
+    #[test]
+    fn adc_dma_configuration_rejects_unbounded_or_impossible_shapes() {
+        let good = AdcDmaConfig {
+            channels: 2,
+            resolution_bits: 12,
+            conversions_per_channel: 32,
+            sample_rate_hz: 20_000,
+        };
+        assert!(good.is_valid());
+        assert!(!AdcDmaConfig {
+            channels: 0,
+            ..good
+        }
+        .is_valid());
+        assert!(!AdcDmaConfig {
+            resolution_bits: 17,
+            ..good
+        }
+        .is_valid());
+        assert!(!AdcDmaConfig {
+            conversions_per_channel: 0,
+            ..good
+        }
+        .is_valid());
     }
 }
 

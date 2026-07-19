@@ -1,0 +1,12 @@
+[package]
+name = "nobro-adapter-servo-esp32-ledc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bounded ESP32 LEDC PWM bridge for NobroRTOS"
+
+[dependencies]
+nobro-servo = { path = "../../../crates/nobro_servo" }
+
+[features]
+default = []

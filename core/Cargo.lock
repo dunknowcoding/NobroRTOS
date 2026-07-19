@@ -750,6 +750,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-sensors-esp32-adc-continuous"
+version = "0.3.2"
+dependencies = [
+ "nobro-sensor",
+]
+
+[[package]]
+name = "nobro-adapter-servo-esp32-ledc"
+version = "0.3.2"
+dependencies = [
+ "nobro-servo",
+]
+
+[[package]]
+name = "nobro-adapter-servo-esp32-rmt"
+version = "0.3.2"
+dependencies = [
+ "nobro-servo",
+]
+
+[[package]]
 name = "nobro-admission"
 version = "0.3.2"
 dependencies = [

@@ -677,6 +677,24 @@ same contract. A board claim appears only when the feature registry has an
 exact backend, composition binding, price, disabled-symbol proof, report
 wiring, and executable evidence.
 
+### Continuous ADC and pulse engines
+
+Continuous sampling and hardware pulse generation reuse the existing
+`nobro-sensors` and `nobro-servo` domains. They do not create another
+ecosystem or a board-specific application hierarchy:
+
+- `sensors/esp32-adc-continuous` mounts the Arduino-ESP32 process-wide
+  continuous ADC/DMA service behind bounded channel/frame, deadline,
+  lifecycle, recovery, and complete resource-price contracts.
+- `servo/esp32-ledc` mounts fixed-frequency duty output.
+- `servo/esp32-rmt` mounts bounded pulse-symbol output.
+
+`NobroEsp32Peripherals.h` is the corresponding beginner-facing composition.
+Its objects allocate no heap. Arduino-ESP32 may allocate ADC/DMA, channel, and
+driver state internally, so those vendor reservations remain unknown until an
+exact binding measures them. Target compilation never turns an unknown vendor
+price into zero or a physical waveform claim.
+
 ### Radio / BLE / WiFi / Zigbee / RFID - current boundary and planned shape
 
 Implemented today in `nobro-wireless`:
