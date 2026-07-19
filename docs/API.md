@@ -221,14 +221,17 @@ implemented Zigbee stack. A descriptor or packet builder by itself is not board 
 when mounting fails. WiFi credentials borrow runtime storage, while `BleEventQueue`
 makes callback capacity explicit. Each identity reports stable MTU, queue, and GATT
 limits. These contracts do not themselves implement association, IP sockets,
-or a BLE controller. `wireless/wifi/arduino-wifis3` is the first concrete
-compile-only bridge: its Arduino facade copies scan results into caller
-storage, borrows runtime credentials, and exposes
-scan/join/leave/quiesce/recovery over the UNO R4 board core. WiFiS3 remains
-synchronous and heap-using internally, so a post-call deadline miss is not
-hard cancellation. Physical association, sockets, resource prices, and
-shared-radio evidence remain required before promotion. Additive WiFi and BLE
-instances must not be replaced by one global wireless feature.
+or a BLE controller. Concrete compile-only bridges now exist under
+`wireless/wifi/arduino-wifis3` and `wireless/wifi/arduino-esp`. Their Arduino
+facades copy scan results into caller storage, borrow runtime credentials, and
+expose scan/join/leave/quiesce/recovery through the selected board package.
+The ESP facade delegates to the pinned Arduino-ESP32 3.3.10 `WiFi` stack on
+ESP32, ESP32-C3, and ESP32-S3; the UNO R4 facade delegates to WiFiS3. Both
+vendor stacks remain synchronous and heap-using internally, so a post-call
+deadline miss is not hard cancellation. Physical association, sockets,
+resource prices, and shared-radio evidence remain required before promotion.
+Additive WiFi and BLE instances must not be replaced by one global wireless
+feature.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

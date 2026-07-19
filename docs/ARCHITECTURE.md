@@ -785,6 +785,11 @@ Implemented today in `nobro-wireless`:
   separate. The UNO R4 board core still owns its process-wide
   UART/coprocessor stack, blocking calls, dynamic strings, sockets, and
   controller resources.
+- `wireless/wifi/arduino-esp` and `NobroArduinoEspWiFi.h` add the same bounded
+  station lifecycle for ESP32, ESP32-C3, and ESP32-S3 through the pinned
+  Arduino-ESP32 3.3.10 board package. The facade disables credential
+  persistence for its calls and retains no credentials, but ESP-IDF still owns
+  process-wide radio, event-loop, TCP/IP, task, socket, and heap resources.
 
 Physical WiFi association/socket evidence, additional WiFi backends, BLE
 controller/GATT adapters, Zigbee co-processor lifecycle, shared-radio

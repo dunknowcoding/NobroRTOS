@@ -21,6 +21,8 @@ Current contents:
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
 - `src/NobroArduinoWiFiS3.h` with an opt-in UNO R4 WiFi association facade,
   caller-sized scan output, runtime-only credentials, and explicit lifecycle.
+- `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
+  pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
@@ -183,6 +185,24 @@ Physical association, socket traffic, controller resources, and exact runtime
 prices are not established by the current target-build gate. Define
 `NOBRO_WIFI_S3_DISABLED` before including the facade to remove both Nobro and
 WiFiS3 symbols from that composition.
+
+## Arduino-ESP32 WiFi association
+
+Include `NobroArduinoEspWiFi.h` explicitly on an ESP32-family Arduino target:
+
+```cpp
+#include <NobroArduinoEspWiFi.h>
+
+nobro::ArduinoEspWiFiStack wifi;
+```
+
+The facade uses the board package's official `WiFi` stack, keeps credentials
+runtime-only, and exposes the same bounded scan and association lifecycle as
+the WiFiS3 facade. Arduino-ESP32/ESP-IDF still owns its radio, event loop,
+TCP/IP stack, heap, and tasks. Current evidence covers family target builds
+and a byte-identical disabled ESP32-C3 composition, not physical traffic or
+runtime prices. Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove
+the facade and vendor WiFi symbols from that composition.
 
 ## Relationship to the full NobroRTOS repository
 

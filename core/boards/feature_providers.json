@@ -42,6 +42,13 @@
   ],
   "provenance": [
     {
+      "id": "source-arduino-esp32",
+      "source": "https://github.com/espressif/arduino-esp32",
+      "revision": "0d1440d1be38ab530d274fe87ee88565fe167392",
+      "version": "3.3.10",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
       "id": "source-arduino-renesas",
       "source": "https://github.com/arduino/ArduinoCore-renesas",
       "revision": "424e86eff92d37f72123c2b641dd8bbf06a38b47",
@@ -151,7 +158,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
       "limitations": [
-        "UNO R4 WiFiS3 has an exact compile-only association/lifecycle binding; no priced binding, socket path, physical behavior, or resource promotion exists yet."
+        "UNO R4 WiFiS3 and Arduino-ESP32 have exact compile-only association/lifecycle bindings; neither has priced socket, physical-behavior, or resource evidence yet."
       ]
     }
   ],
@@ -270,6 +277,28 @@
       ]
     },
     {
+      "id": "backend-wifi-arduino-esp",
+      "capability_kind": "wifi_link",
+      "stack_family": "wifi",
+      "adapter_component_id": "adapter-wireless-wifi-arduino-esp",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "provenance_id": "source-arduino-esp32",
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials.",
+        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources; target compilation and zero-disabled proof do not establish physical association, socket traffic, runtime bounds, or coexistence."
+      ]
+    },
+    {
       "id": "backend-wifi-arduino-wifis3",
       "capability_kind": "wifi_link",
       "stack_family": "wifi",
@@ -290,6 +319,39 @@
     }
   ],
   "bindings": [
+    {
+      "id": "binding-wifi-arduino-esp-esp32c3",
+      "backend_id": "backend-wifi-arduino-esp",
+      "capability_kind": "wifi_link",
+      "platform": "esp32c3",
+      "composition": "arduino",
+      "instance": "wifi0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-esp-wifi-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "This exact ESP32-C3 Arduino binding has target-build and zero-disabled evidence only; physical association, sockets, heap, stack, tasks, CPU, latency, and coexistence prices remain unknown."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp-wifi-disabled",
+        "forbidden_symbols": [
+          "ArduinoEspWiFiStack",
+          "WiFiClass",
+          "WiFiGenericClass",
+          "esp_wifi_init"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "wifi_link",
+        "status_field": "esp32c3_wifi0",
+        "evidence_gate": "arduino-esp-wifi-target-build"
+      }
+    },
     {
       "id": "binding-wifi-arduino-wifis3-ra4m1",
       "backend_id": "backend-wifi-arduino-wifis3",

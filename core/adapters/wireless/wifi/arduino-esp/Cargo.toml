@@ -1,0 +1,10 @@
+[package]
+name = "nobro-adapter-wireless-wifi-arduino-esp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NobroRTOS identity and validation contract for Arduino-ESP32 WiFi"
+publish = false
+
+[dependencies]
+nobro-wireless = { path = "../../../../crates/nobro_wireless" }

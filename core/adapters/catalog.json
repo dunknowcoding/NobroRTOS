@@ -10,6 +10,15 @@
   },
   "provenance": [
     {
+      "id": "source-arduino-esp32",
+      "source": "https://github.com/espressif/arduino-esp32",
+      "revision": "0d1440d1be38ab530d274fe87ee88565fe167392",
+      "version": "3.3.10",
+      "license": "LGPL-2.1-or-later",
+      "pinned": true,
+      "clean": true
+    },
+    {
       "id": "source-arduino-nrf-crypto",
       "source": "https://github.com/dunknowcoding/ArduinoNRF-Crypto",
       "revision": "6dcfc8636329de005218cde4896e9ac3e474aca2",
@@ -406,6 +415,26 @@
       ]
     },
     {
+      "id": "adapter-wireless-wifi-arduino-esp",
+      "name": "arduino-esp",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/wifi/arduino-esp",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "Target compilation covers bounded station association and lifecycle only; physical association, sockets, ESP-IDF heap/tasks, coexistence, and exact pricing remain unverified."
+      ]
+    },
+    {
       "id": "adapter-wireless-wifi-arduino-wifis3",
       "name": "arduino-wifis3",
       "kind": "adapter",
@@ -590,6 +619,26 @@
       ],
       "limitations": [
         "Consumes the versioned INA JSONL interface and contributes no firmware code."
+      ]
+    },
+    {
+      "id": "library-arduino-esp-wifi",
+      "name": "Arduino-ESP32 WiFi",
+      "kind": "library",
+      "provenance_id": "source-arduino-esp32",
+      "facade": "packages/arduino/src/NobroArduinoEspWiFi.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "The vendor stack owns process-wide ESP-IDF radio, event-loop, TCP/IP, task, and heap resources; compile evidence is not physical or priced evidence."
       ]
     },
     {
@@ -994,7 +1043,9 @@
       ],
       "component_ids": [
         "adapter-wireless-radio-comms",
+        "adapter-wireless-wifi-arduino-esp",
         "adapter-wireless-wifi-arduino-wifis3",
+        "library-arduino-esp-wifi",
         "library-arduino-wifis3",
         "library-niusthread",
         "library-niuswireless",

@@ -54,3 +54,9 @@ association facade against the board package, proves an identical
 zero-disabled baseline, and locks its exact binding to the explicit
 `unmeasured` price state. It does not convert compilation into physical
 association, socket, or vendor-resource evidence.
+
+`check_arduino_esp_wifi.py` pins Arduino-ESP32 3.3.10 provenance, compiles the
+optional WiFi facade on ESP32, ESP32-C3, and ESP32-S3, proves the disabled C3
+composition is byte-identical to baseline, scans its link map for forbidden
+vendor symbols, and keeps the exact C3 board binding unpriced and
+compile-only.

@@ -771,6 +771,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-wireless-wifi-arduino-esp"
+version = "0.3.2"
+dependencies = [
+ "nobro-wireless",
+]
+
+[[package]]
 name = "nobro-adapter-wireless-wifi-arduino-wifis3"
 version = "0.3.2"
 dependencies = [

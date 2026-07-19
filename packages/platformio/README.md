@@ -71,6 +71,11 @@ compile-only facade uses the platform's own WiFiS3 library for bounded
 association lifecycle and caller-sized scan output; it does not promote
 physical traffic or measured vendor resource bounds.
 
+ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
+It delegates to the selected platform's official `WiFi` stack and keeps
+credentials runtime-only. ESP32/C3/S3 compilation and C3 zero-disabled
+linkage do not promote physical traffic or measured ESP-IDF resource bounds.
+
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade
 validates a bounded declaration; native execution and target evidence remain in

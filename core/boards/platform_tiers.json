@@ -415,6 +415,20 @@
         }
       ]
     },
+    "arduino-esp-wifi-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_esp_wifi.py"],
+      "claim_scopes": [
+        {
+          "platform": "esp32c3",
+          "composition": "arduino",
+          "capabilities": ["wifi_link"]
+        }
+      ]
+    },
     "arduino-nrf52840-compile": {
       "kind": "target-build",
       "runner": "arduino-nrf-package",
@@ -502,6 +516,11 @@
               "maturity": "experimental",
               "evidence": ["esp32-arduino-peripheral-target-build"],
               "limitations": "The exact persistent-buffer binding is configuration-specific; calibrated accuracy remains unverified."
+            },
+            "wifi_link": {
+              "maturity": "experimental",
+              "evidence": ["arduino-esp-wifi-target-build"],
+              "limitations": "The pinned Arduino-ESP32 station facade has target-build and zero-disabled evidence only; physical association, sockets, runtime resources, and coexistence remain unverified."
             }
           }
         }

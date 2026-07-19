@@ -107,13 +107,13 @@ firmware. Host-visible absence alone cannot distinguish failure to execute a boo
 from failure to enumerate its USB identity.
 
 `nobro-wireless` supplies a bounded data plane, selected concrete transports,
-and portable WiFi/BLE lifecycle contracts. UNO R4 WiFiS3 now has a
-compile-only association facade with an exact unpriced binding and
-zero-disabled proof; this is not a promoted physical backend. WiFiS3 uses
-synchronous modem calls and vendor-managed dynamic strings, so Nobro records
-an overrun only after a call returns and does not claim hard cancellation.
-IP/socket integration, shared-radio arbitration, and measured vendor-stack
-resource prices remain absent. Different board technologies must declare
+and portable WiFi/BLE lifecycle contracts. UNO R4 WiFiS3 and pinned
+Arduino-ESP32 3.3.10 now have compile-only association facades with exact
+unpriced bindings and zero-disabled proof; neither is a promoted physical
+backend. Their synchronous vendor calls and managed heap/tasks prevent Nobro
+from claiming hard cancellation or allocation-free operation. IP/socket
+integration, shared-radio arbitration, and measured vendor-stack resource
+prices remain absent. Different board technologies must declare
 per-instance backend selection, radio ownership, coexistence, and
 vendor-managed resources before support is promoted. `ManagedLink::send_at`
 checks the deadline for one immediate attempt; scheduling priority and retry

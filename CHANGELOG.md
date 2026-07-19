@@ -12,6 +12,11 @@
 - UNO R4 WiFi now has an opt-in, compile-only Arduino WiFiS3 association
   facade and categorized Rust bridge. Its zero-disabled target build is
   gated separately from physical behavior and resource-price promotion.
+- ESP32, ESP32-C3, and ESP32-S3 Arduino compositions now share one opt-in
+  station facade over the pinned Arduino-ESP32 3.3.10 `WiFi` stack. C3 has
+  an explicit compile-only binding, and the disabled C3 composition
+  remains byte-identical to baseline; physical traffic and runtime prices
+  remain separate evidence.
 - Board-feature metadata can represent an exact compile-only binding with an
   explicitly unmeasured price instead of encoding unknown resources as zero.
 - ESP32 Arduino users can select either the compact continuous-ADC transport

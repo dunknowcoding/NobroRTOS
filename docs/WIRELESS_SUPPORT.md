@@ -7,7 +7,8 @@ remain independently selectable members exposed through small Nobro facades.
 
 | Member or backend | Public integration | Current boundary |
 | --- | --- | --- |
-| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus one compile-only UNO R4 bridge; no physical backend promoted |
+| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus compile-only UNO R4 and Arduino-ESP32 bridges; no physical backend promoted |
+| Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled proof; association/socket/resource behavior unpromoted |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | UNO R4 target build and zero-disabled proof; association/socket/resource behavior unpromoted |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle and bounded GATT events only; no board backend promoted |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
@@ -30,6 +31,14 @@ strings and synchronous modem calls; Nobro can report elapsed deadline misses
 after those calls return but cannot preempt them. TCP/UDP clients, endpoints,
 vendor heap, controller firmware, and shared-radio resources remain outside
 the compile-only claim.
+
+The Arduino-ESP32 facade follows the same board-driver-first rule: it includes
+the pinned core's official `WiFi.h` instead of copying ESP-IDF or maintaining a
+parallel driver. `persistent(false)` prevents the facade from requesting
+credential persistence, and its fixed stack copies are discarded when
+`join()` returns. ESP-IDF still owns the radio, event loop, TCP/IP objects,
+heap, and tasks. Family target builds and zero-disabled linkage therefore do
+not imply a physical connection or a zero runtime price.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

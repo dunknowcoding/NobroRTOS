@@ -90,6 +90,9 @@ Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **enum**: `RadioCommsError`
 - **fn**: `acquire`, `release`
 
+## `nobro-adapter-wireless-wifi-arduino-esp`
+- **fn**: `valid_credentials`
+
 ## `nobro-adapter-wireless-wifi-arduino-wifis3`
 Bounded bridge for the Arduino UNO R4 WiFiS3 stack.
 - **trait**: `ArduinoWifiS3Transport`
