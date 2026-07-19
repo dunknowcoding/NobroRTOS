@@ -9,6 +9,12 @@
   fallible mounts, runtime-only WiFi credentials, stable instance limits,
   deadline-aware control calls, and caller-sized BLE callback queues are
   available without selecting or claiming a board backend.
+- ArduinoBLE 2.1.0 now has a bounded one-service/one-characteristic adapter
+  on the exact UNO R4 WiFi profile. The disabled facade is zero cost, and
+  BLE-only plus WiFi+BLE compositions target-build through the board
+  package's official `HCIVirtualTransportAT`/WiFiS3 path. The binding remains
+  compile-only and unpriced until physical GATT, recovery, coexistence, and
+  complete resource evidence pass.
 - UNO R4 WiFi now has an opt-in Arduino WiFiS3 association facade and
   categorized Rust bridge. The exact WiFiS3 0.6.0 binding has zero-disabled
   proof, repeated association/DNS/TCP/lifecycle evidence, and an RA-side plus

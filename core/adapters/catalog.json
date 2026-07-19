@@ -10,6 +10,15 @@
   },
   "provenance": [
     {
+      "id": "source-arduino-ble",
+      "source": "https://github.com/arduino-libraries/ArduinoBLE",
+      "revision": "281377b3588814e4c174c08ec711e10e35b1c9f9",
+      "version": "2.1.0",
+      "license": "LGPL-2.1-or-later",
+      "pinned": true,
+      "clean": true
+    },
+    {
       "id": "source-arduino-esp32",
       "source": "https://github.com/espressif/arduino-esp32",
       "revision": "0d1440d1be38ab530d274fe87ee88565fe167392",
@@ -397,6 +406,25 @@
       ]
     },
     {
+      "id": "adapter-wireless-ble-arduino-ble",
+      "name": "arduino-ble",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/ble/arduino-ble",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "One-service, one-characteristic, 20-byte peripheral contract over ArduinoBLE's global HCI/GATT state.",
+        "UNO R4 target compilation uses the official ArduinoBLE HCIVirtualTransportAT path over the installed board package. Physical GATT, recovery, coexistence, and prices remain unverified."
+      ]
+    },
+    {
       "id": "adapter-wireless-radio-comms",
       "name": "radio-comms",
       "kind": "adapter",
@@ -623,6 +651,24 @@
       ],
       "limitations": [
         "Consumes the versioned INA JSONL interface and contributes no firmware code."
+      ]
+    },
+    {
+      "id": "library-arduino-ble",
+      "name": "ArduinoBLE",
+      "kind": "library",
+      "provenance_id": "source-arduino-ble",
+      "facade": "packages/arduino/src/NobroArduinoBLE.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "The library owns process-wide HCI/GATT state and dynamic allocation. UNO R4 target compilation is not physical GATT, lifecycle/recovery, WiFi coexistence, or resource-price evidence."
       ]
     },
     {
@@ -1048,9 +1094,11 @@
         "contract-wireless"
       ],
       "component_ids": [
+        "adapter-wireless-ble-arduino-ble",
         "adapter-wireless-radio-comms",
         "adapter-wireless-wifi-arduino-esp",
         "adapter-wireless-wifi-arduino-wifis3",
+        "library-arduino-ble",
         "library-arduino-esp-wifi",
         "library-arduino-wifis3",
         "library-niusthread",

@@ -415,6 +415,20 @@
         }
       ]
     },
+    "arduino-ble-unor4-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_ble_integrations.py"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "arduino",
+          "capabilities": ["ble_link"]
+        }
+      ]
+    },
     "arduino-esp-wifi-target-build": {
       "kind": "target-build",
       "runner": "arduino-package",
@@ -603,6 +617,11 @@
             "i2c": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "ble_link": {
+              "maturity": "experimental",
+              "evidence": ["arduino-ble-unor4-target-build"],
+              "limitations": "Exact ArduinoBLE 2.1.0 host and target-build evidence only. Physical GATT, lifecycle/recovery, simultaneous WiFi operation, shared-controller pricing, and every complete resource price remain unverified."
+            },
             "wifi_link": {
               "maturity": "implemented",
               "evidence": ["arduino-wifis3-target-build"],

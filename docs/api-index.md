@@ -84,6 +84,13 @@ SensorSal stub with synthetic IMU samples when no NiusIMU hardware is connected.
 - **enum**: `SensorStubError`, `SensorStubMode`
 - **fn**: `new`, `with_profile`, `owner`, `stub_i2c_addr`, `profile`, `set_mode`, `tick_count`, `poll_at`, `module_spec`, `stub_imu_plausible`
 
+## `nobro-adapter-wireless-ble-arduino-ble`
+Bounded bridge for ArduinoBLE peripheral stacks.
+- **trait**: `ArduinoBleTransport`
+- **struct**: `TimedOperation`, `ArduinoBleDiagnostics`, `ArduinoBle`
+- **enum**: `TransportError`
+- **fn**: `into_inner`
+
 ## `nobro-adapter-radio-comms`
 Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **struct**: `RadioComms`

@@ -1141,6 +1141,17 @@ def selftest() -> int:
                 _quiet_call(
                     execute_gate,
                     good,
+                    "arduino-ble-unor4-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "ArduinoBLE UNO R4 gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
                     "arduino-esp-wifi-target-build",
                     receipt_root,
                     source_root,

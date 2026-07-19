@@ -56,6 +56,11 @@ physically admitted WiFiS3 0.6.0 HTTP workload to its complete
 RA-side/controller-image price. Controller-internal runtime resources and
 other configurations remain outside that exact claim.
 
+`check_arduino_ble_integrations.py` pins ArduinoBLE 2.1.0 on the UNO R4 WiFi
+profile, proves the disabled facade is byte-for-byte zero cost, and
+target-builds BLE-only plus WiFi-and-BLE compositions. These are compile
+gates, not physical coexistence or resource-price claims.
+
 `check_arduino_esp_wifi.py` pins Arduino-ESP32 3.3.10 provenance, compiles the
 optional WiFi facade on ESP32, ESP32-C3, and ESP32-S3, proves the disabled C3
 composition is byte-identical to baseline, scans its link map for forbidden

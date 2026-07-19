@@ -797,9 +797,17 @@ Implemented today in `nobro-wireless`:
   evidence plus one complete configuration price at four HTTP transactions/s.
   That price does not transfer to another board, rate, socket workload, or
   WiFi/BLE composition.
+- `wireless/ble/arduino-ble` and `NobroArduinoBLE.h` add a bounded
+  one-service/one-characteristic peripheral over ArduinoBLE 2.1.0. The exact
+  UNO R4 build follows ArduinoBLE's official `HCIVirtualTransportAT` into the
+  installed board package's WiFiS3 modem rather than duplicating a controller
+  driver. One global mounted facade is admitted because ArduinoBLE owns
+  process-wide HCI/GATT state and heap. BLE-only and WiFi+BLE target builds
+  are evidence of source composition only; physical GATT, recovery,
+  controller arbitration, and resource prices remain open.
 
 Additional WiFi backends/workloads, UNO R4 controller-internal runtime
-accounting, BLE controller/GATT adapters, Zigbee co-processor lifecycle,
+accounting, physical BLE controller/GATT evidence, Zigbee co-processor lifecycle,
 shared-radio arbitration, and prices for unmeasured compositions remain
 future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link

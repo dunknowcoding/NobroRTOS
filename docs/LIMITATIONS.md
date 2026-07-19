@@ -126,6 +126,14 @@ execution remain outside it. The CC2530 backend is a raw initialized 127-byte
 IEEE 802.15.4 PSDU transport, while `ZIGBEE_APS` is metadata rather than an
 implemented Zigbee APS stack.
 
+The UNO R4 ArduinoBLE 2.1.0 adapter is compile-only. Its disabled facade has
+zero flash/RAM delta, and exact BLE-only plus WiFi+BLE compositions build
+through ArduinoBLE's official `HCIVirtualTransportAT` over the installed
+WiFiS3 board driver. No physical GATT transaction, disconnect/recovery cycle,
+simultaneous WiFi/BLE workload, controller-internal resource use, or complete
+configuration price is inferred. ArduinoBLE owns process-wide HCI/GATT
+objects and dynamic allocation, so Nobro admits only one mounted facade.
+
 ## Isolation, boot, and recovery
 
 - Rust module identity is dispatcher-owned, but modules share one privileged address

@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define NOBRO_WIRELESS_API_VERSION 0x0101u
+#define NOBRO_WIRELESS_API_VERSION 0x0102u
 
 typedef enum nobro_wireless_protocol {
     NOBRO_WIRELESS_UNKNOWN = 0,
@@ -103,6 +103,36 @@ typedef struct nobro_wifi_stack_diagnostics {
     uint32_t recoveries;
     uint32_t transport_faults;
 } nobro_wifi_stack_diagnostics_t;
+
+#define NOBRO_BLE_GATT_VALUE_MAX 20u
+
+typedef enum nobro_ble_event_kind {
+    NOBRO_BLE_CONNECTED = 1,
+    NOBRO_BLE_DISCONNECTED = 2,
+    NOBRO_BLE_GATT_READ = 3,
+    NOBRO_BLE_GATT_WRITE = 4,
+    NOBRO_BLE_NOTIFICATION_COMPLETE = 5
+} nobro_ble_event_kind_t;
+
+/* One caller-owned, fixed-capacity BLE event. Arduino facades use logical
+ * connection/attribute ids; vendor-specific handles never escape this ABI. */
+typedef struct nobro_ble_event {
+    nobro_ble_event_kind_t kind;
+    uint16_t connection_id;
+    uint16_t attribute_handle;
+    uint8_t value[NOBRO_BLE_GATT_VALUE_MAX];
+    uint8_t value_len;
+} nobro_ble_event_t;
+
+typedef struct nobro_ble_stack_diagnostics {
+    uint32_t advertisements;
+    uint32_t advertisement_stops;
+    uint32_t events;
+    uint32_t gatt_responses;
+    uint32_t deadline_misses;
+    uint32_t recoveries;
+    uint32_t transport_faults;
+} nobro_ble_stack_diagnostics_t;
 
 #ifdef __cplusplus
 }

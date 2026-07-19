@@ -53,6 +53,14 @@ One 25-HTTP-transaction/slice workload at one operation/s has an exact
 RA-side/controller-image price. Controller-internal runtime resources, BLE
 coexistence, other firmware versions, and other workloads remain separate.
 
+UNO R4 BLE projects may include `NobroArduinoBLE.h` and add ArduinoBLE 2.1.0
+as an explicit project dependency. The facade follows ArduinoBLE's official
+`HCIVirtualTransportAT` into the installed board package's WiFiS3 modem,
+admits one global stack/service/characteristic, and bounds values at 20
+bytes. `NOBRO_ARDUINO_BLE_DISABLED` removes the facade and ArduinoBLE symbols.
+BLE-only and WiFi+BLE images target-build; physical GATT, recovery,
+coexistence, and resource prices remain unverified.
+
 ESP32, ESP32-C3, and ESP32-S3 sketches use the installed Arduino-ESP32 board
 package's official `WiFi` implementation through the explicit
 `NobroArduinoEspWiFi.h` facade. It is also opt-in. The pinned 3.3.10 family

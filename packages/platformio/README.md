@@ -73,6 +73,13 @@ zero-disabled, physical DNS/TCP/lifecycle, and RA-side/controller-image price
 evidence; controller-internal runtime resources, other firmware/workloads,
 and BLE coexistence remain separate.
 
+UNO R4 WiFi projects may include `NobroArduinoBLE.h` and declare ArduinoBLE
+2.1.0 in `lib_deps`. The facade uses ArduinoBLE's official UNO R4
+`HCIVirtualTransportAT` over the platform WiFiS3 modem and admits one
+service, one characteristic, and 20-byte values. BLE-only and WiFi+BLE
+compositions target-build, but physical GATT/coexistence and resource prices
+are not yet claimed.
+
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps
 credentials runtime-only. ESP32/C3/S3 compilation, C3 zero-disabled linkage,

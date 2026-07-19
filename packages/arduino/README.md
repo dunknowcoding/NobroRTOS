@@ -20,6 +20,7 @@ Current contents:
   duty output, and RMT pulse symbols. Each provider is optional and keeps
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
 - `src/NobroArduinoWiFiS3.h` with an opt-in UNO R4 WiFi association facade,
+- `src/NobroArduinoBLE.h` with an opt-in UNO R4 ArduinoBLE peripheral facade,
   caller-sized scan output, runtime-only credentials, and explicit lifecycle.
 - `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
   pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
@@ -189,6 +190,27 @@ configuration-priced. Controller-internal RAM/tasks/CPU, BLE coexistence,
 other firmware versions, and other workloads remain separate. Define
 `NOBRO_WIFI_S3_DISABLED` before including the facade to remove both Nobro and
 WiFiS3 symbols from that composition.
+
+## UNO R4 ArduinoBLE peripheral
+
+Install ArduinoBLE 2.1.0, then include the optional facade:
+
+```cpp
+#include <NobroArduinoBLE.h>
+
+nobro::ArduinoBleStack ble;
+```
+
+The exact UNO R4 profile uses ArduinoBLE's official
+`HCIVirtualTransportAT` over the installed Arduino Renesas WiFiS3 modem.
+Nobro admits one mounted global stack, one service, one characteristic, one
+logical connection, and 20-byte values. The facade exposes explicit
+mount/advertise/poll/respond/quiesce/recover calls and caller-owned events.
+ArduinoBLE retains ownership of global HCI/GATT state and dynamic allocation.
+The disabled, BLE-only, and WiFi+BLE target gates pass; physical GATT,
+recovery, simultaneous WiFi/BLE behavior, and resource prices remain open.
+Define `NOBRO_ARDUINO_BLE_DISABLED` before including the facade to keep
+ArduinoBLE symbols out of the composition.
 
 ## Arduino-ESP32 WiFi association
 

@@ -42,6 +42,13 @@
   ],
   "provenance": [
     {
+      "id": "source-arduino-ble",
+      "source": "https://github.com/arduino-libraries/ArduinoBLE",
+      "revision": "281377b3588814e4c174c08ec711e10e35b1c9f9",
+      "version": "2.1.0",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
       "id": "source-arduino-esp32",
       "source": "https://github.com/espressif/arduino-esp32",
       "revision": "0d1440d1be38ab530d274fe87ee88565fe167392",
@@ -93,7 +100,7 @@
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-dac",
       "limitations": [
-        "No board binding is promoted yet."
+        "One exact UNO R4/ArduinoBLE 2.1.0 binding has host and target-build evidence only; physical GATT, lifecycle/recovery, WiFi coexistence, and every resource price remain unverified."
       ]
     },
     {
@@ -170,6 +177,26 @@
     }
   ],
   "backends": [
+    {
+      "id": "backend-ble-arduino-ble",
+      "capability_kind": "ble_link",
+      "stack_family": "ble",
+      "adapter_component_id": "adapter-wireless-ble-arduino-ble",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "provenance_id": "source-arduino-ble",
+      "supported_targets": [
+        "arduino:renesas_uno:unor4wifi"
+      ],
+      "limitations": [
+        "The facade admits one service, one characteristic, one logical connection, and 20-byte values over ArduinoBLE's process-wide HCI/GATT state.",
+        "The exact UNO R4 path uses ArduinoBLE HCIVirtualTransportAT over the installed Arduino Renesas WiFiS3 modem. Target compilation proves source compatibility only; physical GATT, lifecycle/recovery, WiFi coexistence, and resource prices remain separate."
+      ]
+    },
     {
       "id": "backend-audio-esp32s3-es8311",
       "capability_kind": "audio_i2s",
@@ -329,6 +356,39 @@
     }
   ],
   "bindings": [
+    {
+      "id": "binding-ble-arduino-ble-ra4m1",
+      "backend_id": "backend-ble-arduino-ble",
+      "capability_kind": "ble_link",
+      "platform": "ra4m1",
+      "composition": "arduino",
+      "instance": "ble0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-ble-unor4-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "Target build and zero-disabled evidence only. The shared UNO R4 connectivity controller lease, physical GATT/lifecycle/recovery, simultaneous WiFi operation, controller-internal resources, and a complete configuration price remain unverified."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-arduino-ble-disabled",
+        "forbidden_symbols": [
+          "ArduinoBleStack",
+          "BLELocalDevice",
+          "HCIVirtualTransportAT",
+          "HCITransport"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "ble_link",
+        "status_field": "ra4m1_ble0",
+        "evidence_gate": "arduino-ble-unor4-target-build"
+      }
+    },
     {
       "id": "binding-wifi-arduino-esp-esp32c3",
       "backend_id": "backend-wifi-arduino-esp",

@@ -239,6 +239,16 @@ and shared-radio/WiFi-BLE compositions remain independently unpromoted.
 Additive WiFi and BLE instances must not be replaced by one global wireless
 feature.
 
+The first concrete BLE bridge is
+`wireless/ble/arduino-ble` with `NobroArduinoBLE.h`. On UNO R4 WiFi it binds
+ArduinoBLE 2.1.0 to the board package's official
+`HCIVirtualTransportAT`/WiFiS3 modem path. It exposes one service, one
+characteristic, one logical connection, 20-byte values, fixed caller-owned
+events, and explicit mount/advertise/poll/respond/quiesce/recover calls.
+ArduinoBLE still owns global HCI/GATT state and heap allocation. The exact
+binding has host tests, zero-disabled proof, and BLE-only plus WiFi+BLE target
+builds; it remains unpriced and has no physical GATT or coexistence claim.
+
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and
 `Mfrc522<S>` provides bounded request, anticollision, UID polling, and a
