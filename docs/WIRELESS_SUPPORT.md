@@ -7,9 +7,9 @@ remain independently selectable members exposed through small Nobro facades.
 
 | Member or backend | Public integration | Current boundary |
 | --- | --- | --- |
-| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle, a compile-only UNO R4 bridge, and one configuration-priced Arduino-ESP32 C3 station binding |
+| WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3 station bindings |
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
-| Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | UNO R4 target build and zero-disabled proof; association/socket/resource behavior unpromoted |
+| Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle and bounded GATT events only; no board backend promoted |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
@@ -29,8 +29,16 @@ reimplementing its coprocessor protocol. It retains no credentials and copies
 scan results into caller-owned fixed records. WiFiS3 itself uses dynamic
 strings and synchronous modem calls; Nobro can report elapsed deadline misses
 after those calls return but cannot preempt them. TCP/UDP clients, endpoints,
-vendor heap, controller firmware, and shared-radio resources remain outside
-the compile-only claim.
+and response buffers remain caller-owned. Three state-restoring cycles passed
+75/75 HTTP transactions at one operation/s with zero deadline misses, zero
+retained heap, a 1,068 B transient heap peak, a 1,024 B RA stack reservation
+and observed high-water, 42,771,027 call-active cycles/s, and a conservative
+350,477,834-cycle p99/maximum transaction latency at 48 MHz. The complete
+measured RA workload image is 67,420 B flash / 7,824 B static RAM. The board
+core owns SCI1, four UART interrupt slots, no DMA channel, and the ESP32-S3
+controller; the exact official 0.6.0 controller application artifact is
+1,180,064 B. Controller-internal RAM, tasks, CPU, BLE coexistence, other
+firmware versions, and other workloads remain separate evidence.
 
 The Arduino-ESP32 facade follows the same board-driver-first rule: it includes
 the pinned core's official `WiFi.h` and uses the ESP-IDF driver bundled with

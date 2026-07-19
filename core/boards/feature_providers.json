@@ -56,6 +56,13 @@
       "license": "MIT"
     },
     {
+      "id": "source-arduino-uno-r4-wifi-controller",
+      "source": "https://github.com/arduino/uno-r4-wifi-usb-bridge",
+      "revision": "ac27b7b1d9c6c00a341c196ad2185816fe6e589d",
+      "version": "0.6.0",
+      "license": "NOASSERTION"
+    },
+    {
       "id": "source-niusaudio",
       "source": "https://github.com/dunknowcoding/NiusAudio",
       "revision": "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2",
@@ -158,7 +165,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
       "limitations": [
-        "Arduino-ESP32 has one configuration-priced ESP32-C3 station binding; UNO R4 WiFiS3 remains compile-only, and other boards, rates, socket workloads, and WiFi/BLE coexistence require separate evidence."
+        "Arduino-ESP32 C3 and UNO R4 WiFiS3 each have one exact configuration-priced station binding; other boards, rates, firmware versions, socket workloads, controller-internal resources, and WiFi/BLE coexistence require separate evidence."
       ]
     }
   ],
@@ -305,17 +312,19 @@
       "stack_family": "wifi",
       "adapter_component_id": "adapter-wireless-wifi-arduino-wifis3",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
-        "target-build"
+        "host-test",
+        "target-build",
+        "physical"
       ],
       "provenance_id": "source-arduino-renesas",
       "supported_targets": [
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials.",
-        "WiFiS3 internally uses dynamic strings and blocking modem calls; target compilation and zero-disabled proof do not establish physical association, sockets, deadline enforcement, vendor resource bounds, or coexistence."
+        "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; the exact UNO R4 binding also passed DNS and caller-owned TCP traffic.",
+        "WiFiS3 internally uses dynamic strings and blocking modem calls. One exact RA4M1 workload and the official controller application artifact are priced; controller-internal RAM, tasks, CPU, BLE coexistence, other firmware versions, and other workloads remain separate."
       ]
     }
   ],
@@ -411,14 +420,60 @@
       "platform": "ra4m1",
       "composition": "arduino",
       "instance": "wifi0",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence_gates": [
         "arduino-wifis3-target-build"
       ],
-      "price_state": "unmeasured",
-      "limitations": [
-        "This exact UNO R4 WiFiS3 binding has target-build and zero-disabled evidence only; physical association, socket traffic, controller firmware, heap, stack, CPU, latency, and coexistence prices remain unknown."
-      ],
+      "workload": {
+        "namespace": "ra4m1-arduino-wifis3-http",
+        "configuration_words": [48, 1, 25, 3, 1000000, 30000000, 8500, 1, 0, 6, 0],
+        "configuration_fingerprint": "78fcc2c1af7f63d1",
+        "operations_per_second": 1
+      },
+      "measured_fixed_price": {
+        "flash_bytes": 67420,
+        "static_ram_bytes": 7824,
+        "retained_heap_bytes": 0,
+        "stack_bytes": 1024,
+        "vendor_reserved_ram_bytes": 0,
+        "worker_threads": 0,
+        "interrupt_slots": 4,
+        "dma_channels": 0,
+        "controller_firmware_bytes": 1180064,
+        "peripheral_channels": 2
+      },
+      "fixed_price_provenance": {
+        "flash_bytes": "measured",
+        "static_ram_bytes": "measured",
+        "retained_heap_bytes": "measured",
+        "stack_bytes": "source-derived",
+        "vendor_reserved_ram_bytes": "declared-zero",
+        "worker_threads": "source-derived",
+        "interrupt_slots": "source-derived",
+        "dma_channels": "source-derived",
+        "controller_firmware_bytes": "source-derived",
+        "peripheral_channels": "source-derived"
+      },
+      "measured_runtime_price": {
+        "transient_heap_peak_bytes": 1068,
+        "stack_high_water_bytes": 1024,
+        "cpu_cycles_per_second": 42771027,
+        "latency_p99_cycles": 350477834,
+        "latency_max_cycles": 350477834
+      },
+      "runtime_price_provenance": {
+        "transient_heap_peak_bytes": "measured",
+        "stack_high_water_bytes": "measured",
+        "cpu_cycles_per_second": "measured",
+        "latency_p99_cycles": "measured",
+        "latency_max_cycles": "measured"
+      },
+      "coexistence": {
+        "leases": ["ra4m1-sci1", "uno-r4-esp32s3-connectivity-controller"],
+        "exclusive_resources": ["wifi-station-data-plane"],
+        "compatible_instances": [],
+        "core_affinity": ["ra4m1-cpu0"]
+      },
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",
         "feature": "nobro-wifis3-disabled",
@@ -435,6 +490,11 @@
         "provider_id": "wifi_link",
         "status_field": "ra4m1_wifi0",
         "evidence_gate": "arduino-wifis3-target-build"
+      },
+      "price_basis": {
+        "toolchain": "Arduino Renesas 1.6.0 at 48 MHz with WiFiS3 and official UNO R4 controller firmware 0.6.0",
+        "fixed": "complete measured RA4M1 workload image, maximum active retained-heap delta across three physical cycles, pinned SCI1 ownership, and the official flashable controller application artifact",
+        "runtime": "conservative maximum from three state-restoring cycles of 25 HTTP transactions at one operation per second; RA call-active cycle time excludes inter-transaction pacing waits"
       }
     },
     {

@@ -604,9 +604,9 @@
             "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "wifi_link": {
-              "maturity": "experimental",
+              "maturity": "implemented",
               "evidence": ["arduino-wifis3-target-build"],
-              "limitations": "Compile-only association/lifecycle facade; physical association, sockets, vendor resource prices, and coexistence remain unverified."
+              "limitations": "One exact UNO R4/WiFiS3 0.6.0 workload has zero-disabled, physical association/DNS/TCP/lifecycle, and RA-side/controller-image pricing. Controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain separate."
             }
           }
         }

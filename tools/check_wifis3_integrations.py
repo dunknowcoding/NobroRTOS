@@ -24,6 +24,8 @@ LIBRARY_ID = "library-arduino-wifis3"
 GATE_ID = "arduino-wifis3-target-build"
 BINDING_ID = "binding-wifi-arduino-wifis3-ra4m1"
 SOURCE_PIN = "424e86eff92d37f72123c2b641dd8bbf06a38b47"
+CONTROLLER_SOURCE_ID = "source-arduino-uno-r4-wifi-controller"
+CONTROLLER_SOURCE_PIN = "ac27b7b1d9c6c00a341c196ad2185816fe6e589d"
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -99,6 +101,80 @@ FORBIDDEN_DISABLED = (
     "ModemClass",
     "WiFiS3",
 )
+EXPECTED_WORKLOAD = {
+    "namespace": "ra4m1-arduino-wifis3-http",
+    "configuration_words": [
+        48,
+        1,
+        25,
+        3,
+        1000000,
+        30000000,
+        8500,
+        1,
+        0,
+        6,
+        0,
+    ],
+    "configuration_fingerprint": "78fcc2c1af7f63d1",
+    "operations_per_second": 1,
+}
+EXPECTED_FIXED_PRICE = {
+    "flash_bytes": 67420,
+    "static_ram_bytes": 7824,
+    "retained_heap_bytes": 0,
+    "stack_bytes": 1024,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 0,
+    "interrupt_slots": 4,
+    "dma_channels": 0,
+    "controller_firmware_bytes": 1180064,
+    "peripheral_channels": 2,
+}
+EXPECTED_FIXED_PROVENANCE = {
+    "flash_bytes": "measured",
+    "static_ram_bytes": "measured",
+    "retained_heap_bytes": "measured",
+    "stack_bytes": "source-derived",
+    "vendor_reserved_ram_bytes": "declared-zero",
+    "worker_threads": "source-derived",
+    "interrupt_slots": "source-derived",
+    "dma_channels": "source-derived",
+    "controller_firmware_bytes": "source-derived",
+    "peripheral_channels": "source-derived",
+}
+EXPECTED_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 1068,
+    "stack_high_water_bytes": 1024,
+    "cpu_cycles_per_second": 42771027,
+    "latency_p99_cycles": 350477834,
+    "latency_max_cycles": 350477834,
+}
+EXPECTED_RUNTIME_PROVENANCE = {
+    field: "measured" for field in EXPECTED_RUNTIME_PRICE
+}
+EXPECTED_COEXISTENCE = {
+    "leases": ["ra4m1-sci1", "uno-r4-esp32s3-connectivity-controller"],
+    "exclusive_resources": ["wifi-station-data-plane"],
+    "compatible_instances": [],
+    "core_affinity": ["ra4m1-cpu0"],
+}
+EXPECTED_PRICE_BASIS = {
+    "toolchain": (
+        "Arduino Renesas 1.6.0 at 48 MHz with WiFiS3 and official UNO R4 "
+        "controller firmware 0.6.0"
+    ),
+    "fixed": (
+        "complete measured RA4M1 workload image, maximum active retained-heap "
+        "delta across three physical cycles, pinned SCI1 ownership, and the "
+        "official flashable controller application artifact"
+    ),
+    "runtime": (
+        "conservative maximum from three state-restoring cycles of 25 HTTP "
+        "transactions at one operation per second; RA call-active cycle time "
+        "excludes inter-transaction pacing waits"
+    ),
+}
 
 
 def run(command: list[str]) -> str:
@@ -175,19 +251,30 @@ def verify_metadata() -> None:
         "license": "MIT",
     }:
         raise RuntimeError("Arduino Renesas provenance is stale")
-
+    controller_source = {
+        "id": CONTROLLER_SOURCE_ID,
+        "source": "https://github.com/arduino/uno-r4-wifi-usb-bridge",
+        "revision": CONTROLLER_SOURCE_PIN,
+        "version": "0.6.0",
+        "license": "NOASSERTION",
+    }
+    if (
+        record(features["provenance"], CONTROLLER_SOURCE_ID, "provenance")
+        != controller_source
+    ):
+        raise RuntimeError("UNO R4 controller provenance is stale")
     backend = record(features["backends"], BACKEND_ID, "backend")
     if (
         backend.get("adapter_component_id") != COMPONENT_ID
         or backend.get("capability_kind") != "wifi_link"
         or backend.get("stack_family") != "wifi"
-        or backend.get("maturity") != "compile-only"
-        or backend.get("evidence") != ["target-build"]
+        or backend.get("maturity") != "implemented"
+        or backend.get("evidence")
+        != ["host-test", "target-build", "physical"]
         or backend.get("provenance_id") != "source-arduino-renesas"
         or backend.get("supported_targets") != [FQBN]
-        or "physical" in backend.get("evidence", [])
     ):
-        raise RuntimeError("WiFiS3 backend claim exceeds or differs from compile evidence")
+        raise RuntimeError("WiFiS3 backend evidence is stale")
 
     binding = record(features["bindings"], BINDING_ID, "binding")
     if (
@@ -195,10 +282,19 @@ def verify_metadata() -> None:
         or binding.get("platform") != "ra4m1"
         or binding.get("composition") != "arduino"
         or binding.get("instance") != "wifi0"
-        or binding.get("maturity") != "compile-only"
+        or binding.get("maturity") != "implemented"
         or binding.get("evidence_gates") != [GATE_ID]
-        or binding.get("price_state") != "unmeasured"
-        or any(key.startswith("measured_") for key in binding)
+        or binding.get("workload") != EXPECTED_WORKLOAD
+        or binding.get("measured_fixed_price") != EXPECTED_FIXED_PRICE
+        or binding.get("fixed_price_provenance")
+        != EXPECTED_FIXED_PROVENANCE
+        or binding.get("measured_runtime_price") != EXPECTED_RUNTIME_PRICE
+        or binding.get("runtime_price_provenance")
+        != EXPECTED_RUNTIME_PROVENANCE
+        or binding.get("coexistence") != EXPECTED_COEXISTENCE
+        or binding.get("price_basis") != EXPECTED_PRICE_BASIS
+        or "price_state" in binding
+        or "limitations" in binding
         or binding.get("report_wiring")
         != {
             "provider_id": "wifi_link",
@@ -210,19 +306,21 @@ def verify_metadata() -> None:
         )
         != set(FORBIDDEN_DISABLED)
     ):
-        raise RuntimeError("WiFiS3 exact compile-only binding is stale or falsely priced")
+        raise RuntimeError("WiFiS3 exact binding is stale or falsely priced")
 
     component = record(catalog["components"], COMPONENT_ID, "component")
     library = record(catalog["components"], LIBRARY_ID, "library")
     if (
         component.get("path")
         != "core/adapters/wireless/wifi/arduino-wifis3"
-        or component.get("maturity") != "compile-only"
-        or component.get("evidence") != ["target-build"]
+        or component.get("maturity") != "implemented"
+        or component.get("evidence")
+        != ["host-test", "physical", "target-build"]
         or component.get("supported_targets") != [FQBN]
         or library.get("facade") != "packages/arduino/src/NobroArduinoWiFiS3.h"
         or library.get("provenance_id") != "source-arduino-renesas"
-        or library.get("maturity") != "compile-only"
+        or library.get("maturity") != "implemented"
+        or library.get("evidence") != ["physical", "target-build"]
     ):
         raise RuntimeError("WiFiS3 catalog relationship is stale")
 
@@ -240,7 +338,7 @@ def verify_metadata() -> None:
         or gate.get("command") != ["python", "tools/check_wifis3_integrations.py"]
         or gate.get("runner") != "arduino-package"
         or not isinstance(claim, dict)
-        or claim.get("maturity") != "experimental"
+        or claim.get("maturity") != "implemented"
         or claim.get("evidence") != [GATE_ID]
         or not claim.get("limitations")
     ):
@@ -292,7 +390,7 @@ def main() -> int:
         return 1
     print(
         "WIFIS3 INTEGRATIONS: PASS "
-        "(UNO R4 target-build; bounded association; no physical promotion)"
+        "(UNO R4 target-build; zero-disabled; exact physical price gated)"
     )
     return 0
 

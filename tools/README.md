@@ -51,9 +51,10 @@ accuracy.
 
 `check_wifis3_integrations.py` compiles the categorized UNO R4 WiFiS3
 association facade against the board package, proves an identical
-zero-disabled baseline, and locks its exact binding to the explicit
-`unmeasured` price state. It does not convert compilation into physical
-association, socket, or vendor-resource evidence.
+zero-disabled baseline, pins the official controller source, and locks one
+physically admitted WiFiS3 0.6.0 HTTP workload to its complete
+RA-side/controller-image price. Controller-internal runtime resources and
+other configurations remain outside that exact claim.
 
 `check_arduino_esp_wifi.py` pins Arduino-ESP32 3.3.10 provenance, compiles the
 optional WiFi facade on ESP32, ESP32-C3, and ESP32-S3, proves the disabled C3

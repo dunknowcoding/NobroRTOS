@@ -9,9 +9,12 @@
   fallible mounts, runtime-only WiFi credentials, stable instance limits,
   deadline-aware control calls, and caller-sized BLE callback queues are
   available without selecting or claiming a board backend.
-- UNO R4 WiFi now has an opt-in, compile-only Arduino WiFiS3 association
-  facade and categorized Rust bridge. Its zero-disabled target build is
-  gated separately from physical behavior and resource-price promotion.
+- UNO R4 WiFi now has an opt-in Arduino WiFiS3 association facade and
+  categorized Rust bridge. The exact WiFiS3 0.6.0 binding has zero-disabled
+  proof, repeated association/DNS/TCP/lifecycle evidence, and an RA-side plus
+  controller-application-image price at one HTTP operation/s. Controller-
+  internal runtime resources, other firmware/workloads, and BLE coexistence
+  remain separate.
 - ESP32, ESP32-C3, and ESP32-S3 Arduino compositions now share one opt-in
   station facade over the pinned Arduino-ESP32 3.3.10 `WiFi` stack. C3 has
   an exact configuration-priced binding, and the disabled C3 composition

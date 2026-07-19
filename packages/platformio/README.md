@@ -67,9 +67,11 @@ independently optional. All capacities and the exact aligned conversion count
 are explicit at compile time.
 
 UNO R4 WiFi projects may include `NobroArduinoWiFiS3.h` directly. The
-compile-only facade uses the platform's own WiFiS3 library for bounded
-association lifecycle and caller-sized scan output; it does not promote
-physical traffic or measured vendor resource bounds.
+facade uses the platform's own WiFiS3 library for bounded association
+lifecycle and caller-sized scan output. One exact WiFiS3 0.6.0 workload has
+zero-disabled, physical DNS/TCP/lifecycle, and RA-side/controller-image price
+evidence; controller-internal runtime resources, other firmware/workloads,
+and BLE coexistence remain separate.
 
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps

@@ -442,15 +442,17 @@
       "kind": "adapter",
       "path": "core/adapters/wireless/wifi/arduino-wifis3",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
+        "physical",
         "target-build"
       ],
       "supported_targets": [
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "Target compilation covers bounded association/lifecycle only; physical association, sockets, vendor heap, controller resources, and exact pricing remain unverified."
+        "One exact UNO R4/WiFiS3 0.6.0 workload passed repeated association, DNS, TCP, leave, quiesce, and recovery and has a complete RA-side/controller-image price. Controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain unpriced."
       ]
     },
     {
@@ -651,15 +653,16 @@
       "provenance_id": "source-arduino-renesas",
       "facade": "packages/arduino/src/NobroArduinoWiFiS3.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "physical",
         "target-build"
       ],
       "supported_targets": [
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "The vendor stack is synchronous and heap-using; compile evidence is not physical association, socket, coexistence, or resource evidence."
+        "The vendor stack is synchronous and heap-using. One exact UNO R4/WiFiS3 0.6.0 HTTP workload is priced; controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain separate."
       ]
     },
     {

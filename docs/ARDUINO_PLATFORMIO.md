@@ -47,9 +47,11 @@ forced dependencies of the base package.
 
 UNO R4 WiFi uses its board package's WiFiS3 implementation through the
 explicit `NobroArduinoWiFiS3.h` facade. It is not included by the base
-package. The current evidence is target-build plus zero-disabled behavior;
-physical association, socket traffic, and vendor resource prices remain
-separate gates.
+package. The exact WiFiS3 0.6.0 binding has zero-disabled target proof and
+state-restoring association, DNS, TCP, leave, quiesce, and recovery evidence.
+One 25-HTTP-transaction/slice workload at one operation/s has an exact
+RA-side/controller-image price. Controller-internal runtime resources, BLE
+coexistence, other firmware versions, and other workloads remain separate.
 
 ESP32, ESP32-C3, and ESP32-S3 sketches use the installed Arduino-ESP32 board
 package's official `WiFi` implementation through the explicit

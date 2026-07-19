@@ -780,11 +780,14 @@ Implemented today in `nobro-wireless`:
   the common data plane. `MountedWifi`/`MountedBle` own fallible mounting; credentials
   remain runtime-only, and `BleEventQueue` bounds callback-to-task transfer.
 - `wireless/wifi/arduino-wifis3` and `NobroArduinoWiFiS3.h` form the first
-  concrete compile-only WiFi bridge. The facade owns no credentials or heap,
+  concrete WiFiS3 bridge. The facade owns no credentials or heap,
   copies at most the caller's scan capacity, and keeps TCP/UDP endpoints
   separate. The UNO R4 board core still owns its process-wide
   UART/coprocessor stack, blocking calls, dynamic strings, sockets, and
-  controller resources.
+  controller resources. One exact WiFiS3 0.6.0 binding has zero-disabled,
+  state-restoring association/DNS/TCP/lifecycle evidence and a complete
+  RA-side/controller-image price at one HTTP operation/s; controller-internal
+  RAM/tasks/CPU and BLE coexistence remain separate.
 - `wireless/wifi/arduino-esp` and `NobroArduinoEspWiFi.h` add the same bounded
   station lifecycle for ESP32, ESP32-C3, and ESP32-S3 through the pinned
   Arduino-ESP32 3.3.10 board package. The facade disables credential
@@ -795,9 +798,10 @@ Implemented today in `nobro-wireless`:
   That price does not transfer to another board, rate, socket workload, or
   WiFi/BLE composition.
 
-UNO R4 physical WiFi evidence, additional WiFi backends, BLE controller/GATT
-adapters, Zigbee co-processor lifecycle, shared-radio arbitration, and
-prices for unmeasured compositions remain future work.
+Additional WiFi backends/workloads, UNO R4 controller-internal runtime
+accounting, BLE controller/GATT adapters, Zigbee co-processor lifecycle,
+shared-radio arbitration, and prices for unmeasured compositions remain
+future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link
 crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
 may coexist when board composition explicitly admits shared memory, interrupts,

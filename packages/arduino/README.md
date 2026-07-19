@@ -181,8 +181,12 @@ library remains authoritative for the board's UART/coprocessor protocol.
 WiFiS3 internally uses dynamic strings and synchronous modem calls. The
 facade reports a deadline miss after a call returns; it cannot preempt that
 call. TCP/UDP clients and endpoints remain separate caller-owned objects.
-Physical association, socket traffic, controller resources, and exact runtime
-prices are not established by the current target-build gate. Define
+One exact UNO R4/WiFiS3 0.6.0 workload passed three state-restoring scan,
+association, DNS, 25-transaction HTTP, leave, quiesce, and recovery cycles at
+one operation/s. Its complete RA workload image, heap/stack/CPU/latency,
+SCI1/IRQ ownership, and official controller application image are
+configuration-priced. Controller-internal RAM/tasks/CPU, BLE coexistence,
+other firmware versions, and other workloads remain separate. Define
 `NOBRO_WIFI_S3_DISABLED` before including the facade to remove both Nobro and
 WiFiS3 symbols from that composition.
 

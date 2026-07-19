@@ -221,8 +221,8 @@ implemented Zigbee stack. A descriptor or packet builder by itself is not board 
 when mounting fails. WiFi credentials borrow runtime storage, while `BleEventQueue`
 makes callback capacity explicit. Each identity reports stable MTU, queue, and GATT
 limits. These contracts do not themselves implement association, IP sockets,
-or a BLE controller. A compile-only WiFiS3 bridge and a configuration-priced
-Arduino-ESP32 C3 backend exist under
+or a BLE controller. Configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3
+bindings exist under
 `wireless/wifi/arduino-wifis3` and `wireless/wifi/arduino-esp`. Their Arduino
 facades copy scan results into caller storage, borrow runtime credentials, and
 expose scan/join/leave/quiesce/recovery through the selected board package.
@@ -231,7 +231,10 @@ ESP32, ESP32-C3, and ESP32-S3; the UNO R4 facade delegates to WiFiS3. Both
 vendor stacks remain synchronous and heap-using internally, so a post-call
 deadline miss is not hard cancellation. The exact C3 backend has repeated
 association, DNS, TCP, and lifecycle evidence plus a complete fixed/runtime
-price for four HTTP transactions/s. Other rates, boards, socket workloads,
+price for four HTTP transactions/s. The exact UNO R4/WiFiS3 0.6.0 binding
+has the same lifecycle/data-plane evidence plus an RA-side/controller-image
+price for one HTTP transaction/s; controller-internal runtime resources
+remain unpriced. Other rates, boards, firmware versions, socket workloads,
 and shared-radio/WiFi-BLE compositions remain independently unpromoted.
 Additive WiFi and BLE instances must not be replaced by one global wireless
 feature.
