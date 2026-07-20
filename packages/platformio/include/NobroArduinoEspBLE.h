@@ -39,6 +39,8 @@ public:
           advertising_(0),
           state_(NOBRO_STACK_DOWN),
           connected_(false),
+          advertising_active_(false),
+          advertising_config_failed_(false),
           queue_overflowed_(false),
           owns_global_stack_(false),
           last_call_us_(0),
@@ -107,6 +109,10 @@ public:
             last_call_us_ = static_cast<uint32_t>(micros() - started);
             return failMount();
         }
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        activeInstance() = this;
+        BLEDevice::setCustomGapHandler(bluedroidGapEvent);
+#endif
         server_ = BLEDevice::createServer();
         if (server_ == 0) {
             last_call_us_ = static_cast<uint32_t>(micros() - started);
@@ -180,10 +186,34 @@ public:
         scan_response.setName(localName());
 
         const uint32_t started = micros();
+        bool advertised = false;
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        /*
+         * Bluedroid configures raw advertising and scan-response data
+         * asynchronously. The bundled high-level setters return before those
+         * operations complete, and start() can otherwise race their GAP
+         * callbacks. Observe the package's custom GAP hook and do not report
+         * success until the controller confirms advertising started.
+         */
+        beginAdvertisingTransition();
         const bool configured =
             advertising_->setAdvertisementData(advertisement) &&
             advertising_->setScanResponseData(scan_response);
-        const bool advertised = configured && advertising_->start();
+        if (configured) {
+            advertising_->start();
+            const uint64_t budget = deadline_us - now_us;
+            const uint32_t bounded_budget =
+                budget > UINT32_MAX
+                    ? UINT32_MAX
+                    : static_cast<uint32_t>(budget);
+            advertised = awaitAdvertising(true, bounded_budget);
+        }
+#elif defined(CONFIG_NIMBLE_ENABLED)
+        const bool configured =
+            advertising_->setAdvertisementData(advertisement) &&
+            advertising_->setScanResponseData(scan_response);
+        advertised = configured && advertising_->start();
+#endif
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         if (static_cast<uint64_t>(last_call_us_) > deadline_us - now_us) {
             advertising_->stop();
@@ -201,9 +231,17 @@ public:
         if (state_ != NOBRO_STACK_READY || advertising_ == 0) {
             return NOBRO_STACK_NOT_READY;
         }
-        if (!advertising_->stop()) {
+        const bool stopped = advertising_->stop();
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        if ((!stopped && isAdvertisingActive()) ||
+            !awaitAdvertising(false, 1000000U)) {
             return fault();
         }
+#else
+        if (!stopped) {
+            return fault();
+        }
+#endif
         increment(diagnostics_.advertisement_stops);
         return NOBRO_STACK_OK;
     }
@@ -282,13 +320,31 @@ public:
         }
         if (state_ == NOBRO_STACK_READY && isConnected()) {
             const nobro_stack_result_t stopped = disconnect();
-            if (stopped != NOBRO_STACK_OK || !awaitDisconnected(1000000U)) {
+            if (stopped != NOBRO_STACK_OK) {
                 return fault();
             }
         }
+        /*
+         * Bluedroid invokes the application disconnect callback before it
+         * removes the peer and decrements BLEServer's connection count.
+         * Do not expose quiescence until both the facade event and the
+         * vendor server agree that the session is gone; otherwise an
+         * immediate remount can race stale GATT connection bookkeeping.
+         */
+        if (server_ != 0 && !awaitDisconnected(1000000U)) {
+            return fault();
+        }
         state_ = NOBRO_STACK_STARTING;
         if (advertising_ != 0) {
-            advertising_->stop();
+            const bool stopped = advertising_->stop();
+#if defined(CONFIG_BLUEDROID_ENABLED)
+            if ((!stopped && isAdvertisingActive()) ||
+                !awaitAdvertising(false, 1000000U)) {
+                return fault();
+            }
+#else
+            (void)stopped;
+#endif
         }
         resetEventState();
         state_ = NOBRO_STACK_QUIESCED;
@@ -341,6 +397,42 @@ private:
         return value;
     }
 
+#if defined(CONFIG_BLUEDROID_ENABLED)
+    static ArduinoEspBleStack *&activeInstance() {
+        static ArduinoEspBleStack *value = 0;
+        return value;
+    }
+
+    static void bluedroidGapEvent(esp_gap_ble_cb_event_t event,
+                                  esp_ble_gap_cb_param_t *param) {
+        ArduinoEspBleStack *instance = activeInstance();
+        if (instance != 0) {
+            instance->captureBluedroidGapEvent(event, param);
+        }
+    }
+
+    void captureBluedroidGapEvent(esp_gap_ble_cb_event_t event,
+                                  esp_ble_gap_cb_param_t *param) {
+        portENTER_CRITICAL(&mux_);
+        if (event == ESP_GAP_BLE_ADV_START_COMPLETE_EVT) {
+            advertising_active_ =
+                param->adv_start_cmpl.status == ESP_BT_STATUS_SUCCESS;
+        } else if (event == ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT) {
+            advertising_active_ = false;
+        } else if (event == ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT &&
+                   param->adv_data_raw_cmpl.status !=
+                       ESP_BT_STATUS_SUCCESS) {
+            advertising_config_failed_ = true;
+        } else if (
+            event == ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT &&
+            param->scan_rsp_data_raw_cmpl.status !=
+                ESP_BT_STATUS_SUCCESS) {
+            advertising_config_failed_ = true;
+        }
+        portEXIT_CRITICAL(&mux_);
+    }
+#endif
+
     static void clearEvent(nobro_ble_event_t &event) {
         event.kind = NOBRO_BLE_DISCONNECTED;
         event.connection_id = 0;
@@ -373,7 +465,39 @@ private:
 
     bool awaitDisconnected(uint32_t timeout_us) {
         const uint32_t started = micros();
-        while (isConnected()) {
+        while (isConnected() ||
+               (server_ != 0 && server_->getConnectedCount() != 0)) {
+            if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
+                return false;
+            }
+            delay(1);
+        }
+        return true;
+    }
+
+    void beginAdvertisingTransition() {
+        portENTER_CRITICAL(&mux_);
+        advertising_active_ = false;
+        advertising_config_failed_ = false;
+        portEXIT_CRITICAL(&mux_);
+    }
+
+    bool isAdvertisingActive() {
+        portENTER_CRITICAL(&mux_);
+        const bool value = advertising_active_;
+        portEXIT_CRITICAL(&mux_);
+        return value;
+    }
+
+    bool awaitAdvertising(bool expected, uint32_t timeout_us) {
+        const uint32_t started = micros();
+        while (isAdvertisingActive() != expected) {
+            portENTER_CRITICAL(&mux_);
+            const bool config_failed = advertising_config_failed_;
+            portEXIT_CRITICAL(&mux_);
+            if (config_failed) {
+                return false;
+            }
             if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
                 return false;
             }
@@ -416,14 +540,19 @@ private:
 
     void captureValue(nobro_ble_event_kind_t kind,
                       BLECharacteristic *characteristic) {
-        const String value = characteristic->getValue();
+        /*
+         * The bundled BLEValue already owns the callback-time bytes. Reading
+         * that storage directly avoids constructing another Arduino String in
+         * the vendor callback (and therefore avoids an avoidable heap
+         * allocation on both the Bluedroid and NimBLE paths).
+         */
+        const uint8_t *value = characteristic->getData();
+        const size_t vendor_length = characteristic->getLength();
         const size_t length =
-            value.length() < NOBRO_BLE_GATT_VALUE_MAX
-                ? value.length()
+            vendor_length < NOBRO_BLE_GATT_VALUE_MAX
+                ? vendor_length
                 : NOBRO_BLE_GATT_VALUE_MAX;
-        queueEvent(kind,
-                   reinterpret_cast<const uint8_t *>(value.c_str()),
-                   length);
+        queueEvent(kind, value, length);
     }
 
     void onConnect(BLEServer *) override {
@@ -436,6 +565,8 @@ private:
     void onDisconnect(BLEServer *) override {
         portENTER_CRITICAL(&mux_);
         connected_ = false;
+        advertising_active_ = false;
+        advertising_config_failed_ = false;
         portEXIT_CRITICAL(&mux_);
         queueEvent(NOBRO_BLE_DISCONNECTED);
     }
@@ -501,6 +632,12 @@ private:
         if (server_ != 0) {
             server_->setCallbacks(0);
         }
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        BLEDevice::setCustomGapHandler(0);
+        if (activeInstance() == this) {
+            activeInstance() = 0;
+        }
+#endif
         BLEDevice::deinit(false);
         resetPointers();
         resetEventState();
@@ -515,6 +652,12 @@ private:
         if (server_ != 0) {
             server_->setCallbacks(0);
         }
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        BLEDevice::setCustomGapHandler(0);
+        if (activeInstance() == this) {
+            activeInstance() = 0;
+        }
+#endif
         BLEDevice::deinit(false);
         resetPointers();
         resetEventState();
@@ -536,6 +679,8 @@ private:
     BLEAdvertising *advertising_;
     nobro_stack_state_t state_;
     bool connected_;
+    bool advertising_active_;
+    bool advertising_config_failed_;
     bool queue_overflowed_;
     bool owns_global_stack_;
     uint32_t last_call_us_;

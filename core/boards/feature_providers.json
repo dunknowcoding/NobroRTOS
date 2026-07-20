@@ -145,7 +145,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "ble",
       "limitations": [
-        "Exact UNO R4/ArduinoBLE and ESP32-C3/NimBLE bindings have physical GATT/lifecycle and WiFi coexistence evidence; classic ESP32, ESP32-S3, and other backends require separate physical evidence."
+        "Exact UNO R4/ArduinoBLE, ESP32-C3/NimBLE, and classic ESP32/Bluedroid bindings have physical GATT/lifecycle and WiFi coexistence evidence; ESP32-S3 and other backends require separate physical evidence."
       ]
     },
     {
@@ -238,7 +238,7 @@
       "limitations": [
         "The facade admits one process-wide BLE stack, one service, one read/write/notify characteristic, a four-event allocation-free callback ring, and 20-byte values.",
         "Arduino-ESP32 3.3.10 selects Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; the exact host remains visible in each binding.",
-        "Exact ESP32-C3 evidence covers eight NimBLE GATT/lifecycle cycles during admitted WiFi association, DNS, and TCP traffic, including a bounded five-cycle post-warmup heap plateau. Classic ESP32 and ESP32-S3 remain target-build-only."
+        "Exact classic ESP32 and ESP32-C3 evidence each covers two independent eight-cycle GATT/lifecycle campaigns during admitted WiFi association, DNS, and TCP traffic, including bounded five-cycle post-warmup heap plateaus. ESP32-S3 remains target-build-only."
       ]
     },
     {
@@ -374,7 +374,7 @@
       ],
       "limitations": [
         "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; one exact ESP32-C3 composition is priced and passed repeated isolated association, DNS, TCP, quiesce, and recovery.",
-        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources. One exact ESP32-C3 WiFi/BLE composition is separately priced; classic ESP32, ESP32-S3, other workloads, and other coexistence combinations remain unpriced."
+        "ESP-IDF owns process-wide radio, TCP/IP, event-loop, heap, and task resources. The ESP32-C3 WiFi/BLE composition has separately partitioned prices; classic ESP32 has a whole-composition WiFi/Bluedroid price but no separately priced wifi0 baseline. ESP32-S3, other workloads, and other coexistence combinations remain unpriced."
       ]
     },
     {
@@ -442,15 +442,60 @@
       "platform": "esp32",
       "composition": "arduino",
       "instance": "ble0",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence_gates": [
         "arduino-esp-ble-target-build"
       ],
-      "price_state": "unmeasured",
-      "limitations": [
-        "The pinned board package selects the Bluedroid host. Only target compilation and zero-disabled equality are established.",
-        "Physical GATT/lifecycle behavior and all vendor controller/host heap, task/stack, CPU, latency, and coexistence prices remain unmeasured."
-      ],
+      "workload": {
+        "namespace": "esp32-arduino-wifi-ble-gatt-http",
+        "configuration_words": [240, 4, 20, 8, 250000, 10, 2, 11, 4, 20, 100, 300, 8500],
+        "configuration_fingerprint": "8ef5f7224c27afd9",
+        "operations_per_second": 4
+      },
+      "measured_fixed_price": {
+        "flash_bytes": 1663227,
+        "static_ram_bytes": 79072,
+        "retained_heap_bytes": 153604,
+        "stack_bytes": 43124,
+        "vendor_reserved_ram_bytes": 0,
+        "worker_threads": 8,
+        "interrupt_slots": 0,
+        "dma_channels": 0,
+        "controller_firmware_bytes": 0,
+        "peripheral_channels": 0
+      },
+      "fixed_price_provenance": {
+        "flash_bytes": "measured",
+        "static_ram_bytes": "measured",
+        "retained_heap_bytes": "measured",
+        "stack_bytes": "measured",
+        "vendor_reserved_ram_bytes": "source-derived",
+        "worker_threads": "measured",
+        "interrupt_slots": "source-derived",
+        "dma_channels": "source-derived",
+        "controller_firmware_bytes": "source-derived",
+        "peripheral_channels": "source-derived"
+      },
+      "measured_runtime_price": {
+        "transient_heap_peak_bytes": 18656,
+        "stack_high_water_bytes": 17528,
+        "cpu_cycles_per_second": 34200363,
+        "latency_p99_cycles": 47247480,
+        "latency_max_cycles": 68852952
+      },
+      "runtime_price_provenance": {
+        "transient_heap_peak_bytes": "measured",
+        "stack_high_water_bytes": "measured",
+        "cpu_cycles_per_second": "measured",
+        "latency_p99_cycles": "measured",
+        "latency_max_cycles": "measured"
+      },
+      "coexistence": {
+        "leases": ["esp32-shared-radio"],
+        "exclusive_resources": ["ble-controller"],
+        "compatible_instances": ["wifi0"],
+        "core_affinity": ["cpu0", "cpu1"]
+      },
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",
         "feature": "nobro-esp-ble-disabled",
@@ -468,6 +513,11 @@
         "provider_id": "ble_link",
         "status_field": "esp32_ble0",
         "evidence_gate": "arduino-esp-ble-target-build"
+      },
+      "price_basis": {
+        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 at 240 MHz",
+        "fixed": "whole measured classic-ESP32 WiFi-plus-Bluedroid composition; no BLE-only increment is inferred because an exact separately priced classic-ESP32 wifi0 baseline is not yet available",
+        "runtime": "conservative maxima across two independent eight-cycle state-restoring campaigns at four HTTP operations per second; latency is Windows-central GATT write-to-notification and the measured CPU/heap/task/stack values cover the whole admitted composition"
       }
     },
     {

@@ -97,8 +97,10 @@ an external BLE library: Arduino-ESP32 3.3.10 supplies Bluedroid on classic
 ESP32 and NimBLE on ESP32-C3/S3. All three target profiles have exact
 zero-disabled and enabled-build gates. The exact ESP32-C3 binding also has an
 eight-cycle physical GATT/quiesce/recovery campaign during admitted WiFi
-DNS/TCP traffic and a workload-scoped incremental price. Classic ESP32,
-ESP32-S3, and other compositions remain compile-only and unpriced.
+DNS/TCP traffic and a workload-scoped incremental price. The exact classic
+ESP32 Bluedroid binding has two independent eight-cycle campaigns and a
+conservative whole WiFi+BLE composition price; it is not a BLE-only increment.
+ESP32-S3 and other compositions remain compile-only and unpriced.
 
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade

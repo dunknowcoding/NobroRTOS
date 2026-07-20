@@ -444,7 +444,7 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "Classic ESP32 uses Bluedroid; ESP32-C3/S3 use NimBLE. Exact physical GATT/lifecycle/WiFi coexistence and scoped incremental pricing are established only for ESP32-C3.",
+        "Classic ESP32 uses Bluedroid; ESP32-C3/S3 use NimBLE. Exact physical GATT/lifecycle/WiFi coexistence is established for classic ESP32 and ESP32-C3. C3 has a scoped BLE increment; classic ESP32 has an honest whole-composition price because its wifi0 baseline is not separately priced.",
         "One-service, one-characteristic, four-event fixed-ring peripheral contract over the BLE library bundled with Arduino-ESP32 3.3.10."
       ]
     },
@@ -715,7 +715,7 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "Target builds cover Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; exact physical and price claims are limited to the ESP32-C3 WiFi-coexistence workload.",
+        "Target builds cover Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3. Exact physical WiFi-coexistence claims cover classic ESP32 and ESP32-C3; C3 has an incremental BLE price, while classic ESP32 has a whole-composition price only.",
         "The installed board package owns the process-wide ESP-IDF BLE host, controller, tasks, callbacks, and heap."
       ]
     },

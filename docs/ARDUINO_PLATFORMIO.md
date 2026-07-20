@@ -82,8 +82,11 @@ ESP32-C3/S3. `NOBRO_ESP_BLE_DISABLED` is byte-identical to the same-target
 baseline for all three, and enabled images target-build. The exact ESP32-C3
 binding additionally passed eight physical GATT/quiesce/recovery cycles while
 the admitted WiFi station performed DNS and TCP traffic; its incremental
-resource price is scoped to that composition. Classic ESP32, ESP32-S3, and
-other workloads remain target-build-only.
+resource price is scoped to that composition. The exact classic ESP32
+Bluedroid binding passed two independent eight-cycle campaigns under the same
+kind of WiFi traffic and has a conservative whole-composition price; it is not
+presented as a BLE-only increment because classic wifi0 is not separately
+priced. ESP32-S3 and other workloads remain target-build-only.
 
 ## PlatformIO
 

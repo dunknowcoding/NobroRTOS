@@ -10,9 +10,9 @@ remain independently selectable members exposed through small Nobro facades.
 | WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3 station bindings |
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
-| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus physically verified UNO R4 ArduinoBLE and exact ESP32-C3 NimBLE bindings |
+| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus physically verified UNO R4 ArduinoBLE, ESP32-C3 NimBLE, and classic ESP32 Bluedroid bindings |
 | ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
-| Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; exact C3 NimBLE GATT/lifecycle/WiFi coexistence and incremental price; classic ESP32/S3 physical prices open |
+| Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; exact C3 NimBLE and classic ESP32 Bluedroid GATT/lifecycle/WiFi coexistence; C3 incremental price, classic whole-composition price, S3 physical price open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
 | NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
@@ -100,6 +100,19 @@ four-HTTP-operations/s WiFi workload, the conservative BLE increment is
 peak was observed. Windows-central GATT write-to-notification latency is priced
 at 26,824,448 cycles p99 and 35,823,264 cycles maximum. These values do not
 transfer to classic ESP32, ESP32-S3, other rates, or other compositions.
+
+The classic ESP32 Bluedroid composition also passed two independent
+eight-cycle preflights with the same 160 HTTP operations, 80 GATT writes,
+16 reads, 88 notifications, bounded five-cycle post-warmup heap plateau, and
+exact restoration. Bluedroid advertising start/stop is asynchronous, so the
+facade now waits for the installed package's GAP completion events and for
+vendor connection bookkeeping to drain before exposing quiescence. Conservative
+whole-composition maxima are 1,663,227 B flash, 79,072 B static RAM,
+153,604 B retained heap, 43,124 B reserved worker stacks, eight workers,
+18,656 B transient heap, 17,528 B stack high-water, and 34,200,363 cycles/s
+at 240 MHz. GATT write-to-notification latency is 47,247,480 cycles p99 and
+68,852,952 cycles maximum. This is not a BLE-only increment: a matching
+separately priced classic-ESP32 WiFi baseline remains open.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

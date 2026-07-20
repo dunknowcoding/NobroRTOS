@@ -269,7 +269,10 @@ four-event fixed ring; overflow returns `NOBRO_STACK_QUEUE_FULL`.
 `NOBRO_ESP_BLE_DISABLED` is zero-cost on all three target profiles. The exact
 ESP32-C3 binding has physical GATT, bounded quiesce/recovery, and admitted
 WiFi DNS/TCP coexistence evidence plus a workload-scoped incremental price.
-Classic ESP32, ESP32-S3, and other workloads retain target-build evidence only.
+The exact classic ESP32 Bluedroid binding has two independent eight-cycle
+physical campaigns and a conservative whole WiFi+BLE composition price; a
+standalone classic wifi0 price and BLE-only increment are not inferred.
+ESP32-S3 and other workloads retain target-build evidence only.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

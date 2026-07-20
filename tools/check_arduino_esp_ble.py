@@ -69,6 +69,39 @@ EXPECTED_C3_COEXISTENCE = {
     "compatible_instances": ["wifi0"],
     "core_affinity": ["cpu0"],
 }
+EXPECTED_ESP32_WORKLOAD = {
+    "namespace": "esp32-arduino-wifi-ble-gatt-http",
+    "configuration_words": [
+        240, 4, 20, 8, 250000, 10, 2, 11, 4, 20, 100, 300, 8500
+    ],
+    "configuration_fingerprint": "8ef5f7224c27afd9",
+    "operations_per_second": 4,
+}
+EXPECTED_ESP32_FIXED_PRICE = {
+    "flash_bytes": 1663227,
+    "static_ram_bytes": 79072,
+    "retained_heap_bytes": 153604,
+    "stack_bytes": 43124,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 8,
+    "interrupt_slots": 0,
+    "dma_channels": 0,
+    "controller_firmware_bytes": 0,
+    "peripheral_channels": 0,
+}
+EXPECTED_ESP32_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 18656,
+    "stack_high_water_bytes": 17528,
+    "cpu_cycles_per_second": 34200363,
+    "latency_p99_cycles": 47247480,
+    "latency_max_cycles": 68852952,
+}
+EXPECTED_ESP32_COEXISTENCE = {
+    "leases": ["esp32-shared-radio"],
+    "exclusive_resources": ["ble-controller"],
+    "compatible_instances": ["wifi0"],
+    "core_affinity": ["cpu0", "cpu1"],
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -272,7 +305,41 @@ def verify_metadata() -> None:
                 "evidence_gate": GATE_ID,
             }
         )
-        if platform == "esp32c3":
+        if platform == "esp32":
+            fixed_provenance = {
+                field: (
+                    "measured"
+                    if field
+                    in {
+                        "flash_bytes",
+                        "static_ram_bytes",
+                        "retained_heap_bytes",
+                        "stack_bytes",
+                        "worker_threads",
+                    }
+                    else "source-derived"
+                )
+                for field in EXPECTED_ESP32_FIXED_PRICE
+            }
+            priced_invalid = (
+                binding.get("maturity") != "implemented"
+                or binding.get("workload") != EXPECTED_ESP32_WORKLOAD
+                or binding.get("measured_fixed_price")
+                != EXPECTED_ESP32_FIXED_PRICE
+                or binding.get("fixed_price_provenance")
+                != fixed_provenance
+                or binding.get("measured_runtime_price")
+                != EXPECTED_ESP32_RUNTIME_PRICE
+                or binding.get("runtime_price_provenance")
+                != {
+                    field: "measured"
+                    for field in EXPECTED_ESP32_RUNTIME_PRICE
+                }
+                or binding.get("coexistence") != EXPECTED_ESP32_COEXISTENCE
+                or not binding.get("price_basis")
+                or "whole" not in binding["price_basis"].get("fixed", "")
+            )
+        elif platform == "esp32c3":
             provenance = {field: "measured" for field in EXPECTED_C3_RUNTIME_PRICE}
             fixed_provenance = {
                 field: (
@@ -382,6 +449,10 @@ def verify_metadata() -> None:
         "nobro_ble_event_t pending_events_[4]",
         "event_count_ == eventCapacity()",
         "BLEDevice::deinit(false)",
+        "BLEDevice::setCustomGapHandler(bluedroidGapEvent)",
+        "ESP_GAP_BLE_ADV_START_COMPLETE_EVT",
+        "advertising_config_failed_",
+        "characteristic->getData()",
         "vendorManagedHeap() const { return true; }",
         "vendorManagedTasks() const { return true; }",
         "globalController() const { return true; }",

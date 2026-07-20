@@ -39,7 +39,7 @@ hardware and are not inferred from software coefficients alone.
 | --- | --- | --- | --- |
 | Deep | nRF52840 | One native composition with implemented time, deadline, event, PWM, I2C, SPI, USB, and lease providers | Broader deep board families and physical USB fault/recovery evidence |
 | Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, a configuration-priced Arduino persistent ADC-DMA composition, and one exact priced NimBLE/WiFi-coexistence workload; ESP32-S3 has required native build/USB host evidence plus one exact Arduino full-duplex ES8311 audio binding at 16 kHz mono signed-16, while its other time/deadline/I2C/SPI/PWM paths remain experimental; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, native physical recovery evidence, calibrated ADC accuracy, other BLE/audio configurations, and unimplemented peripherals |
-| Core | ESP32, ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; classic ESP32 has a compile-only Arduino Bluedroid BLE composition, while ESP32-P4 has a configuration-priced Arduino persistent ADC-DMA composition | Physical/resource BLE evidence, native ESP32-P4 providers, and portable peripheral providers for the remaining core-tier targets |
+| Core | ESP32, ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; classic ESP32 has a physically verified and whole-composition-priced Arduino Bluedroid/WiFi workload, while ESP32-P4 has a configuration-priced Arduino persistent ADC-DMA composition | A separately priced classic-ESP32 WiFi baseline and BLE increment, physical ESP32-S3 BLE evidence, native ESP32-P4 providers, and portable peripheral providers for the remaining core-tier targets |
 
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs
@@ -113,7 +113,10 @@ leave, quiesce, and recovery evidence, and a complete RA-side/controller-image
 price. The pinned Arduino-ESP32 3.3.10 backend has C3 zero-disabled proof plus
 state-restoring association, DNS, TCP, leave, quiesce, and recovery evidence,
 and one exact no-debug C3 workload is completely configuration-priced at
-four HTTP transactions/s. Synchronous vendor calls and managed heap/tasks
+four HTTP transactions/s. Classic ESP32 additionally has two independent
+state-restoring Bluedroid GATT/lifecycle campaigns under admitted WiFi traffic
+and a conservative whole-composition price; no standalone WiFi baseline or
+BLE-only increment is inferred. Synchronous vendor calls and managed heap/tasks
 still prevent Nobro from claiming hard cancellation or allocation-free
 operation. The pinned controller artifact establishes 1,180,064 B application
 flash / 64,628 B static RAM and 22,288 B / three-task source minima, but its

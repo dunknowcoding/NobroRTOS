@@ -262,10 +262,13 @@ The facade exposes one global stack, service, read/write/notify
 characteristic, four-event fixed callback ring, and 20-byte values. Classic
 ESP32 keeps the package's Bluedroid host; ESP32-C3/S3 keep NimBLE. All three
 `NOBRO_ESP_BLE_DISABLED` builds equal their same-target baselines and enabled
-images compile. The exact ESP32-C3 binding additionally has repeated physical
-GATT, quiesce/recovery, and WiFi DNS/TCP coexistence evidence with a scoped
-incremental price. Classic ESP32, ESP32-S3, and other workloads still require
-their own physical evidence and prices.
+images compile. Exact classic ESP32 and ESP32-C3 bindings additionally have
+two independent eight-cycle physical GATT, quiesce/recovery, and WiFi DNS/TCP
+coexistence campaigns. C3 has a scoped incremental BLE price over its
+separately priced WiFi workload. Classic ESP32 publishes only the measured
+whole WiFi+Bluedroid composition because a matching standalone WiFi baseline
+is not yet priced. ESP32-S3 and other workloads still require their own
+physical evidence and prices.
 
 ## Relationship to the full NobroRTOS repository
 

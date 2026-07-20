@@ -538,7 +538,7 @@
       "arch": "xtensa",
       "tier": "core",
       "implementation_root": "packages/arduino",
-      "limitations": "Only the compile-only Arduino BLE composition is claimed; the target build does not establish physical GATT, lifecycle, resources, coexistence, or a native Rust provider tier.",
+      "limitations": "The Arduino Bluedroid composition has exact physical GATT/lifecycle/WiFi-coexistence evidence and a whole-composition resource price. A BLE-only increment, separately priced classic-ESP32 wifi0 binding, and native Rust provider tier remain open.",
       "compositions": {
         "arduino": {
           "surface": "arduino",
@@ -546,7 +546,7 @@
             "ble_link": {
               "maturity": "implemented",
               "evidence": ["arduino-esp-ble-target-build"],
-              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects Bluedroid; only the bounded facade, target build, and zero-disabled state are evidenced."
+              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects Bluedroid. Two independent eight-cycle state-restoring campaigns cover GATT read/write/notify, recovery, and concurrent WiFi DNS/TCP traffic; the published price covers that whole composition rather than an unevidenced BLE-only increment."
             }
           }
         }

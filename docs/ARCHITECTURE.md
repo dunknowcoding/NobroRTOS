@@ -816,10 +816,13 @@ Implemented today in `nobro-wireless`:
   Bluedroid host; ESP32-C3/S3 keep NimBLE. The facade bounds callbacks to a
   four-event fixed ring and reports overflow rather than allocating a Nobro
   queue. All three disabled targets equal their baselines and all three
-  enabled targets compile. The exact ESP32-C3 binding also has eight physical
-  GATT/quiesce/recovery cycles during admitted WiFi DNS/TCP traffic, a bounded
-  post-warmup heap plateau, and a composition-scoped incremental price.
-  Classic ESP32, ESP32-S3, and other workloads remain open.
+  enabled targets compile. Exact ESP32-C3 and classic ESP32 bindings each have
+  two independent eight-cycle physical GATT/quiesce/recovery campaigns during
+  admitted WiFi DNS/TCP traffic and bounded post-warmup heap plateaus. C3 has
+  a composition-scoped incremental BLE price over its separately priced WiFi
+  binding; classic ESP32 has a whole-composition price only because its
+  standalone WiFi baseline is not separately priced. ESP32-S3 and other
+  workloads remain open.
 
 Additional WiFi backends/workloads, BLE physical/resource closure, Zigbee
 co-processor lifecycle, shared-radio arbitration, and prices for unmeasured
