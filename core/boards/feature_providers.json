@@ -218,6 +218,29 @@
       ]
     },
     {
+      "id": "backend-ble-arduino-esp",
+      "capability_kind": "ble_link",
+      "stack_family": "ble",
+      "adapter_component_id": "adapter-wireless-ble-arduino-esp",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "provenance_id": "source-arduino-esp32",
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "The facade admits one process-wide BLE stack, one service, one read/write/notify characteristic, one pending event, and 20-byte values.",
+        "Arduino-ESP32 3.3.10 selects Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; the exact host remains visible in each binding.",
+        "Target builds and zero-disabled evidence do not establish physical GATT, lifecycle recovery, heap, task/stack, CPU, radio-coexistence, or latency behavior."
+      ]
+    },
+    {
       "id": "backend-audio-esp32s3-es8311",
       "capability_kind": "audio_i2s",
       "stack_family": "audio-i2s",
@@ -409,6 +432,111 @@
         "provider_id": "ble_link",
         "status_field": "ra4m1_ble0",
         "evidence_gate": "arduino-ble-unor4-target-build"
+      }
+    },
+    {
+      "id": "binding-ble-arduino-esp-esp32",
+      "backend_id": "backend-ble-arduino-esp",
+      "capability_kind": "ble_link",
+      "platform": "esp32",
+      "composition": "arduino",
+      "instance": "ble0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-esp-ble-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "The pinned board package selects the Bluedroid host. Only target compilation and zero-disabled equality are established.",
+        "Physical GATT/lifecycle behavior and all vendor controller/host heap, task/stack, CPU, latency, and coexistence prices remain unmeasured."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp-ble-disabled",
+        "forbidden_symbols": [
+          "ArduinoEspBleStack",
+          "BLEDevice",
+          "BLEServer",
+          "esp_bluedroid_init",
+          "nimble_port_init"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "ble_link",
+        "status_field": "esp32_ble0",
+        "evidence_gate": "arduino-esp-ble-target-build"
+      }
+    },
+    {
+      "id": "binding-ble-arduino-esp-esp32c3",
+      "backend_id": "backend-ble-arduino-esp",
+      "capability_kind": "ble_link",
+      "platform": "esp32c3",
+      "composition": "arduino",
+      "instance": "ble0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-esp-ble-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "The pinned board package selects the NimBLE host. Only target compilation and zero-disabled equality are established.",
+        "Physical GATT/lifecycle behavior and all vendor controller/host heap, task/stack, CPU, latency, and WiFi coexistence prices remain unmeasured."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp-ble-disabled",
+        "forbidden_symbols": [
+          "ArduinoEspBleStack",
+          "BLEDevice",
+          "BLEServer",
+          "esp_bluedroid_init",
+          "nimble_port_init"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "ble_link",
+        "status_field": "esp32c3_ble0",
+        "evidence_gate": "arduino-esp-ble-target-build"
+      }
+    },
+    {
+      "id": "binding-ble-arduino-esp-esp32s3",
+      "backend_id": "backend-ble-arduino-esp",
+      "capability_kind": "ble_link",
+      "platform": "esp32s3",
+      "composition": "arduino",
+      "instance": "ble0",
+      "maturity": "compile-only",
+      "evidence_gates": [
+        "arduino-esp-ble-target-build"
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "The pinned board package selects the NimBLE host. Only target compilation and zero-disabled equality are established.",
+        "Physical GATT/lifecycle behavior and all vendor controller/host heap, task/stack, CPU, latency, WiFi/audio/camera coexistence prices remain unmeasured."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp-ble-disabled",
+        "forbidden_symbols": [
+          "ArduinoEspBleStack",
+          "BLEDevice",
+          "BLEServer",
+          "esp_bluedroid_init",
+          "nimble_port_init"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "ble_link",
+        "status_field": "esp32s3_ble0",
+        "evidence_gate": "arduino-esp-ble-target-build"
       }
     },
     {

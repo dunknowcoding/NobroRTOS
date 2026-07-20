@@ -427,6 +427,27 @@
       ]
     },
     {
+      "id": "adapter-wireless-ble-arduino-esp",
+      "name": "arduino-esp",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/ble/arduino-esp",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "Classic ESP32 uses Bluedroid; ESP32-C3/S3 use NimBLE. Physical behavior and complete resource/coexistence prices remain unverified.",
+        "One-service, one-characteristic, one-event-slot peripheral contract over the BLE library bundled with Arduino-ESP32 3.3.10."
+      ]
+    },
+    {
       "id": "adapter-wireless-radio-comms",
       "name": "radio-comms",
       "kind": "adapter",
@@ -673,6 +694,27 @@
       "limitations": [
         "Physical evidence is exact to UNO R4, ArduinoBLE 2.1.0, and controller firmware 0.6.0; controller flash/static RAM and minimum persistent task stacks are pinned, while complete controller runtime pricing remains open.",
         "The library owns process-wide HCI/GATT state and dynamic allocation. The facade repairs ArduinoBLE 2.1.0's missing UNO R4 HCIEND and cleared-service retain for bounded recovery."
+      ]
+    },
+    {
+      "id": "library-arduino-esp-ble",
+      "name": "Arduino-ESP32 BLE",
+      "kind": "library",
+      "provenance_id": "source-arduino-esp32",
+      "facade": "packages/arduino/src/NobroArduinoEspBLE.h",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": [
+        "target-build"
+      ],
+      "supported_targets": [
+        "esp32:esp32:esp32",
+        "esp32:esp32:esp32c3",
+        "esp32:esp32:esp32s3"
+      ],
+      "limitations": [
+        "Target builds cover Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; no physical or price claim follows from compilation.",
+        "The installed board package owns the process-wide ESP-IDF BLE host, controller, tasks, callbacks, and heap."
       ]
     },
     {
@@ -1099,10 +1141,12 @@
       ],
       "component_ids": [
         "adapter-wireless-ble-arduino-ble",
+        "adapter-wireless-ble-arduino-esp",
         "adapter-wireless-radio-comms",
         "adapter-wireless-wifi-arduino-esp",
         "adapter-wireless-wifi-arduino-wifis3",
         "library-arduino-ble",
+        "library-arduino-esp-ble",
         "library-arduino-esp-wifi",
         "library-arduino-wifis3",
         "library-niusthread",

@@ -39,7 +39,7 @@ hardware and are not inferred from software coefficients alone.
 | --- | --- | --- | --- |
 | Deep | nRF52840 | One native composition with implemented time, deadline, event, PWM, I2C, SPI, USB, and lease providers | Broader deep board families and physical USB fault/recovery evidence |
 | Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, and a separate configuration-priced Arduino persistent ADC-DMA composition; ESP32-S3 has required native build/USB host evidence plus one exact Arduino full-duplex ES8311 audio binding at 16 kHz mono signed-16, while its other time/deadline/I2C/SPI/PWM paths remain experimental; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, native physical recovery evidence, calibrated ADC accuracy, other audio configurations, and unimplemented peripherals |
-| Core | ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; ESP32-P4 additionally has a configuration-priced Arduino persistent ADC-DMA composition | Native ESP32-P4 providers and portable peripheral providers for the remaining core-tier targets |
+| Core | ESP32, ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; classic ESP32 has a compile-only Arduino Bluedroid BLE composition, while ESP32-P4 has a configuration-priced Arduino persistent ADC-DMA composition | Physical/resource BLE evidence, native ESP32-P4 providers, and portable peripheral providers for the remaining core-tier targets |
 
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs

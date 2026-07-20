@@ -92,6 +92,12 @@ and exact C3 association/DNS/TCP/lifecycle evidence are present. One no-debug
 C3 workload is completely priced at four HTTP transactions/s; other targets,
 rates, socket workloads, and WiFi/BLE coexistence require separate evidence.
 
+ESP32-family projects may also include `NobroArduinoEspBLE.h` without adding
+an external BLE library: Arduino-ESP32 3.3.10 supplies Bluedroid on classic
+ESP32 and NimBLE on ESP32-C3/S3. All three target profiles have exact
+zero-disabled and enabled-build gates. Physical GATT/lifecycle behavior and
+complete resource/coexistence prices remain unmeasured.
+
 The selected PlatformIO platform/framework owns upload settings, bootloaders,
 USB mode, pin routing, interrupts, and peripheral drivers. The C++ facade
 validates a bounded declaration; native execution and target evidence remain in

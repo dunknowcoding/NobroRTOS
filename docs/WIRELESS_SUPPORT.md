@@ -12,6 +12,7 @@ remain independently selectable members exposed through small Nobro facades.
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus a physically verified, still-unpriced UNO R4 ArduinoBLE binding |
 | ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
+| Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; Bluedroid on ESP32, NimBLE on C3/S3; physical behavior and prices open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
 | NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
@@ -78,6 +79,17 @@ runtime price is 6,431,243 cycles/s with 11,243,200-cycle p99 and
 16,704,480-cycle maximum transaction latency at 160 MHz. ESP-IDF still owns
 the radio, event loop, TCP/IP objects, heap, and tasks. Other rates, boards,
 socket workloads, and WiFi/BLE coexistence remain separate evidence.
+
+The Arduino-ESP32 BLE facade uses the `BLE` library already bundled with that
+same pinned board package. It does not add or prefer an external NimBLE
+library: the package selects Bluedroid for classic ESP32 and NimBLE for
+ESP32-C3/S3. One facade bounds the consumer surface to one service, one
+read/write/notify characteristic, one pending event, and 20-byte values while
+retaining the selected vendor host in each exact binding. ESP32, C3, and S3
+baseline/disabled images are byte-identical, enabled target builds retain only
+their expected host, and queue overflow is explicit. These are compilation
+and link-map facts, not physical GATT, recovery, heap, task/stack, CPU,
+latency, or WiFi/audio/camera coexistence evidence.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

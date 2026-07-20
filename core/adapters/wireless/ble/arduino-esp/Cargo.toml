@@ -1,0 +1,10 @@
+[package]
+name = "nobro-adapter-wireless-ble-arduino-esp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NobroRTOS identity contract for the Arduino-ESP32 BLE library"
+publish = false
+
+[dependencies]
+nobro-wireless = { path = "../../../../crates/nobro_wireless" }

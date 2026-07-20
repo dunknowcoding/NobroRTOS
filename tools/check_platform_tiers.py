@@ -1163,6 +1163,17 @@ def selftest() -> int:
                 _quiet_call(
                     execute_gate,
                     good,
+                    "arduino-esp-ble-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino ESP BLE gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
                     "esp32-arduino-peripheral-target-build",
                     receipt_root,
                     source_root,

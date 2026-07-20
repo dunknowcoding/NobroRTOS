@@ -234,6 +234,7 @@ jobs:
           python tools/check_platform_tiers.py --run-gate arduino-wifis3-target-build
           python tools/check_platform_tiers.py --run-gate arduino-ble-unor4-target-build
           python tools/check_platform_tiers.py --run-gate arduino-esp-wifi-target-build
+          python tools/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
           python tools/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
           python tools/check_platform_tiers.py --assert-receipts arduino-package

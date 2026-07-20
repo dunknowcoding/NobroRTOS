@@ -261,6 +261,15 @@ complete task/stack reservations, and CPU are not measured, the binding
 remains explicitly unpriced and does not claim
 preemptible GATT service during a blocking modem call.
 
+The second concrete bridge is `wireless/ble/arduino-esp` with
+`NobroArduinoEspBLE.h`. It uses the BLE library bundled with
+Arduino-ESP32 3.3.10: classic ESP32 selects Bluedroid and ESP32-C3/S3 select
+NimBLE. The facade keeps one process-wide stack, service, characteristic, and
+fixed pending event; overflow returns `NOBRO_STACK_QUEUE_FULL`.
+`NOBRO_ESP_BLE_DISABLED` is zero-cost on all three target profiles. Current
+evidence is host contract plus target build only, so physical lifecycle and
+all vendor resource/coexistence dimensions remain unmeasured.
+
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and
 `Mfrc522<S>` provides bounded request, anticollision, UID polling, and a

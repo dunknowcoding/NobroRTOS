@@ -811,11 +811,17 @@ Implemented today in `nobro-wireless`:
   and a connected subscribed link across WiFiS3 DNS/TCP traffic. Synchronous
   modem calls still serialize RA-side servicing; controller retained/transient
   heap, complete task/stack reservations, and CPU pricing remain open.
+- `wireless/ble/arduino-esp` and `NobroArduinoEspBLE.h` reuse the BLE library
+  bundled with Arduino-ESP32 3.3.10. Classic ESP32 keeps the package-selected
+  Bluedroid host; ESP32-C3/S3 keep NimBLE. The facade bounds callbacks to one
+  fixed pending event and reports overflow rather than allocating a Nobro
+  queue. All three disabled targets equal their baselines and all three
+  enabled targets compile, but physical GATT/lifecycle behavior and complete
+  resource/coexistence prices remain open.
 
-Additional WiFi backends/workloads, UNO R4 controller-internal runtime
-accounting, other BLE controller/GATT bindings, Zigbee co-processor lifecycle,
-shared-radio arbitration, and prices for unmeasured compositions remain
-future work.
+Additional WiFi backends/workloads, BLE physical/resource closure, Zigbee
+co-processor lifecycle, shared-radio arbitration, and prices for unmeasured
+compositions remain future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link
 crate. Each logical instance selects exactly one backend, while WiFi and BLE instances
 may coexist when board composition explicitly admits shared memory, interrupts,

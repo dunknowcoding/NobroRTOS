@@ -75,6 +75,14 @@ a complete fixed/runtime resource price. ESP-IDF heap/task ownership remains
 vendor managed; other workloads, boards, and WiFi/BLE coexistence need their
 own prices.
 
+The same installed package supplies its official `BLE` library through
+`NobroArduinoEspBLE.h`; no separate NimBLE dependency is required. The
+3.3.10 board configuration selects Bluedroid on classic ESP32 and NimBLE on
+ESP32-C3/S3. `NOBRO_ESP_BLE_DISABLED` is byte-identical to the same-target
+baseline for all three, and enabled images target-build. The current binding
+is compile-only: physical GATT, recovery, vendor resources, and coexistence
+are not inferred.
+
 ## PlatformIO
 
 ```ini

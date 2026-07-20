@@ -35,6 +35,7 @@ members = [
     "adapters/ai/nn-motion-ai",
     "adapters/wireless/radio-comms",
     "adapters/wireless/ble/arduino-ble",
+    "adapters/wireless/ble/arduino-esp",
     "adapters/wireless/wifi/arduino-esp",
     "adapters/wireless/wifi/arduino-wifis3",
     "adapters/power/ina3221",

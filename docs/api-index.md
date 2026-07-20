@@ -91,6 +91,9 @@ Bounded bridge for ArduinoBLE peripheral stacks.
 - **enum**: `TransportError`
 - **fn**: `into_inner`
 
+## `nobro-adapter-wireless-ble-arduino-esp`
+- **enum**: `ArduinoEspTarget`, `VendorHost`
+
 ## `nobro-adapter-radio-comms`
 Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **struct**: `RadioComms`

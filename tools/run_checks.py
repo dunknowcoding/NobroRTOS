@@ -165,6 +165,8 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
         ("ArduinoBLE UNO R4 integrations",
          [py, "tools/check_arduino_ble_integrations.py"], ROOT),
+        ("Arduino-ESP32 BLE integrations",
+         [py, "tools/check_arduino_esp_ble.py"], ROOT),
         ("audio facade contracts", [py, "tools/check_audio_facade.py"], ROOT),
         ("ESP32 peripheral facade contracts",
          [py, "tools/check_esp32_peripheral_facade.py"], ROOT),

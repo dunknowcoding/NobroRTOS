@@ -443,6 +443,30 @@
         }
       ]
     },
+    "arduino-esp-ble-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_arduino_esp_ble.py"],
+      "claim_scopes": [
+        {
+          "platform": "esp32",
+          "composition": "arduino",
+          "capabilities": ["ble_link"]
+        },
+        {
+          "platform": "esp32c3",
+          "composition": "arduino",
+          "capabilities": ["ble_link"]
+        },
+        {
+          "platform": "esp32s3",
+          "composition": "arduino",
+          "capabilities": ["ble_link"]
+        }
+      ]
+    },
     "arduino-nrf52840-compile": {
       "kind": "target-build",
       "runner": "arduino-nrf-package",
@@ -510,6 +534,24 @@
         }
       }
     },
+    "esp32": {
+      "arch": "xtensa",
+      "tier": "core",
+      "implementation_root": "packages/arduino",
+      "limitations": "Only the compile-only Arduino BLE composition is claimed; the target build does not establish physical GATT, lifecycle, resources, coexistence, or a native Rust provider tier.",
+      "compositions": {
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "ble_link": {
+              "maturity": "implemented",
+              "evidence": ["arduino-esp-ble-target-build"],
+              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects Bluedroid; only the bounded facade, target build, and zero-disabled state are evidenced."
+            }
+          }
+        }
+      }
+    },
     "esp32c3": {
       "arch": "riscv32imc",
       "tier": "provider",
@@ -530,6 +572,11 @@
               "maturity": "experimental",
               "evidence": ["esp32-arduino-peripheral-target-build"],
               "limitations": "The exact persistent-buffer binding is configuration-specific; calibrated accuracy remains unverified."
+            },
+            "ble_link": {
+              "maturity": "implemented",
+              "evidence": ["arduino-esp-ble-target-build"],
+              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE; only the bounded facade, target build, and zero-disabled state are evidenced."
             },
             "wifi_link": {
               "maturity": "implemented",
@@ -587,6 +634,11 @@
               "maturity": "experimental",
               "evidence": ["esp32s3-arduino-audio-target-build"],
               "limitations": "Exact only for 16 kHz mono signed-16 full-duplex ES8311 audio with 192-byte frames, two queue slots, and 100 transfers per second."
+            },
+            "ble_link": {
+              "maturity": "implemented",
+              "evidence": ["arduino-esp-ble-target-build"],
+              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE; only the bounded facade, target build, and zero-disabled state are evidenced."
             }
           }
         }

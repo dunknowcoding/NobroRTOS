@@ -67,3 +67,8 @@ or claim a complete shared-controller resource price.
 optional WiFi facade on ESP32, ESP32-C3, and ESP32-S3, proves the disabled C3
 composition is byte-identical to baseline, scans its link map for forbidden
 vendor symbols, and gates the complete price of one exact C3 workload.
+
+`check_arduino_esp_ble.py` uses the BLE library bundled with the pinned
+Arduino-ESP32 3.3.10 package, verifies Bluedroid on classic ESP32 and NimBLE
+on ESP32-C3/S3, compiles the bounded facade for all three targets, and proves
+that every disabled target is byte-identical to its same-target baseline.

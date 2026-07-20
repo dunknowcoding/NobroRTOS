@@ -25,6 +25,8 @@ Current contents:
   caller-owned events, provider disconnect, and explicit lifecycle.
 - `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
   pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
+- `src/NobroArduinoEspBLE.h` with one bounded BLE peripheral facade over the
+  board package's Bluedroid (ESP32) or NimBLE (ESP32-C3/S3) host.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
   UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
 
@@ -244,6 +246,24 @@ for four HTTP transactions/s; other workloads, ESP32-family targets, and
 WiFi/BLE coexistence are not inferred from it.
 Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove the facade and
 vendor WiFi symbols from that composition.
+
+## Arduino-ESP32 BLE peripheral
+
+Include the opt-in facade; the installed Arduino-ESP32 3.3.10 package already
+supplies the required BLE library:
+
+```cpp
+#include <NobroArduinoEspBLE.h>
+
+nobro::ArduinoEspBleStack ble;
+```
+
+The facade exposes one global stack, service, read/write/notify
+characteristic, fixed pending event, and 20-byte values. Classic ESP32 keeps
+the package's Bluedroid host; ESP32-C3/S3 keep NimBLE. All three
+`NOBRO_ESP_BLE_DISABLED` builds equal their same-target baselines and enabled
+images compile. Physical GATT/lifecycle behavior and vendor heap, tasks,
+stacks, CPU, latency, and coexistence remain unmeasured.
 
 ## Relationship to the full NobroRTOS repository
 
