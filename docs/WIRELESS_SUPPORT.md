@@ -10,9 +10,9 @@ remain independently selectable members exposed through small Nobro facades.
 | WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3 station bindings |
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
-| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus a physically verified, still-unpriced UNO R4 ArduinoBLE binding |
+| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus physically verified UNO R4 ArduinoBLE and exact ESP32-C3 NimBLE bindings |
 | ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
-| Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; Bluedroid on ESP32, NimBLE on C3/S3; physical behavior and prices open |
+| Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; exact C3 NimBLE GATT/lifecycle/WiFi coexistence and incremental price; classic ESP32/S3 physical prices open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
 | NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
@@ -78,18 +78,28 @@ active retained heap, 14,028 B transient heap, four worker tasks, and
 runtime price is 6,431,243 cycles/s with 11,243,200-cycle p99 and
 16,704,480-cycle maximum transaction latency at 160 MHz. ESP-IDF still owns
 the radio, event loop, TCP/IP objects, heap, and tasks. Other rates, boards,
-socket workloads, and WiFi/BLE coexistence remain separate evidence.
+socket workloads, and coexistence beyond the exact BLE composition below
+remain separate evidence.
 
 The Arduino-ESP32 BLE facade uses the `BLE` library already bundled with that
 same pinned board package. It does not add or prefer an external NimBLE
 library: the package selects Bluedroid for classic ESP32 and NimBLE for
 ESP32-C3/S3. One facade bounds the consumer surface to one service, one
-read/write/notify characteristic, one pending event, and 20-byte values while
+read/write/notify characteristic, a four-event fixed ring, and 20-byte values while
 retaining the selected vendor host in each exact binding. ESP32, C3, and S3
 baseline/disabled images are byte-identical, enabled target builds retain only
-their expected host, and queue overflow is explicit. These are compilation
-and link-map facts, not physical GATT, recovery, heap, task/stack, CPU,
-latency, or WiFi/audio/camera coexistence evidence.
+their expected host, and queue overflow is explicit.
+
+The exact ESP32-C3 composition passed two independent eight-cycle preflights:
+160 HTTP operations, 80 GATT writes, 16 reads, 88 notifications, bounded
+disconnect/quiesce/recovery, a five-cycle post-warmup heap plateau, and exact
+restoration of both participating flash images. Against the separately priced
+four-HTTP-operations/s WiFi workload, the conservative BLE increment is
+324,703 B flash, 21,276 B static RAM, 77,448 B retained heap, two workers,
+3,716 B stack high-water, and 4,156,381 cycles/s. No additional transient-heap
+peak was observed. Windows-central GATT write-to-notification latency is priced
+at 26,824,448 cycles p99 and 35,823,264 cycles maximum. These values do not
+transfer to classic ESP32, ESP32-S3, other rates, or other compositions.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

@@ -152,7 +152,7 @@ EXPECTED_RUNTIME_PROVENANCE = {
 EXPECTED_COEXISTENCE = {
     "leases": ["esp32c3-shared-radio"],
     "exclusive_resources": ["wifi-station-netif"],
-    "compatible_instances": [],
+    "compatible_instances": ["ble0"],
     "core_affinity": ["cpu0"],
 }
 EXPECTED_PRICE_BASIS = {
@@ -344,7 +344,10 @@ def verify_metadata() -> None:
         "WiFi.STA.begin(false)",
         "esp_wifi_scan_start(&config, true)",
         "esp_wifi_scan_get_ap_record(&record)",
-        "clearFailedAssociation()",
+        "startRuntimeStation()",
+        "clearRuntimeAssociation(startupCleanupUs())",
+        "clearRuntimeAssociation(failedCleanupUs())",
+        "WiFi.mode(WIFI_OFF)",
         "cleared != ESP_ERR_WIFI_STATE",
         "vendorManagedHeap() const { return true; }",
         "runtime-only",

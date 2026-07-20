@@ -265,10 +265,11 @@ The second concrete bridge is `wireless/ble/arduino-esp` with
 `NobroArduinoEspBLE.h`. It uses the BLE library bundled with
 Arduino-ESP32 3.3.10: classic ESP32 selects Bluedroid and ESP32-C3/S3 select
 NimBLE. The facade keeps one process-wide stack, service, characteristic, and
-fixed pending event; overflow returns `NOBRO_STACK_QUEUE_FULL`.
-`NOBRO_ESP_BLE_DISABLED` is zero-cost on all three target profiles. Current
-evidence is host contract plus target build only, so physical lifecycle and
-all vendor resource/coexistence dimensions remain unmeasured.
+four-event fixed ring; overflow returns `NOBRO_STACK_QUEUE_FULL`.
+`NOBRO_ESP_BLE_DISABLED` is zero-cost on all three target profiles. The exact
+ESP32-C3 binding has physical GATT, bounded quiesce/recovery, and admitted
+WiFi DNS/TCP coexistence evidence plus a workload-scoped incremental price.
+Classic ESP32, ESP32-S3, and other workloads retain target-build evidence only.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

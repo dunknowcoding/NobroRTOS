@@ -259,11 +259,13 @@ nobro::ArduinoEspBleStack ble;
 ```
 
 The facade exposes one global stack, service, read/write/notify
-characteristic, fixed pending event, and 20-byte values. Classic ESP32 keeps
-the package's Bluedroid host; ESP32-C3/S3 keep NimBLE. All three
+characteristic, four-event fixed callback ring, and 20-byte values. Classic
+ESP32 keeps the package's Bluedroid host; ESP32-C3/S3 keep NimBLE. All three
 `NOBRO_ESP_BLE_DISABLED` builds equal their same-target baselines and enabled
-images compile. Physical GATT/lifecycle behavior and vendor heap, tasks,
-stacks, CPU, latency, and coexistence remain unmeasured.
+images compile. The exact ESP32-C3 binding additionally has repeated physical
+GATT, quiesce/recovery, and WiFi DNS/TCP coexistence evidence with a scoped
+incremental price. Classic ESP32, ESP32-S3, and other workloads still require
+their own physical evidence and prices.
 
 ## Relationship to the full NobroRTOS repository
 

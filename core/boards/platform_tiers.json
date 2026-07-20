@@ -576,12 +576,12 @@
             "ble_link": {
               "maturity": "implemented",
               "evidence": ["arduino-esp-ble-target-build"],
-              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE; only the bounded facade, target build, and zero-disabled state are evidenced."
+              "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE. Three state-restoring physical cycles cover GATT read/write/notify and recovery during admitted WiFi DNS/TCP traffic; the price is scoped to that exact four-operations-per-second composition."
             },
             "wifi_link": {
               "maturity": "implemented",
               "evidence": ["arduino-esp-wifi-target-build"],
-              "limitations": "One exact pinned Arduino-ESP32 C3 station composition is configuration-priced at four HTTP transactions per second and has state-restoring association/DNS/TCP/lifecycle evidence. Other workloads, boards, and WiFi/BLE coexistence remain unverified."
+              "limitations": "One exact pinned Arduino-ESP32 C3 station composition is configuration-priced at four HTTP transactions per second and has state-restoring association/DNS/TCP/lifecycle evidence, including the separately priced NimBLE ble0 coexistence workload. Other workloads and boards remain unverified."
             }
           }
         }

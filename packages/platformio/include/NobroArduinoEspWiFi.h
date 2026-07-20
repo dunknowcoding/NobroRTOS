@@ -53,15 +53,17 @@ public:
         }
         state_ = NOBRO_STACK_STARTING;
         link_state_ = NOBRO_WIRELESS_DOWN;
-        WiFi.persistent(false);
         /*
          * Arduino-ESP32 mode(WIFI_STA) accepts the interface mode before the
          * station netif has necessarily emitted ESP_NETIF_STARTED_BIT.
          * STA.begin(false) performs the board-core-owned bounded readiness
          * wait. Skipping it can make an immediate esp_wifi_scan_start fail
-         * even though mode() returned true.
+         * even though mode() returned true. Starting the radio can also
+         * resume a board-package-owned association from an earlier config.
+         * Do not expose READY until that attempt is cancelled and the
+         * RAM-only station config is empty.
          */
-        if (!WiFi.mode(WIFI_STA) || !WiFi.STA.begin(false)) {
+        if (!startRuntimeStation()) {
             fault();
             return NOBRO_STACK_BACKEND_FAULT;
         }
@@ -178,6 +180,25 @@ public:
         link_state_ = NOBRO_WIRELESS_JOINING;
         WiFi.persistent(false);
         const uint32_t started = micros();
+        /*
+         * A prior failed association can still be in ESP-IDF's connecting
+         * state after Arduino reports WL_DISCONNECTED. Cancel it before
+         * WiFi.begin() applies this call's runtime credentials; otherwise
+         * Arduino-ESP32 rejects esp_wifi_set_config() with
+         * ESP_ERR_WIFI_STATE.
+         */
+        if (!clearRuntimeAssociation(failedCleanupUs())) {
+            fault();
+            return NOBRO_STACK_BACKEND_FAULT;
+        }
+        if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
+            last_call_us_ = static_cast<uint32_t>(micros() - started);
+            link_state_ = NOBRO_WIRELESS_DOWN;
+            state_ = NOBRO_STACK_READY;
+            increment(diagnostics_.join_failures);
+            increment(diagnostics_.deadline_misses);
+            return NOBRO_STACK_DEADLINE_ELAPSED;
+        }
         wl_status_t status =
             credentials.secret_len == 0 ? WiFi.begin(ssid) : WiFi.begin(ssid, secret);
         while (status != WL_CONNECTED &&
@@ -195,7 +216,7 @@ public:
             state_ = NOBRO_STACK_READY;
             return NOBRO_STACK_OK;
         }
-        if (!clearFailedAssociation()) {
+        if (!clearRuntimeAssociation(failedCleanupUs())) {
             fault();
             return NOBRO_STACK_BACKEND_FAULT;
         }
@@ -232,7 +253,7 @@ public:
             return NOBRO_STACK_NOT_READY;
         }
         const uint32_t started = micros();
-        const bool ok = WiFi.disconnect(false, true);
+        const bool ok = clearRuntimeAssociation(failedCleanupUs());
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         link_state_ = NOBRO_WIRELESS_DOWN;
         if (!ok) {
@@ -250,7 +271,10 @@ public:
             return NOBRO_STACK_OK;
         }
         const uint32_t started = micros();
-        const bool ok = WiFi.disconnect(true, true);
+        WiFi.persistent(false);
+        const bool ok =
+            clearRuntimeAssociation(failedCleanupUs()) &&
+            WiFi.mode(WIFI_OFF);
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         link_state_ = NOBRO_WIRELESS_DOWN;
         state_ = ok ? NOBRO_STACK_QUIESCED : NOBRO_STACK_FAULTED;
@@ -264,10 +288,7 @@ public:
     nobro_stack_result_t recover() {
         state_ = NOBRO_STACK_STARTING;
         const uint32_t started = micros();
-        WiFi.disconnect(true, true);
-        WiFi.persistent(false);
-        const bool ok =
-            WiFi.mode(WIFI_STA) && WiFi.STA.begin(false);
+        const bool ok = startRuntimeStation();
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         link_state_ = NOBRO_WIRELESS_DOWN;
         state_ = ok ? NOBRO_STACK_READY : NOBRO_STACK_FAULTED;
@@ -290,7 +311,14 @@ public:
 private:
     static uint32_t maxCallUs() { return 60000000UL; }
 
-    static bool clearFailedAssociation() {
+    static bool startRuntimeStation() {
+        WiFi.persistent(false);
+        return WiFi.mode(WIFI_STA) &&
+               WiFi.STA.begin(false) &&
+               clearRuntimeAssociation(startupCleanupUs());
+    }
+
+    static bool clearRuntimeAssociation(uint32_t timeout_us) {
         const esp_err_t disconnected = esp_wifi_disconnect();
         if (disconnected != ESP_OK &&
             disconnected != ESP_ERR_WIFI_NOT_CONNECT) {
@@ -298,11 +326,10 @@ private:
         }
 
         /*
-         * Arduino-ESP32 STA.disconnect(eraseap=true) can call
-         * esp_wifi_set_config() before an in-progress association has
-         * delivered its disconnect event. Retry only that transient
-         * ESP_ERR_WIFI_STATE case for a bounded interval. The board package
-         * is already configured for RAM-only WiFi storage by persistent(false).
+         * esp_wifi_disconnect() is asynchronous. Retry only the documented
+         * transient state rejection until its event completes. The board
+         * package is already configured for RAM-only WiFi storage by
+         * persistent(false), so this never erases owner NVS credentials.
          */
         wifi_config_t empty = {};
         const uint32_t started = micros();
@@ -317,10 +344,11 @@ private:
             }
             delay(1);
         } while (static_cast<uint32_t>(micros() - started) <
-                 failedCleanupUs());
+                 timeout_us);
         return false;
     }
 
+    static uint32_t startupCleanupUs() { return 2000000UL; }
     static uint32_t failedCleanupUs() { return 250000UL; }
 
     static bool validCredentials(const nobro_wifi_credentials_t &value) {

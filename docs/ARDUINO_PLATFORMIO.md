@@ -79,9 +79,11 @@ The same installed package supplies its official `BLE` library through
 `NobroArduinoEspBLE.h`; no separate NimBLE dependency is required. The
 3.3.10 board configuration selects Bluedroid on classic ESP32 and NimBLE on
 ESP32-C3/S3. `NOBRO_ESP_BLE_DISABLED` is byte-identical to the same-target
-baseline for all three, and enabled images target-build. The current binding
-is compile-only: physical GATT, recovery, vendor resources, and coexistence
-are not inferred.
+baseline for all three, and enabled images target-build. The exact ESP32-C3
+binding additionally passed eight physical GATT/quiesce/recovery cycles while
+the admitted WiFi station performed DNS and TCP traffic; its incremental
+resource price is scoped to that composition. Classic ESP32, ESP32-S3, and
+other workloads remain target-build-only.
 
 ## PlatformIO
 

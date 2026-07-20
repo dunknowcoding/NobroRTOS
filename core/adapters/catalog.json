@@ -432,9 +432,10 @@
       "kind": "adapter",
       "path": "core/adapters/wireless/ble/arduino-esp",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "host-test",
+        "physical",
         "target-build"
       ],
       "supported_targets": [
@@ -443,8 +444,8 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "Classic ESP32 uses Bluedroid; ESP32-C3/S3 use NimBLE. Physical behavior and complete resource/coexistence prices remain unverified.",
-        "One-service, one-characteristic, one-event-slot peripheral contract over the BLE library bundled with Arduino-ESP32 3.3.10."
+        "Classic ESP32 uses Bluedroid; ESP32-C3/S3 use NimBLE. Exact physical GATT/lifecycle/WiFi coexistence and scoped incremental pricing are established only for ESP32-C3.",
+        "One-service, one-characteristic, four-event fixed-ring peripheral contract over the BLE library bundled with Arduino-ESP32 3.3.10."
       ]
     },
     {
@@ -703,8 +704,9 @@
       "provenance_id": "source-arduino-esp32",
       "facade": "packages/arduino/src/NobroArduinoEspBLE.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "physical",
         "target-build"
       ],
       "supported_targets": [
@@ -713,7 +715,7 @@
         "esp32:esp32:esp32s3"
       ],
       "limitations": [
-        "Target builds cover Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; no physical or price claim follows from compilation.",
+        "Target builds cover Bluedroid on classic ESP32 and NimBLE on ESP32-C3/S3; exact physical and price claims are limited to the ESP32-C3 WiFi-coexistence workload.",
         "The installed board package owns the process-wide ESP-IDF BLE host, controller, tasks, callbacks, and heap."
       ]
     },

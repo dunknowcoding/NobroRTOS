@@ -36,6 +36,39 @@ FORBIDDEN_DISABLED = (
     "esp_bluedroid_init",
     "nimble_port_init",
 )
+EXPECTED_C3_WORKLOAD = {
+    "namespace": "esp32c3-arduino-wifi-ble-gatt-http",
+    "configuration_words": [
+        160, 4, 20, 8, 250000, 10, 2, 11, 4, 20, 100, 300, 8500
+    ],
+    "configuration_fingerprint": "af6cfa6df529484f",
+    "operations_per_second": 4,
+}
+EXPECTED_C3_FIXED_PRICE = {
+    "flash_bytes": 324703,
+    "static_ram_bytes": 21276,
+    "retained_heap_bytes": 77448,
+    "stack_bytes": 0,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 2,
+    "interrupt_slots": 0,
+    "dma_channels": 0,
+    "controller_firmware_bytes": 0,
+    "peripheral_channels": 0,
+}
+EXPECTED_C3_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 0,
+    "stack_high_water_bytes": 3716,
+    "cpu_cycles_per_second": 4156381,
+    "latency_p99_cycles": 26824448,
+    "latency_max_cycles": 35823264,
+}
+EXPECTED_C3_COEXISTENCE = {
+    "leases": ["esp32c3-shared-radio"],
+    "exclusive_resources": ["ble-controller"],
+    "compatible_instances": ["wifi0"],
+    "core_affinity": ["cpu0"],
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -204,8 +237,8 @@ def verify_metadata() -> None:
         backend.get("adapter_component_id") != COMPONENT_ID
         or backend.get("capability_kind") != "ble_link"
         or backend.get("stack_family") != "ble"
-        or backend.get("maturity") != "compile-only"
-        or backend.get("evidence") != ["host-test", "target-build"]
+        or backend.get("maturity") != "implemented"
+        or backend.get("evidence") != ["host-test", "physical", "target-build"]
         or backend.get("provenance_id") != SOURCE_ID
         or backend.get("supported_targets") != targets
         or not backend.get("limitations")
@@ -219,16 +252,13 @@ def verify_metadata() -> None:
             f"binding-ble-arduino-esp-{platform}",
             "binding",
         )
-        if (
+        common_invalid = (
             binding.get("backend_id") != BACKEND_ID
             or binding.get("capability_kind") != "ble_link"
             or binding.get("platform") != platform
             or binding.get("composition") != "arduino"
             or binding.get("instance") != "ble0"
-            or binding.get("maturity") != "compile-only"
             or binding.get("evidence_gates") != [GATE_ID]
-            or binding.get("price_state") != "unmeasured"
-            or host not in " ".join(binding.get("limitations", [])).lower()
             or set(
                 binding.get("disabled_symbol_gate", {}).get(
                     "forbidden_symbols", []
@@ -241,7 +271,43 @@ def verify_metadata() -> None:
                 "status_field": f"{platform}_ble0",
                 "evidence_gate": GATE_ID,
             }
-        ):
+        )
+        if platform == "esp32c3":
+            provenance = {field: "measured" for field in EXPECTED_C3_RUNTIME_PRICE}
+            fixed_provenance = {
+                field: (
+                    "measured"
+                    if field
+                    in {
+                        "flash_bytes",
+                        "static_ram_bytes",
+                        "retained_heap_bytes",
+                        "worker_threads",
+                    }
+                    else "source-derived"
+                )
+                for field in EXPECTED_C3_FIXED_PRICE
+            }
+            priced_invalid = (
+                binding.get("maturity") != "implemented"
+                or binding.get("workload") != EXPECTED_C3_WORKLOAD
+                or binding.get("measured_fixed_price")
+                != EXPECTED_C3_FIXED_PRICE
+                or binding.get("fixed_price_provenance")
+                != fixed_provenance
+                or binding.get("measured_runtime_price")
+                != EXPECTED_C3_RUNTIME_PRICE
+                or binding.get("runtime_price_provenance") != provenance
+                or binding.get("coexistence") != EXPECTED_C3_COEXISTENCE
+                or not binding.get("price_basis")
+            )
+        else:
+            priced_invalid = (
+                binding.get("maturity") != "compile-only"
+                or binding.get("price_state") != "unmeasured"
+                or host not in " ".join(binding.get("limitations", [])).lower()
+            )
+        if common_invalid or priced_invalid:
             raise RuntimeError(f"{platform} BLE binding is stale or falsely priced")
         expected_scopes.append(
             {
@@ -255,14 +321,15 @@ def verify_metadata() -> None:
     library = record(catalog["components"], LIBRARY_ID, "library")
     if (
         component.get("path") != "core/adapters/wireless/ble/arduino-esp"
-        or component.get("maturity") != "compile-only"
-        or component.get("evidence") != ["host-test", "target-build"]
+        or component.get("maturity") != "implemented"
+        or component.get("evidence")
+        != ["host-test", "physical", "target-build"]
         or component.get("supported_targets") != targets
         or library.get("facade")
         != "packages/arduino/src/NobroArduinoEspBLE.h"
         or library.get("provenance_id") != SOURCE_ID
-        or library.get("maturity") != "compile-only"
-        or library.get("evidence") != ["target-build"]
+        or library.get("maturity") != "implemented"
+        or library.get("evidence") != ["physical", "target-build"]
         or library.get("supported_targets") != targets
     ):
         raise RuntimeError("Arduino-ESP32 BLE catalog relationship is stale")
@@ -305,6 +372,15 @@ def verify_metadata() -> None:
         "CONFIG_BLUEDROID_ENABLED",
         "CONFIG_NIMBLE_ENABLED",
         "NOBRO_STACK_QUEUE_FULL",
+        "#include <BLE2902.h>",
+        "#if defined(CONFIG_BLUEDROID_ENABLED)",
+        "descriptor_ = new BLE2902()",
+        "characteristic_->addDescriptor(descriptor_)",
+        "awaitDisconnected(1000000U)",
+        "resetGattValue()",
+        "resetVendorStack()",
+        "nobro_ble_event_t pending_events_[4]",
+        "event_count_ == eventCapacity()",
         "BLEDevice::deinit(false)",
         "vendorManagedHeap() const { return true; }",
         "vendorManagedTasks() const { return true; }",

@@ -10,6 +10,7 @@
 #endif
 
 #include <BLEAdvertising.h>
+#include <BLE2902.h>
 #include <BLECharacteristic.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -23,7 +24,7 @@ namespace nobro {
  * replace or hide that vendor-owned host, controller, task, callback, or heap
  * state.
  *
- * Vendor callbacks copy into one fixed event slot under the ESP32 port mux.
+ * Vendor callbacks copy into one fixed event ring under the ESP32 port mux.
  * Overflow is reported to poll() as NOBRO_STACK_QUEUE_FULL; callbacks never
  * allocate Nobro-owned queue nodes or run application work.
  */
@@ -34,20 +35,23 @@ public:
         : server_(0),
           service_(0),
           characteristic_(0),
+          descriptor_(0),
           advertising_(0),
           state_(NOBRO_STACK_DOWN),
           connected_(false),
-          pending_(false),
           queue_overflowed_(false),
           owns_global_stack_(false),
           last_call_us_(0),
-          pending_event_{},
+          event_head_(0),
+          event_tail_(0),
+          event_count_(0),
+          pending_events_{},
           diagnostics_{},
           mux_(portMUX_INITIALIZER_UNLOCKED) {}
 
     ~ArduinoEspBleStack() {
         if (owns_global_stack_) {
-            quiesce();
+            resetVendorStack();
         }
     }
 
@@ -78,6 +82,12 @@ public:
     }
 
     nobro_stack_result_t mount() {
+        if (state_ == NOBRO_STACK_QUIESCED && owns_global_stack_) {
+            resetEventState();
+            resetGattValue();
+            state_ = NOBRO_STACK_READY;
+            return NOBRO_STACK_OK;
+        }
         if (state_ != NOBRO_STACK_DOWN && state_ != NOBRO_STACK_QUIESCED) {
             return NOBRO_STACK_BUSY;
         }
@@ -118,6 +128,19 @@ public:
             return failMount();
         }
         characteristic_->setCallbacks(this);
+#if defined(CONFIG_BLUEDROID_ENABLED)
+        /*
+         * The installed classic ESP32 Bluedroid host requires an explicit
+         * 0x2902 descriptor. The installed NimBLE path synthesizes its CCCD
+         * from the notify property and warns that callers must not add one.
+         */
+        descriptor_ = new BLE2902();
+        if (descriptor_ == 0) {
+            last_call_us_ = static_cast<uint32_t>(micros() - started);
+            return failMount();
+        }
+        characteristic_->addDescriptor(descriptor_);
+#endif
         const uint8_t initial = 0;
         characteristic_->setValue(&initial, 1);
         service_->start();
@@ -198,10 +221,12 @@ public:
             portEXIT_CRITICAL(&mux_);
             return NOBRO_STACK_QUEUE_FULL;
         }
-        if (pending_) {
-            event = pending_event_;
-            clearEvent(pending_event_);
-            pending_ = false;
+        if (event_count_ != 0) {
+            event = pending_events_[event_head_];
+            clearEvent(pending_events_[event_head_]);
+            event_head_ = static_cast<uint8_t>(
+                (event_head_ + 1U) % eventCapacity());
+            --event_count_;
             available = true;
         }
         portEXIT_CRITICAL(&mux_);
@@ -255,31 +280,37 @@ public:
             state_ = NOBRO_STACK_QUIESCED;
             return NOBRO_STACK_OK;
         }
+        if (state_ == NOBRO_STACK_READY && isConnected()) {
+            const nobro_stack_result_t stopped = disconnect();
+            if (stopped != NOBRO_STACK_OK || !awaitDisconnected(1000000U)) {
+                return fault();
+            }
+        }
         state_ = NOBRO_STACK_STARTING;
         if (advertising_ != 0) {
             advertising_->stop();
         }
-        if (characteristic_ != 0) {
-            characteristic_->setCallbacks(0);
-        }
-        if (server_ != 0) {
-            server_->setCallbacks(0);
-        }
-        BLEDevice::deinit(false);
-        resetPointers();
         resetEventState();
         state_ = NOBRO_STACK_QUIESCED;
-        owns_global_stack_ = false;
-        claimed() = false;
         return NOBRO_STACK_OK;
     }
 
     nobro_stack_result_t recover() {
-        if (owns_global_stack_) {
+        if (state_ == NOBRO_STACK_READY && owns_global_stack_) {
             const nobro_stack_result_t stopped = quiesce();
             if (stopped != NOBRO_STACK_OK) {
                 return stopped;
             }
+        }
+        if (state_ == NOBRO_STACK_QUIESCED && owns_global_stack_) {
+            resetEventState();
+            resetGattValue();
+            state_ = NOBRO_STACK_READY;
+            increment(diagnostics_.recoveries);
+            return NOBRO_STACK_OK;
+        }
+        if (owns_global_stack_ && state_ != NOBRO_STACK_DOWN) {
+            resetVendorStack();
         }
         state_ = NOBRO_STACK_DOWN;
         const nobro_stack_result_t result = mount();
@@ -303,6 +334,7 @@ private:
     static const char *localName() { return "NobroRTOS"; }
     static uint16_t logicalConnection() { return 1; }
     static uint16_t logicalCharacteristic() { return 1; }
+    static uint8_t eventCapacity() { return 4; }
 
     static bool &claimed() {
         static bool value = false;
@@ -325,6 +357,13 @@ private:
         }
     }
 
+    void resetGattValue() {
+        if (characteristic_ != 0) {
+            const uint8_t initial = 0;
+            characteristic_->setValue(&initial, 1);
+        }
+    }
+
     bool isConnected() {
         portENTER_CRITICAL(&mux_);
         const bool value = connected_;
@@ -332,32 +371,46 @@ private:
         return value;
     }
 
+    bool awaitDisconnected(uint32_t timeout_us) {
+        const uint32_t started = micros();
+        while (isConnected()) {
+            if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
+                return false;
+            }
+            delay(1);
+        }
+        return true;
+    }
+
     void queueEvent(nobro_ble_event_kind_t kind,
                     const uint8_t *value = 0,
                     size_t length = 0) {
         portENTER_CRITICAL(&mux_);
-        if (pending_) {
+        if (event_count_ == eventCapacity()) {
             queue_overflowed_ = true;
             portEXIT_CRITICAL(&mux_);
             return;
         }
-        clearEvent(pending_event_);
-        pending_event_.kind = kind;
-        pending_event_.connection_id = logicalConnection();
+        nobro_ble_event_t &pending = pending_events_[event_tail_];
+        clearEvent(pending);
+        pending.kind = kind;
+        pending.connection_id = logicalConnection();
         if (kind == NOBRO_BLE_GATT_READ ||
             kind == NOBRO_BLE_GATT_WRITE ||
             kind == NOBRO_BLE_NOTIFICATION_COMPLETE) {
-            pending_event_.attribute_handle = logicalCharacteristic();
+            pending.attribute_handle = logicalCharacteristic();
         }
         const size_t bounded =
-            length < sizeof(pending_event_.value)
+            length < sizeof(pending.value)
                 ? length
-                : sizeof(pending_event_.value);
+                : sizeof(pending.value);
         for (size_t index = 0; index < bounded; ++index) {
-            pending_event_.value[index] = value[index];
+            pending.value[index] = value[index];
         }
-        pending_event_.value_len = static_cast<uint8_t>(bounded);
-        pending_ = true;
+        pending.value_len = static_cast<uint8_t>(bounded);
+        event_tail_ = static_cast<uint8_t>(
+            (event_tail_ + 1U) % eventCapacity());
+        ++event_count_;
         portEXIT_CRITICAL(&mux_);
     }
 
@@ -421,16 +474,38 @@ private:
         server_ = 0;
         service_ = 0;
         characteristic_ = 0;
+        descriptor_ = 0;
         advertising_ = 0;
     }
 
     void resetEventState() {
         portENTER_CRITICAL(&mux_);
         connected_ = false;
-        pending_ = false;
         queue_overflowed_ = false;
-        clearEvent(pending_event_);
+        event_head_ = 0;
+        event_tail_ = 0;
+        event_count_ = 0;
+        for (uint8_t index = 0; index < eventCapacity(); ++index) {
+            clearEvent(pending_events_[index]);
+        }
         portEXIT_CRITICAL(&mux_);
+    }
+
+    void resetVendorStack() {
+        if (advertising_ != 0) {
+            advertising_->stop();
+        }
+        if (characteristic_ != 0) {
+            characteristic_->setCallbacks(0);
+        }
+        if (server_ != 0) {
+            server_->setCallbacks(0);
+        }
+        BLEDevice::deinit(false);
+        resetPointers();
+        resetEventState();
+        owns_global_stack_ = false;
+        claimed() = false;
     }
 
     nobro_stack_result_t failMount() {
@@ -457,14 +532,17 @@ private:
     BLEServer *server_;
     BLEService *service_;
     BLECharacteristic *characteristic_;
+    BLE2902 *descriptor_;
     BLEAdvertising *advertising_;
     nobro_stack_state_t state_;
     bool connected_;
-    bool pending_;
     bool queue_overflowed_;
     bool owns_global_stack_;
     uint32_t last_call_us_;
-    nobro_ble_event_t pending_event_;
+    uint8_t event_head_;
+    uint8_t event_tail_;
+    uint8_t event_count_;
+    nobro_ble_event_t pending_events_[4];
     nobro_ble_stack_diagnostics_t diagnostics_;
     portMUX_TYPE mux_;
 };
