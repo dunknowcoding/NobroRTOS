@@ -10,8 +10,43 @@
 #endif
 
 #include <ArduinoBLE.h>
+#include <WiFiS3.h>
+#include <local/BLELocalCharacteristic.h>
 
 namespace nobro {
+
+namespace detail {
+
+/*
+ * ArduinoBLE 2.1.0 clears a retained service characteristic without releasing
+ * that retain. Probe the local reference count after BLE.end() and compensate
+ * only when that exact retain is still present. Keeping this check here makes
+ * repeated service registration bounded while remaining safe if upstream
+ * later releases the retain itself.
+ */
+class ManagedBleCharacteristic : public BLECharacteristic {
+public:
+    ManagedBleCharacteristic(const char *uuid,
+                             uint16_t permissions,
+                             int value_size,
+                             bool fixed_length)
+        : BLECharacteristic(uuid, permissions, value_size, fixed_length) {}
+
+    bool releaseClearedServiceRetain() {
+        BLELocalCharacteristic *attribute = local();
+        if (attribute == 0) {
+            return false;
+        }
+        attribute->retain();
+        const int references = attribute->release();
+        if (references == 1) {
+            return true;
+        }
+        return references == 2 && attribute->release() == 1;
+    }
+};
+
+}  // namespace detail
 
 /*
  * One-service/one-characteristic ArduinoBLE peripheral facade.
@@ -31,17 +66,16 @@ public:
           state_(NOBRO_STACK_DOWN),
           connected_(false),
           owns_global_stack_(false),
+          service_registered_(false),
+          controller_started_(false),
           last_call_us_(0),
           diagnostics_{} {}
 
     ~ArduinoBleStack() {
         if (owns_global_stack_) {
-            BLE.stopAdvertise();
-            if (BLE.connected()) {
-                BLE.disconnect();
+            if (endStack()) {
+                claimed() = false;
             }
-            BLE.end();
-            claimed() = false;
         }
     }
 
@@ -73,6 +107,7 @@ public:
         state_ = NOBRO_STACK_STARTING;
         const uint32_t started = micros();
         const int begun = BLE.begin();
+        controller_started_ = begun != 0;
         last_call_us_ = static_cast<uint32_t>(micros() - started);
         if (!begun || !BLE.setLocalName(localName()) ||
             !BLE.setAdvertisedService(service_)) {
@@ -80,6 +115,7 @@ public:
         }
         service_.addCharacteristic(characteristic_);
         BLE.addService(service_);
+        service_registered_ = true;
         const uint8_t initial = 0;
         if (!characteristic_.writeValue(&initial, 1)) {
             return failMount();
@@ -187,16 +223,30 @@ public:
         return NOBRO_STACK_OK;
     }
 
+    nobro_stack_result_t disconnect() {
+        if (state_ != NOBRO_STACK_READY) {
+            return NOBRO_STACK_NOT_READY;
+        }
+        BLE.poll();
+        if (!BLE.connected()) {
+            connected_ = false;
+            return NOBRO_STACK_OK;
+        }
+        if (!BLE.disconnect()) {
+            return fault();
+        }
+        connected_ = false;
+        return NOBRO_STACK_OK;
+    }
+
     nobro_stack_result_t quiesce() {
         if (state_ == NOBRO_STACK_DOWN || state_ == NOBRO_STACK_QUIESCED) {
             state_ = NOBRO_STACK_QUIESCED;
             return NOBRO_STACK_OK;
         }
-        BLE.stopAdvertise();
-        if (BLE.connected()) {
-            BLE.disconnect();
+        if (!endStack()) {
+            return fault();
         }
-        BLE.end();
         connected_ = false;
         state_ = NOBRO_STACK_QUIESCED;
         owns_global_stack_ = false;
@@ -208,11 +258,9 @@ public:
         if (!owns_global_stack_) {
             return mount();
         }
-        BLE.stopAdvertise();
-        if (BLE.connected()) {
-            BLE.disconnect();
+        if (!endStack()) {
+            return fault();
         }
-        BLE.end();
         connected_ = false;
         state_ = NOBRO_STACK_DOWN;
         owns_global_stack_ = false;
@@ -263,9 +311,41 @@ private:
         }
     }
 
-    nobro_stack_result_t failMount() {
+    bool endStack() {
+        BLE.stopAdvertise();
+        if (BLE.connected()) {
+            BLE.disconnect();
+        }
         BLE.end();
+
+        bool clean = true;
+        if (service_registered_) {
+            clean = characteristic_.releaseClearedServiceRetain();
+            service_registered_ = false;
+        }
+
+        /*
+         * ArduinoBLE 2.1.0's UNO R4 HCIVirtualTransportAT::end() is empty even
+         * though the official 0.6.0 bridge implements AT+HCIEND. Without this
+         * bounded teardown, a later BLE.begin() reinitializes an already-live
+         * controller and cannot provide deterministic quiesce/recovery.
+         */
+        if (controller_started_) {
+            std::string response;
+            clean =
+                modem.write(std::string(PROMPT(_HCI_END)), response,
+                            CMD(_HCI_END)) &&
+                clean;
+            controller_started_ = false;
+        }
+        return clean;
+    }
+
+    nobro_stack_result_t failMount() {
         connected_ = false;
+        if (!endStack()) {
+            return fault();
+        }
         owns_global_stack_ = false;
         claimed() = false;
         return fault();
@@ -278,10 +358,12 @@ private:
     }
 
     BLEService service_;
-    BLECharacteristic characteristic_;
+    detail::ManagedBleCharacteristic characteristic_;
     nobro_stack_state_t state_;
     bool connected_;
     bool owns_global_stack_;
+    bool service_registered_;
+    bool controller_started_;
     uint32_t last_call_us_;
     nobro_ble_stack_diagnostics_t diagnostics_;
 };

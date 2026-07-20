@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the exact UNO R4 ArduinoBLE adapter and zero-disabled target cost."""
+"""Verify the exact UNO R4 ArduinoBLE binding and zero-disabled target cost."""
 
 from __future__ import annotations
 
@@ -78,6 +78,7 @@ void setup() {
     ble.advertise(advertisement, sizeof(advertisement), now, now + 1000);
     ble.poll(event, available);
     ble.respondGatt(1, 1, response, sizeof(response));
+    ble.disconnect();
     ble.stopAdvertising();
     ble.quiesce();
     ble.recover();
@@ -210,8 +211,8 @@ def verify_metadata() -> None:
         backend.get("adapter_component_id") != COMPONENT_ID
         or backend.get("capability_kind") != "ble_link"
         or backend.get("stack_family") != "ble"
-        or backend.get("maturity") != "compile-only"
-        or backend.get("evidence") != ["host-test", "target-build"]
+        or backend.get("maturity") != "implemented"
+        or backend.get("evidence") != ["host-test", "physical", "target-build"]
         or backend.get("provenance_id") != SOURCE_ID
         or backend.get("supported_targets") != [FQBN]
         or not backend.get("limitations")
@@ -240,7 +241,7 @@ def verify_metadata() -> None:
         or binding.get("platform") != "ra4m1"
         or binding.get("composition") != "arduino"
         or binding.get("instance") != "ble0"
-        or binding.get("maturity") != "compile-only"
+        or binding.get("maturity") != "implemented"
         or binding.get("evidence_gates") != [GATE_ID]
         or binding.get("price_state") != "unmeasured"
         or not binding.get("limitations")
@@ -260,13 +261,13 @@ def verify_metadata() -> None:
     if (
         component.get("path")
         != "core/adapters/wireless/ble/arduino-ble"
-        or component.get("maturity") != "compile-only"
-        or component.get("evidence") != ["host-test", "target-build"]
+        or component.get("maturity") != "implemented"
+        or component.get("evidence") != ["host-test", "physical", "target-build"]
         or component.get("supported_targets") != [FQBN]
         or library.get("facade") != "packages/arduino/src/NobroArduinoBLE.h"
         or library.get("provenance_id") != SOURCE_ID
-        or library.get("maturity") != "compile-only"
-        or library.get("evidence") != ["target-build"]
+        or library.get("maturity") != "implemented"
+        or library.get("evidence") != ["physical", "target-build"]
     ):
         raise RuntimeError("ArduinoBLE catalog relationship is stale")
 
@@ -285,7 +286,7 @@ def verify_metadata() -> None:
         != ["python", "tools/check_arduino_ble_integrations.py"]
         or gate.get("runner") != "arduino-package"
         or not isinstance(claim, dict)
-        or claim.get("maturity") != "experimental"
+        or claim.get("maturity") != "implemented"
         or claim.get("evidence") != [GATE_ID]
         or not claim.get("limitations")
     ):
@@ -302,6 +303,9 @@ def verify_metadata() -> None:
         "vendorManagedHeap() const { return true; }",
         "globalController() const { return true; }",
         "HCIVirtualTransportAT",
+        "releaseClearedServiceRetain",
+        "CMD(_HCI_END)",
+        "nobro_stack_result_t disconnect()",
     ):
         if token not in header:
             raise RuntimeError(
@@ -344,7 +348,7 @@ def main() -> int:
         return 1
     print(
         "ARDUINO BLE INTEGRATIONS: PASS "
-        "(official UNO R4 transport; zero-disabled; BLE and WiFi/BLE target-build)"
+        "(official UNO R4 transport; bounded teardown; zero-disabled; target-build)"
     )
     return 0
 

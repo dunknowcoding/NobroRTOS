@@ -71,14 +71,16 @@ facade uses the platform's own WiFiS3 library for bounded association
 lifecycle and caller-sized scan output. One exact WiFiS3 0.6.0 workload has
 zero-disabled, physical DNS/TCP/lifecycle, and RA-side/controller-image price
 evidence; controller-internal runtime resources, other firmware/workloads,
-and BLE coexistence remain separate.
+and complete shared-controller BLE pricing remain separate.
 
 UNO R4 WiFi projects may include `NobroArduinoBLE.h` and declare ArduinoBLE
 2.1.0 in `lib_deps`. The facade uses ArduinoBLE's official UNO R4
 `HCIVirtualTransportAT` over the platform WiFiS3 modem and admits one
-service, one characteristic, and 20-byte values. BLE-only and WiFi+BLE
-compositions target-build, but physical GATT/coexistence and resource prices
-are not yet claimed.
+service, one characteristic, and 20-byte values. The facade adds bounded
+`HCIEND`, cleared-service-retain repair, and provider disconnect around
+ArduinoBLE 2.1.0. Exact physical evidence covers GATT write/read/notify,
+disconnect, remount/recovery, and a subscribed BLE link across WiFiS3 DNS/TCP
+traffic. The complete shared-controller resource price remains unmeasured.
 
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps

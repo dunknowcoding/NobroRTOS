@@ -411,17 +411,19 @@
       "kind": "adapter",
       "path": "core/adapters/wireless/ble/arduino-ble",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "host-test",
+        "physical",
         "target-build"
       ],
       "supported_targets": [
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
+        "Exact UNO R4 evidence covers GATT write/read/notify, provider disconnect, quiesce/remount/recovery, and an active subscribed link across WiFiS3 DNS/TCP traffic.",
         "One-service, one-characteristic, 20-byte peripheral contract over ArduinoBLE's global HCI/GATT state.",
-        "UNO R4 target compilation uses the official ArduinoBLE HCIVirtualTransportAT path over the installed board package. Physical GATT, recovery, coexistence, and prices remain unverified."
+        "The complete shared-controller resource price remains unmeasured."
       ]
     },
     {
@@ -660,15 +662,17 @@
       "provenance_id": "source-arduino-ble",
       "facade": "packages/arduino/src/NobroArduinoBLE.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "physical",
         "target-build"
       ],
       "supported_targets": [
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "The library owns process-wide HCI/GATT state and dynamic allocation. UNO R4 target compilation is not physical GATT, lifecycle/recovery, WiFi coexistence, or resource-price evidence."
+        "Physical evidence is exact to UNO R4, ArduinoBLE 2.1.0, and controller firmware 0.6.0; complete controller-internal resource pricing remains open.",
+        "The library owns process-wide HCI/GATT state and dynamic allocation. The facade repairs ArduinoBLE 2.1.0's missing UNO R4 HCIEND and cleared-service retain for bounded recovery."
       ]
     },
     {

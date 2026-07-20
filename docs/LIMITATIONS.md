@@ -116,8 +116,8 @@ and one exact no-debug C3 workload is completely configuration-priced at
 four HTTP transactions/s. Synchronous vendor calls and managed heap/tasks
 still prevent Nobro from claiming hard cancellation or allocation-free
 operation. WiFiS3 controller-internal RAM/tasks/CPU, other rates, boards,
-firmware versions, socket workloads, shared-radio arbitration, and WiFi/BLE
-coexistence remain absent. Different board
+firmware versions, socket workloads, and other shared-radio compositions
+remain absent. Different board
 technologies must declare
 per-instance backend selection, radio ownership, coexistence, and
 vendor-managed resources before support is promoted. `ManagedLink::send_at`
@@ -126,13 +126,21 @@ execution remain outside it. The CC2530 backend is a raw initialized 127-byte
 IEEE 802.15.4 PSDU transport, while `ZIGBEE_APS` is metadata rather than an
 implemented Zigbee APS stack.
 
-The UNO R4 ArduinoBLE 2.1.0 adapter is compile-only. Its disabled facade has
-zero flash/RAM delta, and exact BLE-only plus WiFi+BLE compositions build
-through ArduinoBLE's official `HCIVirtualTransportAT` over the installed
-WiFiS3 board driver. No physical GATT transaction, disconnect/recovery cycle,
-simultaneous WiFi/BLE workload, controller-internal resource use, or complete
-configuration price is inferred. ArduinoBLE owns process-wide HCI/GATT
-objects and dynamic allocation, so Nobro admits only one mounted facade.
+The exact UNO R4 ArduinoBLE 2.1.0 adapter is implemented and physically
+verified. Its disabled facade has zero flash/RAM delta, and exact BLE-only plus
+WiFi+BLE compositions build through ArduinoBLE's official
+`HCIVirtualTransportAT` over the installed WiFiS3 board driver. Three cycles
+passed GATT write/read/notify, provider disconnect, remount/recovery, stable
+RA-side heap, and a connected subscribed BLE link across 15 DNS/TCP
+transactions. The facade supplies the controller `HCIEND` omitted by
+ArduinoBLE 2.1.0 and repairs its cleared-service retain conservatively.
+
+This is not a hard-concurrency claim: synchronous WiFiS3 modem calls serialize
+RA-side GATT servicing, so the campaign requires post-WiFi notification and
+readback rather than pretending those calls are preemptible. Controller-
+internal RAM/tasks/CPU and a complete shared-controller configuration price
+remain unmeasured. ArduinoBLE owns process-wide HCI/GATT objects and dynamic
+allocation, so Nobro admits only one mounted facade.
 
 ## Isolation, boot, and recovery
 

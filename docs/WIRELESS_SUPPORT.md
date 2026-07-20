@@ -10,8 +10,8 @@ remain independently selectable members exposed through small Nobro facades.
 | WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3 station bindings |
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
-| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus an unpriced UNO R4 ArduinoBLE target binding |
-| ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled, BLE-only target build, and WiFi+BLE target build; physical behavior and prices remain open |
+| BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus a physically verified, still-unpriced UNO R4 ArduinoBLE binding |
+| ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
 | NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
 | NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
@@ -46,10 +46,18 @@ UNO R4 WiFi profile it uses ArduinoBLE 2.1.0's official
 `HCIVirtualTransportAT`, which in turn uses the WiFiS3 modem and HCI commands
 from the installed Arduino Renesas board package. Nobro admits one mounted
 global stack, one service, one characteristic, one logical connection, and
-20-byte values. The disabled composition is byte-identical to baseline, and
-both BLE-only and WiFi-plus-BLE images target-build. This is not physical
-GATT, lifecycle/recovery, simultaneous-radio, or resource-price evidence;
-the binding remains compile-only and unpriced.
+20-byte values. It adds the `HCIEND` teardown omitted by ArduinoBLE 2.1.0,
+repairs only the observed cleared-service retain, and exposes provider
+disconnect. The disabled composition is byte-identical to baseline, and both
+BLE-only and WiFi-plus-BLE images target-build.
+
+Three state-restoring physical cycles passed 15 writes, 21 reads, 18 required
+notifications, provider disconnect, quiesce/remount, owned recovery, stable
+RA-side heap, and 15 WiFiS3 DNS/TCP transactions while the link stayed
+connected and subscribed. Each cycle then required a post-WiFi marker
+notification and readback. WiFiS3 calls remain synchronous and non-preemptible,
+and controller-internal RAM/tasks/CPU plus the complete shared-controller
+price remain unmeasured; the binding is implemented but deliberately unpriced.
 
 The Arduino-ESP32 facade follows the same board-driver-first rule: it includes
 the pinned core's official `WiFi.h` and uses the ESP-IDF driver bundled with

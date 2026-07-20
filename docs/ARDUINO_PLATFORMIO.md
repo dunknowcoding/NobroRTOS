@@ -58,8 +58,12 @@ as an explicit project dependency. The facade follows ArduinoBLE's official
 `HCIVirtualTransportAT` into the installed board package's WiFiS3 modem,
 admits one global stack/service/characteristic, and bounds values at 20
 bytes. `NOBRO_ARDUINO_BLE_DISABLED` removes the facade and ArduinoBLE symbols.
-BLE-only and WiFi+BLE images target-build; physical GATT, recovery,
-coexistence, and resource prices remain unverified.
+The facade supplies bounded `HCIEND`, cleared-service-retain repair, and
+provider disconnect for ArduinoBLE 2.1.0. BLE-only and WiFi+BLE images
+target-build, and three exact physical cycles pass GATT write/read/notify,
+disconnect, remount/recovery, stable RA-side heap, and a subscribed link across
+WiFiS3 DNS/TCP traffic. Synchronous modem calls remain non-preemptible and the
+complete shared-controller resource price remains unmeasured.
 
 ESP32, ESP32-C3, and ESP32-S3 sketches use the installed Arduino-ESP32 board
 package's official `WiFi` implementation through the explicit

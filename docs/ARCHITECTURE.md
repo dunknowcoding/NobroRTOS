@@ -787,7 +787,7 @@ Implemented today in `nobro-wireless`:
   controller resources. One exact WiFiS3 0.6.0 binding has zero-disabled,
   state-restoring association/DNS/TCP/lifecycle evidence and a complete
   RA-side/controller-image price at one HTTP operation/s; controller-internal
-  RAM/tasks/CPU and BLE coexistence remain separate.
+  RAM/tasks/CPU and complete shared-controller BLE pricing remain separate.
 - `wireless/wifi/arduino-esp` and `NobroArduinoEspWiFi.h` add the same bounded
   station lifecycle for ESP32, ESP32-C3, and ESP32-S3 through the pinned
   Arduino-ESP32 3.3.10 board package. The facade disables credential
@@ -802,12 +802,16 @@ Implemented today in `nobro-wireless`:
   UNO R4 build follows ArduinoBLE's official `HCIVirtualTransportAT` into the
   installed board package's WiFiS3 modem rather than duplicating a controller
   driver. One global mounted facade is admitted because ArduinoBLE owns
-  process-wide HCI/GATT state and heap. BLE-only and WiFi+BLE target builds
-  are evidence of source composition only; physical GATT, recovery,
-  controller arbitration, and resource prices remain open.
+  process-wide HCI/GATT state and heap. The facade supplies the missing
+  ArduinoBLE 2.1.0 UNO R4 `HCIEND` path, compensates only the observed
+  cleared-service retain, and exposes provider disconnect. Three exact
+  physical cycles cover GATT write/read/notify, disconnect, remount/recovery,
+  and a connected subscribed link across WiFiS3 DNS/TCP traffic. Synchronous
+  modem calls still serialize RA-side servicing; complete controller-internal
+  RAM/task/CPU pricing remains open.
 
 Additional WiFi backends/workloads, UNO R4 controller-internal runtime
-accounting, physical BLE controller/GATT evidence, Zigbee co-processor lifecycle,
+accounting, other BLE controller/GATT bindings, Zigbee co-processor lifecycle,
 shared-radio arbitration, and prices for unmeasured compositions remain
 future work.
 They extend the existing `nobro-wireless` domain rather than create a parallel link

@@ -244,10 +244,18 @@ The first concrete BLE bridge is
 ArduinoBLE 2.1.0 to the board package's official
 `HCIVirtualTransportAT`/WiFiS3 modem path. It exposes one service, one
 characteristic, one logical connection, 20-byte values, fixed caller-owned
-events, and explicit mount/advertise/poll/respond/quiesce/recover calls.
-ArduinoBLE still owns global HCI/GATT state and heap allocation. The exact
-binding has host tests, zero-disabled proof, and BLE-only plus WiFi+BLE target
-builds; it remains unpriced and has no physical GATT or coexistence claim.
+events, and explicit mount/advertise/poll/respond/disconnect/quiesce/recover
+calls. ArduinoBLE still owns global HCI/GATT state and heap allocation. The
+facade supplies the `HCIEND` path omitted by ArduinoBLE 2.1.0 and bounds its
+cleared-service retain across remounts.
+
+The exact binding has host tests, zero-disabled proof, BLE-only plus WiFi+BLE
+target builds, and physical GATT/disconnect/remount/recovery evidence. A
+subscribed link survived 15 WiFiS3 DNS/TCP transactions and then completed
+post-WiFi notification/readback in three cycles with no RA-side heap growth.
+Because WiFiS3 calls are synchronous and controller-internal RAM/tasks/CPU are
+not measured, the binding remains explicitly unpriced and does not claim
+preemptible GATT service during a blocking modem call.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and

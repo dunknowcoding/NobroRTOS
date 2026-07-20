@@ -421,7 +421,7 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
-| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are priced; UNO R4 ArduinoBLE has zero-disabled and BLE/WiFi coexistence target builds only, while physical BLE/coexistence and other bindings remain open |
+| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are priced; exact UNO R4 ArduinoBLE now has physical GATT/lifecycle and subscribed-link WiFi coexistence evidence, while its complete shared-controller price and other bindings remain open |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 
 </details>

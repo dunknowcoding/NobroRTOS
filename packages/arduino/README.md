@@ -20,8 +20,9 @@ Current contents:
   duty output, and RMT pulse symbols. Each provider is optional and keeps
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
 - `src/NobroArduinoWiFiS3.h` with an opt-in UNO R4 WiFi association facade,
-- `src/NobroArduinoBLE.h` with an opt-in UNO R4 ArduinoBLE peripheral facade,
   caller-sized scan output, runtime-only credentials, and explicit lifecycle.
+- `src/NobroArduinoBLE.h` with an opt-in UNO R4 ArduinoBLE peripheral facade,
+  caller-owned events, provider disconnect, and explicit lifecycle.
 - `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
   pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
@@ -205,10 +206,18 @@ The exact UNO R4 profile uses ArduinoBLE's official
 `HCIVirtualTransportAT` over the installed Arduino Renesas WiFiS3 modem.
 Nobro admits one mounted global stack, one service, one characteristic, one
 logical connection, and 20-byte values. The facade exposes explicit
-mount/advertise/poll/respond/quiesce/recover calls and caller-owned events.
-ArduinoBLE retains ownership of global HCI/GATT state and dynamic allocation.
-The disabled, BLE-only, and WiFi+BLE target gates pass; physical GATT,
-recovery, simultaneous WiFi/BLE behavior, and resource prices remain open.
+mount/advertise/poll/respond/disconnect/quiesce/recover calls and caller-owned
+events. It supplies the missing UNO R4 `HCIEND` teardown in ArduinoBLE 2.1.0
+and bounds the library's cleared-service retain across remounts.
+
+Three exact physical cycles passed advertising discovery, connect, 15 writes,
+21 reads, 18 required notifications, provider disconnect, quiesce/remount,
+owned recovery, and 15 WiFiS3 DNS/TCP transactions while the BLE link remained
+connected and subscribed. RA-side heap did not grow, and both targets were
+restored byte-for-byte. WiFiS3 modem calls remain synchronous, so this proves
+link coexistence and post-WiFi GATT recovery rather than preemptible GATT
+service during a blocking modem call. The complete controller-internal
+RAM/task/CPU price remains unmeasured.
 Define `NOBRO_ARDUINO_BLE_DISABLED` before including the facade to keep
 ArduinoBLE symbols out of the composition.
 

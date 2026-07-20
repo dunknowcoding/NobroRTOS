@@ -100,7 +100,7 @@
       "portable_contract_id": "contract-audio",
       "stack_family": "audio-dac",
       "limitations": [
-        "One exact UNO R4/ArduinoBLE 2.1.0 binding has host and target-build evidence only; physical GATT, lifecycle/recovery, WiFi coexistence, and every resource price remain unverified."
+        "No board binding is promoted yet."
       ]
     },
     {
@@ -127,7 +127,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "ble",
       "limitations": [
-        "No board binding is promoted yet."
+        "One exact UNO R4/ArduinoBLE 2.1.0 binding has physical GATT/lifecycle and subscribed-link WiFi coexistence evidence but remains unpriced; other boards and backends require separate evidence."
       ]
     },
     {
@@ -172,7 +172,7 @@
       "portable_contract_id": "contract-wireless",
       "stack_family": "wifi",
       "limitations": [
-        "Arduino-ESP32 C3 and UNO R4 WiFiS3 each have one exact configuration-priced station binding; other boards, rates, firmware versions, socket workloads, controller-internal resources, and WiFi/BLE coexistence require separate evidence."
+        "Arduino-ESP32 C3 and UNO R4 WiFiS3 each have one exact configuration-priced station binding; UNO R4 also has a physically verified subscribed BLE-link coexistence relation. Other boards, rates, firmware versions, socket workloads, and controller-internal resources require separate evidence."
       ]
     }
   ],
@@ -183,9 +183,10 @@
       "stack_family": "ble",
       "adapter_component_id": "adapter-wireless-ble-arduino-ble",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "host-test",
+        "physical",
         "target-build"
       ],
       "provenance_id": "source-arduino-ble",
@@ -194,7 +195,8 @@
       ],
       "limitations": [
         "The facade admits one service, one characteristic, one logical connection, and 20-byte values over ArduinoBLE's process-wide HCI/GATT state.",
-        "The exact UNO R4 path uses ArduinoBLE HCIVirtualTransportAT over the installed Arduino Renesas WiFiS3 modem. Target compilation proves source compatibility only; physical GATT, lifecycle/recovery, WiFi coexistence, and resource prices remain separate."
+        "The exact UNO R4 path physically passes GATT write/read/notification, provider disconnect, quiesce/remount/recovery, and a subscribed BLE link across admitted WiFiS3 DNS/TCP traffic.",
+        "ArduinoBLE 2.1.0 needs the facade's bounded HCIEND and cleared-service-retain compatibility repair. Controller-internal RAM/tasks/CPU and a complete shared-controller configuration price remain unmeasured."
       ]
     },
     {
@@ -363,13 +365,14 @@
       "platform": "ra4m1",
       "composition": "arduino",
       "instance": "ble0",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence_gates": [
         "arduino-ble-unor4-target-build"
       ],
       "price_state": "unmeasured",
       "limitations": [
-        "Target build and zero-disabled evidence only. The shared UNO R4 connectivity controller lease, physical GATT/lifecycle/recovery, simultaneous WiFi operation, controller-internal resources, and a complete configuration price remain unverified."
+        "Physical evidence covers three exact UNO R4 cycles, 15 GATT writes, 21 reads, 18 required notifications, 15 DNS/TCP transactions while subscribed, provider disconnect, remount, owned recovery, stable RA-side heap, and byte-exact restoration.",
+        "The binding remains fail-closed and unpriced because controller-internal RAM/tasks/CPU and a complete shared-controller configuration price are not measured."
       ],
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",

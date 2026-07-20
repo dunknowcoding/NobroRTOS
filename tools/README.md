@@ -58,8 +58,10 @@ other configurations remain outside that exact claim.
 
 `check_arduino_ble_integrations.py` pins ArduinoBLE 2.1.0 on the UNO R4 WiFi
 profile, proves the disabled facade is byte-for-byte zero cost, and
-target-builds BLE-only plus WiFi-and-BLE compositions. These are compile
-gates, not physical coexistence or resource-price claims.
+target-builds BLE-only plus WiFi-and-BLE compositions. It also locks the
+bounded `HCIEND`, cleared-service-retain, provider-disconnect, and exact
+physical-receipt metadata. The public command does not rerun private hardware
+or claim a complete shared-controller resource price.
 
 `check_arduino_esp_wifi.py` pins Arduino-ESP32 3.3.10 provenance, compiles the
 optional WiFi facade on ESP32, ESP32-C3, and ESP32-S3, proves the disabled C3

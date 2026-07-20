@@ -215,7 +215,7 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in evidence_gates
         ):
             errors.append(f"{prefix}: evidence_gates must be a unique string list")
-        if binding.get("maturity") == "compile-only":
+        if binding.get("price_state") == "unmeasured":
             expected_fields = {
                 "id",
                 "backend_id",
@@ -232,15 +232,17 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             }
             if set(binding) != expected_fields:
                 errors.append(
-                    f"{prefix}: compile-only binding must use the unpriced target-build form"
+                    f"{prefix}: unmeasured binding must use the unpriced form"
                 )
-            if binding.get("price_state") != "unmeasured":
-                errors.append(f"{prefix}: compile-only binding price must remain unmeasured")
+            if binding.get("maturity") not in {"compile-only", "implemented"}:
+                errors.append(
+                    f"{prefix}: only compile-only or implemented bindings may remain unmeasured"
+                )
             limitations = binding.get("limitations")
             if not isinstance(limitations, list) or not limitations or not all(
                 isinstance(value, str) and value for value in limitations
             ):
-                errors.append(f"{prefix}: compile-only binding needs explicit limitations")
+                errors.append(f"{prefix}: unmeasured binding needs explicit limitations")
             gate = binding.get("disabled_symbol_gate")
             if not isinstance(gate, dict) or set(gate) != {
                 "baseline",
@@ -277,6 +279,11 @@ def validate(registry: dict, catalog: dict) -> list[str]:
                 errors.append(
                     f"{prefix}: report wiring differs from capability/evidence"
                 )
+            continue
+        if binding.get("maturity") == "compile-only":
+            errors.append(
+                f"{prefix}: compile-only binding price must remain unmeasured"
+            )
             continue
         workload = binding.get("workload")
         if (
@@ -518,12 +525,18 @@ def selftest() -> int:
         }
     )
     assert not validate(unpriced, catalog)
+    implemented_unpriced = copy.deepcopy(unpriced)
+    implemented_unpriced["bindings"][-1]["maturity"] = "implemented"
+    implemented_unpriced["bindings"][-1]["limitations"] = [
+        "Implementation and physical behavior are verified; the complete price remains unknown."
+    ]
+    assert not validate(implemented_unpriced, catalog)
     broken = copy.deepcopy(unpriced)
     broken["bindings"][-1]["price_state"] = "measured"
     assert any("price must remain unmeasured" in error for error in validate(broken, catalog))
     print(
         "BOARD FEATURES SELFTEST: PASS "
-        "(vocabulary, backend, unpriced target binding, workload, "
+        "(vocabulary, backend, unpriced target/implemented bindings, workload, "
         "fixed/runtime price, zero-delta)"
     )
     return 0
