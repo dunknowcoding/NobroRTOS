@@ -187,8 +187,11 @@ One exact UNO R4/WiFiS3 0.6.0 workload passed three state-restoring scan,
 association, DNS, 25-transaction HTTP, leave, quiesce, and recovery cycles at
 one operation/s. Its complete RA workload image, heap/stack/CPU/latency,
 SCI1/IRQ ownership, and official controller application image are
-configuration-priced. Controller-internal RAM/tasks/CPU, BLE coexistence,
-other firmware versions, and other workloads remain separate. Define
+configuration-priced. The controller release ELF/map additionally pins
+64,628 B static RAM and source minima of 22,288 B across three persistent
+application/USB task stacks. Controller retained/transient heap, complete
+task/stack reservations, CPU, BLE coexistence, other firmware versions, and
+other workloads remain separate. Define
 `NOBRO_WIFI_S3_DISABLED` before including the facade to remove both Nobro and
 WiFiS3 symbols from that composition.
 
@@ -216,8 +219,8 @@ owned recovery, and 15 WiFiS3 DNS/TCP transactions while the BLE link remained
 connected and subscribed. RA-side heap did not grow, and both targets were
 restored byte-for-byte. WiFiS3 modem calls remain synchronous, so this proves
 link coexistence and post-WiFi GATT recovery rather than preemptible GATT
-service during a blocking modem call. The complete controller-internal
-RAM/task/CPU price remains unmeasured.
+service during a blocking modem call. The complete controller retained/
+transient-heap, task/stack, and CPU price remains unmeasured.
 Define `NOBRO_ARDUINO_BLE_DISABLED` before including the facade to keep
 ArduinoBLE symbols out of the composition.
 

@@ -44,6 +44,19 @@ COEXISTENCE_FIELDS = {
     "compatible_instances",
     "core_affinity",
 }
+CONTROLLER_FIELDS = {
+    "id",
+    "source",
+    "revision",
+    "version",
+    "artifact_sha256",
+    "application_flash_bytes",
+    "application_static_ram_bytes",
+    "minimum_persistent_stack_bytes",
+    "minimum_persistent_tasks",
+    "runtime_state",
+    "limitations",
+}
 WORKLOAD_FIELDS = {
     "namespace",
     "configuration_words",
@@ -113,6 +126,7 @@ def validate(registry: dict, catalog: dict) -> list[str]:
 
     kinds = _names(registry.get("capability_kinds"), "capability_kinds", errors)
     provenance = _names(registry.get("provenance"), "provenance", errors)
+    controllers = _names(registry.get("controllers"), "controllers", errors)
     backends = _names(registry.get("backends"), "backends", errors)
     bindings = _names(registry.get("bindings"), "bindings", errors)
     contracts = {
@@ -140,6 +154,36 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             or not record["license"]
         ):
             errors.append(f"{prefix}: source, revision, version, and license must be pinned")
+    for identifier, controller in controllers.items():
+        prefix = f"controllers.{identifier}"
+        if set(controller) != CONTROLLER_FIELDS:
+            errors.append(f"{prefix}: controller evidence form is incomplete")
+            continue
+        if (
+            not isinstance(controller.get("source"), str)
+            or not controller["source"].startswith("https://")
+            or not isinstance(controller.get("revision"), str)
+            or not re.fullmatch(r"[0-9a-f]{40}", controller["revision"])
+            or not isinstance(controller.get("version"), str)
+            or not controller["version"]
+            or not isinstance(controller.get("artifact_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", controller["artifact_sha256"])
+            or controller.get("runtime_state") not in {"unmeasured", "measured"}
+        ):
+            errors.append(f"{prefix}: source, artifact, version, and runtime state must be pinned")
+        for field in (
+            "application_flash_bytes",
+            "application_static_ram_bytes",
+            "minimum_persistent_stack_bytes",
+            "minimum_persistent_tasks",
+        ):
+            if not isinstance(controller.get(field), int) or controller[field] <= 0:
+                errors.append(f"{prefix}: {field} must be a positive measured/source value")
+        limitations = controller.get("limitations")
+        if not isinstance(limitations, list) or not limitations or not all(
+            isinstance(value, str) and value for value in limitations
+        ):
+            errors.append(f"{prefix}: limitations are required")
     for identifier, kind in kinds.items():
         prefix = f"capability_kinds.{identifier}"
         if kind.get("class") not in CLASSES:
@@ -215,6 +259,9 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in evidence_gates
         ):
             errors.append(f"{prefix}: evidence_gates must be a unique string list")
+        controller_id = binding.get("controller_id")
+        if controller_id is not None and controller_id not in controllers:
+            errors.append(f"{prefix}: unknown controller")
         if binding.get("price_state") == "unmeasured":
             expected_fields = {
                 "id",
@@ -230,6 +277,8 @@ def validate(registry: dict, catalog: dict) -> list[str]:
                 "disabled_symbol_gate",
                 "report_wiring",
             }
+            if controller_id is not None:
+                expected_fields.add("controller_id")
             if set(binding) != expected_fields:
                 errors.append(
                     f"{prefix}: unmeasured binding must use the unpriced form"
@@ -431,6 +480,11 @@ def selftest() -> int:
     broken = copy.deepcopy(registry)
     broken["provenance"][0]["revision"] = "floating"
     assert any("must be pinned" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
+    broken["controllers"][0]["runtime_state"] = "assumed-zero"
+    assert any(
+        "runtime state must be pinned" in error for error in validate(broken, catalog)
+    )
     binding = {
         "id": "selftest-binding",
         "backend_id": registry["backends"][0]["id"],
@@ -536,7 +590,7 @@ def selftest() -> int:
     assert any("price must remain unmeasured" in error for error in validate(broken, catalog))
     print(
         "BOARD FEATURES SELFTEST: PASS "
-        "(vocabulary, backend, unpriced target/implemented bindings, workload, "
+        "(vocabulary, backend, controller boundary, unpriced target/implemented bindings, workload, "
         "fixed/runtime price, zero-delta)"
     )
     return 0

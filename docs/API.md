@@ -234,7 +234,10 @@ association, DNS, TCP, and lifecycle evidence plus a complete fixed/runtime
 price for four HTTP transactions/s. The exact UNO R4/WiFiS3 0.6.0 binding
 has the same lifecycle/data-plane evidence plus an RA-side/controller-image
 price for one HTTP transaction/s; controller-internal runtime resources
-remain unpriced. Other rates, boards, firmware versions, socket workloads,
+remain unpriced. The exact controller release artifact separately establishes
+1,180,064 B application flash, 64,628 B static RAM, and source minima of
+22,288 B across three persistent application/USB task stacks. Other rates,
+boards, firmware versions, socket workloads,
 and shared-radio/WiFi-BLE compositions remain independently unpromoted.
 Additive WiFi and BLE instances must not be replaced by one global wireless
 feature.
@@ -253,8 +256,9 @@ The exact binding has host tests, zero-disabled proof, BLE-only plus WiFi+BLE
 target builds, and physical GATT/disconnect/remount/recovery evidence. A
 subscribed link survived 15 WiFiS3 DNS/TCP transactions and then completed
 post-WiFi notification/readback in three cycles with no RA-side heap growth.
-Because WiFiS3 calls are synchronous and controller-internal RAM/tasks/CPU are
-not measured, the binding remains explicitly unpriced and does not claim
+Because WiFiS3 calls are synchronous and controller retained/transient heap,
+complete task/stack reservations, and CPU are not measured, the binding
+remains explicitly unpriced and does not claim
 preemptible GATT service during a blocking modem call.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte

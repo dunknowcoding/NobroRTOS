@@ -115,7 +115,10 @@ state-restoring association, DNS, TCP, leave, quiesce, and recovery evidence,
 and one exact no-debug C3 workload is completely configuration-priced at
 four HTTP transactions/s. Synchronous vendor calls and managed heap/tasks
 still prevent Nobro from claiming hard cancellation or allocation-free
-operation. WiFiS3 controller-internal RAM/tasks/CPU, other rates, boards,
+operation. The pinned controller artifact establishes 1,180,064 B application
+flash / 64,628 B static RAM and 22,288 B / three-task source minima, but its
+retained/transient heap, complete task/stack reservations, and CPU remain
+unmeasured. Other rates, boards,
 firmware versions, socket workloads, and other shared-radio compositions
 remain absent. Different board
 technologies must declare
@@ -138,8 +141,9 @@ ArduinoBLE 2.1.0 and repairs its cleared-service retain conservatively.
 This is not a hard-concurrency claim: synchronous WiFiS3 modem calls serialize
 RA-side GATT servicing, so the campaign requires post-WiFi notification and
 readback rather than pretending those calls are preemptible. Controller-
-internal RAM/tasks/CPU and a complete shared-controller configuration price
-remain unmeasured. ArduinoBLE owns process-wide HCI/GATT objects and dynamic
+internal retained/transient heap, complete task/stack reservations, CPU, and
+a complete shared-controller configuration price remain unmeasured.
+ArduinoBLE owns process-wide HCI/GATT objects and dynamic
 allocation, so Nobro admits only one mounted facade.
 
 ## Isolation, boot, and recovery

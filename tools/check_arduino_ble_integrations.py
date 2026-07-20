@@ -25,6 +25,7 @@ GATE_ID = "arduino-ble-unor4-target-build"
 BINDING_ID = "binding-ble-arduino-ble-ra4m1"
 SOURCE_ID = "source-arduino-ble"
 SOURCE_PIN = "281377b3588814e4c174c08ec711e10e35b1c9f9"
+CONTROLLER_ID = "controller-uno-r4-esp32s3"
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -229,6 +230,7 @@ def verify_metadata() -> None:
         "instance",
         "maturity",
         "evidence_gates",
+        "controller_id",
         "price_state",
         "limitations",
         "disabled_symbol_gate",
@@ -243,6 +245,7 @@ def verify_metadata() -> None:
         or binding.get("instance") != "ble0"
         or binding.get("maturity") != "implemented"
         or binding.get("evidence_gates") != [GATE_ID]
+        or binding.get("controller_id") != CONTROLLER_ID
         or binding.get("price_state") != "unmeasured"
         or not binding.get("limitations")
         or set(binding["disabled_symbol_gate"]["forbidden_symbols"])

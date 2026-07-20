@@ -26,6 +26,23 @@ BINDING_ID = "binding-wifi-arduino-wifis3-ra4m1"
 SOURCE_PIN = "424e86eff92d37f72123c2b641dd8bbf06a38b47"
 CONTROLLER_SOURCE_ID = "source-arduino-uno-r4-wifi-controller"
 CONTROLLER_SOURCE_PIN = "ac27b7b1d9c6c00a341c196ad2185816fe6e589d"
+CONTROLLER_ID = "controller-uno-r4-esp32s3"
+EXPECTED_CONTROLLER = {
+    "id": CONTROLLER_ID,
+    "source": "https://github.com/arduino/uno-r4-wifi-usb-bridge",
+    "revision": CONTROLLER_SOURCE_PIN,
+    "version": "0.6.0",
+    "artifact_sha256": "53d173195bded1c670bb841e3b9f0f4e538287dbc9217752d884e95383a35ffe",
+    "application_flash_bytes": 1180064,
+    "application_static_ram_bytes": 64628,
+    "minimum_persistent_stack_bytes": 22288,
+    "minimum_persistent_tasks": 3,
+    "runtime_state": "unmeasured",
+    "limitations": [
+        "The exact release ELF/map establishes application image and static RAM; pinned source establishes only the minimum persistent application/USB task stacks and task count.",
+        "Firmware 0.6.0 exposes no heap, all-task stack, or per-task CPU telemetry, and its ESP-IDF 4.4.4 configuration disables FreeRTOS trace/runtime statistics. Controller retained/transient heap, complete task/stack reservations, and CPU use therefore remain unmeasured.",
+    ],
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -263,6 +280,8 @@ def verify_metadata() -> None:
         != controller_source
     ):
         raise RuntimeError("UNO R4 controller provenance is stale")
+    if record(features["controllers"], CONTROLLER_ID, "controller") != EXPECTED_CONTROLLER:
+        raise RuntimeError("UNO R4 controller resource boundary is stale")
     backend = record(features["backends"], BACKEND_ID, "backend")
     if (
         backend.get("adapter_component_id") != COMPONENT_ID
@@ -284,6 +303,7 @@ def verify_metadata() -> None:
         or binding.get("instance") != "wifi0"
         or binding.get("maturity") != "implemented"
         or binding.get("evidence_gates") != [GATE_ID]
+        or binding.get("controller_id") != CONTROLLER_ID
         or binding.get("workload") != EXPECTED_WORKLOAD
         or binding.get("measured_fixed_price") != EXPECTED_FIXED_PRICE
         or binding.get("fixed_price_provenance")

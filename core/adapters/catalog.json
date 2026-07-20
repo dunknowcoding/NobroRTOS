@@ -423,7 +423,7 @@
       "limitations": [
         "Exact UNO R4 evidence covers GATT write/read/notify, provider disconnect, quiesce/remount/recovery, and an active subscribed link across WiFiS3 DNS/TCP traffic.",
         "One-service, one-characteristic, 20-byte peripheral contract over ArduinoBLE's global HCI/GATT state.",
-        "The complete shared-controller resource price remains unmeasured."
+        "The exact controller artifact establishes 1,180,064 B application flash, 64,628 B static RAM, and 22,288 B / three-task source minima; retained/transient heap, complete task/stack reservations, CPU, and the complete shared-controller price remain unmeasured."
       ]
     },
     {
@@ -482,7 +482,7 @@
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "One exact UNO R4/WiFiS3 0.6.0 workload passed repeated association, DNS, TCP, leave, quiesce, and recovery and has a complete RA-side/controller-image price. Controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain unpriced."
+        "One exact UNO R4/WiFiS3 0.6.0 workload passed repeated association, DNS, TCP, leave, quiesce, and recovery and has a complete RA-side/controller-image price. The controller artifact also has exact static-RAM and source-minimum task/stack evidence; its runtime, BLE coexistence, other firmware versions, and other workloads remain unpriced."
       ]
     },
     {
@@ -671,7 +671,7 @@
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "Physical evidence is exact to UNO R4, ArduinoBLE 2.1.0, and controller firmware 0.6.0; complete controller-internal resource pricing remains open.",
+        "Physical evidence is exact to UNO R4, ArduinoBLE 2.1.0, and controller firmware 0.6.0; controller flash/static RAM and minimum persistent task stacks are pinned, while complete controller runtime pricing remains open.",
         "The library owns process-wide HCI/GATT state and dynamic allocation. The facade repairs ArduinoBLE 2.1.0's missing UNO R4 HCIEND and cleared-service retain for bounded recovery."
       ]
     },
@@ -712,7 +712,7 @@
         "arduino:renesas_uno:unor4wifi"
       ],
       "limitations": [
-        "The vendor stack is synchronous and heap-using. One exact UNO R4/WiFiS3 0.6.0 HTTP workload is priced; controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain separate."
+        "The vendor stack is synchronous and heap-using. One exact UNO R4/WiFiS3 0.6.0 HTTP workload is host-priced; the controller artifact has exact flash/static RAM and minimum task/stack evidence, while controller runtime, BLE coexistence, other firmware versions, and other workloads remain separate."
       ]
     },
     {

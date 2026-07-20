@@ -38,8 +38,11 @@ and observed high-water, 42,771,027 call-active cycles/s, and a conservative
 measured RA workload image is 67,420 B flash / 7,824 B static RAM. The board
 core owns SCI1, four UART interrupt slots, no DMA channel, and the ESP32-S3
 controller; the exact official 0.6.0 controller application artifact is
-1,180,064 B. Controller-internal RAM, tasks, CPU, BLE coexistence, other
-firmware versions, and other workloads remain separate evidence.
+1,180,064 B. Its exact ELF/map also establishes 64,628 B static RAM; pinned
+source establishes at least 22,288 B across three persistent application/USB
+task stacks. Retained/transient heap, complete task/stack reservations, CPU,
+BLE coexistence, other firmware versions, and other workloads remain separate
+evidence.
 
 The ArduinoBLE facade follows the same board-driver-first rule. On the exact
 UNO R4 WiFi profile it uses ArduinoBLE 2.1.0's official
@@ -56,8 +59,9 @@ notifications, provider disconnect, quiesce/remount, owned recovery, stable
 RA-side heap, and 15 WiFiS3 DNS/TCP transactions while the link stayed
 connected and subscribed. Each cycle then required a post-WiFi marker
 notification and readback. WiFiS3 calls remain synchronous and non-preemptible,
-and controller-internal RAM/tasks/CPU plus the complete shared-controller
-price remain unmeasured; the binding is implemented but deliberately unpriced.
+and controller retained/transient heap, complete task/stack reservations, CPU,
+plus the complete shared-controller price remain unmeasured; the binding is
+implemented but deliberately unpriced.
 
 The Arduino-ESP32 facade follows the same board-driver-first rule: it includes
 the pinned core's official `WiFi.h` and uses the ESP-IDF driver bundled with

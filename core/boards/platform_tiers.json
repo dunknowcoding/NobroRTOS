@@ -620,7 +620,7 @@
             "ble_link": {
               "maturity": "implemented",
               "evidence": ["arduino-ble-unor4-target-build"],
-              "limitations": "Exact UNO R4/ArduinoBLE 2.1.0/controller 0.6.0 physical evidence covers GATT write/read/notify, provider disconnect, remount/recovery, and a subscribed BLE link across WiFiS3 DNS/TCP traffic. The complete shared-controller resource price remains unmeasured."
+              "limitations": "Exact UNO R4/ArduinoBLE 2.1.0/controller 0.6.0 physical evidence covers GATT write/read/notify, provider disconnect, remount/recovery, and a subscribed BLE link across WiFiS3 DNS/TCP traffic. Controller flash/static RAM and minimum task/stack evidence are pinned; retained/transient heap, complete task/stack reservations, CPU, and the complete shared-controller price remain unmeasured."
             },
             "wifi_link": {
               "maturity": "implemented",

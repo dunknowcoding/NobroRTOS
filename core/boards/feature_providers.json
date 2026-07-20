@@ -40,6 +40,24 @@
     "compatible_instances",
     "core_affinity"
   ],
+  "controllers": [
+    {
+      "id": "controller-uno-r4-esp32s3",
+      "source": "https://github.com/arduino/uno-r4-wifi-usb-bridge",
+      "revision": "ac27b7b1d9c6c00a341c196ad2185816fe6e589d",
+      "version": "0.6.0",
+      "artifact_sha256": "53d173195bded1c670bb841e3b9f0f4e538287dbc9217752d884e95383a35ffe",
+      "application_flash_bytes": 1180064,
+      "application_static_ram_bytes": 64628,
+      "minimum_persistent_stack_bytes": 22288,
+      "minimum_persistent_tasks": 3,
+      "runtime_state": "unmeasured",
+      "limitations": [
+        "The exact release ELF/map establishes application image and static RAM; pinned source establishes only the minimum persistent application/USB task stacks and task count.",
+        "Firmware 0.6.0 exposes no heap, all-task stack, or per-task CPU telemetry, and its ESP-IDF 4.4.4 configuration disables FreeRTOS trace/runtime statistics. Controller retained/transient heap, complete task/stack reservations, and CPU use therefore remain unmeasured."
+      ]
+    }
+  ],
   "provenance": [
     {
       "id": "source-arduino-ble",
@@ -196,7 +214,7 @@
       "limitations": [
         "The facade admits one service, one characteristic, one logical connection, and 20-byte values over ArduinoBLE's process-wide HCI/GATT state.",
         "The exact UNO R4 path physically passes GATT write/read/notification, provider disconnect, quiesce/remount/recovery, and a subscribed BLE link across admitted WiFiS3 DNS/TCP traffic.",
-        "ArduinoBLE 2.1.0 needs the facade's bounded HCIEND and cleared-service-retain compatibility repair. Controller-internal RAM/tasks/CPU and a complete shared-controller configuration price remain unmeasured."
+        "ArduinoBLE 2.1.0 needs the facade's bounded HCIEND and cleared-service-retain compatibility repair. Controller flash/static RAM and minimum persistent task stacks are pinned; retained/transient heap, complete task/stack reservations, CPU, and a complete shared-controller configuration price remain unmeasured."
       ]
     },
     {
@@ -353,7 +371,7 @@
       ],
       "limitations": [
         "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; the exact UNO R4 binding also passed DNS and caller-owned TCP traffic.",
-        "WiFiS3 internally uses dynamic strings and blocking modem calls. One exact RA4M1 workload and the official controller application artifact are priced; controller-internal RAM, tasks, CPU, BLE coexistence, other firmware versions, and other workloads remain separate."
+        "WiFiS3 internally uses dynamic strings and blocking modem calls. One exact RA4M1 workload is priced; the controller artifact has exact flash/static RAM and minimum persistent task/stack evidence, while controller runtime, BLE coexistence, other firmware versions, and other workloads remain separate."
       ]
     }
   ],
@@ -369,10 +387,11 @@
       "evidence_gates": [
         "arduino-ble-unor4-target-build"
       ],
+      "controller_id": "controller-uno-r4-esp32s3",
       "price_state": "unmeasured",
       "limitations": [
         "Physical evidence covers three exact UNO R4 cycles, 15 GATT writes, 21 reads, 18 required notifications, 15 DNS/TCP transactions while subscribed, provider disconnect, remount, owned recovery, stable RA-side heap, and byte-exact restoration.",
-        "The binding remains fail-closed and unpriced because controller-internal RAM/tasks/CPU and a complete shared-controller configuration price are not measured."
+        "The binding remains fail-closed and unpriced because controller retained/transient heap, complete task/stack reservations, CPU, and a complete shared-controller configuration price are not measured."
       ],
       "disabled_symbol_gate": {
         "baseline": "same-target-nobro-app",
@@ -487,6 +506,7 @@
       "evidence_gates": [
         "arduino-wifis3-target-build"
       ],
+      "controller_id": "controller-uno-r4-esp32s3",
       "workload": {
         "namespace": "ra4m1-arduino-wifis3-http",
         "configuration_words": [48, 1, 25, 3, 1000000, 30000000, 8500, 1, 0, 6, 0],

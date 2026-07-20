@@ -71,7 +71,9 @@ facade uses the platform's own WiFiS3 library for bounded association
 lifecycle and caller-sized scan output. One exact WiFiS3 0.6.0 workload has
 zero-disabled, physical DNS/TCP/lifecycle, and RA-side/controller-image price
 evidence; controller-internal runtime resources, other firmware/workloads,
-and complete shared-controller BLE pricing remain separate.
+and complete shared-controller BLE pricing remain separate. The pinned
+controller artifact records 1,180,064 B application flash / 64,628 B static
+RAM and source minima of 22,288 B across three persistent tasks.
 
 UNO R4 WiFi projects may include `NobroArduinoBLE.h` and declare ArduinoBLE
 2.1.0 in `lib_deps`. The facade uses ArduinoBLE's official UNO R4
@@ -80,7 +82,8 @@ service, one characteristic, and 20-byte values. The facade adds bounded
 `HCIEND`, cleared-service-retain repair, and provider disconnect around
 ArduinoBLE 2.1.0. Exact physical evidence covers GATT write/read/notify,
 disconnect, remount/recovery, and a subscribed BLE link across WiFiS3 DNS/TCP
-traffic. The complete shared-controller resource price remains unmeasured.
+traffic. Controller retained/transient heap, complete task/stack reservations,
+CPU, and the complete shared-controller resource price remain unmeasured.
 
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps

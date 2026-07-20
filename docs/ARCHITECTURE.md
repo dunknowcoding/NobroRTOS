@@ -787,7 +787,9 @@ Implemented today in `nobro-wireless`:
   controller resources. One exact WiFiS3 0.6.0 binding has zero-disabled,
   state-restoring association/DNS/TCP/lifecycle evidence and a complete
   RA-side/controller-image price at one HTTP operation/s; controller-internal
-  RAM/tasks/CPU and complete shared-controller BLE pricing remain separate.
+  runtime remains separate. Registry controller evidence pins the official
+  artifact at 1,180,064 B application flash / 64,628 B static RAM and records
+  source minima of 22,288 B / three persistent application/USB task stacks.
 - `wireless/wifi/arduino-esp` and `NobroArduinoEspWiFi.h` add the same bounded
   station lifecycle for ESP32, ESP32-C3, and ESP32-S3 through the pinned
   Arduino-ESP32 3.3.10 board package. The facade disables credential
@@ -807,8 +809,8 @@ Implemented today in `nobro-wireless`:
   cleared-service retain, and exposes provider disconnect. Three exact
   physical cycles cover GATT write/read/notify, disconnect, remount/recovery,
   and a connected subscribed link across WiFiS3 DNS/TCP traffic. Synchronous
-  modem calls still serialize RA-side servicing; complete controller-internal
-  RAM/task/CPU pricing remains open.
+  modem calls still serialize RA-side servicing; controller retained/transient
+  heap, complete task/stack reservations, and CPU pricing remain open.
 
 Additional WiFi backends/workloads, UNO R4 controller-internal runtime
 accounting, other BLE controller/GATT bindings, Zigbee co-processor lifecycle,
