@@ -114,6 +114,13 @@ at 240 MHz. GATT write-to-notification latency is 47,247,480 cycles p99 and
 68,852,952 cycles maximum. This is not a BLE-only increment: a matching
 separately priced classic-ESP32 WiFi baseline remains open.
 
+ESP32-S3 NimBLE remains unpriced. Physical coexistence campaigns exercised
+GATT read/write/notify and recovery while completing WiFi HTTP traffic, but a
+fixed-rate deadline was not repeatable under shared-radio latency. Nobro does
+not convert that best-effort result into a deterministic throughput or resource
+claim. Adaptive queueing, retry/backoff, expiry, and energy policy require a
+separate admitted contract before this binding can be promoted.
+
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream
 boundary. The machine-readable member tree is in `core/adapters/catalog.json`.
