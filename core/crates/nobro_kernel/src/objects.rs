@@ -312,4 +312,32 @@ mod tests {
         assert_eq!(ledger.verify_clear(ModuleId::Crypto), Ok(()));
         assert_eq!(ledger.usage(ModuleId::Crypto).unwrap().cpu_us, 250);
     }
+
+    #[test]
+    fn balanced_charge_release_churn_never_drifts_or_leaks() {
+        // Stability (REC-04): the object leak invariant must hold under sustained
+        // churn, not just a single cycle. Ten thousand balanced charge/release
+        // pairs across every object kind must leave the ledger exactly empty each
+        // cycle (verify_clear stays Ok, no phantom occupancy accumulates), and a
+        // single dangling charge after all that churn is still reported precisely.
+        let mut ledger = ObjectLedger::<1>::new();
+        ledger.register(ModuleId::Crypto, ObjectQuota::DEFAULT);
+        for _ in 0..10_000u32 {
+            for kind in [ObjectKind::MailboxSlot, ObjectKind::Alarm, ObjectKind::KvEntry] {
+                ledger.charge(ModuleId::Crypto, kind).unwrap();
+                ledger.release(ModuleId::Crypto, kind).unwrap();
+            }
+            assert_eq!(ledger.verify_clear(ModuleId::Crypto), Ok(()));
+        }
+        ledger.charge(ModuleId::Crypto, ObjectKind::Alarm).unwrap();
+        assert_eq!(
+            ledger.verify_clear(ModuleId::Crypto),
+            Err(ObjectQuotaError::Leak {
+                module: ModuleId::Crypto,
+                mailbox_slots: 0,
+                alarms: 1,
+                kv_entries: 0,
+            })
+        );
+    }
 }

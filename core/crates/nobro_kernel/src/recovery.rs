@@ -897,6 +897,63 @@ mod tests {
     }
 
     #[test]
+    fn fault_flood_stays_coalesced_and_bounded() {
+        // Stability (REC-03): a sustained flood of one identical fault within the
+        // cooldown must stay coalesced -- the bounded event log never grows past
+        // the first entry, the suppressed count tracks every coalesced fault, and
+        // the health error counter keeps advancing exactly, with no overflow or
+        // panic. reboot_after is set high so the action stays constant across the
+        // whole flood (an escalation would legitimately re-open dispatch).
+        let mut recovery = RecoveryCoordinator::<1, 16>::with_storm_policy(
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 60_000,
+            },
+            RecoveryStormPolicy {
+                cooldown_us: 10_000_000,
+            },
+        );
+        recovery
+            .transition(SystemState::ValidateManifest, 1)
+            .unwrap();
+        recovery.transition(SystemState::InitDrivers, 2).unwrap();
+        recovery.transition(SystemState::Running, 3).unwrap();
+
+        let first = recovery
+            .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 10)
+            .unwrap();
+        assert!(!first.coalesced);
+        let events_after_first = recovery.events().len();
+
+        let floods: u64 = 5_000;
+        for i in 0..floods {
+            let out = recovery
+                .record_error(ModuleId::Sensor, KernelError::SensorReadFail, 11 + i)
+                .unwrap();
+            assert!(out.coalesced, "identical in-cooldown faults must coalesce");
+            assert_eq!(
+                recovery.events().len(),
+                events_after_first,
+                "the bounded event log must not grow under a fault flood"
+            );
+        }
+        assert_eq!(
+            recovery.suppressed_faults(ModuleId::Sensor),
+            floods as u32,
+            "every coalesced fault is counted as suppressed"
+        );
+        assert_eq!(
+            recovery
+                .snapshot(ModuleId::Sensor)
+                .unwrap()
+                .counters
+                .total_errors,
+            (floods + 1) as u32,
+            "health error count advances for every fault, coalesced or not"
+        );
+    }
+
+    #[test]
     fn identical_fault_work_is_coalesced_without_losing_health_counts() {
         let mut recovery = RecoveryCoordinator::<1, 16>::with_storm_policy(
             FaultThresholds {
