@@ -1302,6 +1302,49 @@ mod tests {
     }
 
     #[test]
+    fn memory_budget_admits_exactly_at_capacity_and_rejects_one_byte_over() {
+        // Budget boundary: the flash/RAM/pool-slot admission check is inclusive
+        // (`fits_within` uses `<=`). A manifest whose total exactly equals the
+        // profile capacity is admitted; one flash byte short of that total is
+        // rejected as BudgetExceeded carrying both the used total and the limit.
+        // BudgetExceeded had no direct test before this.
+        let mut manifest = SystemManifest::<2>::new();
+        manifest.add(kernel_spec()).unwrap();
+        manifest
+            .add(
+                ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                    .memory(MemoryBudget::new(1024, 128, 2)),
+            )
+            .unwrap();
+        let used = manifest.total_budget();
+
+        // Capacity exactly equal to the used budget: admitted (the task carries no
+        // execution cost, so response-time analysis passes trivially).
+        let exact = SystemProfile {
+            flash_limit_bytes: used.flash_bytes,
+            ram_limit_bytes: used.ram_bytes,
+            pool_slot_limit: used.pool_slots,
+            max_modules: 8,
+            wake_latency_us: 0,
+        };
+        assert_eq!(manifest.validate_profile(exact), Ok(()));
+
+        // One flash byte short of the used total: rejected as BudgetExceeded, and
+        // the check fires ahead of response-time analysis.
+        let over = SystemProfile {
+            flash_limit_bytes: used.flash_bytes - 1,
+            ..exact
+        };
+        assert_eq!(
+            manifest.validate_profile(over),
+            Err(ManifestError::BudgetExceeded {
+                used,
+                limit: over.budget(),
+            })
+        );
+    }
+
+    #[test]
     fn profile_wake_latency_is_admitted_and_attributed_to_the_task() {
         let mut manifest = SystemManifest::<2>::new();
         manifest.add(kernel_spec()).unwrap();
