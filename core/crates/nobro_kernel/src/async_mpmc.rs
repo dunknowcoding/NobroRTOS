@@ -704,6 +704,59 @@ mod tests {
     }
 
     #[test]
+    fn mpmc_multi_producer_saturation_delivers_every_item_without_starvation() {
+        // Wave 88 saturation/fairness: two producers push 500 items each through
+        // a 2-slot MPMC ring, so both producers block and wake repeatedly under
+        // heavy backpressure. A single consumer drains the exact total. Every
+        // item must arrive (sum + count exact) and neither producer may starve
+        // (the run must terminate; a starved producer would never finish).
+        const M: u32 = 500;
+        const TOTAL: u32 = 2 * M;
+        static CH: MpmcChannel<u32, 3, 2> = MpmcChannel::new();
+        static SUM: AtomicU32 = AtomicU32::new(0);
+        static COUNT: AtomicU32 = AtomicU32::new(0);
+        let core = leak_core::<3>();
+        let mut exec = ReactorExecutor::bind(core);
+
+        let p1 = pin!(async {
+            for _ in 0..M {
+                CH.send(1).await.unwrap();
+            }
+        });
+        let p2 = pin!(async {
+            for _ in 0..M {
+                CH.send(3).await.unwrap();
+            }
+        });
+        let consumer = pin!(async {
+            for _ in 0..TOTAL {
+                let value = CH.recv().await.unwrap().expect("channel remained open");
+                SUM.fetch_add(value, Ordering::Relaxed);
+                COUNT.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        exec.spawn(p1).unwrap();
+        exec.spawn(p2).unwrap();
+        exec.spawn(consumer).unwrap();
+
+        let mut cycles = 0u32;
+        while exec.live() != 0 {
+            exec.run_ready(16);
+            cycles += 1;
+            assert!(
+                cycles < 100_000,
+                "must terminate; a starved producer would hang"
+            );
+        }
+        assert_eq!(
+            COUNT.load(Ordering::Relaxed),
+            TOTAL,
+            "every item delivered once"
+        );
+        assert_eq!(SUM.load(Ordering::Relaxed), M * 1 + M * 3);
+    }
+
+    #[test]
     fn mpmc_close_wakes_blocked_receivers_with_none() {
         static CH: MpmcChannel<u32, 1, 2> = MpmcChannel::new();
         static GOT_NONE: AtomicU32 = AtomicU32::new(0);
