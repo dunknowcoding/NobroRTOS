@@ -323,7 +323,11 @@ mod tests {
         let mut ledger = ObjectLedger::<1>::new();
         ledger.register(ModuleId::Crypto, ObjectQuota::DEFAULT);
         for _ in 0..10_000u32 {
-            for kind in [ObjectKind::MailboxSlot, ObjectKind::Alarm, ObjectKind::KvEntry] {
+            for kind in [
+                ObjectKind::MailboxSlot,
+                ObjectKind::Alarm,
+                ObjectKind::KvEntry,
+            ] {
                 ledger.charge(ModuleId::Crypto, kind).unwrap();
                 ledger.release(ModuleId::Crypto, kind).unwrap();
             }
