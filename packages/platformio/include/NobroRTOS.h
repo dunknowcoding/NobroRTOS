@@ -275,6 +275,10 @@ private:
 } // namespace nobro
 #endif
 
+#if defined(__cplusplus)
+#include "NobroAdaptiveWireless.h"
+#endif
+
 #if defined(ARDUINO) && defined(__cplusplus) && \
     defined(NOBRO_ARDUINO_ENABLE_PROVIDERS)
 #include "NobroArduinoProviders.h"

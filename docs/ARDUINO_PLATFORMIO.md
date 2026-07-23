@@ -86,7 +86,9 @@ resource price is scoped to that composition. The exact classic ESP32
 Bluedroid binding passed two independent eight-cycle campaigns under the same
 kind of WiFi traffic and has a conservative whole-composition price; it is not
 presented as a BLE-only increment because classic wifi0 is not separately
-priced. ESP32-S3 and other workloads remain target-build-only.
+priced. The exact ESP32-S3 NimBLE binding passed two independent 24-cycle
+adaptive WiFi/GATT campaigns and has a conservative whole-composition price;
+its wifi0 baseline, BLE-only increment, and other workloads remain separate.
 
 ## PlatformIO
 

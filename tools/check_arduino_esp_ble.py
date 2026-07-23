@@ -102,6 +102,44 @@ EXPECTED_ESP32_COEXISTENCE = {
     "compatible_instances": ["wifi0"],
     "core_affinity": ["cpu0", "cpu1"],
 }
+EXPECTED_S3_WORKLOAD = {
+    "namespace": "esp32s3-arduino-adaptive-wifi-ble-gatt-http",
+    "configuration_words": [
+        240, 24, 16, 20, 250000, 8, 1, 50000, 2000000, 10000000,
+        4, 10000, 1000000, 4, 250000, 2000000, 30000, 20000000,
+        5000, 10, 2, 11, 24, 48,
+    ],
+    "configuration_fingerprint": "0020178d5b21d2a8",
+    "pacing": "adaptive",
+    "observation_interval_us": 201714300,
+    "offered_operations": 480,
+    "observed_operations": 430,
+}
+EXPECTED_S3_FIXED_PRICE = {
+    "flash_bytes": 1108868,
+    "static_ram_bytes": 64612,
+    "retained_heap_bytes": 135944,
+    "stack_bytes": 29184,
+    "vendor_reserved_ram_bytes": 0,
+    "worker_threads": 6,
+    "interrupt_slots": 0,
+    "dma_channels": 0,
+    "controller_firmware_bytes": 0,
+    "peripheral_channels": 0,
+}
+EXPECTED_S3_RUNTIME_PRICE = {
+    "transient_heap_peak_bytes": 11376,
+    "stack_high_water_bytes": 15288,
+    "cpu_cycles_per_second": 186157652,
+    "latency_p99_cycles": 881192160,
+    "latency_max_cycles": 881192160,
+}
+EXPECTED_S3_COEXISTENCE = {
+    "leases": ["esp32s3-shared-radio"],
+    "exclusive_resources": ["ble-controller"],
+    "compatible_instances": ["wifi0"],
+    "core_affinity": ["cpu0", "cpu1"],
+}
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -369,9 +407,37 @@ def verify_metadata() -> None:
                 or not binding.get("price_basis")
             )
         else:
+            fixed_provenance = {
+                field: (
+                    "measured"
+                    if field
+                    in {
+                        "flash_bytes",
+                        "static_ram_bytes",
+                        "retained_heap_bytes",
+                        "worker_threads",
+                    }
+                    else "source-derived"
+                )
+                for field in EXPECTED_S3_FIXED_PRICE
+            }
             priced_invalid = (
-                binding.get("maturity") != "compile-only"
-                or binding.get("price_state") != "unmeasured"
+                binding.get("maturity") != "implemented"
+                or binding.get("workload") != EXPECTED_S3_WORKLOAD
+                or binding.get("measured_fixed_price")
+                != EXPECTED_S3_FIXED_PRICE
+                or binding.get("fixed_price_provenance")
+                != fixed_provenance
+                or binding.get("measured_runtime_price")
+                != EXPECTED_S3_RUNTIME_PRICE
+                or binding.get("runtime_price_provenance")
+                != {
+                    field: "measured"
+                    for field in EXPECTED_S3_RUNTIME_PRICE
+                }
+                or binding.get("coexistence") != EXPECTED_S3_COEXISTENCE
+                or not binding.get("price_basis")
+                or "whole" not in binding["price_basis"].get("fixed", "")
                 or host not in " ".join(binding.get("limitations", [])).lower()
             )
         if common_invalid or priced_invalid:

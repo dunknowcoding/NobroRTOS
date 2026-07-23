@@ -10,10 +10,12 @@ edition.workspace = true
 # board or stack support. WiFi/BLE lifecycle traits and owned mounting are portable
 # contracts in this crate; concrete backend features remain absent until independently
 # implemented and gated. Additive WiFi/BLE instances may coexist only under an explicit
-# shared-radio lease. No heap.
+# shared-radio lease. The default has no heap; the optional `alloc` feature only
+# enables an explicitly selected, pre-reserved bounded queue.
 
 [dependencies]
 nobro-net = { path = "../nobro_net" }
 
 [features]
 default = []
+alloc = []

@@ -272,7 +272,10 @@ WiFi DNS/TCP coexistence evidence plus a workload-scoped incremental price.
 The exact classic ESP32 Bluedroid binding has two independent eight-cycle
 physical campaigns and a conservative whole WiFi+BLE composition price; a
 standalone classic wifi0 price and BLE-only increment are not inferred.
-ESP32-S3 and other workloads retain target-build evidence only.
+The exact ESP32-S3 NimBLE binding has two independent 24-cycle physical
+campaigns and a conservative whole WiFi+BLE composition price bound to adaptive
+offered/observed traffic. It does not imply a BLE-only increment or transfer to
+audio, camera, another policy, or another board.
 
 RFID readers use the same discipline. `SpiIo` is the board-supplied SPI byte
 adapter, `rfid_readers::MFRC522_SPI` describes a common ISO 14443A reader, and
@@ -289,6 +292,48 @@ assert!(!uid.is_empty());
 The backend allocates no heap memory, bounds polling, validates ISO 14443A BCC,
 and returns explicit `RfidError` values for bus, timeout, collision, protocol,
 and buffer failures.
+
+Variable-latency links can add a bounded adaptive queue without changing the
+deterministic kernel or the backend:
+
+```rust
+let mut tx = nobro_wireless::FixedAdaptiveQueue::<8, 64>::fixed(
+    nobro_wireless::AdaptivePolicy::responsive(),
+)?;
+let id = tx.enqueue_urgent_within(b"event", now_us, 20_000)?;
+let outcome = tx.service_one(now_us, &mut managed_link);
+```
+
+Use `BorrowedAdaptiveQueue` for an application-owned pool. `HeapAdaptiveQueue`
+exists only behind the explicit `alloc` feature, reserves a bounded slot array
+once, reports its reserved bytes, and never allocates while enqueueing or
+servicing. Cancellation, expiry, retry exhaustion, backpressure, offered versus
+delivered rate, callback wakeups, and idle-until hints are observable rather than
+hidden inside a vendor task.
+
+Adaptive provider prices bind to an exact `observation_interval_us`,
+`offered_operations`, and `observed_operations` tuple. This avoids rounding a
+slow or disrupted link to zero or one operation per second. The legacy fixed
+workload constructor remains a one-second exact observation.
+
+Arduino users can use the matching operational fixed queue directly:
+
+```cpp
+auto policy = nobro::WirelessPolicy::responsive(4, 32);
+nobro::AdaptiveWirelessQueue<4, 32> tx(policy);
+auto ticket = tx.enqueueUrgentWithin(bytes, length, nowUs, 20000);
+auto event = tx.service(nowUs, sendThroughSelectedAdapter, adapterContext);
+```
+
+The send callback returns a typed link-down, window, backend, payload, or
+deadline result. Link/window deferrals preserve the retry budget; enqueue and
+service allocate nothing.
+
+Treat that callback as a bounded completion boundary. Return success only for
+the operation represented by the workload; vendor APIs that finish later wake
+the owning task from their callback and finish outside interrupt context. An
+unbounded DNS/connect/request call inside `service` defeats expiry and is not a
+conforming adaptive backend.
 
 ### Camera Domain API
 

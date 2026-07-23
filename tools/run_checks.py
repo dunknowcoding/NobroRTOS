@@ -85,6 +85,12 @@ def gate_specs(quick, rust_only=False, extended=False):
             CORE,
         ))
         specs.append((
+            "wireless adaptive alloc feature tests",
+            ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-wireless", "--features", "alloc"],
+            CORE,
+        ))
+        specs.append((
             "kernel capacity-report feature tests",
             ["cargo", "test", "--locked", "--target", host_target(),
              "-p", "nobro-kernel", "--features", "capacity-report"],

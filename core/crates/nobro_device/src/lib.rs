@@ -214,16 +214,29 @@ impl Default for ProviderResourcePrice {
     }
 }
 
-/// Exact provider configuration and admitted operation rate.
+/// Traffic pacing used by an exact provider workload.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WorkloadPacing {
+    /// Offered and observed operation counts must match over one second.
+    Fixed,
+    /// Offered demand and useful completed work are counted over an exact interval.
+    Adaptive,
+}
+
+/// Exact provider configuration and admitted traffic observation.
 ///
 /// The fingerprint is deterministic and allocation-free, but is an identity
 /// check rather than a cryptographic digest. Providers own the order and
 /// meaning of `configuration_words`; the identity combines the resulting
-/// fingerprint with the admitted operation rate.
+/// fingerprint with the admitted traffic observation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProviderWorkload {
     configuration_fingerprint: u64,
-    operations_per_second: u32,
+    pacing: WorkloadPacing,
+    observation_interval_us: u64,
+    offered_operations: u32,
+    observed_operations: u32,
 }
 
 impl ProviderWorkload {
@@ -256,20 +269,80 @@ impl ProviderWorkload {
         }
         Self {
             configuration_fingerprint: hash,
-            operations_per_second,
+            pacing: WorkloadPacing::Fixed,
+            observation_interval_us: 1_000_000,
+            offered_operations: operations_per_second,
+            observed_operations: operations_per_second,
+        }
+    }
+
+    /// Describe variable-rate work without pretending every offer completed on schedule.
+    ///
+    /// Timing, retry, expiry, and batching parameters belong in `configuration_words`, so
+    /// changing any policy also changes the workload fingerprint.
+    pub const fn adaptive(
+        namespace: &str,
+        configuration_words: &[u32],
+        observation_interval_us: u64,
+        offered_operations: u32,
+        observed_operations: u32,
+    ) -> Self {
+        let fixed = Self::new(namespace, configuration_words, offered_operations);
+        Self {
+            pacing: WorkloadPacing::Adaptive,
+            observation_interval_us,
+            observed_operations,
+            ..fixed
         }
     }
 
     pub const fn is_valid(self) -> bool {
-        self.operations_per_second != 0
+        self.observation_interval_us != 0
+            && self.offered_operations != 0
+            && self.observed_operations <= self.offered_operations
+            && match self.pacing {
+                WorkloadPacing::Fixed => {
+                    self.observation_interval_us == 1_000_000
+                        && self.observed_operations == self.offered_operations
+                }
+                WorkloadPacing::Adaptive => true,
+            }
     }
 
     pub const fn configuration_fingerprint(self) -> u64 {
         self.configuration_fingerprint
     }
 
+    /// Whole offered operations per second, rounded down.
+    ///
+    /// Use the interval/count accessors when adaptive sub-Hz precision matters.
     pub const fn operations_per_second(self) -> u32 {
-        self.operations_per_second
+        if self.observation_interval_us == 0 {
+            return 0;
+        }
+        let rate =
+            (self.offered_operations as u128 * 1_000_000) / self.observation_interval_us as u128;
+        if rate > u32::MAX as u128 {
+            u32::MAX
+        } else {
+            rate as u32
+        }
+    }
+
+    pub const fn pacing(self) -> WorkloadPacing {
+        self.pacing
+    }
+
+    pub const fn observation_interval_us(self) -> u64 {
+        self.observation_interval_us
+    }
+
+    pub const fn offered_operations(self) -> u32 {
+        self.offered_operations
+    }
+
+    pub const fn observed_operations(self) -> u32 {
+        self.observed_operations
     }
 }
 
@@ -333,11 +406,19 @@ impl ProviderRuntimePrice {
     }
 
     pub const fn cpu_cycles_per_operation(self) -> Option<u64> {
-        let rate = self.workload.operations_per_second as u64;
-        if rate == 0 || self.known_dimensions & Self::CPU_CYCLES == 0 {
+        let observed = self.workload.observed_operations as u128;
+        if observed == 0 || self.known_dimensions & Self::CPU_CYCLES == 0 {
             None
         } else {
-            Some(self.cpu_cycles_per_second.div_ceil(rate))
+            let numerator =
+                self.cpu_cycles_per_second as u128 * self.workload.observation_interval_us as u128;
+            let denominator = observed * 1_000_000;
+            let cycles = numerator.div_ceil(denominator);
+            Some(if cycles > u64::MAX as u128 {
+                u64::MAX
+            } else {
+                cycles as u64
+            })
         }
     }
 
@@ -358,7 +439,10 @@ impl ProviderRuntimePrice {
     pub const fn matches(self, workload: ProviderWorkload) -> bool {
         self.is_complete()
             && self.workload.configuration_fingerprint == workload.configuration_fingerprint
-            && self.workload.operations_per_second == workload.operations_per_second
+            && self.workload.pacing as u8 == workload.pacing as u8
+            && self.workload.observation_interval_us == workload.observation_interval_us
+            && self.workload.offered_operations == workload.offered_operations
+            && self.workload.observed_operations == workload.observed_operations
     }
 
     pub const fn with_transient_heap_peak_bytes(mut self, value: u32) -> Self {
@@ -543,6 +627,40 @@ mod resource_price_tests {
             .with_latency_p99_cycles(11)
             .with_latency_max_cycles(10);
         assert!(!reversed.is_complete());
+    }
+
+    #[test]
+    fn adaptive_workload_preserves_exact_interval_and_counts() {
+        let workload = ProviderWorkload::adaptive(
+            "adaptive-radio",
+            &[8, 100_000, 3, 10_000, 500_000],
+            15_458_794,
+            20,
+            15,
+        );
+        assert!(workload.is_valid());
+        assert_eq!(workload.pacing(), WorkloadPacing::Adaptive);
+        assert_eq!(workload.observation_interval_us(), 15_458_794);
+        assert_eq!(workload.offered_operations(), 20);
+        assert_eq!(workload.observed_operations(), 15);
+        assert_eq!(workload.operations_per_second(), 1);
+
+        let runtime =
+            ProviderRuntimePrice::known_zero(workload).with_cpu_cycles_per_second(240_000_000);
+        assert_eq!(runtime.cpu_cycles_per_operation(), Some(247_340_704));
+        assert!(!runtime.matches(ProviderWorkload::new(
+            "adaptive-radio",
+            &[8, 100_000, 3, 10_000, 500_000],
+            20,
+        )));
+        assert!(!ProviderWorkload::adaptive("adaptive-radio", &[1], 1_000_000, 10, 11).is_valid());
+        assert!(!ProviderWorkload::adaptive("adaptive-radio", &[1], 0, 10, 1).is_valid());
+        let outage = ProviderWorkload::adaptive("adaptive-radio", &[1], 1_000_000, 10, 0);
+        assert!(outage.is_valid());
+        assert_eq!(
+            ProviderRuntimePrice::known_zero(outage).cpu_cycles_per_operation(),
+            None
+        );
     }
 }
 

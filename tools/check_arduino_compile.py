@@ -11,6 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES = os.path.join(ROOT, "packages", "arduino", "examples")
 LIBRARY = os.path.join(ROOT, "packages", "arduino")
 EXPECTED_EXAMPLES = (
+    "AdaptiveWireless",
     "BeginnerApp",
     "ProviderApp",
     "ReportReader",

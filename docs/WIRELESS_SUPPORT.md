@@ -1,7 +1,7 @@
 # Wireless support
 
-`nobro-wireless` defines allocation-free link contracts, deadline and resource
-accounting, diagnostics, mesh records, and RFID health records. Device-specific
+`nobro-wireless` defines allocation-free-by-default link contracts, deadline and
+resource accounting, diagnostics, mesh records, and RFID health records. Device-specific
 implementations stay under `core/adapters/wireless/`; external Arduino libraries
 remain independently selectable members exposed through small Nobro facades.
 
@@ -11,6 +11,7 @@ remain independently selectable members exposed through small Nobro facades.
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus physically verified UNO R4 ArduinoBLE, ESP32-C3 NimBLE, and classic ESP32 Bluedroid bindings |
+| Adaptive traffic policy | `FixedAdaptiveQueue` / `BorrowedAdaptiveQueue` / optional `HeapAdaptiveQueue` | Portable policy and host behavior; no board is promoted by the policy alone |
 | ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
 | Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; exact C3 NimBLE and classic ESP32 Bluedroid GATT/lifecycle/WiFi coexistence; C3 incremental price, classic whole-composition price, S3 physical price open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
@@ -25,6 +26,53 @@ runtime caller storage and never enter board metadata. BLE callbacks move
 through a caller-sized fixed queue. Backend id, MTU, queue capacity, and GATT
 limits are stable per logical instance; a board or vendor stack is supported
 only after its separate adapter and evidence gates pass.
+
+## Adaptive traffic without a heavier core
+
+Strict periodic work still uses the deterministic scheduler and immediate
+`ManagedLink::send_at`. Variable networks can add `AdaptiveQueue` above the same
+link. Each message carries an offered time, desired deadline, hard expiry,
+priority, and batching choice. Retry/backoff, cancellation, queue saturation,
+offered load, useful delivered throughput, deadline misses, wakeups, and latency
+remain explicit. Link-down and local-window deferrals do not consume the backend
+retry budget.
+
+The default owns a fixed array; a caller may lend a pool instead. Heap storage is
+available only with the Rust `alloc` feature or an explicit C/C++ storage choice,
+reserves a bounded slot count once, and must be included in the provider price.
+Enqueue and service never allocate in any mode. Completion callbacks only wake the
+owning task; protocol work stays outside interrupt/vendor callback context.
+The transport completion boundary must itself be bounded: return success only
+when the operation counted by the workload is complete. A vendor API that merely
+queues work must wake its owner from the ISR/DMA/vendor callback and finish in
+task context. Hiding an unbounded DNS, connect, or request wait inside `service`
+defeats expiry and is not a conforming adaptive backend.
+
+```rust
+let policy = nobro_wireless::AdaptivePolicy::low_energy(50_000);
+let mut tx = nobro_wireless::FixedAdaptiveQueue::<8, 64>::fixed(policy)?;
+tx.enqueue_best_effort_for(b"telemetry", now, 2_000_000)?;
+```
+
+```cpp
+auto policy = nobro::WirelessPolicy::lowEnergy(8, 64, 50000);
+nobro::AdaptiveWirelessQueue<8, 64> tx(policy);
+auto ticket = tx.enqueueBestEffortFor(payload, payloadLength, nowUs, 2000000);
+auto outcome = tx.service(nowUs, sendThroughSelectedAdapter, adapterContext);
+```
+
+The Arduino queue above is a header-only fixed-capacity implementation, not
+just configuration metadata. `service` is the only place it invokes the chosen
+transport callback. Rust additionally offers borrowed caller storage and the
+explicit `alloc` feature; choosing either never changes the default build.
+`reserved_storage_bytes` / `reservedBytes` expose the selected queue's concrete
+storage price instead of treating capacity as free.
+
+`RadioPowerHint::IdleUntil` allows normal idle/wake scheduling; it is not
+permission to enter a deep mode that would break USB, radio, or another mounted
+provider. Adaptive provider workloads retain the exact observation interval and
+offered/observed counts. This represents sub-Hz useful work without rounding and
+never relabels best-effort delivery as fixed-rate success.
 
 The WiFiS3 facade uses the installed Arduino Renesas board driver rather than
 reimplementing its coprocessor protocol. It retains no credentials and copies
@@ -114,12 +162,18 @@ at 240 MHz. GATT write-to-notification latency is 47,247,480 cycles p99 and
 68,852,952 cycles maximum. This is not a BLE-only increment: a matching
 separately priced classic-ESP32 WiFi baseline remains open.
 
-ESP32-S3 NimBLE remains unpriced. Physical coexistence campaigns exercised
-GATT read/write/notify and recovery while completing WiFi HTTP traffic, but a
-fixed-rate deadline was not repeatable under shared-radio latency. Nobro does
-not convert that best-effort result into a deterministic throughput or resource
-claim. Adaptive queueing, retry/backoff, expiry, and energy policy require a
-separate admitted contract before this binding can be promoted.
+The exact ESP32-S3 NimBLE composition passed two independent 24-cycle campaigns
+with concurrent WiFi association, DNS, bounded nonblocking HTTP, GATT
+read/write/notify, disconnect/reconnect, and byte-exact restoration of both
+participating flash images. The slower campaign offered 480 messages and
+delivered 430 during a 201,714,300 us observation; expiry, retry, deadline miss,
+and backpressure are explicit outcomes rather than invented fixed throughput.
+Conservative whole-composition maxima are 1,108,868 B flash, 64,612 B static
+RAM, 135,944 B retained heap, 29,184 B reserved worker stacks, six workers,
+11,376 B transient heap, 15,288 B stack high-water, and 186,157,652 cycles/s at
+240 MHz. The larger HTTP/GATT latency is 881,192,160 cycles p99 and maximum.
+This is not a BLE-only increment: a matching ESP32-S3 wifi0 baseline, audio and
+camera coexistence, and other policies remain separately unpriced.
 
 NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream

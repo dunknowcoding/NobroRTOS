@@ -78,6 +78,180 @@ int main() {
 }
 '''
 
+WIRELESS_POLICY_SOURCE = r'''
+#include <cassert>
+#include "NobroAdaptiveWireless.h"
+
+static int send_calls = 0;
+static nobro_wireless_send_result_t send_once_rejected(
+    const uint8_t *, size_t, uint64_t, void *) {
+  ++send_calls;
+  return send_calls == 1 ? NOBRO_WIRELESS_SEND_BACKEND_REJECTED
+                         : NOBRO_WIRELESS_SEND_OK;
+}
+
+static nobro_wireless_send_result_t always_rejected(
+    const uint8_t *, size_t, uint64_t, void *) {
+  return NOBRO_WIRELESS_SEND_BACKEND_REJECTED;
+}
+
+struct SendCapture {
+  uint8_t first_bytes[4];
+  size_t count;
+};
+
+static nobro_wireless_send_result_t capture_send(
+    const uint8_t *payload, size_t length, uint64_t, void *context) {
+  SendCapture *capture = static_cast<SendCapture *>(context);
+  if (capture->count < 4 && length != 0) {
+    capture->first_bytes[capture->count++] = payload[0];
+  }
+  return NOBRO_WIRELESS_SEND_OK;
+}
+
+int main() {
+  nobro::WirelessPolicy responsive = nobro::WirelessPolicy::responsive(8, 64);
+  assert(responsive.valid());
+  assert(responsive.native().storage_mode == NOBRO_WIRELESS_STORAGE_FIXED);
+  assert(responsive.native().retry.max_attempts == 3);
+
+  nobro::WirelessPolicy low_energy =
+      nobro::WirelessPolicy::lowEnergy(16, 128, 50000).callerPool();
+  assert(low_energy.valid());
+  assert(low_energy.native().storage_mode == NOBRO_WIRELESS_STORAGE_CALLER_POOL);
+  assert(low_energy.native().batch_window_us == 50000);
+
+  nobro::WirelessMessage message =
+      nobro::WirelessMessage::bestEffort(10, 100).deadline(50).priority(7);
+  assert(message.valid());
+  assert(message.native().batchable);
+  assert(message.native().priority == 7);
+  assert(nobro::WirelessMessage::urgent(10, 20).valid());
+
+  nobro::WirelessPolicy queue_policy = nobro::WirelessPolicy::responsive(2, 8);
+  nobro::AdaptiveWirelessQueue<2, 8> queue(queue_policy);
+  assert(queue.reservedBytes() >= 16);
+  const uint8_t payload[] = {1, 2, 3};
+  nobro::WirelessTicket ticket = queue.enqueue(
+      payload, sizeof(payload), nobro::WirelessMessage::urgent(0, 100000));
+  assert(ticket.valid && queue.size() == 1);
+  nobro::WirelessEvent first = queue.service(0, send_once_rejected);
+  assert(first.kind == nobro::WIRELESS_RETRY_AT && first.atUs == 1000);
+  nobro::WirelessEvent second = queue.service(1000, send_once_rejected);
+  assert(second.kind == nobro::WIRELESS_DELIVERED && second.id == ticket.id);
+  assert(queue.diagnostics().retry_attempts == 1);
+  assert(queue.diagnostics().delivered_messages == 1);
+  nobro::WirelessTicket relative =
+      queue.enqueueUrgentWithin(payload, sizeof(payload), UINT64_MAX - 5, 20);
+  assert(relative.valid);
+  assert(queue.service(UINT64_MAX, send_once_rejected).kind ==
+         nobro::WIRELESS_DELIVERED);
+
+  nobro::AdaptiveWirelessQueue<2, 8> ordered(queue_policy);
+  const uint8_t low[] = {1};
+  const uint8_t high[] = {9};
+  nobro::WirelessTicket low_ticket = ordered.enqueue(
+      low, sizeof(low),
+      nobro::WirelessMessage::bestEffort(0, 100).priority(1).batchable(false));
+  nobro::WirelessTicket high_ticket = ordered.enqueue(
+      high, sizeof(high),
+      nobro::WirelessMessage::bestEffort(0, 100).priority(9).batchable(false));
+  assert(low_ticket.valid && high_ticket.valid);
+  assert(!ordered.enqueue(low, sizeof(low),
+      nobro::WirelessMessage::bestEffort(0, 100)).valid);
+  SendCapture capture = {{0}, 0};
+  assert(ordered.service(0, capture_send, &capture).id == high_ticket.id);
+  assert(capture.count == 1 && capture.first_bytes[0] == 9);
+  assert(ordered.cancel(low_ticket));
+  assert(ordered.diagnostics().backpressure_rejections == 1);
+
+  nobro::AdaptiveWirelessQueue<2, 8> deadline_order(queue_policy);
+  nobro::WirelessTicket later = deadline_order.enqueue(
+      low, sizeof(low), nobro::WirelessMessage::bestEffort(0, 100)
+          .deadline(90).batchable(false));
+  nobro::WirelessTicket sooner = deadline_order.enqueue(
+      high, sizeof(high), nobro::WirelessMessage::bestEffort(10, 100)
+          .deadline(20).batchable(false));
+  assert(later.valid && sooner.valid);
+  assert(deadline_order.service(10, capture_send, &capture).id == sooner.id);
+  assert(deadline_order.service(10, capture_send, &capture).id == later.id);
+
+  nobro::AdaptiveWirelessQueue<2, 8> batch(
+      nobro::WirelessPolicy::lowEnergy(2, 8, 50));
+  nobro::WirelessTicket expired = batch.enqueue(
+      low, sizeof(low), nobro::WirelessMessage::bestEffort(0, 10));
+  assert(expired.valid);
+  assert(batch.service(11, capture_send, &capture).kind == nobro::WIRELESS_EXPIRED);
+  batch.enqueue(high, sizeof(high), nobro::WirelessMessage::urgent(20, 100));
+  batch.enqueue(low, sizeof(low), nobro::WirelessMessage::urgent(20, 100));
+  assert(batch.serviceBatch(20, capture_send, &capture) == 2);
+
+  nobro::AdaptiveWirelessQueue<2, 8> exhausted(
+      nobro::WirelessPolicy::responsive(2, 8));
+  exhausted.enqueue(high, sizeof(high),
+      nobro::WirelessMessage::urgent(0, 10000));
+  exhausted.enqueue(low, sizeof(low),
+      nobro::WirelessMessage::urgent(0, 10000));
+  assert(exhausted.serviceBatch(0, always_rejected) == 0);
+  assert(exhausted.size() == 2);
+  assert(exhausted.serviceBatch(1000, always_rejected) == 0);
+  assert(exhausted.serviceBatch(3000, always_rejected) == 0);
+  assert(exhausted.size() == 1);
+
+  nobro::AdaptiveWirelessQueue<2, 8> invalid(
+      nobro::WirelessPolicy::responsive(1, 8));
+  assert(!invalid.valid());
+  assert(invalid.serviceBatch(0, capture_send, &capture) == 0);
+  assert(invalid.diagnostics().radio_wake_batches == 0);
+
+  nobro::WirelessRecovery recovery =
+      nobro::WirelessRecovery::exponential(3, 10, 40);
+  assert(recovery.valid() && recovery.ready(0));
+  assert(recovery.failed(100));
+  assert(recovery.failedAttempts() == 1 && recovery.nextAttemptUs() == 110);
+  assert(!recovery.ready(109) && recovery.ready(110));
+  assert(recovery.failed(110) && recovery.nextAttemptUs() == 130);
+  assert(!recovery.failed(130));
+  recovery.reset();
+  assert(recovery.failedAttempts() == 0 && recovery.ready(0));
+}
+'''
+
+WIRELESS_C_SOURCE = r'''
+#include <assert.h>
+#include "nobro_wireless.h"
+int main(void) {
+  nobro_wireless_adaptive_policy_t policy =
+      nobro_wireless_low_energy_policy(8u, 64u, 50000u);
+  assert(nobro_wireless_policy_valid(&policy));
+  policy.storage_mode = NOBRO_WIRELESS_STORAGE_HEAP;
+  assert(policy.storage_mode == NOBRO_WIRELESS_STORAGE_HEAP);
+  policy.storage_mode = (nobro_wireless_storage_mode_t)99;
+  assert(!nobro_wireless_policy_valid(&policy));
+  nobro_wireless_message_contract_t message =
+      nobro_wireless_best_effort_message(10u, 100u);
+  message.deadline_us = 50u;
+  assert(nobro_wireless_message_valid(&message));
+  message.deadline_us = 101u;
+  assert(!nobro_wireless_message_valid(&message));
+  nobro_wireless_recovery_state_t recovery;
+  nobro_wireless_recovery_reset(&recovery);
+  assert(nobro_wireless_recovery_ready(&recovery, 0u));
+  assert(nobro_wireless_recovery_failed(&recovery, &policy.retry, 100u));
+  assert(recovery.failed_attempts == 1u);
+  assert(recovery.next_attempt_us == 10100u);
+  assert(!nobro_wireless_recovery_ready(&recovery, 1000u));
+  assert(nobro_wireless_recovery_ready(&recovery, 10100u));
+  nobro_wireless_retry_policy_t invalid_retry = {2u, 0u, 1u};
+  assert(!nobro_wireless_retry_policy_valid(&invalid_retry));
+  nobro_wireless_recovery_reset(&recovery);
+  assert(!nobro_wireless_recovery_failed(
+      &recovery, &invalid_retry, 0u));
+  assert(recovery.failed_attempts == 0u);
+  return 0;
+}
+'''
+
 ARDUINO_STUB = r'''
 #pragma once
 #include <cstddef>
@@ -599,10 +773,29 @@ def compile_and_run(compiler: str, source_text: str, tmp: pathlib.Path,
     return True, ""
 
 
+def compile_c_and_run(compiler: str, source_text: str, tmp: pathlib.Path,
+                      stem: str, include_paths: list[pathlib.Path]) -> tuple[bool, str]:
+    source = tmp / f"{stem}.c"
+    binary = tmp / (f"{stem}.exe" if sys.platform == "win32" else stem)
+    source.write_text(source_text, encoding="utf-8")
+    command = [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror"]
+    for include in include_paths:
+        command.extend(["-I", str(include)])
+    command.extend([str(source), "-o", str(binary)])
+    compiled = subprocess.run(command, capture_output=True, text=True)
+    if compiled.returncode:
+        return False, (compiled.stdout + compiled.stderr).strip()
+    executed = subprocess.run([str(binary)], capture_output=True, text=True)
+    if executed.returncode:
+        return False, (executed.stdout + executed.stderr).strip()
+    return True, ""
+
+
 def main() -> int:
     compiler = shutil.which("g++") or shutil.which("g++.exe")
-    if not compiler:
-        print("ARDUINO FACADE: FAIL (g++ not found)")
+    c_compiler = shutil.which("gcc") or shutil.which("gcc.exe")
+    if not compiler or not c_compiler:
+        print("ARDUINO FACADE: FAIL (g++/gcc not found)")
         return 1
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = pathlib.Path(tmp)
@@ -610,6 +803,20 @@ def main() -> int:
         if not ok:
             print(output)
             print("ARDUINO FACADE: FAIL (contracts)")
+            return 1
+        ok, output = compile_and_run(
+            compiler, WIRELESS_POLICY_SOURCE, tmp_path, "wireless_policy", [HEADER]
+        )
+        if not ok:
+            print(output)
+            print("ARDUINO FACADE: FAIL (adaptive wireless C++ policy)")
+            return 1
+        ok, output = compile_c_and_run(
+            c_compiler, WIRELESS_C_SOURCE, tmp_path, "wireless_policy_c", [HEADER]
+        )
+        if not ok:
+            print(output)
+            print("ARDUINO FACADE: FAIL (adaptive wireless C policy)")
             return 1
 
         stub_path = tmp_path / "arduino_stubs"
@@ -641,7 +848,8 @@ def main() -> int:
                 print(output)
                 print(f"ARDUINO FACADE: FAIL ({variant} provider lifecycle/resolution/I/O)")
                 return 1
-    print("ARDUINO FACADE: PASS (NobroApp zero/overflow negatives + 5 executed provider "
+    print("ARDUINO FACADE: PASS (adaptive wireless C/C++ policies + NobroApp "
+          "zero/overflow negatives + 5 executed provider "
           "architecture policies; ADC/PWM instance isolation + SPI/I2C lifecycle "
           "negatives + capped/resumable byte-I/O records)")
     return 0

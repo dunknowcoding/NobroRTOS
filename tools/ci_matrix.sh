@@ -42,6 +42,10 @@ gate "host tests (portable crates)" \
     -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
     --target "$HOST_TARGET"'
 
+gate "wireless adaptive alloc feature tests" \
+  bash -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
+    -p nobro-wireless --features alloc'
+
 gate "capacity-report feature target build" \
   bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features capacity-report'

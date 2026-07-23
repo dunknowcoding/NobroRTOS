@@ -155,7 +155,7 @@ claim that every application or generated binary is smaller than another RTOS.
 | You are a&hellip; | NobroRTOS gives you |
 | --- | --- |
 | **Beginner / maker** | A host-only quick gate, an Arduino-style `setup()/loop()` in C++, and one-command hardware grading on the configured deep-HAL profile |
-| **Embedded engineer** | `no_std`, no heap, static capacity, deadline contracts, declared capability grants, and the `embedded-hal` driver ecosystem |
+| **Embedded engineer** | `no_std`, no heap by default, static capacity, deadline contracts, declared capability grants, and the `embedded-hal` driver ecosystem. Budget-critical work (control loops, motors) stays on the fixed no-heap path; only an explicitly selected adaptive queue may reserve a bounded heap once, and no mode allocates while sending or servicing |
 | **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
 | **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
 | **Porting from another RTOS** | A thin SAL + C ABI for reusing driver/algorithm code while task wiring and resource contracts are re-expressed &mdash; see [docs/PORTING.md](docs/PORTING.md) |
@@ -421,7 +421,7 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
-| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are host-priced; ESP32-C3 NimBLE has a separately priced WiFi-coexistence increment, while classic ESP32 Bluedroid has an exact whole WiFi+BLE composition price. A standalone classic wifi0 price, ESP32-S3 BLE, and UNO R4 controller runtime remain open |
+| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are host-priced; ESP32-C3 NimBLE has a separately priced WiFi-coexistence increment, while classic ESP32 Bluedroid and ESP32-S3 NimBLE have exact whole WiFi+BLE composition prices. Standalone classic/S3 wifi0 prices, their BLE-only increments, and UNO R4 controller runtime remain open |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 
 </details>

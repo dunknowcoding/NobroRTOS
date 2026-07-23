@@ -9,6 +9,12 @@
 //! the RFID code carries ISO 14443A anticollision arithmetic.
 #![cfg_attr(not(test), no_std)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+mod adaptive;
+pub use adaptive::*;
+
 /// Protocol identities a link descriptor can carry.
 ///
 /// A variant describes scheduling and diagnostic data; it does not claim that a board

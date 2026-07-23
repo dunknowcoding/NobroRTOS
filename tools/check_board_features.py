@@ -57,11 +57,20 @@ CONTROLLER_FIELDS = {
     "runtime_state",
     "limitations",
 }
-WORKLOAD_FIELDS = {
+FIXED_WORKLOAD_FIELDS = {
     "namespace",
     "configuration_words",
     "configuration_fingerprint",
     "operations_per_second",
+}
+ADAPTIVE_WORKLOAD_FIELDS = {
+    "namespace",
+    "configuration_words",
+    "configuration_fingerprint",
+    "pacing",
+    "observation_interval_us",
+    "offered_operations",
+    "observed_operations",
 }
 
 
@@ -335,9 +344,25 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             )
             continue
         workload = binding.get("workload")
+        workload_fields = set(workload) if isinstance(workload, dict) else set()
+        fixed_rate_valid = (
+            workload_fields == FIXED_WORKLOAD_FIELDS
+            and isinstance(workload.get("operations_per_second"), int)
+            and workload["operations_per_second"] > 0
+        ) if isinstance(workload, dict) else False
+        adaptive_observation_valid = (
+            workload_fields == ADAPTIVE_WORKLOAD_FIELDS
+            and workload.get("pacing") == "adaptive"
+            and isinstance(workload.get("observation_interval_us"), int)
+            and isinstance(workload.get("offered_operations"), int)
+            and isinstance(workload.get("observed_operations"), int)
+            and workload["observation_interval_us"] > 0
+            and workload["offered_operations"] > 0
+            and 0 <= workload["observed_operations"]
+            <= workload["offered_operations"]
+        ) if isinstance(workload, dict) else False
         if (
             not isinstance(workload, dict)
-            or set(workload) != WORKLOAD_FIELDS
             or not isinstance(workload.get("namespace"), str)
             or not NAME.fullmatch(workload["namespace"])
             or not isinstance(workload.get("configuration_words"), list)
@@ -348,10 +373,11 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             )
             or not isinstance(workload.get("configuration_fingerprint"), str)
             or not FINGERPRINT.fullmatch(workload["configuration_fingerprint"])
-            or not isinstance(workload.get("operations_per_second"), int)
-            or workload["operations_per_second"] <= 0
+            or not (fixed_rate_valid or adaptive_observation_valid)
         ):
-            errors.append(f"{prefix}: workload identity and positive operation rate are required")
+            errors.append(
+                f"{prefix}: workload identity and a valid traffic observation are required"
+            )
         elif workload["configuration_fingerprint"] != workload_fingerprint(
             workload["namespace"], workload["configuration_words"]
         ):
@@ -541,7 +567,23 @@ def selftest() -> int:
     assert any("declared-zero runtime" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(priced)
     broken["bindings"][-1]["workload"]["operations_per_second"] = 0
-    assert any("operation rate" in error for error in validate(broken, catalog))
+    assert any("traffic observation" in error for error in validate(broken, catalog))
+    adaptive = copy.deepcopy(priced)
+    adaptive_workload = adaptive["bindings"][-1]["workload"]
+    adaptive_workload.pop("operations_per_second")
+    adaptive_workload.update({
+        "pacing": "adaptive",
+        "observation_interval_us": 12_345_678,
+        "offered_operations": 100,
+        "observed_operations": 87,
+    })
+    assert not validate(adaptive, catalog)
+    adaptive["bindings"][-1]["workload"]["observed_operations"] = 101
+    assert any("traffic observation" in error for error in validate(adaptive, catalog))
+    adaptive["bindings"][-1]["workload"]["observed_operations"] = 0
+    assert not validate(adaptive, catalog)
+    adaptive["bindings"][-1]["workload"]["observation_interval_us"] = 0
+    assert any("traffic observation" in error for error in validate(adaptive, catalog))
     broken = copy.deepcopy(priced)
     broken["bindings"][-1]["workload"]["configuration_words"][0] += 1
     assert any("fingerprint differs" in error for error in validate(broken, catalog))

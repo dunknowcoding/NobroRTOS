@@ -162,7 +162,7 @@ Fixed-capacity structured data store for NobroRTOS (database-style operations,
 ## `nobro-device`
 Extensible device-module framework for NobroRTOS.
 - **struct**: `ProviderResourcePrice`, `ProviderWorkload`, `ProviderRuntimePrice`, `ProviderAdmissionPrice`, `ServoProfile`, `MotorProfile`, `SensorDescriptor`, `SensorRegistry`, `StepperProfile`, `LedStripProfile`, `RelayProfile`, `DisplayProfile`, `GpsProfile`, `RangerProfile`, `BoardModule`, `BoardRegistry`
-- **enum**: `ResourceDimension`, `ActuatorKind`, `SensorKind`, `Bus`, `ColorOrder`
+- **enum**: `ResourceDimension`, `WorkloadPacing`, `ActuatorKind`, `SensorKind`, `Bus`, `ColorOrder`
 - **fn**: `angle_to_pulse`, `speed_to_pulse`, `throttle_to_pulse`, `arm_pulse`, `identify`, `register`, `len`, `is_empty`, `find_kind`, `identify_at`, `angle_to_steps`, `rpm_to_sps`, `frame_bytes`, `drive_level`, `framebuffer_bytes`, `nmea_checksum`, `echo_us_to_mm`, `register`, `find`, `len`, `is_empty`
 
 ## `nobro-hal`
