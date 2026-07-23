@@ -2118,6 +2118,44 @@ mod tests {
     }
 
     #[test]
+    fn channel_backpressure_is_stable_over_many_messages() {
+        // Stability: a capacity-1 channel forces a park/wake handoff on every
+        // message. Push a thousand through under bounded per-cycle fuel and
+        // require every one to arrive in order-sum, the run to terminate (no
+        // fuel starvation or lost wake), and the channel to drain empty.
+        const N: u32 = 1000;
+        static CH: Channel<u32, 1> = Channel::new();
+        static SUM: AtomicU32 = AtomicU32::new(0);
+        static RECEIVED: AtomicU32 = AtomicU32::new(0);
+        let core = leak_core::<2>();
+        let mut exec = ReactorExecutor::bind(core);
+
+        let producer = pin!(async {
+            for i in 0..N {
+                CH.send(i).await;
+            }
+        });
+        let consumer = pin!(async {
+            for _ in 0..N {
+                SUM.fetch_add(CH.recv().await, Ordering::Relaxed);
+                RECEIVED.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        exec.spawn(producer).unwrap();
+        exec.spawn(consumer).unwrap();
+
+        let mut cycles = 0u32;
+        while exec.live() != 0 {
+            exec.run_ready(8);
+            cycles += 1;
+            assert!(cycles < 100_000, "must terminate; a lost wake would hang");
+        }
+        assert_eq!(RECEIVED.load(Ordering::Relaxed), N, "no message dropped");
+        assert_eq!(SUM.load(Ordering::Relaxed), N * (N - 1) / 2, "in-order sum");
+        assert!(CH.is_empty());
+    }
+
+    #[test]
     fn cancellation_races_are_safe_and_sticky() {
         static TOKEN: CancelToken = CancelToken::new();
         let core = leak_core::<1>();
