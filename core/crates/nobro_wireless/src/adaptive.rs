@@ -1114,4 +1114,41 @@ mod tests {
             Err(QueueError::Full)
         );
     }
+
+    #[test]
+    fn fixed_storage_stays_bounded_over_heavy_churn() {
+        // The no-heap fixed queue is the certainty path for budget-critical work
+        // (e.g. motor control): thousands of enqueue/cancel cycles must never grow
+        // its footprint and must reuse slots exactly, so a flexible workload
+        // elsewhere can never leak a slot or perturb the static path. Delivery is
+        // covered by the scripted-radio tests; this stresses slot lifetime.
+        let mut queue = FixedAdaptiveQueue::<4, 16>::fixed(AdaptivePolicy::responsive()).unwrap();
+        let reserved = queue.reserved_storage_bytes();
+
+        const N: u32 = 10_000;
+        for _ in 0..N {
+            let id = queue
+                .enqueue(b"tick", MessageContract::urgent(0, u64::MAX))
+                .unwrap();
+            // Fixed, allocation-free storage: the footprint never grows.
+            assert_eq!(queue.reserved_storage_bytes(), reserved);
+            // Cancel frees the slot; the next enqueue must reuse it (never Full).
+            assert!(queue.cancel(id));
+        }
+        assert_eq!(queue.diagnostics().offered_messages, N);
+        assert_eq!(queue.diagnostics().cancelled_messages, N);
+
+        // No slot leaked over the churn: the queue still fills to exactly its
+        // capacity and rejects the next message, with the same fixed footprint.
+        for _ in 0..4 {
+            queue
+                .enqueue(b"x", MessageContract::urgent(0, u64::MAX))
+                .unwrap();
+        }
+        assert_eq!(
+            queue.enqueue(b"x", MessageContract::urgent(0, u64::MAX)),
+            Err(QueueError::Full)
+        );
+        assert_eq!(queue.reserved_storage_bytes(), reserved);
+    }
 }
