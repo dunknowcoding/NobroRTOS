@@ -1115,6 +1115,39 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn heap_mode_stays_bounded_over_heavy_churn() {
+        // The opt-in heap path is the flexible counterpart to the fixed queue: it
+        // reserves once, so 10k enqueue/cancel cycles must not allocate again or
+        // grow the reserved footprint. Enabling flexibility never becomes
+        // unbounded runtime growth beside the static tasks.
+        let mut queue = HeapAdaptiveQueue::<16>::heap(4, AdaptivePolicy::responsive()).unwrap();
+        let reserved = queue.reserved_heap_bytes();
+
+        const N: u32 = 10_000;
+        for _ in 0..N {
+            let id = queue
+                .enqueue(b"tick", MessageContract::urgent(0, u64::MAX))
+                .unwrap();
+            assert_eq!(queue.reserved_heap_bytes(), reserved);
+            assert!(queue.cancel(id));
+        }
+        assert_eq!(queue.diagnostics().offered_messages, N);
+        assert_eq!(queue.diagnostics().cancelled_messages, N);
+
+        for _ in 0..4 {
+            queue
+                .enqueue(b"x", MessageContract::urgent(0, u64::MAX))
+                .unwrap();
+        }
+        assert_eq!(
+            queue.enqueue(b"x", MessageContract::urgent(0, u64::MAX)),
+            Err(QueueError::Full)
+        );
+        assert_eq!(queue.reserved_heap_bytes(), reserved);
+    }
+
     #[test]
     fn fixed_storage_stays_bounded_over_heavy_churn() {
         // The no-heap fixed queue is the certainty path for budget-critical work
