@@ -2498,6 +2498,111 @@ mod tests {
     }
 
     #[test]
+    fn bounded_containment_stays_deterministic_over_many_cycles() {
+        // Stability: once bounded containment disables a module, thousands of
+        // further releases must keep the same fail-closed behaviour -- never
+        // polled again, never silently re-enabled, and the skip path runs every
+        // cycle without a panic, overflow, or state flip.
+        let mut exec = TestExecutor::new(
+            runtime(),
+            ContainmentPolicy::Bounded {
+                disable_after_overruns: 2,
+            },
+        );
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 100_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+
+        let ticks = Cell::new(0u64);
+        let clock = || {
+            let t = ticks.get();
+            ticks.set(t + 1_000);
+            t
+        };
+        let mut power = PowerHooks::default();
+
+        // Two overrunning cycles disable the module (see the sibling test).
+        exec.run_cycle(clock, &mut power, |_| Ok(Poll::Pending))
+            .unwrap();
+        ticks.set(200_000);
+        let contained = exec
+            .run_cycle(clock, &mut power, |_| Ok(Poll::Pending))
+            .unwrap();
+        assert!(contained.contained);
+        assert_eq!(
+            exec.runtime().module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Disabled)
+        );
+
+        // Ten thousand further release windows: the disabled module is never
+        // polled and never leaves Disabled, and at least one skip is observed
+        // so the skip-and-count path is genuinely exercised (not just idle).
+        let mut skips = 0usize;
+        for i in 1..=10_000u64 {
+            ticks.set(200_000 + i * 200_000);
+            let out = exec
+                .run_cycle(clock, &mut power, |_| {
+                    panic!("a disabled module must never be polled")
+                })
+                .unwrap();
+            assert_eq!(out.polled, None);
+            assert_eq!(
+                exec.runtime().module_state(ModuleId::Sensor),
+                Some(ModuleRunState::Disabled)
+            );
+            if out.skipped_release == Some(ModuleId::Sensor) {
+                skips += 1;
+            }
+        }
+        assert!(skips > 0, "the skip-and-count path must run under load");
+    }
+
+    #[test]
+    fn cooperative_overruns_stay_bounded_over_many_cycles() {
+        // Stability: the cooperative profile never disables a module, so a task
+        // that overruns forever must keep being polled and reported as an
+        // overrun every cycle -- deterministically, with no panic, counter
+        // wrap, or spurious containment across a long run.
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        exec.add_task(
+            TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 100_000, 100),
+            0,
+        )
+        .unwrap();
+        exec.seal().unwrap();
+
+        let ticks = Cell::new(0u64);
+        let clock = || {
+            let t = ticks.get();
+            ticks.set(t + 1_000); // 1000us poll vs 100us budget => always overruns
+            t
+        };
+        let mut power = PowerHooks::default();
+
+        let mut polled = 0usize;
+        for i in 0..5_000u64 {
+            ticks.set(i * 200_000);
+            let out = exec
+                .run_cycle(clock, &mut power, |_| Ok(Poll::Pending))
+                .unwrap();
+            if out.polled == Some(ModuleId::Sensor) {
+                polled += 1;
+                assert!(out.overrun, "an over-budget poll must report an overrun");
+                assert!(!out.contained, "cooperative profile never contains");
+            }
+            assert_ne!(
+                exec.runtime().module_state(ModuleId::Sensor),
+                Some(ModuleRunState::Disabled),
+                "cooperative profile must never disable a module"
+            );
+        }
+        assert!(polled > 0, "the overrunning task must actually be polled");
+    }
+
+    #[test]
     fn stack_guard_enforcement_attributes_and_routes_into_recovery() {
         use crate::{StackGuardTable, StackRegion};
         let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);

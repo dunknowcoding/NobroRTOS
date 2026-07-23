@@ -1260,6 +1260,48 @@ mod tests {
     }
 
     #[test]
+    fn utilization_budget_admits_exactly_full_and_rejects_just_over() {
+        // Budget boundary (ARC-06): the declared-execution utilization sum may
+        // reach 100% but not exceed it. Two 50% tasks are admitted exactly at
+        // full; nudging one task's budget by a single microsecond tips the sum
+        // past 100% and must be rejected as Overutilized carrying the real sum.
+        fn manifest_with(second_budget_us: u32) -> SystemManifest<3> {
+            let mut manifest = SystemManifest::<3>::new();
+            manifest.add(kernel_spec()).unwrap();
+            manifest
+                .add(
+                    ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                        .memory(MemoryBudget::new(1024, 128, 0))
+                        .deadline(DeadlineContract::new(1_000, 10).execution_budget(500)),
+                )
+                .unwrap();
+            manifest
+                .add(
+                    ModuleSpec::new(ModuleId::Actuator, Criticality::Driver)
+                        .memory(MemoryBudget::new(1024, 128, 0))
+                        .deadline(
+                            DeadlineContract::new(1_000, 10).execution_budget(second_budget_us),
+                        ),
+                )
+                .unwrap();
+            manifest
+        }
+
+        // Exercise the utilization-sum contract directly so the boundary is not
+        // masked by the stricter response-time analysis in `validate_profile`.
+        // 500/1000 + 500/1000 = exactly 100% -> admitted.
+        assert_eq!(manifest_with(500).validate_system_contract(), Ok(()));
+
+        // 500/1000 + 501/1000 = 100.1% -> rejected, and the error carries the sum.
+        assert_eq!(
+            manifest_with(501).validate_system_contract(),
+            Err(ManifestError::Overutilized {
+                utilization_permyriad: 10_010,
+            })
+        );
+    }
+
+    #[test]
     fn profile_wake_latency_is_admitted_and_attributed_to_the_task() {
         let mut manifest = SystemManifest::<2>::new();
         manifest.add(kernel_spec()).unwrap();
