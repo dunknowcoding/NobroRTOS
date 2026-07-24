@@ -2651,6 +2651,58 @@ mod tests {
     }
 
     #[test]
+    fn recovery_fails_closed_when_any_lifecycle_hook_faults() {
+        // Software simulation of the fault-injection recovery campaign: inject a
+        // failure at EACH lifecycle hook a recovery step drives, and require the
+        // module to never reach Active (fail-closed) while the step surfaces the
+        // exact hook error. This is what a physical campaign probes -- a stuck
+        // quiesce, a failed self-test, or a failed resume must not silently
+        // return the module to service.
+        use ModuleHookError::{Heartbeat, Notify, Quiesce, Resume, Retry, SelfTest, Start, Stop};
+        let cases: [(ModuleHookError, RecoveryStepKind); 8] = [
+            (Notify, RecoveryStepKind::Notify),
+            (Retry, RecoveryStepKind::Retry),
+            (Quiesce, RecoveryStepKind::QuiesceModule),
+            (Stop, RecoveryStepKind::RestartModule),
+            (Start, RecoveryStepKind::RestartModule),
+            (SelfTest, RecoveryStepKind::VerifyHeartbeat),
+            (Heartbeat, RecoveryStepKind::VerifyHeartbeat),
+            (Resume, RecoveryStepKind::ResumeModule),
+        ];
+        for (fault, kind) in cases {
+            let mut runtime = runtime();
+            runtime.boot_to_running(10).unwrap();
+            for t in [20, 30, 40] {
+                runtime
+                    .record_error(ModuleId::Sensor, KernelError::SensorReadFail, t)
+                    .unwrap();
+            }
+            assert_eq!(
+                runtime.module_state(ModuleId::Sensor),
+                Some(ModuleRunState::Recovering)
+            );
+
+            let mut hooks = FakeHooks {
+                fail: Some(fault),
+                ..FakeHooks::default()
+            };
+            assert_eq!(
+                runtime.apply_recovery_step(
+                    RecoveryStep::new(ModuleId::Sensor, kind, 50, 5_000),
+                    50,
+                    &mut hooks,
+                ),
+                Err(RuntimeError::ModuleHook(fault)),
+            );
+            assert_ne!(
+                runtime.module_state(ModuleId::Sensor),
+                Some(ModuleRunState::Active),
+                "a failed lifecycle hook must never resume the module",
+            );
+        }
+    }
+
+    #[test]
     fn concurrent_module_recovery_keeps_global_state_until_last_resume() {
         let manifest = SystemManifest::<3>::from_specs(&[
             kernel_module_spec(
