@@ -226,6 +226,35 @@ mod tests {
     }
 
     #[test]
+    fn verify_tag_covers_every_byte_and_never_early_accepts() {
+        // The constant-time compare accumulates over all 32 bytes with no early
+        // return. Prove completeness directly: identical tags accept, and a
+        // single-bit difference at EVERY byte position (low and high bit) is
+        // rejected. An off-by-one (e.g. 0..31) or an early-exit-accept would fail
+        // here even though the indirect attestation test above could still pass.
+        let base = [0xA5u8; 32];
+        assert!(verify_tag(&base, &base), "identical tags accept");
+        assert!(verify_tag(&[0u8; 32], &[0u8; 32]), "all-zero tags accept");
+
+        for i in 0..32 {
+            for bit in [0x01u8, 0x80u8] {
+                let mut other = base;
+                other[i] ^= bit;
+                assert!(
+                    !verify_tag(&base, &other),
+                    "a flipped bit at byte {i} (mask {bit:#04x}) must be rejected"
+                );
+                // Symmetric in both argument positions.
+                assert!(!verify_tag(&other, &base));
+            }
+        }
+        assert!(
+            !verify_tag(&base, &[0x5Au8; 32]),
+            "fully different rejected"
+        );
+    }
+
+    #[test]
     fn key_store_provisions_once() {
         let mut ks = KeyStore::<2>::new();
         assert!(ks.provision(1, [1; 32]));

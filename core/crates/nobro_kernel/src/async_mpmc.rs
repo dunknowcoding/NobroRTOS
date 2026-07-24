@@ -705,8 +705,8 @@ mod tests {
 
     #[test]
     fn mpmc_multi_producer_saturation_delivers_every_item_without_starvation() {
-        // Wave 88 saturation/fairness: two producers push 500 items each through
-        // a 2-slot MPMC ring, so both producers block and wake repeatedly under
+        // Saturation/fairness: two producers push 500 items each through a
+        // 2-slot MPMC ring, so both producers block and wake repeatedly under
         // heavy backpressure. A single consumer drains the exact total. Every
         // item must arrive (sum + count exact) and neither producer may starve
         // (the run must terminate; a starved producer would never finish).
@@ -753,7 +753,7 @@ mod tests {
             TOTAL,
             "every item delivered once"
         );
-        assert_eq!(SUM.load(Ordering::Relaxed), M * 1 + M * 3);
+        assert_eq!(SUM.load(Ordering::Relaxed), M + M * 3);
     }
 
     #[test]
