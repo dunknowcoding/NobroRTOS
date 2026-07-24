@@ -323,6 +323,112 @@ int main(void) {
 }
 '''
 
+CAMERA_SOURCE = r'''
+#include <cassert>
+#include "NobroManagedCamera.h"
+
+struct CamFixture {
+  int start_fail_remaining;    /* start() fails this many times, then succeeds */
+  int capture_fail_remaining;  /* capture() fails this many times, then succeeds */
+  int capture_calls;
+  uint32_t next_size;
+};
+
+static bool cam_start(void *ctx) {
+  CamFixture *f = static_cast<CamFixture *>(ctx);
+  if (f->start_fail_remaining > 0) { f->start_fail_remaining--; return false; }
+  return true;
+}
+
+static bool cam_capture(uint32_t *out_bytes, void *ctx) {
+  CamFixture *f = static_cast<CamFixture *>(ctx);
+  f->capture_calls++;
+  if (f->capture_fail_remaining > 0) { f->capture_fail_remaining--; return false; }
+  *out_bytes = f->next_size;
+  return true;
+}
+
+int main() {
+  /* Self-contained backoff matches the wireless recovery cadence 10/20/40. */
+  nobro::CameraRecovery rec = nobro::CameraRecovery::exponential(5, 10, 40);
+  assert(rec.valid() && rec.ready(0));
+  assert(rec.failed(0) == false && rec.nextAttemptUs() == 10);
+  assert(!rec.ready(9) && rec.ready(10));
+  assert(rec.failed(10) == false && rec.nextAttemptUs() == 30);
+  assert(rec.failed(30) == false && rec.nextAttemptUs() == 70); /* capped 40 */
+  rec.reset();
+  assert(rec.failedAttempts() == 0 && rec.ready(0));
+
+  nobro::CameraFramePolicy pol = nobro::CameraFramePolicy::make(1000, 3, 3000);
+  assert(pol.valid());
+  nobro::ManagedCamera cam(pol, nobro::CameraRecovery::exponential(5, 10, 40));
+  assert(cam.valid() && cam.state() == NOBRO_CAMERA_DOWN && !cam.ready());
+
+  /* Bounded init recovery: start fails twice, then succeeds on the backoff. */
+  CamFixture fx = {2, 0, 0, 500};
+  nobro::ManagedCameraEvent e1 =
+      cam.poll(0, 1000000, cam_start, cam_capture, &fx);
+  assert(e1.state == NOBRO_CAMERA_FAULTED && !e1.recovered);
+  assert(cam.startAttempts() == 1 && e1.next_action_us == 10);
+  nobro::ManagedCameraEvent e2 =
+      cam.poll(5, 1000000, cam_start, cam_capture, &fx);
+  assert(e2.state == NOBRO_CAMERA_FAULTED && cam.startAttempts() == 1);
+  nobro::ManagedCameraEvent e3 =
+      cam.poll(10, 1000000, cam_start, cam_capture, &fx);
+  assert(!e3.recovered && cam.startAttempts() == 2);
+  nobro::ManagedCameraEvent e4 =
+      cam.poll(30, 1000000, cam_start, cam_capture, &fx);
+  assert(e4.recovered && e4.state == NOBRO_CAMERA_READY && cam.ready());
+  assert(cam.recoveries() == 1 && cam.startAttempts() == 3);
+
+  /* Bounded capture admission: three frames fit the window, the fourth does not. */
+  nobro::ManagedCameraEvent c1 =
+      cam.poll(31, 1000000, cam_start, cam_capture, &fx);
+  assert(c1.frame_captured && c1.frame_bytes == 500);
+  cam.poll(32, 1000000, cam_start, cam_capture, &fx);
+  cam.poll(33, 1000000, cam_start, cam_capture, &fx);
+  assert(cam.framesThisWindow() == 3 && cam.diagnostics().frames_accepted == 3);
+  nobro::ManagedCameraEvent full =
+      cam.poll(34, 1000000, cam_start, cam_capture, &fx);
+  assert(!full.frame_captured && cam.diagnostics().memory_rejections == 1);
+  cam.resetWindow();
+  assert(cam.framesThisWindow() == 0);
+
+  /* Deadline rejection: now past the deadline drops the capture, stays READY. */
+  nobro::ManagedCameraEvent late =
+      cam.poll(100, 50, cam_start, cam_capture, &fx);
+  assert(!late.frame_captured && cam.state() == NOBRO_CAMERA_READY);
+  assert(cam.diagnostics().deadline_rejections == 1);
+
+  /* Oversized frame is rejected without faulting (capture succeeded but too big). */
+  fx.next_size = 2000; /* > max_frame_bytes 1000 */
+  nobro::ManagedCameraEvent big =
+      cam.poll(101, 1000000, cam_start, cam_capture, &fx);
+  assert(!big.frame_captured && cam.state() == NOBRO_CAMERA_READY);
+  assert(cam.diagnostics().memory_rejections == 2);
+  fx.next_size = 500;
+
+  /* Capture failure -> FAULTED -> deterministic recovery, capture failure counted. */
+  fx.capture_fail_remaining = 1;
+  nobro::ManagedCameraEvent bad =
+      cam.poll(102, 1000000, cam_start, cam_capture, &fx);
+  assert(bad.faulted && bad.state == NOBRO_CAMERA_FAULTED);
+  assert(cam.faults() == 1 && cam.diagnostics().capture_failures == 1);
+  fx.start_fail_remaining = 0;
+  nobro::ManagedCameraEvent rerec =
+      cam.poll(102, 1000000, cam_start, cam_capture, &fx);
+  assert(rerec.recovered && cam.ready() && cam.recoveries() == 2);
+  nobro::ManagedCameraEvent c2 =
+      cam.poll(103, 1000000, cam_start, cam_capture, &fx);
+  assert(c2.frame_captured && c2.frame_bytes == 500);
+
+  /* Application-observed fault forces FAULTED and rearms recovery. */
+  cam.fault();
+  assert(cam.state() == NOBRO_CAMERA_FAULTED && cam.faults() == 2);
+  return 0;
+}
+'''
+
 ARDUINO_STUB = r'''
 #pragma once
 #include <cstddef>
@@ -889,6 +995,13 @@ def main() -> int:
             print(output)
             print("ARDUINO FACADE: FAIL (adaptive wireless C policy)")
             return 1
+        ok, output = compile_and_run(
+            compiler, CAMERA_SOURCE, tmp_path, "managed_camera", [HEADER]
+        )
+        if not ok:
+            print(output)
+            print("ARDUINO FACADE: FAIL (managed camera lifecycle)")
+            return 1
 
         stub_path = tmp_path / "arduino_stubs"
         stub_path.mkdir()
@@ -919,7 +1032,8 @@ def main() -> int:
                 print(output)
                 print(f"ARDUINO FACADE: FAIL ({variant} provider lifecycle/resolution/I/O)")
                 return 1
-    print("ARDUINO FACADE: PASS (adaptive wireless C/C++ policies + NobroApp "
+    print("ARDUINO FACADE: PASS (adaptive wireless C/C++ policies + managed "
+          "camera lifecycle/recovery + NobroApp "
           "zero/overflow negatives + 5 executed provider "
           "architecture policies; ADC/PWM instance isolation + SPI/I2C lifecycle "
           "negatives + capped/resumable byte-I/O records)")
