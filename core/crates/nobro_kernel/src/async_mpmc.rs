@@ -757,6 +757,63 @@ mod tests {
     }
 
     #[test]
+    fn cross_core_transport_delivers_every_item_under_any_interleaving() {
+        // Race model: two cores (reactors) share one MPMC channel. Their relative
+        // run rate is nondeterministic on real hardware, so drive several distinct
+        // interleavings (producer-core-heavy, consumer-core-heavy, even, bursty)
+        // and require every item delivered exactly once with the correct sum
+        // under each -- the transport must not lose, duplicate, or deadlock at any
+        // relative core speed. Complements the single stall-recovery scenario.
+        static CH: MpmcChannel<u32, 2, 2> = MpmcChannel::new();
+        static DELIVERED: AtomicU32 = AtomicU32::new(0);
+        static SUM: AtomicU32 = AtomicU32::new(0);
+        const N: u32 = 12;
+
+        for (a_burst, b_burst) in [(4u32, 1u32), (1, 4), (1, 1), (3, 2)] {
+            DELIVERED.store(0, Ordering::Relaxed);
+            SUM.store(0, Ordering::Relaxed);
+            let mut exec_a = ReactorExecutor::bind(leak_core::<1>());
+            let mut exec_b = ReactorExecutor::bind(leak_core::<1>());
+
+            let producer = pin!(async {
+                for i in 1..=N {
+                    CH.send(i).await.unwrap();
+                }
+            });
+            let consumer = pin!(async {
+                for _ in 0..N {
+                    let v = CH.recv().await.unwrap().expect("channel remained open");
+                    SUM.fetch_add(v, Ordering::Relaxed);
+                    DELIVERED.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+            exec_a.spawn(producer).unwrap();
+            exec_b.spawn(consumer).unwrap();
+
+            let mut guard = 0u32;
+            while exec_a.live() != 0 || exec_b.live() != 0 {
+                for _ in 0..a_burst {
+                    exec_a.run_ready(4);
+                }
+                for _ in 0..b_burst {
+                    exec_b.run_ready(4);
+                }
+                guard += 1;
+                assert!(
+                    guard < 100_000,
+                    "interleaving {a_burst}:{b_burst} must terminate"
+                );
+            }
+            assert_eq!(
+                DELIVERED.load(Ordering::Relaxed),
+                N,
+                "every item delivered under interleaving {a_burst}:{b_burst}"
+            );
+            assert_eq!(SUM.load(Ordering::Relaxed), N * (N + 1) / 2);
+        }
+    }
+
+    #[test]
     fn mpmc_close_wakes_blocked_receivers_with_none() {
         static CH: MpmcChannel<u32, 1, 2> = MpmcChannel::new();
         static GOT_NONE: AtomicU32 = AtomicU32::new(0);
