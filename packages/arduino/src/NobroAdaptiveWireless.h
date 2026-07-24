@@ -489,6 +489,128 @@ private:
     }
 };
 
+/* Attempts to bring the physical link up (e.g. WiFi association). Returns true
+ * when the link is now up. Called by ManagedWirelessLink::poll() only when the
+ * recovery backoff says an attempt is due, so it is never busy-retried. */
+typedef bool (*WirelessConnect)(void *context);
+
+enum ManagedLinkState { MANAGED_LINK_DOWN = 0, MANAGED_LINK_UP = 1 };
+
+struct ManagedLinkEvent {
+    ManagedLinkState state;      /* link state after this poll */
+    WirelessEvent queue_event;   /* queue outcome when serviced (up), else empty */
+    bool reconnected;            /* this poll brought the link down->up */
+    bool link_lost;              /* this poll took the link up->down */
+    uint64_t next_action_us;     /* earliest time the next poll can make progress */
+};
+
+/* Cohesive managed WiFi/radio link. It unifies association recovery, bounded
+ * adaptive messaging, and link-state gating so an application drives the whole
+ * lifecycle with one poll() and two callbacks (connect + transport) instead of
+ * hand-gluing WirelessRecovery, AdaptiveWirelessQueue, and the transport's
+ * LINK_DOWN result. No allocation; the transport and connect callbacks are
+ * called only from poll(), never from enqueue() or an ISR. When the transport
+ * reports LINK_DOWN the link drops to DOWN and drives reconnect on the recovery
+ * backoff; queued messages wait (or expire by their own deadline) meanwhile. */
+template <size_t SLOTS, size_t BYTES>
+class ManagedWirelessLink {
+public:
+    ManagedWirelessLink(const WirelessPolicy &policy, const WirelessRecovery &recovery)
+        : queue_(policy), recovery_(recovery), state_(MANAGED_LINK_DOWN),
+          reconnects_(0), link_losses_(0), connect_attempts_(0) {}
+
+    bool valid() const { return queue_.valid() && recovery_.valid(); }
+    bool up() const { return state_ == MANAGED_LINK_UP; }
+    ManagedLinkState state() const { return state_; }
+    uint32_t reconnects() const { return reconnects_; }
+    uint32_t linkLosses() const { return link_losses_; }
+    uint32_t connectAttempts() const { return connect_attempts_; }
+    size_t queued() const { return queue_.size(); }
+    const nobro_wireless_adaptive_diagnostics_t &diagnostics() const {
+        return queue_.diagnostics();
+    }
+
+    /* Force the link down and rearm the recovery backoff (e.g. after the
+     * application observes a fault the transport did not surface). */
+    void reset() {
+        state_ = MANAGED_LINK_DOWN;
+        recovery_.reset();
+    }
+
+    /* Message admission delegates to the bounded queue; accepted while down too,
+     * where a message waits until the link returns or its deadline elapses. */
+    WirelessTicket enqueue(const uint8_t *payload, size_t length, const WirelessMessage &message) {
+        return queue_.enqueue(payload, length, message);
+    }
+    WirelessTicket enqueueUrgentWithin(
+        const uint8_t *payload, size_t length, uint64_t now_us, uint64_t within_us) {
+        return queue_.enqueueUrgentWithin(payload, length, now_us, within_us);
+    }
+    WirelessTicket enqueueBestEffortFor(
+        const uint8_t *payload, size_t length, uint64_t now_us, uint64_t useful_for_us) {
+        return queue_.enqueueBestEffortFor(payload, length, now_us, useful_for_us);
+    }
+    bool cancel(WirelessTicket ticket) { return queue_.cancel(ticket); }
+
+    ManagedLinkEvent poll(
+        uint64_t now_us, WirelessConnect connect, WirelessSend send, void *context = NULL) {
+        ManagedLinkEvent ev;
+        ev.reconnected = false;
+        ev.link_lost = false;
+        ev.queue_event = emptyEvent(now_us);
+        if (!valid() || connect == NULL || send == NULL) {
+            ev.state = state_;
+            ev.next_action_us = now_us;
+            return ev;
+        }
+        if (state_ == MANAGED_LINK_DOWN) {
+            if (recovery_.ready(now_us)) {
+                ++connect_attempts_;
+                if (connect(context)) {
+                    state_ = MANAGED_LINK_UP;
+                    recovery_.reset();
+                    ++reconnects_;
+                    ev.reconnected = true;
+                    ev.state = MANAGED_LINK_UP;
+                    ev.next_action_us = queue_.nextServiceUs();
+                    return ev;
+                }
+                recovery_.failed(now_us); /* advance attempt count / backoff */
+            }
+            ev.state = MANAGED_LINK_DOWN;
+            ev.next_action_us = recovery_.nextAttemptUs();
+            return ev;
+        }
+        const WirelessEvent qe = queue_.service(now_us, send, context);
+        ev.queue_event = qe;
+        if (qe.kind == WIRELESS_RETRY_AT && qe.result == NOBRO_WIRELESS_SEND_LINK_DOWN) {
+            state_ = MANAGED_LINK_DOWN;
+            recovery_.reset();
+            ++link_losses_;
+            ev.link_lost = true;
+            ev.state = MANAGED_LINK_DOWN;
+            ev.next_action_us = now_us; /* reconnect attempt is due immediately */
+            return ev;
+        }
+        ev.state = MANAGED_LINK_UP;
+        ev.next_action_us = queue_.nextServiceUs();
+        return ev;
+    }
+
+private:
+    static WirelessEvent emptyEvent(uint64_t now_us) {
+        WirelessEvent e = {WIRELESS_EMPTY, 0, now_us, NOBRO_WIRELESS_SEND_OK};
+        return e;
+    }
+
+    AdaptiveWirelessQueue<SLOTS, BYTES> queue_;
+    WirelessRecovery recovery_;
+    ManagedLinkState state_;
+    uint32_t reconnects_;
+    uint32_t link_losses_;
+    uint32_t connect_attempts_;
+};
+
 } // namespace nobro
 
 #endif

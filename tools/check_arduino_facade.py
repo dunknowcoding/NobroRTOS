@@ -109,6 +109,32 @@ static nobro_wireless_send_result_t capture_send(
   return NOBRO_WIRELESS_SEND_OK;
 }
 
+struct LinkFixture {
+  int connect_fail_remaining;    /* connect() returns false this many times */
+  int send_link_down_remaining;  /* send() returns LINK_DOWN this many times */
+  int delivered;
+};
+
+static bool fixture_connect(void *context) {
+  LinkFixture *f = static_cast<LinkFixture *>(context);
+  if (f->connect_fail_remaining > 0) {
+    --f->connect_fail_remaining;
+    return false;
+  }
+  return true;
+}
+
+static nobro_wireless_send_result_t fixture_send(
+    const uint8_t *, size_t, uint64_t, void *context) {
+  LinkFixture *f = static_cast<LinkFixture *>(context);
+  if (f->send_link_down_remaining > 0) {
+    --f->send_link_down_remaining;
+    return NOBRO_WIRELESS_SEND_LINK_DOWN;
+  }
+  ++f->delivered;
+  return NOBRO_WIRELESS_SEND_OK;
+}
+
 int main() {
   nobro::WirelessPolicy responsive = nobro::WirelessPolicy::responsive(8, 64);
   assert(responsive.valid());
@@ -214,6 +240,51 @@ int main() {
   assert(!recovery.failed(130));
   recovery.reset();
   assert(recovery.failedAttempts() == 0 && recovery.ready(0));
+
+  /* ManagedWirelessLink: unifies reconnect recovery + adaptive queue + link
+   * gating so poll() drives the whole lifecycle with a connect and a transport
+   * callback. */
+  LinkFixture fx = {2, 0, 0}; /* connect fails twice, then succeeds */
+  nobro::ManagedWirelessLink<2, 8> link(
+      nobro::WirelessPolicy::responsive(2, 8),
+      nobro::WirelessRecovery::exponential(5, 10, 40));
+  assert(link.valid() && !link.up());
+  const uint8_t body[] = {7, 7};
+  /* enqueue while the link is down: accepted and retained until the link returns */
+  assert(link.enqueueUrgentWithin(body, sizeof(body), 0, 100000).valid);
+  assert(link.queued() == 1);
+
+  nobro::ManagedLinkEvent e1 = link.poll(0, fixture_connect, fixture_send, &fx);
+  assert(e1.state == nobro::MANAGED_LINK_DOWN && !e1.reconnected);
+  assert(link.connectAttempts() == 1); /* first attempt failed, backoff armed */
+  nobro::ManagedLinkEvent e2 = link.poll(5, fixture_connect, fixture_send, &fx);
+  assert(e2.state == nobro::MANAGED_LINK_DOWN && link.connectAttempts() == 1);
+  nobro::ManagedLinkEvent e3 = link.poll(10, fixture_connect, fixture_send, &fx);
+  assert(!e3.reconnected && link.connectAttempts() == 2);
+  nobro::ManagedLinkEvent e4 = link.poll(30, fixture_connect, fixture_send, &fx);
+  assert(e4.reconnected && e4.state == nobro::MANAGED_LINK_UP && link.up());
+  assert(link.reconnects() == 1 && link.connectAttempts() == 3);
+
+  /* up: poll services the retained message through the transport */
+  nobro::ManagedLinkEvent e5 = link.poll(31, fixture_connect, fixture_send, &fx);
+  assert(e5.queue_event.kind == nobro::WIRELESS_DELIVERED);
+  assert(fx.delivered == 1 && link.queued() == 0);
+
+  /* transport reports LINK_DOWN -> link drops, message retained, reconnect drives up */
+  fx.send_link_down_remaining = 1;
+  assert(link.enqueueUrgentWithin(body, sizeof(body), 40, 100000).valid);
+  nobro::ManagedLinkEvent e6 = link.poll(40, fixture_connect, fixture_send, &fx);
+  assert(e6.link_lost && e6.state == nobro::MANAGED_LINK_DOWN);
+  assert(link.linkLosses() == 1 && link.queued() == 1);
+  nobro::ManagedLinkEvent e7 = link.poll(40, fixture_connect, fixture_send, &fx);
+  assert(e7.reconnected && link.up() && link.reconnects() == 2);
+  /* the retained message redelivers once its post-LINK_DOWN backoff elapses */
+  bool redelivered = false;
+  for (uint64_t now = 50; now <= 100000 && !redelivered; now += 50) {
+    nobro::ManagedLinkEvent e = link.poll(now, fixture_connect, fixture_send, &fx);
+    if (e.queue_event.kind == nobro::WIRELESS_DELIVERED) redelivered = true;
+  }
+  assert(redelivered && fx.delivered == 2 && link.queued() == 0);
 }
 '''
 
