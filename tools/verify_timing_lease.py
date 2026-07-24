@@ -22,6 +22,21 @@ U32_MASK = 0xFFFF_FFFF
 DEADLINE_PERIOD_US = 20_000
 
 
+class VerificationError(AssertionError):
+    """A model-checked invariant failed."""
+
+
+def _require(condition: bool, message: str) -> None:
+    """Assert a model invariant in a way `python -O` cannot strip.
+
+    A bare `assert` is the model checker's only verification, so under `-O` it
+    would report success while checking nothing. Raising explicitly keeps the
+    verification real regardless of the optimization flag.
+    """
+    if not condition:
+        raise VerificationError(message)
+
+
 @dataclass(frozen=True)
 class LeaseResult:
     states_checked: int
@@ -72,16 +87,19 @@ def verify_leases(resources: int, owners: int, depth: int) -> LeaseResult:
                 before = state
                 state, result = lease_step(state, op)
                 transitions_checked += 1
-                assert all(0 <= slot <= owners for slot in state)
+                _require(
+                    all(0 <= slot <= owners for slot in state),
+                    "lease slot holds an out-of-range owner",
+                )
                 kind, resource, owner = op
                 if result in {"already_held", "not_held", "wrong_owner"}:
-                    assert state == before
+                    _require(state == before, "a rejected lease op mutated state")
                 if kind == "release_all":
-                    assert owner not in state
+                    _require(owner not in state, "release_all left the owner holding a resource")
                 if kind == "release" and result == "ok":
-                    assert state[resource] == 0
+                    _require(state[resource] == 0, "a successful release left the resource held")
                 if kind == "acquire" and result == "ok":
-                    assert state[resource] == owner
+                    _require(state[resource] == owner, "a successful acquire did not record the owner")
             states_checked += 1
             seen_states.add(state)
 
@@ -130,8 +148,14 @@ def verify_timing(tolerance_us: int, jitter_span_us: int) -> TimingResult:
                 ticks_checked += 1
 
             expected_jitters = [abs(seq[i] - seq[i - 1]) for i in range(1, len(seq))]
-            assert max_jitter == max(expected_jitters, default=0)
-            assert misses == sum(1 for jitter in expected_jitters if jitter > tolerance_us)
+            _require(
+                max_jitter == max(expected_jitters, default=0),
+                "computed max jitter disagrees with the expected adjacent-offset spread",
+            )
+            _require(
+                misses == sum(1 for jitter in expected_jitters if jitter > tolerance_us),
+                "computed deadline-miss count disagrees with the tolerance model",
+            )
             global_max = max(global_max, max_jitter)
             global_misses += misses
             sequences_checked += 1

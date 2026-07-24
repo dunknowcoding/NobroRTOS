@@ -992,7 +992,11 @@ def _sample_capacity_binary(
         )
     records.extend(b"\0" * (resource_capacity_extra * CAPACITY_RESOURCE_RECORD_BYTES))
     body = header + identities + records
-    assert len(body) + 4 == report_bytes
+    # Explicit (not `assert`) so the invariant holds under `python -O` too.
+    if len(body) + 4 != report_bytes:
+        raise ValueError(
+            f"sample capacity binary is {len(body) + 4} bytes, declared {report_bytes}"
+        )
     return body + struct.pack("<I", _fnv1a32(body))
 
 
