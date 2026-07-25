@@ -6,12 +6,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Cancel superseded runs of the same ref so only the newest commit's evidence stands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python-gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: user release boundary
@@ -63,15 +69,29 @@ jobs:
           python tools/package_prebuilt_uf2.py --check
           python tools/nobro_admission.py --selftest
           python sdk/cli/nobro.py project --selftest
+      - name: optimized-mode selftests (assert cannot be the only gate logic)
+        # -O strips `assert`; these gates must still fail closed on their own logic.
+        run: |
+          python -O tools/nobro_admission.py --selftest
+          python -O tools/check_platform_tiers.py --selftest
+          python -O tools/nobro_adapter.py --selftest
+          python -O tools/check_board_features.py --selftest
+          python -O tools/nobro_firmware_project.py --selftest
+          python -O tools/nobro_shrink.py --selftest
+          python -O tools/check_udi.py --selftest
+          python -O tools/check_ros_bridge.py --selftest
+          python -O tools/ros_msg_gen.py --selftest
+          python -O tools/import_dts.py --selftest
   rust-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: thumbv7em-none-eabihf
           components: clippy,rustfmt,llvm-tools-preview,rust-src
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: build generated firmware and prebuilt UF2 experiences
@@ -90,15 +110,16 @@ jobs:
 
   supply-chain-and-coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           components: rust-src
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
         with:
           tool: cargo-audit,cargo-llvm-cov
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: locked source and license policy
@@ -114,15 +135,16 @@ jobs:
           -p nobro-admission -p nobro-storage -p nobro-database -p nobro-power -p nobro-sal
           -p nobro-audio -p nobro-servo
           --target x86_64-unknown-linux-gnu --lcov --output-path ../coverage.lcov
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rust-coverage
           path: coverage.lcov
 
   miri-sanitizer:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri,rust-src
@@ -161,15 +183,16 @@ jobs:
 
   cross-mcu:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
           components: rust-src,llvm-tools-preview
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: install ESP32-S3 Xtensa Rust toolchain
@@ -196,8 +219,9 @@ jobs:
 
   arduino-package:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: install pinned Arduino CLI
         shell: bash
         run: |
@@ -210,7 +234,7 @@ jobs:
           tar -xzf "$archive" -C "$HOME/.local/bin" arduino-cli
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/arduino-cli" version | grep -F "Version: 1.5.1"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: install representative cores
@@ -264,8 +288,9 @@ jobs:
 
   arduino-nrf-package:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: install pinned Arduino CLI
         shell: pwsh
         run: |
@@ -280,7 +305,7 @@ jobs:
           $version = & $binary version
           if ($version -notmatch "Version: 1\.5\.1") { throw "unexpected Arduino CLI: $version" }
           $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
       - name: install pinned ArduinoNRF core
