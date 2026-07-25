@@ -38,6 +38,7 @@ pub mod manifest;
 pub mod module_ctx;
 pub mod module_runtime;
 pub mod multicore;
+pub mod multicore_runtime;
 pub mod nano;
 pub mod objects;
 pub mod pool;
@@ -143,6 +144,7 @@ pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
+pub use multicore_runtime::{CoreExecutorState, MulticoreError, MulticoreExecutorLifecycle};
 pub use nano::{
     GuardedNanoKernel, KernelLayer, NanoDependencies, NanoDispatcher, NanoError, NanoGovernance,
     NanoGovernanceError, NanoKernel, NanoObjectUsage, NanoRecovery, NanoRecoveryError,
