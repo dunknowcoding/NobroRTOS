@@ -2021,4 +2021,101 @@ mod tests {
             AdmissionErrorCode::FlashExceeded
         );
     }
+
+    #[test]
+    fn combined_interference_converges_over_multiple_iterations_at_the_deadline() {
+        // T1 (period 10ms, C 2ms) and T2 (period 20ms, C 3ms) interfere with the
+        // low-priority T3 (C 6ms). T3's response needs three fixed-point steps and
+        // T1 releasing twice: 6000 -> 11000 -> 13000 -> 13000 (converged). This
+        // is far below one core of utilization (0.41), so response-time -- not
+        // utilization -- is the binding constraint.
+        let workload = |deadline_us: u32| {
+            [
+                TaskContract::new(1)
+                    .priority(0)
+                    .deadline(10_000, 10_000, 0, 2_000, 0)
+                    .memory(512, 128, 1),
+                TaskContract::new(2)
+                    .priority(1)
+                    .deadline(20_000, 20_000, 0, 3_000, 0)
+                    .memory(512, 128, 1),
+                TaskContract::new(3)
+                    .priority(2)
+                    .deadline(100_000, deadline_us, 0, 6_000, 0)
+                    .memory(512, 128, 1),
+            ]
+        };
+        let admitted = admit(workload(13_000), PROFILE).expect("T3 response 13000 exactly fits");
+        assert_eq!(admitted.tasks[2].response_bound_us, 13_000);
+
+        let error = admit(workload(12_999), PROFILE).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::ResponseTimeExceeded);
+        assert_eq!(error.task_index, 2);
+        assert_eq!(error.observed, 13_000);
+        assert_eq!(error.limit, 12_999);
+    }
+
+    #[test]
+    fn high_priority_jitter_amplifies_interference_and_flips_admission() {
+        // Without jitter T2 converges to 9000 and fits its 9000us deadline. Giving
+        // the high-priority T1 1001us of release jitter adds an extra T1 release
+        // inside T2's window via ceil((R + J1) / T1), pushing T2's response to
+        // 11000 -- jitter on a *higher*-priority task rejecting a *lower* one.
+        let workload = |t1_jitter_us: u32| {
+            [
+                TaskContract::new(1)
+                    .priority(0)
+                    .deadline(10_000, 10_000, t1_jitter_us, 2_000, 0)
+                    .memory(512, 128, 1),
+                TaskContract::new(2)
+                    .priority(1)
+                    .deadline(100_000, 9_000, 0, 7_000, 0)
+                    .memory(512, 128, 1),
+            ]
+        };
+        let admitted = admit(workload(0), PROFILE).expect("no jitter: T2 response 9000 fits");
+        assert_eq!(admitted.tasks[1].response_bound_us, 9_000);
+
+        let error = admit(workload(1_001), PROFILE).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::ResponseTimeExceeded);
+        assert_eq!(error.task_index, 1);
+        assert_eq!(error.observed, 11_000);
+        assert_eq!(error.limit, 9_000);
+    }
+
+    #[test]
+    fn admission_is_invariant_under_task_reordering() {
+        // Distinct priorities: response-time analysis must depend only on the task
+        // set, never on array order. Admit a workload and its reverse; utilization
+        // and every per-id response bound must match exactly.
+        let a = TaskContract::new(1)
+            .priority(0)
+            .deadline(10_000, 10_000, 0, 2_000, 0)
+            .memory(512, 128, 1);
+        let b = TaskContract::new(2)
+            .priority(1)
+            .deadline(20_000, 20_000, 0, 3_000, 0)
+            .memory(512, 128, 1);
+        let c = TaskContract::new(3)
+            .priority(2)
+            .deadline(100_000, 50_000, 0, 6_000, 0)
+            .memory(512, 128, 1);
+
+        let forward = admit([a, b, c], PROFILE).expect("admits in forward order");
+        let reversed = admit([c, b, a], PROFILE).expect("admits regardless of order");
+        assert_eq!(
+            forward.utilization_permyriad,
+            reversed.utilization_permyriad
+        );
+        let bound = |w: &AdmittedWorkload<3>, id: u16| {
+            w.tasks
+                .iter()
+                .find(|t| t.id == id)
+                .expect("task id present")
+                .response_bound_us
+        };
+        for id in [1u16, 2, 3] {
+            assert_eq!(bound(&forward, id), bound(&reversed, id), "id {id} drifted");
+        }
+    }
 }
