@@ -120,8 +120,8 @@
     {
       "id": "source-niuswireless",
       "source": "https://github.com/dunknowcoding/NiusWireless",
-      "revision": "30422e6985d46a54d9e384d1f0a301bac804819c",
-      "version": "0.1.0",
+      "revision": "11240978724418eb4647fa385cef4c684cf29060",
+      "version": "0.2.0",
       "license": "MIT",
       "pinned": true,
       "clean": true

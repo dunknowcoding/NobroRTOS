@@ -10,10 +10,10 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "arduino"
-WIRELESS_PIN = "f40e76cccbcb0b5d0597f784ae5be1e6a52d46cb"
+WIRELESS_PIN = "11240978724418eb4647fa385cef4c684cf29060"
 ZIGBEE_PIN = "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
 MODULES = {"HC06", "HC12", "LoRa", "NRF24L01", "PN532", "RC522"}
-STUBS = {"HC06", "HC12", "NRF24L01", "PN532"}
+STUBS = {"HC06", "HC12"}
 
 CASES = {
     "rc522": ("arduino:renesas_uno:unor4wifi", r'''#include <NiusWireless.h>
@@ -97,7 +97,7 @@ def main() -> int:
                         help="requires the Windows-only ArduinoNRF toolchain")
     args = parser.parse_args()
     try:
-        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.1.0")
+        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.0")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.0")
         verify_inventory(wireless, zigbee)
         if args.compile or args.compile_zigbee:
@@ -116,7 +116,8 @@ def main() -> int:
     except (OSError, RuntimeError) as error:
         print(f"WIRELESS INTEGRATIONS: FAIL ({error})")
         return 1
-    print("WIRELESS INTEGRATIONS: PASS (RC522 + LoRa implemented; four stubs explicit; "
+    print("WIRELESS INTEGRATIONS: PASS (RC522 + LoRa + NRF24L01 + PN532 implemented; "
+          "HC06 + HC12 stubs explicit; "
           "NiusZigbee CC2530 surface pinned)")
     return 0
 

@@ -5,9 +5,9 @@
 //! module runs on which core and whether each core fits its utilization bound.
 //! This module adds the *runtime* coordination on top:
 //! bringing the independent per-core executors up and down in a defined order,
-//! transferring a module's ownership from one core to another with preserved
-//! accounting, and giving one core a fault/recovery authority that never
-//! strands another core.
+//! transferring a module's ownership metadata from one core to another with
+//! preserved accounting, and giving one core a fault/recovery authority that
+//! never strands another core.
 //!
 //! It is deterministic and allocation-free. The actual executor start/stop is
 //! the caller's (a real per-core `KernelExecutor`, or a test double): every
@@ -135,6 +135,17 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
         mut start: impl FnMut(u8) -> bool,
         mut stop: impl FnMut(u8),
     ) -> Result<(), MulticoreError> {
+        // Validate the whole transaction before invoking any caller callback.
+        // Re-entering startup while one executor is already live/faulted would
+        // otherwise double-start early cores and make rollback ambiguous.
+        for (core, state) in self.states.iter().copied().enumerate() {
+            if state != CoreExecutorState::Down {
+                return Err(MulticoreError::WrongCoreState {
+                    core: core as u8,
+                    state,
+                });
+            }
+        }
         let mut core = 0usize;
         while core < CORES {
             if start(core as u8) {
@@ -166,10 +177,15 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
         }
     }
 
-    /// Move a module's ownership from one live core to another, preserving total
-    /// utilization. Both cores must be `Up`, the source must own the module, and
-    /// the destination must not overload; otherwise nothing changes (no partial
-    /// transfer).
+    /// Move a module's ownership metadata from one live core to another,
+    /// preserving total utilization. Both cores must be `Up`, the source must
+    /// own the module, and the destination must not overload; otherwise nothing
+    /// changes (no partial metadata transfer).
+    ///
+    /// This coordinator cannot move a caller's executor work by itself. The
+    /// caller must first quiesce and migrate that work, then commit the matching
+    /// ownership change here. A same-core transfer is an idempotent no-op after
+    /// state and ownership validation.
     pub fn transfer(&mut self, module: ModuleId, from: u8, to: u8) -> Result<(), MulticoreError> {
         let from_index = self.check_core(from)?;
         let to_index = self.check_core(to)?;
@@ -188,6 +204,9 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
         let Some(slot_index) = self.find_on(from_index, module) else {
             return Err(MulticoreError::ModuleNotOnCore { core: from, module });
         };
+        if from_index == to_index {
+            return Ok(());
+        }
         let util = self.owned[from_index][slot_index].unwrap().util_permyriad;
         let would_be = self.core_util[to_index].saturating_add(util);
         if would_be > UTIL_LIMIT {
@@ -374,6 +393,30 @@ mod tests {
     }
 
     #[test]
+    fn startup_reentry_is_rejected_before_callbacks_run() {
+        let mut rt = MulticoreExecutorLifecycle::<2, 1>::new();
+        rt.start_all(|_| true, |_| {}).unwrap();
+
+        let mut starts = 0;
+        let mut stops = 0;
+        assert_eq!(
+            rt.start_all(
+                |_| {
+                    starts += 1;
+                    true
+                },
+                |_| stops += 1,
+            ),
+            Err(MulticoreError::WrongCoreState {
+                core: 0,
+                state: CoreExecutorState::Up
+            })
+        );
+        assert_eq!((starts, stops), (0, 0));
+        assert!(rt.all_up());
+    }
+
+    #[test]
     fn ownership_transfer_preserves_total_utilization_and_rejects_overload() {
         let mut rt = MulticoreExecutorLifecycle::<2, 4>::new();
         rt.place(0, m(1), 5_000).unwrap();
@@ -389,6 +432,13 @@ mod tests {
         assert_eq!(rt.core_utilization(1), Some(7_000));
         assert_eq!(rt.total_utilization(), total);
         assert!(rt.owns(1, m(2)) && !rt.owns(0, m(2)));
+
+        // Same-core transfer is an idempotent no-op, not a second utilization
+        // charge or a duplicate ownership operation.
+        rt.transfer(m(2), 1, 1).unwrap();
+        assert_eq!(rt.core_utilization(1), Some(7_000));
+        assert_eq!(rt.total_utilization(), total);
+        assert!(rt.owns(1, m(2)));
 
         // m(1) is 5000; core 1 at 7000 would hit 12000 > 100% -> reject, unchanged.
         assert_eq!(

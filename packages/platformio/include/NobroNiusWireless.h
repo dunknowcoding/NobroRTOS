@@ -29,12 +29,12 @@ public:
     bool quiesced() const { return suspended_; }
 
     bool recover() {
-        suspended_ = false;
         module_.reset();
         if (!module_.isReady()) {
             diagnostics_.recovery_failures++;
             return false;
         }
+        suspended_ = false;
         diagnostics_.recoveries++;
         return true;
     }
@@ -53,7 +53,7 @@ public:
         : NiusWirelessHealthAdapter(radio), radio_(radio) {}
 
     bool send(const uint8_t *payload, size_t length) {
-        if (suspended_) {
+        if (!ready()) {
             diagnostics_.tx_rejected++;
             return false;
         }
@@ -76,7 +76,7 @@ public:
     }
 
     size_t receive(uint8_t *destination, size_t capacity) {
-        if (suspended_) {
+        if (!ready()) {
             diagnostics_.read_errors++;
             return 0;
         }

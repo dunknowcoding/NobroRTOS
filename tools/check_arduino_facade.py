@@ -429,6 +429,73 @@ int main() {
 }
 '''
 
+NIUS_WIRELESS_STUB = r'''
+#pragma once
+#include <cstddef>
+#include <cstdint>
+
+#define NIUS_LORA_OK 0
+
+class NiusBase {
+public:
+  virtual ~NiusBase() {}
+  virtual bool begin() = 0;
+  virtual bool isReady() = 0;
+  virtual void reset() = 0;
+};
+
+class NiusLoRaBase : public NiusBase {
+public:
+  bool ready = true;
+  bool reset_ready = true;
+  int begin_packet_calls = 0;
+  int parse_packet_calls = 0;
+
+  bool begin() override { return ready; }
+  bool isReady() override { return ready; }
+  void reset() override { ready = reset_ready; }
+  uint8_t beginPacket() { ++begin_packet_calls; return NIUS_LORA_OK; }
+  size_t write(uint8_t) { return 1; }
+  uint8_t endPacket(bool = false) { return NIUS_LORA_OK; }
+  uint8_t parsePacket() { ++parse_packet_calls; return 0; }
+  uint8_t readBuf(uint8_t *, uint8_t) { return 0; }
+};
+'''
+
+NIUS_WIRELESS_ADAPTER_SOURCE = r'''
+#include <cassert>
+#include "NobroNiusWireless.h"
+
+int main() {
+  uint8_t payload[1] = {7};
+  NiusLoRaBase radio;
+  nobro::NiusLoRaAdapter adapter(radio);
+  assert(adapter.begin() && adapter.ready());
+
+  adapter.quiesce();
+  radio.reset_ready = false;
+  assert(!adapter.recover());
+  assert(adapter.quiesced() && !adapter.ready());
+  assert(!adapter.send(payload, sizeof(payload)));
+  assert(adapter.receive(payload, sizeof(payload)) == 0);
+  assert(radio.begin_packet_calls == 0 && radio.parse_packet_calls == 0);
+
+  radio.reset_ready = true;
+  assert(adapter.recover());
+  assert(!adapter.quiesced() && adapter.ready());
+  assert(adapter.send(payload, sizeof(payload)));
+  assert(radio.begin_packet_calls == 1);
+
+  NiusLoRaBase absent;
+  absent.ready = false;
+  nobro::NiusLoRaAdapter absent_adapter(absent);
+  assert(!absent_adapter.begin());
+  assert(!absent_adapter.send(payload, sizeof(payload)));
+  assert(absent_adapter.receive(payload, sizeof(payload)) == 0);
+  assert(absent.begin_packet_calls == 0 && absent.parse_packet_calls == 0);
+}
+'''
+
 ARDUINO_STUB = r'''
 #pragma once
 #include <cstddef>
@@ -941,10 +1008,15 @@ def compile_and_run(compiler: str, source_text: str, tmp: pathlib.Path,
     for include in include_paths:
         command.extend(["-I", str(include)])
     command.extend([str(source), "-o", str(binary)])
-    compiled = subprocess.run(command, capture_output=True, text=True)
+    compiled = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     if compiled.returncode:
         return False, (compiled.stdout + compiled.stderr).strip()
-    executed = subprocess.run([str(binary)], capture_output=True, text=True)
+    executed = subprocess.run(
+        [str(binary)], capture_output=True, text=True,
+        encoding="utf-8", errors="replace"
+    )
     if executed.returncode:
         return False, (executed.stdout + executed.stderr).strip()
     return True, ""
@@ -959,10 +1031,15 @@ def compile_c_and_run(compiler: str, source_text: str, tmp: pathlib.Path,
     for include in include_paths:
         command.extend(["-I", str(include)])
     command.extend([str(source), "-o", str(binary)])
-    compiled = subprocess.run(command, capture_output=True, text=True)
+    compiled = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     if compiled.returncode:
         return False, (compiled.stdout + compiled.stderr).strip()
-    executed = subprocess.run([str(binary)], capture_output=True, text=True)
+    executed = subprocess.run(
+        [str(binary)], capture_output=True, text=True,
+        encoding="utf-8", errors="replace"
+    )
     if executed.returncode:
         return False, (executed.stdout + executed.stderr).strip()
     return True, ""
@@ -1016,6 +1093,18 @@ def main() -> int:
 
         (stub_path / "Wire.h").write_text(WIRE_STUB, encoding="utf-8")
         (stub_path / "SPI.h").write_text(SPI_STUB, encoding="utf-8")
+        (stub_path / "NiusWireless.h").write_text(
+            NIUS_WIRELESS_STUB, encoding="utf-8"
+        )
+        ok, output = compile_and_run(
+            compiler, NIUS_WIRELESS_ADAPTER_SOURCE, tmp_path,
+            "nius_wireless_adapter", [stub_path, HEADER]
+        )
+        if not ok:
+            print(output)
+            print("ARDUINO FACADE: FAIL (Nius wireless fail-closed lifecycle)")
+            return 1
+
         provider_variants = (
             ("generic", ()),
             ("avr", ("ARDUINO_ARCH_AVR",)),
@@ -1032,7 +1121,8 @@ def main() -> int:
                 print(output)
                 print(f"ARDUINO FACADE: FAIL ({variant} provider lifecycle/resolution/I/O)")
                 return 1
-    print("ARDUINO FACADE: PASS (adaptive wireless C/C++ policies + managed "
+    print("ARDUINO FACADE: PASS (adaptive wireless C/C++ policies + Nius wireless "
+          "fail-closed lifecycle + managed "
           "camera lifecycle/recovery + NobroApp "
           "zero/overflow negatives + 5 executed provider "
           "architecture policies; ADC/PWM instance isolation + SPI/I2C lifecycle "

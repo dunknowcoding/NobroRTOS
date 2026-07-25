@@ -15,9 +15,11 @@ remain independently selectable members exposed through small Nobro facades.
 | ArduinoBLE 2.1.0 | `wireless/ble/arduino-ble` / `NobroArduinoBLE.h` | UNO R4 zero-disabled; physical GATT/disconnect/remount/recovery; subscribed link across WiFiS3 traffic; complete controller price open |
 | Arduino-ESP32 BLE 3.3.10 | `wireless/ble/arduino-esp` / `NobroArduinoEspBLE.h` | ESP32/C3/S3 zero-disabled target builds; exact C3 NimBLE and classic ESP32 Bluedroid GATT/lifecycle/WiFi coexistence; C3 incremental price, classic whole-composition price, S3 physical price open |
 | nRF proprietary radio | `core/adapters/wireless/radio-comms` | nRF HAL only |
-| NiusWireless 0.1.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
-| NiusWireless 0.1.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
-| NiusWireless HC06, HC12, NRF24L01, PN532 | Upstream inventory only | Upstream modules are currently stubs |
+| NiusWireless 0.2.0 RC522 | Arduino facade and UNO R4 build | Other targets depend on the upstream library |
+| NiusWireless 0.2.0 LoRa | Bounded send/receive facade and ESP32-S3 build | Radio-pair behavior is application-specific |
+| NiusWireless 0.2.0 NRF24L01 | Register-level driver; two-radio RP2040 link physically verified | Other board/radio compositions require separate evidence |
+| NiusWireless 0.2.0 PN532 | I2C/SPI driver; SAMD21 SPI status and IRQ/auth/read/write paths physically verified | Other boards and modes require separate evidence |
+| NiusWireless HC06, HC12 | Upstream inventory only | Upstream modules are currently stubs |
 | NiusZigbee 1.0.0 / CC2530 | ArduinoNRF library integration | Friendly Nobro facade is not yet complete |
 
 WiFi and BLE control are separate traits beneath the common data plane.
@@ -175,6 +177,6 @@ RAM, 135,944 B retained heap, 29,184 B reserved worker stacks, six workers,
 This is not a BLE-only increment: a matching ESP32-S3 wifi0 baseline, audio and
 camera coexistence, and other policies remain separately unpriced.
 
-NiusWireless 0.1.0 currently has an ArduinoNRF portability conflict in its RC522
+NiusWireless 0.2.0 currently has an ArduinoNRF portability conflict in its RC522
 and SX127x `String(uint8_t, HEX)` calls. Nobro does not patch or hide that upstream
 boundary. The machine-readable member tree is in `core/adapters/catalog.json`.

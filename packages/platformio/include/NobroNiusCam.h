@@ -70,8 +70,8 @@ public:
     bool quiesced() const { return suspended_; }
 
     bool recover() {
-        suspended_ = false;
         if (!camera_.recover().ok()) return false;
+        suspended_ = false;
         diagnostics_.recoveries++;
         return true;
     }
