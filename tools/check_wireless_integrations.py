@@ -20,14 +20,14 @@ CASES = {
 #include <NobroNiusWireless.h>
 NiusRC522 device(SDA, 10, SCL, 11, 12);
 nobro::NiusWirelessHealthAdapter wireless(device);
-void setup() { if (false) { wireless.begin(); wireless.ready(); wireless.recover(); } }
+void setup() { if (false) { wireless.begin(); wireless.ready(); wireless.quiesce(); wireless.quiesced(); wireless.recover(); } }
 void loop() {}
 '''),
     "lora": ("esp32:esp32:esp32s3", r'''#include <NiusWireless.h>
 #include <NobroNiusWireless.h>
 NiusRFM95 device(10, 9, 2);
 nobro::NiusLoRaAdapter wireless(device);
-void setup() { uint8_t data[2] = {1, 2}; if (false) { wireless.begin(); wireless.send(data, 2); wireless.receive(data, 2); wireless.recover(); } }
+void setup() { uint8_t data[2] = {1, 2}; if (false) { wireless.begin(); wireless.send(data, 2); wireless.receive(data, 2); wireless.quiesce(); wireless.quiesced(); wireless.recover(); } }
 void loop() {}
 '''),
 }
