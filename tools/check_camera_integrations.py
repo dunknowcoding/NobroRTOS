@@ -29,6 +29,8 @@ void setup() {
     NiusCam::Frame frame = pipeline.capture(1, 1000);
     pipeline.release(frame);
     pipeline.resetWindow();
+    pipeline.quiesce();
+    pipeline.quiesced();
     pipeline.recover();
   }
 }

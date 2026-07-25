@@ -14,15 +14,16 @@ public:
         : camera_(camera), maxFrameBytes_(maxFrameBytes),
           maxFrames_(maxFramesPerWindow), maxBytes_(maxBytesPerWindow),
           maxInFlight_(maxInFlight), frames_(0), bytes_(0), inFlight_(0),
-          diagnostics_{} {}
+          suspended_(false), diagnostics_{} {}
 
     bool begin(const NiusCam::BoardProfile &board,
                const NiusCam::Config &config = NiusCam::Config::Balanced()) {
+        suspended_ = false;
         return camera_.begin(board, config).ok();
     }
 
     NiusCam::Frame capture(uint64_t nowUs, uint64_t deadlineUs) {
-        if (!camera_.isReady()) return rejectCapture();
+        if (suspended_ || !camera_.isReady()) return rejectCapture();
         if (nowUs > deadlineUs) {
             diagnostics_.deadline_rejections++;
             return rejectCapture();
@@ -61,7 +62,15 @@ public:
 
     void resetWindow() { frames_ = 0; bytes_ = 0; }
 
+    // Fail-closed software suspend: lifecycle parity with the audio quiesce()
+    // and IMU suspend() hooks. A quiesced adapter rejects capture() regardless
+    // of module state until recover() clears it. This is an honest software
+    // gate, not a claimed sensor power-down.
+    void quiesce() { suspended_ = true; }
+    bool quiesced() const { return suspended_; }
+
     bool recover() {
+        suspended_ = false;
         if (!camera_.recover().ok()) return false;
         diagnostics_.recoveries++;
         return true;
@@ -83,6 +92,7 @@ private:
     uint16_t frames_;
     uint32_t bytes_;
     uint8_t inFlight_;
+    bool suspended_;
     nobro_camera_diagnostics_t diagnostics_;
 };
 
