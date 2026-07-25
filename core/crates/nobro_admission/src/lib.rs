@@ -2118,4 +2118,48 @@ mod tests {
             assert_eq!(bound(&forward, id), bound(&reversed, id), "id {id} drifted");
         }
     }
+
+    #[test]
+    fn task_and_interrupt_utilization_sums_to_exactly_one_core() {
+        // A 0.40-core task plus a 0.60-core interrupt exactly fill one core
+        // (10000 permyriad). One microsecond more of ISR execution tips the
+        // aggregate over, attributed to the interrupt with the true sum.
+        let task = TaskContract::new(1)
+            .deadline(10_000, 10_000, 0, 4_000, 0)
+            .memory(512, 128, 1);
+        let fits = [InterruptContract::new(7, 2, 1_000, 900, 600, 64)];
+        admit_with_interrupts([task], fits, PROFILE, InterruptProfile::NRF52840_BARE)
+            .expect("0.40 task + 0.60 IRQ == one core");
+
+        let over = [InterruptContract::new(7, 2, 1_000, 900, 601, 64)];
+        let error = admit_with_interrupts([task], over, PROFILE, InterruptProfile::NRF52840_BARE)
+            .unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::UtilizationExceeded);
+        assert_eq!(error.task_index, 0);
+        assert_eq!(error.observed, 10_010);
+        assert_eq!(error.limit, 10_000);
+    }
+
+    #[test]
+    fn interrupt_response_time_boundary_charges_higher_priority_preemption() {
+        // A priority-2 ISR (C=900us) is preempted by a priority-1 ISR
+        // (C=200us, T=1000us). Its response needs three fixed-point steps with
+        // the fast ISR firing twice: 900 -> 1100 -> 1300 -> 1300. It fits a
+        // 1300us deadline and fails a 1299us one (InterruptResponseExceeded).
+        let task = TaskContract::new(1)
+            .deadline(10_000, 10_000, 0, 100, 0)
+            .memory(512, 128, 1);
+        let hi = InterruptContract::new(1, 1, 1_000, 500, 200, 64);
+        let fits = [hi, InterruptContract::new(2, 2, 10_000, 1_300, 900, 64)];
+        admit_with_interrupts([task], fits, PROFILE, InterruptProfile::NRF52840_BARE)
+            .expect("priority-2 ISR response 1300 fits its 1300us deadline");
+
+        let over = [hi, InterruptContract::new(2, 2, 10_000, 1_299, 900, 64)];
+        let error = admit_with_interrupts([task], over, PROFILE, InterruptProfile::NRF52840_BARE)
+            .unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::InterruptResponseExceeded);
+        assert_eq!(error.task_index, 1);
+        assert_eq!(error.observed, 1_300);
+        assert_eq!(error.limit, 1_299);
+    }
 }
