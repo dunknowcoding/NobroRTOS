@@ -3,7 +3,7 @@
 //!
 //! [`multicore`](crate::multicore) produces the *static* placement -- which
 //! module runs on which core and whether each core fits its utilization bound.
-//! This module owns the *runtime* residue Wave 88 left open (SCH-09 / MC-01):
+//! This module adds the *runtime* coordination on top:
 //! bringing the independent per-core executors up and down in a defined order,
 //! transferring a module's ownership from one core to another with preserved
 //! accounting, and giving one core a fault/recovery authority that never
