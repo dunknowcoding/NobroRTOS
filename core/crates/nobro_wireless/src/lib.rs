@@ -516,6 +516,19 @@ pub trait WifiStack: WirelessBackend {
 }
 
 /// An owned, successfully mounted WiFi stack.
+///
+/// One backend value cannot be mounted into two logical instances: the first
+/// mount consumes it, while a failed mount returns it through
+/// [`StackMountError::into_backend`].
+///
+/// ```compile_fail
+/// use nobro_wireless::{MountedWifi, WifiStack};
+///
+/// fn mount_same_backend_twice<B: WifiStack>(backend: B) {
+///     let _first = MountedWifi::mount(backend);
+///     let _second = MountedWifi::mount(backend); // backend was moved
+/// }
+/// ```
 pub struct MountedWifi<B> {
     backend: B,
 }
@@ -721,6 +734,15 @@ pub trait BleStack: WirelessBackend {
 }
 
 /// An owned, successfully mounted BLE stack.
+///
+/// ```compile_fail
+/// use nobro_wireless::{BleStack, MountedBle};
+///
+/// fn mount_same_backend_twice<B: BleStack>(backend: B) {
+///     let _first = MountedBle::mount(backend);
+///     let _second = MountedBle::mount(backend); // backend was moved
+/// }
+/// ```
 pub struct MountedBle<B> {
     backend: B,
 }
