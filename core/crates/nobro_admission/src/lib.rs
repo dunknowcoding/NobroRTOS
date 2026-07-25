@@ -2162,4 +2162,33 @@ mod tests {
         assert_eq!(error.observed, 1_300);
         assert_eq!(error.limit, 1_299);
     }
+
+    #[test]
+    fn attribution_is_deterministic_when_several_budgets_overflow_at_once() {
+        // Utilization is checked inside the task loop, before the post-loop
+        // memory checks, so an over-utilized workload that ALSO blows the flash
+        // budget is attributed to utilization -- not memory.
+        let over_util_and_flash = [
+            TaskContract::new(1)
+                .deadline(10_000, 10_000, 0, 6_000, 0)
+                .memory(40 * 1024, 1, 0),
+            TaskContract::new(2)
+                .deadline(10_000, 10_000, 0, 6_000, 0)
+                .memory(40 * 1024, 1, 0),
+        ];
+        assert_eq!(
+            admit(over_util_and_flash, PROFILE).unwrap_err().code,
+            AdmissionErrorCode::UtilizationExceeded
+        );
+
+        // Within the memory checks, flash is tested before RAM, so a workload
+        // that blows both is attributed to flash with the true observed size.
+        let over_flash_and_ram = [TaskContract::new(1)
+            .deadline(10_000, 10_000, 0, 1_000, 0)
+            .memory(65 * 1024, 20 * 1024, 0)];
+        let error = admit(over_flash_and_ram, PROFILE).unwrap_err();
+        assert_eq!(error.code, AdmissionErrorCode::FlashExceeded);
+        assert_eq!(error.observed, 65 * 1024);
+        assert_eq!(error.limit, 64 * 1024);
+    }
 }
