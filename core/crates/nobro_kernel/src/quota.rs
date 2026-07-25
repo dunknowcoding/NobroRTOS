@@ -460,4 +460,50 @@ mod tests {
             Some(SystemBudget::new(2048, 256, 0))
         );
     }
+
+    #[test]
+    fn quota_reserve_hits_the_multidimensional_limit_and_isolates_modules() {
+        let mut ledger = QuotaLedger::<2>::new();
+        let a = ModuleId::App(1);
+        let b = ModuleId::App(2);
+        ledger.register(a, SystemBudget::new(1000, 500, 4)).unwrap();
+        ledger.register(b, SystemBudget::new(1000, 500, 4)).unwrap();
+
+        // Fill A to exactly its limit across all three dimensions in two steps.
+        ledger.reserve(a, SystemBudget::new(600, 300, 2)).unwrap();
+        ledger.reserve(a, SystemBudget::new(400, 200, 2)).unwrap();
+        assert_eq!(ledger.available(a), Some(SystemBudget::new(0, 0, 0)));
+
+        // One more slot in the pool dimension alone exceeds -- fits_within is
+        // per-dimension, and the error carries the true would-be usage.
+        match ledger.reserve(a, SystemBudget::new(0, 0, 1)) {
+            Err(QuotaError::Exceeded {
+                module,
+                used,
+                limit,
+            }) => {
+                assert_eq!(module, a);
+                assert_eq!(used, SystemBudget::new(1000, 500, 5));
+                assert_eq!(limit, SystemBudget::new(1000, 500, 4));
+            }
+            other => panic!("expected Exceeded, got {other:?}"),
+        }
+
+        // B is untouched by A's exhaustion; the total is exactly A's usage.
+        assert_eq!(ledger.available(b), Some(SystemBudget::new(1000, 500, 4)));
+        assert_eq!(ledger.total_used(), SystemBudget::new(1000, 500, 4));
+
+        // Releasing more than is held underflows with attribution and does not
+        // corrupt the entry.
+        match ledger.release(a, SystemBudget::new(0, 0, 5)) {
+            Err(QuotaError::Underflow { module, .. }) => assert_eq!(module, a),
+            other => panic!("expected Underflow, got {other:?}"),
+        }
+        assert_eq!(ledger.available(a), Some(SystemBudget::new(0, 0, 0)));
+
+        // reset returns exactly what was held and frees it back to the limit.
+        assert_eq!(ledger.reset_usage(a), Ok(SystemBudget::new(1000, 500, 4)));
+        assert_eq!(ledger.available(a), Some(SystemBudget::new(1000, 500, 4)));
+        assert_eq!(ledger.total_used(), SystemBudget::new(0, 0, 0));
+    }
 }
