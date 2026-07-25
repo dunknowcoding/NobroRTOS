@@ -216,4 +216,70 @@ mod tests {
         assert_eq!(decision.disabled[0], Some(ModuleId::App(1)));
         assert_eq!(decision.reason, Some(DegradeReason::ModuleLimit));
     }
+
+    #[test]
+    fn planner_drops_lowest_criticality_then_largest_flash_until_it_fits() {
+        // Two best-effort modules and one user module overflow flash. The planner
+        // must drop best-effort before user, and within best-effort the larger
+        // flash first, stopping as soon as the budget fits: SensorA(40) then
+        // SensorB(25) -> 50 <= 55, leaving the user module untouched.
+        let modules = [
+            module(ModuleId::Kernel, Criticality::HardRealtime, 30, 8),
+            module(ModuleId::App(1), Criticality::BestEffort, 40, 4),
+            module(ModuleId::App(2), Criticality::BestEffort, 25, 4),
+            module(ModuleId::App(3), Criticality::User, 20, 4),
+        ];
+
+        let decision = DegradePlanner::fit::<4>(
+            &modules,
+            SystemProfile {
+                flash_limit_bytes: 55,
+                ram_limit_bytes: 64,
+                pool_slot_limit: 8,
+                max_modules: 4,
+                wake_latency_us: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(decision.disabled_count, 2);
+        assert_eq!(decision.disabled[0], Some(ModuleId::App(1))); // largest flash first
+        assert_eq!(decision.disabled[1], Some(ModuleId::App(2)));
+        assert!(decision.enabled[0]); // essential kernel
+        assert!(decision.enabled[3]); // user module survives
+        assert_eq!(decision.budget.flash_bytes, 50);
+        assert_eq!(decision.reason, Some(DegradeReason::FlashBudget));
+    }
+
+    #[test]
+    fn planner_reason_tracks_the_binding_constraint_across_drops() {
+        // First overflow is flash (a best-effort module dominates it); dropping it
+        // leaves RAM as the new binding constraint, forcing a second drop of the
+        // user module. The final reason reflects the last constraint (RAM).
+        let modules = [
+            module(ModuleId::Kernel, Criticality::HardRealtime, 10, 40),
+            module(ModuleId::App(1), Criticality::BestEffort, 60, 5),
+            module(ModuleId::App(2), Criticality::User, 5, 40),
+        ];
+
+        let decision = DegradePlanner::fit::<3>(
+            &modules,
+            SystemProfile {
+                flash_limit_bytes: 50,
+                ram_limit_bytes: 70,
+                pool_slot_limit: 8,
+                max_modules: 3,
+                wake_latency_us: 0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(decision.disabled_count, 2);
+        assert_eq!(decision.disabled[0], Some(ModuleId::App(1))); // flash-bound: best-effort
+        assert_eq!(decision.disabled[1], Some(ModuleId::App(2))); // then ram-bound: user
+        assert!(decision.enabled[0]);
+        assert_eq!(decision.budget.flash_bytes, 10);
+        assert_eq!(decision.budget.ram_bytes, 40);
+        assert_eq!(decision.reason, Some(DegradeReason::RamBudget));
+    }
 }

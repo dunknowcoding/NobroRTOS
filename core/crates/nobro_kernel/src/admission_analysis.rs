@@ -389,4 +389,56 @@ mod tests {
         // 11 tasks = 110% util: build_for rejects it as overutilized.
         assert!(build_n(11).unwrap().build_for::<12>(profile).is_err());
     }
+
+    #[test]
+    fn shed_plan_sheds_by_utilization_when_memory_fits_but_the_core_is_overloaded() {
+        // Memory fits comfortably, but four tasks total 130% CPU. shed_plan must
+        // shed lowest-criticality first (the two best-effort tasks), and shedding
+        // one is not enough (130 - 25 = 105% > 100%), so it sheds both (down to
+        // 80%), sparing the higher-criticality user and driver tasks entirely.
+        let mem = MemoryBudget::new(512, 128, 0);
+        let graph = AppGraph::<8>::new()
+            .task(
+                TaskDecl::periodic("be1", 10_000)
+                    .criticality(Criticality::BestEffort)
+                    .budget_us(2_500)
+                    .memory(mem),
+            )
+            .unwrap()
+            .task(
+                TaskDecl::periodic("be2", 10_000)
+                    .criticality(Criticality::BestEffort)
+                    .budget_us(2_500)
+                    .memory(mem),
+            )
+            .unwrap()
+            .task(
+                TaskDecl::periodic("usr", 10_000)
+                    .criticality(Criticality::User)
+                    .budget_us(4_000)
+                    .memory(mem),
+            )
+            .unwrap()
+            .task(
+                TaskDecl::periodic("drv", 10_000)
+                    .criticality(Criticality::Driver)
+                    .budget_us(4_000)
+                    .memory(mem),
+            )
+            .unwrap();
+
+        let built = graph.build::<8>().unwrap();
+        let profile = SystemProfile::new(256 * 1024, 128 * 1024, 8, 16);
+        let analysis = AdmissionAnalysis::<8>::analyze(&built.manifest, profile);
+
+        assert_eq!(analysis.total_utilization_permyriad(), 13_000); // 130%
+        assert!(!analysis.schedulable()); // memory fits, CPU does not
+        let (flash_headroom, _ram, util_headroom) = analysis.headroom();
+        assert!(flash_headroom > 0); // memory was never the constraint
+        assert_eq!(util_headroom, 0); // utilization headroom saturates at 0
+
+        let plan = analysis.shed_plan::<8>().unwrap();
+        assert_eq!(plan.shed_len, 2); // both best-effort tasks
+        assert_eq!(plan.freed_util_permyriad, 5_000); // 25% + 25%, user/driver spared
+    }
 }
