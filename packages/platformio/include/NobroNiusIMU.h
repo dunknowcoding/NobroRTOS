@@ -14,7 +14,8 @@ public:
                             nobro_imu_family_t family = NOBRO_IMU_UNKNOWN,
                             uint8_t address = 0)
         : sensor_(sensor), family_(family), address_(address), wire_(nullptr),
-          spi_(nullptr), transport_(DEFAULT_TRANSPORT), diagnostics_{} {}
+          spi_(nullptr), transport_(DEFAULT_TRANSPORT), diagnostics_{},
+          suspended_(false) {}
 
     bool begin() {
         transport_ = DEFAULT_TRANSPORT;
@@ -40,7 +41,7 @@ public:
     }
 
     bool sample(nobro_imu_sample_t &out) {
-        if (!sensor_.update()) {
+        if (suspended_ || !sensor_.update()) {
             diagnostics_.read_errors = increment(diagnostics_.read_errors);
             if (diagnostics_.consecutive_errors != UINT16_MAX)
                 diagnostics_.consecutive_errors++;
@@ -81,11 +82,19 @@ public:
             diagnostics_.last_event = NOBRO_IMU_EVENT_RECOVERY_EXHAUSTED;
             return false;
         }
+        suspended_ = false;
         diagnostics_.recoveries = increment(diagnostics_.recoveries);
         diagnostics_.consecutive_errors = 0;
         diagnostics_.last_event = NOBRO_IMU_EVENT_RECOVERED;
         return true;
     }
+
+    // Software-injectable lifecycle fault (parity with the camera suspend() and
+    // audio quiesce() facades): a suspended adapter fails every sample() closed
+    // until recover() re-inits the sensor. This makes the provider's recovery
+    // lifecycle testable without a physical sensor disconnect, on any bus/arch.
+    void suspend() { suspended_ = true; }
+    bool suspended() const { return suspended_; }
 
     nobro_imu_diagnostics_t diagnostics() const { return diagnostics_; }
 
@@ -165,6 +174,7 @@ private:
     enum Transport : uint8_t { DEFAULT_TRANSPORT, I2C_TRANSPORT, SPI_TRANSPORT };
     Transport transport_;
     nobro_imu_diagnostics_t diagnostics_;
+    bool suspended_;
 };
 
 }  // namespace nobro
