@@ -447,4 +447,66 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn full_lifecycle_sequence_preserves_accounting_and_ownership() {
+        // End-to-end: place -> start -> transfer -> fault -> recover -> transfer
+        // back -> shutdown. Total utilization is invariant throughout, ownership
+        // follows the transfers exactly, and each executor action fires once in
+        // the right order.
+        let mut rt = MulticoreExecutorLifecycle::<2, 3>::new();
+        rt.place(0, m(1), 3_000).unwrap();
+        rt.place(0, m(2), 2_000).unwrap();
+        rt.place(1, m(3), 4_000).unwrap();
+        let total = rt.total_utilization();
+        assert_eq!(total, 9_000);
+
+        let mut starts = 0u32;
+        rt.start_all(
+            |_| {
+                starts += 1;
+                true
+            },
+            |_| {},
+        )
+        .unwrap();
+        assert!(rt.all_up() && starts == 2);
+
+        // Move m(2) to core 1, then confirm ownership + preserved total.
+        rt.transfer(m(2), 0, 1).unwrap();
+        assert!(rt.owns(1, m(2)) && !rt.owns(0, m(2)));
+        assert_eq!(rt.core_utilization(0), Some(3_000));
+        assert_eq!(rt.core_utilization(1), Some(6_000));
+        assert_eq!(rt.total_utilization(), total);
+
+        // Core 1 faults and recovers; its accounting (now incl. m(2)) is intact.
+        rt.fault(1).unwrap();
+        assert_eq!(rt.state(1), Some(CoreExecutorState::Faulted));
+        assert_eq!(rt.state(0), Some(CoreExecutorState::Up)); // peer unaffected
+        let mut restarts = 0u32;
+        rt.recover(1, |_| {
+            restarts += 1;
+            true
+        })
+        .unwrap();
+        assert!(rt.all_up() && restarts == 1);
+        assert_eq!(rt.core_utilization(1), Some(6_000));
+        assert!(rt.owns(1, m(2)) && rt.owns(1, m(3)));
+
+        // Move m(2) back; totals still invariant.
+        rt.transfer(m(2), 1, 0).unwrap();
+        assert_eq!(rt.core_utilization(0), Some(5_000));
+        assert_eq!(rt.core_utilization(1), Some(4_000));
+        assert_eq!(rt.total_utilization(), total);
+
+        // Ordered shutdown stops both cores (descending) and leaves all down.
+        let mut stop_order = [0u8; 2];
+        let mut n = 0usize;
+        rt.shutdown_all(|c| {
+            stop_order[n] = c;
+            n += 1;
+        });
+        assert!(rt.all_down());
+        assert_eq!(&stop_order[..n], &[1, 0]);
+    }
 }
