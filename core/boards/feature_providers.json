@@ -40,6 +40,168 @@
     "compatible_instances",
     "core_affinity"
   ],
+  "lifecycle_dimensions": [
+    "bounded_init",
+    "absent_device",
+    "ready_state",
+    "timeout",
+    "suspend_resume",
+    "detach_reconnect",
+    "bus_reset",
+    "deconfigure",
+    "quiesce",
+    "stale_session",
+    "partial_io_backpressure",
+    "structured_fault",
+    "deterministic_recovery"
+  ],
+  "lifecycle_status_values": [
+    "verified",
+    "limited",
+    "not-applicable"
+  ],
+  "lifecycle_profiles": [
+    {
+      "id": "lifecycle-ble-arduino-ble",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "verified",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "verified",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "verified",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "bus_reset": "The ArduinoBLE API does not expose an independent controller bus-reset operation; owned quiesce and full stack remount are the supported recovery boundary."
+      }
+    },
+    {
+      "id": "lifecycle-ble-arduino-esp",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "not-applicable",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "verified",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "verified",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "absent_device": "The Bluetooth controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
+        "bus_reset": "The facade supports bounded controller teardown/remount, but does not expose a separate Bluedroid or NimBLE controller-reset primitive."
+      }
+    },
+    {
+      "id": "lifecycle-wifi-arduino-esp",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "not-applicable",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "verified",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "limited",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "absent_device": "The WiFi controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
+        "bus_reset": "The facade supports bounded disconnect, teardown, and remount, but no independent radio-controller reset.",
+        "stale_session": "The facade invalidates link state, while application-owned vendor socket objects remain outside its generation tracking."
+      }
+    },
+    {
+      "id": "lifecycle-wifi-arduino-wifis3",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "verified",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "verified",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "limited",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "bus_reset": "WiFiS3 1.5.0 exposes disconnect and stack remount, not an independent ESP32-S3 controller hard-reset operation.",
+        "stale_session": "The facade invalidates link state, while caller-owned WiFiClient socket objects remain outside its generation tracking."
+      }
+    },
+    {
+      "id": "lifecycle-adc-persistent",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "not-applicable",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "not-applicable",
+        "bus_reset": "not-applicable",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "limited",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "absent_device": "The SAR ADC is integrated into the promoted ESP32 targets.",
+        "detach_reconnect": "The integrated SAR ADC is not a detachable device.",
+        "bus_reset": "The persistent transport owns an ADC-DMA engine rather than a resettable external bus.",
+        "stale_session": "The owned transport rejects I/O while quiesced, but does not publish a transferable session-generation token."
+      }
+    },
+    {
+      "id": "lifecycle-audio-es8311",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "verified",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "verified",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "limited",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified"
+      },
+      "limitations": {
+        "bus_reset": "Recovery reinitializes the codec and I2S transport, but the facade does not expose a separate I2C bus-reset primitive.",
+        "stale_session": "The adapter owns one transport instance and rejects I/O outside READY; it does not publish transferable session handles."
+      }
+    }
+  ],
   "controllers": [
     {
       "id": "controller-uno-r4-esp32s3",
@@ -409,7 +571,15 @@
       "instance": "ble0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-ble-unor4-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-ble-arduino-ble",
+      "physical_evidence": [
+        "Three exact UNO R4 cycles cover GATT write/read/notify, provider disconnect, quiesce, remount, owned recovery, and an active subscribed link during WiFiS3 DNS/TCP traffic."
+      ],
+      "physical_limitations": [
+        "An independent ESP32-S3 controller hard reset and host-driven low-power suspend were not part of this exact campaign."
       ],
       "controller_id": "controller-uno-r4-esp32s3",
       "price_state": "unmeasured",
@@ -444,7 +614,15 @@
       "instance": "ble0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-esp-ble-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-ble-arduino-esp",
+      "physical_evidence": [
+        "Two independent eight-cycle classic ESP32 campaigns cover GATT write/read/notify, disconnect/recovery, and concurrent WiFi association, DNS, and TCP traffic with exact restoration."
+      ],
+      "physical_limitations": [
+        "A separate Bluetooth-controller reset and RF-shielded link-loss campaign were not run."
       ],
       "workload": {
         "namespace": "esp32-arduino-wifi-ble-gatt-http",
@@ -529,7 +707,15 @@
       "instance": "ble0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-esp-ble-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-ble-arduino-esp",
+      "physical_evidence": [
+        "Two independent eight-cycle ESP32-C3 campaigns cover GATT write/read/notify, disconnect/recovery, and concurrent WiFi association, DNS, and TCP traffic with exact restoration."
+      ],
+      "physical_limitations": [
+        "A separate NimBLE-controller reset and RF-shielded link-loss campaign were not run."
       ],
       "workload": {
         "namespace": "esp32c3-arduino-wifi-ble-gatt-http",
@@ -614,7 +800,15 @@
       "instance": "ble0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-esp-ble-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-ble-arduino-esp",
+      "physical_evidence": [
+        "Two independent 24-cycle ESP32-S3 campaigns cover adaptive offered/observed WiFi traffic, deadline, expiry, retry, backpressure, GATT write/read/notify, disconnect/recovery, and exact restoration."
+      ],
+      "physical_limitations": [
+        "A separate NimBLE-controller reset and RF-shielded link-loss campaign were not run."
       ],
       "workload": {
         "namespace": "esp32s3-arduino-adaptive-wifi-ble-gatt-http",
@@ -706,7 +900,15 @@
       "instance": "wifi0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-esp-wifi-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-wifi-arduino-esp",
+      "physical_evidence": [
+        "Three exact ESP32-C3 station cycles cover association, DNS, TCP, leave, quiesce, recovery, concurrent NimBLE GATT traffic, bounded heap behavior, and exact restoration."
+      ],
+      "physical_limitations": [
+        "A separate radio-controller reset and RF power-interruption campaign were not run."
       ],
       "workload": {
         "namespace": "esp32c3-arduino-wifi-http",
@@ -790,7 +992,15 @@
       "instance": "wifi0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "arduino-wifis3-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-wifi-arduino-wifis3",
+      "physical_evidence": [
+        "Three exact UNO R4 WiFiS3 cycles cover association, DNS, caller-owned TCP traffic, leave, quiesce, recovery, subscribed BLE coexistence, stable RA-side heap, and byte-exact restoration."
+      ],
+      "physical_limitations": [
+        "A controller hard reset or controller power-loss recovery was not part of this exact campaign."
       ],
       "controller_id": "controller-uno-r4-esp32s3",
       "workload": {
@@ -875,7 +1085,15 @@
       "instance": "adc0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "esp32-arduino-peripheral-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-adc-persistent",
+      "physical_evidence": [
+        "Three exact ESP32-C3 persistent ADC-DMA runs cover configured rate, frame integrity, lifecycle transitions, immediate allocator behavior, and exact restoration."
+      ],
+      "physical_limitations": [
+        "Absolute voltage accuracy remains unverified because the physical input has no calibrated reference."
       ],
       "workload": {
         "namespace": "esp32-arduino-continuous-adc",
@@ -966,7 +1184,15 @@
       "instance": "adc0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "esp32-arduino-peripheral-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-adc-persistent",
+      "physical_evidence": [
+        "Three exact ESP32-P4 persistent ADC-DMA runs cover configured rate, frame integrity, lifecycle transitions, immediate allocator behavior, and exact restoration."
+      ],
+      "physical_limitations": [
+        "Absolute voltage accuracy remains unverified because the physical input has no calibrated reference."
       ],
       "workload": {
         "namespace": "esp32-arduino-continuous-adc",
@@ -1057,7 +1283,15 @@
       "instance": "adc0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "esp32-arduino-peripheral-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-adc-persistent",
+      "physical_evidence": [
+        "Three exact ESP32-S3 persistent ADC-DMA runs cover configured rate, frame integrity, lifecycle transitions, immediate allocator behavior, coexistence with ES8311 audio, and exact restoration."
+      ],
+      "physical_limitations": [
+        "Absolute voltage accuracy remains unverified because the physical input has no calibrated reference."
       ],
       "workload": {
         "namespace": "esp32-arduino-continuous-adc",
@@ -1148,7 +1382,15 @@
       "instance": "audio0",
       "maturity": "implemented",
       "evidence_gates": [
+        "provider-lifecycle-host",
         "esp32s3-arduino-audio-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-audio-es8311",
+      "physical_evidence": [
+        "Three exact ESP32-S3/ES8311 full-duplex runs cover frame traffic, codec reset, quiesce, deterministic recovery, coexistence with persistent ADC-DMA, audible output, and exact restoration."
+      ],
+      "physical_limitations": [
+        "An injected physical I2C bus fault and calibrated analog waveform-quality measurement were not run."
       ],
       "workload": {
         "namespace": "esp32s3-es8311-arduino",

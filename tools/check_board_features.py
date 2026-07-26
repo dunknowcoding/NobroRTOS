@@ -72,6 +72,22 @@ ADAPTIVE_WORKLOAD_FIELDS = {
     "offered_operations",
     "observed_operations",
 }
+LIFECYCLE_DIMENSIONS = {
+    "bounded_init",
+    "absent_device",
+    "ready_state",
+    "timeout",
+    "suspend_resume",
+    "detach_reconnect",
+    "bus_reset",
+    "deconfigure",
+    "quiesce",
+    "stale_session",
+    "partial_io_backpressure",
+    "structured_fault",
+    "deterministic_recovery",
+}
+LIFECYCLE_STATUS_VALUES = {"verified", "limited", "not-applicable"}
 
 
 def workload_fingerprint(namespace: str, configuration_words: list[int]) -> str:
@@ -132,10 +148,17 @@ def validate(registry: dict, catalog: dict) -> list[str]:
         errors.append("runtime_price_dimensions: incomplete or unknown dimensions")
     if set(registry.get("coexistence_dimensions", [])) != COEXISTENCE_FIELDS:
         errors.append("coexistence_dimensions: incomplete or unknown dimensions")
+    if set(registry.get("lifecycle_dimensions", [])) != LIFECYCLE_DIMENSIONS:
+        errors.append("lifecycle_dimensions: incomplete or unknown dimensions")
+    if set(registry.get("lifecycle_status_values", [])) != LIFECYCLE_STATUS_VALUES:
+        errors.append("lifecycle_status_values: incomplete or unknown values")
 
     kinds = _names(registry.get("capability_kinds"), "capability_kinds", errors)
     provenance = _names(registry.get("provenance"), "provenance", errors)
     controllers = _names(registry.get("controllers"), "controllers", errors)
+    lifecycle_profiles = _names(
+        registry.get("lifecycle_profiles"), "lifecycle_profiles", errors
+    )
     backends = _names(registry.get("backends"), "backends", errors)
     bindings = _names(registry.get("bindings"), "bindings", errors)
     contracts = {
@@ -193,6 +216,37 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in limitations
         ):
             errors.append(f"{prefix}: limitations are required")
+    for identifier, profile in lifecycle_profiles.items():
+        prefix = f"lifecycle_profiles.{identifier}"
+        if set(profile) != {"id", "host_gate", "coverage", "limitations"}:
+            errors.append(f"{prefix}: lifecycle profile form is incomplete")
+            continue
+        if not isinstance(profile.get("host_gate"), str) or not profile["host_gate"]:
+            errors.append(f"{prefix}: host_gate is required")
+        coverage = profile.get("coverage")
+        if (
+            not isinstance(coverage, dict)
+            or set(coverage) != LIFECYCLE_DIMENSIONS
+            or any(value not in LIFECYCLE_STATUS_VALUES for value in coverage.values())
+        ):
+            errors.append(f"{prefix}: coverage must classify every lifecycle dimension")
+            continue
+        limited = {
+            dimension
+            for dimension, status in coverage.items()
+            if status != "verified"
+        }
+        limitations = profile.get("limitations")
+        if (
+            not isinstance(limitations, dict)
+            or set(limitations) != limited
+            or not all(
+                isinstance(value, str) and value for value in limitations.values()
+            )
+        ):
+            errors.append(
+                f"{prefix}: every limited/not-applicable dimension needs one reason"
+            )
     for identifier, kind in kinds.items():
         prefix = f"capability_kinds.{identifier}"
         if kind.get("class") not in CLASSES:
@@ -268,6 +322,34 @@ def validate(registry: dict, catalog: dict) -> list[str]:
             isinstance(value, str) and value for value in evidence_gates
         ):
             errors.append(f"{prefix}: evidence_gates must be a unique string list")
+        lifecycle_profile_id = binding.get("lifecycle_profile_id")
+        lifecycle_profile = lifecycle_profiles.get(lifecycle_profile_id)
+        if binding.get("maturity") == "implemented":
+            if lifecycle_profile is None:
+                errors.append(f"{prefix}: implemented binding needs a lifecycle profile")
+            elif lifecycle_profile["host_gate"] not in (evidence_gates or []):
+                errors.append(f"{prefix}: lifecycle host gate is not linked")
+        elif lifecycle_profile_id is not None and lifecycle_profile is None:
+            errors.append(f"{prefix}: unknown lifecycle profile")
+        physical_evidence = binding.get("physical_evidence")
+        if (
+            not isinstance(physical_evidence, list)
+            or _duplicates(physical_evidence)
+            or not all(isinstance(value, str) and value for value in physical_evidence)
+        ):
+            errors.append(f"{prefix}: physical_evidence must be a unique string list")
+        elif binding.get("maturity") == "implemented" and not physical_evidence:
+            errors.append(f"{prefix}: implemented binding needs exact physical evidence")
+        physical_limitations = binding.get("physical_limitations")
+        if (
+            not isinstance(physical_limitations, list)
+            or _duplicates(physical_limitations)
+            or not physical_limitations
+            or not all(
+                isinstance(value, str) and value for value in physical_limitations
+            )
+        ):
+            errors.append(f"{prefix}: physical_limitations must be explicit")
         controller_id = binding.get("controller_id")
         if controller_id is not None and controller_id not in controllers:
             errors.append(f"{prefix}: unknown controller")
@@ -281,6 +363,9 @@ def validate(registry: dict, catalog: dict) -> list[str]:
                 "instance",
                 "maturity",
                 "evidence_gates",
+                "lifecycle_profile_id",
+                "physical_evidence",
+                "physical_limitations",
                 "price_state",
                 "limitations",
                 "disabled_symbol_gate",
@@ -501,6 +586,16 @@ def selftest() -> int:
     broken["runtime_price_dimensions"].remove("transient_heap_peak_bytes")
     assert any("runtime_price_dimensions" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(registry)
+    broken["lifecycle_profiles"][0]["coverage"].pop("bus_reset")
+    broken["lifecycle_profiles"][0]["limitations"].pop("bus_reset")
+    assert any("coverage must classify" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
+    broken["bindings"][0]["evidence_gates"].remove("provider-lifecycle-host")
+    assert any("lifecycle host gate" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
+    broken["bindings"][0]["physical_evidence"] = []
+    assert any("exact physical evidence" in error for error in validate(broken, catalog))
+    broken = copy.deepcopy(registry)
     broken["capability_kinds"][0]["portable_contract_id"] = "missing"
     assert any("portable contract" in error for error in validate(broken, catalog))
     broken = copy.deepcopy(registry)
@@ -519,7 +614,10 @@ def selftest() -> int:
         "composition": "arduino",
         "instance": "selftest0",
         "maturity": "implemented",
-        "evidence_gates": ["selftest-gate"],
+        "evidence_gates": ["provider-lifecycle-host", "selftest-gate"],
+        "lifecycle_profile_id": registry["lifecycle_profiles"][0]["id"],
+        "physical_evidence": ["Selftest exact physical fixture."],
+        "physical_limitations": ["Selftest physical coverage is intentionally narrow."],
         "workload": {
             "namespace": "selftest-provider",
             "configuration_words": [1, 2, 3],
@@ -604,6 +702,9 @@ def selftest() -> int:
             "instance": "selftest1",
             "maturity": "compile-only",
             "evidence_gates": ["selftest-target-build"],
+            "lifecycle_profile_id": None,
+            "physical_evidence": [],
+            "physical_limitations": ["Compile-only selftest has no physical promotion."],
             "price_state": "unmeasured",
             "limitations": ["Target build only; every resource price remains unknown."],
             "disabled_symbol_gate": {
@@ -626,6 +727,15 @@ def selftest() -> int:
     implemented_unpriced["bindings"][-1]["limitations"] = [
         "Implementation and physical behavior are verified; the complete price remains unknown."
     ]
+    implemented_unpriced["bindings"][-1]["physical_evidence"] = [
+        "Selftest exact physical fixture."
+    ]
+    implemented_unpriced["bindings"][-1]["lifecycle_profile_id"] = registry[
+        "lifecycle_profiles"
+    ][0]["id"]
+    implemented_unpriced["bindings"][-1]["evidence_gates"].insert(
+        0, "provider-lifecycle-host"
+    )
     assert not validate(implemented_unpriced, catalog)
     broken = copy.deepcopy(unpriced)
     broken["bindings"][-1]["price_state"] = "measured"

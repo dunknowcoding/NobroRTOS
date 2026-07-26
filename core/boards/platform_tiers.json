@@ -384,6 +384,40 @@
         }
       ]
     },
+    "provider-lifecycle-host": {
+      "kind": "host-test",
+      "runner": "rust-matrix",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/check_provider_lifecycle.py", "--target", "{host_target}"],
+      "claim_scopes": [
+        {
+          "platform": "ra4m1",
+          "composition": "arduino",
+          "capabilities": ["ble_link", "wifi_link"]
+        },
+        {
+          "platform": "esp32",
+          "composition": "arduino",
+          "capabilities": ["ble_link"]
+        },
+        {
+          "platform": "esp32c3",
+          "composition": "arduino",
+          "capabilities": ["adc_dma", "ble_link", "wifi_link"]
+        },
+        {
+          "platform": "esp32p4",
+          "composition": "arduino",
+          "capabilities": ["adc_dma"]
+        },
+        {
+          "platform": "esp32s3",
+          "composition": "arduino",
+          "capabilities": ["adc_dma", "audio_i2s", "ble_link"]
+        }
+      ]
+    },
     "arduino-ra4m1-compile": {
       "kind": "target-build",
       "runner": "arduino-package",
@@ -545,7 +579,7 @@
           "claims": {
             "ble_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-esp-ble-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-esp-ble-target-build"],
               "limitations": "The pinned Arduino-ESP32 3.3.10 package selects Bluedroid. Two independent eight-cycle state-restoring campaigns cover GATT read/write/notify, recovery, and concurrent WiFi DNS/TCP traffic; the published price covers that whole composition rather than an unevidenced BLE-only increment."
             }
           }
@@ -570,17 +604,17 @@
           "claims": {
             "adc_dma": {
               "maturity": "experimental",
-              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "evidence": ["provider-lifecycle-host", "esp32-arduino-peripheral-target-build"],
               "limitations": "The exact persistent-buffer binding is configuration-specific; calibrated accuracy remains unverified."
             },
             "ble_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-esp-ble-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-esp-ble-target-build"],
               "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE. Three state-restoring physical cycles cover GATT read/write/notify and recovery during admitted WiFi DNS/TCP traffic; the price is scoped to that exact four-operations-per-second composition."
             },
             "wifi_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-esp-wifi-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-esp-wifi-target-build"],
               "limitations": "One exact pinned Arduino-ESP32 C3 station composition is configuration-priced at four HTTP transactions per second and has state-restoring association/DNS/TCP/lifecycle evidence, including the separately priced NimBLE ble0 coexistence workload. Other workloads and boards remain unverified."
             }
           }
@@ -598,7 +632,7 @@
           "claims": {
             "adc_dma": {
               "maturity": "experimental",
-              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "evidence": ["provider-lifecycle-host", "esp32-arduino-peripheral-target-build"],
               "limitations": "The exact binding uses a DMA-aligned 32-conversion frame; calibrated accuracy remains unverified."
             }
           }
@@ -627,17 +661,17 @@
           "claims": {
             "adc_dma": {
               "maturity": "experimental",
-              "evidence": ["esp32-arduino-peripheral-target-build"],
+              "evidence": ["provider-lifecycle-host", "esp32-arduino-peripheral-target-build"],
               "limitations": "Exact only for one ADC1 channel, 12-bit calibrated output, 16 conversions per frame, 20 ksample/s, and 1250 reads per second. Absolute input accuracy remains unverified."
             },
             "audio_i2s": {
               "maturity": "experimental",
-              "evidence": ["esp32s3-arduino-audio-target-build"],
+              "evidence": ["provider-lifecycle-host", "esp32s3-arduino-audio-target-build"],
               "limitations": "Exact only for 16 kHz mono signed-16 full-duplex ES8311 audio with 192-byte frames, two queue slots, and 100 transfers per second."
             },
             "ble_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-esp-ble-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-esp-ble-target-build"],
               "limitations": "The pinned Arduino-ESP32 3.3.10 package selects NimBLE; only the bounded facade, target build, and zero-disabled state are evidenced."
             }
           }
@@ -671,12 +705,12 @@
             "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "ble_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-ble-unor4-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-ble-unor4-target-build"],
               "limitations": "Exact UNO R4/ArduinoBLE 2.1.0/controller 0.6.0 physical evidence covers GATT write/read/notify, provider disconnect, remount/recovery, and a subscribed BLE link across WiFiS3 DNS/TCP traffic. Controller flash/static RAM and minimum task/stack evidence are pinned; retained/transient heap, complete task/stack reservations, CPU, and the complete shared-controller price remain unmeasured."
             },
             "wifi_link": {
               "maturity": "implemented",
-              "evidence": ["arduino-wifis3-target-build"],
+              "evidence": ["provider-lifecycle-host", "arduino-wifis3-target-build"],
               "limitations": "One exact UNO R4/WiFiS3 0.6.0 workload has zero-disabled, physical association/DNS/TCP/lifecycle, and RA-side/controller-image pricing. Controller-internal runtime resources, BLE coexistence, other firmware versions, and other workloads remain separate."
             }
           }

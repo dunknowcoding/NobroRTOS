@@ -22,6 +22,7 @@ VERSION = "0.3.1"
 FQBN = "esp32:esp32:esp32s3"
 BINDING_ID = "binding-audio-esp32s3-es8311"
 EVIDENCE_GATE = "esp32s3-arduino-audio-target-build"
+LIFECYCLE_GATE = "provider-lifecycle-host"
 WORKLOAD_NAMESPACE = "esp32s3-es8311-arduino"
 WORKLOAD_WORDS = [16_000, 1, 0, 192, 0]
 EXPECTED_FIXED_PRICE = {
@@ -181,8 +182,14 @@ def verify_binding(registry: dict) -> dict:
         raise RuntimeError("audio binding runtime-price provenance is stale")
     if binding.get("price_basis") != EXPECTED_PRICE_BASIS:
         raise RuntimeError("audio binding price basis is stale")
-    if binding.get("evidence_gates") != [EVIDENCE_GATE]:
+    if binding.get("evidence_gates") != [LIFECYCLE_GATE, EVIDENCE_GATE]:
         raise RuntimeError("audio binding evidence gate is stale")
+    if (
+        binding.get("lifecycle_profile_id") != "lifecycle-audio-es8311"
+        or not binding.get("physical_evidence")
+        or not binding.get("physical_limitations")
+    ):
+        raise RuntimeError("audio binding lifecycle evidence is stale")
     if binding.get("report_wiring") != {
         "provider_id": "audio_i2s",
         "status_field": "esp32s3_audio0",

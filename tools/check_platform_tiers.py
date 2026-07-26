@@ -273,6 +273,11 @@ def validate(
         if gate.get("required") is False and not gate.get("condition"):
             errors.append(f"{prefix}: conditional gate must explain its condition")
 
+    lifecycle_profiles = {
+        profile.get("id"): profile
+        for profile in feature_registry.get("lifecycle_profiles", [])
+        if isinstance(profile, dict)
+    }
     for binding in feature_binding_records:
         prefix = f"feature_bindings.{binding.get('id', '<invalid>')}"
         scope = (
@@ -280,13 +285,33 @@ def validate(
             binding.get("composition"),
             binding.get("capability_kind"),
         )
-        for gate_id in binding.get("evidence_gates", []):
+        binding_gates = binding.get("evidence_gates", [])
+        binding_kinds: set[str] = set()
+        for gate_id in binding_gates:
             if gate_id not in gates:
                 errors.append(f"{prefix}: unknown evidence gate {gate_id!r}")
             elif scope not in gate_claim_scopes.get(gate_id, set()):
                 errors.append(
                     f"{prefix}: gate {gate_id!r} is not scoped to its exact binding"
                 )
+            else:
+                binding_kinds.add(gates[gate_id].get("kind"))
+        if binding.get("maturity") == "implemented" and binding_kinds != {
+            HOST_EVIDENCE,
+            TARGET_EVIDENCE,
+        }:
+            errors.append(
+                f"{prefix}: implemented binding needs exact host-test and target-build gates"
+            )
+        profile = lifecycle_profiles.get(binding.get("lifecycle_profile_id"))
+        if isinstance(profile, dict):
+            host_gate = profile.get("host_gate")
+            if (
+                host_gate not in binding_gates
+                or not isinstance(gates.get(host_gate), dict)
+                or gates[host_gate].get("kind") != HOST_EVIDENCE
+            ):
+                errors.append(f"{prefix}: lifecycle profile host gate is not executable")
 
     claim_scope_uses: set[tuple[str, str, str, str]] = set()
     for platform_id, platform in platforms.items():
@@ -857,6 +882,18 @@ def selftest() -> int:
     good = json.loads(MATRIX.read_text(encoding="utf-8"))
     feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
     _expect(validate(good) == [], f"real matrix should be clean: {validate(good)}")
+    missing_binding_target = copy.deepcopy(feature_registry)
+    missing_binding_target["bindings"][0]["evidence_gates"] = [
+        "provider-lifecycle-host"
+    ]
+    _expect_error(
+        validate(
+            good,
+            check_runner_bindings=False,
+            feature_registry=missing_binding_target,
+        ),
+        "exact host-test and target-build",
+    )
 
     bad_reference = copy.deepcopy(good)
     bad_reference["reference_platform"] = "rp2350"
@@ -898,6 +935,9 @@ def selftest() -> int:
             "instance": "audio0",
             "maturity": "compile-only",
             "evidence_gates": ["esp32s3-target-build"],
+            "lifecycle_profile_id": None,
+            "physical_evidence": [],
+            "physical_limitations": ["Selftest target-build-only binding."],
             "price_state": "unmeasured",
             "limitations": ["Selftest target build; provider price remains unknown."],
             "disabled_symbol_gate": {
@@ -1008,7 +1048,11 @@ def selftest() -> int:
     file_root["platforms"]["samd21"]["implementation_root"] = "README.md"
     _expect_error(validate(file_root), "implementation_root")
 
-    rust_receipts = ["nrf52840-hal-host", "nrf52840-usb-host"]
+    rust_receipts = [
+        "nrf52840-hal-host",
+        "nrf52840-usb-host",
+        "provider-lifecycle-host",
+    ]
     _expect(validate_receipts(good, "rust-matrix", rust_receipts) == [], "complete receipts")
     _expect_error(validate_receipts(good, "rust-matrix", []), "missing required")
     _expect_error(
@@ -1094,6 +1138,17 @@ def selftest() -> int:
                     execute_gate, good, "nrf52840-usb-host", receipt_root, source_root
                 ) == 0,
                 "USB gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "provider-lifecycle-host",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "provider lifecycle gate success",
             )
             first_command = run.call_args_list[0].args[0]
             _expect(isinstance(first_command, list), "gate command must execute as an argv list")

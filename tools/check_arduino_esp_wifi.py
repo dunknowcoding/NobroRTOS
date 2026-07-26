@@ -31,6 +31,7 @@ BACKEND_ID = "backend-wifi-arduino-esp"
 COMPONENT_ID = "adapter-wireless-wifi-arduino-esp"
 LIBRARY_ID = "library-arduino-esp-wifi"
 GATE_ID = "arduino-esp-wifi-target-build"
+LIFECYCLE_GATE_ID = "provider-lifecycle-host"
 BINDING_ID = "binding-wifi-arduino-esp-esp32c3"
 SOURCE_ID = "source-arduino-esp32"
 SOURCE_PIN = "0d1440d1be38ab530d274fe87ee88565fe167392"
@@ -270,7 +271,11 @@ def verify_metadata() -> None:
         or binding.get("composition") != "arduino"
         or binding.get("instance") != "wifi0"
         or binding.get("maturity") != "implemented"
-        or binding.get("evidence_gates") != [GATE_ID]
+        or binding.get("evidence_gates") != [LIFECYCLE_GATE_ID, GATE_ID]
+        or binding.get("lifecycle_profile_id")
+        != "lifecycle-wifi-arduino-esp"
+        or not binding.get("physical_evidence")
+        or not binding.get("physical_limitations")
         or binding.get("workload") != EXPECTED_WORKLOAD
         or binding.get("measured_fixed_price") != EXPECTED_FIXED_PRICE
         or binding.get("fixed_price_provenance")
@@ -321,7 +326,7 @@ def verify_metadata() -> None:
     if (
         not isinstance(claim, dict)
         or claim.get("maturity") != "implemented"
-        or claim.get("evidence") != [GATE_ID]
+        or claim.get("evidence") != [LIFECYCLE_GATE_ID, GATE_ID]
         or not claim.get("limitations")
     ):
         raise RuntimeError("ESP32-C3 WiFi tier claim is stale")

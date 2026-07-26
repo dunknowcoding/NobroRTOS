@@ -44,6 +44,10 @@ stack family, adapter backend, exact board/firmware binding, resource price,
 coexistence policy, evidence, and report wiring. Candidate capability kinds do
 not become platform claims: `platform_tiers.json` accepts a kind only when the
 registry contains an exact binding and the ordinary scoped evidence gate.
+Each implemented binding also references a complete lifecycle profile, an
+executable host-lifecycle receipt, an exact target-build receipt, scoped
+physical evidence, and explicit physical limitations. A profile cannot omit a
+lifecycle dimension or label a limitation without explaining it.
 Disabled bindings must declare the same-board baseline, zero flash/RAM delta,
 and forbidden backend symbols. Resource prices share one typed contract across
 audio, sensor, and pulse domains. Schema v2 keeps fixed mount ownership

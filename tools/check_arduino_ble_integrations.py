@@ -22,6 +22,7 @@ BACKEND_ID = "backend-ble-arduino-ble"
 COMPONENT_ID = "adapter-wireless-ble-arduino-ble"
 LIBRARY_ID = "library-arduino-ble"
 GATE_ID = "arduino-ble-unor4-target-build"
+LIFECYCLE_GATE_ID = "provider-lifecycle-host"
 BINDING_ID = "binding-ble-arduino-ble-ra4m1"
 SOURCE_ID = "source-arduino-ble"
 SOURCE_PIN = "281377b3588814e4c174c08ec711e10e35b1c9f9"
@@ -230,6 +231,9 @@ def verify_metadata() -> None:
         "instance",
         "maturity",
         "evidence_gates",
+        "lifecycle_profile_id",
+        "physical_evidence",
+        "physical_limitations",
         "controller_id",
         "price_state",
         "limitations",
@@ -244,7 +248,10 @@ def verify_metadata() -> None:
         or binding.get("composition") != "arduino"
         or binding.get("instance") != "ble0"
         or binding.get("maturity") != "implemented"
-        or binding.get("evidence_gates") != [GATE_ID]
+        or binding.get("evidence_gates") != [LIFECYCLE_GATE_ID, GATE_ID]
+        or binding.get("lifecycle_profile_id") != "lifecycle-ble-arduino-ble"
+        or not binding.get("physical_evidence")
+        or not binding.get("physical_limitations")
         or binding.get("controller_id") != CONTROLLER_ID
         or binding.get("price_state") != "unmeasured"
         or not binding.get("limitations")
@@ -290,7 +297,7 @@ def verify_metadata() -> None:
         or gate.get("runner") != "arduino-package"
         or not isinstance(claim, dict)
         or claim.get("maturity") != "implemented"
-        or claim.get("evidence") != [GATE_ID]
+        or claim.get("evidence") != [LIFECYCLE_GATE_ID, GATE_ID]
         or not claim.get("limitations")
     ):
         raise RuntimeError("ArduinoBLE tier claim or receipt gate is stale")

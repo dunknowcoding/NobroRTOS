@@ -169,6 +169,16 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("PlatformIO release archive", [py, "tools/package_platformio.py", "--check"], ROOT),
         ("arduino representative compile", [py, "tools/check_arduino_compile.py"], ROOT),
         ("arduino facade contracts", [py, "tools/check_arduino_facade.py"], ROOT),
+        (
+            "provider lifecycle contracts",
+            [
+                py,
+                "tools/check_provider_lifecycle.py",
+                "--target",
+                host_target(),
+            ],
+            ROOT,
+        ),
         ("ArduinoBLE UNO R4 integrations",
          [py, "tools/check_arduino_ble_integrations.py"], ROOT),
         ("Arduino-ESP32 BLE integrations",

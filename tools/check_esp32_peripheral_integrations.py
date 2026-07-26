@@ -29,6 +29,8 @@ PERSISTENT_BINDINGS = {
     "esp32:esp32:esp32p4": "binding-adc-persistent-esp32p4",
     "esp32:esp32:esp32s3": "binding-adc-persistent-esp32s3",
 }
+LIFECYCLE_GATE_ID = "provider-lifecycle-host"
+TARGET_GATE_ID = "esp32-arduino-peripheral-target-build"
 SIZE = re.compile(
     r"Sketch uses (?P<flash>\d+) bytes.*?"
     r"Global variables use (?P<ram>\d+) bytes",
@@ -323,11 +325,19 @@ def verify_binding_price(fqbn: str, delta: tuple[int, int]) -> str:
             f"{binding_id}: isolated build price differs: "
             f"registry={expected} build={delta}"
         )
+    if (
+        binding.get("evidence_gates")
+        != [LIFECYCLE_GATE_ID, TARGET_GATE_ID]
+        or binding.get("lifecycle_profile_id") != "lifecycle-adc-persistent"
+        or not binding.get("physical_evidence")
+        or not binding.get("physical_limitations")
+    ):
+        raise RuntimeError(f"{binding_id}: lifecycle evidence is stale")
     report = binding.get("report_wiring", {})
     if (
         report.get("provider_id") != "adc_dma"
         or report.get("evidence_gate")
-        != "esp32-arduino-peripheral-target-build"
+        != TARGET_GATE_ID
         or not report.get("status_field")
     ):
         raise RuntimeError(f"{binding_id}: target-build report wiring is stale")

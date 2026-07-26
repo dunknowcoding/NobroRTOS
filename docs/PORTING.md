@@ -111,22 +111,34 @@ or Ethernet. Do not put credentials, endpoints, or local tool paths in it.
      --capability-kind audio_i2s
    ```
 
-4. Add a board binding only after its backend exists. Record every price
-   dimension, coexistence/lease ownership, limitations, report wiring, and
-   scoped evidence gate. Store the workload namespace and configuration words;
-   the validator recomputes their fingerprint instead of trusting an opaque
-   digest. Classify prices as measured, source-derived, or declared zero.
+4. Add a board binding only after its backend exists. Reuse or add a lifecycle
+   profile that classifies bounded init, absent-device behavior, ready state,
+   timeout, suspend/resume, detach/reconnect, bus reset, deconfigure,
+   quiescence, stale-session rejection, partial I/O/backpressure, structured
+   faults, and deterministic recovery. Every limited or non-applicable item
+   needs a concrete reason.
+5. Link both the scoped `provider-lifecycle-host` receipt and the exact target
+   build. An implemented binding also records its exact physical scope and the
+   lifecycle cases that physical campaign did not cover. A family-level result
+   cannot stand in for another target or composition.
+6. Record every price dimension, coexistence/lease ownership, limitations,
+   report wiring, and scoped evidence gate. Store the workload namespace and
+   configuration words; the validator recomputes their fingerprint instead of
+   trusting an opaque digest. Classify prices as measured, source-derived, or
+   declared zero.
    Fixed stack means provider-created worker stacks, while caller-task
    high-water is runtime evidence. Ordinary heap-backed DMA pools belong to
    retained heap rather than vendor-reserved RAM.
-5. Prove the disabled configuration against the same-board baseline with zero
+7. Prove the disabled configuration against the same-board baseline with zero
    Nobro/vendor flash and RAM delta plus forbidden-symbol checks.
-6. Add the capability claim to `platform_tiers.json`; its validator loads the
+8. Add the capability claim to `platform_tiers.json`; its validator loads the
    feature vocabulary and exact binding from the registry, so a new kind needs
    no Python source edit.
 
 Run `python tools/check_board_features.py`,
 `python tools/check_platform_tiers.py --selftest`, and the exact target gate.
+The lifecycle host gate is also available directly as
+`python tools/check_provider_lifecycle.py --target <rust-host-target>`.
 `compile-only` is not physical support, and an unbound capability kind is not
 a platform claim.
 

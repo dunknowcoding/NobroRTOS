@@ -106,6 +106,7 @@ jobs:
           python tools/run_checks.py --rust-only
           python tools/check_platform_tiers.py --run-gate nrf52840-hal-host
           python tools/check_platform_tiers.py --run-gate nrf52840-usb-host
+          python tools/check_platform_tiers.py --run-gate provider-lifecycle-host
           python tools/check_platform_tiers.py --assert-receipts rust-matrix
 
   supply-chain-and-coverage:

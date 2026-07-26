@@ -23,6 +23,7 @@ BACKEND_ID = "backend-ble-arduino-esp"
 COMPONENT_ID = "adapter-wireless-ble-arduino-esp"
 LIBRARY_ID = "library-arduino-esp-ble"
 GATE_ID = "arduino-esp-ble-target-build"
+LIFECYCLE_GATE_ID = "provider-lifecycle-host"
 TARGETS = (
     ("esp32", "esp32:esp32:esp32", "bluedroid", "esp_bluedroid_init"),
     ("esp32c3", "esp32:esp32:esp32c3", "nimble", "nimble_port_init"),
@@ -329,7 +330,11 @@ def verify_metadata() -> None:
             or binding.get("platform") != platform
             or binding.get("composition") != "arduino"
             or binding.get("instance") != "ble0"
-            or binding.get("evidence_gates") != [GATE_ID]
+            or binding.get("evidence_gates") != [LIFECYCLE_GATE_ID, GATE_ID]
+            or binding.get("lifecycle_profile_id")
+            != "lifecycle-ble-arduino-esp"
+            or not binding.get("physical_evidence")
+            or not binding.get("physical_limitations")
             or set(
                 binding.get("disabled_symbol_gate", {}).get(
                     "forbidden_symbols", []
@@ -487,7 +492,7 @@ def verify_metadata() -> None:
         if (
             not isinstance(claim, dict)
             or claim.get("maturity") != "implemented"
-            or claim.get("evidence") != [GATE_ID]
+            or claim.get("evidence") != [LIFECYCLE_GATE_ID, GATE_ID]
             or host not in claim.get("limitations", "").lower()
         ):
             raise RuntimeError(f"{platform} BLE tier claim is stale")
