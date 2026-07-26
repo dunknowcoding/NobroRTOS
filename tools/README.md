@@ -31,6 +31,9 @@ produce public SDK artifacts.
 `run_checks.py` runs the portable source/package suite. The narrower `check_*.py`,
 `ci_matrix.sh`, and `lint_gate.sh` entry points are kept small so contributors and
 hosted CI can run the same checks without private configuration.
+`gen_api_contract.py --check` rejects cross-language export, signature, or package
+mirror drift. `check_claim_contract.py` requires every declared public claim family
+to name product surfaces and gates that run both locally and in hosted CI.
 
 Board-feature integrations remain evidence scoped. For example,
 `check_audio_facade.py` executes the bounded audio lifecycle against a fake

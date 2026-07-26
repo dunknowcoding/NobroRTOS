@@ -88,7 +88,9 @@ EXPECTED_DISTRIBUTION_POLICY = {
 REGULAR_FILE_MODES = {"100644", "100755"}
 SDK_PUBLIC_CHILDREN = {
     "README.md",
+    "api-contract.json",
     "app-authoring-contract.json",
+    "claim-checks.json",
     "cli",
     "error-codes.json",
     "feature-catalog.json",
@@ -343,6 +345,14 @@ def _validate_manifest(manifest: object) -> list[str]:
         "feature catalog": (
             manifest.get("feature_catalog"),
             "sdk/feature-catalog.json",
+        ),
+        "API contract": (
+            manifest.get("api_contract"),
+            "sdk/api-contract.json",
+        ),
+        "claim contract": (
+            manifest.get("claim_contract"),
+            "sdk/claim-checks.json",
         ),
         "core workspace": (manifest.get("core_workspace"), "core"),
     }

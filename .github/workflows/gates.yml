@@ -43,7 +43,10 @@ jobs:
       - name: one-file firmware project
         run: python tools/nobro_firmware_project.py --selftest
       - name: sdk manifest
-        run: python tools/check_sdk_manifest.py
+        run: |
+          python tools/gen_api_contract.py --check
+          python tools/check_claim_contract.py
+          python tools/check_sdk_manifest.py
       - name: arduino package drift
         run: |
           python tools/package_arduino.py --check
@@ -68,6 +71,7 @@ jobs:
       - name: complete product experience gates
         run: |
           python tools/nobro_app.py tutorials/hello-device/app.json
+          python tools/check_app_authoring.py
           python tools/package_prebuilt_uf2.py --check
           python tools/nobro_admission.py --selftest
           python sdk/cli/nobro.py project --selftest
@@ -84,6 +88,8 @@ jobs:
           python -O tools/check_ros_bridge.py --selftest
           python -O tools/ros_msg_gen.py --selftest
           python -O tools/import_dts.py --selftest
+          python -O tools/gen_api_contract.py --check
+          python -O tools/check_claim_contract.py
   rust-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -372,6 +378,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.9"
+      - name: pristine Windows archive/install/use
+        shell: pwsh
+        # This image no longer guarantees host GCC. The later ArduinoNRF step
+        # compiles the package with its pinned native toolchain.
+        run: |
+          python tools/gen_api_contract.py --check
+          python tools/check_claim_contract.py
+          python tools/check_distribution_artifacts.py --skip-header-compile
       - name: install pinned ArduinoNRF core
         shell: pwsh
         timeout-minutes: 25

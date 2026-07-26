@@ -9,6 +9,7 @@ and installs the Python package into an isolated target directory.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -249,6 +250,16 @@ def install_python(work: Path) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--skip-header-compile",
+        action="store_true",
+        help=(
+            "validate archives and Python install/use only; reserved for a CI job "
+            "that performs a platform-native package compilation in a later step"
+        ),
+    )
+    args = parser.parse_args()
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     for package in (ARDUINO, PLATFORMIO, PYTHON):
         require(
@@ -266,10 +277,15 @@ def main() -> int:
         platformio_tar = work / "NobroRTOS-platformio.tar.gz"
         build_arduino(arduino_zip)
         build_platformio(platformio_tar)
-        compile_headers(work, arduino_zip, platformio_tar)
+        if not args.skip_header_compile:
+            compile_headers(work, arduino_zip, platformio_tar)
         install_python(work)
 
-    print("DISTRIBUTION ARTIFACTS: PASS (tracked, licensed, self-contained, clean-install)")
+    header_status = "header-compile deferred" if args.skip_header_compile else "headers compiled"
+    print(
+        "DISTRIBUTION ARTIFACTS: PASS "
+        f"(tracked, licensed, self-contained, clean-install, {header_status})"
+    )
     return 0
 
 

@@ -14,6 +14,8 @@ sdk/
 |-- cli/nobro.py       project, app, adapter, flash, budget, sign, package, and contract commands
 |-- error-codes.json   shared admission, project, and app diagnostics
 |-- feature-catalog.json  target-scoped optional-feature prices and evidence
+|-- api-contract.json  generated cross-language exports, signatures, and package mirrors
+|-- claim-checks.json  public claim families linked to local and hosted product gates
 |-- include/           drift-gated copies of the canonical C headers
 |-- firmware/          prepared firmware images and their app metadata
 |-- python/            installation pointer for the Python host package

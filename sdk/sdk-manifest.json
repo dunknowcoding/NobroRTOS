@@ -9,6 +9,8 @@
   "app_authoring_contract": "sdk/app-authoring-contract.json",
   "error_code_registry": "sdk/error-codes.json",
   "feature_catalog": "sdk/feature-catalog.json",
+  "api_contract": "sdk/api-contract.json",
+  "claim_contract": "sdk/claim-checks.json",
   "core_workspace": "core",
   "include_roots": [
     "bindings/c/include",

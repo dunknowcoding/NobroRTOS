@@ -1,0 +1,83 @@
+{
+  "schema": "nobro-claim-checks-v1",
+  "claims": [
+    {
+      "id": "public-tree-privacy",
+      "status": "verified",
+      "surfaces": [
+        "README.md",
+        "docs/README.md",
+        "docs/GETTING_STARTED.md",
+        "docs/USER_GUIDE.md",
+        "docs/API.md",
+        "docs/ARCHITECTURE.md",
+        "docs/PORTING.md",
+        "docs/LIMITATIONS.md",
+        "docs/CAMERA_SUPPORT.md",
+        "docs/WIRELESS_SUPPORT.md",
+        "docs/ERROR_CODES.md",
+        "docs/api-index.md"
+      ],
+      "gates": [
+        "release boundary",
+        "public docs"
+      ]
+    },
+    {
+      "id": "cross-language-api-drift",
+      "status": "verified",
+      "surfaces": [
+        "sdk/api-contract.json",
+        "bindings/c/include/nobro_rtos.h",
+        "bindings/cpp/include/nobro_rtos.hpp",
+        "bindings/python/nobro_rtos/__init__.py"
+      ],
+      "gates": [
+        "api contract",
+        "software surface",
+        "arduino package",
+        "PlatformIO release archive"
+      ]
+    },
+    {
+      "id": "self-contained-distributions",
+      "status": "verified",
+      "surfaces": [
+        "packages/arduino/library.properties",
+        "packages/platformio/library.json",
+        "bindings/python/pyproject.toml"
+      ],
+      "gates": [
+        "distribution artifacts",
+        "sdk manifest"
+      ]
+    },
+    {
+      "id": "generated-application-flow",
+      "status": "verified",
+      "surfaces": [
+        "sdk/app-authoring-contract.json",
+        "sdk/firmware/starter-app.json"
+      ],
+      "gates": [
+        "app authoring parity",
+        "firmware project",
+        "prebuilt uf2 loop"
+      ]
+    },
+    {
+      "id": "board-and-adapter-claims",
+      "status": "limited",
+      "surfaces": [
+        "core/boards/feature_providers.json",
+        "core/adapters/catalog.json",
+        "core/boards/platform_tiers.json"
+      ],
+      "gates": [
+        "board profiles",
+        "adapter catalog",
+        "platform tiers"
+      ]
+    }
+  ]
+}

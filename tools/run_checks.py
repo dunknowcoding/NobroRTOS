@@ -164,6 +164,8 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("flash tool fail-closed parser", [py, "tools/flash.py", "--selftest"], ROOT),
         ("board profiles", [py, "tools/check_board_profiles.py"], ROOT),
         ("core layout", [py, "tools/check_core_layout.py"], ROOT),
+        ("api contract", [py, "tools/gen_api_contract.py", "--check"], ROOT),
+        ("claim contract", [py, "tools/check_claim_contract.py"], ROOT),
         ("sdk manifest", [py, "tools/check_sdk_manifest.py"], ROOT),
         ("arduino package", [py, "tools/package_arduino.py", "--check"], ROOT),
         ("distribution artifacts", [py, "tools/check_distribution_artifacts.py"], ROOT),

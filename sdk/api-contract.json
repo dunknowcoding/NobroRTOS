@@ -1,0 +1,6664 @@
+{
+  "generator": "tools/gen_api_contract.py",
+  "schema": "nobro-cross-language-api-v1",
+  "signature_equivalent_mirrors": [
+    {
+      "source": "bindings/c/include/nobro_adc_dma.h",
+      "source_sha256": "4c855534490af6b4ddc30bbfcab44893827deb16bffbdfbff0319c5851199b00",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_adc_dma.h",
+          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_adc_dma.h",
+          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_adc_dma.h",
+          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_app.h",
+      "source_sha256": "0c1e5fbacb87e8776fcccfec5103f3aa7983372478d4d7659bba88fd6646ba59",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_app.h",
+          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_app.h",
+          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_app.h",
+          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_audio.h",
+      "source_sha256": "633ab26b8086caafeceb7fce1bca30b686ae300e1786d27c0ea9e8ee7d3ea0aa",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_audio.h",
+          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_audio.h",
+          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_audio.h",
+          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_camera.h",
+      "source_sha256": "9bbb3a80c49c167f5805aca37311cccf5d9c9626954a0f88085e317a454445f5",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_camera.h",
+          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_camera.h",
+          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_camera.h",
+          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_imu.h",
+      "source_sha256": "7e336e7d69adb22ff41c0f45788c55d38b1847aeccb34734b813c19cbb408255",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_imu.h",
+          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_imu.h",
+          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_imu.h",
+          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_pulse.h",
+      "source_sha256": "ddd612d9ae0d6d239b164aafcb4dc7170189279e776d0e9769168d36ae8b3d53",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_pulse.h",
+          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_pulse.h",
+          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_pulse.h",
+          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_rtos.h",
+      "source_sha256": "73dbc483d7fe88a699ff8aae9f3ca85860d8f2638a5b29fdce6b71649d18026c",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_rtos.h",
+          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_rtos.h",
+          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_rtos.h",
+          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_wireless.h",
+      "source_sha256": "21bb1921e25671ea09d169252da1f64e6a0697ff12504b6291391a0e3f69f3e5",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_wireless.h",
+          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_wireless.h",
+          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_wireless.h",
+          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroAdaptiveWireless.h",
+      "source_sha256": "c86db23c63874f4111dc1d739831dc1d0f09cd26a6d1631afdbf355fcbcd5dfd",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroAdaptiveWireless.h",
+          "sha256": "c86db23c63874f4111dc1d739831dc1d0f09cd26a6d1631afdbf355fcbcd5dfd"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoBLE.h",
+      "source_sha256": "fbe3235f1462dcf2652877149b4629b4abbafc1faf60fde94dfd94964feeff91",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoBLE.h",
+          "sha256": "fbe3235f1462dcf2652877149b4629b4abbafc1faf60fde94dfd94964feeff91"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoEspBLE.h",
+      "source_sha256": "d37d5e3ad8540b926897461efc24104145f898631243ed85e3265901636a366d",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoEspBLE.h",
+          "sha256": "d37d5e3ad8540b926897461efc24104145f898631243ed85e3265901636a366d"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoEspWiFi.h",
+      "source_sha256": "94b9e20073a3bc4a9128a9a50879fb7c63acd357c0e67f759b76db0cb627eeb7",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoEspWiFi.h",
+          "sha256": "94b9e20073a3bc4a9128a9a50879fb7c63acd357c0e67f759b76db0cb627eeb7"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoProviders.h",
+      "source_sha256": "cc13c7621a7b0799ae1c218043be23c74fb456cdd2ea2c1808033e8a18eb1f50",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoProviders.h",
+          "sha256": "cc13c7621a7b0799ae1c218043be23c74fb456cdd2ea2c1808033e8a18eb1f50"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoWiFiS3.h",
+      "source_sha256": "08de3bb30d0f41da0b3023f04ffab73468c69b6f7d1ec331e15885fec2f48dbd",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoWiFiS3.h",
+          "sha256": "08de3bb30d0f41da0b3023f04ffab73468c69b6f7d1ec331e15885fec2f48dbd"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroEsp32Peripherals.h",
+      "source_sha256": "50f491d7b3f56972dec10adacdc27a08ca54082b2f3f58d4331689922741f93f",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroEsp32Peripherals.h",
+          "sha256": "50f491d7b3f56972dec10adacdc27a08ca54082b2f3f58d4331689922741f93f"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroManagedCamera.h",
+      "source_sha256": "074de5e94490ee86e2109575d1c24b7c532b375ed98435e69cfb5ffd5cee8930",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroManagedCamera.h",
+          "sha256": "074de5e94490ee86e2109575d1c24b7c532b375ed98435e69cfb5ffd5cee8930"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroNiusAudio.h",
+      "source_sha256": "04aa22ac2f096e208838285e7c8643b1a706ba2e69ebdbe2936d238c1f2ab6e3",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusAudio.h",
+          "sha256": "04aa22ac2f096e208838285e7c8643b1a706ba2e69ebdbe2936d238c1f2ab6e3"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroNiusCam.h",
+      "source_sha256": "995f3d7a225e6a5482f0656e4ed117131738f6dd854c9fb035bac2d0fc281bce",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusCam.h",
+          "sha256": "995f3d7a225e6a5482f0656e4ed117131738f6dd854c9fb035bac2d0fc281bce"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroNiusIMU.h",
+      "source_sha256": "3ac36e2e9c4eb1be4f9b71e0ccfb7f7d4b0aed88aede4417648ced360c75b67b",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusIMU.h",
+          "sha256": "3ac36e2e9c4eb1be4f9b71e0ccfb7f7d4b0aed88aede4417648ced360c75b67b"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroNiusWireless.h",
+      "source_sha256": "c44b6c5757536c5531cc1d32344b26e794488fb58716f83c906e4ebc0f3c559b",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusWireless.h",
+          "sha256": "c44b6c5757536c5531cc1d32344b26e794488fb58716f83c906e4ebc0f3c559b"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroRTOS.h",
+      "source_sha256": "5484d5e19867ec05f7c8c62d1d485b11dade9fc49b76a707597d4da552f7e9a2",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroRTOS.h",
+          "sha256": "5484d5e19867ec05f7c8c62d1d485b11dade9fc49b76a707597d4da552f7e9a2"
+        }
+      ]
+    }
+  ],
+  "surfaces": {
+    "c": [
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_ADC_DMA_H"
+        ],
+        "named_types": [
+          "nobro_adc_dma_config_t",
+          "nobro_adc_dma_diagnostics_t",
+          "nobro_adc_dma_error_t",
+          "nobro_adc_dma_state_t",
+          "nobro_adc_sample_t"
+        ],
+        "path": "bindings/c/include/nobro_adc_dma.h",
+        "sha256": "4c855534490af6b4ddc30bbfcab44893827deb16bffbdfbff0319c5851199b00"
+      },
+      {
+        "declarations": [
+          "\\ } \\ NOBRO_EXTERN_C int32_t nobro_app_poll(void) { \\ return nobro_poll();",
+          "extern \"C\" { uint64_t nobro_now_us(void);",
+          "int32_t nobro_app_init(void);",
+          "int32_t nobro_app_poll(void);",
+          "int32_t nobro_i2c_write(uint8_t addr, const uint8_t *tx, uint32_t len);",
+          "int32_t nobro_i2c_write_read(uint8_t addr, const uint8_t *tx, uint32_t tx_len, uint8_t *rx, uint32_t rx_len);",
+          "int32_t nobro_last_step_error(void);",
+          "int32_t nobro_poll(void);",
+          "int32_t nobro_run(void);",
+          "int32_t nobro_task_with(const char *name, uint32_t period_us, nobro_step_fn step, const nobro_task_options_t *options);",
+          "int32_t nobro_wire(const char *from, const char *to, uint32_t capacity);",
+          "static inline const char *nobro_app_error_code(int32_t status) { switch (status) { case NOBRO_ERR_STATE: return \"NOBRO-E050\";",
+          "typedef int32_t (*nobro_step_fn)(void);",
+          "uint32_t nobro_skipped_releases(void);",
+          "void nobro_publish_imu(uint8_t who, uint8_t dev_addr, int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, int16_t temp_raw);",
+          "} NOBRO_EXTERN_C int32_t nobro_app_init(void) { \\ return (configure_fn)();",
+          "} } int32_t nobro_task(const char *name, uint32_t period_us, nobro_step_fn step);",
+          "} } static inline const char *nobro_app_error_text(int32_t status) { switch (status) { case NOBRO_OK: return \"Application graph is ready.\";"
+        ],
+        "macros": [
+          "NOBRO_APP",
+          "NOBRO_APP_H",
+          "NOBRO_EXTERN_C",
+          "NOBRO_HZ",
+          "NOBRO_I2C_MAX_PHASE_BYTES",
+          "NOBRO_TASK_OPTIONS_INIT"
+        ],
+        "named_types": [
+          "nobro_result_t",
+          "nobro_task_options_t",
+          "nobro_task_role_t"
+        ],
+        "path": "bindings/c/include/nobro_app.h",
+        "sha256": "0c1e5fbacb87e8776fcccfec5103f3aa7983372478d4d7659bba88fd6646ba59"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_AUDIO_API_VERSION",
+          "NOBRO_AUDIO_H"
+        ],
+        "named_types": [
+          "nobro_audio_diagnostics_t",
+          "nobro_audio_format_t",
+          "nobro_audio_result_t",
+          "nobro_audio_state_t"
+        ],
+        "path": "bindings/c/include/nobro_audio.h",
+        "sha256": "633ab26b8086caafeceb7fce1bca30b686ae300e1786d27c0ea9e8ee7d3ea0aa"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_CAMERA_API_VERSION",
+          "NOBRO_CAMERA_H"
+        ],
+        "named_types": [
+          "nobro_camera_diagnostics_t",
+          "nobro_camera_frame_metadata_t",
+          "nobro_camera_pixel_format_t",
+          "nobro_camera_state_t"
+        ],
+        "path": "bindings/c/include/nobro_camera.h",
+        "sha256": "9bbb3a80c49c167f5805aca37311cccf5d9c9626954a0f88085e317a454445f5"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_IMU_API_VERSION",
+          "NOBRO_IMU_CALIBRATION_MAGIC",
+          "NOBRO_IMU_H"
+        ],
+        "named_types": [
+          "nobro_imu_calibration_t",
+          "nobro_imu_diagnostics_t",
+          "nobro_imu_event_t",
+          "nobro_imu_family_t",
+          "nobro_imu_identity_t",
+          "nobro_imu_sample_t"
+        ],
+        "path": "bindings/c/include/nobro_imu.h",
+        "sha256": "7e336e7d69adb22ff41c0f45788c55d38b1847aeccb34734b813c19cbb408255"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_PULSE_H"
+        ],
+        "named_types": [
+          "nobro_pulse_diagnostics_t",
+          "nobro_pulse_error_t",
+          "nobro_pulse_state_t",
+          "nobro_pulse_symbol_t",
+          "nobro_pwm_config_t"
+        ],
+        "path": "bindings/c/include/nobro_pulse.h",
+        "sha256": "ddd612d9ae0d6d239b164aafcb4dc7170189279e776d0e9769168d36ae8b3d53"
+      },
+      {
+        "declarations": [
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_adapter_compat_report_t) == 14u * sizeof(uint32_t), \"unexpected adapter compatibility report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_admission_report_t) == 14u * sizeof(uint32_t), \"unexpected admission report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_ai_model_report_t) == 13u * sizeof(uint32_t), \"unexpected AI model report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_board_package_report_t) == 20u * sizeof(uint32_t), \"unexpected board package report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t), \"unexpected board profile report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_degrade_application_report_t) == 10u * sizeof(uint32_t), \"unexpected degrade application report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_event_log_report_t) == 16u * sizeof(uint32_t), \"unexpected event log report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 15u * sizeof(uint32_t), \"unexpected health report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_manifest_report_t) == 15u * sizeof(uint32_t), \"unexpected manifest report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32_t), \"unexpected module runtime report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t), \"unexpected ROS bridge report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t), \"unexpected runtime report size\");",
+          "extern \"C\" { typedef char NOBRO_STATIC_ASSERT_JOIN(nobro_static_assert_, __LINE__)[(cond) ? 1 : -1] typedef enum nobro_report_status { NOBRO_REPORT_STATUS_MISSING = 1, NOBRO_REPORT_STATUS_IN_PROGRESS = 2, NOBRO_REPORT_STATUS_PASS = 3, NOBRO_REPORT_STATUS_FAIL = 4, NOBRO_REPORT_STATUS_CORRUPT = 5, } nobro_report_status_t;",
+          "if (!fits_budget) { if (stale_ready) { decision.target = NOBRO_AI_TARGET_STALE_SNAPSHOT;",
+          "if (goal_bytes > action.goal_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
+          "if (model_id != contract.model_id) { error_bits |= NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH;",
+          "if (request_bytes > service.request_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
+          "if (topic.depth == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO;",
+          "if (value_bytes > parameter.value_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
+          "static inline uint32_t nobro_report_checksum_words(const uint32_t *words, size_t word_count) { uint32_t checksum = 0u;",
+          "uint32_t local_arena_bytes = (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) ? contract.arena_bytes : 0u;",
+          "uint32_t required_ram_bytes = nobro_saturating_add_u32( nobro_saturating_add_u32( nobro_saturating_add_u32(input_bytes, limits.output_capacity_bytes), limits.scratch_bytes ), local_arena_bytes );",
+          "uint32_t stale_after_us = nobro_ai_effective_stale_after_us(policy, contract);",
+          "while (*value != '\\0') { result ^= (uint8_t)(*value);",
+          "} else if (policy.preference == NOBRO_AI_ROUTE_LOCAL_ONLY) { decision.target = NOBRO_AI_TARGET_UNAVAILABLE;",
+          "} if ((contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) && contract.arena_bytes == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING;",
+          "} if (action.timeout_us == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;",
+          "} if (action.timeout_us > budget_us) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;",
+          "} if (checksum != computed_checksum) { return NOBRO_REPORT_STATUS_CORRUPT;",
+          "} if (completed == 0u) { return NOBRO_REPORT_STATUS_IN_PROGRESS;",
+          "} if (contract.backend == NOBRO_AI_BACKEND_EDGE_SIDECAR && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_EDGE_SIDECAR;",
+          "} if (contract.backend == NOBRO_AI_BACKEND_HYBRID) { if ((policy.preference == NOBRO_AI_ROUTE_LOCAL_ONLY || policy.preference == NOBRO_AI_ROUTE_PREFER_LOCAL) && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
+          "} if (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
+          "} if (contract.backend == NOBRO_AI_BACKEND_REMOTE_API && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_REMOTE_API;",
+          "} if (contract.stale_after_us == 0u || policy.stale_after_us < contract.stale_after_us) { return policy.stale_after_us;",
+          "} if (feedback_capacity_bytes < action.feedback_bytes_max || result_capacity_bytes < action.result_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;",
+          "} if (has_ok_field != 0 && ok == 0u) { return NOBRO_REPORT_STATUS_FAIL;",
+          "} if (input_bytes > (uint32_t)contract.input_bytes_max) { error_bits |= NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE;",
+          "} if (limits.output_capacity_bytes < (uint32_t)contract.output_bytes_max) { error_bits |= NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL;",
+          "} if (magic != expected_magic || version != NOBRO_REPORT_VERSION) { return NOBRO_REPORT_STATUS_CORRUPT;",
+          "} if (payload_bytes > topic.max_message_bytes) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
+          "} if (policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_REMOTE_API;",
+          "} if (required_ram_bytes > limits.available_ram_bytes) { error_bits |= NOBRO_AI_PREFLIGHT_RAM_EXCEEDED;",
+          "} if (response_capacity_bytes < service.response_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;",
+          "} if (route.endpoint_circuit_open != 0u && limits.allow_endpoint_circuit_open == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN;",
+          "} if (route.target == NOBRO_AI_TARGET_DEGRADED_FALLBACK && limits.allow_degraded_fallback == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK;",
+          "} if (route.target == NOBRO_AI_TARGET_UNAVAILABLE && limits.allow_unavailable == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE;",
+          "} if (route.uses_stale_snapshot != 0u && limits.allow_stale_snapshot == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT;",
+          "} if (route.uses_stale_snapshot != 0u && limits.max_stale_us > 0u && state.last_success_age_us > limits.max_stale_us) { error_bits |= NOBRO_AI_PREFLIGHT_STALE_TOO_OLD;",
+          "} if (service.timeout_us == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;",
+          "} if (service.timeout_us > budget_us) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;",
+          "} if (state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
+          "} preflight.required_buffer_bytes = (uint32_t)parameter.value_bytes_max;",
+          "} preflight.required_buffer_bytes = nobro_ros_action_buffer_bytes(action);",
+          "} preflight.required_buffer_bytes = nobro_ros_service_buffer_bytes(service);",
+          "} preflight.required_buffer_bytes = nobro_ros_topic_buffer_bytes(topic);",
+          "} static inline int nobro_report_status_is_passing(nobro_report_status_t status) { return status == NOBRO_REPORT_STATUS_PASS;",
+          "} static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t model_id, uint32_t input_bytes, nobro_ai_invocation_limits_t limits ) { nobro_ai_route_decision_t route = nobro_ai_route_decide(policy, contract, state, limits.budget_us);",
+          "} static inline nobro_ai_route_decision_t nobro_ai_route_decide( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t budget_us ) { uint8_t failure_limit = policy.endpoint_failure_limit == 0u ? 1u : policy.endpoint_failure_limit;",
+          "} static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ADAPTER_COMPAT_REPORT_MAGIC, report->magic, report->version, report->completed, report->compatible, 1, report->checksum, nobro_adapter_compat_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ADMISSION_REPORT_MAGIC, report->magic, report->version, report->completed, report->admitted, 1, report->checksum, nobro_admission_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_AI_MODEL_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_ai_model_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_BOARD_PACKAGE_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->checksum, nobro_board_package_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_BOARD_PROFILE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_board_profile_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_degrade_application_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_EVENT_LOG_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_event_log_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_HEALTH_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_health_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_MANIFEST_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->checksum, nobro_manifest_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_MODULE_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_module_runtime_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_report_status_from_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t checksum, uint32_t computed_checksum ) { if (magic == 0u && version == 0u && checksum == 0u) { return NOBRO_REPORT_STATUS_MISSING;",
+          "} static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ROS_BRIDGE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_ros_bridge_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_runtime_report_checksum(report) );",
+          "} static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight( nobro_ros_action_contract_t action, uint16_t goal_bytes, uint16_t feedback_capacity_bytes, uint16_t result_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
+          "} static inline nobro_ros_bridge_preflight_t nobro_ros_parameter_preflight( nobro_ros_parameter_contract_t parameter, uint16_t value_bytes ) { uint32_t error_bits = 0u;",
+          "} static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight( nobro_ros_service_contract_t service, uint16_t request_bytes, uint16_t response_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
+          "} static inline nobro_ros_bridge_preflight_t nobro_ros_topic_preflight( nobro_ros_topic_contract_t topic, uint16_t payload_bytes ) { uint32_t error_bits = 0u;",
+          "} static inline uint32_t nobro_adapter_compat_report_checksum( const nobro_adapter_compat_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->compatible ^ report->adapter_count ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
+          "} static inline uint32_t nobro_admission_report_checksum( const nobro_admission_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->admitted ^ report->module_count ^ report->startup_len ^ report->flash_used_bytes ^ report->flash_limit_bytes ^ report->ram_used_bytes ^ report->ram_limit_bytes ^ report->pool_used_slots ^ report->pool_limit_slots ^ report->error_code;",
+          "} static inline uint32_t nobro_ai_effective_stale_after_us( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract ) { if (policy.stale_after_us == 0u) { return contract.stale_after_us;",
+          "} static inline uint32_t nobro_ai_model_report_checksum( const nobro_ai_model_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->backend ^ report->model_id ^ report->input_bytes_max ^ report->output_bytes_max ^ report->arena_bytes ^ report->timeout_us ^ report->route_preference ^ report->stale_after_us ^ report->endpoint_failure_limit;",
+          "} static inline uint32_t nobro_board_package_report_checksum( const nobro_board_package_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->platform_hash ^ report->board_hash ^ report->boot_layout ^ report->app_flash_start ^ report->app_flash_len_bytes ^ report->ram_start ^ report->ram_len_bytes ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->led_pin ^ report->servo_pin ^ report->mvk_trigger_pin ^ report->error_code;",
+          "} static inline uint32_t nobro_board_profile_report_checksum( const nobro_board_profile_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->platform_hash ^ report->board_hash ^ report->app_flash_start ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->servo_pin ^ report->servo_center_us ^ report->led_pin ^ report->mvk_trigger_pin;",
+          "} static inline uint32_t nobro_degrade_application_report_checksum( const nobro_degrade_application_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->requested_count ^ report->disabled_count ^ report->already_disabled_count ^ report->reason ^ report->applied_at_us_lo ^ report->applied_at_us_hi;",
+          "} static inline uint32_t nobro_event_log_report_checksum( const nobro_event_log_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->event_count ^ report->capacity ^ report->dropped_events ^ report->latest_seq ^ report->latest_at_us_lo ^ report->latest_at_us_hi ^ report->latest_module_tag ^ report->latest_severity ^ report->latest_kind ^ report->latest_payload_kind ^ report->latest_payload0 ^ report->latest_payload1;",
+          "} static inline uint32_t nobro_health_report_checksum( const nobro_health_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_tag ^ report->total_errors ^ report->consecutive_errors ^ report->last_error ^ report->last_action ^ report->event_count ^ report->dropped_events ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo ^ report->last_seen_us_hi;",
+          "} static inline uint32_t nobro_manifest_report_checksum(const nobro_manifest_report_t *report) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->module_count ^ report->fingerprint ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
+          "} static inline uint32_t nobro_module_runtime_report_checksum( const nobro_module_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_count ^ report->capacity ^ report->active_count ^ report->suspended_count ^ report->faulted_count ^ report->recovering_count ^ report->disabled_count ^ report->latest_module_tag ^ report->latest_state ^ report->latest_fault_count ^ report->latest_recovery_count ^ report->latest_change_us_lo ^ report->latest_change_us_hi;",
+          "} static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t action) { return (uint32_t)action.goal_bytes_max + (uint32_t)action.feedback_bytes_max + (uint32_t)action.result_bytes_max;",
+          "} static inline uint32_t nobro_ros_bridge_report_checksum( const nobro_ros_bridge_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->transport ^ report->bridge_id_hash ^ report->topic_count ^ report->service_count ^ report->action_count ^ report->parameter_count ^ report->total_buffer_bytes ^ report->max_timeout_us;",
+          "} static inline uint32_t nobro_ros_service_buffer_bytes(nobro_ros_service_contract_t service) { return (uint32_t)service.request_bytes_max + (uint32_t)service.response_bytes_max;",
+          "} static inline uint32_t nobro_ros_topic_buffer_bytes(nobro_ros_topic_contract_t topic) { return (uint32_t)topic.depth * (uint32_t)topic.max_message_bytes;",
+          "} static inline uint32_t nobro_runtime_report_checksum( const nobro_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->state ^ report->module_count ^ report->mailbox_len ^ report->mailbox_dropped ^ report->alarm_len ^ report->next_alarm_due_us_lo ^ report->next_alarm_due_us_hi ^ report->kv_len ^ report->kv_writes ^ report->kv_deletes ^ report->quota_flash_used_bytes ^ report->quota_ram_used_bytes ^ report->quota_pool_used_slots ^ report->event_count ^ report->dropped_events;",
+          "} static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right) { uint32_t result = left + right;",
+          "} static inline uint32_t nobro_stable_hash32_bytes(const uint8_t *bytes, size_t byte_count) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
+          "} static inline uint32_t nobro_stable_hash32_cstr(const char *value) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
+          "} static inline uint8_t nobro_ai_preflight_has_error( nobro_ai_invocation_preflight_t preflight, uint32_t error ) { return (preflight.error_bits & error) != 0u ? 1u : 0u;",
+          "} static inline uint8_t nobro_ai_preflight_passing( nobro_ai_invocation_preflight_t preflight ) { return preflight.error_bits == 0u ? 1u : 0u;",
+          "} static inline uint8_t nobro_ros_preflight_has_error( nobro_ros_bridge_preflight_t preflight, uint32_t error ) { return (preflight.error_bits & error) != 0u ? 1u : 0u;",
+          "} static inline uint8_t nobro_ros_preflight_passing( nobro_ros_bridge_preflight_t preflight ) { return preflight.error_bits == 0u ? 1u : 0u;",
+          "} } if (stale_ready) { decision.target = NOBRO_AI_TARGET_STALE_SNAPSHOT;"
+        ],
+        "macros": [
+          "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
+          "NOBRO_ADMISSION_REPORT_MAGIC",
+          "NOBRO_AI_MODEL_REPORT_MAGIC",
+          "NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK",
+          "NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN",
+          "NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE",
+          "NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING",
+          "NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH",
+          "NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL",
+          "NOBRO_AI_PREFLIGHT_RAM_EXCEEDED",
+          "NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE",
+          "NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT",
+          "NOBRO_AI_PREFLIGHT_STALE_TOO_OLD",
+          "NOBRO_BOARD_PACKAGE_REPORT_MAGIC",
+          "NOBRO_BOARD_PROFILE_REPORT_MAGIC",
+          "NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC",
+          "NOBRO_EVENT_LOG_REPORT_MAGIC",
+          "NOBRO_FNV1A32_OFFSET",
+          "NOBRO_FNV1A32_PRIME",
+          "NOBRO_HEALTH_REPORT_MAGIC",
+          "NOBRO_MANIFEST_REPORT_MAGIC",
+          "NOBRO_MODULE_RUNTIME_REPORT_MAGIC",
+          "NOBRO_REPORT_VERSION",
+          "NOBRO_ROS_BRIDGE_REPORT_MAGIC",
+          "NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE",
+          "NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO",
+          "NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL",
+          "NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED",
+          "NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO",
+          "NOBRO_RTOS_H",
+          "NOBRO_RUNTIME_REPORT_MAGIC",
+          "NOBRO_STATIC_ASSERT",
+          "NOBRO_STATIC_ASSERT_JOIN",
+          "NOBRO_STATIC_ASSERT_JOIN_"
+        ],
+        "named_types": [
+          "nobro_adapter_compat_report_t",
+          "nobro_admission_report_t",
+          "nobro_ai_backend_kind_t",
+          "nobro_ai_invocation_limits_t",
+          "nobro_ai_invocation_preflight_t",
+          "nobro_ai_model_contract_t",
+          "nobro_ai_model_report_t",
+          "nobro_ai_route_decision_t",
+          "nobro_ai_route_policy_t",
+          "nobro_ai_route_preference_t",
+          "nobro_ai_route_target_t",
+          "nobro_ai_runtime_state_t",
+          "nobro_board_package_report_t",
+          "nobro_board_profile_report_t",
+          "nobro_boot_stage_t",
+          "nobro_degrade_application_report_t",
+          "nobro_event_log_report_t",
+          "nobro_health_report_t",
+          "nobro_manifest_report_t",
+          "nobro_module_runtime_report_t",
+          "nobro_report_status_t",
+          "nobro_ros_action_contract_t",
+          "nobro_ros_bridge_contract_t",
+          "nobro_ros_bridge_preflight_t",
+          "nobro_ros_bridge_report_t",
+          "nobro_ros_bridge_transport_t",
+          "nobro_ros_parameter_contract_t",
+          "nobro_ros_service_contract_t",
+          "nobro_ros_topic_contract_t",
+          "nobro_runtime_report_t"
+        ],
+        "path": "bindings/c/include/nobro_rtos.h",
+        "sha256": "73dbc483d7fe88a699ff8aae9f3ca85860d8f2638a5b29fdce6b71649d18026c"
+      },
+      {
+        "declarations": [
+          "++shift) { if (delay >= policy->max_backoff_us || delay > UINT64_MAX / 2u) { delay = policy->max_backoff_us;",
+          "static inline nobro_wireless_adaptive_policy_t nobro_wireless_responsive_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot) { nobro_wireless_adaptive_policy_t policy = { NOBRO_WIRELESS_STORAGE_FIXED, queue_slots, payload_bytes_per_slot, {3u, 1000u, 100000u}, 0u, 1u };",
+          "} if (delay > policy->max_backoff_us) { delay = policy->max_backoff_us;",
+          "} if (state->failed_attempts != UINT8_MAX) { state->failed_attempts++;",
+          "} if (state->failed_attempts >= policy->max_attempts) { return false;",
+          "} static inline bool nobro_wireless_message_valid( const nobro_wireless_message_contract_t *contract) { return contract != NULL && contract->offered_at_us <= contract->deadline_us && contract->deadline_us <= contract->expires_at_us;",
+          "} static inline bool nobro_wireless_policy_valid( const nobro_wireless_adaptive_policy_t *policy) { return policy != NULL && policy->storage_mode <= NOBRO_WIRELESS_STORAGE_HEAP && policy->queue_slots != 0u && policy->payload_bytes_per_slot != 0u && nobro_wireless_retry_policy_valid(&policy->retry) && policy->max_batch_messages != 0u;",
+          "} static inline bool nobro_wireless_recovery_failed( nobro_wireless_recovery_state_t *state, const nobro_wireless_retry_policy_t *policy, uint64_t now_us) { if (state == NULL || !nobro_wireless_retry_policy_valid(policy)) { return false;",
+          "} static inline bool nobro_wireless_retry_policy_valid( const nobro_wireless_retry_policy_t *policy) { return policy != NULL && policy->max_attempts != 0u && policy->initial_backoff_us <= policy->max_backoff_us && (policy->max_attempts == 1u || policy->initial_backoff_us != 0u);",
+          "} static inline nobro_wireless_adaptive_policy_t nobro_wireless_low_energy_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot, uint64_t batch_window_us) { nobro_wireless_adaptive_policy_t policy = { NOBRO_WIRELESS_STORAGE_FIXED, queue_slots, payload_bytes_per_slot, {4u, 10000u, 1000000u}, batch_window_us, 8u };",
+          "} static inline nobro_wireless_message_contract_t nobro_wireless_best_effort_message( uint64_t offered_at_us, uint64_t expires_at_us) { nobro_wireless_message_contract_t contract = { offered_at_us, expires_at_us, expires_at_us, 0u, true };",
+          "} static inline nobro_wireless_message_contract_t nobro_wireless_urgent_message( uint64_t offered_at_us, uint64_t deadline_us) { nobro_wireless_message_contract_t contract = { offered_at_us, deadline_us, deadline_us, UINT8_MAX, false };",
+          "} static inline void nobro_wireless_recovery_reset( nobro_wireless_recovery_state_t *state) { if (state != NULL) { state->failed_attempts = 0u;",
+          "} } static inline bool nobro_wireless_recovery_ready( const nobro_wireless_recovery_state_t *state, uint64_t now_us) { return state != NULL && now_us >= state->next_attempt_us;"
+        ],
+        "macros": [
+          "NOBRO_BLE_GATT_VALUE_MAX",
+          "NOBRO_WIRELESS_API_VERSION",
+          "NOBRO_WIRELESS_H"
+        ],
+        "named_types": [
+          "nobro_ble_event_kind_t",
+          "nobro_ble_event_t",
+          "nobro_ble_stack_diagnostics_t",
+          "nobro_stack_family_t",
+          "nobro_stack_identity_t",
+          "nobro_stack_result_t",
+          "nobro_stack_state_t",
+          "nobro_wifi_credentials_t",
+          "nobro_wifi_network_t",
+          "nobro_wifi_stack_diagnostics_t",
+          "nobro_wireless_adaptive_diagnostics_t",
+          "nobro_wireless_adaptive_policy_t",
+          "nobro_wireless_diagnostics_t",
+          "nobro_wireless_message_contract_t",
+          "nobro_wireless_pacing_t",
+          "nobro_wireless_protocol_t",
+          "nobro_wireless_recovery_state_t",
+          "nobro_wireless_retry_policy_t",
+          "nobro_wireless_send_result_t",
+          "nobro_wireless_state_t",
+          "nobro_wireless_storage_mode_t"
+        ],
+        "path": "bindings/c/include/nobro_wireless.h",
+        "sha256": "21bb1921e25671ea09d169252da1f64e6a0697ff12504b6291391a0e3f69f3e5"
+      }
+    ],
+    "cpp": [
+      {
+        "named_types": [
+          "I2c",
+          "with"
+        ],
+        "path": "bindings/cpp/include/nobro_app.hpp",
+        "sha256": "58a5b7fbbe6bc0ce96d4007faefc7438811012320a85a2dda689bf1c9f60579f"
+      },
+      {
+        "named_types": [
+          "AdapterCompatReportView",
+          "AdmissionReportView",
+          "AiInvocationPreflightView",
+          "AiModelReportView",
+          "AiRouteDecisionView",
+          "BoardPackageReportView",
+          "BoardProfileReportView",
+          "DegradeApplicationReportView",
+          "EventLogReportView",
+          "HealthReportView",
+          "ManifestReportView",
+          "ModuleRuntimeReportView",
+          "ReportStatus",
+          "RosBridgeContractView",
+          "RosBridgePreflightView",
+          "RosBridgeReportView",
+          "RuntimeReportView"
+        ],
+        "path": "bindings/cpp/include/nobro_rtos.hpp",
+        "sha256": "ac8c85e1c50f207887efa04179c1a8f5f8ff56718d9a78069468bd65d09ea203"
+      }
+    ],
+    "python": {
+      "exports": [
+        "APP_SCHEMA",
+        "AppCallbackError",
+        "AppDeclarationError",
+        "AppSimulationError",
+        "HZ",
+        "MAX_SIMULATION_EVENTS",
+        "NobroApp",
+        "SimulationEvent",
+        "SimulationReport",
+        "TaskContext",
+        "TaskDeclaration",
+        "WireDeclaration",
+        "AiBackendKind",
+        "AiInvocationConstraints",
+        "AiModelContract",
+        "AiPreflightReport",
+        "AiRouteDecision",
+        "AiRoutePolicy",
+        "AiRoutePreference",
+        "AiRouteTarget",
+        "AiRuntimeState",
+        "Capability",
+        "CONTRACT_SCHEMA_VERSION",
+        "Criticality",
+        "MemoryBudget",
+        "ModuleSpec",
+        "NobroContractBundle",
+        "RosAction",
+        "RosBridgeDescriptor",
+        "RosParameter",
+        "RosPreflightReport",
+        "RosService",
+        "RosTopic",
+        "StartupDependency",
+        "StartupImpact",
+        "StartupPlan",
+        "capability_mask",
+        "capabilities_from_mask",
+        "plan_startup",
+        "preflight_ai_invocation",
+        "preflight_ros_action",
+        "preflight_ros_parameter",
+        "preflight_ros_service",
+        "preflight_ros_topic",
+        "stable_hash32",
+        "startup_dependency_impact",
+        "find_repo_root",
+        "BootDiagnostic",
+        "HostContract",
+        "load_repo_host_contract",
+        "ReportStatusClass",
+        "CliCommandSurfaceReport",
+        "DistributionMetadataReport",
+        "PublicHeaderSurfaceReport",
+        "PythonPublicSurfaceReport",
+        "validate_cli_command_surface",
+        "validate_distribution_metadata",
+        "validate_public_header_surface",
+        "validate_python_public_surface",
+        "FixedReport",
+        "BootReportSummary",
+        "ReportKind",
+        "ReportSlot",
+        "ReportStatus",
+        "seal_report",
+        "ProjectTarget",
+        "ProjectTemplate",
+        "ProjectMaterializationReport",
+        "ProjectRepairReport",
+        "ProjectValidationReport",
+        "TemplateFile",
+        "build_project_template",
+        "materialize_project_template",
+        "repair_project_template",
+        "validate_project_template",
+        "DegradeDecision",
+        "DegradePlannerSimulator",
+        "DegradePlannerSimulatorError",
+        "DegradeReason",
+        "EventKind",
+        "EventLogSimulator",
+        "EventRecord",
+        "EventSeverity",
+        "ImuSample",
+        "KernelErrorKind",
+        "ModuleRunState",
+        "QuotaEntry",
+        "QuotaLedgerSimulator",
+        "QuotaLedgerSimulatorError",
+        "RecoveryAction",
+        "RecoveryDecision",
+        "RecoveryPlan",
+        "RecoveryPlanDispatch",
+        "RecoveryPlanExecution",
+        "RecoveryPlanPolicy",
+        "RecoveryPlanSimulatorError",
+        "RecoveryPolicySimulator",
+        "RecoveryRuntimeSimulator",
+        "RecoveryRuntimeSimulatorError",
+        "RecoveryStep",
+        "RecoveryStepKind",
+        "RecoverySummary",
+        "ResourceBudget",
+        "RuntimeDrillResult",
+        "RuntimeDrillSimulator",
+        "SchedulerSimulator",
+        "SchedulerStats",
+        "SensorStubError",
+        "SensorStubMode",
+        "SensorStubSimulator",
+        "ServoCommand",
+        "ServoSimulator",
+        "ServoSimulatorError",
+        "SystemProfile",
+        "WatchdogEntry",
+        "WatchdogSimulator",
+        "WatchdogSimulatorError",
+        "NobroNode",
+        "StatusReport",
+        "parse_status_line",
+        "parse_telemetry_line"
+      ],
+      "modules": [
+        {
+          "path": "bindings/python/nobro_rtos/__init__.py",
+          "sha256": "b2935e64f5bc90f57ae1cdc91d615b1c5ef4168b4187a2f495501d9d1732e74a"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/__main__.py",
+          "sha256": "4f367c42ec4ed2b18724b5ef37a748a410b4bb6f87bc704e9f37c85dbc648b38"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/app.py",
+          "sha256": "ff6a9675b930ee18180f94e2d85c1e6ba812df019d59001e64d1f34489ced712"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/cli.py",
+          "sha256": "3ca039e57c7591a65b8c22367f393c0735df129986bcf2896c6b68d2962b96e6"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/contracts.py",
+          "sha256": "70caf5dec4ace1a187da7912428d6bc1f73a861c65fbf5f8dbe3cc84eb0ab4d3"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/diagnostics.py",
+          "sha256": "938f71885066d4c85055a22bca7bd3d81c3854f978d0891f1935a47754db4c3e"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/distribution.py",
+          "sha256": "9cf588e90ea53cb4d8326bbf71ef98c7db8aace1c054ea2483d51b3695244d07"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/host_contract.py",
+          "sha256": "e8935d37bb3755d865207e654270dcd5bcce22db18891d997476ba59233d2700"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/module_gen.py",
+          "sha256": "28cf459bd6ac000d68ab7be5ba308c32a97239711c858433d9cf7d0c6db992b2"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/nn_export.py",
+          "sha256": "1cf9df85251117b49293630428683ddbf6fe7c3a9617dd73d1cdcdd05740e915"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/node.py",
+          "sha256": "a7b4748a62b95fe00021682e4f472829699d2df0972ae6caa380711d08b986f3"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/replay.py",
+          "sha256": "9e740dc1f3f3f9fd3573ca32c712c508f9eaf49b0ab5ee1eec73d2ad8e21efc6"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/reports.py",
+          "sha256": "2339bf65d5fe2d57c288430a7b0d317a7344ad4f6b52f9c7595252f79b3dae50"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/rust_app_gen.py",
+          "sha256": "29835e8f1a1d6c8b6863ce83b5eaf57dbf0054068bdfdd938ba2c375f9c7b5f4"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/sim.py",
+          "sha256": "5947cc493791f31d91323d57c9c90b4443f8aa2e4255e68814d64923c68b0393"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/templates.py",
+          "sha256": "5c8c1e3301ed8a3885921a65734ae32760b7ea731b214dadcee433f871268bf8"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/tflite_adapter.py",
+          "sha256": "115da15ecb0bf2763c60298ae40c111d5044fabaaf91c57adf1a01935887826d"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/thread.py",
+          "sha256": "01b692d8d690be69b8e9a4837e5169e9fe1280bc726d5519497841a60c4d524c"
+        },
+        {
+          "path": "bindings/python/nobro_rtos/zigbee.py",
+          "sha256": "7e0b94127deff2b897bfc59efdd9bccf70e4bac9883c9d1f85c3ce662ebb98f6"
+        }
+      ],
+      "path": "bindings/python/nobro_rtos/__init__.py",
+      "sha256": "b2935e64f5bc90f57ae1cdc91d615b1c5ef4168b4187a2f495501d9d1732e74a"
+    },
+    "rust": [
+      {
+        "crate": "nobro-admission",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "SUBSYSTEM_ABSENT"
+          },
+          {
+            "kind": "const",
+            "name": "ADMITTED_SCHEMA_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "MAX_WRAP_SAFE_INTERVAL_US"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmissionProfile"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "TaskContract"
+          },
+          {
+            "kind": "const",
+            "name": "EMPTY"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "IsrOperations"
+          },
+          {
+            "kind": "const",
+            "name": "ACK_PERIPHERAL"
+          },
+          {
+            "kind": "const",
+            "name": "READ_CLOCK"
+          },
+          {
+            "kind": "const",
+            "name": "MARK_READY"
+          },
+          {
+            "kind": "const",
+            "name": "PUSH_BOUNDED_EVENT"
+          },
+          {
+            "kind": "const",
+            "name": "ALL_BOUNDED"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "InterruptContract"
+          },
+          {
+            "kind": "const",
+            "name": "EMPTY"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "InterruptProfile"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "NRF52840_BARE"
+          },
+          {
+            "kind": "const",
+            "name": "NRF52840_S140"
+          },
+          {
+            "kind": "enum",
+            "name": "AdmissionErrorCode"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmissionError"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmittedTask"
+          },
+          {
+            "kind": "const",
+            "name": "EMPTY"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmittedWorkload"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "validate_runtime"
+          },
+          {
+            "kind": "fn",
+            "name": "admit_runtime_into"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          }
+        ],
+        "path": "core/crates/nobro_admission/src/lib.rs",
+        "sha256": "21930ddf26a845bf017821951588bf6af520a3572141e50a086a19cb58857793"
+      },
+      {
+        "crate": "nobro-ai",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "WeightFormat"
+          },
+          {
+            "kind": "struct",
+            "name": "ModelManifest"
+          },
+          {
+            "kind": "const",
+            "name": "MODEL_MAGIC"
+          },
+          {
+            "kind": "fn",
+            "name": "fnv1a"
+          },
+          {
+            "kind": "enum",
+            "name": "DeployError"
+          },
+          {
+            "kind": "fn",
+            "name": "validate"
+          },
+          {
+            "kind": "fn",
+            "name": "dequant"
+          },
+          {
+            "kind": "struct",
+            "name": "ApiKeyRef"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkState"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkEvent"
+          },
+          {
+            "kind": "struct",
+            "name": "CloudPolicy"
+          },
+          {
+            "kind": "struct",
+            "name": "CloudSession"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "state"
+          },
+          {
+            "kind": "fn",
+            "name": "key"
+          },
+          {
+            "kind": "fn",
+            "name": "backoff_ms"
+          },
+          {
+            "kind": "fn",
+            "name": "on_event"
+          },
+          {
+            "kind": "fn",
+            "name": "tick"
+          },
+          {
+            "kind": "fn",
+            "name": "take_request"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_budget"
+          }
+        ],
+        "path": "core/crates/nobro_ai/src/lib.rs",
+        "sha256": "81bcf059c7ff383a7d8a9fc2b1e49d3025fd06433766a922f6dc1a4650dc3234"
+      },
+      {
+        "crate": "nobro-audio",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "SampleFormat"
+          },
+          {
+            "kind": "struct",
+            "name": "CodecConfig"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "AudioState"
+          },
+          {
+            "kind": "enum",
+            "name": "AudioError"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioResourcePrice"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "AudioBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "TimedAudioBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioRing"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "push"
+          },
+          {
+            "kind": "fn",
+            "name": "pop_into"
+          }
+        ],
+        "path": "core/crates/nobro_audio/src/lib.rs",
+        "sha256": "15a4c3cce4ce0f3709bddcee0724a920913a9809b4642f4bb76520771219ba14"
+      },
+      {
+        "crate": "nobro-camera",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "PixelFormat"
+          },
+          {
+            "kind": "enum",
+            "name": "CameraState"
+          },
+          {
+            "kind": "struct",
+            "name": "FrameMetadata"
+          },
+          {
+            "kind": "trait",
+            "name": "CameraFrame"
+          },
+          {
+            "kind": "trait",
+            "name": "CameraBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "CaptureContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "StreamBudget"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "CameraDiagnostics"
+          },
+          {
+            "kind": "enum",
+            "name": "CameraError"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmittedFrame"
+          },
+          {
+            "kind": "struct",
+            "name": "CameraPipeline"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "capture_at"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_window"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "sampled_mean"
+          },
+          {
+            "kind": "struct",
+            "name": "WorkflowBudget"
+          },
+          {
+            "kind": "struct",
+            "name": "WorkflowUsage"
+          },
+          {
+            "kind": "enum",
+            "name": "WorkflowError"
+          },
+          {
+            "kind": "struct",
+            "name": "WorkflowAccountant"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "admit"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_window"
+          }
+        ],
+        "path": "core/crates/nobro_camera/src/lib.rs",
+        "sha256": "1ce819d88e4fb513e8d3db97626cd793de4757eaaa95ab666b54c334ef2fd834"
+      },
+      {
+        "crate": "nobro-classic",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "Queue"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "send"
+          },
+          {
+            "kind": "fn",
+            "name": "send_to_front"
+          },
+          {
+            "kind": "fn",
+            "name": "receive"
+          },
+          {
+            "kind": "fn",
+            "name": "peek"
+          },
+          {
+            "kind": "fn",
+            "name": "messages_waiting"
+          },
+          {
+            "kind": "fn",
+            "name": "spaces_available"
+          },
+          {
+            "kind": "fn",
+            "name": "is_full"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "struct",
+            "name": "Semaphore"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "give"
+          },
+          {
+            "kind": "fn",
+            "name": "take"
+          },
+          {
+            "kind": "fn",
+            "name": "count"
+          },
+          {
+            "kind": "struct",
+            "name": "Mutex"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "take"
+          },
+          {
+            "kind": "fn",
+            "name": "give"
+          },
+          {
+            "kind": "fn",
+            "name": "holder"
+          },
+          {
+            "kind": "struct",
+            "name": "SoftwareTimer"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "start"
+          },
+          {
+            "kind": "fn",
+            "name": "stop"
+          },
+          {
+            "kind": "fn",
+            "name": "tick"
+          },
+          {
+            "kind": "fn",
+            "name": "is_active"
+          },
+          {
+            "kind": "struct",
+            "name": "EventFlags"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set"
+          },
+          {
+            "kind": "fn",
+            "name": "clear"
+          },
+          {
+            "kind": "fn",
+            "name": "get"
+          },
+          {
+            "kind": "fn",
+            "name": "wait_any"
+          },
+          {
+            "kind": "fn",
+            "name": "wait_all"
+          },
+          {
+            "kind": "enum",
+            "name": "Ready"
+          },
+          {
+            "kind": "fn",
+            "name": "select2"
+          }
+        ],
+        "path": "core/crates/nobro_classic/src/lib.rs",
+        "sha256": "31700f9e7c0e4986e6b419616b2326e66e44adec3134e2b0e3e97a1fce3f90c0"
+      },
+      {
+        "crate": "nobro-control",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "Pid"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "reset"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "struct",
+            "name": "ComplementaryFilter"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "angle"
+          },
+          {
+            "kind": "struct",
+            "name": "DiffDrive"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "to_wheels"
+          },
+          {
+            "kind": "fn",
+            "name": "to_body"
+          },
+          {
+            "kind": "struct",
+            "name": "Trajectory"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "duration"
+          },
+          {
+            "kind": "fn",
+            "name": "position"
+          },
+          {
+            "kind": "fn",
+            "name": "diff_drive_mix"
+          },
+          {
+            "kind": "struct",
+            "name": "SafetyEnvelope"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "heartbeat"
+          },
+          {
+            "kind": "fn",
+            "name": "guard"
+          },
+          {
+            "kind": "fn",
+            "name": "tripped"
+          },
+          {
+            "kind": "fn",
+            "name": "reset"
+          },
+          {
+            "kind": "struct",
+            "name": "Odometry"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "struct",
+            "name": "BalanceController"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "effort"
+          }
+        ],
+        "path": "core/crates/nobro_control/src/lib.rs",
+        "sha256": "d43a5e8474537cb910685017c71bf11f087a239c829999cdcdeb3e5d644dc32d"
+      },
+      {
+        "crate": "nobro-crypto",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "Aes128"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "encrypt_block"
+          },
+          {
+            "kind": "struct",
+            "name": "PrngCrypto"
+          },
+          {
+            "kind": "struct",
+            "name": "CryptoError"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          }
+        ],
+        "path": "core/crates/nobro_crypto/src/lib.rs",
+        "sha256": "f7f9ec384bbaba9b3ab5af4dee73dbe3f4fc947cd7acaacae5fff2974b81900e"
+      },
+      {
+        "crate": "nobro-database",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "DbError"
+          },
+          {
+            "kind": "enum",
+            "name": "PersistentDbError"
+          },
+          {
+            "kind": "struct",
+            "name": "PersistentTable"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "load"
+          },
+          {
+            "kind": "fn",
+            "name": "save"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_flash"
+          },
+          {
+            "kind": "trait",
+            "name": "RecordCodec"
+          },
+          {
+            "kind": "struct",
+            "name": "Table"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "insert"
+          },
+          {
+            "kind": "fn",
+            "name": "get"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "upsert"
+          },
+          {
+            "kind": "fn",
+            "name": "delete"
+          },
+          {
+            "kind": "fn",
+            "name": "iter"
+          },
+          {
+            "kind": "fn",
+            "name": "select"
+          },
+          {
+            "kind": "fn",
+            "name": "next_key"
+          },
+          {
+            "kind": "fn",
+            "name": "count"
+          },
+          {
+            "kind": "fn",
+            "name": "to_image"
+          },
+          {
+            "kind": "fn",
+            "name": "from_image"
+          }
+        ],
+        "path": "core/crates/nobro_database/src/lib.rs",
+        "sha256": "86cae2e16b5c478d693fb3511621a04403390ab4bf3624f4a8bcc2c81caf5512"
+      },
+      {
+        "crate": "nobro-device",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "ResourceDimension"
+          },
+          {
+            "kind": "struct",
+            "name": "ProviderResourcePrice"
+          },
+          {
+            "kind": "const",
+            "name": "ALL_KNOWN"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "WorkloadPacing"
+          },
+          {
+            "kind": "struct",
+            "name": "ProviderWorkload"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "ProviderRuntimePrice"
+          },
+          {
+            "kind": "const",
+            "name": "ALL_KNOWN"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "ProviderAdmissionPrice"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "ActuatorKind"
+          },
+          {
+            "kind": "enum",
+            "name": "SensorKind"
+          },
+          {
+            "kind": "enum",
+            "name": "Bus"
+          },
+          {
+            "kind": "struct",
+            "name": "ServoProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "angle_to_pulse"
+          },
+          {
+            "kind": "fn",
+            "name": "speed_to_pulse"
+          },
+          {
+            "kind": "struct",
+            "name": "MotorProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "throttle_to_pulse"
+          },
+          {
+            "kind": "fn",
+            "name": "arm_pulse"
+          },
+          {
+            "kind": "const",
+            "name": "SERVO_GENERIC_180"
+          },
+          {
+            "kind": "const",
+            "name": "SERVO_SG90"
+          },
+          {
+            "kind": "const",
+            "name": "SERVO_MG996R"
+          },
+          {
+            "kind": "const",
+            "name": "SERVO_CONTINUOUS"
+          },
+          {
+            "kind": "const",
+            "name": "ESC_UNIDIR"
+          },
+          {
+            "kind": "const",
+            "name": "ESC_BIDIR"
+          },
+          {
+            "kind": "struct",
+            "name": "SensorDescriptor"
+          },
+          {
+            "kind": "fn",
+            "name": "identify"
+          },
+          {
+            "kind": "const",
+            "name": "MPU9250"
+          },
+          {
+            "kind": "const",
+            "name": "INA3221"
+          },
+          {
+            "kind": "const",
+            "name": "BMP280"
+          },
+          {
+            "kind": "const",
+            "name": "ICM45686"
+          },
+          {
+            "kind": "const",
+            "name": "MPU6050"
+          },
+          {
+            "kind": "const",
+            "name": "VL53L0X"
+          },
+          {
+            "kind": "struct",
+            "name": "SensorRegistry"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "register"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "fn",
+            "name": "find_kind"
+          },
+          {
+            "kind": "fn",
+            "name": "identify_at"
+          },
+          {
+            "kind": "struct",
+            "name": "StepperProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "angle_to_steps"
+          },
+          {
+            "kind": "fn",
+            "name": "rpm_to_sps"
+          },
+          {
+            "kind": "enum",
+            "name": "ColorOrder"
+          },
+          {
+            "kind": "struct",
+            "name": "LedStripProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "frame_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "RelayProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "drive_level"
+          },
+          {
+            "kind": "struct",
+            "name": "DisplayProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "framebuffer_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "GpsProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "nmea_checksum"
+          },
+          {
+            "kind": "struct",
+            "name": "RangerProfile"
+          },
+          {
+            "kind": "fn",
+            "name": "echo_us_to_mm"
+          },
+          {
+            "kind": "const",
+            "name": "STEPPER_NEMA17"
+          },
+          {
+            "kind": "const",
+            "name": "STEPPER_28BYJ48"
+          },
+          {
+            "kind": "const",
+            "name": "LED_WS2812B"
+          },
+          {
+            "kind": "const",
+            "name": "LED_SK6812_RGBW"
+          },
+          {
+            "kind": "const",
+            "name": "LED_APA102"
+          },
+          {
+            "kind": "const",
+            "name": "RELAY_ACTIVE_LOW"
+          },
+          {
+            "kind": "const",
+            "name": "RELAY_ACTIVE_HIGH"
+          },
+          {
+            "kind": "const",
+            "name": "OLED_SSD1306_128X64"
+          },
+          {
+            "kind": "const",
+            "name": "OLED_SH1106_128X64"
+          },
+          {
+            "kind": "const",
+            "name": "GPS_NEO6M"
+          },
+          {
+            "kind": "const",
+            "name": "GPS_NEO8M"
+          },
+          {
+            "kind": "const",
+            "name": "RANGER_HCSR04"
+          },
+          {
+            "kind": "struct",
+            "name": "BoardModule"
+          },
+          {
+            "kind": "struct",
+            "name": "BoardRegistry"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "register"
+          },
+          {
+            "kind": "fn",
+            "name": "find"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "const",
+            "name": "NRF52840_NOSD"
+          },
+          {
+            "kind": "const",
+            "name": "NRF52840_S140"
+          },
+          {
+            "kind": "const",
+            "name": "RP2350_PICO2W"
+          },
+          {
+            "kind": "const",
+            "name": "ESP32C3"
+          }
+        ],
+        "path": "core/crates/nobro_device/src/lib.rs",
+        "sha256": "0445cf4f97975b30c51f2c3a28e351d3eb3c336fe5411535276e97fc7474e0c0"
+      },
+      {
+        "crate": "nobro-hal",
+        "exports": [
+          {
+            "kind": "type",
+            "name": "PpiRadioSnapshot"
+          }
+        ],
+        "path": "core/crates/nobro_hal/src/lib.rs",
+        "sha256": "94a065f041ac7f64a29a166c2cae0396bf0ed3369da416725a9c0b795281ae26"
+      },
+      {
+        "crate": "nobro-host",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "MAINTENANCE_CDC_MI"
+          },
+          {
+            "kind": "const",
+            "name": "USER_CDC_MI"
+          },
+          {
+            "kind": "const",
+            "name": "UPLOAD_TOUCH_BAUD"
+          },
+          {
+            "kind": "const",
+            "name": "APP_START_NO_SOFTDEVICE"
+          },
+          {
+            "kind": "const",
+            "name": "APP_START_S140_V6"
+          },
+          {
+            "kind": "const",
+            "name": "HEALTH_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "HEALTH_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "EVENT_LOG_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "EVENT_LOG_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "EVENT_LOG_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "MODULE_RUNTIME_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "MODULE_RUNTIME_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "MODULE_RUNTIME_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "DEGRADE_APPLICATION_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "DEGRADE_APPLICATION_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "DEGRADE_APPLICATION_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "RUNTIME_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "RUNTIME_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "RUNTIME_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PROFILE_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PROFILE_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PROFILE_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PACKAGE_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PACKAGE_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "BOARD_PACKAGE_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "MANIFEST_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "MANIFEST_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "MANIFEST_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "ADAPTER_COMPAT_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "ADAPTER_COMPAT_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "ADAPTER_COMPAT_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "AI_MODEL_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "AI_MODEL_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "AI_MODEL_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_BRIDGE_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_BRIDGE_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_BRIDGE_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "ADMISSION_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "ADMISSION_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "ADMISSION_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "BOOT_REPORT_STAGE_COUNT"
+          },
+          {
+            "kind": "const",
+            "name": "MAX_PHASE1_JITTER_US"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_PHASE1_DEADLINE_TICKS"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_PHASE1_I2C_READS"
+          },
+          {
+            "kind": "const",
+            "name": "MAX_PHASE1_RADIO_LATENCY_US"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_PHASE1_RADIO_SAMPLES"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_PHASE2_SERVO_STEPS"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_PHASE2_IMU_SAMPLES"
+          },
+          {
+            "kind": "const",
+            "name": "PHASE2_SERVO_READBACK_TOL_US"
+          },
+          {
+            "kind": "enum",
+            "name": "BootLayout"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "HostContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "ReportStatus"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "BootStage"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "BootDiagnostic"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "HostReport"
+          },
+          {
+            "kind": "struct",
+            "name": "ReportSlot"
+          },
+          {
+            "kind": "struct",
+            "name": "BootSummary"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "BootReports"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "diagnostic"
+          },
+          {
+            "kind": "fn",
+            "name": "slots"
+          },
+          {
+            "kind": "fn",
+            "name": "summary"
+          },
+          {
+            "kind": "struct",
+            "name": "BoardProfileReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "BoardPackageReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "ManifestReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AdapterCompatibilityReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiModelReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "RosBridgeReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "AdmissionReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "RuntimeReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_next_alarm_due_us"
+          },
+          {
+            "kind": "fn",
+            "name": "next_alarm_due_us"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "EventLogReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "latest_at_us"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "ModuleRuntimeReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "latest_change_us"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "DegradeApplicationReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_applied_at_us"
+          },
+          {
+            "kind": "fn",
+            "name": "applied_at_us"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "HealthReport"
+          },
+          {
+            "kind": "const",
+            "name": "VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_last_seen_us"
+          },
+          {
+            "kind": "fn",
+            "name": "last_seen_us"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          }
+        ],
+        "path": "core/crates/nobro_host/src/lib.rs",
+        "sha256": "6330b262700ba5fce89990b9d3f15379a0600df99d97bbad4e95059788b5de58"
+      },
+      {
+        "crate": "nobro-imu",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "IMU_API_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "CALIBRATION_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "IMU_HEALTH_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "IMU_HEALTH_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "MIN_HEALTH_SAMPLES"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuHealthReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuSample"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuCalibration"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuFamily"
+          },
+          {
+            "kind": "const",
+            "name": "UNKNOWN"
+          },
+          {
+            "kind": "const",
+            "name": "MPU6050"
+          },
+          {
+            "kind": "const",
+            "name": "MPU6500"
+          },
+          {
+            "kind": "const",
+            "name": "MPU9250"
+          },
+          {
+            "kind": "const",
+            "name": "MPU9255"
+          },
+          {
+            "kind": "const",
+            "name": "ICM45686"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuIdentity"
+          },
+          {
+            "kind": "enum",
+            "name": "ImuEvent"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuDiagnostics"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuBackend"
+          },
+          {
+            "kind": "fn",
+            "name": "magnitude3"
+          }
+        ],
+        "path": "core/crates/nobro_imu/src/lib.rs",
+        "sha256": "21d36d4260727e1904f88d0c0c1f8e011d2735417d706116bfdad97bb1150b58"
+      },
+      {
+        "crate": "nobro-kernel",
+        "exports": [
+          {
+            "kind": "type",
+            "name": "SmallRuntime"
+          },
+          {
+            "kind": "type",
+            "name": "StandardRuntime"
+          },
+          {
+            "kind": "type",
+            "name": "LargeRuntime"
+          },
+          {
+            "kind": "type",
+            "name": "LeanRuntime"
+          },
+          {
+            "kind": "type",
+            "name": "LeanKernelExecutor"
+          },
+          {
+            "kind": "type",
+            "name": "LeanKernelExecutorCell"
+          },
+          {
+            "kind": "type",
+            "name": "L0NanoKernel"
+          },
+          {
+            "kind": "type",
+            "name": "L1GuardedKernel"
+          },
+          {
+            "kind": "type",
+            "name": "L2ManagedKernel"
+          },
+          {
+            "kind": "type",
+            "name": "L3AssuredKernel"
+          },
+          {
+            "kind": "type",
+            "name": "L3AssuredKernelCell"
+          }
+        ],
+        "path": "core/crates/nobro_kernel/src/lib.rs",
+        "sha256": "3c674d04c6d1d683d8cacd5bf3f86b874b04c0464bb724d4ac2718119f7802c9"
+      },
+      {
+        "crate": "nobro-ml",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "RunningStats"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "mean"
+          },
+          {
+            "kind": "fn",
+            "name": "variance"
+          },
+          {
+            "kind": "fn",
+            "name": "z_squared"
+          },
+          {
+            "kind": "fn",
+            "name": "is_anomaly"
+          },
+          {
+            "kind": "struct",
+            "name": "Ewma"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "value"
+          },
+          {
+            "kind": "fn",
+            "name": "reject"
+          },
+          {
+            "kind": "fn",
+            "name": "complementary"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_FRAMES"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_BANDS"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_FEATURES"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_FRAME_SAMPLES"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_SAMPLE_RATE_HZ"
+          },
+          {
+            "kind": "const",
+            "name": "KWS_WINDOW_SAMPLES"
+          },
+          {
+            "kind": "fn",
+            "name": "kws_frame_log_energy_features"
+          },
+          {
+            "kind": "fn",
+            "name": "kws_log_energy_features"
+          },
+          {
+            "kind": "struct",
+            "name": "Vote"
+          },
+          {
+            "kind": "fn",
+            "name": "ensemble_vote"
+          },
+          {
+            "kind": "enum",
+            "name": "Gesture"
+          },
+          {
+            "kind": "struct",
+            "name": "GestureDetector"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "calibrate"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "quantize_i8"
+          },
+          {
+            "kind": "fn",
+            "name": "dequantize_i8"
+          },
+          {
+            "kind": "fn",
+            "name": "choose_scale"
+          },
+          {
+            "kind": "fn",
+            "name": "depthwise_conv3"
+          },
+          {
+            "kind": "fn",
+            "name": "fed_average"
+          },
+          {
+            "kind": "fn",
+            "name": "prune_magnitude"
+          },
+          {
+            "kind": "struct",
+            "name": "GruCell"
+          },
+          {
+            "kind": "fn",
+            "name": "step"
+          },
+          {
+            "kind": "fn",
+            "name": "schedule_models"
+          },
+          {
+            "kind": "fn",
+            "name": "count_blobs"
+          },
+          {
+            "kind": "fn",
+            "name": "ab_route"
+          }
+        ],
+        "path": "core/crates/nobro_ml/src/lib.rs",
+        "sha256": "068b372b1417fba9987fc9161abaa61d76447bc73676fe2fbc7256c7d9fdeec2"
+      },
+      {
+        "crate": "nobro-net",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "Route"
+          },
+          {
+            "kind": "struct",
+            "name": "RoutingTable"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "integrate_from"
+          },
+          {
+            "kind": "fn",
+            "name": "next_hop"
+          },
+          {
+            "kind": "fn",
+            "name": "cost"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "struct",
+            "name": "TimeSync"
+          },
+          {
+            "kind": "fn",
+            "name": "estimate"
+          },
+          {
+            "kind": "struct",
+            "name": "Aggregator"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "add"
+          },
+          {
+            "kind": "fn",
+            "name": "mean"
+          },
+          {
+            "kind": "struct",
+            "name": "SeenSet"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "observe"
+          },
+          {
+            "kind": "struct",
+            "name": "PrioQueue"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "push"
+          },
+          {
+            "kind": "fn",
+            "name": "pop"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkEvent"
+          },
+          {
+            "kind": "struct",
+            "name": "LinkMonitor"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "heard"
+          },
+          {
+            "kind": "fn",
+            "name": "tick"
+          },
+          {
+            "kind": "fn",
+            "name": "is_up"
+          },
+          {
+            "kind": "fn",
+            "name": "up_count"
+          },
+          {
+            "kind": "enum",
+            "name": "NodeReading"
+          },
+          {
+            "kind": "struct",
+            "name": "MeshSnapshot"
+          },
+          {
+            "kind": "fn",
+            "name": "from_readings"
+          },
+          {
+            "kind": "const",
+            "name": "HEADER_LEN"
+          },
+          {
+            "kind": "const",
+            "name": "OVERHEAD"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkError"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "open"
+          },
+          {
+            "kind": "fn",
+            "name": "open_addressed"
+          },
+          {
+            "kind": "fn",
+            "name": "pack"
+          },
+          {
+            "kind": "fn",
+            "name": "unpack"
+          },
+          {
+            "kind": "fn",
+            "name": "synced_capture_local_us"
+          },
+          {
+            "kind": "fn",
+            "name": "path_latency_us"
+          },
+          {
+            "kind": "fn",
+            "name": "command"
+          },
+          {
+            "kind": "struct",
+            "name": "AppliedCommand"
+          },
+          {
+            "kind": "fn",
+            "name": "apply"
+          },
+          {
+            "kind": "fn",
+            "name": "rssi_best_next_hop"
+          },
+          {
+            "kind": "struct",
+            "name": "OtaReassembler"
+          },
+          {
+            "kind": "enum",
+            "name": "OtaReassemblyError"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "chunk_count"
+          },
+          {
+            "kind": "fn",
+            "name": "receive"
+          },
+          {
+            "kind": "fn",
+            "name": "is_complete"
+          },
+          {
+            "kind": "fn",
+            "name": "first_missing"
+          },
+          {
+            "kind": "fn",
+            "name": "progress_percent"
+          },
+          {
+            "kind": "enum",
+            "name": "OtaImageError"
+          },
+          {
+            "kind": "struct",
+            "name": "OtaImageAssembler"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "receive"
+          },
+          {
+            "kind": "fn",
+            "name": "verify"
+          },
+          {
+            "kind": "fn",
+            "name": "first_missing"
+          },
+          {
+            "kind": "enum",
+            "name": "FleetOtaPhase"
+          },
+          {
+            "kind": "struct",
+            "name": "FleetOtaNode"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "FleetOtaPolicy"
+          },
+          {
+            "kind": "const",
+            "name": "DEFAULT"
+          },
+          {
+            "kind": "enum",
+            "name": "FleetOtaError"
+          },
+          {
+            "kind": "struct",
+            "name": "FleetOtaWave"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "FleetOtaOrchestrator"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "register"
+          },
+          {
+            "kind": "fn",
+            "name": "set_health"
+          },
+          {
+            "kind": "fn",
+            "name": "mark_installing"
+          },
+          {
+            "kind": "fn",
+            "name": "complete_node"
+          },
+          {
+            "kind": "fn",
+            "name": "complete_node_with_policy"
+          },
+          {
+            "kind": "fn",
+            "name": "stage_next_wave"
+          },
+          {
+            "kind": "fn",
+            "name": "stage_verified_wave"
+          },
+          {
+            "kind": "fn",
+            "name": "node"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "fn",
+            "name": "healthy_percent"
+          },
+          {
+            "kind": "fn",
+            "name": "active_count"
+          },
+          {
+            "kind": "fn",
+            "name": "confirmed_count"
+          },
+          {
+            "kind": "struct",
+            "name": "StoreForward"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "store"
+          },
+          {
+            "kind": "fn",
+            "name": "deliver"
+          },
+          {
+            "kind": "fn",
+            "name": "pending_for"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkFormation"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "join"
+          },
+          {
+            "kind": "fn",
+            "name": "parent_of"
+          },
+          {
+            "kind": "fn",
+            "name": "reparent"
+          },
+          {
+            "kind": "fn",
+            "name": "depth"
+          }
+        ],
+        "path": "core/crates/nobro_net/src/lib.rs",
+        "sha256": "91047f2f6e324ad133f48c6fafe1b1da654706d29748114ed21db59646458f83"
+      },
+      {
+        "crate": "nobro-nn",
+        "exports": [
+          {
+            "kind": "fn",
+            "name": "exp_approx"
+          },
+          {
+            "kind": "fn",
+            "name": "sqrt_approx"
+          },
+          {
+            "kind": "fn",
+            "name": "relu"
+          },
+          {
+            "kind": "fn",
+            "name": "leaky_relu"
+          },
+          {
+            "kind": "fn",
+            "name": "sigmoid"
+          },
+          {
+            "kind": "fn",
+            "name": "tanh_approx"
+          },
+          {
+            "kind": "fn",
+            "name": "softmax"
+          },
+          {
+            "kind": "fn",
+            "name": "argmax"
+          },
+          {
+            "kind": "fn",
+            "name": "dense"
+          },
+          {
+            "kind": "fn",
+            "name": "dense_int8"
+          },
+          {
+            "kind": "fn",
+            "name": "quantize_i8"
+          },
+          {
+            "kind": "fn",
+            "name": "sgd_update"
+          },
+          {
+            "kind": "fn",
+            "name": "log_approx"
+          },
+          {
+            "kind": "fn",
+            "name": "conv1d_valid"
+          },
+          {
+            "kind": "fn",
+            "name": "conv2d_valid"
+          },
+          {
+            "kind": "fn",
+            "name": "conv2d_valid_i8"
+          },
+          {
+            "kind": "fn",
+            "name": "avg_pool2d"
+          },
+          {
+            "kind": "fn",
+            "name": "rnn_step"
+          },
+          {
+            "kind": "struct",
+            "name": "LstmState"
+          },
+          {
+            "kind": "fn",
+            "name": "step"
+          },
+          {
+            "kind": "fn",
+            "name": "attention"
+          }
+        ],
+        "path": "core/crates/nobro_nn/src/lib.rs",
+        "sha256": "a2f8386add74174d675cd8ced6e1ea48437f4d3c4e9b45f1f783b47b6935f0f2"
+      },
+      {
+        "crate": "nobro-power",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "PowerMode"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "PowerVetoReason"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerVetoMask"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "PowerLeaseKind"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerLease"
+          },
+          {
+            "kind": "enum",
+            "name": "PowerLeaseError"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerLeaseTable"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "acquire"
+          },
+          {
+            "kind": "fn",
+            "name": "release"
+          },
+          {
+            "kind": "fn",
+            "name": "owner"
+          },
+          {
+            "kind": "enum",
+            "name": "WakeStyle"
+          },
+          {
+            "kind": "struct",
+            "name": "SystemOffWake"
+          },
+          {
+            "kind": "enum",
+            "name": "SystemOffWakeError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerTransition"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerHookError"
+          },
+          {
+            "kind": "trait",
+            "name": "PowerPlatform"
+          },
+          {
+            "kind": "trait",
+            "name": "PowerParticipant"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerPlatformChain"
+          },
+          {
+            "kind": "fn",
+            "name": "attach_participant"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerManager"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "select"
+          },
+          {
+            "kind": "fn",
+            "name": "account_active"
+          },
+          {
+            "kind": "fn",
+            "name": "end_window"
+          },
+          {
+            "kind": "fn",
+            "name": "duty_milli"
+          },
+          {
+            "kind": "struct",
+            "name": "EnergyLedger"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "charge"
+          },
+          {
+            "kind": "fn",
+            "name": "energy_uj"
+          },
+          {
+            "kind": "fn",
+            "name": "total_uj"
+          },
+          {
+            "kind": "fn",
+            "name": "top"
+          },
+          {
+            "kind": "struct",
+            "name": "ExecutorPower"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_task_power"
+          },
+          {
+            "kind": "fn",
+            "name": "task_power_uw"
+          },
+          {
+            "kind": "fn",
+            "name": "account_task"
+          },
+          {
+            "kind": "fn",
+            "name": "acquire_lease"
+          },
+          {
+            "kind": "fn",
+            "name": "release_lease"
+          },
+          {
+            "kind": "fn",
+            "name": "set_system_off_wake"
+          },
+          {
+            "kind": "fn",
+            "name": "apply_idle"
+          },
+          {
+            "kind": "fn",
+            "name": "apply_idle_release"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "sampling_divisor"
+          },
+          {
+            "kind": "fn",
+            "name": "harvest_work_budget_uj"
+          },
+          {
+            "kind": "struct",
+            "name": "DutyScheduler"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "tick"
+          }
+        ],
+        "path": "core/crates/nobro_power/src/lib.rs",
+        "sha256": "187d07b8f5aedc2f25d1d3a437db5684d4408829683036c192b217ea95986ae9"
+      },
+      {
+        "crate": "nobro-sal",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "ADAPTER_COMPAT_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "ADAPTER_COMPAT_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "AI_MODEL_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "AI_MODEL_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_BRIDGE_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_BRIDGE_REPORT_VERSION"
+          },
+          {
+            "kind": "struct",
+            "name": "AdapterDescriptor"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "AdapterSetError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AdapterCompatibilityReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "from_result"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "struct",
+            "name": "AdapterSet"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "add"
+          },
+          {
+            "kind": "fn",
+            "name": "add_manifest"
+          },
+          {
+            "kind": "fn",
+            "name": "validate_profile"
+          },
+          {
+            "kind": "fn",
+            "name": "compatibility_report"
+          },
+          {
+            "kind": "fn",
+            "name": "descriptor"
+          },
+          {
+            "kind": "fn",
+            "name": "copy_descriptors"
+          },
+          {
+            "kind": "fn",
+            "name": "total_budget"
+          },
+          {
+            "kind": "fn",
+            "name": "owned_capabilities"
+          },
+          {
+            "kind": "fn",
+            "name": "required_capabilities"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AdapterPreflight"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "add"
+          },
+          {
+            "kind": "fn",
+            "name": "add_manifest"
+          },
+          {
+            "kind": "fn",
+            "name": "compatibility_report"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "descriptor"
+          },
+          {
+            "kind": "fn",
+            "name": "copy_descriptors"
+          },
+          {
+            "kind": "trait",
+            "name": "AdapterManifest"
+          },
+          {
+            "kind": "trait",
+            "name": "BusSal"
+          },
+          {
+            "kind": "trait",
+            "name": "StreamSal"
+          },
+          {
+            "kind": "trait",
+            "name": "RadioSal"
+          },
+          {
+            "kind": "trait",
+            "name": "ActuatorSal"
+          },
+          {
+            "kind": "trait",
+            "name": "SensorSal"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuSal"
+          },
+          {
+            "kind": "trait",
+            "name": "TempSal"
+          },
+          {
+            "kind": "trait",
+            "name": "CryptoSal"
+          },
+          {
+            "kind": "enum",
+            "name": "RosBridgeTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "RosTopicContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "buffer_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "RosServiceContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "buffer_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "RosActionContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "buffer_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "RosParameterContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "RosBridgeContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "from_parts"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_PREFLIGHT_PAYLOAD_TOO_LARGE"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_PREFLIGHT_RESPONSE_TOO_SMALL"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_PREFLIGHT_TIMEOUT_EXCEEDED"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_PREFLIGHT_QUEUE_DEPTH_ZERO"
+          },
+          {
+            "kind": "const",
+            "name": "ROS_PREFLIGHT_TIMEOUT_ZERO"
+          },
+          {
+            "kind": "struct",
+            "name": "RosBridgePreflight"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "preflight_ros_topic"
+          },
+          {
+            "kind": "fn",
+            "name": "preflight_ros_service"
+          },
+          {
+            "kind": "fn",
+            "name": "preflight_ros_action"
+          },
+          {
+            "kind": "fn",
+            "name": "preflight_ros_parameter"
+          },
+          {
+            "kind": "struct",
+            "name": "RosBridgeContractReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "from_contract"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "trait",
+            "name": "RosBridgeSal"
+          },
+          {
+            "kind": "enum",
+            "name": "AiBackendKind"
+          },
+          {
+            "kind": "enum",
+            "name": "AiRoutePreference"
+          },
+          {
+            "kind": "enum",
+            "name": "AiRouteTarget"
+          },
+          {
+            "kind": "struct",
+            "name": "AiRuntimeState"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiRouteDecision"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiRoutePolicy"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "decide"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "AiRegistryError"
+          },
+          {
+            "kind": "struct",
+            "name": "ModelRegistry"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "register"
+          },
+          {
+            "kind": "fn",
+            "name": "resolve"
+          },
+          {
+            "kind": "fn",
+            "name": "len"
+          },
+          {
+            "kind": "fn",
+            "name": "is_empty"
+          },
+          {
+            "kind": "fn",
+            "name": "route"
+          },
+          {
+            "kind": "struct",
+            "name": "AiModelContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiModelContractReport"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "from_contract"
+          },
+          {
+            "kind": "fn",
+            "name": "from_contract_and_policy"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_checksum"
+          },
+          {
+            "kind": "struct",
+            "name": "AiInferenceRequest"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiInferenceResult"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_MODEL_ID_MISMATCH"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_INPUT_TOO_LARGE"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_OUTPUT_TOO_SMALL"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_RAM_EXCEEDED"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_ROUTE_UNAVAILABLE"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_DEGRADED_FALLBACK"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_STALE_SNAPSHOT"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_STALE_TOO_OLD"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN"
+          },
+          {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_LOCAL_ARENA_MISSING"
+          },
+          {
+            "kind": "struct",
+            "name": "AiInvocationLimits"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AiInvocationPreflight"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "preflight_ai_invocation"
+          },
+          {
+            "kind": "trait",
+            "name": "AiInferenceSal"
+          },
+          {
+            "kind": "fn",
+            "name": "default_action"
+          }
+        ],
+        "path": "core/crates/nobro_sal/src/lib.rs",
+        "sha256": "6f7283145eb33b86de45bf6218eee20ba53f9d12d12224dcc1a154a0f55b68c5"
+      },
+      {
+        "crate": "nobro-secure",
+        "exports": [
+          {
+            "kind": "fn",
+            "name": "attest"
+          },
+          {
+            "kind": "fn",
+            "name": "verify_tag"
+          },
+          {
+            "kind": "struct",
+            "name": "KeyStore"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "provision"
+          },
+          {
+            "kind": "fn",
+            "name": "get"
+          },
+          {
+            "kind": "fn",
+            "name": "deprovision"
+          },
+          {
+            "kind": "struct",
+            "name": "RollbackGuard"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "accept"
+          },
+          {
+            "kind": "fn",
+            "name": "min_version"
+          },
+          {
+            "kind": "struct",
+            "name": "TamperSeal"
+          },
+          {
+            "kind": "fn",
+            "name": "seal"
+          },
+          {
+            "kind": "fn",
+            "name": "intact"
+          },
+          {
+            "kind": "struct",
+            "name": "AuditLog"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "append"
+          },
+          {
+            "kind": "fn",
+            "name": "head"
+          },
+          {
+            "kind": "fn",
+            "name": "count"
+          },
+          {
+            "kind": "struct",
+            "name": "ConfigStore"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "store"
+          },
+          {
+            "kind": "fn",
+            "name": "load"
+          },
+          {
+            "kind": "enum",
+            "name": "Slot"
+          },
+          {
+            "kind": "struct",
+            "name": "OtaAgent"
+          },
+          {
+            "kind": "enum",
+            "name": "OtaError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "active"
+          },
+          {
+            "kind": "fn",
+            "name": "stage"
+          },
+          {
+            "kind": "fn",
+            "name": "boot_staged"
+          },
+          {
+            "kind": "fn",
+            "name": "confirm"
+          },
+          {
+            "kind": "fn",
+            "name": "revert"
+          },
+          {
+            "kind": "enum",
+            "name": "BootVerdict"
+          },
+          {
+            "kind": "struct",
+            "name": "BootImageManifest"
+          },
+          {
+            "kind": "struct",
+            "name": "BootVectorPolicy"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "VerifiedBootPlan"
+          },
+          {
+            "kind": "enum",
+            "name": "BootPlanError"
+          },
+          {
+            "kind": "struct",
+            "name": "SecureBoot"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "measure"
+          },
+          {
+            "kind": "fn",
+            "name": "sign"
+          },
+          {
+            "kind": "fn",
+            "name": "verify"
+          },
+          {
+            "kind": "fn",
+            "name": "commit"
+          },
+          {
+            "kind": "fn",
+            "name": "min_version"
+          },
+          {
+            "kind": "fn",
+            "name": "boot_plan"
+          }
+        ],
+        "path": "core/crates/nobro_secure/src/lib.rs",
+        "sha256": "99e8c7eb8ce857af69c59d32697f85cd4a2f7a7ca0325622674fb59cc4234678"
+      },
+      {
+        "crate": "nobro-sensor",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "SensorHealth"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "update"
+          },
+          {
+            "kind": "fn",
+            "name": "is_stuck"
+          },
+          {
+            "kind": "fn",
+            "name": "out_of_range"
+          },
+          {
+            "kind": "struct",
+            "name": "Calibration"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "observe"
+          },
+          {
+            "kind": "fn",
+            "name": "finalize"
+          },
+          {
+            "kind": "fn",
+            "name": "apply"
+          },
+          {
+            "kind": "fn",
+            "name": "bias"
+          },
+          {
+            "kind": "struct",
+            "name": "Decimator"
+          },
+          {
+            "kind": "enum",
+            "name": "AdcDmaState"
+          },
+          {
+            "kind": "enum",
+            "name": "AdcDmaError"
+          },
+          {
+            "kind": "struct",
+            "name": "AdcDmaConfig"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AdcSample"
+          },
+          {
+            "kind": "trait",
+            "name": "AdcDmaBackend"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "tick"
+          },
+          {
+            "kind": "fn",
+            "name": "tmr_vote"
+          }
+        ],
+        "path": "core/crates/nobro_sensor/src/lib.rs",
+        "sha256": "f66679cbf8450ce70dea2b118a5935150cc235f0295301b71419e96ab4a039de"
+      },
+      {
+        "crate": "nobro-servo",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "ServoCommand"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "ServoBounds"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "ServoBackend"
+          },
+          {
+            "kind": "enum",
+            "name": "PulseState"
+          },
+          {
+            "kind": "enum",
+            "name": "PulseError"
+          },
+          {
+            "kind": "struct",
+            "name": "PwmConfig"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "PulseSymbol"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "PwmEngineBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "PulseEngineBackend"
+          }
+        ],
+        "path": "core/crates/nobro_servo/src/lib.rs",
+        "sha256": "6f0d00e8221416e5e65da294e7161f7e8f8f54fc320d65c58dbb00de69d2598e"
+      },
+      {
+        "crate": "nobro-storage",
+        "exports": [
+          {
+            "kind": "trait",
+            "name": "Flash"
+          },
+          {
+            "kind": "enum",
+            "name": "KvError"
+          },
+          {
+            "kind": "struct",
+            "name": "KvStore"
+          },
+          {
+            "kind": "struct",
+            "name": "BlobStore"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "read"
+          },
+          {
+            "kind": "fn",
+            "name": "replace"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_flash"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "get"
+          },
+          {
+            "kind": "fn",
+            "name": "put"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_flash"
+          }
+        ],
+        "path": "core/crates/nobro_storage/src/lib.rs",
+        "sha256": "13d537a28e99c29e4cd87b70c3949e4971a2632ad36bdb73e9979e0d134d43b7"
+      },
+      {
+        "crate": "nobro-tierc",
+        "exports": [],
+        "path": "core/crates/nobro_tierc/src/lib.rs",
+        "sha256": "feb0ad67bb53f31a633d28e4c908778a7c8b5dbaf8bbdf659728e753bf5997a0"
+      },
+      {
+        "crate": "nobro-usb",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "CdcState"
+          },
+          {
+            "kind": "const",
+            "name": "CDC_PACKET_SIZE"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbBackendError"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbIoError"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbConfig"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbIdentityPolicy"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbMountError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "config_supported"
+          },
+          {
+            "kind": "const",
+            "name": "NRF_USBD"
+          },
+          {
+            "kind": "const",
+            "name": "USB_SERIAL_JTAG"
+          },
+          {
+            "kind": "const",
+            "name": "RA_USBFS"
+          },
+          {
+            "kind": "trait",
+            "name": "UsbStack"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedUsb"
+          },
+          {
+            "kind": "fn",
+            "name": "state"
+          },
+          {
+            "kind": "fn",
+            "name": "power_veto"
+          },
+          {
+            "kind": "fn",
+            "name": "write_all"
+          },
+          {
+            "kind": "fn",
+            "name": "read_available"
+          },
+          {
+            "kind": "fn",
+            "name": "flush_pending"
+          },
+          {
+            "kind": "fn",
+            "name": "stage"
+          },
+          {
+            "kind": "fn",
+            "name": "disconnect_link"
+          },
+          {
+            "kind": "fn",
+            "name": "reconnect_link"
+          },
+          {
+            "kind": "fn",
+            "name": "try_mount"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          }
+        ],
+        "path": "core/crates/nobro_usb/src/lib.rs",
+        "sha256": "7cd6d89b433ba2330d9e0e0057733461fba815e6421214fa1addcadfbf58ea20"
+      },
+      {
+        "crate": "nobro-wireless",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "Protocol"
+          },
+          {
+            "kind": "const",
+            "name": "IEEE802154_MAX_PSDU_BYTES"
+          },
+          {
+            "kind": "struct",
+            "name": "LinkDescriptor"
+          },
+          {
+            "kind": "const",
+            "name": "BLE_ADV"
+          },
+          {
+            "kind": "const",
+            "name": "WIFI_TCP"
+          },
+          {
+            "kind": "const",
+            "name": "ZIGBEE_APS"
+          },
+          {
+            "kind": "const",
+            "name": "IEEE802154_RAW"
+          },
+          {
+            "kind": "const",
+            "name": "THREAD_UDP"
+          },
+          {
+            "kind": "const",
+            "name": "RFID_14443A"
+          },
+          {
+            "kind": "const",
+            "name": "NRF_PROPRIETARY"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkState"
+          },
+          {
+            "kind": "trait",
+            "name": "WirelessBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "Packet"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "copy_from"
+          },
+          {
+            "kind": "fn",
+            "name": "as_slice"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "TxContract"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "LinkBudget"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "LinkDiagnostics"
+          },
+          {
+            "kind": "enum",
+            "name": "LinkError"
+          },
+          {
+            "kind": "struct",
+            "name": "ManagedLink"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "send_at"
+          },
+          {
+            "kind": "fn",
+            "name": "recv"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_window"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "enum",
+            "name": "StackFamily"
+          },
+          {
+            "kind": "enum",
+            "name": "StackState"
+          },
+          {
+            "kind": "struct",
+            "name": "StackIdentity"
+          },
+          {
+            "kind": "fn",
+            "name": "valid_for"
+          },
+          {
+            "kind": "enum",
+            "name": "StackError"
+          },
+          {
+            "kind": "struct",
+            "name": "StackMountError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "WifiCredentials"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "WifiNetwork"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_ssid"
+          },
+          {
+            "kind": "fn",
+            "name": "ssid"
+          },
+          {
+            "kind": "trait",
+            "name": "WifiStack"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedWifi"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "state"
+          },
+          {
+            "kind": "fn",
+            "name": "scan"
+          },
+          {
+            "kind": "fn",
+            "name": "join"
+          },
+          {
+            "kind": "fn",
+            "name": "leave"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "enum",
+            "name": "BleEventKind"
+          },
+          {
+            "kind": "struct",
+            "name": "BleEvent"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "set_payload"
+          },
+          {
+            "kind": "fn",
+            "name": "payload"
+          },
+          {
+            "kind": "struct",
+            "name": "BleEventQueue"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "push"
+          },
+          {
+            "kind": "fn",
+            "name": "pop"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "BleStack"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedBle"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "state"
+          },
+          {
+            "kind": "fn",
+            "name": "advertise"
+          },
+          {
+            "kind": "fn",
+            "name": "stop_advertising"
+          },
+          {
+            "kind": "fn",
+            "name": "poll_event"
+          },
+          {
+            "kind": "fn",
+            "name": "respond_gatt"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "BleAdvBuilder"
+          },
+          {
+            "kind": "enum",
+            "name": "AdvKind"
+          },
+          {
+            "kind": "fn",
+            "name": "build"
+          },
+          {
+            "kind": "fn",
+            "name": "build_as"
+          },
+          {
+            "kind": "fn",
+            "name": "build_scan_response"
+          },
+          {
+            "kind": "trait",
+            "name": "SpiIo"
+          },
+          {
+            "kind": "struct",
+            "name": "RfidReaderDescriptor"
+          },
+          {
+            "kind": "const",
+            "name": "MFRC522_SPI"
+          },
+          {
+            "kind": "struct",
+            "name": "RfidUid"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "from_slice"
+          },
+          {
+            "kind": "fn",
+            "name": "as_slice"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "RfidError"
+          },
+          {
+            "kind": "struct",
+            "name": "Mfrc522"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          },
+          {
+            "kind": "fn",
+            "name": "reader_descriptor"
+          },
+          {
+            "kind": "fn",
+            "name": "init"
+          },
+          {
+            "kind": "fn",
+            "name": "request_a"
+          },
+          {
+            "kind": "fn",
+            "name": "anticollision_level1"
+          },
+          {
+            "kind": "fn",
+            "name": "poll_uid"
+          },
+          {
+            "kind": "fn",
+            "name": "transceive"
+          },
+          {
+            "kind": "const",
+            "name": "COMMAND"
+          },
+          {
+            "kind": "const",
+            "name": "COMM_IRQ"
+          },
+          {
+            "kind": "const",
+            "name": "ERROR"
+          },
+          {
+            "kind": "const",
+            "name": "FIFO_DATA"
+          },
+          {
+            "kind": "const",
+            "name": "FIFO_LEVEL"
+          },
+          {
+            "kind": "const",
+            "name": "BIT_FRAMING"
+          },
+          {
+            "kind": "const",
+            "name": "MODE"
+          },
+          {
+            "kind": "const",
+            "name": "TX_MODE"
+          },
+          {
+            "kind": "const",
+            "name": "RX_MODE"
+          },
+          {
+            "kind": "const",
+            "name": "TX_CONTROL"
+          },
+          {
+            "kind": "const",
+            "name": "TX_ASK"
+          },
+          {
+            "kind": "const",
+            "name": "TIMER_MODE"
+          },
+          {
+            "kind": "const",
+            "name": "TIMER_PRESCALER"
+          },
+          {
+            "kind": "const",
+            "name": "TIMER_RELOAD_H"
+          },
+          {
+            "kind": "const",
+            "name": "TIMER_RELOAD_L"
+          },
+          {
+            "kind": "const",
+            "name": "IDLE"
+          },
+          {
+            "kind": "const",
+            "name": "TRANSCEIVE"
+          },
+          {
+            "kind": "const",
+            "name": "SOFT_RESET"
+          },
+          {
+            "kind": "fn",
+            "name": "iso14443a_bcc"
+          },
+          {
+            "kind": "fn",
+            "name": "validate_anticollision"
+          },
+          {
+            "kind": "const",
+            "name": "CASCADE_TAG"
+          },
+          {
+            "kind": "fn",
+            "name": "has_next_cascade"
+          },
+          {
+            "kind": "trait",
+            "name": "ByteIo"
+          },
+          {
+            "kind": "enum",
+            "name": "MacFrameType"
+          },
+          {
+            "kind": "fn",
+            "name": "mac_frame_type"
+          },
+          {
+            "kind": "struct",
+            "name": "Cc2530"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "initialize"
+          },
+          {
+            "kind": "fn",
+            "name": "join"
+          },
+          {
+            "kind": "fn",
+            "name": "poll_frame"
+          }
+        ],
+        "path": "core/crates/nobro_wireless/src/lib.rs",
+        "sha256": "66282712e4e321c6c61e6b18f71bf1ab6655923d439c1b787760bba1396ada4c"
+      },
+      {
+        "crate": "nobro-adapter-motion-ai",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "MODEL_ID"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS_IDLE"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS_ACTIVE"
+          },
+          {
+            "kind": "const",
+            "name": "VARIANCE_THRESHOLD"
+          },
+          {
+            "kind": "enum",
+            "name": "MotionError"
+          },
+          {
+            "kind": "struct",
+            "name": "MotionClassifier"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          }
+        ],
+        "path": "core/adapters/ai/motion-ai/src/lib.rs",
+        "sha256": "8283435683304b8c58e72de2b85f56dd28e5545472270c0afb1f49cfb2026af2"
+      },
+      {
+        "crate": "nobro-adapter-nn-motion-ai",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "MODEL_ID"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS_IDLE"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS_ACTIVE"
+          },
+          {
+            "kind": "enum",
+            "name": "NnError"
+          },
+          {
+            "kind": "struct",
+            "name": "NnMotionClassifier"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "const",
+            "name": "MODEL3_ID"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS3_IDLE"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS3_WALK"
+          },
+          {
+            "kind": "const",
+            "name": "CLASS3_SHAKE"
+          },
+          {
+            "kind": "struct",
+            "name": "Nn3MotionClassifier"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          }
+        ],
+        "path": "core/adapters/ai/nn-motion-ai/src/lib.rs",
+        "sha256": "4c81802d6c00f110e7179b8d86c747584648a19239500a728ec0fb40d2dfec53"
+      },
+      {
+        "crate": "nobro-adapter-audio-esp32s3-es8311",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioDiagnostics"
+          },
+          {
+            "kind": "trait",
+            "name": "Esp32s3Es8311Transport"
+          },
+          {
+            "kind": "struct",
+            "name": "Esp32s3Es8311"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          }
+        ],
+        "path": "core/adapters/audio/esp32s3-es8311/src/lib.rs",
+        "sha256": "b77d45413e7016b58c2950bbe3a5b9ce878560d068ef614702e65c7d13549ddb"
+      },
+      {
+        "crate": "nobro-eh-i2c",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "NobroI2cError"
+          },
+          {
+            "kind": "struct",
+            "name": "NobroI2c"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          }
+        ],
+        "path": "core/adapters/bus/embedded-hal-i2c/src/lib.rs",
+        "sha256": "1965fac94048829796bcf9c04839ff7d38fd3543722282fd82b850852b8577d7"
+      },
+      {
+        "crate": "nobro-eh-spi",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "NobroSpiError"
+          },
+          {
+            "kind": "struct",
+            "name": "NobroSpiDevice"
+          }
+        ],
+        "path": "core/adapters/bus/embedded-hal-spi/src/lib.rs",
+        "sha256": "ae0a3791528fe2159548bcf5f354dfe2d155d73a53f5a66f1deb67e0120957b5"
+      },
+      {
+        "crate": "nobro-adapter-icm45686",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "DEFAULT_ADDR"
+          },
+          {
+            "kind": "const",
+            "name": "REG_WHO_AM_I"
+          },
+          {
+            "kind": "const",
+            "name": "DEVICE_ID"
+          },
+          {
+            "kind": "fn",
+            "name": "to_milli"
+          },
+          {
+            "kind": "struct",
+            "name": "Icm45686"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "who_am_i"
+          },
+          {
+            "kind": "fn",
+            "name": "decode_accel"
+          },
+          {
+            "kind": "fn",
+            "name": "decode_gyro"
+          }
+        ],
+        "path": "core/adapters/imu/icm45686/src/lib.rs",
+        "sha256": "07bb6edad0851751e2742e73cebb4a5e5b2418f40ba834697e98c839a672ff34"
+      },
+      {
+        "crate": "nobro-adapter-mpu9250-imu",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "Mpu9250Error"
+          },
+          {
+            "kind": "struct",
+            "name": "Mpu9250Imu"
+          },
+          {
+            "kind": "fn",
+            "name": "probe_and_init"
+          },
+          {
+            "kind": "fn",
+            "name": "last_temp_centi_c"
+          },
+          {
+            "kind": "fn",
+            "name": "last_gyro_mag_mdps"
+          },
+          {
+            "kind": "fn",
+            "name": "addr"
+          },
+          {
+            "kind": "fn",
+            "name": "who_am_i"
+          },
+          {
+            "kind": "fn",
+            "name": "bmp280_present"
+          },
+          {
+            "kind": "fn",
+            "name": "owner"
+          },
+          {
+            "kind": "fn",
+            "name": "scan_device_count"
+          },
+          {
+            "kind": "fn",
+            "name": "module_spec"
+          },
+          {
+            "kind": "fn",
+            "name": "accel_mag_mg"
+          },
+          {
+            "kind": "fn",
+            "name": "imu_plausible"
+          }
+        ],
+        "path": "core/adapters/imu/mpu9250-imu/src/lib.rs",
+        "sha256": "4c100c7a286ca3873efcf48da47b17c1c6c203ee244dd5457857a993eebbcecd"
+      },
+      {
+        "crate": "nobro-adapter-ina3221",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "DEFAULT_ADDR"
+          },
+          {
+            "kind": "const",
+            "name": "REG_MANUF_ID"
+          },
+          {
+            "kind": "const",
+            "name": "MANUF_TI"
+          },
+          {
+            "kind": "struct",
+            "name": "InaChannel"
+          },
+          {
+            "kind": "struct",
+            "name": "Ina3221"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "manufacturer_id"
+          },
+          {
+            "kind": "fn",
+            "name": "read_channel"
+          },
+          {
+            "kind": "fn",
+            "name": "read_all"
+          }
+        ],
+        "path": "core/adapters/power/ina3221/src/lib.rs",
+        "sha256": "564160e1f1c137dff93b51f12a287ac0d06117a1222a4e8485c0473a4451b719"
+      },
+      {
+        "crate": "nobro-adapter-ros-imu-bridge",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "TOPIC_IMU"
+          },
+          {
+            "kind": "const",
+            "name": "MSG_IMU_TYPE"
+          },
+          {
+            "kind": "const",
+            "name": "BRIDGE_ID"
+          },
+          {
+            "kind": "const",
+            "name": "SERVICE_STATS"
+          },
+          {
+            "kind": "const",
+            "name": "SERVICE_STATS_RESP_BYTES"
+          },
+          {
+            "kind": "const",
+            "name": "DEPTH"
+          },
+          {
+            "kind": "const",
+            "name": "MAX_MSG"
+          },
+          {
+            "kind": "enum",
+            "name": "RosError"
+          },
+          {
+            "kind": "struct",
+            "name": "RosImuBridge"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "published"
+          },
+          {
+            "kind": "fn",
+            "name": "transmitted"
+          },
+          {
+            "kind": "fn",
+            "name": "dropped"
+          },
+          {
+            "kind": "fn",
+            "name": "max_depth"
+          },
+          {
+            "kind": "fn",
+            "name": "pump"
+          }
+        ],
+        "path": "core/adapters/protocol/ros-imu-bridge/src/lib.rs",
+        "sha256": "7c30c986979489628ba932e3e857ab7a5b5ddd78b66853ef51ee88a30b862b2f"
+      },
+      {
+        "crate": "nobro-adapter-bmp280",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "DEFAULT_ADDR"
+          },
+          {
+            "kind": "const",
+            "name": "REG_ID"
+          },
+          {
+            "kind": "const",
+            "name": "CHIP_ID"
+          },
+          {
+            "kind": "struct",
+            "name": "Bmp280Calib"
+          },
+          {
+            "kind": "fn",
+            "name": "compensate_temp"
+          },
+          {
+            "kind": "fn",
+            "name": "compensate_pressure"
+          },
+          {
+            "kind": "struct",
+            "name": "Bmp280"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "chip_id"
+          },
+          {
+            "kind": "fn",
+            "name": "load_calibration"
+          },
+          {
+            "kind": "fn",
+            "name": "calibration"
+          }
+        ],
+        "path": "core/adapters/sensors/bmp280/src/lib.rs",
+        "sha256": "c4b324e7c001d9403c95beda3c79dab361bb051b4977aa0637aeb382f24f8bf8"
+      },
+      {
+        "crate": "nobro-adapter-sensors-esp32-adc-continuous",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "trait",
+            "name": "Esp32AdcContinuousTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "AdcDiagnostics"
+          },
+          {
+            "kind": "struct",
+            "name": "Esp32AdcContinuous"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          }
+        ],
+        "path": "core/adapters/sensors/esp32-adc-continuous/src/lib.rs",
+        "sha256": "2f67454acf5432cda6bef390586b0ef3425de9c9ce7e938df3c23c279a9f6597"
+      },
+      {
+        "crate": "nobro-adapter-servo-esp32-ledc",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "Esp32LedcTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "Esp32Ledc"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          }
+        ],
+        "path": "core/adapters/servo/esp32-ledc/src/lib.rs",
+        "sha256": "c5797ea372a31da7c7db6f038c4518a41ff5afe3b2d001b9d05d89ebc2bd7d70"
+      },
+      {
+        "crate": "nobro-adapter-servo-esp32-rmt",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "trait",
+            "name": "Esp32RmtTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "Esp32Rmt"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          }
+        ],
+        "path": "core/adapters/servo/esp32-rmt/src/lib.rs",
+        "sha256": "f7dfce491e6aa4773de80b483b9465e8667c3ad4033395e9824bb9667bb3b341"
+      },
+      {
+        "crate": "nobro-adapter-robo-servo",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "RoboServoError"
+          },
+          {
+            "kind": "struct",
+            "name": "RoboServoAdapter"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "module_spec"
+          }
+        ],
+        "path": "core/adapters/servo/robo-servo/src/lib.rs",
+        "sha256": "c057696c9528c455515be32477c4ddc814b7ffd7c195766b4c6c45d96ab2ce80"
+      },
+      {
+        "crate": "nobro-adapter-sensor-stub",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "SensorStubError"
+          },
+          {
+            "kind": "enum",
+            "name": "SensorStubMode"
+          },
+          {
+            "kind": "struct",
+            "name": "SensorStubProfile"
+          },
+          {
+            "kind": "const",
+            "name": "DEFAULT"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "SensorStub"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "with_profile"
+          },
+          {
+            "kind": "fn",
+            "name": "owner"
+          },
+          {
+            "kind": "fn",
+            "name": "stub_i2c_addr"
+          },
+          {
+            "kind": "fn",
+            "name": "profile"
+          },
+          {
+            "kind": "fn",
+            "name": "set_mode"
+          },
+          {
+            "kind": "fn",
+            "name": "tick_count"
+          },
+          {
+            "kind": "fn",
+            "name": "poll_at"
+          },
+          {
+            "kind": "fn",
+            "name": "module_spec"
+          },
+          {
+            "kind": "fn",
+            "name": "stub_imu_plausible"
+          }
+        ],
+        "path": "core/adapters/virtual/sensor-stub/src/lib.rs",
+        "sha256": "42d3b7de5b80a912ad0c73cb2ed4d75bd2817a521b466cc2812b2e723081c79d"
+      },
+      {
+        "crate": "nobro-adapter-radio-comms",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "RadioCommsError"
+          },
+          {
+            "kind": "struct",
+            "name": "RadioComms"
+          },
+          {
+            "kind": "fn",
+            "name": "acquire"
+          },
+          {
+            "kind": "fn",
+            "name": "release"
+          }
+        ],
+        "path": "core/adapters/wireless/radio-comms/src/lib.rs",
+        "sha256": "c938ea250af3710360cfb5d3dae7d0399b76fc5cc9f8185ddaf5c9cb3c94a40d"
+      },
+      {
+        "crate": "nobro-adapter-wireless-ble-arduino-ble",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "GATT_VALUE_BYTES"
+          },
+          {
+            "kind": "const",
+            "name": "QUEUE_SLOTS"
+          },
+          {
+            "kind": "const",
+            "name": "SERVICE_SLOTS"
+          },
+          {
+            "kind": "const",
+            "name": "CHARACTERISTIC_SLOTS"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "struct",
+            "name": "TimedOperation"
+          },
+          {
+            "kind": "trait",
+            "name": "ArduinoBleTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "ArduinoBleDiagnostics"
+          },
+          {
+            "kind": "struct",
+            "name": "ArduinoBle"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          }
+        ],
+        "path": "core/adapters/wireless/ble/arduino-ble/src/lib.rs",
+        "sha256": "40e328ee609c98937ee2e92a1c09e4e2d157887d86b73f56115ae22a2a769c01"
+      },
+      {
+        "crate": "nobro-adapter-wireless-ble-arduino-esp",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "GATT_VALUE_BYTES"
+          },
+          {
+            "kind": "enum",
+            "name": "ArduinoEspTarget"
+          },
+          {
+            "kind": "enum",
+            "name": "VendorHost"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          }
+        ],
+        "path": "core/adapters/wireless/ble/arduino-esp/src/lib.rs",
+        "sha256": "7b57dec276559309612e4dec6b8833f4c880dce3828180a775316ed93a6cac69"
+      },
+      {
+        "crate": "nobro-adapter-wireless-wifi-arduino-esp",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "WIFI_TCP_MTU"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "valid_credentials"
+          }
+        ],
+        "path": "core/adapters/wireless/wifi/arduino-esp/src/lib.rs",
+        "sha256": "263d86d960446b168ee93a7026c9ffbca3d7a46eba68cb392c54f378b7819217"
+      },
+      {
+        "crate": "nobro-adapter-wireless-wifi-arduino-wifis3",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "const",
+            "name": "WIFI_TCP_MTU"
+          },
+          {
+            "kind": "const",
+            "name": "CONTROL_QUEUE_SLOTS"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "struct",
+            "name": "TimedJoin"
+          },
+          {
+            "kind": "trait",
+            "name": "ArduinoWifiS3Transport"
+          },
+          {
+            "kind": "struct",
+            "name": "WifiS3Diagnostics"
+          },
+          {
+            "kind": "struct",
+            "name": "ArduinoWifiS3"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          }
+        ],
+        "path": "core/adapters/wireless/wifi/arduino-wifis3/src/lib.rs",
+        "sha256": "5564c2f606aae67ae5d1ce50b6d8292ee1e0d27e4b89504a18c3ea55514c50fa"
+      }
+    ]
+  }
+}

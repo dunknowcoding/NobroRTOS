@@ -187,6 +187,11 @@ def main() -> int:
     )
     if generated.returncode:
         errors.append("generated API index is stale")
+    api_contract = subprocess.run(
+        [sys.executable, "tools/gen_api_contract.py", "--check"], cwd=ROOT
+    )
+    if api_contract.returncode:
+        errors.append("generated cross-language API contract is stale")
     error_codes = subprocess.run(
         [sys.executable, "tools/gen_error_codes.py", "--check"], cwd=ROOT
     )
