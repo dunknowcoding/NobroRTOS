@@ -29,7 +29,6 @@ import json
 import os
 import pathlib
 import re
-import secrets
 import shutil
 import stat
 import subprocess
@@ -45,9 +44,14 @@ MATRIX = ROOT / "core" / "boards" / "platform_tiers.json"
 FEATURE_REGISTRY = ROOT / "core" / "boards" / "feature_providers.json"
 ADAPTER_CATALOG = ROOT / "core" / "adapters" / "catalog.json"
 SCHEMA = "nobro-platform-support-v2"
+VERDICT_SCHEMA = "nobro-evidence-verdict-v1"
 SURFACE_VOCABULARY = {"native": "providers", "arduino": "facade_offers"}
 HOST_EVIDENCE = "host-test"
 TARGET_EVIDENCE = "target-build"
+EVIDENCE_CLASS_BY_KIND = {
+    HOST_EVIDENCE: "model",
+    TARGET_EVIDENCE: "build",
+}
 SAFE_PLACEHOLDERS = {"host_target"}
 PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
@@ -178,6 +182,36 @@ def validate(
             errors.append(f"{prefix}: workflow_job must be a safe job ID")
         if not _relative_existing_file(runner.get("receipt_driver")):
             errors.append(f"{prefix}: receipt_driver must be a repository-contained file")
+        probes = runner.get("identity_probes")
+        if not isinstance(probes, list) or not probes:
+            errors.append(f"{prefix}: identity_probes must be a non-empty list")
+        else:
+            probe_ids: list[str] = []
+            for index, probe in enumerate(probes):
+                probe_prefix = f"{prefix}.identity_probes[{index}]"
+                if not isinstance(probe, dict):
+                    errors.append(f"{probe_prefix}: expected an object")
+                    continue
+                probe_id = probe.get("id")
+                if not isinstance(probe_id, str) or not SAFE_COMPONENT.fullmatch(probe_id):
+                    errors.append(f"{probe_prefix}: id must be a safe component")
+                else:
+                    probe_ids.append(probe_id)
+                command = probe.get("command")
+                if not isinstance(command, list) or not command or not all(
+                    isinstance(token, str) and token for token in command
+                ):
+                    errors.append(f"{probe_prefix}: command must be a non-empty argument array")
+                expected = probe.get("expected")
+                if not isinstance(expected, str) or not expected:
+                    errors.append(f"{probe_prefix}: expected must be a non-empty regular expression")
+                else:
+                    try:
+                        re.compile(expected)
+                    except re.error as exc:
+                        errors.append(f"{probe_prefix}: invalid expected expression: {exc}")
+            if _duplicates(probe_ids):
+                errors.append(f"{prefix}: duplicate identity probe IDs")
 
     gate_references: set[str] = set()
     gate_claim_scopes: dict[str, set[tuple[str, str, str]]] = {}
@@ -565,6 +599,53 @@ def _matrix_digest(matrix: dict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _json_digest(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _record_digest(record: dict) -> str:
+    return _json_digest(
+        {key: value for key, value in record.items() if key != "record_digest"}
+    )
+
+
+def _capture_runner_identity(matrix: dict, runner: str) -> tuple[list[dict], str]:
+    """Capture stable public tool identities without invoking a command shell."""
+    runner_record = matrix.get("runners", {}).get(runner)
+    if not isinstance(runner_record, dict):
+        raise RuntimeError(f"unknown runner {runner!r}")
+    identities: list[dict] = []
+    for probe in runner_record.get("identity_probes", []):
+        command = list(probe["command"])
+        if command[0] == "python":
+            command[0] = sys.executable
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = process.communicate()
+        except OSError as exc:
+            raise RuntimeError(
+                f"identity probe {probe['id']!r} could not start: {exc}"
+            ) from exc
+        output = (stdout + stderr).decode("utf-8", errors="replace")
+        output = output.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if process.returncode:
+            raise RuntimeError(
+                f"identity probe {probe['id']!r} failed with {process.returncode}"
+            )
+        if re.search(probe["expected"], output, flags=re.MULTILINE) is None:
+            raise RuntimeError(
+                f"identity probe {probe['id']!r} did not match its pinned expectation"
+            )
+        identities.append({"id": probe["id"], "output": output})
+    return identities, _json_digest(identities)
+
+
 def _digest_chunk(hasher, label: bytes, payload: bytes) -> None:
     """Add one unambiguous, length-delimited field to a worktree digest."""
     hasher.update(len(label).to_bytes(4, "big"))
@@ -691,9 +772,23 @@ def _active_session(
     }
     if not isinstance(active, dict) or any(active.get(key) != value for key, value in expected.items()):
         return None, [f"receipts.{runner}: stale or altered active session"]
-    session_id = active.get("session_id")
-    if not isinstance(session_id, str) or not re.fullmatch(r"[0-9a-f]{32}", session_id):
+    identities = active.get("identities")
+    if not isinstance(identities, list) or active.get("identity_digest") != _json_digest(
+        identities
+    ):
+        return None, [f"receipts.{runner}: stale or altered active identity"]
+    session_basis = {
+        "schema": SCHEMA,
+        "runner": runner,
+        "matrix_digest": active["matrix_digest"],
+        "worktree_digest": active["worktree_digest"],
+        "identity_digest": active["identity_digest"],
+    }
+    session_id = _json_digest(session_basis)[:32]
+    if active.get("session_id") != session_id:
         return None, [f"receipts.{runner}: invalid active session ID"]
+    if active.get("record_digest") != _record_digest(active):
+        return None, [f"receipts.{runner}: stale or altered active session record"]
     return active, []
 
 
@@ -729,13 +824,30 @@ def begin_receipts(
         print(f"PLATFORM TIERS: receipts.{runner}: cannot fingerprint public worktree: {exc}")
         print("RESULT: FAIL")
         return 1
+    try:
+        identities, identity_digest = _capture_runner_identity(matrix, runner)
+    except RuntimeError as exc:
+        print(f"PLATFORM TIERS: receipts.{runner}: cannot bind tool identity: {exc}")
+        print("RESULT: FAIL")
+        return 1
     active = {
         "schema": SCHEMA,
         "runner": runner,
         "matrix_digest": _matrix_digest(matrix),
         "worktree_digest": worktree_digest,
-        "session_id": secrets.token_hex(16),
+        "identity_digest": identity_digest,
+        "identities": identities,
     }
+    active["session_id"] = _json_digest(
+        {
+            "schema": SCHEMA,
+            "runner": runner,
+            "matrix_digest": active["matrix_digest"],
+            "worktree_digest": active["worktree_digest"],
+            "identity_digest": active["identity_digest"],
+        }
+    )[:32]
+    active["record_digest"] = _record_digest(active)
     (directory / ".active").write_text(
         json.dumps(active, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -755,6 +867,8 @@ def _load_receipts(
         return [], errors
     receipts: list[str] = []
     for path in sorted(directory.glob("*.json")):
+        if path.name == "verdict.json":
+            continue
         if path.is_symlink():
             errors.append(f"receipts.{runner}: receipt files cannot be symlinks")
             continue
@@ -776,12 +890,22 @@ def _load_receipts(
             "runner": runner,
             "matrix_digest": active["matrix_digest"],
             "worktree_digest": active["worktree_digest"],
+            "identity_digest": active["identity_digest"],
             "session_id": active["session_id"],
         }
         if any(record.get(key) != value for key, value in expected_record.items()):
             errors.append(f"receipts.{runner}: stale or altered receipt {path.name}")
             continue
         if record.get("gate_digest") != _gate_digest(gate_id, gate):
+            errors.append(f"receipts.{runner}: stale or altered receipt {path.name}")
+            continue
+        if record.get("evidence_kind") != gate.get("kind"):
+            errors.append(f"receipts.{runner}: stale or altered receipt {path.name}")
+            continue
+        if record.get("evidence_class") != EVIDENCE_CLASS_BY_KIND.get(gate.get("kind")):
+            errors.append(f"receipts.{runner}: stale or altered receipt {path.name}")
+            continue
+        if record.get("record_digest") != _record_digest(record):
             errors.append(f"receipts.{runner}: stale or altered receipt {path.name}")
             continue
         receipts.append(gate_id)
@@ -795,7 +919,50 @@ def assert_runner_receipts(
     source_root: pathlib.Path | None = None,
 ) -> list[str]:
     receipts, load_errors = _load_receipts(matrix, runner, receipt_root, source_root)
-    return validate_receipts(matrix, runner, receipts) + load_errors
+    errors = validate_receipts(matrix, runner, receipts) + load_errors
+    active, active_errors = _active_session(
+        matrix, runner, receipt_root, source_root
+    )
+    errors.extend(error for error in active_errors if error not in errors)
+    if active is not None:
+        try:
+            identities, identity_digest = _capture_runner_identity(matrix, runner)
+        except RuntimeError as exc:
+            errors.append(f"receipts.{runner}: cannot recheck tool identity: {exc}")
+        else:
+            if identities != active["identities"] or identity_digest != active["identity_digest"]:
+                errors.append(f"receipts.{runner}: tool identity changed during execution")
+    if not errors and active is not None:
+        gates = matrix["evidence_gates"]
+        evidence = [
+            {
+                "gate_id": gate_id,
+                "gate_digest": _gate_digest(gate_id, gates[gate_id]),
+                "kind": gates[gate_id]["kind"],
+                "class": EVIDENCE_CLASS_BY_KIND[gates[gate_id]["kind"]],
+            }
+            for gate_id in sorted(receipts)
+        ]
+        verdict = {
+            "schema": VERDICT_SCHEMA,
+            "result": "pass",
+            "runner": runner,
+            "matrix_digest": active["matrix_digest"],
+            "worktree_digest": active["worktree_digest"],
+            "identity_digest": active["identity_digest"],
+            "source": {"worktree_digest": active["worktree_digest"]},
+            "evidence": evidence,
+            "physical_evidence": [],
+        }
+        verdict["record_digest"] = _record_digest(verdict)
+        verdict_path = _receipt_directory(runner, receipt_root) / "verdict.json"
+        temporary = verdict_path.with_suffix(".tmp")
+        temporary.unlink(missing_ok=True)
+        temporary.write_text(
+            json.dumps(verdict, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        temporary.replace(verdict_path)
+    return errors
 
 
 def execute_gate(
@@ -851,8 +1018,12 @@ def execute_gate(
             "gate_digest": _gate_digest(gate_id, gate),
             "matrix_digest": active["matrix_digest"],
             "worktree_digest": active["worktree_digest"],
+            "identity_digest": active["identity_digest"],
             "session_id": active["session_id"],
+            "evidence_kind": gate["kind"],
+            "evidence_class": EVIDENCE_CLASS_BY_KIND[gate["kind"]],
         }
+        record["record_digest"] = _record_digest(record)
         temporary = receipt.with_suffix(".tmp")
         temporary.unlink(missing_ok=True)
         temporary.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
@@ -1047,6 +1218,28 @@ def selftest() -> int:
     file_root = copy.deepcopy(good)
     file_root["platforms"]["samd21"]["implementation_root"] = "README.md"
     _expect_error(validate(file_root), "implementation_root")
+    no_identity = copy.deepcopy(good)
+    no_identity["runners"]["rust-matrix"]["identity_probes"] = []
+    _expect_error(validate(no_identity), "identity_probes must be a non-empty list")
+    unsafe_identity = copy.deepcopy(good)
+    unsafe_identity["runners"]["rust-matrix"]["identity_probes"][0]["command"] = []
+    _expect_error(validate(unsafe_identity), "command must be a non-empty argument array")
+    bad_identity_pattern = copy.deepcopy(good)
+    bad_identity_pattern["runners"]["rust-matrix"]["identity_probes"][0][
+        "expected"
+    ] = "("
+    _expect_error(validate(bad_identity_pattern), "invalid expected expression")
+
+    # Receipt mechanics use one portable deterministic probe; the real matrix
+    # identities were validated above and are exercised by their hosted runners.
+    for runner_record in good["runners"].values():
+        runner_record["identity_probes"] = [
+            {
+                "id": "selftest-python",
+                "command": ["python", "-c", "print('nobro-selftest-tool-v1')"],
+                "expected": "^nobro-selftest-tool-v1$",
+            }
+        ]
 
     rust_receipts = [
         "nrf52840-hal-host",
@@ -1161,6 +1354,33 @@ def selftest() -> int:
             assert_runner_receipts(good, "rust-matrix", receipt_root, source_root) == [],
             "fresh complete runner receipts must validate",
         )
+        verdict_path = _receipt_directory("rust-matrix", receipt_root) / "verdict.json"
+        first_verdict = verdict_path.read_text(encoding="utf-8")
+        verdict = json.loads(first_verdict)
+        _expect(verdict["schema"] == VERDICT_SCHEMA, "verdict schema must be explicit")
+        _expect(verdict["result"] == "pass", "complete receipts must produce a pass verdict")
+        _expect(
+            {entry["kind"] for entry in verdict["evidence"]} == {HOST_EVIDENCE},
+            "verdict evidence kinds must remain explicit",
+        )
+        _expect(
+            {entry["class"] for entry in verdict["evidence"]} == {"model"}
+            and verdict["physical_evidence"] == []
+            and verdict["source"]["worktree_digest"] == verdict["worktree_digest"],
+            "source/model/build/physical evidence classes must remain distinct",
+        )
+        _expect(
+            verdict["record_digest"] == _record_digest(verdict),
+            "verdict digest must be independently reproducible",
+        )
+        _expect(
+            assert_runner_receipts(good, "rust-matrix", receipt_root, source_root) == [],
+            "a repeated verdict assertion must remain valid",
+        )
+        _expect(
+            verdict_path.read_text(encoding="utf-8") == first_verdict,
+            "equivalent receipt evidence must reproduce the exact verdict",
+        )
 
         _expect(
             _quiet_call(
@@ -1273,7 +1493,11 @@ def selftest() -> int:
             ("session_id", "f" * 32),
             ("matrix_digest", "0" * 64),
             ("worktree_digest", "0" * 64),
+            ("identity_digest", "0" * 64),
             ("gate_digest", "0" * 64),
+            ("evidence_kind", TARGET_EVIDENCE),
+            ("evidence_class", "build"),
+            ("record_digest", "0" * 64),
         ):
             altered = dict(original_record)
             altered[field] = value
@@ -1418,6 +1642,42 @@ def selftest() -> int:
             assert_runner_receipts(good, "arduino-package", mutation_root, source_root),
             "stale or altered active session",
         )
+
+        identity_root = receipt_root / "identity-mutation"
+        identity_matrix = copy.deepcopy(good)
+        identity_matrix["runners"]["rust-matrix"]["identity_probes"] = [
+            {
+                "id": "mutable-selftest",
+                "command": [
+                    "python",
+                    "-c",
+                    "import os; print(os.environ['NOBRO_SELFTEST_IDENTITY'])",
+                ],
+                "expected": "^identity-[12]$",
+            }
+        ]
+        with mock.patch.dict(os.environ, {"NOBRO_SELFTEST_IDENTITY": "identity-1"}):
+            _expect(
+                _quiet_call(
+                    begin_receipts,
+                    identity_matrix,
+                    "rust-matrix",
+                    identity_root,
+                    source_root,
+                )
+                == 0,
+                "begin mutable-identity receipts",
+            )
+        with mock.patch.dict(os.environ, {"NOBRO_SELFTEST_IDENTITY": "identity-2"}):
+            _expect_error(
+                assert_runner_receipts(
+                    identity_matrix,
+                    "rust-matrix",
+                    identity_root,
+                    source_root,
+                ),
+                "tool identity changed during execution",
+            )
 
         try:
             _receipt_directory("../escape", receipt_root)

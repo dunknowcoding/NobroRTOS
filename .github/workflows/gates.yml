@@ -16,12 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: user release boundary
-        run: python tools/check_release_boundary.py
+        run: |
+          python tools/check_release_boundary.py
+          python tools/check_ci_hermeticity.py --selftest
       - name: python binding tests
         working-directory: bindings/python
         run: python -m unittest discover -s tests
@@ -86,14 +88,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install exact stable Rust toolchain
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal \
+            --target thumbv7em-none-eabihf \
+            --component clippy,rustfmt,llvm-tools-preview,rust-src
+          rustup default 1.97.0
+          rustc -vV | grep -F "commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          targets: thumbv7em-none-eabihf
-          components: clippy,rustfmt,llvm-tools-preview,rust-src
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: build generated firmware and prebuilt UF2 experiences
         run: |
           python tools/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
@@ -101,6 +107,7 @@ jobs:
           python tools/nobro_firmware_project.py _work/python-authoring/app.json --out _work/python-firmware --build
           python tools/package_prebuilt_uf2.py --build
       - name: comprehensive Rust gates
+        timeout-minutes: 35
         run: |
           python tools/check_platform_tiers.py --begin-receipts rust-matrix
           python tools/run_checks.py --rust-only
@@ -113,30 +120,42 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@1.97.0
-        with:
-          components: rust-src
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install exact stable Rust toolchain
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal --component rust-src
+          rustup default 1.97.0
+          rustc -vV | grep -F "commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3"
       - uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
         with:
-          tool: cargo-audit,cargo-llvm-cov
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+          tool: cargo-audit@0.22.2,cargo-llvm-cov@0.8.7
+          fallback: none
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: locked source and license policy
         run: python tools/check_dependency_policy.py
       - name: advisory database audit
         working-directory: core
         # cargo-audit reads a lockfile directly and has no --locked option.
-        run: cargo audit --file Cargo.lock
+        timeout-minutes: 10
+        run: |
+          git clone https://github.com/RustSec/advisory-db.git ../_work/advisory-db
+          git -C ../_work/advisory-db checkout --detach 29638ff054fdbb83d2844240f7ef7e576cb52629
+          test "$(git -C ../_work/advisory-db rev-parse HEAD)" = \
+            "29638ff054fdbb83d2844240f7ef7e576cb52629"
+          cargo audit --db ../_work/advisory-db --file Cargo.lock
       - name: portable coverage
         working-directory: core
+        timeout-minutes: 25
         run: >-
           cargo llvm-cov --locked -p nobro-kernel -p nobro-net -p nobro-secure
           -p nobro-admission -p nobro-storage -p nobro-database -p nobro-power -p nobro-sal
           -p nobro-audio -p nobro-servo
-          --target x86_64-unknown-linux-gnu --lcov --output-path ../coverage.lcov
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          --target x86_64-unknown-linux-gnu --fail-under-lines 90
+          --lcov --output-path ../coverage.lcov
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-coverage
           path: coverage.lcov
@@ -145,18 +164,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: miri,rust-src
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install exact Miri nightly
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install nightly-2026-07-03 --profile minimal \
+            --component miri,rust-src
+          rustup default nightly-2026-07-03
+          rustc -vV | grep -F "commit-hash: c397dae808f70caebab1fc4e11b3edf7e59f58c7"
       - name: Miri portable safety boundary
         working-directory: core
+        timeout-minutes: 50
         run: >-
           cargo miri test --locked --target x86_64-unknown-linux-gnu
           -p nobro-database -p nobro-storage -p nobro-net -p nobro-secure -p nobro-hal
           -p nobro-audio -p nobro-servo
       - name: Miri bounded async and executor-cell boundary
         working-directory: core
+        timeout-minutes: 50
         env:
           # AsyncCore is embedded with static-cell lifetime; tests model that with Box::leak.
           MIRIFLAGS: -Zmiri-ignore-leaks
@@ -175,6 +200,7 @@ jobs:
           cargo miri test --locked --target x86_64-unknown-linux-gnu --manifest-path ports/ra4m1/Cargo.toml --lib event_dma::tests
       - name: address sanitizer smoke
         working-directory: core
+        timeout-minutes: 20
         env:
           CARGO_TARGET_DIR: ../_work/ci-asan
           RUSTFLAGS: -Zsanitizer=address
@@ -188,22 +214,29 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: install exact stable Rust toolchain
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal \
+            --target thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf \
+            --component rust-src,llvm-tools-preview
+          rustup default 1.97.0
+          rustc -vV | grep -F "commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          targets: thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf
-          components: rust-src,llvm-tools-preview
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: install ESP32-S3 Xtensa Rust toolchain
         shell: bash
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           espup_zip=/tmp/espup-x86_64-unknown-linux-gnu.zip
           curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
             --output "$espup_zip" \
             https://github.com/esp-rs/espup/releases/download/v0.17.1/espup-x86_64-unknown-linux-gnu.zip
+          echo "dd8625b3742b2f74ce406286baef8ee67525d63b25ea303ddf7473ed2cc31192  $espup_zip" \
+            | sha256sum --check --strict
           unzip -o "$espup_zip" -d "$HOME/.cargo/bin"
           chmod +x "$HOME/.cargo/bin/espup"
           "$HOME/.cargo/bin/espup" install -l debug --targets esp32s3 \
@@ -212,44 +245,62 @@ jobs:
           echo "$PATH" >> "$GITHUB_PATH"
           echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
       - name: install Tier-C Arm linker
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes gcc-arm-none-eabi
+          set -euo pipefail
+          archive=/tmp/xpack-arm-none-eabi-gcc-13.3.1-1.1-linux-x64.tar.gz
+          curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
+            --output "$archive" \
+            https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v13.3.1-1.1/xpack-arm-none-eabi-gcc-13.3.1-1.1-linux-x64.tar.gz
+          echo "006c89337eced277fdf4c1c3bf3aebe55c85e8d52cba8d412009717fb781b959  $archive" \
+            | sha256sum --check --strict
+          mkdir -p "$HOME/.local/xpack"
+          tar -xzf "$archive" -C "$HOME/.local/xpack"
+          echo "$HOME/.local/xpack/xpack-arm-none-eabi-gcc-13.3.1-1.1/bin" \
+            >> "$GITHUB_PATH"
       - name: full reproducible cross-MCU matrix
+        timeout-minutes: 50
         run: bash tools/ci_matrix.sh
 
   arduino-package:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: install pinned Arduino CLI
         shell: bash
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           archive=/tmp/arduino-cli_1.5.1_Linux_64bit.tar.gz
           curl --fail --location --retry 6 --retry-all-errors --retry-delay 10 \
             --output "$archive" \
             https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Linux_64bit.tar.gz
+          echo "28a8e119c498a25607821c36cb2dc49e8463941b261a0d99091baa7bc692dd2b  $archive" \
+            | sha256sum --check --strict
           mkdir -p "$HOME/.local/bin"
           tar -xzf "$archive" -C "$HOME/.local/bin" arduino-cli
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/arduino-cli" version | grep -F "Version: 1.5.1"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: install representative cores
+        timeout-minutes: 25
         run: |
           arduino-cli core update-index
-          arduino-cli core install arduino:avr
-          arduino-cli core install arduino:renesas_uno
+          arduino-cli core install arduino:avr@1.8.8
+          arduino-cli core install arduino:renesas_uno@1.6.0
           arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli lib install ArduinoBLE@2.1.0
       - name: prepare pinned audio member
         run: |
           git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
-          git -C _work/NiusAudio checkout fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
+          git -C _work/NiusAudio checkout --detach fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
+          test "$(git -C _work/NiusAudio rev-parse HEAD)" = \
+            "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2"
       - name: compile public package examples (AVR, UNO R4, ESP32-S3)
+        timeout-minutes: 35
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
         run: |
@@ -266,22 +317,30 @@ jobs:
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
-          git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          git -C _work/ArduinoNRF-IMU checkout --detach 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          test "$(git -C _work/ArduinoNRF-IMU rev-parse HEAD)" = \
+            "7c8248b8d37294be6cc545c3cf549e907ccbc955"
           python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
           python tools/check_niusimu_adapter.py --selftest
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout 11240978724418eb4647fa385cef4c684cf29060
+          git -C _work/NiusWireless checkout --detach 11240978724418eb4647fa385cef4c684cf29060
+          test "$(git -C _work/NiusWireless rev-parse HEAD)" = \
+            "11240978724418eb4647fa385cef4c684cf29060"
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
-          git -C _work/ArduinoNRF-Zigbee checkout 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          test "$(git -C _work/ArduinoNRF-Zigbee rev-parse HEAD)" = \
+            "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
           python tools/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
       - name: pinned camera integration
         run: |
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
-          git -C _work/NiusCam checkout b03560adf4da07e4a16b4d9e658a01d74ccb9340
+          git -C _work/NiusCam checkout --detach b03560adf4da07e4a16b4d9e658a01d74ccb9340
+          test "$(git -C _work/NiusCam rev-parse HEAD)" = \
+            "b03560adf4da07e4a16b4d9e658a01d74ccb9340"
           python tools/check_camera_integrations.py --library _work/NiusCam --compile
       - name: bounded ESP32 peripheral integrations
         run: |
@@ -291,9 +350,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: install pinned Arduino CLI
         shell: pwsh
+        timeout-minutes: 10
         run: |
           $archive = Join-Path $env:RUNNER_TEMP "arduino-cli_1.5.1_Windows_64bit.zip"
           $toolDir = Join-Path $env:RUNNER_TEMP "arduino-cli-1.5.1"
@@ -301,22 +361,27 @@ jobs:
             --output $archive `
             https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Windows_64bit.zip
           if ($LASTEXITCODE -ne 0) { throw "Arduino CLI download failed" }
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = "fabe42e0eb04d00e776a66178299ff95a46c623dbc260f997e58fd514853dd40"
+          if ($actualHash -ne $expectedHash) { throw "Arduino CLI archive digest mismatch" }
           Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
           $binary = Join-Path $toolDir "arduino-cli.exe"
           $version = & $binary version
           if ($version -notmatch "Version: 1\.5\.1") { throw "unexpected Arduino CLI: $version" }
           $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.11.9"
       - name: install pinned ArduinoNRF core
         shell: pwsh
+        timeout-minutes: 25
         run: |
           $index = "https://raw.githubusercontent.com/dunknowcoding/ArduinoNRF/0add1ce4842b346316334d41f1038e792f3b6958/package_arduinonrf_index.json"
           arduino-cli core update-index --additional-urls $index
           arduino-cli core install arduinonrf:nrf52@0.3.11 --additional-urls $index
       - name: compile public package examples (ArduinoNRF)
         shell: pwsh
+        timeout-minutes: 35
         run: |
           python tools/check_platform_tiers.py --begin-receipts arduino-nrf-package
           python tools/check_platform_tiers.py --run-gate arduino-nrf52840-compile
@@ -325,13 +390,22 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
-          git -C _work/ArduinoNRF-IMU checkout 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          git -C _work/ArduinoNRF-IMU checkout --detach 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          if ((git -C _work/ArduinoNRF-IMU rev-parse HEAD) -ne "7c8248b8d37294be6cc545c3cf549e907ccbc955") {
+            throw "NiusIMU checkout drift"
+          }
           python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
       - name: compile pinned NiusZigbee integration (ArduinoNRF)
         shell: pwsh
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout 11240978724418eb4647fa385cef4c684cf29060
+          git -C _work/NiusWireless checkout --detach 11240978724418eb4647fa385cef4c684cf29060
+          if ((git -C _work/NiusWireless rev-parse HEAD) -ne "11240978724418eb4647fa385cef4c684cf29060") {
+            throw "NiusWireless checkout drift"
+          }
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
-          git -C _work/ArduinoNRF-Zigbee checkout 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          if ((git -C _work/ArduinoNRF-Zigbee rev-parse HEAD) -ne "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9") {
+            throw "NiusZigbee checkout drift"
+          }
           python tools/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-zigbee

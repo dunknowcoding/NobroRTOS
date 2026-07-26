@@ -39,19 +39,97 @@
   "runners": {
     "rust-matrix": {
       "workflow_job": "rust-matrix",
-      "receipt_driver": ".github/workflows/gates.yml"
+      "receipt_driver": ".github/workflows/gates.yml",
+      "identity_probes": [
+        {
+          "id": "python",
+          "command": ["python", "--version"],
+          "expected": "^Python 3\\."
+        },
+        {
+          "id": "rustc",
+          "command": ["rustc", "-vV"],
+          "expected": "^release: 1\\.97\\.0$"
+        },
+        {
+          "id": "cargo",
+          "command": ["cargo", "-V"],
+          "expected": "^cargo 1\\.97\\.0 "
+        }
+      ]
     },
     "cross-mcu": {
       "workflow_job": "cross-mcu",
-      "receipt_driver": "tools/ci_matrix.sh"
+      "receipt_driver": "tools/ci_matrix.sh",
+      "identity_probes": [
+        {
+          "id": "python",
+          "command": ["python", "--version"],
+          "expected": "^Python 3\\."
+        },
+        {
+          "id": "rustc",
+          "command": ["rustc", "-vV"],
+          "expected": "^release: 1\\.97\\.0$"
+        },
+        {
+          "id": "cargo",
+          "command": ["cargo", "-V"],
+          "expected": "^cargo 1\\.97\\.0 "
+        },
+        {
+          "id": "arm-gcc",
+          "command": ["arm-none-eabi-gcc", "--version"],
+          "expected": "^arm-none-eabi-gcc(?:\\.exe)? "
+        },
+        {
+          "id": "xtensa-gcc",
+          "command": ["xtensa-esp32s3-elf-gcc", "--version"],
+          "expected": "^xtensa-esp(?:32s3)?-elf-gcc(?:\\.exe)? "
+        }
+      ]
     },
     "arduino-package": {
       "workflow_job": "arduino-package",
-      "receipt_driver": ".github/workflows/gates.yml"
+      "receipt_driver": ".github/workflows/gates.yml",
+      "identity_probes": [
+        {
+          "id": "python",
+          "command": ["python", "--version"],
+          "expected": "^Python 3\\."
+        },
+        {
+          "id": "arduino-cli",
+          "command": ["arduino-cli", "version"],
+          "expected": "Version: 1\\.5\\.1"
+        },
+        {
+          "id": "board-packages",
+          "command": ["arduino-cli", "core", "list"],
+          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)"
+        }
+      ]
     },
     "arduino-nrf-package": {
       "workflow_job": "arduino-nrf-package",
-      "receipt_driver": ".github/workflows/gates.yml"
+      "receipt_driver": ".github/workflows/gates.yml",
+      "identity_probes": [
+        {
+          "id": "python",
+          "command": ["python", "--version"],
+          "expected": "^Python 3\\."
+        },
+        {
+          "id": "arduino-cli",
+          "command": ["arduino-cli", "version"],
+          "expected": "Version: 1\\.5\\.1"
+        },
+        {
+          "id": "board-package",
+          "command": ["arduino-cli", "core", "list"],
+          "expected": "arduinonrf:nrf52\\s+0\\.3\\.11"
+        }
+      ]
     }
   },
   "evidence_gates": {

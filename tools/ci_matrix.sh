@@ -133,6 +133,12 @@ gate "esp32c3 port and USB demo build" \
 gate "esp32s3 port build (required Xtensa toolchain)" \
   python tools/check_platform_tiers.py --run-gate esp32s3-target-build
 
+# First-party S3 libraries and binaries are strict-linted. Cargo does not lint
+# dependency packages in this invocation, so generated PAC code is not
+# misrepresented as part of the product lint claim.
+gate "esp32s3 first-party strict lint" \
+  bash -c 'cd core/ports/esp32s3 && cargo +esp clippy --locked --release --lib --bins -- -D warnings'
+
 gate "rp2350 port build" \
   python tools/check_platform_tiers.py --run-gate rp2350-target-build
 
