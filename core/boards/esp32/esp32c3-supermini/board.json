@@ -16,5 +16,15 @@
     "sample_pool_slots": 8,
     "max_modules": 16
   },
+  "firmware_generation": {
+    "support": "maintained-port",
+    "cargo_target": "riscv32imc-unknown-none-elf",
+    "runtime_manifest": "core/ports/esp32c3/Cargo.toml",
+    "entry": "esp-hal RISC-V runtime entry",
+    "interrupts": "owned by the maintained ESP32-C3 port and selected esp-hal providers",
+    "dma": "provider-specific and never inferred from application task names",
+    "clock": "esp-hal startup owns clock selection and timer calibration",
+    "boot": "ESP image metadata and partition offset are owned by the maintained port"
+  },
   "pins": { "led": 8, "servo_pwm": -1, "mvk_trigger": -1 }
 }

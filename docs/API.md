@@ -28,8 +28,8 @@ uses this path for ADC/PWM/I2C/SPI; those facade calls are not native `nobro-hal
 provider claims. The separate native RA4M1 composition implements only
 timebase/deadline/USB. Its 48 MHz DWT clock must be sampled during active execution at
 least once per approximately 89-second counter wrap and is not a sleep-stable timebase.
-Its 24-bit SysTick one-shot rejects delays above approximately 349 milliseconds. A
-stronger always-on clock and chained alarm are still pending.
+Its deadline provider composes long waits from approximately 349-millisecond SysTick
+chunks. A sleep-stable always-on clock is still pending.
 
 ### Plain-C Tier-C facade
 
@@ -71,10 +71,12 @@ app.write_json("app.json")
 `run()` and `simulate()` execute deterministic, bounded host callbacks.
 `write_json()` emits the strict `nobro-app-v1` graph accepted by
 `nobro firmware`; callbacks are omitted. The firmware CLI validates JSON and
-does not evaluate Python source. Generated firmware is native Rust using the
-existing admission path. Current firmware generation supports the nRF52840
-SoftDevice and no-SoftDevice profiles. Wire capacity is retained as topology
-metadata, not exposed as a Python payload transport.
+does not evaluate Python source. Generated firmware is native Rust using the existing
+admission path. Standalone image contracts cover the nRF52840
+SoftDevice/no-SoftDevice, UNO R4 RA4M1, and SAMD21 bootloader layouts. RP2350 and
+ESP32-C3 profiles point to their maintained runtimes until their mandatory
+image/startup machinery can be emitted without duplication. Wire capacity is retained
+as topology metadata, not exposed as a Python payload transport.
 
 ### Crate Overview
 
@@ -119,6 +121,12 @@ requested identity, RA4M1 requires the exact exported `RA4M1_USB_CONFIG`, and th
 ESP32-C3/S3 fixed-function USB-Serial-JTAG controller ignores the requested identity.
 `config_supported()` checks only whether a request is accepted; for a controller-fixed
 identity, acceptance does not mean the requested VID, PID, or strings are advertised.
+`capabilities()` reports the selected backend's stable id, identity policy, MTU,
+buffer/service limits, and supported lifecycle operations. `try_mount_instance()` names
+the logical stack and returns `(MountedUsb, UsbMountReceipt)`. The separate immutable
+receipt records that instance, the request fingerprint, the actually advertised identity
+class, the exact limits, and lifecycle generation. Compatibility `try_mount()` retains
+no receipt state, so applications that do not request one pay no runtime-storage cost.
 
 The count-only `UsbStack::write` and `read` methods remain for compatibility. The newly
 added `flush` method has a fail-closed `false` default so older third-party

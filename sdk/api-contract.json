@@ -822,7 +822,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/app.py",
-          "sha256": "ff6a9675b930ee18180f94e2d85c1e6ba812df019d59001e64d1f34489ced712"
+          "sha256": "07d059287261952df178edf9a5ee5d00d9d84b4168606f9809d66abbd8b4c3c3"
         },
         {
           "path": "bindings/python/nobro_rtos/cli.py",
@@ -5125,6 +5125,14 @@
             "name": "CDC_PACKET_SIZE"
           },
           {
+            "kind": "struct",
+            "name": "UsbInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "PRIMARY"
+          },
+          {
             "kind": "enum",
             "name": "UsbBackendError"
           },
@@ -5143,6 +5151,22 @@
           {
             "kind": "enum",
             "name": "UsbIdentityPolicy"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbAdvertisedIdentity"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbCapabilities"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbServiceLimits"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbMountReceipt"
           },
           {
             "kind": "enum",
@@ -5175,6 +5199,10 @@
           {
             "kind": "const",
             "name": "RA_USBFS"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
           },
           {
             "kind": "trait",
@@ -5218,6 +5246,10 @@
           },
           {
             "kind": "fn",
+            "name": "try_mount_instance"
+          },
+          {
+            "kind": "fn",
             "name": "try_mount"
           },
           {
@@ -5226,7 +5258,7 @@
           }
         ],
         "path": "core/crates/nobro_usb/src/lib.rs",
-        "sha256": "7cd6d89b433ba2330d9e0e0057733461fba815e6421214fa1addcadfbf58ea20"
+        "sha256": "e9f7708f797cab19cc6a49db0af8f451758691008f36ced2338ca97bde12c02a"
       },
       {
         "crate": "nobro-wireless",

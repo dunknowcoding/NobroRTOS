@@ -4,8 +4,9 @@
 //! 48 MHz. Callers must sample it at least once per 32-bit counter wrap (about 89.48 s).
 //! It measures active core-clock time: clock-stopping sleep/deep-standby and debugger
 //! halts are not promised to advance it. Reinitialize or reconcile it against an always-on
-//! source after such a transition. The deadline provider owns SysTick as a hardware
-//! one-shot countdown. ADC, PWM, I2C, and SPI on Arduino UNO R4 are exposed through
+//! source after such a transition. The deadline provider owns SysTick and composes
+//! long deadlines from bounded 24-bit chunks; callers do not inherit the raw SysTick
+//! reload ceiling. ADC, PWM, I2C, and SPI on Arduino UNO R4 are exposed through
 //! `NobroArduinoProviders.h`, which delegates to the installed Arduino Renesas core
 //! instead of duplicating FSP.
 
@@ -142,14 +143,23 @@ fn systick_reload(delay_us: u64) -> Result<u32, AlarmError> {
     Ok(reload as u32)
 }
 
+fn take_alarm_chunk(remaining_us: u64) -> Result<(u64, u64), AlarmError> {
+    if remaining_us == 0 {
+        return Err(AlarmError::ZeroDelay);
+    }
+    let chunk = remaining_us.min(Ra4m1Alarm::MAX_CHUNK_US);
+    Ok((chunk, remaining_us - chunk))
+}
+
 pub struct Ra4m1Alarm {
     systick: SYST,
     deadline_us: Option<u64>,
+    remaining_us: u64,
 }
 
 impl Ra4m1Alarm {
-    /// Largest whole-microsecond one-shot representable by 24-bit SysTick at 48 MHz.
-    pub const MAX_DELAY_US: u64 = (SYST_MAX_RELOAD as u64 + 1) / CYCLES_PER_US;
+    /// Largest whole-microsecond hardware chunk representable by 24-bit SysTick.
+    pub const MAX_CHUNK_US: u64 = (SYST_MAX_RELOAD as u64 + 1) / CYCLES_PER_US;
 
     /// Hardware reload ceiling exposed for admission checks and diagnostics.
     pub const MAX_RELOAD: u32 = SYST_MAX_RELOAD;
@@ -161,7 +171,19 @@ impl Ra4m1Alarm {
         Self {
             systick,
             deadline_us: None,
+            remaining_us: 0,
         }
+    }
+
+    fn arm_next_chunk(&mut self) -> Result<(), AlarmError> {
+        let (chunk, remaining) = take_alarm_chunk(self.remaining_us)?;
+        let reload = systick_reload(chunk)?;
+        self.remaining_us = remaining;
+        self.systick.disable_counter();
+        self.systick.set_reload(reload);
+        self.systick.clear_current();
+        self.systick.enable_counter();
+        Ok(())
     }
 }
 
@@ -169,13 +191,15 @@ impl HalAlarm for Ra4m1Alarm {
     type Error = AlarmError;
 
     fn arm_after_us(&mut self, delay_us: u64) -> Result<u64, Self::Error> {
-        let reload = systick_reload(delay_us)?;
-        self.systick.disable_counter();
-        self.systick.set_reload(reload);
-        self.systick.clear_current();
-        let deadline = Ra4m1Clock::now_us().saturating_add(delay_us);
+        if delay_us == 0 {
+            return Err(AlarmError::ZeroDelay);
+        }
+        let deadline = Ra4m1Clock::now_us()
+            .checked_add(delay_us)
+            .ok_or(AlarmError::DelayTooLong)?;
         self.deadline_us = Some(deadline);
-        self.systick.enable_counter();
+        self.remaining_us = delay_us;
+        self.arm_next_chunk()?;
         Ok(deadline)
     }
 
@@ -183,6 +207,7 @@ impl HalAlarm for Ra4m1Alarm {
         self.systick.disable_counter();
         self.systick.clear_current();
         self.deadline_us = None;
+        self.remaining_us = 0;
     }
 
     fn deadline_us(&self) -> Option<u64> {
@@ -193,10 +218,19 @@ impl HalAlarm for Ra4m1Alarm {
         if self.deadline_us.is_none() {
             return false;
         }
-        if self.systick.has_wrapped() || self.deadline_us.is_some_and(|deadline| now_us >= deadline)
-        {
+        if self.deadline_us.is_some_and(|deadline| now_us >= deadline) {
             self.cancel();
             true
+        } else if self.systick.has_wrapped() {
+            if self.remaining_us == 0 {
+                self.cancel();
+                true
+            } else {
+                // The remaining duration was validated before the first chunk. A later
+                // chunk is at most MAX_CHUNK_US and therefore cannot fail.
+                let _ = self.arm_next_chunk();
+                false
+            }
         } else {
             false
         }
@@ -269,7 +303,7 @@ impl HalByteIo for Ra4m1Usb {
 
 #[cfg(test)]
 mod tests {
-    use super::{systick_reload, AlarmError, ClockState, Ra4m1Alarm};
+    use super::{systick_reload, take_alarm_chunk, AlarmError, ClockState, Ra4m1Alarm};
 
     #[test]
     fn clock_state_extends_normal_observations() {
@@ -298,18 +332,36 @@ mod tests {
         assert_eq!(systick_reload(0), Err(AlarmError::ZeroDelay));
         assert_eq!(systick_reload(1), Ok(47));
         assert_eq!(
-            systick_reload(Ra4m1Alarm::MAX_DELAY_US),
-            Ok((Ra4m1Alarm::MAX_DELAY_US * 48 - 1) as u32)
+            systick_reload(Ra4m1Alarm::MAX_CHUNK_US),
+            Ok((Ra4m1Alarm::MAX_CHUNK_US * 48 - 1) as u32)
         );
-        assert!(systick_reload(Ra4m1Alarm::MAX_DELAY_US).unwrap() <= Ra4m1Alarm::MAX_RELOAD);
+        assert!(systick_reload(Ra4m1Alarm::MAX_CHUNK_US).unwrap() <= Ra4m1Alarm::MAX_RELOAD);
     }
 
     #[test]
     fn alarm_reload_rejects_first_unrepresentable_and_overflowing_delay() {
         assert_eq!(
-            systick_reload(Ra4m1Alarm::MAX_DELAY_US + 1),
+            systick_reload(Ra4m1Alarm::MAX_CHUNK_US + 1),
             Err(AlarmError::DelayTooLong)
         );
         assert_eq!(systick_reload(u64::MAX), Err(AlarmError::DelayTooLong));
+    }
+
+    #[test]
+    fn long_alarm_is_partitioned_without_dropping_or_extending_time() {
+        let total = Ra4m1Alarm::MAX_CHUNK_US * 3 + 17;
+        let mut remaining = total;
+        let mut accumulated = 0;
+        let mut chunks = 0;
+        while remaining != 0 {
+            let (chunk, next) = take_alarm_chunk(remaining).unwrap();
+            assert!((1..=Ra4m1Alarm::MAX_CHUNK_US).contains(&chunk));
+            accumulated += chunk;
+            remaining = next;
+            chunks += 1;
+        }
+        assert_eq!(accumulated, total);
+        assert_eq!(chunks, 4);
+        assert_eq!(take_alarm_chunk(0), Err(AlarmError::ZeroDelay));
     }
 }

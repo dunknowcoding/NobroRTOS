@@ -86,6 +86,20 @@ pub enum CdcState {
 /// packets without allocating a hidden queue.
 pub const CDC_PACKET_SIZE: usize = 64;
 
+/// Stable logical identity of a USB stack instance in an application composition.
+///
+/// Current device backends own one physical controller, so only one instance can be
+/// mounted in a firmware image. Naming the instance still matters: provider registries
+/// and diagnostics can bind the receipt to the same logical stack without guessing
+/// from a board name or backend feature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbInstanceId(pub u16);
+
+impl UsbInstanceId {
+    /// Conventional instance used by the compatibility [`try_mount`] API.
+    pub const PRIMARY: Self = Self(0);
+}
+
 /// A controller or class-driver failure that is distinct from ordinary endpoint
 /// backpressure and an empty receive queue.
 ///
@@ -190,6 +204,71 @@ pub enum UsbIdentityPolicy {
     ControllerFixed,
 }
 
+/// Identity that the selected backend will actually advertise.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UsbAdvertisedIdentity {
+    /// Descriptors are generated from the mount request.
+    Requested(UsbConfig),
+    /// The backend accepts and advertises one exact flash-resident identity.
+    Exact(UsbConfig),
+    /// Silicon owns the descriptors; their strings are not represented by
+    /// [`UsbConfig`] and therefore are deliberately not invented here.
+    ControllerOwned,
+}
+
+/// Immutable limits and lifecycle operations of the selected backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbCapabilities {
+    pub backend_id: u32,
+    pub identity_policy: UsbIdentityPolicy,
+    pub mtu_bytes: u16,
+    pub rx_buffer_bytes: u16,
+    pub tx_buffer_bytes: u16,
+    pub service: UsbServiceLimits,
+    pub force_reenumeration: bool,
+    pub bootloader_handoff: bool,
+}
+
+/// Bounded work performed by one call through the common mounted-stack surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbServiceLimits {
+    /// At most one backend poll is performed by each mounted I/O convenience call.
+    pub backend_polls_per_call: u8,
+    /// At most one packet is offered to a backend read or write operation.
+    pub packets_per_io_call: u8,
+    /// The common exact-write API retains no hidden retry queue.
+    pub hidden_retry_packets: u8,
+}
+
+const COMMON_SERVICE_LIMITS: UsbServiceLimits = UsbServiceLimits {
+    backend_polls_per_call: 1,
+    packets_per_io_call: 1,
+    hidden_retry_packets: 0,
+};
+
+/// Exact, allocation-free receipt for one successful logical-stack mount.
+///
+/// A receipt is created only after configuration preflight and singleton ownership
+/// succeed. It records the requested and effective descriptor policy separately so a
+/// fixed-function controller can never be mistaken for a configurable CDC device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UsbMountReceipt {
+    pub instance: UsbInstanceId,
+    /// Stable FNV-1a fingerprint of every requested identity field.
+    ///
+    /// The caller retains the original configuration. Keeping only this binding avoids
+    /// duplicating three fat string pointers in the mounted runtime object.
+    pub requested_fingerprint: u32,
+    pub advertised: UsbAdvertisedIdentity,
+    pub capabilities: UsbCapabilities,
+    /// Monotonic lifecycle generation within this firmware image.
+    ///
+    /// The current singleton controller can mount once, so the only valid successful
+    /// generation is 1. Keeping it explicit makes remount/release evolution observable.
+    pub lifecycle_generation: u32,
+}
+
 /// A failure to acquire the selected USB backend.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -239,6 +318,85 @@ pub mod backend_id {
     pub const NRF_USBD: u32 = 0x4E55_5246; // "NURF"
     pub const USB_SERIAL_JTAG: u32 = 0x4E55_534A; // "NUSJ" (ESP32-C3/S3 fixed-function)
     pub const RA_USBFS: u32 = 0x4E55_5241; // "NURA" (RA4M1 / UNO R4 USBFS)
+}
+
+fn config_fingerprint(config: UsbConfig) -> u32 {
+    fn add(mut hash: u32, bytes: &[u8]) -> u32 {
+        for byte in bytes {
+            hash ^= u32::from(*byte);
+            hash = hash.wrapping_mul(0x0100_0193);
+        }
+        hash
+    }
+    let mut hash = 0x811c_9dc5;
+    hash = add(hash, &config.vid.to_le_bytes());
+    hash = add(hash, &config.pid.to_le_bytes());
+    hash = add(hash, config.manufacturer.as_bytes());
+    hash = add(hash, &[0]);
+    hash = add(hash, config.product.as_bytes());
+    hash = add(hash, &[0]);
+    add(hash, config.serial.as_bytes())
+}
+
+const fn mount_receipt(
+    instance: UsbInstanceId,
+    requested_fingerprint: u32,
+    advertised: UsbAdvertisedIdentity,
+    backend_capabilities: UsbCapabilities,
+) -> UsbMountReceipt {
+    UsbMountReceipt {
+        instance,
+        requested_fingerprint,
+        advertised,
+        capabilities: backend_capabilities,
+        lifecycle_generation: 1,
+    }
+}
+
+/// Exact capabilities of the backend selected for this firmware image.
+pub const fn capabilities() -> UsbCapabilities {
+    #[cfg(feature = "backend-nrf-usbd")]
+    {
+        UsbCapabilities {
+            backend_id: backend_id::NRF_USBD,
+            identity_policy: UsbIdentityPolicy::Requested,
+            mtu_bytes: CDC_PACKET_SIZE as u16,
+            rx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            tx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            service: COMMON_SERVICE_LIMITS,
+            force_reenumeration: true,
+            bootloader_handoff: true,
+        }
+    }
+    #[cfg(any(
+        feature = "backend-usb-serial-jtag-esp32c3",
+        feature = "backend-usb-serial-jtag-esp32s3"
+    ))]
+    {
+        UsbCapabilities {
+            backend_id: backend_id::USB_SERIAL_JTAG,
+            identity_policy: UsbIdentityPolicy::ControllerFixed,
+            mtu_bytes: CDC_PACKET_SIZE as u16,
+            rx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            tx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            service: COMMON_SERVICE_LIMITS,
+            force_reenumeration: false,
+            bootloader_handoff: false,
+        }
+    }
+    #[cfg(feature = "backend-ra-usbfs")]
+    {
+        UsbCapabilities {
+            backend_id: backend_id::RA_USBFS,
+            identity_policy: UsbIdentityPolicy::Exact(RA4M1_USB_CONFIG),
+            mtu_bytes: CDC_PACKET_SIZE as u16,
+            rx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            tx_buffer_bytes: CDC_PACKET_SIZE as u16,
+            service: COMMON_SERVICE_LIMITS,
+            force_reenumeration: false,
+            bootloader_handoff: false,
+        }
+    }
 }
 
 /// The mountable USB device surface. One backend implements this per board.
@@ -310,6 +468,20 @@ pub trait UsbStack {
     fn configured(&self) -> bool;
     /// Which backend is mounted (see [`backend_id`]).
     fn backend_id(&self) -> u32;
+    /// Identity actually advertised by this backend.
+    ///
+    /// The compatibility default is controller-owned, which makes no configurable
+    /// descriptor claim for older third-party implementations.
+    fn advertised_identity(&self) -> UsbAdvertisedIdentity {
+        UsbAdvertisedIdentity::ControllerOwned
+    }
+    /// Fingerprint of the accepted mount request.
+    ///
+    /// The compatibility default is zero (unknown), which avoids inventing a binding
+    /// for older third-party implementations.
+    fn requested_fingerprint(&self) -> u32 {
+        0
+    }
 }
 
 #[cfg(feature = "backend-nrf-usbd")]
@@ -570,6 +742,14 @@ impl UsbStack for MountedUsb {
     fn backend_id(&self) -> u32 {
         self.backend.backend_id()
     }
+
+    fn advertised_identity(&self) -> UsbAdvertisedIdentity {
+        self.backend.advertised_identity()
+    }
+
+    fn requested_fingerprint(&self) -> u32 {
+        self.backend.requested_fingerprint()
+    }
 }
 
 fn write_exact_with(
@@ -672,8 +852,30 @@ fn mount_backend(cfg: &UsbConfig) -> ActiveBackend {
 ///
 /// Configuration support is checked before the permanent process-wide claim and before
 /// any backend touches hardware. Exactly one `backend-*` feature must be enabled.
+/// The receipt is returned beside, rather than stored inside, the mounted stack so
+/// applications that need a named composition can retain it while compatibility callers
+/// pay no runtime-state cost.
+pub fn try_mount_instance(
+    instance: UsbInstanceId,
+    cfg: &UsbConfig,
+) -> Result<(MountedUsb, UsbMountReceipt), UsbMountError> {
+    let policy = identity_policy();
+    try_mount_with(policy, cfg, &MOUNTED, || {
+        let backend = mount_backend(cfg);
+        let receipt = mount_receipt(
+            instance,
+            backend.requested_fingerprint(),
+            backend.advertised_identity(),
+            capabilities(),
+        );
+        (MountedUsb::new(backend), receipt)
+    })
+}
+
+/// Try to mount the conventional primary logical stack.
 pub fn try_mount(cfg: &UsbConfig) -> Result<MountedUsb, UsbMountError> {
-    try_mount_with(identity_policy(), cfg, &MOUNTED, || {
+    let policy = identity_policy();
+    try_mount_with(policy, cfg, &MOUNTED, || {
         MountedUsb::new(mount_backend(cfg))
     })
 }
@@ -700,9 +902,10 @@ mod tests {
     use core::cell::Cell;
 
     use super::{
-        config_supported, flush_with, identity_policy, policy_supports_config, try_mount_with,
-        usb_power_veto, write_exact_with, CdcState, MountClaim, UsbBackendError, UsbConfig,
-        UsbIdentityPolicy, UsbIoError, UsbMountError, UsbStack,
+        capabilities, config_fingerprint, config_supported, flush_with, identity_policy,
+        mount_receipt, policy_supports_config, try_mount_with, usb_power_veto, write_exact_with,
+        CdcState, MountClaim, UsbAdvertisedIdentity, UsbBackendError, UsbConfig, UsbIdentityPolicy,
+        UsbInstanceId, UsbIoError, UsbMountError, UsbStack, CDC_PACKET_SIZE,
     };
     use nobro_power::PowerVetoReason;
 
@@ -818,6 +1021,41 @@ mod tests {
             assert!(config_supported(&super::RA4M1_USB_CONFIG));
             assert!(!config_supported(&arbitrary));
         }
+    }
+
+    #[test]
+    fn selected_backend_capability_receipt_is_exact() {
+        let caps = capabilities();
+        assert_eq!(caps.identity_policy, identity_policy());
+        assert_eq!(usize::from(caps.mtu_bytes), CDC_PACKET_SIZE);
+        assert!(caps.rx_buffer_bytes >= caps.mtu_bytes);
+        assert!(caps.tx_buffer_bytes >= caps.mtu_bytes);
+        assert_eq!(caps.service.backend_polls_per_call, 1);
+        assert_eq!(caps.service.packets_per_io_call, 1);
+        assert_eq!(caps.service.hidden_retry_packets, 0);
+
+        let requested = UsbConfig::new(0x1234, 0x5678, "maker", "product", "serial");
+        let advertised = match identity_policy() {
+            UsbIdentityPolicy::Requested => UsbAdvertisedIdentity::Requested(requested),
+            UsbIdentityPolicy::Exact(exact) => UsbAdvertisedIdentity::Exact(exact),
+            UsbIdentityPolicy::ControllerFixed => UsbAdvertisedIdentity::ControllerOwned,
+        };
+
+        let receipt = mount_receipt(
+            UsbInstanceId(7),
+            config_fingerprint(requested),
+            advertised,
+            capabilities(),
+        );
+        assert_eq!(receipt.instance, UsbInstanceId(7));
+        assert_eq!(receipt.requested_fingerprint, config_fingerprint(requested));
+        assert_ne!(
+            receipt.requested_fingerprint,
+            config_fingerprint(UsbConfig::new(0x1234, 0x5678, "maker", "other", "serial"))
+        );
+        assert_eq!(receipt.advertised, advertised);
+        assert_eq!(receipt.capabilities, caps);
+        assert_eq!(receipt.lifecycle_generation, 1);
     }
 
     #[test]

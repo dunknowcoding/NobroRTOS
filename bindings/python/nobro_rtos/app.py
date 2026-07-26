@@ -25,11 +25,13 @@ _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 _BOARDS = {
     "nrf52840-s140": ("s140", 128 * 1024, 32 * 1024),
     "nrf52840-nosd": ("nosd", 128 * 1024, 32 * 1024),
+    "uno-r4-wifi": ("ra4m1", 96 * 1024, 16 * 1024),
+    "samd21-uf2": ("samd21", 48 * 1024, 12 * 1024),
 }
 _ROLES = {
-    "periodic": ("driver", 1024, 256, 10),
-    "control": ("hard_realtime", 1024, 256, 10),
-    "service": ("best_effort", 1024, 256, 10),
+    "periodic": ("driver", 1024, 256),
+    "control": ("hard_realtime", 1024, 256),
+    "service": ("best_effort", 1024, 256),
 }
 _ROLE_ALIASES = {"sensor": "periodic"}
 _ROOT_KEYS = {"schema", "app", "board", "tasks", "wires"}
@@ -239,13 +241,17 @@ class NobroApp:
                 "app-options", "deadline_us exceeds period_us"
             )
         blocking = _integer(blocking_us, "blocking_us", minimum=0)
-        _, default_flash, default_ram, divisor = _ROLES[role]
+        _, default_flash, default_ram = _ROLES[role]
         budget = (
-            min(deadline, max(1, period // divisor))
+            0
             if budget_us is None
-            else _positive_interval(budget_us, "budget_us")
+            else _integer(budget_us, "budget_us", minimum=0)
         )
-        if budget + blocking > deadline:
+        if blocking and not budget:
+            raise AppDeclarationError(
+                "app-options", "blocking_us requires an explicit execution budget"
+            )
+        if budget and budget + blocking > deadline:
             raise AppDeclarationError(
                 "app-options", "budget_us + blocking_us exceeds deadline_us"
             )
@@ -382,7 +388,7 @@ class NobroApp:
                 role=_text(task["role"], "role"),
                 phase_us=_integer(task["phase_us"], "phase_us", minimum=0),
                 deadline_us=_integer(task["deadline_us"], "deadline_us", minimum=1),
-                budget_us=_integer(task["budget_us"], "budget_us", minimum=1),
+                budget_us=_integer(task["budget_us"], "budget_us", minimum=0),
                 blocking_us=_integer(task["blocking_us"], "blocking_us", minimum=0),
                 flash_bytes=_integer(task["flash_bytes"], "flash_bytes", minimum=1),
                 ram_bytes=_integer(task["ram_bytes"], "ram_bytes", minimum=1),

@@ -188,10 +188,11 @@ python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
 python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 ```
 
-`board nrf52840-s140` and `board nrf52840-nosd` are deliberately distinct linker
-profiles. The generator never chooses between them from a connected endpoint. Generated
-files live in ignored `_work/projects` by default. Inferred role budgets are safe
-starting estimates, not measured WCET; inspect them before flashing an application.
+The nRF52840 S140/no-SoftDevice, UNO R4 RA4M1, and SAMD21 profiles own distinct linker,
+startup, clock, interrupt, DMA, and boot contracts. The generator never chooses one from
+a connected endpoint. Generated files live in ignored `_work/projects` by default.
+Omitting `budget` means unmeasured and produces no deadline-admission claim; provide a
+measured execution bound when deadline admission is required.
 An optional `wake 25us` line after `board` admits a measured compare-wake-to-dispatch
 upper bound. It is an engineering input, not a value inferred from a board name.
 Periodic task lines may also shape their first release and use a constrained deadline:

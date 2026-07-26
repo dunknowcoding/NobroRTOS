@@ -10,7 +10,10 @@
 //! small state machine driven from `poll()`; `stage()` exposes how far it has progressed
 //! so a probe-less board can blink the stage on its LED when USB is silent.
 
-use crate::{backend_id, CdcState, UsbBackendError, UsbConfig, UsbStack};
+use crate::{
+    backend_id, config_fingerprint, CdcState, UsbAdvertisedIdentity, UsbBackendError, UsbConfig,
+    UsbStack,
+};
 
 const BASE: usize = 0x4009_0000;
 macro_rules! r16 {
@@ -1380,6 +1383,14 @@ impl UsbStack for RaUsbfsCdc {
 
     fn backend_id(&self) -> u32 {
         backend_id::RA_USBFS
+    }
+
+    fn advertised_identity(&self) -> UsbAdvertisedIdentity {
+        UsbAdvertisedIdentity::Exact(RA4M1_USB_CONFIG)
+    }
+
+    fn requested_fingerprint(&self) -> u32 {
+        config_fingerprint(RA4M1_USB_CONFIG)
     }
 }
 

@@ -16,5 +16,9 @@
     "sample_pool_slots": 8,
     "max_modules": 16
   },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The generic STM32F4 profile has no exact part, startup crate, clock tree, vector ownership, DMA map, or bootloader contract."
+  },
   "pins": { "led": 13, "servo_pwm": 6, "mvk_trigger": 7 }
 }

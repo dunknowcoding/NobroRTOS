@@ -14,9 +14,10 @@ configuration, not generated Rust boilerplate::
     periodic imu every 10ms -> motor
     service camera every 40ms
 
-Safe budgets and memory estimates are inferred by role.  Advanced users can still
-edit the emitted workload.json before admission; the original declaration remains
-the auditable source used to regenerate firmware.
+Memory estimates are inferred by role. Execution budgets are never inferred: omit
+``budget`` to leave the task unmeasured and outside deadline admission, or provide an
+explicit measured bound. The original declaration remains the auditable source used
+to regenerate firmware.
 """
 import argparse
 import json
@@ -47,16 +48,43 @@ LINE = re.compile(
     r"(?:\s+memory\s+([1-9][0-9]*)/([1-9][0-9]*))?$"
 )
 WAKE = re.compile(r"^wake\s+([1-9][0-9]*)(us|ms|s)$")
-BOARDS = {
-    "nrf52840-s140": ("s140", 128 * 1024, 32 * 1024),
-    "nrf52840-nosd": ("nosd", 128 * 1024, 32 * 1024),
-}
+BOARD_ROOT = ROOT / "core" / "boards"
 MAX_WRAP_SAFE_INTERVAL_US = 0x7FFF_FFFF
 ROLE = {
-    "periodic": ("driver", 1024, 256, 10),
-    "control": ("hard_realtime", 1024, 256, 10),
-    "service": ("best_effort", 1024, 256, 10),
+    "periodic": ("driver", 1024, 256),
+    "control": ("hard_realtime", 1024, 256),
+    "service": ("best_effort", 1024, 256),
 }
+
+
+def load_board_profiles() -> dict:
+    profiles = {}
+    for path in sorted(BOARD_ROOT.glob("*/*/board.json")):
+        profile = json.loads(path.read_text(encoding="utf-8"))
+        name = path.parent.name
+        profile["_path"] = path
+        profile["_name"] = name
+        profiles[name] = profile
+    return profiles
+
+
+def board_profile(name: str, *, require_generation: bool = True) -> dict:
+    profiles = load_board_profiles()
+    if name not in profiles:
+        raise ValueError(
+            f"unsupported board profile {name!r}; choose {', '.join(sorted(profiles))}"
+        )
+    profile = profiles[name]
+    generation = profile.get("firmware_generation")
+    if require_generation and (
+        not isinstance(generation, dict)
+        or generation.get("support") != "application-image"
+    ):
+        raise ValueError(
+            f"board profile {name!r} has no standalone application-image contract; "
+            "use its maintained port until that board owns one"
+        )
+    return profile
 
 
 def parse_duration(value: str, unit: str) -> int:
@@ -81,8 +109,7 @@ def parse(text: str) -> dict:
     if not records[1][1].startswith("board "):
         raise ValueError("line 2 must be: board <profile>")
     board = records[1][1][6:].strip()
-    if board not in BOARDS:
-        raise ValueError(f"unsupported board profile {board!r}; choose {', '.join(BOARDS)}")
+    profile = board_profile(board)
     wake_latency_us = 0
     task_records = records[2:]
     if task_records and task_records[0][1].startswith("wake "):
@@ -101,13 +128,14 @@ def parse(text: str) -> dict:
         if not match:
             raise ValueError(
                 f"line {number}: expected '<role> <name> every <duration> "
-                "[phase <duration>] [deadline <duration>] [-> <task>]'"
+                "[phase <duration>] [deadline <duration>] [-> <task>] "
+                "[budget <duration>] [blocking <duration>] [memory <flash>/<ram>]'"
             )
         (role, name, value, unit, phase_value, phase_unit,
          deadline_value, deadline_unit, destination, budget_value, budget_unit,
          blocking_value, blocking_unit, flash_override, ram_override) = match.groups()
         role = "periodic" if role == "sensor" else role
-        criticality, flash, ram, divisor = ROLE[role]
+        criticality, flash, ram = ROLE[role]
         period = parse_duration(value, unit)
         if period > MAX_WRAP_SAFE_INTERVAL_US:
             raise ValueError(
@@ -116,15 +144,18 @@ def parse(text: str) -> dict:
         phase = (parse_duration(phase_value, phase_unit) if phase_value else 0)
         deadline = (parse_duration(deadline_value, deadline_unit)
                     if deadline_value else period)
-        budget = (parse_duration(budget_value, budget_unit)
-                  if budget_value else min(deadline, max(1, period // divisor)))
+        budget = parse_duration(budget_value, budget_unit) if budget_value else 0
         blocking = (parse_duration(blocking_value, blocking_unit)
                     if blocking_value else 0)
         if phase >= period:
             raise ValueError(f"line {number}: phase must be below period")
         if deadline > period:
             raise ValueError(f"line {number}: deadline exceeds period")
-        if budget + blocking > deadline:
+        if blocking and not budget:
+            raise ValueError(
+                f"line {number}: blocking requires an explicit execution budget"
+            )
+        if budget and budget + blocking > deadline:
             raise ValueError(f"line {number}: budget + blocking exceeds deadline")
         tasks.append({"name": name, "role": role, "criticality": criticality,
                       "flash": int(flash_override or flash),
@@ -141,7 +172,9 @@ def parse(text: str) -> dict:
             raise ValueError(f"{source}: channel destination {destination!r} is not a task")
         if source == destination:
             raise ValueError(f"{source}: a task cannot send to itself")
-    _, flash_limit, ram_limit = BOARDS[board]
+    capacity = profile["capacity"]
+    flash_limit = int(capacity["flash_budget_bytes"])
+    ram_limit = int(capacity["ram_budget_bytes"])
     workload = {
         "schema": "nobro-workload-v1",
         "target": board,
@@ -309,10 +342,7 @@ def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
                 raise ValueError("canonical workload needs an `app` name")
             project_model.startup_order(record)
             board = record.get("target")
-            if board not in BOARDS:
-                raise ValueError(
-                    f"unsupported workload target {board!r}; choose {', '.join(BOARDS)}"
-                )
+            board_profile(board)
             return {
                 "app": app,
                 "board": board,
@@ -352,6 +382,8 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
         )
     (project / "workload.json").write_text(
         json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n")
+    profile = board_profile(spec["board"])
+    generation = profile["firmware_generation"]
     kernel = ROOT / "core" / "crates" / "nobro_kernel"
     admission = ROOT / "core" / "crates" / "nobro_admission"
     hal = ROOT / "core" / "crates" / "nobro_hal"
@@ -367,8 +399,7 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
         hal_path = os.path.relpath(hal, project).replace("\\", "/")
     except ValueError:
         hal_path = str(hal).replace("\\", "/")
-    hal_feature = ("board-nicenano-s140" if spec["board"] == "nrf52840-s140"
-                   else "board-promicro-nosd")
+    hal_feature = generation["hal_feature"]
     kernel_features = project_model.cargo_kernel_features(spec["workload"])
     kernel_feature_clause = (
         f", features = {json.dumps(kernel_features)}" if kernel_features else ""
@@ -399,23 +430,30 @@ lto = "fat"
 codegen-units = 1
 '''
     (project / "Cargo.toml").write_text(cargo, encoding="utf-8", newline="\n")
-    (project / ".cargo" / "config.toml").write_text('''[build]
-target = "thumbv7em-none-eabihf"
-
-[target.thumbv7em-none-eabihf]
-rustflags = [
-  "-C", "link-arg=-Tlink.x",
-  "-C", "link-arg=--nmagic",
-]
-''', encoding="utf-8", newline="\n")
-    profile = BOARDS[spec["board"]][0]
-    shutil.copyfile(ROOT / "core" / f"memory-{profile}.x", project / "memory.x")
+    cargo_target = generation["cargo_target"]
+    rustflags = generation["rustflags"]
+    config = (
+        f"[build]\ntarget = {json.dumps(cargo_target)}\n\n"
+        f"[target.{cargo_target}]\n"
+        f"rustflags = {json.dumps(rustflags)}\n"
+    )
+    (project / ".cargo" / "config.toml").write_text(
+        config, encoding="utf-8", newline="\n"
+    )
+    linker_source = ROOT / generation["linker_script"]
+    shutil.copyfile(linker_source, project / "memory.x")
     (project / "build.rs").write_text(
         rust_build(spec, source_name), encoding="utf-8", newline="\n"
     )
     (project / "src" / "main.rs").write_text(rust_main(spec), encoding="utf-8", newline="\n")
     metadata = {"schema": "nobro-firmware-project-v1", "app": spec["app"],
-                "board": spec["board"], "memory_profile": profile,
+                "board": spec["board"], "board_id": profile["board_id"],
+                "cargo_target": cargo_target,
+                "memory_profile": generation["memory_profile"],
+                "generation_contract": {
+                    key: generation[key]
+                    for key in ("entry", "interrupts", "dma", "clock", "boot")
+                },
                 "source_format": source_format,
                 "user_lines": spec["user_lines"], "generated_rust_lines": len(rust_main(spec).splitlines()),
                 "task_count": len(spec["workload"]["tasks"]) - 1,
@@ -440,10 +478,11 @@ def build(project: pathlib.Path) -> subprocess.CompletedProcess:
         )
         if resolved.returncode:
             return resolved
+    metadata = json.loads((project / "generation.json").read_text(encoding="utf-8"))
     return subprocess.run(
         [
             "cargo", "build", "--locked", "--release", "--target",
-            "thumbv7em-none-eabihf", "--manifest-path", str(manifest),
+            metadata["cargo_target"], "--manifest-path", str(manifest),
         ],
         cwd=project,
         text=True,
@@ -462,7 +501,7 @@ service camera every 40ms
     spec = parse(sample)
     assert spec["user_lines"] == 5 and len(spec["workload"]["tasks"]) == 4
     assert spec["workload"]["channels"] == [["imu", "motor"]]
-    assert spec["workload"]["tasks"][1]["budget_us"] == 500
+    assert spec["workload"]["tasks"][1]["budget_us"] == 0
     alias = parse(sample.replace("periodic imu", "sensor imu"))
     assert alias["workload"]["tasks"][2]["role"] == "periodic"
     overridden = parse(sample.replace(
@@ -477,7 +516,7 @@ service camera every 40ms
         "board nrf52840-s140", "board nrf52840-s140\nwake 25us"))
     assert with_wake["workload"]["profile"]["wake_latency_us"] == 25
     shortest = parse(sample.replace("control motor every 5ms", "control motor every 1us"))
-    assert shortest["workload"]["tasks"][1]["budget_us"] == 1
+    assert shortest["workload"]["tasks"][1]["budget_us"] == 0
     with tempfile.TemporaryDirectory() as tmp:
         source = pathlib.Path(tmp) / "app.nobro"
         source.write_text(sample, encoding="utf-8")
@@ -490,9 +529,8 @@ service camera every 40ms
         build_source = (result["project"] / "build.rs").read_text()
         assert "nobro_admission::{admit" in build_source
         assert '"motor", "imu", "camera"' in build_source
-        assert "TaskContract::new(1).priority(0).deadline(5000, 5000" in build_source
-        assert "TaskContract::new(3).priority(4).deadline(40000, 40000" in build_source
-        assert ".phase(0)" in build_source
+        assert "TaskContract::new(1).priority(0).deadline(" not in build_source
+        assert "TaskContract::new(3).priority(4).deadline(" not in build_source
         assert ".wake_latency_us(0)" in build_source
         stale_lock = result["project"] / "Cargo.lock"
         stale_lock.write_text("# stale SDK graph\n", encoding="utf-8")
@@ -514,6 +552,7 @@ service camera every 40ms
         )
         assert python_workload["channels"] == [["imu", "motor"]]
         assert python_workload["wire_capacities"] == [["imu", "motor", 8]]
+        assert python_workload["tasks"][1]["budget_us"] == 0
         assert "rerun-if-changed=app.json" in (
             python_result["project"] / "build.rs"
         ).read_text(encoding="utf-8")
@@ -549,6 +588,27 @@ service camera every 40ms
         assert "NOBRO_FEATURE_CAPACITY_REPORT" not in (
             plain_result["project"] / "src" / "main.rs"
         ).read_text(encoding="utf-8")
+        for board, target in (
+            ("uno-r4-wifi", "thumbv7em-none-eabihf"),
+            ("samd21-uf2", "thumbv6m-none-eabi"),
+        ):
+            portable = sample.replace("nrf52840-s140", board).replace(
+                "app rover", f"app {board.replace('-', '_')}"
+            )
+            portable_source = pathlib.Path(tmp) / f"{board}.nobro"
+            portable_source.write_text(portable, encoding="utf-8")
+            portable_result = generate(portable_source, pathlib.Path(tmp) / "portable")
+            assert portable_result["cargo_target"] == target
+            assert portable_result["generation_contract"]["boot"]
+            python_portable = NobroApp(
+                f"python_{board.replace('-', '_')}", board=board
+            ).task("control", 5_000, role="control", budget_us=200)
+            python_portable_source = pathlib.Path(tmp) / f"{board}.json"
+            python_portable.write_json(python_portable_source)
+            python_portable_result = generate(
+                python_portable_source, pathlib.Path(tmp) / "python-portable"
+            )
+            assert python_portable_result["cargo_target"] == target
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown"),

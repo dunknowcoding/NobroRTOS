@@ -16,5 +16,18 @@
     "sample_pool_slots": 8,
     "max_modules": 12
   },
+  "firmware_generation": {
+    "support": "application-image",
+    "cargo_target": "thumbv7em-none-eabihf",
+    "entry": "cortex-m-rt vector table with RA4M1 default handlers",
+    "linker_script": "core/ports/ra4m1/memory.x",
+    "memory_profile": "ra4m1",
+    "rustflags": ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"],
+    "hal_feature": "contract-only",
+    "interrupts": "the application owns vectors after the stock 16 KiB DFU region; providers must declare ICU and NVIC ownership",
+    "dma": "GPT, ELC, DMAC, and ICU ownership is opt-in and never generated from a task name",
+    "clock": "the generated contract-only image configures no clock and claims no timing provider; provider-bearing firmware uses the maintained RA4M1 runtime",
+    "boot": "stock UNO R4 bootloader; generated application origin is exactly 0x4000"
+  },
   "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": 14 }
 }

@@ -248,9 +248,9 @@ Power-fail-safe, wear-leveled key-value flash store.
 ## `nobro-usb`
 Modular, mountable USB device stack for NobroRTOS.
 - **trait**: `UsbStack`
-- **struct**: `UsbConfig`, `MountedUsb`
-- **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbMountError`
-- **fn**: `config_supported`, `state`, `power_veto`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount`, `mount`
+- **struct**: `UsbInstanceId`, `UsbConfig`, `UsbCapabilities`, `UsbServiceLimits`, `UsbMountReceipt`, `MountedUsb`
+- **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbAdvertisedIdentity`, `UsbMountError`
+- **fn**: `config_supported`, `state`, `power_veto`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount_instance`, `try_mount`, `mount`
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.

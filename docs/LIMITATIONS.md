@@ -21,7 +21,7 @@ and omission checks rather than an adversarial attestation.
 | Critical sections | Native nRF board packages use one BASEPRI ceiling for kernel, HAL, USB, adapter, and portable-atomic critical sections; the deadline/watchdog priorities stay unmasked. The SAMD21 Cortex-M0+ port supplies a SysTick-instrumented PRIMASK provider and reports `mask_max_cycles`, `mask_max_us`, its bound, wrap state, and pass state | High-priority handlers must use lock-free handoff only. The SAMD21 measurement owns SysTick, is target-built, and has no physical result in the public evidence set; a future SAMD timebase must use another timer or replace the instrument. Other CM0(+), Xtensa, RISC-V, and platform ports retain their platform behavior until they have an equivalent measured contract |
 | Async | No allocation; fixed task, timer, waiter, and channel capacities | Capacity is explicit and exhaustion is reported instead of allocating dynamically |
 | Composition | One graph derives manifest, startup, task metadata, labels, and mailbox grants | Capability kinds remain a closed bit set and stable numeric module codes remain on wire formats |
-| Project workflow | `nobro project` creates, explains, builds, simulates, and reports; `nobro firmware` emits nRF firmware from one declaration | Firmware generation currently covers explicit nRF52840 layouts and does not infer WCET or interrupt/DMA ownership |
+| Project workflow | `nobro project` creates, explains, builds, simulates, and reports; `nobro firmware` emits native firmware from one declaration | Standalone image generation covers explicit nRF52840, RA4M1, and SAMD21 layouts. RP2350 and ESP32-C3 retain maintained-port startup because their mandatory image/runtime machinery is not duplicated. No execution budget, WCET, clock, interrupt, or DMA ownership is inferred |
 | Arduino authoring | `NobroApp` declares fixed-capacity tasks/wires and previews admission | The facade does not embed the Rust executor or prove device timing |
 
 ## Resources
@@ -51,9 +51,8 @@ selected installed board core. A hosted facade build proves source compatibility
 it does not establish native-provider parity or physical timing. Generic `analogWrite`
 does not establish servo-period semantics. On the native RA4M1 port, the
 48 MHz 32-bit DWT clock must be sampled during active execution within approximately 89
-seconds and may stop in low-power modes; the 24-bit SysTick alarm rejects one-shot delays
-above approximately 349 milliseconds. Stronger long-running/sleep timing needs an
-always-on timebase and chained alarm.
+seconds and may stop in low-power modes; long deadline waits are composed from bounded
+24-bit SysTick chunks. Sleep-spanning timing still needs an always-on timebase.
 
 The plain-C Tier-C task facade is currently fixed at eight tasks and eight wire
 relationships. It validates declarations through the shared Rust `AppGraph`, but the
@@ -99,7 +98,10 @@ model is not physical enumeration, suspend, disconnect, or recovery evidence. Pr
 OUT data is boundedly discarded rather than reinterpreted, and transmit flush waits for
 a post-write empty event rather than treating FIFO capacity as completion; those register
 semantics still need silicon fault/recovery evidence. The public identity policy must be
-checked when host-visible VID/PID/string identity matters.
+checked when host-visible VID/PID/string identity matters. A successful mount exposes an
+exact logical-instance receipt with a request fingerprint, advertised-identity class,
+backend id, MTU, buffer/service limits, lifecycle generation, and supported recovery
+operations; it does not turn a controller-owned identity into configurable descriptors.
 
 Bootloader and application USB identities are independent. `UsbConfig` and forced
 re-enumeration apply only to the mounted application backend; they do not select a

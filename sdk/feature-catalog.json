@@ -55,6 +55,8 @@
         "price": null,
         "reason": "The S140 project profile has no verified preemptive platform composition."
       }
-    }
+    },
+    "uno-r4-wifi": {},
+    "samd21-uf2": {}
   }
 }

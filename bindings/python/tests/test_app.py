@@ -143,7 +143,7 @@ class PythonAppTests(unittest.TestCase):
         task = NobroApp("alias").task("imu", HZ(100), role="sensor").tasks[0]
         self.assertEqual(task.role, "periodic")
         self.assertEqual(task.deadline_us, 10_000)
-        self.assertEqual(task.budget_us, 1_000)
+        self.assertEqual(task.budget_us, 0)
         self.assertEqual(task.flash_bytes, 1024)
         self.assertEqual(task.ram_bytes, 256)
 

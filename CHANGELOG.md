@@ -4,6 +4,14 @@
 
 ### Changed
 
+- `nobro firmware` now reads board-owned target/linker/startup contracts and
+  target-builds standalone nRF52840, RA4M1, and SAMD21 application layouts.
+  Omitted execution budgets remain unmeasured instead of becoming inferred
+  WCET claims; RP2350 and ESP32-C3 fail closed to their maintained runtimes.
+- USB mounts expose exact logical-instance, advertised-identity, backend,
+  packet/buffer-limit, lifecycle-generation, and supported-operation receipts.
+  RA4M1 long deadlines are composed from bounded SysTick chunks instead of
+  exposing the raw 24-bit one-shot ceiling.
 - Isolated P-SLICE tasks now require an isolation-capable port at admission;
   unsupported ports reject them instead of silently using privileged Thread
   mode.

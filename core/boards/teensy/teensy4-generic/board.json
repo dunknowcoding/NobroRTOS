@@ -16,5 +16,9 @@
     "sample_pool_slots": 16,
     "max_modules": 24
   },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The generic Teensy 4-class profile does not own the board-specific image header, startup, memory aliases, clock, interrupt, DMA, and boot contracts."
+  },
   "pins": { "led": 13, "servo_pwm": 2, "mvk_trigger": 3 }
 }

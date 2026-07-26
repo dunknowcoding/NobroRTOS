@@ -760,7 +760,7 @@
       "arch": "thumbv7em",
       "tier": "provider",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "native Rust provides timebase/deadline/USB plus an opt-in GPT/ELC/DMAC completion future; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap and SysTick one-shots are limited to approximately 349 milliseconds",
+      "limitations": "native Rust provides timebase/deadline/USB plus an opt-in GPT/ELC/DMAC completion future; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap, while long deadline waits are composed from bounded SysTick chunks",
       "compositions": {
         "native": {
           "surface": "native",

@@ -9,7 +9,7 @@
 //! observation is latched forever: bus reset and an eight-millisecond SOF watchdog fail
 //! closed.
 
-use crate::{backend_id, CdcState, UsbConfig, UsbStack};
+use crate::{backend_id, config_fingerprint, CdcState, UsbAdvertisedIdentity, UsbConfig, UsbStack};
 
 #[cfg(feature = "backend-usb-serial-jtag-esp32c3")]
 const BASE: usize = 0x6004_3000;
@@ -278,15 +278,17 @@ pub(crate) struct UsbSerialJtagCdc {
     link: LinkTracker,
     rx_packet: RxPacketGate,
     tx: TxTracker,
+    requested_fingerprint: u32,
 }
 
 impl UsbSerialJtagCdc {
     /// Silicon owns the descriptors, so the common request is accepted but ignored.
-    pub(crate) fn mount(_cfg: &UsbConfig) -> Self {
+    pub(crate) fn mount(cfg: &UsbConfig) -> Self {
         Self {
             link: LinkTracker::new(),
             rx_packet: RxPacketGate::new(),
             tx: TxTracker::new(),
+            requested_fingerprint: config_fingerprint(*cfg),
         }
     }
 }
@@ -398,6 +400,14 @@ impl UsbStack for UsbSerialJtagCdc {
 
     fn backend_id(&self) -> u32 {
         backend_id::USB_SERIAL_JTAG
+    }
+
+    fn advertised_identity(&self) -> UsbAdvertisedIdentity {
+        UsbAdvertisedIdentity::ControllerOwned
+    }
+
+    fn requested_fingerprint(&self) -> u32 {
+        self.requested_fingerprint
     }
 }
 

@@ -18,6 +18,10 @@ boards/
 ```
 
 Each `board.json` carries the boot memory layout, capacity budgets, and critical pins.
+Profiles usable by `nobro firmware` also carry a board-owned `firmware_generation`
+contract: target triple, entry model, linker source, rust flags, and explicit
+interrupt/DMA/clock/boot ownership. Profiles whose startup must remain in a maintained
+port name that manifest instead of pretending a generic image is safe.
 These mirror the compiled `BoardDesc`/`BoardPackage` fixtures in
 `crates/nobro_hal/src/board.rs` and `crates/nobro_hal/src/board_catalog.rs`, and are
 checked for internal consistency by `tools/checks/check_board_profiles.py`.

@@ -18,7 +18,10 @@ use usb_device::device::{UsbDevice, UsbDeviceBuilder, UsbDeviceState, UsbVidPid}
 use usb_device::{bus::UsbBusAllocator, device::StringDescriptors, UsbError};
 use usbd_serial::SerialPort;
 
-use crate::{backend_id, CdcState, UsbBackendError, UsbConfig, UsbStack};
+use crate::{
+    backend_id, config_fingerprint, CdcState, UsbAdvertisedIdentity, UsbBackendError, UsbConfig,
+    UsbStack,
+};
 
 struct Nrf52840Usbd;
 
@@ -733,6 +736,14 @@ impl UsbStack for NrfUsbdCdc {
 
     fn backend_id(&self) -> u32 {
         backend_id::NRF_USBD
+    }
+
+    fn advertised_identity(&self) -> UsbAdvertisedIdentity {
+        UsbAdvertisedIdentity::Requested(self.cfg)
+    }
+
+    fn requested_fingerprint(&self) -> u32 {
+        config_fingerprint(self.cfg)
     }
 }
 

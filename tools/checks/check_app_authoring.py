@@ -54,8 +54,8 @@ def main() -> int:
     )
     periodic, control = app.tasks
     require(periodic.role == "periodic", "Python default role drift")
-    require(periodic.budget_us == periodic.period_us // 10, "periodic budget drift")
-    require(control.budget_us == control.period_us // 10, "control budget drift")
+    require(periodic.budget_us == 0, "unmeasured periodic budget drift")
+    require(control.budget_us == 0, "unmeasured control budget drift")
     require(periodic.flash_bytes == control.flash_bytes == 1024, "flash default drift")
     require(periodic.ram_bytes == control.ram_bytes == 256, "RAM default drift")
     require(app.wires[0].capacity == 1, "Python wire default drift")

@@ -603,9 +603,9 @@ platform matrix. Generic Arduino `analogWrite` is PWM, not a servo-period provid
 
 The current RA4M1 clock extends a 48 MHz 32-bit DWT counter, so active firmware must
 sample it within every approximately 89-second wrap; it does not preserve elapsed time
-when DWT stops in low-power modes. The 24-bit SysTick deadline provider accepts one-shot
-delays only through approximately 349 milliseconds. Longer active runs and deadlines
-need a future always-on/chained provider before stronger timing claims are made.
+when DWT stops in low-power modes. The deadline provider composes arbitrary validated
+delays from approximately 349-millisecond SysTick chunks. Sleep-spanning timing still
+needs a future always-on provider before stronger claims are made.
 
 ## Mountable stacks (HAL modularity)
 
@@ -649,7 +649,9 @@ Nonfunctional placeholder stacks are not published as features.
 the RA4M1 backend accepts only `RA4M1_USB_CONFIG`, and ESP USB-Serial-JTAG descriptors
 are fixed by the controller and ignore the request. The public `identity_policy()` and
 `config_supported()` facts keep accepted configuration distinct from host-visible
-identity.
+identity. `capabilities()` and the immutable successful-mount receipt bind one logical
+stack instance to the backend id, advertised-identity class, MTU, buffer/service limits,
+lifecycle generation, and supported recovery operations.
 
 The ESP link state fails closed: SOF establishes only a live bus. The backend clears
 reset-high `SERIAL_IN_EMPTY` without treating it as enumeration evidence, waits for a

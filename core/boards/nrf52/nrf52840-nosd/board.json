@@ -16,5 +16,18 @@
     "sample_pool_slots": 8,
     "max_modules": 16
   },
+  "firmware_generation": {
+    "support": "application-image",
+    "cargo_target": "thumbv7em-none-eabihf",
+    "entry": "cortex-m-rt vector table",
+    "linker_script": "core/memory-nosd.x",
+    "memory_profile": "nosd",
+    "rustflags": ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"],
+    "hal_feature": "board-promicro-nosd",
+    "interrupts": "application vectors start at 0x1000 behind the no-SoftDevice bootloader",
+    "dma": "disabled unless an explicitly selected provider owns its channel, interrupt, and buffers",
+    "clock": "provider-owned; the generator does not infer frequency or timing bounds",
+    "boot": "no SoftDevice; generated application origin is exactly 0x1000"
+  },
   "pins": { "led": 15, "servo_pwm": 24, "mvk_trigger": 17 }
 }

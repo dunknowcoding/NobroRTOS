@@ -16,5 +16,9 @@
     "sample_pool_slots": 4,
     "max_modules": 6
   },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "A generic Cortex-M name does not identify a target triple, vector table, linker layout, clock tree, interrupt controller, DMA map, or boot contract."
+  },
   "pins": { "led": 1, "servo_pwm": 2, "mvk_trigger": 3 }
 }

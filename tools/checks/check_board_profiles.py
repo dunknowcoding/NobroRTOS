@@ -23,6 +23,7 @@ PLATFORM_RAM = {                   # (ram_start, max_end) sanity window per plat
     "cortex_m": (0x2000_0000, 0x2000_8000),
 }
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "core", "boards")
+REPO = os.path.abspath(os.path.join(ROOT, "..", ".."))
 
 def as_int(v):
     return int(v, 0) if isinstance(v, str) else int(v)
@@ -52,6 +53,35 @@ def check(path):
             errs.append(f"RAM window out of {plat} range")
     else:
         errs.append(f"unknown platform_id '{plat}'")
+    generation = d.get("firmware_generation")
+    if generation is not None:
+        support = generation.get("support")
+        if support == "unavailable":
+            if not isinstance(generation.get("reason"), str) or not generation["reason"]:
+                errs.append("unavailable firmware_generation needs a reason")
+        else:
+            required = {
+                "support", "cargo_target", "entry", "interrupts", "dma", "clock", "boot"
+            }
+            missing = sorted(required - generation.keys())
+            if missing:
+                errs.append("firmware_generation missing " + ", ".join(missing))
+        if support == "application-image":
+            for key in ("linker_script", "memory_profile", "rustflags", "hal_feature"):
+                if key not in generation:
+                    errs.append(f"application-image generation missing '{key}'")
+            linker = generation.get("linker_script")
+            if isinstance(linker, str) and not os.path.isfile(os.path.join(REPO, linker)):
+                errs.append(f"generation linker_script does not exist: {linker}")
+            flags = generation.get("rustflags")
+            if not isinstance(flags, list) or not all(isinstance(flag, str) for flag in flags):
+                errs.append("generation rustflags must be a string list")
+        elif support == "maintained-port":
+            manifest = generation.get("runtime_manifest")
+            if not isinstance(manifest, str) or not os.path.isfile(os.path.join(REPO, manifest)):
+                errs.append("maintained-port runtime_manifest does not exist")
+        elif support != "unavailable":
+            errs.append(f"unknown firmware_generation support '{support}'")
     return errs
 
 def main():

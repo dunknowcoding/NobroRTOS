@@ -145,10 +145,11 @@ the catalog keeps tighter gated ceilings of 384/16/32 B. These are
 composition-specific static measurements, not physical latency, power, or
 cross-RTOS results. The S140 row stays unavailable until separately measured.
 
-The board line is mandatory: it selects the SoftDevice or no-SoftDevice linker layout
-instead of guessing. Role defaults infer an initial budget and memory estimate; review
-`workload.json` before hardware use. This is a measured five-line authoring path, not a
-claim that every application or generated binary is smaller than another RTOS.
+The board line is mandatory: it selects an exact board-owned target, linker, startup,
+and boot contract instead of guessing. Role defaults estimate memory only. An omitted
+execution budget remains unmeasured and is not admitted as WCET; supply a measured
+`budget` for deadline admission. This concise authoring path is not a claim that every
+application or generated binary is smaller than another RTOS.
 
 ## Who It's For
 

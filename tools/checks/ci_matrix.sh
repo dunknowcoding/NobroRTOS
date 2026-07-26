@@ -180,6 +180,8 @@ gate "Tier-C prebuilt library and link" \
   python tools/build/build_libnobro.py --build
 
 gate "board profiles" python tools/checks/check_board_profiles.py
+gate "board-owned portable firmware generation" \
+  python tools/checks/check_firmware_generation.py
 gate "sdk manifest" python tools/checks/check_sdk_manifest.py
 gate "platform evidence receipts" \
   python tools/checks/check_platform_tiers.py --assert-receipts cross-mcu
