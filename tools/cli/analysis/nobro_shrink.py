@@ -39,14 +39,14 @@ to the requested margin before alignment.
 
 Usage::
 
-    python tools/cli/nobro_shrink.py report.json
-    python tools/cli/nobro_shrink.py report.json --json recommendation.json
-    python tools/cli/nobro_shrink.py --bindings --campaign campaign.json \
+    python sdk/cli/nobro.py shrink report.json
+    python sdk/cli/nobro.py shrink report.json --json recommendation.json
+    python sdk/cli/nobro.py shrink --bindings --campaign campaign.json \
         --workload workload.json --build-manifest build.json
-    python tools/cli/nobro_shrink.py --device-report capacity-report.bin \
+    python sdk/cli/nobro.py shrink --device-report capacity-report.bin \
         --campaign campaign.json --workload workload.json \
         --build-manifest build.json --json report.json
-    python tools/cli/nobro_shrink.py --selftest
+    python sdk/cli/nobro.py shrink --selftest
 
 Exit 0 only for a valid, safe recommendation; malformed or unsafe evidence
 exits 1.
@@ -66,6 +66,10 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+
+PROJECT_CLI = (
+    pathlib.Path(__file__).resolve().parents[1] / "project" / "nobro_project.py"
+)
 
 REPORT_SCHEMA = "nobro-shrink-report-v1"
 RESULT_SCHEMA = "nobro-shrink-recommendation-v1"
@@ -1108,7 +1112,7 @@ def selftest() -> int:
             ) == 0
         assert load_report(converted_path) == converted
 
-        project_cli = pathlib.Path(__file__).with_name("nobro_project.py")
+        project_cli = PROJECT_CLI
         project_bindings = root / "project-bindings.json"
         project_decoded = root / "project-decoded.json"
         for command, expected_path, expected_value in (
@@ -1260,7 +1264,7 @@ def selftest() -> int:
         output = root / "proposal.json"
         command = [
             sys.executable,
-            str(pathlib.Path(__file__).with_name("nobro_project.py")),
+            str(PROJECT_CLI),
             "shrink",
             str(source),
             "--json",

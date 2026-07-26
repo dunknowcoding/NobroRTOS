@@ -22,7 +22,7 @@ different `backend_id`. Then add another backend without forking the application
 ## Exercise 2 — price the firmware
 
 ```bash
-python tools/cli/static_budget.py core/target/thumbv7em-none-eabihf/release/udi_imu_demo
+python sdk/cli/nobro.py budget core/target/thumbv7em-none-eabihf/release/udi_imu_demo
 ```
 
 The tool reports static RAM, flash, call-graph stack depth, and a conservative static

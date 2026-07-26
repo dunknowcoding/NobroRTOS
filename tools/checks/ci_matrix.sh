@@ -84,16 +84,16 @@ gate "nano kernel build/admission/symbol budgets" \
 
 gate "Python-authored native firmware target build" \
   "$CURRENT_BASH" -c 'python tutorials/rover-python/app.py _work/python-authoring/app.json && \
-    python tools/cli/nobro_firmware_project.py _work/python-authoring/app.json \
+    python sdk/cli/nobro.py firmware _work/python-authoring/app.json \
       --out _work/python-firmware --build && \
-    python tools/cli/static_budget.py \
+    python sdk/cli/nobro.py budget \
       "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/nobro-app-python-rover" \
       --flash-budget 4000 --static-ram-budget 64 --ram-budget 512 \
       --stack-budget 400 --cycle-budget 1200'
 
 gate "task/wire authoring parity + block-authored target build" \
   "$CURRENT_BASH" -c 'python tools/checks/product/check_app_authoring.py && \
-    python tools/cli/nobro_firmware_project.py tutorials/hello-device/app.json \
+    python sdk/cli/nobro.py firmware tutorials/hello-device/app.json \
       --out _work/block-firmware --build'
 
 gate "stable diagnostic registry + generated index" \
@@ -102,9 +102,9 @@ gate "stable diagnostic registry + generated index" \
 gate "self-contained distribution artifacts" \
   python tools/checks/release/check_distribution_artifacts.py
 
-gate "static budget analyzer" python tools/cli/static_budget.py --selftest
+gate "static budget analyzer" python sdk/cli/nobro.py budget --selftest
 
-gate "flash tool fail-closed parser" python tools/cli/flash.py --selftest
+gate "flash tool fail-closed parser" python sdk/cli/nobro.py flash --selftest
 
 gate "portability matrix (6 MCU families)" \
   "$CURRENT_BASH" tools/checks/platforms/check_portability.sh
@@ -131,13 +131,13 @@ gate "nRF52840 USB application link builds" \
       --features board-promicro-nosd'
 
 gate "nRF52840 application static budgets" \
-  "$CURRENT_BASH" -c 'python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo" \
+  "$CURRENT_BASH" -c 'python sdk/cli/nobro.py budget "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo" \
       --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 \
       --cycle-budget 7600 --top 3 && \
-    python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo_s140" \
+    python sdk/cli/nobro.py budget "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo_s140" \
       --flash-budget 31000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 \
       --cycle-budget 7600 --top 3 && \
-    python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/ai_usb_demo" \
+    python sdk/cli/nobro.py budget "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/ai_usb_demo" \
       --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 \
       --cycle-budget 6500 --top 3'
 

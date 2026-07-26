@@ -6,7 +6,9 @@ import pathlib
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-MODULE_PATH = ROOT / "tools" / "cli" / "nobro_firmware_project.py"
+MODULE_PATH = (
+    ROOT / "tools" / "cli" / "project" / "nobro_firmware_project.py"
+)
 
 
 def load_generator():

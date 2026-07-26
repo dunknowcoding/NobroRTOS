@@ -8,8 +8,8 @@ passes tools/checks/platforms/check_board_profiles.py. Everything DeviceTree doe
 software budgets, the cargo feature name, servo/trigger pins) is filled with reviewable
 defaults and listed under "_review" so nothing is silently invented.
 
-  python tools/cli/import_dts.py board.dts --out core/boards/vendor/mine/board.json
-  python tools/cli/import_dts.py --selftest
+  python sdk/cli/nobro.py import-dts board.dts --out core/boards/vendor/mine/board.json
+  python sdk/cli/nobro.py import-dts --selftest
 
 This is a best-effort on-ramp, not a full DTS compiler: no phandle resolution beyond
 labels, no overlays/includes. Review the emitted board.json before trusting it.
@@ -17,18 +17,12 @@ labels, no overlays/includes. Review the emitted board.json before trusting it.
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import sys
 
-sys.path.insert(
-    0,
-    os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..",
-        "checks",
-        "platforms",
-    ),
-)
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tools" / "checks" / "platforms"))
 import check_board_profiles as cbp  # reuse the real validator  # noqa: E402
 
 PLATFORMS = ["nrf52840", "esp32c3", "rp2350", "samd21", "stm32f4", "imxrt1062"]

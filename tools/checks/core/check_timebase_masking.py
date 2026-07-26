@@ -13,7 +13,7 @@ FILES = {
     "context_switch": ROOT / "core/crates/nobro_hal/src/context_switch.rs",
     "hal_lib": ROOT / "core/crates/nobro_hal/src/lib.rs",
     "hal_manifest": ROOT / "core/crates/nobro_hal/Cargo.toml",
-    "generator": ROOT / "tools/cli/nobro_firmware_project.py",
+    "generator": ROOT / "tools/cli/project/nobro_firmware_project.py",
     "samd_manifest": ROOT / "core/ports/samd21/Cargo.toml",
     "samd_provider": ROOT / "core/ports/samd21/src/masked_critical_section.rs",
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",

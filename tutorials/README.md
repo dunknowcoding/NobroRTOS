@@ -18,4 +18,4 @@ Climb in order or jump to your level — each tier stands alone and each ends wi
 **Verify** step. Reference docs live in [`docs/`](../docs/README.md); the
 [`hello-device/`](hello-device/) folder holds the shared example app used by tier 02.
 
-`python tools/cli/tutorial_runner.py` validates this ladder in CI.
+`python sdk/cli/nobro.py tutorials` validates this ladder in CI.

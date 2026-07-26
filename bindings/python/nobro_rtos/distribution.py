@@ -280,7 +280,11 @@ def validate_distribution_metadata(
     _require_contains(include_roots, "bindings/c/include", "SDK include roots")
     _require_contains(include_roots, "bindings/cpp/include", "SDK include roots")
     host_tools = tuple(sdk_manifest.get("host_tools", ()))
-    _require_contains(host_tools, "tools/cli/nobro_contract_tool.py", "SDK host tools")
+    _require_contains(
+        host_tools,
+        "tools/cli/learning/nobro_contract_tool.py",
+        "SDK host tools",
+    )
     _require_equal(
         sdk_manifest.get("python_package"),
         EXPECTED_PYTHON_PACKAGE,

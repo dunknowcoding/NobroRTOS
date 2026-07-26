@@ -28,7 +28,7 @@ jobs:
         working-directory: bindings/python
         run: python -m unittest discover -s tests
       - name: software surface contract
-        run: python tools/cli/nobro_contract_tool.py check-software-surface
+        run: python sdk/cli/nobro.py contract check-software-surface
       - name: public documentation
         run: python tools/checks/release/check_public_docs.py
       - name: board profiles
@@ -38,10 +38,10 @@ jobs:
       - name: adapter catalog
         run: |
           python tools/checks/integrations/check_adapter_catalog.py
-          python tools/cli/nobro_adapter.py --selftest
+          python sdk/cli/nobro.py adapter --selftest
           python tools/checks/platforms/check_board_features.py --selftest
       - name: one-file firmware project
-        run: python tools/cli/nobro_firmware_project.py --selftest
+        run: python sdk/cli/nobro.py firmware --selftest
       - name: sdk manifest
         run: |
           python tools/build/gen_api_contract.py --check
@@ -58,36 +58,36 @@ jobs:
         run: |
           python tools/checks/product/check_web_flasher.py
           python tools/checks/product/check_block_editor.py
-          python tools/cli/tutorial_runner.py
+          python sdk/cli/nobro.py tutorials
       - name: codegen + public contract selftests
         run: |
-          python tools/cli/ros_msg_gen.py --selftest
-          python tools/cli/import_dts.py --selftest
+          python sdk/cli/nobro.py ros-msg --selftest
+          python sdk/cli/nobro.py import-dts --selftest
           python tools/checks/release/check_release_versions.py --release
           python tools/checks/integrations/check_ros_bridge.py --selftest
           python tools/checks/product/check_udi.py --selftest
-          python tools/cli/nobro_shrink.py --selftest
+          python sdk/cli/nobro.py shrink --selftest
           python tools/checks/platforms/check_platform_tiers.py --selftest
       - name: complete product experience gates
         run: |
-          python tools/cli/nobro_app.py tutorials/hello-device/app.json
+          python sdk/cli/nobro.py app tutorials/hello-device/app.json
           python tools/checks/product/check_app_authoring.py
           python tools/release/package_prebuilt_uf2.py --check
-          python tools/cli/nobro_admission.py --selftest
+          python sdk/cli/nobro.py admit --selftest
           python sdk/cli/nobro.py project --selftest
       - name: optimized-mode selftests (assert cannot be the only gate logic)
         # -O strips `assert`; these gates must still fail closed on their own logic.
         run: |
-          python -O tools/cli/nobro_admission.py --selftest
+          python -O sdk/cli/nobro.py admit --selftest
           python -O tools/checks/platforms/check_platform_tiers.py --selftest
-          python -O tools/cli/nobro_adapter.py --selftest
+          python -O sdk/cli/nobro.py adapter --selftest
           python -O tools/checks/platforms/check_board_features.py --selftest
-          python -O tools/cli/nobro_firmware_project.py --selftest
-          python -O tools/cli/nobro_shrink.py --selftest
+          python -O sdk/cli/nobro.py firmware --selftest
+          python -O sdk/cli/nobro.py shrink --selftest
           python -O tools/checks/product/check_udi.py --selftest
           python -O tools/checks/integrations/check_ros_bridge.py --selftest
-          python -O tools/cli/ros_msg_gen.py --selftest
-          python -O tools/cli/import_dts.py --selftest
+          python -O sdk/cli/nobro.py ros-msg --selftest
+          python -O sdk/cli/nobro.py import-dts --selftest
           python -O tools/build/gen_api_contract.py --check
           python -O tools/checks/core/check_claim_contract.py
   rust-matrix:
@@ -108,9 +108,9 @@ jobs:
           python-version: "3.11.9"
       - name: build generated firmware and prebuilt UF2 experiences
         run: |
-          python tools/cli/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
+          python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
           python tutorials/rover-python/app.py _work/python-authoring/app.json
-          python tools/cli/nobro_firmware_project.py _work/python-authoring/app.json --out _work/python-firmware --build
+          python sdk/cli/nobro.py firmware _work/python-authoring/app.json --out _work/python-firmware --build
           python tools/release/package_prebuilt_uf2.py --build
       - name: comprehensive Rust gates
         timeout-minutes: 35

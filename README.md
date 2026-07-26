@@ -460,9 +460,9 @@ artifacts. It is intentionally ignored by Git.
 Validate public contracts and package metadata:
 
 ```powershell
-python tools/cli/nobro_contract_tool.py check-host-contract
-python tools/cli/nobro_contract_tool.py check-distribution-metadata
-python tools/cli/nobro_contract_tool.py check-public-headers
+python sdk/cli/nobro.py contract check-host-contract
+python sdk/cli/nobro.py contract check-distribution-metadata
+python sdk/cli/nobro.py contract check-public-headers
 ```
 
 Board-facing examples are kept as reusable library and contract references.

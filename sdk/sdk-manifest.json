@@ -17,9 +17,9 @@
     "bindings/cpp/include"
   ],
   "host_tools": [
-    "tools/cli/nobro_contract_tool.py",
-    "tools/cli/nobro_project.py",
-    "tools/cli/nobro_shrink.py"
+    "tools/cli/learning/nobro_contract_tool.py",
+    "tools/cli/project/nobro_project.py",
+    "tools/cli/analysis/nobro_shrink.py"
   ],
   "core_distribution_roots": [
     "core/Cargo.toml",

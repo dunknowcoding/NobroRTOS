@@ -9,10 +9,13 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / "tools" / "cli"
-if str(TOOLS) not in sys.path:
-    sys.path.insert(0, str(TOOLS))
+ROOT = Path(__file__).resolve().parents[3]
+for tool_dir in (
+    ROOT / "tools" / "cli" / "project",
+    ROOT / "tools" / "cli" / "analysis",
+):
+    if str(tool_dir) not in sys.path:
+        sys.path.insert(0, str(tool_dir))
 
 import nobro_app  # noqa: E402
 import verify_timing_lease  # noqa: E402

@@ -2,20 +2,20 @@
 """Admission cost analysis for a NobroRTOS workload.
 
 Given a workload description (tasks with criticality / period / execution
-budget / memory, plus a platform profile), this reports the MARGINAL cost of
-every task — the flash / RAM / pool-slots / CPU-utilization each one adds —
-whether the set fits both the memory budget and the 100% utilization bound,
-and, when it does not, the smallest best-effort-first SHED PLAN to make it
+budget / memory, plus a platform profile), this reports the marginal cost of
+every task: the flash, RAM, pool slots, and CPU utilization each one adds. It
+also reports whether the set fits the memory and utilization bounds and, when
+it does not, the smallest best-effort-first shed plan that makes it
 schedulable. Deadline-critical work (System / HardRealtime) and the kernel are
-never shed; if the critical core alone overflows the tool says INFEASIBLE
+never shed; if the critical core alone overflows, the tool says INFEASIBLE
 (cut budgets or move to a bigger profile) rather than dropping safety work.
 
 This is the exact policy `nobro_kernel::admission_analysis` enforces on-device,
 made runnable offline so a build gate or an operator can act on it before flash.
 
-    python tools/cli/nobro_admission.py workload.json
-    python tools/cli/nobro_admission.py workload.json --profile-ram 8192
-    python tools/cli/nobro_admission.py --selftest      # gate: reproduces the robotics verdicts
+    python sdk/cli/nobro.py admit workload.json
+    python sdk/cli/nobro.py admit workload.json --profile-ram 8192
+    python sdk/cli/nobro.py admit --selftest      # gate: reproduces the robotics verdicts
 
 Exit 0 when the workload (after any suggested shedding) is schedulable, 1 when
 it is infeasible or the file is malformed.

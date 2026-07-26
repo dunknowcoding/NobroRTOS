@@ -7,8 +7,8 @@ Produces the signature the device verifies before booting an image:
 matching the Rust SecureBoot::measure/sign byte-for-byte (a pinned vector is asserted on
 both sides). Stdlib only.
 
-  python3 tools/cli/sign_firmware.py firmware.bin --version 2 --key-hex <64 hex chars>
-  python3 tools/cli/sign_firmware.py --selftest
+  python3 sdk/cli/nobro.py sign firmware.bin --version 2 --key-hex <64 hex chars>
+  python3 sdk/cli/nobro.py sign --selftest
 """
 import argparse
 import hashlib

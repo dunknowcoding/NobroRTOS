@@ -12,7 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "bindings" / "python"))
-sys.path.insert(0, str(ROOT / "tools" / "cli"))
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "project"))
 
 from nobro_rtos import AppDeclarationError, HZ, NobroApp  # noqa: E402
 import nobro_app  # noqa: E402

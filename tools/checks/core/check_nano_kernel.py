@@ -16,7 +16,8 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "tools" / "cli"))
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "project"))
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "analysis"))
 import nobro_firmware_project as firmware  # noqa: E402
 import static_budget  # noqa: E402
 

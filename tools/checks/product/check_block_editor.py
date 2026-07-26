@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[3]
 PKG = ROOT / "packages" / "block-editor"
-sys.path.insert(0, str(ROOT / "tools" / "cli"))
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "project"))
 import nobro_app  # noqa: E402
 
 

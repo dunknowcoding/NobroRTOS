@@ -1,16 +1,19 @@
 # CLI tools
 
-These are public SDK command implementations. Prefer
-`python sdk/cli/nobro.py <command>` for the stable user-facing surface.
+These are public SDK command implementations. The stable user surface is:
 
-| Role | Commands |
-| --- | --- |
-| Project authoring | `nobro_project.py`, `nobro_app.py`, `nobro_adapter.py`, `nobro_firmware_project.py` |
-| Firmware operations | `flash.py`, `sign_firmware.py` |
-| Analysis | `nobro_admission.py`, `nobro_diagnostics.py`, `nobro_shrink.py`, `static_budget.py`, `verify_timing_lease.py` |
-| Interoperability | `import_dts.py`, `ros_msg_gen.py` |
-| Contracts and learning | `nobro_contract_tool.py`, `tutorial_runner.py` |
+```console
+python sdk/cli/nobro.py <command>
+```
 
-Standalone utilities that are not yet dispatcher commands remain directly
-invocable from this directory, including ROS message generation, DeviceTree
-import, admission analysis, and tutorial validation.
+| Directory | Purpose | Dispatcher commands |
+| --- | --- | --- |
+| [`project/`](project/) | App validation, project generation, adapters, and native firmware authoring | `app`, `project`, `adapter`, `firmware` |
+| [`firmware/`](firmware/) | Image deployment and signing | `flash`, `sign` |
+| [`analysis/`](analysis/) | Admission, capacity, static budgets, diagnostics, and timing/lease verification | `admit`, `shrink`, `budget`, `verify-timing` |
+| [`interop/`](interop/) | DeviceTree and bounded ROS import | `import-dts`, `ros-msg` |
+| [`learning/`](learning/) | Contract inspection and tutorial validation | `contract`, `tutorials` |
+
+Implementation paths may move within these categories. Scripts, documentation,
+CI, and packaged SDKs should invoke the dispatcher so users have one predictable
+command surface.

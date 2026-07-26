@@ -96,9 +96,12 @@ def check() -> int:
     if not os.path.isfile(starter):
         errors.append(f"starter app.json missing: {man['starter_app_json']}")
     else:
-        r = subprocess.run([sys.executable, os.path.join(
-            ROOT, "tools", "cli", "nobro_app.py"
-        ), starter],
+        r = subprocess.run([
+            sys.executable,
+            os.path.join(ROOT, "sdk", "cli", "nobro.py"),
+            "app",
+            starter,
+        ],
                            capture_output=True, text=True)
         if r.returncode:
             errors.append("starter app.json fails the catalog validator")

@@ -222,12 +222,12 @@ rustup target add thumbv7em-none-eabihf          # or your board's target
 cd core
 cargo build -p kernel-selftest --release          # build firmware
 cd ..
-python3 tools/cli/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
-python3 tools/cli/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2-capable board
-python3 tools/cli/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
+python3 sdk/cli/nobro.py flash jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
+python3 sdk/cli/nobro.py flash uf2  --file app.uf2 --drive <DRIVE> # UF2-capable board
+python3 sdk/cli/nobro.py flash arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
 ```
 
-`tools/cli/flash.py` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
+`sdk/cli/nobro.py flash` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
 override the J-Link path with the `JLINK_EXE` env var. `tools/build/bin2uf2.py` converts raw
 binaries only for its explicit nRF52840, RP2040, and RP2350-Arm family IDs.
 

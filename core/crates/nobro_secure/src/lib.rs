@@ -644,7 +644,7 @@ mod secure_boot_tests {
     use super::*;
 
     const BOOT_KEY: [u8; 32] = [0x5A; 32];
-    // pinned + mirrored in tools/cli/sign_firmware.py so host and device signers agree
+    // pinned + mirrored in tools/cli/firmware/sign_firmware.py so host and device signers agree
     const PINNED_SIG4: [u8; 4] = [0xBB, 0x49, 0x2F, 0x39];
 
     #[test]
@@ -707,7 +707,7 @@ mod secure_boot_tests {
 
     #[test]
     fn sign_matches_a_pinned_vector_for_host_parity() {
-        // The host signer (tools/cli/sign_firmware.py) pins the same vector so the two sides
+        // The host signer (tools/cli/firmware/sign_firmware.py) pins the same vector so the two sides
         // agree byte-for-byte; a divergence breaks a build, not a deployment.
         let m = SecureBoot::measure(b"nobro");
         let sig = SecureBoot::sign(&[0x5A; 32], &m, 1);

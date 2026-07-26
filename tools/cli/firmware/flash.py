@@ -10,10 +10,10 @@ Each backend builds the exact external command; --dry-run prints it without touc
 hardware, so the abstraction is testable everywhere and scriptable in CI.
 
 Examples:
-  python3 tools/cli/flash.py jlink --bin _work/app.bin --addr 0x1000
-  python3 tools/cli/flash.py uf2 --file firmware.uf2 --drive J:
-  python3 tools/cli/flash.py arduino --port <PORT> --fqbn esp32:esp32:esp32c3 --build-dir .build/x
-  python3 tools/cli/flash.py all --dry-run   (smoke: show every backend's command)
+  python3 sdk/cli/nobro.py flash jlink --bin _work/app.bin --addr 0x1000
+  python3 sdk/cli/nobro.py flash uf2 --file firmware.uf2 --drive J:
+  python3 sdk/cli/nobro.py flash arduino --port <PORT> --fqbn esp32:esp32:esp32c3 --build-dir .build/x
+  python3 sdk/cli/nobro.py flash all --dry-run   (smoke: show every backend's command)
 """
 import argparse
 import os

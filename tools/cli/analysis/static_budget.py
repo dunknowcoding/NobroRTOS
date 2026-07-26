@@ -10,13 +10,13 @@ It also estimates a static instruction-cycle envelope for the same call graph an
 gate a cycle budget. Recursive, looped, indirect-call, or unknown-instruction paths are
 flagged rather than silently treated as fully priced.
 
-  python3 tools/cli/static_budget.py path/to/app.elf [--objdump PATH] [--flash-budget BYTES]
-  python3 tools/cli/static_budget.py path/to/app.elf [--static-ram-budget BYTES]
-  python3 tools/cli/static_budget.py path/to/app.elf [--ram-budget BYTES] [--stack-budget BYTES]
+  python3 sdk/cli/nobro.py budget path/to/app.elf [--objdump PATH] [--flash-budget BYTES]
+  python3 sdk/cli/nobro.py budget path/to/app.elf [--static-ram-budget BYTES]
+  python3 sdk/cli/nobro.py budget path/to/app.elf [--ram-budget BYTES] [--stack-budget BYTES]
       [--task-stacks-ram BYTES] [--provider-stacks-ram BYTES]
       [--arena-pool-ram BYTES] [--retained-heap-ram BYTES]
       [--vendor-reserved-ram BYTES]
-  python3 tools/cli/static_budget.py path/to/app.elf [--cycle-budget CYCLES] [--clock-hz HZ]
+  python3 sdk/cli/nobro.py budget path/to/app.elf [--cycle-budget CYCLES] [--clock-hz HZ]
 
 Exit code 1 if any requested budget is exceeded.
 """

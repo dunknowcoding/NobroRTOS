@@ -17,7 +17,7 @@ import re
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 BACKENDS = ("native", "embedded-hal", "c-module", "arduino-shim")
 NAME = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 

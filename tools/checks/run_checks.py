@@ -10,7 +10,7 @@ It contains no machine-specific configuration. Exit 0 means every selected check
     python tools/checks/run_checks.py --quick    # skip the slow cargo test gate
 
 This wraps (never replaces) the narrower entry points, so `ci_matrix.sh` and
-`nobro_contract_tool.py check-software-surface` keep working standalone.
+`python sdk/cli/nobro.py contract check-software-surface` remain standalone.
 """
 import argparse
 import os
@@ -157,10 +157,10 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("accounting semantics", [py, "tools/checks/core/check_accounting_semantics.py"], ROOT),
         ("deadline masking", [py, "tools/checks/core/check_timebase_masking.py"], ROOT),
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
-        ("software surface", [py, "tools/cli/nobro_contract_tool.py", "check-software-surface"], ROOT),
+        ("software surface", [py, "sdk/cli/nobro.py", "contract", "check-software-surface"], ROOT),
         ("public docs", [py, "tools/checks/release/check_public_docs.py"], ROOT),
-        ("static budget analyzer", [py, "tools/cli/static_budget.py", "--selftest"], ROOT),
-        ("flash tool fail-closed parser", [py, "tools/cli/flash.py", "--selftest"], ROOT),
+        ("static budget analyzer", [py, "sdk/cli/nobro.py", "budget", "--selftest"], ROOT),
+        ("flash tool fail-closed parser", [py, "sdk/cli/nobro.py", "flash", "--selftest"], ROOT),
         ("board profiles", [py, "tools/checks/platforms/check_board_profiles.py"], ROOT),
         ("core layout", [py, "tools/checks/core/check_core_layout.py"], ROOT),
         ("api contract", [py, "tools/build/gen_api_contract.py", "--check"], ROOT),
@@ -191,20 +191,20 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("NiusIMU adapter contracts", [py, "tools/checks/integrations/check_niusimu_adapter.py", "--selftest"], ROOT),
         ("web flasher", [py, "tools/checks/product/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/checks/product/check_block_editor.py"], ROOT),
-        ("tutorials", [py, "tools/cli/tutorial_runner.py"], ROOT),
-        ("app catalog", [py, "tools/cli/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
+        ("tutorials", [py, "sdk/cli/nobro.py", "tutorials"], ROOT),
+        ("app catalog", [py, "sdk/cli/nobro.py", "app", "tutorials/hello-device/app.json"], ROOT),
         ("app authoring parity", [py, "tools/checks/product/check_app_authoring.py"], ROOT),
-        ("ros msg codegen", [py, "tools/cli/ros_msg_gen.py", "--selftest"], ROOT),
-        ("dts import", [py, "tools/cli/import_dts.py", "--selftest"], ROOT),
+        ("ros msg codegen", [py, "sdk/cli/nobro.py", "ros-msg", "--selftest"], ROOT),
+        ("dts import", [py, "sdk/cli/nobro.py", "import-dts", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/release/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build/build_libnobro.py", "--check"], ROOT),
-        ("admission analysis", [py, "tools/cli/nobro_admission.py", "--selftest"], ROOT),
-        ("capacity right-sizing", [py, "tools/cli/nobro_shrink.py", "--selftest"], ROOT),
+        ("admission analysis", [py, "sdk/cli/nobro.py", "admit", "--selftest"], ROOT),
+        ("capacity right-sizing", [py, "sdk/cli/nobro.py", "shrink", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/checks/platforms/check_platform_tiers.py", "--selftest"], ROOT),
         ("board-feature registry", [py, "tools/checks/platforms/check_board_features.py", "--selftest"], ROOT),
         ("adapter catalog", [py, "tools/checks/integrations/check_adapter_catalog.py"], ROOT),
-        ("adapter scaffold", [py, "tools/cli/nobro_adapter.py", "--selftest"], ROOT),
-        ("firmware project", [py, "tools/cli/nobro_firmware_project.py", "--selftest"], ROOT),
+        ("adapter scaffold", [py, "sdk/cli/nobro.py", "adapter", "--selftest"], ROOT),
+        ("firmware project", [py, "sdk/cli/nobro.py", "firmware", "--selftest"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
         ("release versions", [py, "tools/checks/release/check_release_versions.py", "--release"], ROOT),
         ("ros bridge contract", [py, "tools/checks/integrations/check_ros_bridge.py", "--selftest"], ROOT),

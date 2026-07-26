@@ -14,9 +14,9 @@ A single flow from "I have an idea" to a running, self-explaining app:
 Everything generated lands under an ignored work root (`_work/projects/<name>`)
 unless `--out` says otherwise, so a scaffold never dirties the tree.
 
-    python tools/cli/nobro_project.py new blinky
-    python tools/cli/nobro_project.py explain _work/projects/blinky/workload.json
-    python tools/cli/nobro_project.py --selftest
+    python sdk/cli/nobro.py project new blinky
+    python sdk/cli/nobro.py project explain _work/projects/blinky/workload.json
+    python sdk/cli/nobro.py project --selftest
 
 Exit 0 on success; explain exits 1 only when the workload is INFEASIBLE.
 """
@@ -29,8 +29,8 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools" / "cli"))
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "analysis"))
 import nobro_admission as adm  # noqa: E402  (marginal-cost + shed analysis)
 import nobro_diagnostics as diagnostics  # noqa: E402
 import nobro_shrink as shrink  # noqa: E402  (fail-closed capacity proposals)
@@ -359,7 +359,7 @@ def scaffold(name: str, out_dir: pathlib.Path) -> dict:
     (project / "README.txt").write_text(
         f"NobroRTOS project '{name}'\n\n"
         f"Explain the derived contract:\n"
-        f"  python tools/cli/nobro_project.py explain {project / 'workload.json'}\n\n"
+        f"  python sdk/cli/nobro.py project explain {project / 'workload.json'}\n\n"
         f"The graph in app_graph.rs derives the whole kernel contract from one\n"
         f"declaration; workload.json prices it for admission.\n",
         encoding="utf-8")
@@ -873,7 +873,7 @@ def main() -> int:
             return 1
         print(f"created project '{info['name']}' in {info['dir']}")
         print(f"  files: {', '.join(info['files'])}")
-        print(f"  next:  python tools/cli/nobro_project.py explain "
+        print(f"  next:  python sdk/cli/nobro.py project explain "
               f"{pathlib.Path(info['dir']) / 'workload.json'}")
         return 0
 

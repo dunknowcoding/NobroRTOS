@@ -28,9 +28,9 @@ import shutil
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "bindings" / "python"))
-sys.path.insert(0, str(ROOT / "tools" / "cli"))
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "project"))
 
 from nobro_rtos.app import NobroApp  # noqa: E402
 import nobro_project as project_model  # noqa: E402

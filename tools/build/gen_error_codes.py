@@ -10,6 +10,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "cli" / "analysis"))
 REGISTRY = ROOT / "sdk" / "error-codes.json"
 OUTPUT = ROOT / "docs" / "ERROR_CODES.md"
 CODE = re.compile(r"^NOBRO-E([0-9]{3})$")
@@ -86,7 +87,6 @@ def parity_errors(entries: list[dict[str, str]]) -> list[str]:
         if f'"{code} {message}"' not in rust:
             errors.append(f"Rust admission diagnostic differs for {code}")
 
-    sys.path.insert(0, str(ROOT / "tools" / "cli"))
     import nobro_diagnostics  # noqa: PLC0415
 
     if nobro_diagnostics.surface("project") != by_surface["project"]:

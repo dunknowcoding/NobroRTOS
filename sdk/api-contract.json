@@ -857,7 +857,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/distribution.py",
-          "sha256": "f89fbe840fc01a3de8ab78eed0f37e10200e9086d5c8f0ba2a18723829e570e1"
+          "sha256": "25769b60f9b33afe59d0cc26683a101daaa555e8d8578afb88ce379d82274d8a"
         },
         {
           "path": "bindings/python/nobro_rtos/host_contract.py",
@@ -4951,7 +4951,7 @@
           }
         ],
         "path": "core/crates/nobro_secure/src/lib.rs",
-        "sha256": "76dd8d4862b5880ceca0a0a296038310ade5f20c365f344821ecaf6ad6767394"
+        "sha256": "f5e7e71a10277eca824428d474f76ebfec47c0cbfe697765521cc3eff0916399"
       },
       {
         "crate": "nobro-sensor",

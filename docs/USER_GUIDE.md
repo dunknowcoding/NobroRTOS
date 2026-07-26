@@ -250,40 +250,40 @@ Host-side simulators mirror selected runtime contracts for early design and CI
 checks:
 
 ```powershell
-python tools/cli/nobro_contract_tool.py sample-sensor --mode bad_data_every --ticks 4 --period 1
-python tools/cli/nobro_contract_tool.py check-ai-route
-python tools/cli/nobro_contract_tool.py check-ai-route-matrix
-python tools/cli/nobro_contract_tool.py check-ai-preflight-matrix
-python tools/cli/nobro_contract_tool.py check-ros-preflight-matrix
-python tools/cli/nobro_contract_tool.py check-bundle-matrix
-python tools/cli/nobro_contract_tool.py sample-recovery --error sensor_read_fail --events 4
-python tools/cli/nobro_contract_tool.py check-recovery-matrix
-python tools/cli/nobro_contract_tool.py sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
-python tools/cli/nobro_contract_tool.py check-watchdog-matrix
-python tools/cli/nobro_contract_tool.py sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
-python tools/cli/nobro_contract_tool.py check-scheduler-matrix
-python tools/cli/nobro_contract_tool.py sample-event-log --capacity 3 --events 4 --recent 3
-python tools/cli/nobro_contract_tool.py check-event-log-matrix
-python tools/cli/nobro_contract_tool.py sample-quota
-python tools/cli/nobro_contract_tool.py check-quota-matrix
-python tools/cli/nobro_contract_tool.py sample-degrade --flash-limit 73728 --ram-limit 16384
-python tools/cli/nobro_contract_tool.py check-degrade-matrix
-python tools/cli/nobro_contract_tool.py sample-runtime-drill --fault-count 3
-python tools/cli/nobro_contract_tool.py check-runtime-drill --fault-count 3
-python tools/cli/nobro_contract_tool.py check-software-surface
-python tools/cli/nobro_contract_tool.py check-python-surface
-python tools/cli/nobro_contract_tool.py check-cli-command-surface
-python tools/cli/nobro_contract_tool.py check-starter-templates
-python tools/cli/nobro_contract_tool.py sample-startup
-python tools/cli/nobro_contract_tool.py check-startup-matrix
-python tools/cli/nobro_contract_tool.py check-boot-summary-matrix
-python tools/cli/nobro_contract_tool.py sample-project platformio --name edge_demo --module control
-python tools/cli/nobro_contract_tool.py sample-project python_board_bridge --name edge_demo --module control
-python tools/cli/nobro_contract_tool.py write-project platformio --output _work\edge_demo --name edge_demo
-python tools/cli/nobro_contract_tool.py check-project _work\edge_demo --target platformio
-python tools/cli/nobro_contract_tool.py repair-project _work\edge_demo --target platformio
-python tools/cli/verify_timing_lease.py
-python tools/cli/tutorial_runner.py
+python sdk/cli/nobro.py contract sample-sensor --mode bad_data_every --ticks 4 --period 1
+python sdk/cli/nobro.py contract check-ai-route
+python sdk/cli/nobro.py contract check-ai-route-matrix
+python sdk/cli/nobro.py contract check-ai-preflight-matrix
+python sdk/cli/nobro.py contract check-ros-preflight-matrix
+python sdk/cli/nobro.py contract check-bundle-matrix
+python sdk/cli/nobro.py contract sample-recovery --error sensor_read_fail --events 4
+python sdk/cli/nobro.py contract check-recovery-matrix
+python sdk/cli/nobro.py contract sample-watchdog --timeout-us 100 --sweeps 3 --step-us 75
+python sdk/cli/nobro.py contract check-watchdog-matrix
+python sdk/cli/nobro.py contract sample-scheduler --ticks 1000 21020 41050 --tolerance-us 25
+python sdk/cli/nobro.py contract check-scheduler-matrix
+python sdk/cli/nobro.py contract sample-event-log --capacity 3 --events 4 --recent 3
+python sdk/cli/nobro.py contract check-event-log-matrix
+python sdk/cli/nobro.py contract sample-quota
+python sdk/cli/nobro.py contract check-quota-matrix
+python sdk/cli/nobro.py contract sample-degrade --flash-limit 73728 --ram-limit 16384
+python sdk/cli/nobro.py contract check-degrade-matrix
+python sdk/cli/nobro.py contract sample-runtime-drill --fault-count 3
+python sdk/cli/nobro.py contract check-runtime-drill --fault-count 3
+python sdk/cli/nobro.py contract check-software-surface
+python sdk/cli/nobro.py contract check-python-surface
+python sdk/cli/nobro.py contract check-cli-command-surface
+python sdk/cli/nobro.py contract check-starter-templates
+python sdk/cli/nobro.py contract sample-startup
+python sdk/cli/nobro.py contract check-startup-matrix
+python sdk/cli/nobro.py contract check-boot-summary-matrix
+python sdk/cli/nobro.py contract sample-project platformio --name edge_demo --module control
+python sdk/cli/nobro.py contract sample-project python_board_bridge --name edge_demo --module control
+python sdk/cli/nobro.py contract write-project platformio --output _work\edge_demo --name edge_demo
+python sdk/cli/nobro.py contract check-project _work\edge_demo --target platformio
+python sdk/cli/nobro.py contract repair-project _work\edge_demo --target platformio
+python sdk/cli/nobro.py verify-timing
+python sdk/cli/nobro.py tutorials
 ```
 
 Generated starter projects include VS Code task metadata for the same project
@@ -294,15 +294,15 @@ the generated task suitable for CI and editor problem workflows.
 or `nobro-contract.json`.
 Project checks validate the expected task commands, not just task labels, so
 renamed or stale editor tasks are reported before they mislead a workflow.
-`tools/cli/static_budget.py` can gate build-time memory and timing envelopes for an
+`sdk/cli/nobro.py budget` can gate build-time memory and timing envelopes for an
 ELF before it is packaged. It reports flash, static RAM, worst-case stack, a
 disjoint total-RAM receipt, and a static instruction-cycle estimate, then returns
 non-zero when a configured RAM or cycle budget is exceeded:
 
 ```powershell
-python tools/cli/static_budget.py _work\firmware\app.elf --ram-budget 32768
-python tools/cli/static_budget.py _work\firmware\app.elf --ram-budget 32768 --task-stacks-ram 4096 --provider-stacks-ram 1024 --arena-pool-ram 2048 --retained-heap-ram 0 --vendor-reserved-ram 8192
-python tools/cli/static_budget.py _work\firmware\app.elf --cycle-budget 200000 --clock-hz 64000000
+python sdk/cli/nobro.py budget _work\firmware\app.elf --ram-budget 32768
+python sdk/cli/nobro.py budget _work\firmware\app.elf --ram-budget 32768 --task-stacks-ram 4096 --provider-stacks-ram 1024 --arena-pool-ram 2048 --retained-heap-ram 0 --vendor-reserved-ram 8192
+python sdk/cli/nobro.py budget _work\firmware\app.elf --cycle-budget 200000 --clock-hz 64000000
 ```
 
 Each explicit RAM value is a reservation not already present in the ELF's
@@ -320,7 +320,7 @@ The static web flasher lives under `packages/web-flasher` and supports local
 firmware drop, Web Serial boot-entry commands, and WebUSB transfers for devices
 that expose a compatible bulk endpoint.
 The static block editor lives under `packages/block-editor` and emits the same
-`app.json` schema consumed by `tools/cli/nobro_app.py`, so visual workflows still
+`app.json` schema consumed by `sdk/cli/nobro.py app`, so visual workflows still
 land in the normal contract validator and Rust skeleton generator.
 `check-starter-templates` validates every starter target in a temporary
 directory, which keeps Arduino, PlatformIO, standalone SDK, Python host, and
@@ -522,7 +522,7 @@ This is the declarative app-generation path: describe the app as data, generate 
 ### Generate
 
 ```powershell
-python tools/cli/nobro_contract_tool.py gen-app --name my_control_app --module control
+python sdk/cli/nobro.py contract gen-app --name my_control_app --module control
 # options: --criticality {best_effort|user|driver|system}  --flash <bytes>  --ram <bytes>  --pool <slots>
 ```
 
@@ -559,8 +559,8 @@ re-validated by the compiler and at admission.
 C or C++ module skeleton over the [C ABI](../bindings/c/include/nobro_app.h):
 
 ```powershell
-python tools/cli/nobro_contract_tool.py gen-module --name my_sensor --lang c   --out my_mod
-python tools/cli/nobro_contract_tool.py gen-module --name my_sensor --lang cpp --out my_mod
+python sdk/cli/nobro.py contract gen-module --name my_sensor --lang c   --out my_mod
+python sdk/cli/nobro.py contract gen-module --name my_sensor --lang cpp --out my_mod
 ```
 
 This writes an editable module (`nobro_app_init()` once, `nobro_app_poll()` each
@@ -751,28 +751,28 @@ cargo test -p nobro-sal --target x86_64-pc-windows-msvc
 cargo test -p nobro-host --target x86_64-pc-windows-msvc
 cargo check --workspace
 cd ..
-python tools/cli/nobro_contract_tool.py doctor
-python tools/cli/nobro_contract_tool.py check-host-contract
-python tools/cli/nobro_contract_tool.py check-distribution-metadata
-python tools/cli/nobro_contract_tool.py check-public-headers
-python tools/cli/nobro_contract_tool.py check-software-surface
-python tools/cli/nobro_contract_tool.py check-starter-templates
-python tools/cli/nobro_contract_tool.py check-ai-route
-python tools/cli/nobro_contract_tool.py check-ai-route-matrix
-python tools/cli/nobro_contract_tool.py check-ai-preflight-matrix
-python tools/cli/nobro_contract_tool.py check-ros-preflight-matrix
-python tools/cli/nobro_contract_tool.py check-bundle-matrix
-python tools/cli/nobro_contract_tool.py check-report-matrix
-python tools/cli/nobro_contract_tool.py check-recovery-matrix
-python tools/cli/nobro_contract_tool.py check-watchdog-matrix
-python tools/cli/nobro_contract_tool.py check-scheduler-matrix
-python tools/cli/nobro_contract_tool.py check-event-log-matrix
-python tools/cli/nobro_contract_tool.py check-quota-matrix
-python tools/cli/nobro_contract_tool.py check-degrade-matrix
-python tools/cli/nobro_contract_tool.py check-startup-matrix
-python tools/cli/nobro_contract_tool.py check-boot-summary-matrix
-python tools/cli/nobro_contract_tool.py check-report-matrix
-python tools/cli/nobro_contract_tool.py check-runtime-drill
+python sdk/cli/nobro.py contract doctor
+python sdk/cli/nobro.py contract check-host-contract
+python sdk/cli/nobro.py contract check-distribution-metadata
+python sdk/cli/nobro.py contract check-public-headers
+python sdk/cli/nobro.py contract check-software-surface
+python sdk/cli/nobro.py contract check-starter-templates
+python sdk/cli/nobro.py contract check-ai-route
+python sdk/cli/nobro.py contract check-ai-route-matrix
+python sdk/cli/nobro.py contract check-ai-preflight-matrix
+python sdk/cli/nobro.py contract check-ros-preflight-matrix
+python sdk/cli/nobro.py contract check-bundle-matrix
+python sdk/cli/nobro.py contract check-report-matrix
+python sdk/cli/nobro.py contract check-recovery-matrix
+python sdk/cli/nobro.py contract check-watchdog-matrix
+python sdk/cli/nobro.py contract check-scheduler-matrix
+python sdk/cli/nobro.py contract check-event-log-matrix
+python sdk/cli/nobro.py contract check-quota-matrix
+python sdk/cli/nobro.py contract check-degrade-matrix
+python sdk/cli/nobro.py contract check-startup-matrix
+python sdk/cli/nobro.py contract check-boot-summary-matrix
+python sdk/cli/nobro.py contract check-report-matrix
+python sdk/cli/nobro.py contract check-runtime-drill
 ```
 
 `check-report-matrix` should pass before packaging any host tooling change that

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ROS bridge contract gate: ros_msg_gen output must match NobroRTOS bridge contracts.
 
-Validates that tools/cli/ros_msg_gen.py emits RosTopic fragments compatible with
+Validates that tools/cli/interop/ros_msg_gen.py emits RosTopic fragments compatible with
 nobro_rtos.RosTopic and that the generated type hash matches the device/host
 FNV-1a32. This ties ROS message generation to the bounded RosBridgeSal layer
 without requiring hardware.
@@ -31,7 +31,8 @@ uint8 flags
 
 def run_gen(msg_path, topic="/imu"):
     out = subprocess.check_output(
-        [sys.executable, os.path.join(ROOT, "tools", "cli", "ros_msg_gen.py"),
+        [sys.executable, os.path.join(
+            ROOT, "tools", "cli", "interop", "ros_msg_gen.py"),
          msg_path, "--type", "sensor_msgs/Imu", "--topic", topic],
         cwd=ROOT, text=True)
     return json.loads(out)

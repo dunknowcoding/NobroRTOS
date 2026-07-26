@@ -57,12 +57,15 @@ EXPECTED_RELEASE_EXCLUDES = frozenset(
 EXPECTED_HOST_TOOLS = frozenset(
     pathlib.PurePosixPath(item)
     for item in (
-        "tools/cli/nobro_contract_tool.py",
-        "tools/cli/nobro_project.py",
-        "tools/cli/nobro_shrink.py",
+        "tools/cli/learning/nobro_contract_tool.py",
+        "tools/cli/project/nobro_project.py",
+        "tools/cli/analysis/nobro_shrink.py",
     )
 )
 PUBLIC_TOOL_CATEGORIES = frozenset({"build", "checks", "cli", "release"})
+PUBLIC_CLI_CATEGORIES = frozenset(
+    {"analysis", "firmware", "interop", "learning", "project"}
+)
 PUBLIC_CHECK_CATEGORIES = frozenset(
     {"core", "integrations", "platforms", "product", "release"}
 )
@@ -559,11 +562,23 @@ def _validate_layout(
                 and path.parts[2] in PUBLIC_CHECK_CATEGORIES
                 and (path.suffix.lower() in {".py", ".sh"} or path.name == "README.md")
             )
+            or (
+                len(path.parts) == 4
+                and path.parts[1] == "cli"
+                and path.parts[2] in PUBLIC_CLI_CATEGORIES
+                and (path.suffix.lower() == ".py" or path.name == "README.md")
+            )
         )
         if top == "tools" and not public_tool:
             errors.append(
                 "public tools must be commands or indexes in a declared tool category"
             )
+        if (
+            len(path.parts) == 3
+            and path.parts[:2] == ("tools", "cli")
+            and path.suffix.lower() == ".py"
+        ):
+            errors.append("public CLI commands must live in a purpose subdirectory")
     return errors
 
 

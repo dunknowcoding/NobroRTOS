@@ -422,10 +422,10 @@ let policy = nobro_secure::BootVectorPolicy::cortex_m(
 let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 ```
 
-`tools/cli/sign_firmware.py` can emit a matching legacy HMAC manifest JSON:
+`sdk/cli/nobro.py sign` can emit a matching legacy HMAC manifest JSON:
 
 ```powershell
-python tools/cli/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
+python sdk/cli/nobro.py sign app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
 ```
 
 ### Transactional Database Persistence
