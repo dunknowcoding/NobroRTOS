@@ -169,7 +169,7 @@ pub use pool::{CompactImuPayload, SamplePool};
 #[cfg(feature = "preemptive")]
 pub use preemption::{
     InterruptHandoff, InterruptReceipt, SliceContext, SliceController, SliceDecision, SliceError,
-    SlicePort, SliceProtection, SliceTask,
+    SlicePort, SlicePortCapabilities, SliceProtection, SliceTask,
 };
 #[cfg(feature = "preemptive")]
 pub use priority_mutex::{

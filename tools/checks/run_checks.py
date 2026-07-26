@@ -102,6 +102,12 @@ def gate_specs(quick, rust_only=False, extended=False):
              "-p", "nobro-kernel", "--features", "preemptive"],
             CORE,
         ))
+        specs.append((
+            "secure symmetric-only build",
+            ["cargo", "check", "--locked", "--target", host_target(),
+             "-p", "nobro-secure", "--no-default-features"],
+            CORE,
+        ))
         lint = ["cargo", "clippy", "--locked", "--no-deps", "--target", host_target()]
         for c in HOST_CRATES:
             lint += ["-p", c]

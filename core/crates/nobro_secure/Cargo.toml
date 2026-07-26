@@ -9,8 +9,9 @@ edition.workspace = true
 # store with an integrity tag. no_std, no heap.
 [dependencies]
 nobro-crypto = { path = "../nobro_crypto", default-features = false }
-ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "signature"] }
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "signature"], optional = true }
 
 [features]
-default = ["portable-atomic-cs"]
+default = ["portable-atomic-cs", "asymmetric-ed25519"]
 portable-atomic-cs = ["nobro-crypto/portable-atomic-cs"]
+asymmetric-ed25519 = ["dep:ed25519-dalek"]

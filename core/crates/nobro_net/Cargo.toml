@@ -10,7 +10,7 @@ edition.workspace = true
 
 [dependencies]
 nobro-crypto = { path = "../nobro_crypto", default-features = false }
-nobro-secure = { path = "../nobro_secure", default-features = false }
+nobro-secure = { path = "../nobro_secure", default-features = false, features = ["asymmetric-ed25519"] }
 
 [dev-dependencies]
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "signature"] }

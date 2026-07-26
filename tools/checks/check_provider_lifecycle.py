@@ -12,6 +12,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "core"
 PACKAGES = (
+    "nobro-device",
     "nobro-adapter-wireless-ble-arduino-ble",
     "nobro-adapter-wireless-ble-arduino-esp",
     "nobro-adapter-wireless-wifi-arduino-esp",
@@ -38,7 +39,7 @@ def main() -> int:
     run(cargo, cwd=CORE)
     print(
         "PROVIDER LIFECYCLE: PASS "
-        "(portable facade plus BLE, WiFi, persistent ADC, and audio backends)"
+        "(generation/cleanup receipts plus facade, BLE, WiFi, persistent ADC, and audio backends)"
     )
     return 0
 

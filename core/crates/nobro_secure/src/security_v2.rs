@@ -6,6 +6,47 @@ use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 use crate::{verify_tag, BootPlanError, BootVectorPolicy, Slot, VerifiedBootPlan};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignatureBackendError {
+    InvalidPublicKey,
+    InvalidSignature,
+}
+
+/// Fixed-footprint asymmetric verifier selected by the board boot policy.
+///
+/// Manifests keep bounded 32-byte public keys and 64-byte signatures. A target
+/// may use the built-in Ed25519 backend or provide an accelerator/secure-element
+/// Ed25519 implementation without changing slot, rollback, or vector
+/// validation. Other algorithms require a new manifest schema and signing
+/// domain rather than substituting a verifier behind this contract.
+pub trait AsymmetricImageVerifier {
+    fn verify(
+        &self,
+        public_key: &[u8; 32],
+        digest: &[u8; 32],
+        signature: &[u8; 64],
+    ) -> Result<(), SignatureBackendError>;
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ed25519ImageVerifier;
+
+impl AsymmetricImageVerifier for Ed25519ImageVerifier {
+    fn verify(
+        &self,
+        public_key: &[u8; 32],
+        digest: &[u8; 32],
+        signature: &[u8; 64],
+    ) -> Result<(), SignatureBackendError> {
+        let verifying = VerifyingKey::from_bytes(public_key)
+            .map_err(|_| SignatureBackendError::InvalidPublicKey)?;
+        let signature = Signature::from_bytes(signature);
+        verifying
+            .verify(digest, &signature)
+            .map_err(|_| SignatureBackendError::InvalidSignature)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SignedImageManifest {
     pub key_id: u32,
     pub version: u32,
@@ -110,10 +151,35 @@ pub fn verify_signed_boot<const N: usize>(
     vectors: BootVectorPolicy,
     rollback_floor: u32,
 ) -> Result<VerifiedSignedImage, SignedBootError> {
+    verify_signed_boot_with(
+        image,
+        manifest,
+        keys,
+        vectors,
+        rollback_floor,
+        &Ed25519ImageVerifier,
+    )
+}
+
+pub fn verify_signed_boot_with<const N: usize>(
+    image: &[u8],
+    manifest: &SignedImageManifest,
+    keys: &PinnedKeyPolicy<N>,
+    vectors: BootVectorPolicy,
+    rollback_floor: u32,
+    verifier: &impl AsymmetricImageVerifier,
+) -> Result<VerifiedSignedImage, SignedBootError> {
     if image.len() != manifest.image_len as usize {
         return Err(SignedBootError::Plan(BootPlanError::SizeMismatch));
     }
-    verify_signed_measurement(sha256(image), manifest, keys, vectors, rollback_floor)
+    verify_signed_measurement_with(
+        sha256(image),
+        manifest,
+        keys,
+        vectors,
+        rollback_floor,
+        verifier,
+    )
 }
 
 /// Verify a signed manifest against a measurement produced by a board's
@@ -128,6 +194,24 @@ pub fn verify_signed_measurement<const N: usize>(
     vectors: BootVectorPolicy,
     rollback_floor: u32,
 ) -> Result<VerifiedSignedImage, SignedBootError> {
+    verify_signed_measurement_with(
+        image_measurement,
+        manifest,
+        keys,
+        vectors,
+        rollback_floor,
+        &Ed25519ImageVerifier,
+    )
+}
+
+pub fn verify_signed_measurement_with<const N: usize>(
+    image_measurement: [u8; 32],
+    manifest: &SignedImageManifest,
+    keys: &PinnedKeyPolicy<N>,
+    vectors: BootVectorPolicy,
+    rollback_floor: u32,
+    verifier: &impl AsymmetricImageVerifier,
+) -> Result<VerifiedSignedImage, SignedBootError> {
     if image_measurement != manifest.measurement {
         return Err(SignedBootError::Tampered);
     }
@@ -137,11 +221,12 @@ pub fn verify_signed_measurement<const N: usize>(
     let key = keys
         .key(manifest.key_id)
         .ok_or(SignedBootError::UnknownKey)?;
-    let verifying = VerifyingKey::from_bytes(key).map_err(|_| SignedBootError::InvalidPublicKey)?;
-    let signature = Signature::from_bytes(&manifest.signature);
-    verifying
-        .verify(&manifest.signing_digest(), &signature)
-        .map_err(|_| SignedBootError::InvalidSignature)?;
+    verifier
+        .verify(key, &manifest.signing_digest(), &manifest.signature)
+        .map_err(|error| match error {
+            SignatureBackendError::InvalidPublicKey => SignedBootError::InvalidPublicKey,
+            SignatureBackendError::InvalidSignature => SignedBootError::InvalidSignature,
+        })?;
 
     let end = manifest
         .load_addr
@@ -203,6 +288,54 @@ pub enum PersistentBootError {
 pub trait MonotonicBootStore {
     fn load(&self) -> Result<PersistentBootState, PersistentBootError>;
     fn commit_if_newer(&mut self, state: PersistentBootState) -> Result<(), PersistentBootError>;
+}
+
+/// Board-owned protected monotonic floor.
+///
+/// Implementations may use write-protected flash, OTP/eFuse, a secure element,
+/// or a trusted companion. Loading and advancing the floor are separate from
+/// image verification so a trial image cannot consume the rollback counter
+/// before it is confirmed.
+pub trait ProtectedRollbackBackend {
+    type Error;
+
+    fn load_floor(&self) -> Result<u32, Self::Error>;
+    fn commit_floor_if_higher(&mut self, version: u32) -> Result<(), Self::Error>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProtectedBootError<E> {
+    Backend(E),
+    Verification(SignedBootError),
+    Rollback,
+}
+
+pub fn verify_signed_measurement_protected<const N: usize, B: ProtectedRollbackBackend>(
+    image_measurement: [u8; 32],
+    manifest: &SignedImageManifest,
+    keys: &PinnedKeyPolicy<N>,
+    vectors: BootVectorPolicy,
+    verifier: &impl AsymmetricImageVerifier,
+    rollback: &B,
+) -> Result<VerifiedSignedImage, ProtectedBootError<B::Error>> {
+    let floor = rollback.load_floor().map_err(ProtectedBootError::Backend)?;
+    verify_signed_measurement_with(image_measurement, manifest, keys, vectors, floor, verifier)
+        .map_err(ProtectedBootError::Verification)
+}
+
+/// Advance the protected floor only after the trial image is confirmed.
+pub fn commit_verified_rollback_floor<B: ProtectedRollbackBackend>(
+    verified: &VerifiedSignedImage,
+    rollback: &mut B,
+) -> Result<(), ProtectedBootError<B::Error>> {
+    let floor = rollback.load_floor().map_err(ProtectedBootError::Backend)?;
+    let version = verified.plan().version;
+    if version < floor {
+        return Err(ProtectedBootError::Rollback);
+    }
+    rollback
+        .commit_floor_if_higher(version)
+        .map_err(ProtectedBootError::Backend)
 }
 
 pub struct PersistentBootController<S> {
@@ -422,6 +555,62 @@ mod tests {
         assert_eq!(
             verify_signed_boot(image, &manifest, &keys, vectors, 3),
             Err(SignedBootError::Rollback)
+        );
+    }
+
+    struct MemoryRollback {
+        floor: u32,
+    }
+
+    impl ProtectedRollbackBackend for MemoryRollback {
+        type Error = ();
+
+        fn load_floor(&self) -> Result<u32, Self::Error> {
+            Ok(self.floor)
+        }
+
+        fn commit_floor_if_higher(&mut self, version: u32) -> Result<(), Self::Error> {
+            if version > self.floor {
+                self.floor = version;
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn asymmetric_backend_and_protected_floor_are_separate_confirm_steps() {
+        let signing = SigningKey::from_bytes(&[4; 32]);
+        let mut keys = PinnedKeyPolicy::<1>::new();
+        assert!(keys.pin(7, signing.verifying_key().to_bytes()));
+        let image = b"protected signed image";
+        let manifest = signed_manifest(image, &signing);
+        let vectors = BootVectorPolicy::cortex_m(0x1000, 0x4000, 0x2000_0000, 0x2000_2000);
+        let mut rollback = MemoryRollback { floor: 1 };
+
+        let verified = verify_signed_measurement_protected(
+            sha256(image),
+            &manifest,
+            &keys,
+            vectors,
+            &Ed25519ImageVerifier,
+            &rollback,
+        )
+        .unwrap();
+        assert_eq!(rollback.floor, 1);
+        commit_verified_rollback_floor(&verified, &mut rollback).unwrap();
+        assert_eq!(rollback.floor, manifest.version);
+
+        rollback.floor = manifest.version + 1;
+        assert_eq!(
+            verify_signed_measurement_protected(
+                sha256(image),
+                &manifest,
+                &keys,
+                vectors,
+                &Ed25519ImageVerifier,
+                &rollback,
+            ),
+            Err(ProtectedBootError::Verification(SignedBootError::Rollback))
         );
     }
 

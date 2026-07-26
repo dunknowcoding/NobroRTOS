@@ -86,6 +86,9 @@ LIFECYCLE_DIMENSIONS = {
     "partial_io_backpressure",
     "structured_fault",
     "deterministic_recovery",
+    "generation_invalidation",
+    "quiesce_release_receipt",
+    "application_static_cleanup",
 }
 LIFECYCLE_STATUS_VALUES = {"verified", "limited", "not-applicable"}
 

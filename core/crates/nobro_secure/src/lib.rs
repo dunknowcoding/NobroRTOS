@@ -3,11 +3,17 @@
 
 use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 
+#[cfg(feature = "asymmetric-ed25519")]
 mod board_boot;
+#[cfg(feature = "asymmetric-ed25519")]
 mod factory;
+#[cfg(feature = "asymmetric-ed25519")]
 mod security_v2;
+#[cfg(feature = "asymmetric-ed25519")]
 pub use board_boot::*;
+#[cfg(feature = "asymmetric-ed25519")]
 pub use factory::*;
+#[cfg(feature = "asymmetric-ed25519")]
 pub use security_v2::*;
 
 /// Device attestation: prove firmware identity by HMAC over a nonce + the

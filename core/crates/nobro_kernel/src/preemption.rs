@@ -75,6 +75,41 @@ pub enum SliceProtection {
     UnprivilegedMpu,
 }
 
+/// Isolation capabilities of one architectural slice-switch port.
+///
+/// The default is deliberately privileged-only. A port must opt in after it
+/// can restore unprivileged Thread mode and the matching MPU bank atomically
+/// with the PSP context. This keeps an isolation request from silently
+/// degrading on a target that only implements context switching.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SlicePortCapabilities {
+    pub unprivileged_mpu: bool,
+    pub mpu_regions: u8,
+}
+
+impl SlicePortCapabilities {
+    pub const fn privileged_only() -> Self {
+        Self {
+            unprivileged_mpu: false,
+            mpu_regions: 0,
+        }
+    }
+
+    pub const fn pmsav7_m(mpu_regions: u8) -> Self {
+        Self {
+            unprivileged_mpu: mpu_regions != 0,
+            mpu_regions,
+        }
+    }
+
+    pub const fn admits(self, protection: SliceProtection) -> bool {
+        match protection {
+            SliceProtection::Privileged => true,
+            SliceProtection::UnprivilegedMpu => self.unprivileged_mpu && self.mpu_regions != 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SliceContext {
     pub module: ModuleId,
@@ -138,6 +173,7 @@ pub enum SliceError {
     InvalidStack(ModuleId),
     AliasedStack(ModuleId),
     DeadlineOverflow(ModuleId),
+    IsolationUnsupported(ModuleId),
     AlreadyRunning,
     NoReadyTask,
     NoPendingSwitch,
@@ -167,6 +203,14 @@ pub enum SliceDecision {
 /// started through a privileged/no-MPU fallback.
 pub trait SlicePort {
     type Error;
+
+    /// Report capabilities used by fail-closed task admission.
+    ///
+    /// Existing ports remain privileged-only until they explicitly override
+    /// this method.
+    fn capabilities(&self) -> SlicePortCapabilities {
+        SlicePortCapabilities::privileged_only()
+    }
 
     fn pend_switch(
         &mut self,
@@ -220,8 +264,31 @@ impl<const N: usize> SliceController<N> {
     }
 
     pub fn add(&mut self, task: SliceTask) -> Result<usize, SliceError> {
+        self.add_with_capabilities(task, SlicePortCapabilities::privileged_only())
+    }
+
+    /// Admit a task against the exact architectural port that will execute it.
+    ///
+    /// An isolated task cannot enter the controller through [`add`](Self::add)
+    /// or a port that reports only privileged execution.
+    pub fn add_for_port(
+        &mut self,
+        task: SliceTask,
+        port: &impl SlicePort,
+    ) -> Result<usize, SliceError> {
+        self.add_with_capabilities(task, port.capabilities())
+    }
+
+    pub fn add_with_capabilities(
+        &mut self,
+        task: SliceTask,
+        capabilities: SlicePortCapabilities,
+    ) -> Result<usize, SliceError> {
         if self.len == N {
             return Err(SliceError::Full);
+        }
+        if !capabilities.admits(task.context.protection) {
+            return Err(SliceError::IsolationUnsupported(task.module));
         }
         if task.budget_us == 0 {
             return Err(SliceError::InvalidBudget(task.module));
@@ -516,10 +583,19 @@ mod tests {
         proactive_switches: u32,
         forced_switches: u32,
         fail: bool,
+        isolation: bool,
     }
 
     impl SlicePort for Port {
         type Error = ();
+
+        fn capabilities(&self) -> SlicePortCapabilities {
+            if self.isolation {
+                SlicePortCapabilities::pmsav7_m(8)
+            } else {
+                SlicePortCapabilities::privileged_only()
+            }
+        }
 
         fn pend_switch(
             &mut self,
@@ -818,16 +894,22 @@ mod tests {
         let mut storage = [0u64; 64];
         let base = storage.as_mut_ptr() as usize;
         let mut controller = SliceController::<2>::new();
+        let mut port = Port {
+            isolation: true,
+            ..Port::default()
+        };
         controller
-            .add(
+            .add_for_port(
                 SliceTask::new(ModuleId::Sensor, Criticality::System, 100, base, 256)
                     .unprivileged_mpu(),
+                &port,
             )
             .unwrap();
         controller
-            .add(
+            .add_for_port(
                 SliceTask::new(ModuleId::Radio, Criticality::Driver, 100, base + 256, 256)
                     .unprivileged_mpu(),
+                &port,
             )
             .unwrap();
         controller.mark_ready(ModuleId::Sensor);
@@ -835,7 +917,6 @@ mod tests {
         let sentinel = ExecutionSentinel::new();
         let first = controller.start_next_at(0, &sentinel).unwrap();
         assert_eq!(first.protection, SliceProtection::UnprivilegedMpu);
-        let mut port = Port::default();
         let decision = controller
             .on_budget_interrupt(101, &sentinel, &mut port)
             .unwrap();
@@ -844,5 +925,27 @@ mod tests {
         };
         assert_eq!(from.protection, SliceProtection::UnprivilegedMpu);
         assert_eq!(to.protection, SliceProtection::UnprivilegedMpu);
+    }
+
+    #[test]
+    fn isolated_task_is_rejected_without_an_isolation_capable_port() {
+        let mut storage = [0u64; 32];
+        let base = storage.as_mut_ptr() as usize;
+        let task = SliceTask::new(ModuleId::Sensor, Criticality::System, 100, base, 256)
+            .unprivileged_mpu();
+        let mut controller = SliceController::<1>::new();
+        assert_eq!(
+            controller.add(task),
+            Err(SliceError::IsolationUnsupported(ModuleId::Sensor))
+        );
+        assert_eq!(
+            controller.add_for_port(task, &Port::default()),
+            Err(SliceError::IsolationUnsupported(ModuleId::Sensor))
+        );
+        let isolated = Port {
+            isolation: true,
+            ..Port::default()
+        };
+        assert!(controller.add_for_port(task, &isolated).is_ok());
     }
 }

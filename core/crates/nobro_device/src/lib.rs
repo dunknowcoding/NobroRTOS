@@ -8,6 +8,12 @@
 //! approachability of an Arduino library.
 #![cfg_attr(not(test), no_std)]
 
+mod provider_lifecycle;
+pub use provider_lifecycle::{
+    ProviderLifecycle, ProviderLifecycleError, ProviderLifecycleState, ProviderOwnedResources,
+    ProviderQuiesceReceipt, ProviderRecoveryReceipt, ProviderReleaseReceipt, ProviderSession,
+};
+
 // ---------------------------------------------------------------- provider resources
 
 /// One independently measurable resource dimension owned by a mounted provider.

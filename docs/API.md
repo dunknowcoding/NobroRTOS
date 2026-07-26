@@ -226,6 +226,14 @@ bindings exist under
 `wireless/wifi/arduino-wifis3` and `wireless/wifi/arduino-esp`. Their Arduino
 facades copy scan results into caller storage, borrow runtime credentials, and
 expose scan/join/leave/quiesce/recovery through the selected board package.
+
+Promoted provider compositions can wrap their backend with
+`nobro_device::ProviderLifecycle`. Its session token is generation-tagged;
+quiesce returns an ownership receipt, and release succeeds only after leases,
+callbacks, and declared application-static objects are all accounted for.
+Release/recovery advances the generation, so late completions from the prior
+mount fail as stale.
+
 The ESP facade delegates to the pinned Arduino-ESP32 3.3.10 `WiFi` stack on
 ESP32, ESP32-C3, and ESP32-S3; the UNO R4 facade delegates to WiFiS3. Both
 vendor stacks remain synchronous and heap-using internally, so a post-call
@@ -346,16 +354,21 @@ same diagnostics without owning the sensor driver. The matching C ABI is
 ### Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,
-board-specific jump. The recommended fleet boundary is `verify_signed_boot`,
-which verifies a pinned Ed25519 key, signed image metadata, SHA-256 measurement,
+board-specific jump. The optional `asymmetric-ed25519` feature supplies
+`Ed25519ImageVerifier`; `AsymmetricImageVerifier` also permits a board-owned
+accelerator or secure-element backend under the same bounded manifest and
+vector policy. The recommended fleet boundary is `verify_signed_boot`, which
+verifies a pinned Ed25519 key, signed image metadata, SHA-256 measurement,
 anti-rollback floor, and entry/stack policy before returning a
 `VerifiedSignedImage`. Its fields are private, so update and boot controllers
 cannot manufacture an unverified release token.
 
 `PersistentBootController` commits stage, first-trial, confirm, and revert state
 through `MonotonicBootStore`; storage failures stop the boot decision. A board
-port supplies the durable store and the final jump. `ProtectedKeyBackend`
-similarly lets a platform authenticate without exporting key bytes, while
+port supplies the durable store and the final jump. `ProtectedRollbackBackend`
+separates reading the protected monotonic floor from advancing it after trial
+confirmation. `ProtectedKeyBackend` similarly lets a platform provision and
+authenticate without exporting key bytes, while
 `AuthenticatedReportEnvelope` is the integrity boundary for reports used in
 trust decisions.
 
@@ -575,8 +588,12 @@ Arbitrary ISR callbacks are intentionally absent.
 
 The `nobro-kernel/preemptive` feature adds `InterruptHandoff` and
 `SliceController`; `nobro-hal/cortex-m-slice` adds the nRF PSP/PendSV mechanism.
-Both are opt-in. P-SLICE owns separate stacks but is not an MPU or privilege
-boundary. Start a controller with `start_next_at(now_us, sentinel)` before
+Both are opt-in. P-SLICE owns separate stacks; privileged slices are not an
+isolation boundary. An unprivileged slice must be admitted with
+`add_for_port`, and the port must explicitly report a verified MPU capability
+through `SlicePortCapabilities`; ordinary `add` rejects the request rather
+than silently running it privileged. Start a controller with
+`start_next_at(now_us, sentinel)` before
 entering thread mode; this arms the budget sentinel before user work can hog.
 `CortexMSliceSwitch::start(record, pendsv_logical_priority, ceiling)` validates
 an explicit PendSV priority at or below the selected BASEPRI ceiling (logical

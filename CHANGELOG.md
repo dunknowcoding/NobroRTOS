@@ -4,6 +4,14 @@
 
 ### Changed
 
+- Isolated P-SLICE tasks now require an isolation-capable port at admission;
+  unsupported ports reject them instead of silently using privileged Thread
+  mode.
+- Asymmetric boot verification is a selectable backend with built-in Ed25519,
+  protected rollback-floor hooks, and a symmetric-only build when the feature
+  is disabled.
+- Provider lifecycles now expose fixed-size generation, quiesce, release, and
+  application-static cleanup receipts across promoted binding profiles.
 - Bounded async reactors can opt into explicit multiword ready bitmaps, while
   the compact one-word form remains the default.
 - The opt-in preemptive kernel can request a portable context switch when a

@@ -54,6 +54,10 @@ gate "preemption contracts host tests" \
   bash -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
     -p nobro-kernel --features preemptive -p nobro-admission'
 
+gate "secure symmetric-only build" \
+  bash -c 'cd core && cargo check --locked --target "$HOST_TARGET" \
+    -p nobro-secure --no-default-features'
+
 gate "nRF52840 PSP/PendSV target build" \
   bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features preemptive && \

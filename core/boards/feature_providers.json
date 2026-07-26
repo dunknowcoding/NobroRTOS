@@ -53,7 +53,10 @@
     "stale_session",
     "partial_io_backpressure",
     "structured_fault",
-    "deterministic_recovery"
+    "deterministic_recovery",
+    "generation_invalidation",
+    "quiesce_release_receipt",
+    "application_static_cleanup"
   ],
   "lifecycle_status_values": [
     "verified",
@@ -77,7 +80,10 @@
         "stale_session": "verified",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "bus_reset": "The ArduinoBLE API does not expose an independent controller bus-reset operation; owned quiesce and full stack remount are the supported recovery boundary."
@@ -99,7 +105,10 @@
         "stale_session": "verified",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "absent_device": "The Bluetooth controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
@@ -122,7 +131,10 @@
         "stale_session": "limited",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "absent_device": "The WiFi controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
@@ -146,7 +158,10 @@
         "stale_session": "limited",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "bus_reset": "WiFiS3 1.5.0 exposes disconnect and stack remount, not an independent ESP32-S3 controller hard-reset operation.",
@@ -169,7 +184,10 @@
         "stale_session": "limited",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "absent_device": "The SAR ADC is integrated into the promoted ESP32 targets.",
@@ -194,7 +212,10 @@
         "stale_session": "limited",
         "partial_io_backpressure": "verified",
         "structured_fault": "verified",
-        "deterministic_recovery": "verified"
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified"
       },
       "limitations": {
         "bus_reset": "Recovery reinitializes the codec and I2S transport, but the facade does not expose a separate I2C bus-reset primitive.",

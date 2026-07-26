@@ -2306,7 +2306,7 @@
           }
         ],
         "path": "core/crates/nobro_device/src/lib.rs",
-        "sha256": "0445cf4f97975b30c51f2c3a28e351d3eb3c336fe5411535276e97fc7474e0c0"
+        "sha256": "8f9d13f57b371b56a24fdade04aef99bb05d3354e3ab8d9c572d28763f468839"
       },
       {
         "crate": "nobro-hal",
@@ -3222,7 +3222,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "f616f7c60cb8eb289707e1aa0487956454cf7ac8ef4518aad0a75bc9349afad2"
+        "sha256": "0395c2a67135e0f78dedee16f2fffd7f95d6cd453fc4ec04b15db220e5ce0b52"
       },
       {
         "crate": "nobro-ml",
@@ -4884,7 +4884,7 @@
           }
         ],
         "path": "core/crates/nobro_secure/src/lib.rs",
-        "sha256": "eca8bd70d5817f8efd87396b882b1ff00693d9615089f50bf4d1b496a7be0c00"
+        "sha256": "76dd8d4862b5880ceca0a0a296038310ade5f20c365f344821ecaf6ad6767394"
       },
       {
         "crate": "nobro-sensor",
