@@ -29,9 +29,12 @@ and omission checks rather than an adversarial attestation.
 Admission, identity, quotas, recovery, and diagnostics consume flash, RAM, stack, and
 CPU. Small applications that do not need those controls may be smaller with a direct
 loop. Size and timing depend on the selected profile, compiler, target, and workload;
-measure the final application. Static RAM is not total RAM, so deployment review must
-also include stacks and bounded arenas. Current or energy estimates require calibrated
-hardware and are not inferred from software coefficients alone.
+measure the final application. Static RAM is not total RAM. A deployment receipt must
+account once, without overlap, for static sections, task stacks, provider stacks,
+arenas/pools, retained heap, and vendor/controller reservations; dimensions already
+contained in `.data`/`.bss` are declared as zero rather than charged twice. Current,
+energy, and joule estimates still require calibrated electrical measurements and are
+not inferred from software coefficients alone.
 
 ## Platform support
 

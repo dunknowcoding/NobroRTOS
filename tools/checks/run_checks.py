@@ -19,23 +19,6 @@ import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CORE = os.path.join(ROOT, "core")
-HOST_CRATES = [
-    "nobro-admission", "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
-    "nobro-sal", "nobro-kernel", "nobro-classic", "nobro-control",
-    "nobro-database", "nobro-secure", "nobro-storage",
-    "nobro-device", "nobro-wireless", "nobro-camera", "nobro-nn", "nobro-ai",
-    "nobro-services", "nobro-host",
-    "nobro-usb", "nobro-hal", "nobro-adapter-bmp280",
-    "nobro-adapter-icm45686", "nobro-adapter-ina3221", "nobro-adapter-motion-ai",
-    "nobro-adapter-mpu9250-imu", "nobro-adapter-nn-motion-ai",
-    "nobro-adapter-radio-comms", "nobro-adapter-robo-servo",
-    "nobro-adapter-wireless-ble-arduino-ble",
-    "nobro-adapter-ros-imu-bridge", "nobro-adapter-sensor-stub",
-    "nobro-adapter-sensors-esp32-adc-continuous",
-    "nobro-adapter-servo-esp32-ledc", "nobro-adapter-servo-esp32-rmt",
-]
-
-
 def host_target():
     """Return rustc's native host triple instead of assuming one developer OS."""
     override = os.environ.get("HOST_TARGET")
@@ -76,10 +59,11 @@ def gate_specs(quick, rust_only=False, extended=False):
     if not quick:
         specs.append(("dependency source/license policy",
                       [py, "tools/checks/core/check_dependency_policy.py"], ROOT))
-        cargo = ["cargo", "test", "--locked", "--target", host_target()]
-        for c in HOST_CRATES:
-            cargo += ["-p", c]
-        specs.append(("cargo host tests", cargo, CORE))
+        specs.append((
+            "fail-closed host workspace",
+            [py, "tools/checks/core/check_host_workspace.py"],
+            ROOT,
+        ))
         specs.append((
             "vendored nRF USBD regression tests",
             ["cargo", "test", "--locked", "--target", host_target(), "-p", "nrf-usbd"],
@@ -115,11 +99,6 @@ def gate_specs(quick, rust_only=False, extended=False):
              "-p", "nobro-secure", "--no-default-features"],
             CORE,
         ))
-        lint = ["cargo", "clippy", "--locked", "--no-deps", "--target", host_target()]
-        for c in HOST_CRATES:
-            lint += ["-p", c]
-        lint += ["--", "-D", "warnings"]
-        specs.append(("cargo clippy", lint, CORE))
         specs.append((
             "kernel capacity-report feature clippy",
             ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",

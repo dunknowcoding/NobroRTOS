@@ -1,7 +1,9 @@
 //! Neural-network building blocks from scratch, scoped for MCUs (inference side).
 //!
 //! Every block is `no_std`, heap-free, and shape-explicit: the caller owns all buffers
-//! and the math is plain f32 loops - auditable, portable, and deterministic. Training,
+//! and the scalar math is auditable, portable, and deterministic. Requantized int8
+//! dense inference may select a board-supplied CMSIS-NN backend; every call returns
+//! an honest executed-backend/fallback receipt. Training,
 //! word-embedding preparation, and evaluation belong on the host (bindings/python),
 //! which exports flat weight arrays these blocks execute; quantization helpers live in
 //! `nobro_ml`.
@@ -120,7 +122,7 @@ pub fn dense(input: &[f32], weights: &[f32], bias: &[f32], out: &mut [f32]) {
     }
 }
 
-/// Integer dense layer - our own CMSIS-NN-style int8 kernel, no vendor lib.
+/// Integer dense layer with the portable scalar backend.
 /// `input` and `weights` (`[OUT][IN]` row-major) are int8; accumulation is int32 and
 /// `bias` is already in accumulator units (`bias_real / (scale_in * scale_w)`).
 ///
@@ -129,15 +131,246 @@ pub fn dense(input: &[f32], weights: &[f32], bias: &[f32], out: &mut [f32]) {
 /// with no floating point in the hot loop (the point of an int8 kernel). Outputs are the
 /// raw accumulators; requantize downstream only if you need the actual logit values.
 pub fn dense_int8(input: &[i8], weights: &[i8], bias: &[i32], out: &mut [i32]) {
+    scalar_dense_int8(input, weights, bias, out);
+}
+
+fn scalar_dense_int8(input: &[i8], weights: &[i8], bias: &[i32], out: &mut [i32]) {
     let n_in = input.len();
     for (j, o) in out.iter_mut().enumerate() {
         let row = &weights[j * n_in..(j + 1) * n_in];
         let mut acc = bias[j];
         for (w, x) in row.iter().zip(input) {
-            acc += i32::from(*w) * i32::from(*x);
+            acc = acc.wrapping_add(i32::from(*w) * i32::from(*x));
         }
         *o = acc;
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DenseI8BackendId {
+    Scalar,
+    CmsisNn,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DenseI8BackendError {
+    InvalidShape,
+    InvalidQuantization,
+    Unsupported,
+    ProviderFailure,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DenseI8Fallback {
+    None,
+    RequestedBackendUnsupported,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DenseI8Receipt {
+    pub requested: DenseI8BackendId,
+    pub executed: DenseI8BackendId,
+    pub fallback: DenseI8Fallback,
+}
+
+/// CMSIS-NN-compatible per-tensor quantization for one dense operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DenseI8Quantization {
+    pub input_offset: i32,
+    pub weight_offset: i32,
+    pub output_offset: i32,
+    pub multiplier: i32,
+    pub shift: i32,
+    pub activation_min: i8,
+    pub activation_max: i8,
+}
+
+impl DenseI8Quantization {
+    pub const IDENTITY: Self = Self {
+        input_offset: 0,
+        weight_offset: 0,
+        output_offset: 0,
+        multiplier: 1 << 30,
+        shift: 1,
+        activation_min: i8::MIN,
+        activation_max: i8::MAX,
+    };
+
+    fn validate(self) -> Result<(), DenseI8BackendError> {
+        if !(-127..=128).contains(&self.input_offset)
+            || !(-127..=128).contains(&self.weight_offset)
+            || !(-127..=128).contains(&self.output_offset)
+            || self.multiplier <= 0
+            || !(-31..=30).contains(&self.shift)
+            || self.activation_min > self.activation_max
+        {
+            return Err(DenseI8BackendError::InvalidQuantization);
+        }
+        Ok(())
+    }
+}
+
+/// Backend for an equivalent, requantized int8 dense operator.
+pub trait QuantizedDenseI8Backend {
+    fn id(&self) -> DenseI8BackendId;
+
+    fn run(
+        &mut self,
+        input: &[i8],
+        weights: &[i8],
+        bias: &[i32],
+        quantization: DenseI8Quantization,
+        out: &mut [i8],
+    ) -> Result<(), DenseI8BackendError>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScalarQuantizedDenseI8;
+
+impl QuantizedDenseI8Backend for ScalarQuantizedDenseI8 {
+    fn id(&self) -> DenseI8BackendId {
+        DenseI8BackendId::Scalar
+    }
+
+    fn run(
+        &mut self,
+        input: &[i8],
+        weights: &[i8],
+        bias: &[i32],
+        quantization: DenseI8Quantization,
+        out: &mut [i8],
+    ) -> Result<(), DenseI8BackendError> {
+        validate_quantized_dense_i8(input, weights, bias, quantization, out)?;
+        scalar_quantized_dense_i8(input, weights, bias, quantization, out);
+        Ok(())
+    }
+}
+
+pub type CmsisNnDenseI8Fn =
+    fn(&[i8], &[i8], &[i32], DenseI8Quantization, &mut [i8]) -> Result<(), DenseI8BackendError>;
+
+/// Board-owned CMSIS-NN connector without a machine-specific path dependency.
+///
+/// The callback maps directly to `arm_nn_vec_mat_mult_t_s8` or
+/// `arm_fully_connected_s8`; the board package owns its CMSIS version and link.
+pub struct CmsisNnQuantizedDenseI8 {
+    run: CmsisNnDenseI8Fn,
+}
+
+impl CmsisNnQuantizedDenseI8 {
+    pub const fn new(run: CmsisNnDenseI8Fn) -> Self {
+        Self { run }
+    }
+}
+
+impl QuantizedDenseI8Backend for CmsisNnQuantizedDenseI8 {
+    fn id(&self) -> DenseI8BackendId {
+        DenseI8BackendId::CmsisNn
+    }
+
+    fn run(
+        &mut self,
+        input: &[i8],
+        weights: &[i8],
+        bias: &[i32],
+        quantization: DenseI8Quantization,
+        out: &mut [i8],
+    ) -> Result<(), DenseI8BackendError> {
+        validate_quantized_dense_i8(input, weights, bias, quantization, out)?;
+        (self.run)(input, weights, bias, quantization, out)
+    }
+}
+
+/// Run one equivalent quantized operator. Fallback occurs only for an explicit
+/// unsupported result; malformed shapes and provider failures remain visible.
+pub fn quantized_dense_i8_with_fallback<B: QuantizedDenseI8Backend>(
+    backend: &mut B,
+    input: &[i8],
+    weights: &[i8],
+    bias: &[i32],
+    quantization: DenseI8Quantization,
+    out: &mut [i8],
+) -> Result<DenseI8Receipt, DenseI8BackendError> {
+    validate_quantized_dense_i8(input, weights, bias, quantization, out)?;
+    let requested = backend.id();
+    match backend.run(input, weights, bias, quantization, out) {
+        Ok(()) => Ok(DenseI8Receipt {
+            requested,
+            executed: requested,
+            fallback: DenseI8Fallback::None,
+        }),
+        Err(DenseI8BackendError::Unsupported) => {
+            scalar_quantized_dense_i8(input, weights, bias, quantization, out);
+            Ok(DenseI8Receipt {
+                requested,
+                executed: DenseI8BackendId::Scalar,
+                fallback: DenseI8Fallback::RequestedBackendUnsupported,
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn validate_quantized_dense_i8(
+    input: &[i8],
+    weights: &[i8],
+    bias: &[i32],
+    quantization: DenseI8Quantization,
+    out: &[i8],
+) -> Result<(), DenseI8BackendError> {
+    quantization.validate()?;
+    if input.is_empty()
+        || out.len() != bias.len()
+        || weights.len() != input.len().saturating_mul(out.len())
+    {
+        return Err(DenseI8BackendError::InvalidShape);
+    }
+    Ok(())
+}
+
+fn scalar_quantized_dense_i8(
+    input: &[i8],
+    weights: &[i8],
+    bias: &[i32],
+    quantization: DenseI8Quantization,
+    out: &mut [i8],
+) {
+    let columns = input.len();
+    for (row_index, output) in out.iter_mut().enumerate() {
+        let row = &weights[row_index * columns..(row_index + 1) * columns];
+        let mut accumulator = bias[row_index];
+        for (value, weight) in input.iter().zip(row) {
+            accumulator = accumulator.wrapping_add(
+                (i32::from(*value) + quantization.input_offset)
+                    .wrapping_mul(i32::from(*weight) + quantization.weight_offset),
+            );
+        }
+        let value = cmsis_requantize(accumulator, quantization.multiplier, quantization.shift)
+            .wrapping_add(quantization.output_offset)
+            .clamp(
+                i32::from(quantization.activation_min),
+                i32::from(quantization.activation_max),
+            );
+        *output = value as i8;
+    }
+}
+
+fn cmsis_requantize(value: i32, multiplier: i32, shift: i32) -> i32 {
+    let left_shift = shift.max(0) as u32;
+    let right_shift = (-shift).max(0) as u32;
+    let shifted = value.wrapping_mul(1_i32 << left_shift);
+    let high = (((1_i64 << 30) + i64::from(shifted) * i64::from(multiplier)) >> 31) as i32;
+    if right_shift == 0 {
+        return high;
+    }
+    let remainder_mask = (1_i32 << right_shift) - 1;
+    let remainder = high & remainder_mask;
+    let mut result = high >> right_shift;
+    let threshold = (remainder_mask >> 1) + i32::from(result < 0);
+    if remainder > threshold {
+        result += 1;
+    }
+    result
 }
 
 /// Symmetric int8 quantization of an f32 slice into `out`; returns the scale (real =
@@ -577,6 +810,101 @@ mod tests {
     }
 
     #[test]
+    fn quantized_dense_scalar_and_fallback_are_equivalent() {
+        let input = [2_i8, -3, 4];
+        let weights = [1_i8, 2, 3, -4, 5, -6];
+        let bias = [7_i32, -8];
+        let mut reference = [0_i8; 2];
+        ScalarQuantizedDenseI8
+            .run(
+                &input,
+                &weights,
+                &bias,
+                DenseI8Quantization::IDENTITY,
+                &mut reference,
+            )
+            .unwrap();
+        assert_eq!(reference, [15, -55]);
+
+        fn unsupported(
+            _: &[i8],
+            _: &[i8],
+            _: &[i32],
+            _: DenseI8Quantization,
+            _: &mut [i8],
+        ) -> Result<(), DenseI8BackendError> {
+            Err(DenseI8BackendError::Unsupported)
+        }
+        let mut output = [0_i8; 2];
+        let receipt = quantized_dense_i8_with_fallback(
+            &mut CmsisNnQuantizedDenseI8::new(unsupported),
+            &input,
+            &weights,
+            &bias,
+            DenseI8Quantization::IDENTITY,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, reference);
+        assert_eq!(
+            receipt,
+            DenseI8Receipt {
+                requested: DenseI8BackendId::CmsisNn,
+                executed: DenseI8BackendId::Scalar,
+                fallback: DenseI8Fallback::RequestedBackendUnsupported,
+            }
+        );
+    }
+
+    #[test]
+    fn cmsis_connector_preserves_results_and_provider_failures() {
+        fn equivalent(
+            input: &[i8],
+            weights: &[i8],
+            bias: &[i32],
+            quantization: DenseI8Quantization,
+            out: &mut [i8],
+        ) -> Result<(), DenseI8BackendError> {
+            scalar_quantized_dense_i8(input, weights, bias, quantization, out);
+            Ok(())
+        }
+        let mut backend = CmsisNnQuantizedDenseI8::new(equivalent);
+        let mut output = [0_i8; 1];
+        let receipt = quantized_dense_i8_with_fallback(
+            &mut backend,
+            &[2, 3],
+            &[4, 5],
+            &[6],
+            DenseI8Quantization::IDENTITY,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, [29]);
+        assert_eq!(receipt.executed, DenseI8BackendId::CmsisNn);
+
+        fn failure(
+            _: &[i8],
+            _: &[i8],
+            _: &[i32],
+            _: DenseI8Quantization,
+            _: &mut [i8],
+        ) -> Result<(), DenseI8BackendError> {
+            Err(DenseI8BackendError::ProviderFailure)
+        }
+        assert_eq!(
+            quantized_dense_i8_with_fallback(
+                &mut CmsisNnQuantizedDenseI8::new(failure),
+                &[1],
+                &[1],
+                &[0],
+                DenseI8Quantization::IDENTITY,
+                &mut [0]
+            ),
+            Err(DenseI8BackendError::ProviderFailure)
+        );
+    }
+
+    #[test]
     fn quantize_i8_is_symmetric_and_bounded() {
         let vals = [0.0f32, 1.0, -1.0, 0.5, -0.5];
         let mut q = [0i8; 5];
@@ -591,7 +919,7 @@ mod tests {
     fn log_approx_is_accurate() {
         assert!(close(log_approx(1.0), 0.0, 1e-5));
         assert!(close(log_approx(core::f32::consts::E), 1.0, 1e-3));
-        assert!(close(log_approx(0.5), -0.693_147, 1e-3));
+        assert!(close(log_approx(0.5), -core::f32::consts::LN_2, 1e-3));
     }
 
     #[test]

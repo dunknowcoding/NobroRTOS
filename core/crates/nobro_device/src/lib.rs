@@ -9,9 +9,13 @@
 #![cfg_attr(not(test), no_std)]
 
 mod provider_lifecycle;
+mod ram_receipt;
 pub use provider_lifecycle::{
     ProviderLifecycle, ProviderLifecycleError, ProviderLifecycleState, ProviderOwnedResources,
     ProviderQuiesceReceipt, ProviderRecoveryReceipt, ProviderReleaseReceipt, ProviderSession,
+};
+pub use ram_receipt::{
+    DeploymentRamReceipt, RamPlacement, RamReceiptError, RamRegion, RamRegionKind,
 };
 
 // ---------------------------------------------------------------- provider resources

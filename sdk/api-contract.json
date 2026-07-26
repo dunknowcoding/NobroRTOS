@@ -2325,7 +2325,7 @@
           }
         ],
         "path": "core/crates/nobro_device/src/lib.rs",
-        "sha256": "8f9d13f57b371b56a24fdade04aef99bb05d3354e3ab8d9c572d28763f468839"
+        "sha256": "1b7b843a3f2126d7433c7a5cc0cfa4684badd6a2aefeed3878a829b97d525c9d"
       },
       {
         "crate": "nobro-hal",
@@ -3853,6 +3853,54 @@
             "name": "dense_int8"
           },
           {
+            "kind": "enum",
+            "name": "DenseI8BackendId"
+          },
+          {
+            "kind": "enum",
+            "name": "DenseI8BackendError"
+          },
+          {
+            "kind": "enum",
+            "name": "DenseI8Fallback"
+          },
+          {
+            "kind": "struct",
+            "name": "DenseI8Receipt"
+          },
+          {
+            "kind": "struct",
+            "name": "DenseI8Quantization"
+          },
+          {
+            "kind": "const",
+            "name": "IDENTITY"
+          },
+          {
+            "kind": "trait",
+            "name": "QuantizedDenseI8Backend"
+          },
+          {
+            "kind": "struct",
+            "name": "ScalarQuantizedDenseI8"
+          },
+          {
+            "kind": "type",
+            "name": "CmsisNnDenseI8Fn"
+          },
+          {
+            "kind": "struct",
+            "name": "CmsisNnQuantizedDenseI8"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "quantized_dense_i8_with_fallback"
+          },
+          {
             "kind": "fn",
             "name": "quantize_i8"
           },
@@ -3898,7 +3946,7 @@
           }
         ],
         "path": "core/crates/nobro_nn/src/lib.rs",
-        "sha256": "a2f8386add74174d675cd8ced6e1ea48437f4d3c4e9b45f1f783b47b6935f0f2"
+        "sha256": "856ebcf0a76a29eb7d897990874efc69adf44afab1361774404eb559be185b3c"
       },
       {
         "crate": "nobro-power",

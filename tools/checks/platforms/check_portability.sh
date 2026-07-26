@@ -11,7 +11,7 @@ set -o pipefail
 cd "$(dirname "$0")/../../../core" || exit 1
 
 PORTABLE="-p nobro-sal -p nobro-kernel -p nobro-net -p nobro-crypto -p nobro-ml \
--p nobro-sensor -p nobro-power -p nobro-adapter-ina3221 -p nobro-adapter-bmp280 \
+-p nobro-sensor -p nobro-power -p nobro-nn -p nobro-adapter-ina3221 -p nobro-adapter-bmp280 \
 -p nobro-adapter-icm45686 -p nobro-adapter-nn-motion-ai"
 
 TARGETS=(

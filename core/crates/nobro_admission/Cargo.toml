@@ -5,6 +5,3 @@ edition.workspace = true
 
 [features]
 default = []
-
-[dev-dependencies]
-trybuild = "1.0"

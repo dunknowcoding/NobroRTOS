@@ -202,7 +202,20 @@ nobro_nn::conv2d_valid(
 
 For quantized models, `dense_int8` and `conv2d_valid_i8` accumulate into i32.
 The caller can then fuse activation, argmax, or requantization according to the
-model contract.
+model contract. `ScalarQuantizedDenseI8` adds a fallible, CMSIS-NN-compatible
+requantized dense operator. A board package may attach its own CMSIS-NN build
+through `CmsisNnQuantizedDenseI8`; no vendor path or binary is embedded in the
+portable crate. `quantized_dense_i8_with_fallback` falls back to the scalar
+operator only when the provider explicitly reports `Unsupported`, and its
+receipt records the requested and executed backends. Invalid inputs and provider
+failures remain errors.
+
+`DeploymentRamReceipt` in `nobro-device` validates total RAM as six explicit,
+disjoint dimensions: ELF static sections, task stacks, provider stacks,
+arenas/pools, retained heap, and vendor reservations. Addressed ranges must not
+overlap, priced reservations need unique IDs, and an unused dimension must be
+declared as zero. The receipt rejects missing dimensions, overflow, overlap,
+duplicate reservations, and a total above its deployment budget.
 
 `nobro-ml` provides the fixed keyword-spotting feature contract used by the
 yes/no example model. `kws_log_energy_features` turns up to one second of

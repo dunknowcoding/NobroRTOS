@@ -67,14 +67,14 @@ fn main() -> ! {
         "IMU addr=0x{:02X} WHO_AM_I=0x{:02X} bmp280={}",
         imu.addr(),
         imu.who_am_i(),
-        imu.companion_present()
+        imu.bmp280_present()
     );
 
     unsafe {
         NOBRO_IMU_HEALTH_REPORT.who_am_i = u32::from(imu.who_am_i());
         NOBRO_IMU_HEALTH_REPORT.device_address = u32::from(imu.addr());
         NOBRO_IMU_HEALTH_REPORT.devices_seen = u32::from(device_count);
-        NOBRO_IMU_HEALTH_REPORT.companion_present = u32::from(imu.companion_present());
+        NOBRO_IMU_HEALTH_REPORT.companion_present = u32::from(imu.bmp280_present());
     }
 
     let mut last_report_ms = 0u64;

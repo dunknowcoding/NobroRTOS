@@ -13,6 +13,9 @@ flagged rather than silently treated as fully priced.
   python3 tools/cli/static_budget.py path/to/app.elf [--objdump PATH] [--flash-budget BYTES]
   python3 tools/cli/static_budget.py path/to/app.elf [--static-ram-budget BYTES]
   python3 tools/cli/static_budget.py path/to/app.elf [--ram-budget BYTES] [--stack-budget BYTES]
+      [--task-stacks-ram BYTES] [--provider-stacks-ram BYTES]
+      [--arena-pool-ram BYTES] [--retained-heap-ram BYTES]
+      [--vendor-reserved-ram BYTES]
   python3 tools/cli/static_budget.py path/to/app.elf [--cycle-budget CYCLES] [--clock-hz HZ]
 
 Exit code 1 if any requested budget is exceeded.
@@ -246,6 +249,35 @@ def format_path(path: list) -> str:
     return f"{' -> '.join(path[:8])}{' ...' if len(path) > 8 else ''}"
 
 
+def deployment_ram_receipt(
+    static_ram: int,
+    analyzed_stack: int,
+    task_stacks_ram: int | None,
+    provider_stacks_ram: int,
+    arena_pool_ram: int,
+    retained_heap_ram: int,
+    vendor_reserved_ram: int,
+) -> tuple[dict[str, int], int]:
+    """Build six disjoint deployment dimensions and their checked total."""
+
+    receipt = {
+        "static sections": static_ram,
+        "task/call stacks": (
+            analyzed_stack if task_stacks_ram is None else task_stacks_ram
+        ),
+        "provider stacks": provider_stacks_ram,
+        "arenas/pools": arena_pool_ram,
+        "retained heap": retained_heap_ram,
+        "vendor reserved": vendor_reserved_ram,
+    }
+    invalid = [name for name, value in receipt.items() if value < 0]
+    if invalid:
+        raise ValueError(
+            "RAM receipt values must be non-negative: " + ", ".join(invalid)
+        )
+    return receipt, sum(receipt.values())
+
+
 def run_selftest() -> int:
     sample = """
 00000000 <main>:
@@ -285,6 +317,17 @@ def run_selftest() -> int:
         assert "synthetic budget tool failed" in str(exc)
         assert "exited 7" in str(exc)
         assert "boom" in str(exc)
+    receipt, total = deployment_ram_receipt(100, 20, None, 5, 6, 7, 8)
+    assert receipt["task/call stacks"] == 20
+    assert total == 146
+    receipt, total = deployment_ram_receipt(100, 20, 0, 5, 6, 7, 8)
+    assert receipt["task/call stacks"] == 0
+    assert total == 126
+    try:
+        deployment_ram_receipt(100, 20, -1, 0, 0, 0, 0)
+        raise AssertionError("expected a negative RAM receipt to fail")
+    except ValueError as exc:
+        assert "task/call stacks" in str(exc)
     print("static_budget selftest: PASS")
     return 0
 
@@ -298,9 +341,20 @@ def main():
     ap.add_argument("--static-ram-budget", type=int, default=None,
                     help="fail if static RAM data+bss exceeds this")
     ap.add_argument("--ram-budget", type=int, default=None,
-                    help="fail if static RAM + worst-case stack exceeds this")
+                    help="fail if the disjoint total-RAM receipt exceeds this")
     ap.add_argument("--stack-budget", type=int, default=None,
                     help="fail if the computed worst-case stack exceeds this")
+    ap.add_argument("--task-stacks-ram", type=int, default=None,
+                    help="total task/call-stack RAM outside data+bss "
+                    "(default: analyzed worst-case stack; pass 0 when already reserved there)")
+    ap.add_argument("--provider-stacks-ram", type=int, default=0,
+                    help="provider worker stacks not already present in data+bss")
+    ap.add_argument("--arena-pool-ram", type=int, default=0,
+                    help="arenas/pools not already present in data+bss")
+    ap.add_argument("--retained-heap-ram", type=int, default=0,
+                    help="measured retained-heap peak, excluding arenas/pools")
+    ap.add_argument("--vendor-reserved-ram", type=int, default=0,
+                    help="priced vendor/controller RAM outside ordinary sections")
     ap.add_argument("--cycle-budget", type=int, default=None,
                     help="fail if the static deepest-path cycle estimate exceeds this")
     ap.add_argument("--clock-hz", type=int, default=None,
@@ -339,13 +393,28 @@ def main():
     except BudgetToolError as exc:
         sys.exit(str(exc))
     static_ram = data + bss
-    total_ram = static_ram + worst
+    try:
+        ram_receipt, total_ram = deployment_ram_receipt(
+            static_ram,
+            worst,
+            args.task_stacks_ram,
+            args.provider_stacks_ram,
+            args.arena_pool_ram,
+            args.retained_heap_ram,
+            args.vendor_reserved_ram,
+        )
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     print(f"flash (text+data):        {text + data:8d} B")
     print(f"static RAM (data+bss):    {static_ram:8d} B")
     print(f"worst-case stack:         {worst:8d} B")
     print(f"  deepest path: {format_path(path)}")
-    print(f"worst-case total RAM:     {total_ram:8d} B")
+    for name, value in ram_receipt.items():
+        if name == "static sections":
+            continue
+        print(f"{name + ':':24s}{value:8d} B")
+    print(f"disjoint total RAM:       {total_ram:8d} B")
     biggest = sorted(frames.items(), key=lambda kv: -kv[1])[:args.top]
     print("largest frames: " + ", ".join(f"{f}={s}B" for f, s in biggest))
     print(f"worst-case static cycles: {worst_cycles:8d} cycles")

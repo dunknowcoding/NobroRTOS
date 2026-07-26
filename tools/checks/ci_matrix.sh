@@ -11,6 +11,7 @@ cd "$(dirname "$0")/../.." || exit 1
 fails=0
 total=0
 temp_logs=()
+CURRENT_BASH="${BASH:-bash}"
 
 cleanup() {
   rm -f "${temp_logs[@]}"
@@ -37,29 +38,31 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/_work/ct-ci}"
 HOST_TARGET="${HOST_TARGET:-$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')}"
 export HOST_TARGET
 
-gate "host tests (portable crates)" \
-  bash -c 'cd core && cargo test --locked -p nobro-admission -p nobro-kernel -p nobro-sal -p nobro-net -p nobro-crypto \
-    -p nobro-ml -p nobro-sensor -p nobro-power -p nobro-control \
-    --target "$HOST_TARGET"'
+gate "fail-closed host workspace" \
+  python tools/checks/core/check_host_workspace.py
+
+gate "explicit target-only workspace" \
+  python tools/checks/core/check_host_workspace.py --target-only \
+    --target thumbv7em-none-eabihf
 
 gate "wireless adaptive alloc feature tests" \
-  bash -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
+  "$CURRENT_BASH" -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
     -p nobro-wireless --features alloc'
 
 gate "capacity-report feature target build" \
-  bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
+  "$CURRENT_BASH" -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features capacity-report'
 
 gate "preemption contracts host tests" \
-  bash -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
+  "$CURRENT_BASH" -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
     -p nobro-kernel --features preemptive -p nobro-admission'
 
 gate "secure symmetric-only build" \
-  bash -c 'cd core && cargo check --locked --target "$HOST_TARGET" \
+  "$CURRENT_BASH" -c 'cd core && cargo check --locked --target "$HOST_TARGET" \
     -p nobro-secure --no-default-features'
 
 gate "nRF52840 PSP/PendSV target build" \
-  bash -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
+  "$CURRENT_BASH" -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features preemptive && \
     cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
     --no-default-features --features platform-nrf52840-rt,board-promicro-nosd,cortex-m-slice && \
@@ -69,7 +72,7 @@ gate "nRF52840 PSP/PendSV target build" \
     --no-default-features --features platform-nrf52840-rt,board-nicenano-s140,cortex-m-slice'
 
 gate "board boot slot adapter target build" \
-  bash -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
+  "$CURRENT_BASH" -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
     -p boot-slot-demo'
 
 gate "deadline masking" python tools/checks/core/check_timebase_masking.py
@@ -80,7 +83,7 @@ gate "nano kernel build/admission/symbol budgets" \
   python tools/checks/core/check_nano_kernel.py
 
 gate "Python-authored native firmware target build" \
-  bash -c 'python tutorials/rover-python/app.py _work/python-authoring/app.json && \
+  "$CURRENT_BASH" -c 'python tutorials/rover-python/app.py _work/python-authoring/app.json && \
     python tools/cli/nobro_firmware_project.py _work/python-authoring/app.json \
       --out _work/python-firmware --build && \
     python tools/cli/static_budget.py \
@@ -89,7 +92,7 @@ gate "Python-authored native firmware target build" \
       --stack-budget 400 --cycle-budget 1200'
 
 gate "task/wire authoring parity + block-authored target build" \
-  bash -c 'python tools/checks/product/check_app_authoring.py && \
+  "$CURRENT_BASH" -c 'python tools/checks/product/check_app_authoring.py && \
     python tools/cli/nobro_firmware_project.py tutorials/hello-device/app.json \
       --out _work/block-firmware --build'
 
@@ -103,7 +106,8 @@ gate "static budget analyzer" python tools/cli/static_budget.py --selftest
 
 gate "flash tool fail-closed parser" python tools/cli/flash.py --selftest
 
-gate "portability matrix (6 MCU families)" bash tools/checks/platforms/check_portability.sh
+gate "portability matrix (6 MCU families)" \
+  "$CURRENT_BASH" tools/checks/platforms/check_portability.sh
 
 gate "reset platform evidence receipts" \
   python tools/checks/platforms/check_platform_tiers.py --begin-receipts cross-mcu
@@ -115,7 +119,7 @@ gate "nRF52840 USB target build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-usb-target-build
 
 gate "nRF52840 USB application link builds" \
-  bash -c 'cd core && \
+  "$CURRENT_BASH" -c 'cd core && \
     cargo build --locked --release --target thumbv7em-none-eabihf \
       -p usb-cdc-demo --bin usb_cdc_demo --no-default-features \
       --features board-promicro-nosd && \
@@ -127,7 +131,7 @@ gate "nRF52840 USB application link builds" \
       --features board-promicro-nosd'
 
 gate "nRF52840 application static budgets" \
-  bash -c 'python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo" \
+  "$CURRENT_BASH" -c 'python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo" \
       --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 \
       --cycle-budget 7600 --top 3 && \
     python tools/cli/static_budget.py "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo_s140" \
@@ -147,7 +151,7 @@ gate "esp32s3 port build (required Xtensa toolchain)" \
 # dependency packages in this invocation, so generated PAC code is not
 # misrepresented as part of the product lint claim.
 gate "esp32s3 first-party strict lint" \
-  bash -c 'cd core/ports/esp32s3 && cargo +esp clippy --locked --release --lib --bins -- -D warnings'
+  "$CURRENT_BASH" -c 'cd core/ports/esp32s3 && cargo +esp clippy --locked --release --lib --bins -- -D warnings'
 
 gate "rp2350 port build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-target-build
@@ -174,7 +178,7 @@ gate "ra4m1 event-paced DMA provider build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate ra4m1-event-dma-target-build
 
 gate "samd21 port build" \
-  bash -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --locked --release'
+  "$CURRENT_BASH" -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --locked --release'
 
 gate "Tier-C prebuilt library and link" \
   python tools/build/build_libnobro.py --build

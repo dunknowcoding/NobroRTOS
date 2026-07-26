@@ -199,8 +199,10 @@ No-heap networking primitives for multi-board NobroRTOS meshes.
 
 ## `nobro-nn`
 Neural-network building blocks from scratch, scoped for MCUs (inference side).
-- **struct**: `LstmState`
-- **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
+- **trait**: `QuantizedDenseI8Backend`
+- **struct**: `DenseI8Receipt`, `DenseI8Quantization`, `ScalarQuantizedDenseI8`, `CmsisNnQuantizedDenseI8`, `LstmState`
+- **enum**: `DenseI8BackendId`, `DenseI8BackendError`, `DenseI8Fallback`
+- **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantized_dense_i8_with_fallback`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
 
 ## `nobro-power`
 No-heap power management policy: pick a sleep mode from activity + a deadline,

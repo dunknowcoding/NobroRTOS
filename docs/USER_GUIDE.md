@@ -295,14 +295,22 @@ or `nobro-contract.json`.
 Project checks validate the expected task commands, not just task labels, so
 renamed or stale editor tasks are reported before they mislead a workflow.
 `tools/cli/static_budget.py` can gate build-time memory and timing envelopes for an
-ELF before it is packaged. It reports flash, static RAM, worst-case stack, and a
-static instruction-cycle estimate, then returns non-zero when a configured RAM
-or cycle budget is exceeded:
+ELF before it is packaged. It reports flash, static RAM, worst-case stack, a
+disjoint total-RAM receipt, and a static instruction-cycle estimate, then returns
+non-zero when a configured RAM or cycle budget is exceeded:
 
 ```powershell
 python tools/cli/static_budget.py _work\firmware\app.elf --ram-budget 32768
+python tools/cli/static_budget.py _work\firmware\app.elf --ram-budget 32768 --task-stacks-ram 4096 --provider-stacks-ram 1024 --arena-pool-ram 2048 --retained-heap-ram 0 --vendor-reserved-ram 8192
 python tools/cli/static_budget.py _work\firmware\app.elf --cycle-budget 200000 --clock-hz 64000000
 ```
+
+Each explicit RAM value is a reservation not already present in the ELF's
+`.data`/`.bss`. `--task-stacks-ram` defaults to the analyzed worst-case call
+stack; pass the deployment's full external task-stack reservation when it is
+larger, or zero when the linker has already reserved all task stacks in static
+sections. The other dimensions default to explicit zero. This convention keeps
+one reservation from being counted twice.
 
 The timing estimate is a build-time review gate, not a substitute for final
 target timing validation. It flags loops, recursion, indirect calls, and
