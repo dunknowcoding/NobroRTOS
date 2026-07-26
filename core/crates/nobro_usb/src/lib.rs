@@ -27,6 +27,9 @@
 //! ```
 #![no_std]
 
+use nobro_power::{
+    PowerHookError, PowerMode, PowerParticipant, PowerVetoMask, PowerVetoReason, SystemOffWake,
+};
 use portable_atomic::{AtomicBool, Ordering};
 
 #[cfg(not(any(
@@ -355,6 +358,12 @@ type ActiveBackend = RaUsbfsCdc;
 pub struct MountedUsb {
     backend: ActiveBackend,
     state: CdcState,
+    state_observed: bool,
+    power_restore_state: Option<CdcState>,
+}
+
+fn usb_power_veto(observed: bool, state: CdcState) -> Option<PowerVetoReason> {
+    (!observed || state != CdcState::Disconnected).then_some(PowerVetoReason::UsbActive)
 }
 
 impl MountedUsb {
@@ -362,12 +371,21 @@ impl MountedUsb {
         Self {
             backend,
             state: CdcState::Disconnected,
+            state_observed: false,
+            power_restore_state: None,
         }
     }
 
     /// Last state observed by [`UsbStack::poll`].
     pub fn state(&self) -> CdcState {
         self.state
+    }
+
+    /// Typed veto to hold while the USB link is mounted and not proven
+    /// disconnected. Acquire the matching executor lease before a cycle that
+    /// does not use [`PowerParticipant`] composition directly.
+    pub fn power_veto(&self) -> Option<PowerVetoReason> {
+        usb_power_veto(self.state_observed, self.state)
     }
 
     /// Accept the complete request or report why it must be retried/split.
@@ -424,6 +442,7 @@ impl MountedUsb {
     pub fn disconnect_link(&mut self) {
         self.backend.disconnect();
         self.state = CdcState::Disconnected;
+        self.state_observed = true;
     }
 
     /// Re-arm the existing RA4M1 controller after the board-level mux is routed back to
@@ -431,12 +450,72 @@ impl MountedUsb {
     pub fn reconnect_link(&mut self) {
         self.backend.reconnect();
         self.state = CdcState::Disconnected;
+        self.state_observed = false;
+    }
+}
+
+impl PowerParticipant for MountedUsb {
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        if self.power_veto().is_some() {
+            requested.shallower(PowerMode::Idle)
+        } else {
+            requested
+        }
+    }
+
+    fn vetoes(&self, requested: PowerMode) -> PowerVetoMask {
+        if requested.depth() > PowerMode::Idle.depth() && self.power_veto().is_some() {
+            PowerVetoMask::from_reason(PowerVetoReason::UsbActive)
+        } else {
+            PowerVetoMask::default()
+        }
+    }
+
+    fn prepare_power(
+        &mut self,
+        mode: PowerMode,
+        _system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        if mode.depth() > PowerMode::Idle.depth() && self.power_veto().is_some() {
+            return Err(PowerHookError {
+                source: 0x5553,
+                code: 1,
+            });
+        }
+        self.power_restore_state = Some(self.state);
+        Ok(())
+    }
+
+    fn rollback_power(&mut self, _mode: PowerMode) -> Result<(), PowerHookError> {
+        self.power_restore_state = None;
+        Ok(())
+    }
+
+    fn restore_power(&mut self, _effective: PowerMode) -> Result<(), PowerHookError> {
+        if self.power_restore_state.take().is_none() {
+            return Err(PowerHookError {
+                source: 0x5553,
+                code: 2,
+            });
+        }
+        // Polling is the Wave 80U restoration path: it observes VBUS, completes
+        // the nRF LOWPOWER exit/controller reset when needed, and publishes the
+        // resulting CDC state only after that backend work has run.
+        let _ = self.poll();
+        if self.backend.backend_fault().is_some() {
+            return Err(PowerHookError {
+                source: 0x5553,
+                code: 3,
+            });
+        }
+        Ok(())
     }
 }
 
 impl UsbStack for MountedUsb {
     fn poll(&mut self) -> CdcState {
         self.state = self.backend.poll();
+        self.state_observed = true;
         self.state
     }
 
@@ -472,6 +551,7 @@ impl UsbStack for MountedUsb {
         let result = self.backend.force_reenumeration();
         if result.is_ok() {
             self.state = CdcState::Disconnected;
+            self.state_observed = false;
         }
         result
     }
@@ -479,6 +559,7 @@ impl UsbStack for MountedUsb {
     fn poll_bootloader_handoff(&mut self) -> Result<bool, UsbBackendError> {
         let result = self.backend.poll_bootloader_handoff();
         self.state = CdcState::Disconnected;
+        self.state_observed = false;
         result
     }
 
@@ -620,9 +701,10 @@ mod tests {
 
     use super::{
         config_supported, flush_with, identity_policy, policy_supports_config, try_mount_with,
-        write_exact_with, CdcState, MountClaim, UsbBackendError, UsbConfig, UsbIdentityPolicy,
-        UsbIoError, UsbMountError, UsbStack,
+        usb_power_veto, write_exact_with, CdcState, MountClaim, UsbBackendError, UsbConfig,
+        UsbIdentityPolicy, UsbIoError, UsbMountError, UsbStack,
     };
+    use nobro_power::PowerVetoReason;
 
     struct PreFlushCompatibilityBackend;
 
@@ -667,6 +749,26 @@ mod tests {
             backend.poll_bootloader_handoff(),
             Err(UsbBackendError::Unsupported)
         );
+    }
+
+    #[test]
+    fn usb_power_veto_fails_closed_until_disconnect_is_observed() {
+        assert_eq!(
+            usb_power_veto(false, CdcState::Disconnected),
+            Some(PowerVetoReason::UsbActive)
+        );
+        for state in [
+            CdcState::Default,
+            CdcState::Addressed,
+            CdcState::Configured,
+            CdcState::Suspended,
+        ] {
+            assert_eq!(
+                usb_power_veto(true, state),
+                Some(PowerVetoReason::UsbActive)
+            );
+        }
+        assert_eq!(usb_power_veto(true, CdcState::Disconnected), None);
     }
 
     #[test]

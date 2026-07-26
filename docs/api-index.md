@@ -204,10 +204,10 @@ Neural-network building blocks from scratch, scoped for MCUs (inference side).
 
 ## `nobro-power`
 No-heap power management policy: pick a sleep mode from activity + a deadline,
-- **trait**: `PowerPlatform`
-- **struct**: `PowerHookError`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
-- **enum**: `PowerMode`
-- **fn**: `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `task_power_uw`, `account_task`, `apply_idle`, `apply_idle_release`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
+- **trait**: `PowerPlatform`, `PowerParticipant`
+- **struct**: `PowerVetoMask`, `PowerLease`, `PowerLeaseTable`, `SystemOffWake`, `PowerTransition`, `PowerHookError`, `PowerPlatformChain`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
+- **enum**: `PowerMode`, `PowerVetoReason`, `PowerLeaseKind`, `PowerLeaseError`, `WakeStyle`, `SystemOffWakeError`
+- **fn**: `acquire`, `release`, `owner`, `attach_participant`, `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `task_power_uw`, `account_task`, `acquire_lease`, `release_lease`, `set_system_off_wake`, `apply_idle`, `apply_idle_release`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
 
 ## `nobro-sal`
 NobroRTOS service abstraction layer with portable capability traits.
@@ -250,7 +250,7 @@ Modular, mountable USB device stack for NobroRTOS.
 - **trait**: `UsbStack`
 - **struct**: `UsbConfig`, `MountedUsb`
 - **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbMountError`
-- **fn**: `config_supported`, `state`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount`, `mount`
+- **fn**: `config_supported`, `state`, `power_veto`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount`, `mount`
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.

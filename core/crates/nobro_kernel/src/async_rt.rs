@@ -2211,8 +2211,8 @@ mod tests {
             fn program_wake(&mut self, _: Option<u64>) -> Result<(), PowerHookError> {
                 Ok(())
             }
-            fn enter(&mut self, _: PowerMode) -> Result<(), PowerHookError> {
-                Ok(())
+            fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
+                Ok(mode)
             }
             fn suspend(&mut self, _: u16) -> Result<(), PowerHookError> {
                 Ok(())
@@ -2333,9 +2333,9 @@ mod tests {
                 self.wake_latency_us
             }
 
-            fn enter(&mut self, _: PowerMode) -> Result<(), PowerHookError> {
+            fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
                 self.entered += 1;
-                Ok(())
+                Ok(mode)
             }
 
             fn suspend(&mut self, _: u16) -> Result<(), PowerHookError> {
@@ -2500,8 +2500,8 @@ mod tests {
                 Ok(())
             }
 
-            fn enter(&mut self, _: PowerMode) -> Result<(), PowerHookError> {
-                Ok(())
+            fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
+                Ok(mode)
             }
 
             fn suspend(&mut self, _: u16) -> Result<(), PowerHookError> {

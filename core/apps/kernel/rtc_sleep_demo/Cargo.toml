@@ -12,6 +12,11 @@ name = "rtc_sleep_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
+[[bin]]
+name = "rtc_sleep_demo_s140"
+path = "src/main.rs"
+required-features = ["board-nicenano-s140"]
+
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 nobro-power = { path = "../../../crates/nobro_power" }

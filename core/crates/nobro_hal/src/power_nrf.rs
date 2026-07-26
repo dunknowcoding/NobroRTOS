@@ -141,9 +141,17 @@ impl PowerPlatform for NrfTimerPower {
         self.wake_latency_max_us
     }
 
-    fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        // TIMER0 continues running only in System-ON sleep. This backend must
+        // never advertise LowPower/SYSTEMOFF merely because policy requested
+        // it; board-specific retained wake and restoration are separate
+        // providers that can opt into those modes.
+        requested.shallower(PowerMode::Idle)
+    }
+
+    fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
         if mode == PowerMode::Active {
-            return Ok(());
+            return Ok(PowerMode::Active);
         }
         let start = Self::now_us() as u32;
         let mut slept = false;
@@ -179,7 +187,7 @@ impl PowerPlatform for NrfTimerPower {
                 .wrapping_add(u64::from(end.wrapping_sub(start)));
             self.entries = self.entries.wrapping_add(1);
         }
-        Ok(())
+        Ok(PowerMode::Idle)
     }
 
     fn suspend(&mut self, _task_id: u16) -> Result<(), PowerHookError> {

@@ -34,7 +34,10 @@ use core::{
 
 #[cfg(test)]
 use core::cell::Cell;
-use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform};
+use nobro_power::{
+    ExecutorPower, PowerHookError, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode,
+    PowerPlatform, PowerTransition, SystemOffWake,
+};
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
@@ -229,7 +232,18 @@ pub struct CycleOutcome {
     pub watchdog_recoveries: usize,
     /// Nothing runnable before this time — the authoritative idle/sleep input.
     pub idle_until_us: Option<u64>,
+    /// Requested, admitted, and hardware-effective modes for honest accounting.
+    pub power_transition: Option<PowerTransition>,
+    /// Compatibility view of [`power_transition`](Self::power_transition)'s
+    /// hardware-effective mode.
     pub power_mode: Option<PowerMode>,
+}
+
+impl CycleOutcome {
+    fn record_power(&mut self, transition: PowerTransition) {
+        self.power_mode = Some(transition.effective);
+        self.power_transition = Some(transition);
+    }
 }
 
 #[repr(C)]
@@ -943,6 +957,22 @@ impl<
             .set_task_power(module_code(module) as u16, power_uw)
     }
 
+    pub fn acquire_power_lease(
+        &mut self,
+        owner: u16,
+        kind: PowerLeaseKind,
+    ) -> Result<PowerLease, PowerLeaseError> {
+        self.power.acquire_lease(owner, kind)
+    }
+
+    pub fn release_power_lease(&mut self, lease: PowerLease) -> Result<(), PowerLeaseError> {
+        self.power.release_lease(lease)
+    }
+
+    pub fn set_system_off_wake(&mut self, wake: Option<SystemOffWake>) {
+        self.power.set_system_off_wake(wake);
+    }
+
     /// Move one admitted task to another stopped-between-cycles executor.
     ///
     /// Both task sets remain sealed. Before mutation, the destination runtime
@@ -999,7 +1029,10 @@ impl<
         platform: &mut impl PowerPlatform,
     ) -> Result<(), ExecError> {
         platform.suspend(module_code(module) as u16)?;
-        self.runtime.suspend_module(module, now_us)?;
+        if let Err(error) = self.runtime.suspend_module(module, now_us) {
+            let _ = platform.resume(module_code(module) as u16);
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -1010,7 +1043,10 @@ impl<
         platform: &mut impl PowerPlatform,
     ) -> Result<(), ExecError> {
         platform.resume(module_code(module) as u16)?;
-        self.runtime.resume_module(module, now_us)?;
+        if let Err(error) = self.runtime.resume_module(module, now_us) {
+            let _ = platform.suspend(module_code(module) as u16);
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -1439,7 +1475,7 @@ impl<
                     TIMERS,
                     DOMAINS,
                 >(async_state, multi_async_state);
-                outcome.power_mode = Some(self.apply_idle(
+                outcome.record_power(self.apply_idle(
                     scheduling_now_us,
                     true,
                     outcome.idle_until_us,
@@ -1495,7 +1531,7 @@ impl<
                     async_state,
                     multi_async_state,
                 );
-            outcome.power_mode = Some(self.apply_idle(
+            outcome.record_power(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
                 outcome.idle_until_us,
@@ -1562,7 +1598,7 @@ impl<
                     async_state,
                     multi_async_state,
                 );
-            outcome.power_mode = Some(self.apply_idle(
+            outcome.record_power(self.apply_idle(
                 scheduling_now_us,
                 work_pending,
                 outcome.idle_until_us,
@@ -1735,7 +1771,7 @@ impl<
                 }
             }
         }
-        outcome.power_mode = Some(self.apply_idle(
+        outcome.record_power(self.apply_idle(
             power_now_us,
             work_pending,
             outcome.idle_until_us,
@@ -1817,7 +1853,7 @@ impl<
         work_pending: bool,
         deadline_us: Option<u64>,
         platform: &mut impl PowerPlatform,
-    ) -> Result<PowerMode, PowerHookError> {
+    ) -> Result<PowerTransition, PowerHookError> {
         let ready_mask = self
             .tasks
             .next_release_arm()
@@ -1937,9 +1973,9 @@ mod tests {
         fn observed_wake_latency_us(&self) -> u32 {
             7
         }
-        fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+        fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
             self.mode = Some(mode);
-            Ok(())
+            Ok(mode)
         }
         fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
             self.suspended = Some(task_id);
@@ -2635,6 +2671,10 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.idle_until_us, Some(10_000));
         assert_eq!(outcome.power_mode, Some(PowerMode::LowPower));
+        let transition = outcome.power_transition.unwrap();
+        assert_eq!(transition.requested, PowerMode::LowPower);
+        assert_eq!(transition.selected, PowerMode::LowPower);
+        assert_eq!(transition.effective, PowerMode::LowPower);
         assert_eq!(hooks.wake, Some(10_000));
         assert_eq!(hooks.ready_mask, 1);
 
@@ -2654,6 +2694,20 @@ mod tests {
         assert_eq!(hooks.suspended, Some(5));
         exec.resume_module(ModuleId::Sensor, 2, &mut hooks).unwrap();
         assert_eq!(hooks.suspended, None);
+    }
+
+    #[test]
+    fn module_suspend_and_resume_roll_back_platform_state_on_runtime_failure() {
+        let mut exec = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        let mut hooks = PowerHooks::default();
+        let unknown = ModuleId::App(99);
+
+        assert!(exec.suspend_module(unknown, 1, &mut hooks).is_err());
+        assert_eq!(hooks.suspended, None);
+
+        hooks.suspended = Some(module_code(unknown) as u16);
+        assert!(exec.resume_module(unknown, 2, &mut hooks).is_err());
+        assert_eq!(hooks.suspended, Some(module_code(unknown) as u16));
     }
 
     #[test]

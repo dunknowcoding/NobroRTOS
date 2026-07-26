@@ -983,6 +983,7 @@ version = "0.3.2"
 dependencies = [
  "cortex-m",
  "critical-section",
+ "nobro-power",
  "nrf-usbd",
  "nrf52840-pac",
  "portable-atomic",

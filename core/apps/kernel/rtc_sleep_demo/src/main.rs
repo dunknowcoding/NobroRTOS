@@ -1,6 +1,5 @@
-//! Low-power idle + RTC wake: RTC2 fires every ~50 ms off the LFCLK while the CPU
-//! WFE-idles; the nobro-power policy selects the mode each cycle. Verifies 40 wakes and
-//! that the measured mean interval matches the programmed period within 20%.
+//! Honest System-ON idle + RTC wake: policy requests LowPower, the RTC2 provider
+//! admits/enters Idle, and the transition report keeps both facts distinct.
 #![no_std]
 #![no_main]
 
@@ -13,7 +12,7 @@ use nobro_hal::{
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_power::{PowerManager, PowerMode};
+use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform, PowerVetoReason};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -24,7 +23,9 @@ struct Report {
     all_pass: u32,
     wakes: u32,
     mean_interval_us: u32,
-    mode_idle_picks: u32,
+    requested_low_power: u32,
+    selected_idle: u32,
+    effective_idle: u32,
     checksum: u32,
 }
 const MAGIC: u32 = 0x4E52_5443; // "NRTC"
@@ -38,7 +39,9 @@ static mut NOBRO_RTC_SLEEP_REPORT: Report = Report {
     all_pass: 0,
     wakes: 0,
     mean_interval_us: 0,
-    mode_idle_picks: 0,
+    requested_low_power: 0,
+    selected_idle: 0,
+    effective_idle: 0,
     checksum: 0,
 };
 
@@ -53,6 +56,43 @@ unsafe fn rd(a: u32) -> u32 {
 }
 unsafe fn wr(a: u32, v: u32) {
     core::ptr::write_volatile(a as *mut u32, v);
+}
+
+struct Rtc2Idle;
+
+impl PowerPlatform for Rtc2Idle {
+    fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+        deadline_us
+            .map(|_| ())
+            .ok_or(PowerHookError { source: 2, code: 1 })
+    }
+
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        requested.shallower(PowerMode::Idle)
+    }
+
+    fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
+        if mode == PowerMode::Active {
+            return Ok(PowerMode::Active);
+        }
+        unsafe {
+            while rd(RTC2 + 0x140) == 0 {
+                cortex_m::asm::wfe();
+            }
+            wr(RTC2 + 0x140, 0);
+            wr(0xE000_E284, 1 << 4);
+            wr(RTC2 + 0x008, 1);
+        }
+        Ok(PowerMode::Idle)
+    }
+
+    fn suspend(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+
+    fn resume(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+        Ok(())
+    }
 }
 
 #[entry]
@@ -83,46 +123,63 @@ fn main() -> ! {
         core::ptr::write_volatile(scr, (core::ptr::read_volatile(scr) | (1 << 4)) & !(1 << 2));
     }
 
-    let mut pm = PowerManager::new(1_000_000, 100_000);
+    let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+    let mut platform = Rtc2Idle;
     let mut wakes: u32 = 0;
-    let mut idle_picks: u32 = 0;
+    let mut requested_low_power: u32 = 0;
+    let mut selected_idle: u32 = 0;
+    let mut effective_idle: u32 = 0;
     let t_start = Hal::now_us();
 
     while wakes < TARGET_WAKES {
-        // policy: no work pending, next deadline one 50 ms RTC period away -> the
-        // policy picks LowPower (Idle is reserved for deadlines under 2 ms).
-        if pm.select(false, Some(u64::from(PERIOD_US))) == PowerMode::LowPower {
-            idle_picks += 1;
+        let now = Hal::now_us();
+        let transition = power
+            .apply_idle(
+                now,
+                false,
+                Some(now.saturating_add(u64::from(PERIOD_US))),
+                &mut platform,
+            )
+            .unwrap_or_else(|_| defmt::panic!("power transition"));
+        if transition.requested == PowerMode::LowPower {
+            requested_low_power += 1;
         }
-        unsafe {
-            while rd(RTC2 + 0x140) == 0 {
-                cortex_m::asm::wfe(); // sleep until the RTC compare pends
-            }
-            wr(RTC2 + 0x140, 0); // clear EVENTS_COMPARE[0]
-            wr(0xE000_E284, 1 << 4); // NVIC ICPR[1]: unpend RTC2 (IRQ 36)
-            wr(RTC2 + 0x008, 1); // TASKS_CLEAR: restart the period
+        if transition.selected == PowerMode::Idle
+            && transition.vetoes.contains(PowerVetoReason::PlatformLimited)
+        {
+            selected_idle += 1;
+        }
+        if transition.effective == PowerMode::Idle {
+            effective_idle += 1;
         }
         wakes += 1;
-        pm.end_window();
     }
 
     let elapsed = Hal::now_us().wrapping_sub(t_start);
     let mean = (elapsed / u64::from(TARGET_WAKES)) as u32;
     let lo = PERIOD_US - PERIOD_US / 5;
     let hi = PERIOD_US + PERIOD_US / 5;
-    let pass =
-        lease_ok && wakes == TARGET_WAKES && mean >= lo && mean <= hi && idle_picks == TARGET_WAKES;
+    let pass = lease_ok
+        && wakes == TARGET_WAKES
+        && mean >= lo
+        && mean <= hi
+        && requested_low_power == TARGET_WAKES
+        && selected_idle == TARGET_WAKES
+        && effective_idle == TARGET_WAKES;
     let ap = u32::from(pass);
-    let cs = MAGIC ^ 1 ^ 1 ^ ap ^ wakes ^ mean ^ idle_picks;
+    let cs =
+        MAGIC ^ 2 ^ 1 ^ ap ^ wakes ^ mean ^ requested_low_power ^ selected_idle ^ effective_idle;
     unsafe {
         NOBRO_RTC_SLEEP_REPORT = Report {
             magic: MAGIC,
-            version: 1,
+            version: 2,
             completed: 1,
             all_pass: ap,
             wakes,
             mean_interval_us: mean,
-            mode_idle_picks: idle_picks,
+            requested_low_power,
+            selected_idle,
+            effective_idle,
             checksum: cs,
         };
     }

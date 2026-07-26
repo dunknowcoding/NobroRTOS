@@ -10,6 +10,281 @@ pub enum PowerMode {
     Off,      // deepest sleep until external wake
 }
 
+impl PowerMode {
+    pub const fn depth(self) -> u8 {
+        match self {
+            Self::Active => 0,
+            Self::Idle => 1,
+            Self::LowPower => 2,
+            Self::Off => 3,
+        }
+    }
+
+    pub const fn shallower(self, other: Self) -> Self {
+        if self.depth() <= other.depth() {
+            self
+        } else {
+            other
+        }
+    }
+}
+
+/// Typed reasons why an otherwise requested power mode was not admitted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PowerVetoReason {
+    UsbActive = 0,
+    RadioActive = 1,
+    DmaActive = 2,
+    StorageTransaction = 3,
+    DebugSession = 4,
+    RecoverySession = 5,
+    RestorationUnproven = 6,
+    SystemOffNotOptedIn = 7,
+    WakeUnavailable = 8,
+    PlatformLimited = 9,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PowerVetoMask(u16);
+
+impl PowerVetoMask {
+    pub const fn from_reason(reason: PowerVetoReason) -> Self {
+        Self(1 << reason as u8)
+    }
+
+    pub const fn contains(self, reason: PowerVetoReason) -> bool {
+        self.0 & (1 << reason as u8) != 0
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn bits(self) -> u16 {
+        self.0
+    }
+
+    fn insert(&mut self, reason: PowerVetoReason) {
+        self.0 |= 1 << reason as u8;
+    }
+}
+
+/// An active peripheral operation and the deepest mode compatible with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerLeaseKind {
+    UsbActive,
+    RadioActive,
+    DmaActive,
+    StorageTransaction,
+    DebugSession,
+    RecoverySession,
+    RestorationUnproven,
+}
+
+impl PowerLeaseKind {
+    const fn limit(self) -> PowerMode {
+        match self {
+            Self::UsbActive
+            | Self::RadioActive
+            | Self::DmaActive
+            | Self::StorageTransaction
+            | Self::RestorationUnproven => PowerMode::Idle,
+            Self::DebugSession | Self::RecoverySession => PowerMode::Active,
+        }
+    }
+
+    const fn reason(self) -> PowerVetoReason {
+        match self {
+            Self::UsbActive => PowerVetoReason::UsbActive,
+            Self::RadioActive => PowerVetoReason::RadioActive,
+            Self::DmaActive => PowerVetoReason::DmaActive,
+            Self::StorageTransaction => PowerVetoReason::StorageTransaction,
+            Self::DebugSession => PowerVetoReason::DebugSession,
+            Self::RecoverySession => PowerVetoReason::RecoverySession,
+            Self::RestorationUnproven => PowerVetoReason::RestorationUnproven,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PowerLease {
+    slot: u16,
+    generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerLeaseError {
+    Full,
+    Stale,
+}
+
+#[derive(Clone, Copy)]
+struct LeaseSlot {
+    owner: u16,
+    generation: u32,
+    kind: PowerLeaseKind,
+    active: bool,
+}
+
+impl LeaseSlot {
+    const EMPTY: Self = Self {
+        owner: 0,
+        generation: 0,
+        kind: PowerLeaseKind::RestorationUnproven,
+        active: false,
+    };
+}
+
+/// Fixed-capacity, no-heap lease set. Every active lease composes into the
+/// shallowest safe power limit and all applicable typed veto reasons.
+pub struct PowerLeaseTable<const N: usize> {
+    slots: [LeaseSlot; N],
+}
+
+impl<const N: usize> PowerLeaseTable<N> {
+    pub const fn new() -> Self {
+        Self {
+            slots: [LeaseSlot::EMPTY; N],
+        }
+    }
+
+    pub fn acquire(
+        &mut self,
+        owner: u16,
+        kind: PowerLeaseKind,
+    ) -> Result<PowerLease, PowerLeaseError> {
+        let Some((slot, entry)) = self
+            .slots
+            .iter_mut()
+            .enumerate()
+            .find(|(_, entry)| !entry.active)
+        else {
+            return Err(PowerLeaseError::Full);
+        };
+        let slot = u16::try_from(slot).map_err(|_| PowerLeaseError::Full)?;
+        entry.generation = entry.generation.wrapping_add(1).max(1);
+        entry.owner = owner;
+        entry.kind = kind;
+        entry.active = true;
+        Ok(PowerLease {
+            slot,
+            generation: entry.generation,
+        })
+    }
+
+    pub fn release(&mut self, lease: PowerLease) -> Result<(), PowerLeaseError> {
+        let Some(entry) = self.slots.get_mut(usize::from(lease.slot)) else {
+            return Err(PowerLeaseError::Stale);
+        };
+        if !entry.active || entry.generation != lease.generation {
+            return Err(PowerLeaseError::Stale);
+        }
+        entry.active = false;
+        Ok(())
+    }
+
+    pub fn owner(&self, lease: PowerLease) -> Result<u16, PowerLeaseError> {
+        let Some(entry) = self.slots.get(usize::from(lease.slot)) else {
+            return Err(PowerLeaseError::Stale);
+        };
+        if !entry.active || entry.generation != lease.generation {
+            return Err(PowerLeaseError::Stale);
+        }
+        Ok(entry.owner)
+    }
+
+    fn admit(&self, requested: PowerMode) -> (PowerMode, PowerVetoMask) {
+        let mut selected = requested;
+        let mut vetoes = PowerVetoMask::default();
+        for lease in self.slots.iter().filter(|lease| lease.active) {
+            let constrained = selected.shallower(lease.kind.limit());
+            if constrained != selected {
+                selected = constrained;
+            }
+            if requested.depth() > lease.kind.limit().depth() {
+                vetoes.insert(lease.kind.reason());
+            }
+        }
+        (selected, vetoes)
+    }
+}
+
+impl<const N: usize> Default for PowerLeaseTable<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WakeStyle {
+    Resume,
+    Reset,
+}
+
+/// Proven retained wake route required before SYSTEMOFF can be selected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemOffWake {
+    source: u16,
+    style: WakeStyle,
+    ram_retained: bool,
+    peripherals_retained: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SystemOffWakeError {
+    InvalidSource,
+}
+
+impl SystemOffWake {
+    pub const fn new(
+        source: u16,
+        style: WakeStyle,
+        ram_retained: bool,
+        peripherals_retained: bool,
+    ) -> Result<Self, SystemOffWakeError> {
+        if source == 0 {
+            return Err(SystemOffWakeError::InvalidSource);
+        }
+        Ok(Self {
+            source,
+            style,
+            ram_retained,
+            peripherals_retained,
+        })
+    }
+
+    pub const fn source(self) -> u16 {
+        self.source
+    }
+
+    pub const fn style(self) -> WakeStyle {
+        self.style
+    }
+
+    pub const fn ram_retained(self) -> bool {
+        self.ram_retained
+    }
+
+    pub const fn peripherals_retained(self) -> bool {
+        self.peripherals_retained
+    }
+}
+
+/// Complete, honest result of one executor-owned power decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PowerTransition {
+    pub requested: PowerMode,
+    pub selected: PowerMode,
+    pub effective: PowerMode,
+    pub vetoes: PowerVetoMask,
+    pub system_off_wake: Option<SystemOffWake>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PowerHookError {
     pub source: u16,
@@ -40,9 +315,192 @@ pub trait PowerPlatform {
     fn observed_wake_latency_us(&self) -> u32 {
         0
     }
-    fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError>;
+    /// Constrain a policy choice to modes this backend actually implements.
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        requested
+    }
+    fn vetoes(&self, _requested: PowerMode) -> PowerVetoMask {
+        PowerVetoMask::default()
+    }
+    /// Prepare clocks and peripheral participants. No public/live state may be
+    /// changed until every participant has prepared successfully.
+    fn prepare_power(
+        &mut self,
+        _mode: PowerMode,
+        _system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+    /// Undo a successful prepare after a later prepare/wake-arm step failed.
+    fn rollback_power(&mut self, _mode: PowerMode) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+    /// Prove the armed wake route before entry. SYSTEMOFF implementations must
+    /// reject wake contracts they cannot retain across reset-style entry.
+    fn verify_wake(
+        &mut self,
+        mode: PowerMode,
+        _deadline_us: Option<u64>,
+        system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        if mode == PowerMode::Off && system_off_wake.is_none() {
+            return Err(PowerHookError {
+                source: u16::MAX,
+                code: 1,
+            });
+        }
+        Ok(())
+    }
+    /// Enter the selected mode and return the mode hardware actually entered.
+    fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError>;
+    /// Restore clocks/controllers before the executor publishes work as live.
+    fn restore_power(&mut self, _effective: PowerMode) -> Result<(), PowerHookError> {
+        Ok(())
+    }
     fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError>;
     fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError>;
+}
+
+/// A composable peripheral participant layered around the board's wake/entry
+/// provider. Participants prepare in attachment order and roll back in reverse
+/// order when [`PowerPlatformChain`] values are nested.
+pub trait PowerParticipant {
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        requested
+    }
+
+    fn vetoes(&self, _requested: PowerMode) -> PowerVetoMask {
+        PowerVetoMask::default()
+    }
+
+    fn prepare_power(
+        &mut self,
+        _mode: PowerMode,
+        _system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+
+    fn rollback_power(&mut self, _mode: PowerMode) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+
+    fn restore_power(&mut self, _effective: PowerMode) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+
+    fn suspend(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+
+    fn resume(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+        Ok(())
+    }
+}
+
+/// Borrowed adapter that composes one peripheral participant with a platform.
+/// Nest it to add more providers without allocation or a global registry.
+pub struct PowerPlatformChain<'a, P, R> {
+    platform: &'a mut P,
+    participant: &'a mut R,
+}
+
+pub fn attach_participant<'a, P: PowerPlatform, R: PowerParticipant>(
+    platform: &'a mut P,
+    participant: &'a mut R,
+) -> PowerPlatformChain<'a, P, R> {
+    PowerPlatformChain {
+        platform,
+        participant,
+    }
+}
+
+impl<P: PowerPlatform, R: PowerParticipant> PowerPlatform for PowerPlatformChain<'_, P, R> {
+    fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+        self.platform.program_wake(deadline_us)
+    }
+
+    fn program_deadline_release(
+        &mut self,
+        deadline_us: Option<u64>,
+        ready_mask: u32,
+    ) -> Result<(), PowerHookError> {
+        self.platform
+            .program_deadline_release(deadline_us, ready_mask)
+    }
+
+    fn take_deadline_releases(&mut self, now_us: u64) -> u32 {
+        self.platform.take_deadline_releases(now_us)
+    }
+
+    fn observed_wake_latency_us(&self) -> u32 {
+        self.platform.observed_wake_latency_us()
+    }
+
+    fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+        self.platform
+            .constrain_mode(requested)
+            .shallower(self.participant.constrain_mode(requested))
+    }
+
+    fn vetoes(&self, requested: PowerMode) -> PowerVetoMask {
+        self.platform
+            .vetoes(requested)
+            .union(self.participant.vetoes(requested))
+    }
+
+    fn prepare_power(
+        &mut self,
+        mode: PowerMode,
+        system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        self.platform.prepare_power(mode, system_off_wake)?;
+        self.participant.prepare_power(mode, system_off_wake)
+    }
+
+    fn rollback_power(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+        let participant = self.participant.rollback_power(mode);
+        let platform = self.platform.rollback_power(mode);
+        participant.and(platform)
+    }
+
+    fn verify_wake(
+        &mut self,
+        mode: PowerMode,
+        deadline_us: Option<u64>,
+        system_off_wake: Option<SystemOffWake>,
+    ) -> Result<(), PowerHookError> {
+        self.platform
+            .verify_wake(mode, deadline_us, system_off_wake)
+    }
+
+    fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
+        self.platform.enter(mode)
+    }
+
+    fn restore_power(&mut self, effective: PowerMode) -> Result<(), PowerHookError> {
+        self.platform.restore_power(effective)?;
+        self.participant.restore_power(effective)
+    }
+
+    fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+        self.platform.suspend(task_id)?;
+        if let Err(error) = self.participant.suspend(task_id) {
+            let _ = self.participant.resume(task_id);
+            let _ = self.platform.resume(task_id);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn resume(&mut self, task_id: u16) -> Result<(), PowerHookError> {
+        self.participant.resume(task_id)?;
+        if let Err(error) = self.platform.resume(task_id) {
+            let _ = self.participant.suspend(task_id);
+            return Err(error);
+        }
+        Ok(())
+    }
 }
 
 /// Chooses a power mode and enforces an active-time duty budget over a window.
@@ -221,24 +679,28 @@ impl<const N: usize> EnergyLedger<N> {
 const _: () = assert!(core::mem::size_of::<EnergyLedger<5>>() == 56);
 
 /// Executor-owned power policy, task power profiles, and measured energy ledger.
-pub struct ExecutorPower<const N: usize> {
+pub struct ExecutorPower<const N: usize, const LEASES: usize = 8> {
     manager: PowerManager,
     ledger: EnergyLedger<N>,
+    leases: PowerLeaseTable<LEASES>,
     profile_power_uw: [u64; N],
     profile_task_ids: [u16; N],
     profile_len: usize,
     default_power_uw: u64,
+    system_off_wake: Option<SystemOffWake>,
 }
 
-impl<const N: usize> ExecutorPower<N> {
+impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
     pub const fn new(window_us: u64, budget_us: u64, default_power_uw: u64) -> Self {
         Self {
             manager: PowerManager::new(window_us, budget_us),
             ledger: EnergyLedger::new(),
+            leases: PowerLeaseTable::new(),
             profile_power_uw: [0; N],
             profile_task_ids: [0; N],
             profile_len: 0,
             default_power_uw,
+            system_off_wake: None,
         }
     }
 
@@ -259,6 +721,7 @@ impl<const N: usize> ExecutorPower<N> {
         core::ptr::addr_of_mut!((*destination).manager)
             .write(PowerManager::new(window_us, budget_us));
         EnergyLedger::init_in_place(core::ptr::addr_of_mut!((*destination).ledger));
+        core::ptr::addr_of_mut!((*destination).leases).write(PowerLeaseTable::new());
 
         let profile_power_uw =
             core::ptr::addr_of_mut!((*destination).profile_power_uw).cast::<u64>();
@@ -270,6 +733,7 @@ impl<const N: usize> ExecutorPower<N> {
         }
         core::ptr::addr_of_mut!((*destination).profile_len).write(0);
         core::ptr::addr_of_mut!((*destination).default_power_uw).write(default_power_uw);
+        core::ptr::addr_of_mut!((*destination).system_off_wake).write(None);
     }
 
     pub fn set_task_power(&mut self, task_id: u16, power_uw: u64) -> bool {
@@ -327,13 +791,31 @@ impl<const N: usize> ExecutorPower<N> {
         self.ledger.charge(task_id, active_us, power_uw)
     }
 
+    pub fn acquire_lease(
+        &mut self,
+        owner: u16,
+        kind: PowerLeaseKind,
+    ) -> Result<PowerLease, PowerLeaseError> {
+        self.leases.acquire(owner, kind)
+    }
+
+    pub fn release_lease(&mut self, lease: PowerLease) -> Result<(), PowerLeaseError> {
+        self.leases.release(lease)
+    }
+
+    /// Explicitly opt in to SYSTEMOFF using a retained, board-qualified wake
+    /// route. Clearing this contract makes an `Off` request select `Idle`.
+    pub fn set_system_off_wake(&mut self, wake: Option<SystemOffWake>) {
+        self.system_off_wake = wake;
+    }
+
     pub fn apply_idle(
         &self,
         now_us: u64,
         work_pending: bool,
         deadline_us: Option<u64>,
         platform: &mut impl PowerPlatform,
-    ) -> Result<PowerMode, PowerHookError> {
+    ) -> Result<PowerTransition, PowerHookError> {
         self.apply_idle_release(now_us, work_pending, deadline_us, 0, platform)
     }
 
@@ -344,14 +826,70 @@ impl<const N: usize> ExecutorPower<N> {
         deadline_us: Option<u64>,
         ready_mask: u32,
         platform: &mut impl PowerPlatform,
-    ) -> Result<PowerMode, PowerHookError> {
+    ) -> Result<PowerTransition, PowerHookError> {
         let relative = deadline_us.map(|deadline| deadline.saturating_sub(now_us));
-        let mode = self.manager.select(work_pending, relative);
-        if mode != PowerMode::Active {
-            platform.program_deadline_release(deadline_us, ready_mask)?;
-            platform.enter(mode)?;
+        let requested = self.manager.select(work_pending, relative);
+        let (mut selected, mut vetoes) = self.leases.admit(requested);
+        let mut system_off_wake = None;
+        if selected == PowerMode::Off {
+            if let Some(wake) = self.system_off_wake {
+                system_off_wake = Some(wake);
+            } else {
+                selected = PowerMode::Idle;
+                vetoes.insert(PowerVetoReason::SystemOffNotOptedIn);
+                vetoes.insert(PowerVetoReason::WakeUnavailable);
+            }
         }
-        Ok(mode)
+        vetoes = vetoes.union(platform.vetoes(selected));
+        let platform_selected = platform.constrain_mode(selected).shallower(selected);
+        if platform_selected != selected {
+            selected = platform_selected;
+            vetoes.insert(PowerVetoReason::PlatformLimited);
+            system_off_wake = None;
+        }
+        if selected == PowerMode::Active {
+            return Ok(PowerTransition {
+                requested,
+                selected,
+                effective: PowerMode::Active,
+                vetoes,
+                system_off_wake,
+            });
+        }
+
+        if let Err(error) = platform.prepare_power(selected, system_off_wake) {
+            let _ = platform.rollback_power(selected);
+            return Err(error);
+        }
+        if let Err(error) = platform.program_deadline_release(deadline_us, ready_mask) {
+            let _ = platform.rollback_power(selected);
+            return Err(error);
+        }
+        if let Err(error) = platform.verify_wake(selected, deadline_us, system_off_wake) {
+            let _ = platform.rollback_power(selected);
+            return Err(error);
+        }
+        let effective = match platform.enter(selected) {
+            Ok(effective) => effective.shallower(selected),
+            Err(error) => {
+                let _ = platform.rollback_power(selected);
+                return Err(error);
+            }
+        };
+        if effective != selected {
+            vetoes.insert(PowerVetoReason::PlatformLimited);
+        }
+        if let Err(error) = platform.restore_power(effective) {
+            let _ = platform.rollback_power(selected);
+            return Err(error);
+        }
+        Ok(PowerTransition {
+            requested,
+            selected,
+            effective,
+            vetoes,
+            system_off_wake,
+        })
     }
 
     pub const fn ledger(&self) -> &EnergyLedger<N> {
@@ -364,7 +902,7 @@ impl<const N: usize> ExecutorPower<N> {
 }
 
 #[cfg(target_pointer_width = "32")]
-const _: () = assert!(core::mem::size_of::<ExecutorPower<5>>() == 144);
+const _: () = assert!(core::mem::size_of::<ExecutorPower<5>>() <= 224);
 
 #[cfg(test)]
 mod energy_tests {
@@ -382,9 +920,9 @@ mod energy_tests {
             self.wake = deadline_us;
             Ok(())
         }
-        fn enter(&mut self, mode: PowerMode) -> Result<(), PowerHookError> {
+        fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
             self.mode = Some(mode);
-            Ok(())
+            Ok(mode)
         }
         fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
             self.suspended = Some(task_id);
@@ -440,7 +978,13 @@ mod energy_tests {
         let mut hooks = Hooks::default();
         assert_eq!(
             power.apply_idle(10_000, false, Some(20_000), &mut hooks),
-            Ok(PowerMode::LowPower)
+            Ok(PowerTransition {
+                requested: PowerMode::LowPower,
+                selected: PowerMode::LowPower,
+                effective: PowerMode::LowPower,
+                vetoes: PowerVetoMask::default(),
+                system_off_wake: None,
+            })
         );
         assert_eq!(hooks.wake, Some(20_000));
         assert_eq!(hooks.mode, Some(PowerMode::LowPower));
@@ -463,6 +1007,309 @@ mod energy_tests {
             assert_eq!(power.ledger().energy_uj(8), Some(2));
             assert_eq!(power.ledger().total_uj(), 2_002);
             assert_eq!(power.manager().duty_milli(), 201);
+        }
+    }
+}
+
+#[cfg(test)]
+mod transition_tests {
+    use super::*;
+
+    struct TransactionHooks {
+        log: [u8; 160],
+        len: usize,
+        fail_at: u8,
+        limit: PowerMode,
+        effective: PowerMode,
+    }
+
+    impl TransactionHooks {
+        const fn new(limit: PowerMode, effective: PowerMode) -> Self {
+            Self {
+                log: [0; 160],
+                len: 0,
+                fail_at: 0,
+                limit,
+                effective,
+            }
+        }
+
+        fn push(&mut self, step: u8) -> Result<(), PowerHookError> {
+            self.log[self.len] = step;
+            self.len += 1;
+            if self.fail_at == step {
+                Err(PowerHookError {
+                    source: 91,
+                    code: u16::from(step),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl PowerPlatform for TransactionHooks {
+        fn program_wake(&mut self, _deadline_us: Option<u64>) -> Result<(), PowerHookError> {
+            self.push(2)
+        }
+
+        fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+            requested.shallower(self.limit)
+        }
+
+        fn prepare_power(
+            &mut self,
+            _mode: PowerMode,
+            _wake: Option<SystemOffWake>,
+        ) -> Result<(), PowerHookError> {
+            self.push(1)
+        }
+
+        fn rollback_power(&mut self, _mode: PowerMode) -> Result<(), PowerHookError> {
+            self.push(9)
+        }
+
+        fn verify_wake(
+            &mut self,
+            _mode: PowerMode,
+            _deadline_us: Option<u64>,
+            _wake: Option<SystemOffWake>,
+        ) -> Result<(), PowerHookError> {
+            self.push(3)
+        }
+
+        fn enter(&mut self, _mode: PowerMode) -> Result<PowerMode, PowerHookError> {
+            self.push(4)?;
+            Ok(self.effective)
+        }
+
+        fn restore_power(&mut self, _effective: PowerMode) -> Result<(), PowerHookError> {
+            self.push(5)
+        }
+
+        fn suspend(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+            Ok(())
+        }
+
+        fn resume(&mut self, _task_id: u16) -> Result<(), PowerHookError> {
+            Ok(())
+        }
+    }
+
+    struct Participant {
+        prepared: u8,
+        rolled_back: u8,
+        restored: u8,
+        fail_prepare: bool,
+    }
+
+    impl PowerParticipant for Participant {
+        fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
+            requested.shallower(PowerMode::Idle)
+        }
+
+        fn vetoes(&self, requested: PowerMode) -> PowerVetoMask {
+            if requested.depth() > PowerMode::Idle.depth() {
+                PowerVetoMask::from_reason(PowerVetoReason::RestorationUnproven)
+            } else {
+                PowerVetoMask::default()
+            }
+        }
+
+        fn prepare_power(
+            &mut self,
+            _mode: PowerMode,
+            _wake: Option<SystemOffWake>,
+        ) -> Result<(), PowerHookError> {
+            self.prepared += 1;
+            if self.fail_prepare {
+                Err(PowerHookError {
+                    source: 91,
+                    code: 20,
+                })
+            } else {
+                Ok(())
+            }
+        }
+
+        fn rollback_power(&mut self, _mode: PowerMode) -> Result<(), PowerHookError> {
+            self.rolled_back += 1;
+            Ok(())
+        }
+
+        fn restore_power(&mut self, _effective: PowerMode) -> Result<(), PowerHookError> {
+            self.restored += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn leases_compose_to_the_shallowest_mode_and_stale_handles_fail_closed() {
+        let mut power = ExecutorPower::<3>::new(1_000_000, 100_000, 1_000);
+        let usb = power.acquire_lease(7, PowerLeaseKind::UsbActive).unwrap();
+        let debug = power
+            .acquire_lease(8, PowerLeaseKind::DebugSession)
+            .unwrap();
+        let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::Active);
+        let report = power
+            .apply_idle(0, false, Some(50_000), &mut hooks)
+            .unwrap();
+        assert_eq!(report.requested, PowerMode::LowPower);
+        assert_eq!(report.selected, PowerMode::Active);
+        assert_eq!(report.effective, PowerMode::Active);
+        assert!(report.vetoes.contains(PowerVetoReason::UsbActive));
+        assert!(report.vetoes.contains(PowerVetoReason::DebugSession));
+        assert_eq!(hooks.len, 0);
+
+        power.release_lease(debug).unwrap();
+        assert_eq!(power.release_lease(debug), Err(PowerLeaseError::Stale));
+        power.release_lease(usb).unwrap();
+    }
+
+    #[test]
+    fn veto_composition_property_grid_never_selects_below_any_active_limit() {
+        let kinds = [
+            PowerLeaseKind::UsbActive,
+            PowerLeaseKind::RadioActive,
+            PowerLeaseKind::DmaActive,
+            PowerLeaseKind::StorageTransaction,
+            PowerLeaseKind::DebugSession,
+            PowerLeaseKind::RecoverySession,
+            PowerLeaseKind::RestorationUnproven,
+        ];
+        let modes = [
+            PowerMode::Active,
+            PowerMode::Idle,
+            PowerMode::LowPower,
+            PowerMode::Off,
+        ];
+        for first in kinds {
+            for second in kinds {
+                let mut leases = PowerLeaseTable::<2>::new();
+                leases.acquire(1, first).unwrap();
+                leases.acquire(2, second).unwrap();
+                for requested in modes {
+                    let (selected, vetoes) = leases.admit(requested);
+                    let expected = requested.shallower(first.limit()).shallower(second.limit());
+                    assert_eq!(selected, expected);
+                    assert_eq!(
+                        vetoes.contains(first.reason()),
+                        requested.depth() > first.limit().depth()
+                    );
+                    assert_eq!(
+                        vetoes.contains(second.reason()),
+                        requested.depth() > second.limit().depth()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn participant_chain_composes_veto_prepare_restore_and_reverse_rollback() {
+        let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::Idle);
+        let mut participant = Participant {
+            prepared: 0,
+            rolled_back: 0,
+            restored: 0,
+            fail_prepare: false,
+        };
+        let mut chain = attach_participant(&mut hooks, &mut participant);
+        let report = power
+            .apply_idle(0, false, Some(50_000), &mut chain)
+            .unwrap();
+        assert_eq!(report.selected, PowerMode::Idle);
+        assert!(report.vetoes.contains(PowerVetoReason::RestorationUnproven));
+        assert_eq!(participant.prepared, 1);
+        assert_eq!(participant.restored, 1);
+        assert_eq!(participant.rolled_back, 0);
+
+        participant.fail_prepare = true;
+        let mut chain = attach_participant(&mut hooks, &mut participant);
+        assert!(power
+            .apply_idle(0, false, Some(50_000), &mut chain)
+            .is_err());
+        assert_eq!(participant.rolled_back, 1);
+        assert_eq!(hooks.log[hooks.len - 1], 9);
+    }
+
+    #[test]
+    fn system_off_requires_explicit_retained_wake_and_records_reset_semantics() {
+        assert_eq!(
+            SystemOffWake::new(0, WakeStyle::Reset, true, false),
+            Err(SystemOffWakeError::InvalidSource)
+        );
+        let mut power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::Off);
+        let rejected = power.apply_idle(0, false, None, &mut hooks).unwrap();
+        assert_eq!(rejected.requested, PowerMode::Off);
+        assert_eq!(rejected.selected, PowerMode::Idle);
+        assert_eq!(rejected.effective, PowerMode::Idle);
+        assert!(rejected
+            .vetoes
+            .contains(PowerVetoReason::SystemOffNotOptedIn));
+        assert!(rejected.vetoes.contains(PowerVetoReason::WakeUnavailable));
+
+        let wake = SystemOffWake::new(4, WakeStyle::Reset, true, false).unwrap();
+        power.set_system_off_wake(Some(wake));
+        let admitted = power.apply_idle(0, false, None, &mut hooks).unwrap();
+        assert_eq!(admitted.requested, PowerMode::Off);
+        assert_eq!(admitted.selected, PowerMode::Off);
+        assert_eq!(admitted.effective, PowerMode::Off);
+        assert_eq!(admitted.system_off_wake, Some(wake));
+    }
+
+    #[test]
+    fn selected_and_effective_modes_are_distinct_and_never_overclaimed() {
+        let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::Idle);
+        let report = power
+            .apply_idle(0, false, Some(50_000), &mut hooks)
+            .unwrap();
+        assert_eq!(report.requested, PowerMode::LowPower);
+        assert_eq!(report.selected, PowerMode::LowPower);
+        assert_eq!(report.effective, PowerMode::Idle);
+        assert!(report.vetoes.contains(PowerVetoReason::PlatformLimited));
+        assert_eq!(&hooks.log[..hooks.len], &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn wake_arm_failure_rolls_back_before_entry_or_publication() {
+        let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        for fail_at in [1, 2, 3, 4, 5] {
+            let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::LowPower);
+            hooks.fail_at = fail_at;
+            assert_eq!(
+                power.apply_idle(0, false, Some(50_000), &mut hooks),
+                Err(PowerHookError {
+                    source: 91,
+                    code: u16::from(fail_at),
+                })
+            );
+            assert_eq!(hooks.log[hooks.len - 1], 9);
+            assert!(!hooks.log[..hooks.len].contains(&5) || fail_at == 5);
+        }
+    }
+
+    #[test]
+    fn repeated_suspend_wake_restore_cycles_preserve_order() {
+        let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        let mut hooks = TransactionHooks::new(PowerMode::Off, PowerMode::LowPower);
+        for cycle in 0..32 {
+            let report = power
+                .apply_idle(
+                    cycle * 100_000,
+                    false,
+                    Some(cycle * 100_000 + 50_000),
+                    &mut hooks,
+                )
+                .unwrap();
+            assert_eq!(report.effective, PowerMode::LowPower);
+        }
+        assert_eq!(hooks.len, 160);
+        for steps in hooks.log.chunks_exact(5) {
+            assert_eq!(steps, &[1, 2, 3, 4, 5]);
         }
     }
 }

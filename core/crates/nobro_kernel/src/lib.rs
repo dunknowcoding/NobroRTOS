@@ -6,6 +6,11 @@
 extern crate std;
 
 pub use nobro_admission::InterruptProfile;
+pub use nobro_power::{
+    attach_participant, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode, PowerParticipant,
+    PowerPlatformChain, PowerTransition, PowerVetoMask, PowerVetoReason, SystemOffWake,
+    SystemOffWakeError, WakeStyle,
+};
 
 pub mod admission;
 pub mod admission_analysis;
