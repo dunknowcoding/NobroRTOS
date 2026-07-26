@@ -75,6 +75,24 @@ pub enum LeaseError {
     Unsupported,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeaseRecoveryReceipt {
+    pub owner: u8,
+    /// One bit per [`Resource::ALL`] entry. Every reported resource was
+    /// quiesced before its generation advanced and ownership became free.
+    pub released_mask: u16,
+}
+
+impl LeaseRecoveryReceipt {
+    pub const fn released_count(self) -> usize {
+        self.released_mask.count_ones() as usize
+    }
+
+    pub const fn released(self, resource: Resource) -> bool {
+        self.released_mask & (1u16 << idx(resource)) != 0
+    }
+}
+
 struct LeaseSlot {
     taken: AtomicBool,
     owner: AtomicU8,
@@ -104,7 +122,7 @@ static SLOTS: [LeaseSlot; 10] = [
     LeaseSlot::new(),
 ];
 
-fn idx(r: Resource) -> usize {
+const fn idx(r: Resource) -> usize {
     match r {
         Resource::Timer0 => 0,
         Resource::Twim0 => 1,
@@ -195,8 +213,17 @@ impl ResourceLease {
     /// This is intentionally owner-scoped, not a global reset. A supervisor can quiesce
     /// one module and clean up its leaked leases without disturbing healthy modules.
     pub fn release_all_for_owner(owner: u8) -> usize {
+        Self::recover_owner(owner).released_count()
+    }
+
+    /// Atomically quiesce and revoke every peripheral lease held by `owner`.
+    ///
+    /// Interrupt masking spans hardware shutdown, owner clearing, and
+    /// generation advancement, so a completion ISR or concurrent fault cannot
+    /// publish through an old DMA pointer after the resource is reassigned.
+    pub fn recover_owner(owner: u8) -> LeaseRecoveryReceipt {
         critical_section::with(|_| {
-            let mut released = 0;
+            let mut released_mask = 0u16;
             for (index, slot) in SLOTS.iter().enumerate() {
                 if slot.taken.load(Ordering::Acquire) && slot.owner.load(Ordering::Acquire) == owner
                 {
@@ -207,10 +234,13 @@ impl ResourceLease {
                         slot.generation.load(Ordering::Relaxed).wrapping_add(1),
                         Ordering::Release,
                     );
-                    released += 1;
+                    released_mask |= 1u16 << index;
                 }
             }
-            released
+            LeaseRecoveryReceipt {
+                owner,
+                released_mask,
+            }
         })
     }
 
@@ -440,7 +470,11 @@ mod invariant_tests {
 
         let twim_before = crate::quiesce::count(Resource::Twim0);
         let twim1_before = crate::quiesce::count(Resource::Twim1);
-        assert_eq!(ResourceLease::release_all_for_owner(7), 2);
+        let receipt = ResourceLease::recover_owner(7);
+        assert_eq!(receipt.released_count(), 2);
+        assert!(receipt.released(Resource::Twim0));
+        assert!(receipt.released(Resource::Twim1));
+        assert!(!receipt.released(Resource::Radio));
         assert_eq!(crate::quiesce::count(Resource::Twim0), twim_before + 1);
         assert_eq!(crate::quiesce::count(Resource::Twim1), twim1_before + 1);
         assert!(!ResourceLease::is_held(Resource::Twim0));
@@ -545,6 +579,41 @@ mod invariant_tests {
         assert_eq!(worker.join().unwrap(), Err(LeaseError::NotHeld));
         assert_eq!(current.ensure_live(), Ok(()));
         drop(current);
+        reset_all();
+    }
+
+    #[test]
+    fn concurrent_fault_cleanup_is_owner_scoped_and_generation_safe() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let _lock = test_lock();
+        reset_all();
+        let stale_a = ResourceLease::acquire_guard(Resource::Spim0, 21).unwrap();
+        let stale_b = ResourceLease::acquire_guard(Resource::Radio, 22).unwrap();
+        let healthy = ResourceLease::acquire_guard(Resource::Pwm0, 23).unwrap();
+        let start = Arc::new(Barrier::new(3));
+        let start_a = Arc::clone(&start);
+        let start_b = Arc::clone(&start);
+        let a = thread::spawn(move || {
+            start_a.wait();
+            ResourceLease::recover_owner(21)
+        });
+        let b = thread::spawn(move || {
+            start_b.wait();
+            ResourceLease::recover_owner(22)
+        });
+        start.wait();
+        let receipt_a = a.join().unwrap();
+        let receipt_b = b.join().unwrap();
+        assert!(receipt_a.released(Resource::Spim0));
+        assert!(receipt_b.released(Resource::Radio));
+        assert_eq!(stale_a.ensure_live(), Err(LeaseError::NotHeld));
+        assert_eq!(stale_b.ensure_live(), Err(LeaseError::NotHeld));
+        assert_eq!(healthy.ensure_live(), Ok(()));
+        drop(stale_a);
+        drop(stale_b);
+        drop(healthy);
         reset_all();
     }
 }

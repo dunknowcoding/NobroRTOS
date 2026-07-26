@@ -68,7 +68,7 @@ pub use board_desc::{
     BusLayout, ServoProfile,
 };
 pub use completion::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
-pub use lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
+pub use lease::{LeaseError, LeaseGuard, LeaseRecoveryReceipt, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::nrf52840::NrfSchedulingSession;
 #[cfg(feature = "platform-nrf52840")]

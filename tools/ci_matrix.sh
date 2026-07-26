@@ -59,6 +59,8 @@ gate "nRF52840 PSP/PendSV target build" \
     -p nobro-kernel --features preemptive && \
     cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
     --no-default-features --features platform-nrf52840-rt,board-promicro-nosd,cortex-m-slice && \
+    cargo build --locked --target thumbv7em-none-eabihf \
+    -p isolation-demo --release && \
     ! cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
     --no-default-features --features platform-nrf52840-rt,board-nicenano-s140,cortex-m-slice'
 

@@ -24,7 +24,7 @@ pub(crate) fn resource(resource: Resource) {
     let _ = resource;
     #[cfg(test)]
     QUIESCE_COUNTS[index(resource)].fetch_add(1, Ordering::AcqRel);
-    #[cfg(target_arch = "arm")]
+    #[cfg(all(target_arch = "arm", feature = "platform-nrf52840"))]
     unsafe {
         quiesce_nrf52840(resource);
     }
@@ -35,12 +35,12 @@ pub(crate) fn count(resource: Resource) -> u32 {
     QUIESCE_COUNTS[index(resource)].load(Ordering::Acquire)
 }
 
-#[cfg(target_arch = "arm")]
+#[cfg(all(target_arch = "arm", feature = "platform-nrf52840"))]
 unsafe fn write(base: u32, offset: u32, value: u32) {
     core::ptr::write_volatile((base + offset) as *mut u32, value);
 }
 
-#[cfg(target_arch = "arm")]
+#[cfg(all(target_arch = "arm", feature = "platform-nrf52840"))]
 unsafe fn quiesce_nrf52840(resource: Resource) {
     match resource {
         Resource::Twim0 | Resource::Spim0 => {

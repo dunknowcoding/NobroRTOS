@@ -118,6 +118,8 @@ pub use health::{
     FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,
     ModuleId,
 };
+#[cfg(feature = "hal-profile")]
+pub use hot_reload::HalLeaseReleaser;
 pub use hot_reload::{
     HotReloadError, HotReloadOutcome, HotReloadPlan, HotReloadPolicy, HotReloadStep,
     HotReloadStepKind, LeaseReleaser, ModuleReloadRequest, NoopLeaseReleaser,
@@ -164,7 +166,7 @@ pub use pool::{CompactImuPayload, SamplePool};
 #[cfg(feature = "preemptive")]
 pub use preemption::{
     InterruptHandoff, InterruptReceipt, SliceContext, SliceController, SliceDecision, SliceError,
-    SlicePort, SliceTask,
+    SlicePort, SliceProtection, SliceTask,
 };
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
@@ -183,8 +185,8 @@ pub use report::{
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
 pub use runtime::{
-    AlarmDispatch, CapacityError, DegradeApplication, RecoveryPlanning, Runtime, RuntimeCapacities,
-    RuntimeError, WatchdogSweep,
+    AlarmDispatch, CapacityError, DegradeApplication, RecoveryPlanning, RecoveryResourceReceipt,
+    Runtime, RuntimeCapacities, RuntimeError, WatchdogSweep,
 };
 
 /// Preset runtime capacity profiles — coherent by construction, so users pick a

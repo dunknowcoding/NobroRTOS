@@ -8,10 +8,13 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
+use crate::mpu::ModuleMpuContext;
 use crate::priority_ceiling::PriorityCeiling;
 
 const EXC_RETURN_THREAD_PSP_BASIC: u32 = 0xFFFF_FFFD;
 const XPSR_THUMB: u32 = 1 << 24;
+const CONTROL_SPSEL: u32 = 1 << 1;
+const CONTROL_NPRIV: u32 = 1;
 const SOFTWARE_WORDS: usize = 8; // R4-R11
 const HARDWARE_WORDS: usize = 8; // R0-R3,R12,LR,PC,xPSR
 
@@ -25,6 +28,7 @@ pub enum ContextSwitchError {
     CurrentContextMismatch,
     InvalidPendSvPriority,
     PendSvWouldPreemptCeiling,
+    MpuUnsupported,
     NotConfigured,
 }
 
@@ -35,6 +39,8 @@ pub struct ContextRecord {
     psp: AtomicU32,
     exc_return: AtomicU32,
     basepri: AtomicU32,
+    control: AtomicU32,
+    mpu_context: AtomicU32,
 }
 
 impl ContextRecord {
@@ -43,6 +49,8 @@ impl ContextRecord {
             psp: AtomicU32::new(0),
             exc_return: AtomicU32::new(EXC_RETURN_THREAD_PSP_BASIC),
             basepri: AtomicU32::new(0),
+            control: AtomicU32::new(CONTROL_SPSEL),
+            mpu_context: AtomicU32::new(0),
         }
     }
 
@@ -52,6 +60,10 @@ impl ContextRecord {
 
     pub fn exc_return(&self) -> u32 {
         self.exc_return.load(Ordering::Acquire)
+    }
+
+    pub fn is_unprivileged(&self) -> bool {
+        self.control.load(Ordering::Acquire) & CONTROL_NPRIV != 0
     }
 
     /// Build the first software + hardware exception frame at the top of an
@@ -65,6 +77,35 @@ impl ContextRecord {
         stack: &'static mut [u8],
         entry: extern "C" fn(usize) -> !,
         arg: usize,
+    ) -> Result<(), ContextSwitchError> {
+        self.initialize_with(stack, entry, arg, CONTROL_SPSEL, core::ptr::null())
+    }
+
+    /// Build a PSP context that returns to unprivileged Thread mode with one
+    /// prevalidated MPU bank installed on every context switch.
+    ///
+    /// # Safety
+    /// `stack`, `mpu`, and every region described by `mpu` must remain live
+    /// and exclusively owned as declared while this context is runnable.
+    pub unsafe fn initialize_isolated(
+        &self,
+        stack: &'static mut [u8],
+        entry: extern "C" fn(usize) -> !,
+        arg: usize,
+        mpu: &'static ModuleMpuContext,
+    ) -> Result<(), ContextSwitchError> {
+        mpu.validate_hardware()
+            .map_err(|_| ContextSwitchError::MpuUnsupported)?;
+        self.initialize_with(stack, entry, arg, CONTROL_SPSEL | CONTROL_NPRIV, mpu)
+    }
+
+    unsafe fn initialize_with(
+        &self,
+        stack: &'static mut [u8],
+        entry: extern "C" fn(usize) -> !,
+        arg: usize,
+        control: u32,
+        mpu: *const ModuleMpuContext,
     ) -> Result<(), ContextSwitchError> {
         if stack.as_ptr() as usize & 7 != 0 || stack.len() & 7 != 0 {
             return Err(ContextSwitchError::StackMisaligned);
@@ -95,6 +136,8 @@ impl ContextRecord {
         self.exc_return
             .store(EXC_RETURN_THREAD_PSP_BASIC, Ordering::Release);
         self.basepri.store(0, Ordering::Release);
+        self.control.store(control, Ordering::Release);
+        self.mpu_context.store(mpu as u32, Ordering::Release);
         Ok(())
     }
 }
@@ -207,9 +250,7 @@ impl CortexMSliceSwitch {
 
 #[no_mangle]
 extern "C" fn nobro_slice_task_returned() -> ! {
-    loop {
-        cortex_m::asm::udf();
-    }
+    cortex_m::asm::udf()
 }
 
 core::arch::global_asm!(
@@ -234,13 +275,21 @@ PendSV:
     str     lr, [r2, #4]
     mrs     r1, basepri
     str     r1, [r2, #8]
+    mrs     r1, control
+    str     r1, [r2, #12]
 1:
     ldr     r3, =NOBRO_SLICE_NEXT_RECORD
     ldr     r2, [r3]
     cbz     r2, 3f
+    ldr     r0, [r2, #16]
+    push    {{r2, lr}}
+    bl      nobro_mpu_activate_context
+    pop     {{r2, lr}}
+    ldr     r3, =NOBRO_SLICE_NEXT_RECORD
     ldr     r0, [r2, #0]
     ldr     lr, [r2, #4]
     ldr     r1, [r2, #8]
+    ldr     r12, [r2, #12]
     ldmia   r0!, {{r4-r11}}
     tst     lr, #0x10
     bne     2f
@@ -248,6 +297,7 @@ PendSV:
 2:
     msr     psp, r0
     msr     basepri, r1
+    msr     control, r12
     dsb
     isb
     movs    r0, #0

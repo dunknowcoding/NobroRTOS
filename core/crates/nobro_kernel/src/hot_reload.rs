@@ -76,6 +76,19 @@ pub trait LeaseReleaser {
     fn release_all_for_owner(&mut self, owner: u8) -> usize;
 }
 
+/// Adapter that connects kernel recovery/reload directly to the deep HAL lease
+/// registry without borrowing or fabricating a peripheral lease token.
+#[cfg(feature = "hal-profile")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HalLeaseReleaser;
+
+#[cfg(feature = "hal-profile")]
+impl LeaseReleaser for HalLeaseReleaser {
+    fn release_all_for_owner(&mut self, owner: u8) -> usize {
+        nobro_hal::ResourceLease::release_all_for_owner(owner)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModuleReloadRequest {
     pub module: ModuleId,

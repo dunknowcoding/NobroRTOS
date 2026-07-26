@@ -155,7 +155,7 @@ impl MpuRegionSpec {
 
 /// A composed MPU profile. `N` is the plan capacity, not the hardware's —
 /// hardware region count is checked against `MPU_TYPE` at install.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelMpuPlan<const N: usize> {
     regions: [Option<MpuRegionSpec>; N],
     len: usize,
@@ -286,6 +286,126 @@ fn barrier() {
     }
 }
 
+/// Fixed PMSAv7-M region capacity used by the deep nRF module-isolation port.
+///
+/// The nRF52840 implements eight regions. Keeping the encoded bank fixed makes
+/// a context switch allocation-free and prevents a generic plan from silently
+/// exceeding the target's architectural capacity.
+pub const MODULE_MPU_REGIONS: usize = 8;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
+struct EncodedMpuRegion {
+    rbar: u32,
+    rasr: u32,
+}
+
+/// Prevalidated MPU bank for one unprivileged PSP module.
+///
+/// Privileged exception/kernel code retains the architectural background map;
+/// unprivileged thread code can access only these explicit regions. A context
+/// therefore needs executable code and writable non-device RAM, while
+/// peripheral access is opt-in per region.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct ModuleMpuContext {
+    regions: [EncodedMpuRegion; MODULE_MPU_REGIONS],
+    len: usize,
+}
+
+impl ModuleMpuContext {
+    pub fn from_plan<const N: usize>(plan: &KernelMpuPlan<N>) -> Result<Self, MpuPlanError> {
+        plan.validate()?;
+        if plan.len > MODULE_MPU_REGIONS {
+            return Err(MpuPlanError::TooManyRegions {
+                regions: plan.len,
+                supported: MODULE_MPU_REGIONS,
+            });
+        }
+
+        let mut executable = false;
+        let mut writable = false;
+        let mut context = Self {
+            regions: [EncodedMpuRegion::default(); MODULE_MPU_REGIONS],
+            len: plan.len,
+        };
+        for (index, region) in plan.regions.iter().flatten().enumerate() {
+            executable |= region.executable && region.access != MpuAccess::NoAccess;
+            writable |= region.access == MpuAccess::ReadWrite && !region.device;
+            let (rbar, rasr) = region.encode(index)?;
+            context.regions[index] = EncodedMpuRegion { rbar, rasr };
+        }
+        if !executable {
+            return Err(MpuPlanError::NoExecutableRegion);
+        }
+        if !writable {
+            return Err(MpuPlanError::NoWritableRegion);
+        }
+        Ok(context)
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[cfg(all(target_arch = "arm", feature = "cortex-m-slice"))]
+    pub(crate) fn validate_hardware(&self) -> Result<(), MpuPlanError> {
+        let supported = ((unsafe { reg_read(MPU_TYPE) } >> 8) & 0xFF) as usize;
+        if self.len > supported {
+            return Err(MpuPlanError::TooManyRegions {
+                regions: self.len,
+                supported,
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "arm")]
+    unsafe fn activate(&self) {
+        let supported = ((reg_read(MPU_TYPE) >> 8) & 0xFF) as usize;
+        reg_write(MPU_CTRL, 0);
+        barrier();
+        for index in 0..supported {
+            reg_write(MPU_RNR, index as u32);
+            if index < self.len {
+                let region = self.regions[index];
+                reg_write(MPU_RBAR, region.rbar);
+                reg_write(MPU_RASR, region.rasr);
+            } else {
+                reg_write(MPU_RASR, 0);
+                reg_write(MPU_RBAR, (1 << 4) | (index as u32 & 0xF));
+            }
+        }
+        reg_write(SHCSR, reg_read(SHCSR) | (1 << 16));
+        // Privileged kernel/handler code retains the background map. Thread
+        // mode is unprivileged, so uncovered module addresses still fault.
+        reg_write(MPU_CTRL, 1 | (1 << 2));
+        barrier();
+    }
+}
+
+/// PendSV entry point used by the Cortex-M slice port.
+///
+/// A null context returns to a privileged PSP task with the MPU disabled.
+/// Non-null contexts were hardware-capacity checked during context setup.
+///
+/// # Safety
+/// `context` must be null or point to a live, prevalidated
+/// [`ModuleMpuContext`] for the complete exception return.
+#[cfg(target_arch = "arm")]
+#[no_mangle]
+pub unsafe extern "C" fn nobro_mpu_activate_context(context: *const ModuleMpuContext) {
+    if context.is_null() {
+        KernelMpuPlan::<0>::disable();
+    } else {
+        (*context).activate();
+    }
+}
+
 /// Attributable capture of one MemManage fault: what faulted, where, and which
 /// module was in flight (from the executor's `ExecutionSentinel`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -379,6 +499,28 @@ mod tests {
         // A permissive (PRIVDEFENA) plan may be sparse.
         let sparse = KernelMpuPlan::<1>::new(false);
         assert_eq!(sparse.validate(), Ok(()));
+    }
+
+    #[test]
+    fn module_context_requires_explicit_unprivileged_code_and_ram() {
+        let sparse = KernelMpuPlan::<1>::new(false);
+        assert_eq!(
+            ModuleMpuContext::from_plan(&sparse),
+            Err(MpuPlanError::NoExecutableRegion)
+        );
+
+        let mut plan = KernelMpuPlan::<3>::new(false);
+        plan.add(MpuRegionSpec::code(0, 1024 * 1024)).unwrap();
+        assert_eq!(
+            ModuleMpuContext::from_plan(&plan),
+            Err(MpuPlanError::NoWritableRegion)
+        );
+        plan.add(MpuRegionSpec::ram(0x2000_0000, 64 * 1024))
+            .unwrap();
+        plan.add(MpuRegionSpec::peripherals(0x4000_0000, 32))
+            .unwrap();
+        let context = ModuleMpuContext::from_plan(&plan).unwrap();
+        assert_eq!(context.len(), 3);
     }
 
     #[test]

@@ -66,6 +66,15 @@ impl Default for InterruptHandoff {
 
 /// One task-owned PSP stack. The platform port owns the saved PSP value; the
 /// kernel owns bounds, attribution, and scheduling state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SliceProtection {
+    #[default]
+    Privileged,
+    /// The target port must return this context to unprivileged Thread mode
+    /// and install its module-specific MPU bank before exception return.
+    UnprivilegedMpu,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SliceContext {
     pub module: ModuleId,
@@ -73,6 +82,7 @@ pub struct SliceContext {
     pub stack_len: usize,
     pub saved_psp: usize,
     pub allows_fpu: bool,
+    pub protection: SliceProtection,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,12 +111,21 @@ impl SliceTask {
                 stack_len,
                 saved_psp: stack_base.saturating_add(stack_len),
                 allows_fpu: false,
+                protection: SliceProtection::Privileged,
             },
         }
     }
 
     pub const fn allows_fpu(mut self, allows_fpu: bool) -> Self {
         self.context.allows_fpu = allows_fpu;
+        self
+    }
+
+    /// Require the target port to use an unprivileged PSP context with a
+    /// module-specific MPU bank. Unsupported ports must reject the task during
+    /// their setup; silently running it privileged violates this contract.
+    pub const fn unprivileged_mpu(mut self) -> Self {
+        self.context.protection = SliceProtection::UnprivilegedMpu;
         self
     }
 }
@@ -143,7 +162,9 @@ pub enum SliceDecision {
 }
 
 /// Target port for PendSV/PSP switching. Implementations must preserve R4-R11,
-/// 8-byte alignment, EXC_RETURN, and (when enabled) the extended/lazy FPU frame.
+/// 8-byte alignment, EXC_RETURN, and (when enabled) the extended/lazy FPU
+/// frame. A context marked [`SliceProtection::UnprivilegedMpu`] must never be
+/// started through a privileged/no-MPU fallback.
 pub trait SlicePort {
     type Error;
 
@@ -657,5 +678,38 @@ mod tests {
                     .allows_fpu(true)
             )
             .is_ok());
+    }
+
+    #[test]
+    fn isolation_requirement_survives_selection_and_switching() {
+        let mut storage = [0u64; 64];
+        let base = storage.as_mut_ptr() as usize;
+        let mut controller = SliceController::<2>::new();
+        controller
+            .add(
+                SliceTask::new(ModuleId::Sensor, Criticality::System, 100, base, 256)
+                    .unprivileged_mpu(),
+            )
+            .unwrap();
+        controller
+            .add(
+                SliceTask::new(ModuleId::Radio, Criticality::Driver, 100, base + 256, 256)
+                    .unprivileged_mpu(),
+            )
+            .unwrap();
+        controller.mark_ready(ModuleId::Sensor);
+        controller.mark_ready(ModuleId::Radio);
+        let sentinel = ExecutionSentinel::new();
+        let first = controller.start_next_at(0, &sentinel).unwrap();
+        assert_eq!(first.protection, SliceProtection::UnprivilegedMpu);
+        let mut port = Port::default();
+        let decision = controller
+            .on_budget_interrupt(101, &sentinel, &mut port)
+            .unwrap();
+        let SliceDecision::Switch { from, to, .. } = decision else {
+            panic!("isolated task should switch");
+        };
+        assert_eq!(from.protection, SliceProtection::UnprivilegedMpu);
+        assert_eq!(to.protection, SliceProtection::UnprivilegedMpu);
     }
 }

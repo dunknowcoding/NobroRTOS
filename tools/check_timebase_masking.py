@@ -22,6 +22,7 @@ FILES = {
     "nrf_usbd": ROOT / "core/vendor/nrf-usbd/src/usbd.rs",
     "nrf_usb_backend": ROOT / "core/crates/nobro_usb/src/nrf_usbd_backend.rs",
     "nrf_usb_manifest": ROOT / "core/crates/nobro_usb/Cargo.toml",
+    "isolation_demo": ROOT / "core/apps/kernel/isolation_demo/src/main.rs",
 }
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
 RAW_MASK_TOKENS = (
@@ -35,6 +36,7 @@ RAW_MASK_ALLOWLIST = {
     FILES["ra_event_dma"],
     FILES["ra_selftest"],
     ROOT / "core/ports/samd21/src/masked_critical_section.rs",
+    FILES["isolation_demo"],
 }
 
 
@@ -155,6 +157,20 @@ def _raw_masking_allowlist() -> list[str]:
             if "cortex_m::interrupt::disable(" in text:
                 failures.append(
                     f"{path.relative_to(ROOT)}: RA4M1 self-test must not globally disable interrupts"
+                )
+        elif path == FILES["isolation_demo"]:
+            required = (
+                "debugger vector launch independent of a bootloader",
+                "cortex_m::interrupt::enable();",
+            )
+            for token in required:
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: isolation HIL handoff exception missing {token!r}"
+                    )
+            if "cortex_m::interrupt::disable(" in text:
+                failures.append(
+                    f"{path.relative_to(ROOT)}: isolation HIL must not globally disable interrupts"
                 )
         else:
             required = (

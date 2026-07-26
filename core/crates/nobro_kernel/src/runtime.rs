@@ -33,6 +33,25 @@ pub struct RuntimeCapacities {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryResourceReceipt {
+    pub module: ModuleId,
+    pub lease_owner: u8,
+    pub released_leases: usize,
+    pub released_kernel: SystemBudget,
+}
+
+impl Default for RecoveryResourceReceipt {
+    fn default() -> Self {
+        Self {
+            module: ModuleId::Kernel,
+            lease_owner: 0,
+            released_leases: 0,
+            released_kernel: SystemBudget::ZERO,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CapacityError {
     /// A per-module table is smaller than the admitted module count, so some
     /// module would silently lack quota/health/object tracking.
@@ -1225,6 +1244,52 @@ impl<
                 }
             },
         }
+    }
+
+    /// Apply a recovery step with transactional peripheral and kernel-object
+    /// revocation on `QuiesceModule`.
+    ///
+    /// Suspension is published before any fallible hook. Lease revocation and
+    /// kernel cleanup still run if the hook fails, so an old completion ISR,
+    /// DMA pointer, mailbox slot, alarm, or quota cannot survive a concurrent
+    /// fault and become authoritative again.
+    pub fn apply_recovery_step_with_resources<H: ModuleLifecycleHooks, L: LeaseReleaser>(
+        &mut self,
+        step: RecoveryStep,
+        now_us: u64,
+        lease_owner: u8,
+        hooks: &mut H,
+        leases: &mut L,
+    ) -> Result<RecoveryResourceReceipt, RuntimeError> {
+        if step.kind != RecoveryStepKind::QuiesceModule {
+            self.apply_recovery_step(step, now_us, hooks)?;
+            return Ok(RecoveryResourceReceipt {
+                module: step.module,
+                lease_owner,
+                ..RecoveryResourceReceipt::default()
+            });
+        }
+
+        self.ensure_module_enabled(step.module)?;
+        if self.module_state(step.module) != Some(ModuleRunState::Recovering)
+            && self.module_state(step.module) != Some(ModuleRunState::Suspended)
+        {
+            self.modules.suspend(step.module, now_us)?;
+        }
+        let hook_result = hooks.quiesce(step.module).map_err(RuntimeError::from);
+        let released_leases = leases.release_all_for_owner(lease_owner);
+        let released_kernel = self.cleanup_module_resources(step.module);
+        // Resource revocation is mandatory even when the board hook fails.
+        // Report an accounting failure first because residual authority is the
+        // more severe condition; otherwise preserve the exact hook error.
+        let released_kernel = released_kernel?;
+        hook_result?;
+        Ok(RecoveryResourceReceipt {
+            module: step.module,
+            lease_owner,
+            released_leases,
+            released_kernel,
+        })
     }
 
     pub fn suspend_module(&mut self, module: ModuleId, now_us: u64) -> Result<(), RuntimeError> {
@@ -2700,6 +2765,76 @@ mod tests {
                 "a failed lifecycle hook must never resume the module",
             );
         }
+    }
+
+    #[test]
+    fn recovery_quiesce_revokes_resources_even_when_board_hook_fails() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(1, 64, 1))
+            .unwrap();
+        let mut leases = FakeLeases {
+            owner: 7,
+            released: 3,
+            calls: 0,
+        };
+        let mut hooks = FakeHooks {
+            fail: Some(ModuleHookError::Quiesce),
+            ..FakeHooks::default()
+        };
+
+        assert_eq!(
+            runtime.apply_recovery_step_with_resources(
+                RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::QuiesceModule, 20, 500,),
+                20,
+                7,
+                &mut hooks,
+                &mut leases,
+            ),
+            Err(RuntimeError::ModuleHook(ModuleHookError::Quiesce))
+        );
+        assert_eq!(leases.calls, 1);
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Suspended)
+        );
+        assert_eq!(
+            runtime.quota_usage(ModuleId::Sensor),
+            Some(SystemBudget::ZERO)
+        );
+        assert_eq!(
+            runtime.object_usage(ModuleId::Sensor),
+            Some(ObjectUsage::ZERO)
+        );
+    }
+
+    #[test]
+    fn recovery_quiesce_returns_complete_cleanup_receipt() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .reserve_quota(ModuleId::Sensor, SystemBudget::new(2, 128, 2))
+            .unwrap();
+        let mut leases = FakeLeases {
+            owner: 9,
+            released: 2,
+            calls: 0,
+        };
+        let mut hooks = FakeHooks::default();
+        let receipt = runtime
+            .apply_recovery_step_with_resources(
+                RecoveryStep::new(ModuleId::Sensor, RecoveryStepKind::QuiesceModule, 20, 500),
+                20,
+                9,
+                &mut hooks,
+                &mut leases,
+            )
+            .unwrap();
+        assert_eq!(receipt.module, ModuleId::Sensor);
+        assert_eq!(receipt.lease_owner, 9);
+        assert_eq!(receipt.released_leases, 2);
+        assert_eq!(receipt.released_kernel, SystemBudget::new(2, 128, 2));
     }
 
     #[test]

@@ -1,0 +1,21 @@
+[package]
+name = "isolation-demo"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "isolation_demo"
+path = "src/main.rs"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+nobro-hal = { path = "../../../crates/nobro_hal", default-features = false, features = [
+    "platform-nrf52840-rt",
+    "board-promicro-nosd",
+    "cortex-m-slice",
+] }
+nobro-kernel = { path = "../../../crates/nobro_kernel", features = ["preemptive"] }
+panic-halt = "0.2"
