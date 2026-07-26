@@ -74,6 +74,27 @@ pub struct NrfDmaTiming {
 }
 
 #[cfg(feature = "nrf-timing-diagnostics")]
+impl NrfDmaTiming {
+    /// Saturated sample counters make a finite campaign count ambiguous and
+    /// therefore must not support a passing measurement claim.
+    pub const fn counters_saturated(self) -> bool {
+        self.clocked_samples == u32::MAX
+            || self.fallback_samples == u32::MAX
+            || self.completed_samples == u32::MAX
+            || self.timeout_samples == u32::MAX
+            || self.critical_section_clocked_samples == u32::MAX
+            || self.critical_section_fallback_samples == u32::MAX
+    }
+}
+
+#[cfg(feature = "nrf-timing-diagnostics")]
+fn saturating_increment(target: &AtomicU32) {
+    let _ = target.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        Some(value.saturating_add(1))
+    });
+}
+
+#[cfg(feature = "nrf-timing-diagnostics")]
 fn update_max(target: &AtomicU32, candidate: u32) {
     let mut current = target.load(Ordering::Relaxed);
     while candidate > current {
@@ -222,26 +243,26 @@ unsafe impl UsbPeripheral for Nrf52840Usbd {
     #[cfg(feature = "nrf-timing-diagnostics")]
     fn on_dma_wait(elapsed_us: Option<u32>, failed_observations: u32, completed: bool) {
         if let Some(elapsed_us) = elapsed_us {
-            DMA_CLOCKED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_CLOCKED_SAMPLES);
             update_max(&DMA_MAX_WAIT_US, elapsed_us);
         } else {
-            DMA_FALLBACK_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_FALLBACK_SAMPLES);
         }
         update_max(&DMA_MAX_FAILED_OBSERVATIONS, failed_observations);
         if completed {
-            DMA_COMPLETED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_COMPLETED_SAMPLES);
         } else {
-            DMA_TIMEOUT_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_TIMEOUT_SAMPLES);
         }
     }
 
     #[cfg(feature = "nrf-timing-diagnostics")]
     fn on_dma_critical_section(elapsed_us: Option<u32>) {
         if let Some(elapsed_us) = elapsed_us {
-            DMA_CRITICAL_SECTION_CLOCKED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_CRITICAL_SECTION_CLOCKED_SAMPLES);
             update_max(&DMA_MAX_CRITICAL_SECTION_US, elapsed_us);
         } else {
-            DMA_CRITICAL_SECTION_FALLBACK_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            saturating_increment(&DMA_CRITICAL_SECTION_FALLBACK_SAMPLES);
         }
     }
 }
@@ -724,7 +745,11 @@ mod tests {
         translate_io, usb_power_status_ready, visible_state, MountClaim, ReconnectAction,
         NRF_EP0_MAX_PACKET_SIZE, USB_OUTPUT_READY, VBUS_DETECTED,
     };
+    #[cfg(feature = "nrf-timing-diagnostics")]
+    use super::{saturating_increment, NrfDmaTiming};
     use crate::{CdcState, UsbBackendError};
+    #[cfg(feature = "nrf-timing-diagnostics")]
+    use core::sync::atomic::{AtomicU32, Ordering};
     use nrf_usbd::UsbdFault;
 
     #[test]
@@ -756,6 +781,27 @@ mod tests {
         assert!(!timer0_is_microsecond_timebase(false, true, 4));
         assert!(!timer0_is_microsecond_timebase(true, false, 4));
         assert!(!timer0_is_microsecond_timebase(true, true, 0));
+    }
+
+    #[cfg(feature = "nrf-timing-diagnostics")]
+    #[test]
+    fn timing_counters_saturate_and_invalidate_measurement_claims() {
+        let counter = AtomicU32::new(u32::MAX);
+        saturating_increment(&counter);
+        assert_eq!(counter.load(Ordering::Acquire), u32::MAX);
+
+        let timing = NrfDmaTiming {
+            clocked_samples: u32::MAX,
+            fallback_samples: 0,
+            completed_samples: 1,
+            timeout_samples: 0,
+            max_wait_us: 1,
+            max_failed_observations: 0,
+            critical_section_clocked_samples: 1,
+            critical_section_fallback_samples: 0,
+            max_critical_section_us: 1,
+        };
+        assert!(timing.counters_saturated());
     }
 
     #[test]

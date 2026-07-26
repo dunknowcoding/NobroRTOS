@@ -197,6 +197,7 @@ pub enum PersistentBootError {
     Rollback,
     NoPendingTrial,
     VersionMismatch,
+    GenerationExhausted,
 }
 
 pub trait MonotonicBootStore {
@@ -218,7 +219,7 @@ impl<S: MonotonicBootStore> PersistentBootController<S> {
         if plan.version <= state.confirmed_version || slot == state.active_slot {
             return Err(PersistentBootError::Rollback);
         }
-        state.generation = state.generation.wrapping_add(1);
+        state.generation = next_persistent_generation(state.generation)?;
         state.pending = Some((slot, plan.version));
         state.trial_attempted = false;
         self.store.commit_if_newer(state)
@@ -236,13 +237,13 @@ impl<S: MonotonicBootStore> PersistentBootController<S> {
         let mut state = self.store.load()?;
         match state.pending {
             Some(candidate) if !state.trial_attempted => {
-                state.generation = state.generation.wrapping_add(1);
+                state.generation = next_persistent_generation(state.generation)?;
                 state.trial_attempted = true;
                 self.store.commit_if_newer(state)?;
                 Ok(candidate)
             }
             Some(_) => {
-                state.generation = state.generation.wrapping_add(1);
+                state.generation = next_persistent_generation(state.generation)?;
                 state.pending = None;
                 state.trial_attempted = false;
                 self.store.commit_if_newer(state)?;
@@ -260,7 +261,7 @@ impl<S: MonotonicBootStore> PersistentBootController<S> {
         if !state.trial_attempted || version != pending_version {
             return Err(PersistentBootError::VersionMismatch);
         }
-        state.generation = state.generation.wrapping_add(1);
+        state.generation = next_persistent_generation(state.generation)?;
         state.active_slot = slot;
         state.confirmed_version = version;
         state.pending = None;
@@ -271,6 +272,12 @@ impl<S: MonotonicBootStore> PersistentBootController<S> {
     pub fn into_store(self) -> S {
         self.store
     }
+}
+
+fn next_persistent_generation(generation: u32) -> Result<u32, PersistentBootError> {
+    generation
+        .checked_add(1)
+        .ok_or(PersistentBootError::GenerationExhausted)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -495,6 +502,23 @@ mod tests {
             Err(PersistentBootError::Storage)
         );
         assert_eq!(failed.select_boot(), Err(PersistentBootError::Storage));
+
+        let mut exhausted = PersistentBootController::new(MemoryBootStore {
+            state: PersistentBootState {
+                generation: u32::MAX,
+                ..initial
+            },
+            fail: false,
+        });
+        assert_eq!(
+            exhausted.stage(Slot::B, plan(2)),
+            Err(PersistentBootError::GenerationExhausted)
+        );
+        assert_eq!(
+            exhausted.into_store().state.generation,
+            u32::MAX,
+            "exhaustion must not wrap or commit"
+        );
     }
 
     #[test]

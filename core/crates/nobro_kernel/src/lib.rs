@@ -107,7 +107,8 @@ pub use executor::{
     TaskStats, TaskTable, TaskTableError,
 };
 pub use foreign_host::{
-    ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
+    validate_foreign_read, validate_foreign_read_write, ForeignBufferError, ForeignHostCall,
+    ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignHostUsage,
 };
 pub use foreign_module::{ForeignModuleError, ForeignModuleRunner, ForeignModuleState};
 pub use graph::{

@@ -206,7 +206,7 @@ impl<const N: usize> CapabilityTrace<N> {
 
     pub(crate) fn record(&mut self, input: CapabilityTraceInput) -> CapabilityTraceRecord {
         let record = CapabilityTraceRecord::from_input(self.seq, input);
-        self.seq = self.seq.wrapping_add(1);
+        self.seq = self.seq.saturating_add(1);
 
         if N == 0 {
             self.dropped = self.dropped.saturating_add(1);
@@ -276,6 +276,13 @@ impl<const N: usize> CapabilityTrace<N> {
 
     pub const fn next_sequence(&self) -> u32 {
         self.seq
+    }
+
+    /// Returns `true` once the fixed-width diagnostic sequence can no longer
+    /// distinguish newer records. It never wraps and makes old records appear
+    /// newer.
+    pub const fn sequence_saturated(&self) -> bool {
+        self.seq == u32::MAX
     }
 
     fn index_in_replay_order(&self, offset: usize) -> usize {
@@ -696,5 +703,25 @@ mod tests {
         assert_eq!(trace.len(), 0);
         assert_eq!(trace.dropped(), 1);
         assert_eq!(trace.next_sequence(), 1);
+    }
+
+    #[test]
+    fn capability_trace_sequence_saturates_instead_of_wrapping() {
+        let mut trace = CapabilityTrace::<2>::new();
+        trace.seq = u32::MAX - 1;
+        let input = CapabilityTraceInput::new(
+            ModuleId::Sensor,
+            Capability::Bus0,
+            CapabilityTraceOp::Read,
+            1,
+        );
+
+        let first = trace.record(input);
+        let second = trace.record(input);
+
+        assert_eq!(first.seq, u32::MAX - 1);
+        assert_eq!(second.seq, u32::MAX);
+        assert_eq!(trace.next_sequence(), u32::MAX);
+        assert!(trace.sequence_saturated());
     }
 }

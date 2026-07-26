@@ -104,7 +104,7 @@ impl<const N: usize> EventLog<N> {
             return Some(record);
         }
 
-        self.seq = self.seq.wrapping_add(1);
+        self.seq = self.seq.saturating_add(1);
         record.seq = self.seq;
 
         let overwritten = self.records[self.next].replace(record);
@@ -168,6 +168,13 @@ impl<const N: usize> EventLog<N> {
 
     pub fn latest_sequence(&self) -> u32 {
         self.seq
+    }
+
+    /// Returns `true` once the fixed-width diagnostic sequence can no longer
+    /// distinguish newer records. It never wraps and makes old records appear
+    /// newer.
+    pub const fn sequence_saturated(&self) -> bool {
+        self.seq == u32::MAX
     }
 
     pub fn dropped(&self) -> u32 {
@@ -305,5 +312,18 @@ mod tests {
         );
         assert_eq!(out[1].kind, EventKind::Recovery);
         assert_eq!(out[1].payload, EventPayload::Action(Action::NotifyUserTask));
+    }
+
+    #[test]
+    fn event_sequence_saturates_instead_of_wrapping() {
+        let mut log = EventLog::<2>::new();
+        log.seq = u32::MAX - 1;
+
+        log.push(event(1, EventSeverity::Info));
+        log.push(event(2, EventSeverity::Warn));
+
+        assert_eq!(log.latest_sequence(), u32::MAX);
+        assert_eq!(log.latest().expect("latest").seq, u32::MAX);
+        assert!(log.sequence_saturated());
     }
 }

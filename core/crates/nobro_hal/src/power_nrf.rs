@@ -184,8 +184,8 @@ impl PowerPlatform for NrfTimerPower {
         if slept {
             self.residency_us = self
                 .residency_us
-                .wrapping_add(u64::from(end.wrapping_sub(start)));
-            self.entries = self.entries.wrapping_add(1);
+                .saturating_add(u64::from(end.wrapping_sub(start)));
+            self.entries = self.entries.saturating_add(1);
         }
         Ok(PowerMode::Idle)
     }

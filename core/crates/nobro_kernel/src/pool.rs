@@ -9,7 +9,6 @@ use core::cell::UnsafeCell;
 use crate::sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 
 const SLOT_BYTES: usize = 32;
-const MAX_GENERATION: u32 = 0x00FF_FFFF;
 
 #[repr(C, align(4))]
 #[derive(Clone, Copy)]
@@ -20,6 +19,9 @@ struct PoolSlot {
     len: u16,
     kind: SampleKind,
     taken: bool,
+    // Occupies the former tail padding, so the wider identity adds no static
+    // RAM to a slot on 32-bit targets.
+    epoch: u16,
 }
 
 impl PoolSlot {
@@ -30,20 +32,34 @@ impl PoolSlot {
         len: 0,
         kind: SampleKind::Raw,
         taken: false,
+        epoch: 0,
     };
 
     fn matches(&self, handle: PoolHandle) -> bool {
         handle.is_valid()
             && handle.index() < SAMPLE_POOL_SIZE
+            && handle.epoch() == self.epoch
             && self.taken
             && self.generation == handle.generation()
     }
 
-    fn next_generation(&self) -> u32 {
-        let next = self.generation.wrapping_add(1) & MAX_GENERATION;
-        next.max(1)
+    const fn available(&self) -> bool {
+        !self.taken && (self.generation < u32::MAX || self.epoch < u16::MAX)
+    }
+
+    const fn next_identity(&self) -> Option<(u16, u32)> {
+        if self.generation < u32::MAX {
+            Some((self.epoch, self.generation + 1))
+        } else if self.epoch < u16::MAX {
+            Some((self.epoch + 1, 1))
+        } else {
+            None
+        }
     }
 }
+
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(core::mem::size_of::<PoolSlot>() == 44);
 
 #[cfg(feature = "capacity-report")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -200,10 +216,12 @@ pub(crate) fn reset_test_pool() {
     with_pool(|state| {
         for slot in &mut state.slots {
             slot.bytes.fill(0);
+            slot.generation = 0;
             slot.refs = 0;
             slot.len = 0;
             slot.kind = SampleKind::Raw;
             slot.taken = false;
+            slot.epoch = 0;
         }
         #[cfg(feature = "capacity-report")]
         {
@@ -251,7 +269,7 @@ impl CompactImuPayload {
             let mut payload = Self::default();
             let dst = &mut payload as *mut Self as *mut u8;
             // SAFETY: both regions are valid for `LEN` bytes, do not overlap, and every
-            // bit pattern of this all-f32 payload is a valid Rust value.
+            // bit pattern of this all-integer payload is a valid Rust value.
             unsafe {
                 core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, Self::LEN as usize);
             }
@@ -292,21 +310,27 @@ impl SamplePool {
                     .slots
                     .iter_mut()
                     .enumerate()
-                    .find(|(_, slot)| !slot.taken)
+                    .find(|(_, slot)| slot.available())
                 else {
                     #[cfg(feature = "capacity-report")]
                     state.capacity_metrics.record_failure();
                     return None;
                 };
-                let generation = slot.next_generation();
+                let Some((epoch, generation)) = slot.next_identity() else {
+                    // `available` and generation allocation are kept in the
+                    // same critical section; reaching this branch would mean
+                    // internal state corruption, so fail closed.
+                    return None;
+                };
                 slot.bytes.fill(0);
+                slot.epoch = epoch;
                 slot.generation = generation;
                 slot.refs = 1;
                 slot.len = len;
                 slot.kind = kind;
                 slot.taken = true;
                 Sample {
-                    handle: PoolHandle::from_parts(idx, generation),
+                    handle: PoolHandle::from_parts(idx, epoch, generation),
                     len,
                     kind,
                     captured_us,
@@ -370,7 +394,7 @@ impl SamplePool {
     }
 
     pub fn free_slots() -> usize {
-        with_slots(|slots| slots.iter().filter(|slot| !slot.taken).count())
+        with_slots(|slots| slots.iter().filter(|slot| slot.available()).count())
     }
 
     #[cfg(feature = "capacity-report")]
@@ -494,6 +518,35 @@ mod tests {
         assert!(!SamplePool::release(stale));
         assert!(SamplePool::is_live(second.handle));
         assert!(SamplePool::release(second.handle));
+    }
+
+    #[test]
+    fn generation_rollover_advances_epoch_without_reissuing_a_stale_handle() {
+        let _guard = isolated_pool();
+        release_all_slots();
+        with_slots(|slots| {
+            slots[0].generation = u32::MAX;
+            for slot in &mut slots[1..] {
+                slot.taken = true;
+            }
+        });
+
+        let fresh = SamplePool::alloc(SampleKind::Raw, 1, 0, 0).expect("fresh epoch");
+        assert_eq!(fresh.handle.epoch(), 1);
+        assert_eq!(fresh.handle.generation(), 1);
+        assert!(SamplePool::release(fresh.handle));
+
+        with_slots(|slots| {
+            slots[0].epoch = u16::MAX;
+            slots[0].generation = u32::MAX;
+            for slot in &mut slots[1..] {
+                slot.taken = true;
+            }
+        });
+        assert_eq!(SamplePool::free_slots(), 0);
+        assert!(SamplePool::alloc(SampleKind::Raw, 1, 0, 0).is_none());
+        release_all_slots();
+        assert_eq!(SamplePool::free_slots(), SAMPLE_POOL_SIZE);
     }
 
     #[test]

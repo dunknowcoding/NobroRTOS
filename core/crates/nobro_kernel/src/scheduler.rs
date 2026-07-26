@@ -76,6 +76,12 @@ fn drain_deferred_tick() {
     }
 }
 
+fn saturating_increment(counter: &AtomicU32) {
+    let _ = counter.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+        Some(value.saturating_add(1))
+    });
+}
+
 fn configure<R>(operation: impl FnOnce() -> R) -> R {
     let generation = loop {
         let observed = CONFIG_SEQUENCE.load(Ordering::Acquire);
@@ -211,7 +217,7 @@ impl Scheduler {
             let jitter = late.min(early);
             MAX_JITTER_US.fetch_max(jitter, Ordering::AcqRel);
             if jitter > JITTER_TOLERANCE_US.load(Ordering::Acquire) {
-                DEADLINE_MISSES.fetch_add(1, Ordering::AcqRel);
+                saturating_increment(&DEADLINE_MISSES);
             }
         }
         let period = TICK_PERIOD_US.load(Ordering::Acquire);
@@ -221,7 +227,7 @@ impl Scheduler {
             expected.wrapping_add(period)
         };
         EXPECTED_NEXT_US.store(next, Ordering::Release);
-        TICK_COUNT.fetch_add(1, Ordering::AcqRel);
+        saturating_increment(&TICK_COUNT);
         let _ = PENDING_DEADLINE_TICKS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
             Some(value.saturating_add(1))
         });
@@ -350,6 +356,22 @@ mod tests {
         assert_eq!(stats.max_jitter_us, 50);
         assert_eq!(stats.deadline_misses, 1);
         assert_eq!(stats.jitter_tolerance_us, 25);
+    }
+
+    #[test]
+    fn long_run_tick_and_miss_counters_saturate_instead_of_wrapping() {
+        let _lock = lock();
+        Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
+        Scheduler::reset_stats();
+        TICK_COUNT.store(u32::MAX, Ordering::Release);
+        DEADLINE_MISSES.store(u32::MAX, Ordering::Release);
+        EXPECTED_NEXT_US.store(1_000, Ordering::Release);
+        JITTER_TOLERANCE_US.store(0, Ordering::Release);
+
+        Scheduler::on_deadline_tick(1_001);
+        assert_eq!(Scheduler::tick_count(), u32::MAX);
+        assert_eq!(Scheduler::deadline_misses(), u32::MAX);
+        Scheduler::reset_stats();
     }
 
     #[test]

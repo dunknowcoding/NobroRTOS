@@ -11,6 +11,12 @@ const PPI_CH: usize = 1;
 static MAX_LATENCY_US: AtomicU32 = AtomicU32::new(0);
 static LATENCY_SAMPLES: AtomicU32 = AtomicU32::new(0);
 
+fn increment_samples() {
+    let _ = LATENCY_SAMPLES.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+        Some(value.saturating_add(1))
+    });
+}
+
 pub struct RadioRxSim;
 
 impl RadioRxSim {
@@ -44,7 +50,7 @@ impl RadioRxSim {
                 let captured = (*TIMER0::ptr()).cc[2].read().bits();
                 let now = MicroTimer::now_us() as u32;
                 let latency = now.wrapping_sub(captured);
-                LATENCY_SAMPLES.fetch_add(1, Ordering::AcqRel);
+                increment_samples();
                 let mut cur = MAX_LATENCY_US.load(Ordering::Relaxed);
                 while latency > cur {
                     match MAX_LATENCY_US.compare_exchange_weak(

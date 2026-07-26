@@ -1,16 +1,41 @@
 //! Authenticated, replay-safe factory provisioning.
 
+use core::{
+    fmt, ptr,
+    sync::atomic::{compiler_fence, Ordering},
+};
+
 use nobro_crypto::sha256::{hmac_sha256, Sha256};
 
 use crate::{provision_protected_key, ProtectedKeyBackend, ProvisionPolicy};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct FactoryProvisionRequest {
     pub sequence: u32,
     pub authority_key_id: u32,
     pub new_key_id: u32,
     pub new_key: [u8; 32],
     pub tag: [u8; 32],
+}
+
+impl fmt::Debug for FactoryProvisionRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FactoryProvisionRequest")
+            .field("sequence", &self.sequence)
+            .field("authority_key_id", &self.authority_key_id)
+            .field("new_key_id", &self.new_key_id)
+            .field("new_key", &"[REDACTED]")
+            .field("tag", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl Drop for FactoryProvisionRequest {
+    fn drop(&mut self) {
+        volatile_zero(&mut self.new_key);
+        volatile_zero(&mut self.tag);
+    }
 }
 
 impl FactoryProvisionRequest {
@@ -172,6 +197,15 @@ fn recovery_challenge(request: &FactoryProvisionRequest) -> [u8; 32] {
     hash.update(&request.new_key_id.to_le_bytes());
     hash.update(&request.tag);
     hash.finalize()
+}
+
+fn volatile_zero(bytes: &mut [u8]) {
+    for byte in bytes {
+        // SAFETY: `byte` is a valid, uniquely borrowed byte. Volatile stores
+        // keep the wipe observable to the compiler before the final fence.
+        unsafe { ptr::write_volatile(byte, 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
 }
 
 #[cfg(test)]
@@ -372,5 +406,18 @@ mod tests {
             flow.apply(replace, &request),
             Err(FactoryProvisionError::Policy)
         );
+    }
+
+    #[test]
+    fn provisioning_request_debug_is_redacted_and_wipe_is_effective() {
+        let request = FactoryProvisionRequest::authenticated(&[0xA5; 32], 7, 1, 10, [0x3C; 32]);
+        let rendered = std::format!("{request:?}");
+        assert!(rendered.contains("new_key: \"[REDACTED]\""));
+        assert!(rendered.contains("tag: \"[REDACTED]\""));
+        assert!(!rendered.contains("60, 60, 60"));
+
+        let mut bytes = [0xA5; 32];
+        volatile_zero(&mut bytes);
+        assert_eq!(bytes, [0; 32]);
     }
 }

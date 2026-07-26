@@ -36,11 +36,12 @@ use nobro_imu::{
     ImuHealthReport, IMU_HEALTH_REPORT_MAGIC, IMU_HEALTH_REPORT_VERSION, MIN_HEALTH_SAMPLES,
 };
 use nobro_kernel::{
-    kernel_module_spec, AdmissionReport, BootAssembly, CApp, CAppError, CTaskOptions, CTaskRole,
-    CTaskStep, Capability, CapabilitySet, CapabilityTraceOp, Criticality, DeadlineContract,
-    FaultThresholds, ForeignHostCall, ForeignHostContext, ForeignHostError, ForeignHostQuota,
-    ForeignModuleRunner, KernelError, ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate,
-    ModuleSpec, StartupDependency, SystemProfile,
+    kernel_module_spec, validate_foreign_read, validate_foreign_read_write, AdmissionReport,
+    BootAssembly, CApp, CAppError, CTaskOptions, CTaskRole, CTaskStep, Capability, CapabilitySet,
+    CapabilityTraceOp, Criticality, DeadlineContract, FaultThresholds, ForeignHostCall,
+    ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignModuleRunner, KernelError,
+    ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, StartupDependency,
+    SystemProfile,
 };
 
 // ---- The NobroRTOS C ABI: host services callable from a C (or extern-"C") module ----
@@ -54,6 +55,7 @@ static HOST_CONTEXT: ForeignHostContext<32> = ForeignHostContext::new(
 const C_TASK_CAPACITY: usize = 8;
 const C_WIRE_CAPACITY: usize = 8;
 const C_MODULE_CAPACITY: usize = C_TASK_CAPACITY + 1;
+const C_I2C_MAX_PHASE_BYTES: u32 = 255;
 
 static mut C_APP: CApp<C_TASK_CAPACITY, C_WIRE_CAPACITY> = CApp::new();
 static C_APP_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -97,7 +99,9 @@ fn c_options(options: *const c_void) -> Result<CTaskOptions, CAppError> {
     if options.is_null() {
         return Ok(CTaskOptions::DEFAULT);
     }
-    let options = unsafe { &*options.cast::<NobroTaskOptions>() };
+    // Copy through an unaligned read: C callers are not required to give Rust
+    // reference alignment, and retaining a reference would overstate aliasing.
+    let options = unsafe { options.cast::<NobroTaskOptions>().read_unaligned() };
     let role = match options.role {
         0 => CTaskRole::Periodic,
         1 => CTaskRole::Control,
@@ -268,12 +272,17 @@ pub extern "C" fn nobro_now_us() -> u64 {
 ///
 /// # Safety
 /// For nonzero `len`, `tx` must point to at least `len` readable bytes for the
-/// duration of this call.
+/// duration of this call. `len` must not exceed 255.
 pub unsafe extern "C" fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i32 {
-    if tx.is_null() {
-        return -1;
-    }
-    let bytes = unsafe { core::slice::from_raw_parts(tx, len as usize) };
+    let len_usize = match validate_foreign_read(tx, len, C_I2C_MAX_PHASE_BYTES, true) {
+        Ok(len) => len,
+        Err(_) => return -1,
+    };
+    let bytes = if len_usize == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(tx, len_usize) }
+    };
     match HOST_CONTEXT.invoke(
         ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
             .args(u32::from(addr), len)
@@ -294,7 +303,7 @@ pub unsafe extern "C" fn nobro_i2c_write(addr: u8, tx: *const u8, len: u32) -> i
 /// # Safety
 /// For nonzero lengths, `tx` must point to `tx_len` readable bytes and `rx`
 /// must point to `rx_len` writable bytes for the duration of this call. The
-/// regions must satisfy Rust's aliasing rules.
+/// regions must be disjoint and each phase must contain 1..=255 bytes.
 pub unsafe extern "C" fn nobro_i2c_write_read(
     addr: u8,
     tx: *const u8,
@@ -302,11 +311,13 @@ pub unsafe extern "C" fn nobro_i2c_write_read(
     rx: *mut u8,
     rx_len: u32,
 ) -> i32 {
-    if tx.is_null() || rx.is_null() {
-        return -1;
-    }
-    let t = unsafe { core::slice::from_raw_parts(tx, tx_len as usize) };
-    let r = unsafe { core::slice::from_raw_parts_mut(rx, rx_len as usize) };
+    let (tx_len_usize, rx_len_usize) =
+        match validate_foreign_read_write(tx, tx_len, rx, rx_len, C_I2C_MAX_PHASE_BYTES) {
+            Ok(lengths) => lengths,
+            Err(_) => return -1,
+        };
+    let t = unsafe { core::slice::from_raw_parts(tx, tx_len_usize) };
+    let r = unsafe { core::slice::from_raw_parts_mut(rx, rx_len_usize) };
     match HOST_CONTEXT.invoke(
         ForeignHostCall::new(Capability::Bus0, CapabilityTraceOp::Write, Hal::now_us())
             .args(u32::from(addr), tx_len.saturating_add(rx_len))

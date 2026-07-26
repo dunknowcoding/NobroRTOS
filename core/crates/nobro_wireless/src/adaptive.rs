@@ -140,10 +140,10 @@ impl MessageContract {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MessageId(u32);
+pub struct MessageId(u64);
 
 impl MessageId {
-    pub const fn get(self) -> u32 {
+    pub const fn get(self) -> u64 {
         self.0
     }
 }
@@ -154,6 +154,7 @@ pub enum QueueError {
     InvalidContract,
     PayloadTooLarge,
     Full,
+    IdExhausted,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -367,7 +368,7 @@ impl<const BYTES: usize> AdaptiveStorage<BYTES> for HeapStorage<BYTES> {
 pub struct AdaptiveQueue<S, const BYTES: usize> {
     storage: S,
     policy: AdaptivePolicy,
-    next_id: u32,
+    next_id: u64,
     len: usize,
     diagnostics: AdaptiveDiagnostics,
 }
@@ -444,7 +445,7 @@ impl<S: AdaptiveStorage<BYTES>, const BYTES: usize> AdaptiveQueue<S, BYTES> {
                 self.diagnostics.backpressure_rejections.saturating_add(1);
             return Err(QueueError::Full);
         };
-        let id = self.allocate_id();
+        let id = self.allocate_id().ok_or(QueueError::IdExhausted)?;
         let slot = &mut self.storage.slots_mut()[index];
         slot.bytes[..payload.len()].copy_from_slice(payload);
         slot.len = payload.len() as u16;
@@ -655,19 +656,13 @@ impl<S: AdaptiveStorage<BYTES>, const BYTES: usize> AdaptiveQueue<S, BYTES> {
         self.storage
     }
 
-    fn allocate_id(&mut self) -> MessageId {
-        loop {
-            let id = MessageId(self.next_id.max(1));
-            self.next_id = self.next_id.wrapping_add(1).max(1);
-            if !self
-                .storage
-                .slots()
-                .iter()
-                .any(|slot| slot.occupied && slot.id == id)
-            {
-                return id;
-            }
+    fn allocate_id(&mut self) -> Option<MessageId> {
+        if self.next_id == 0 {
+            return None;
         }
+        let id = MessageId(self.next_id);
+        self.next_id = self.next_id.checked_add(1).unwrap_or(0);
+        Some(id)
     }
 
     fn release(&mut self, index: usize) {
@@ -852,6 +847,22 @@ mod tests {
         assert_eq!(queue.storage.slots()[0].contract.expires_at_us, 100);
         assert_eq!(queue.storage.slots()[1].contract.expires_at_us, u64::MAX);
         assert!(!queue.storage.slots()[1].contract.batchable);
+    }
+
+    #[test]
+    fn message_id_exhaustion_fails_closed_without_reusing_an_old_id() {
+        let mut queue = FixedAdaptiveQueue::<1, 8>::fixed(AdaptivePolicy::responsive()).unwrap();
+        queue.next_id = u64::MAX;
+        let last = queue
+            .enqueue(b"last", MessageContract::urgent(0, 10))
+            .unwrap();
+        assert_eq!(last.get(), u64::MAX);
+        assert!(queue.cancel(last));
+        assert_eq!(
+            queue.enqueue(b"reuse", MessageContract::urgent(0, 10)),
+            Err(QueueError::IdExhausted)
+        );
+        assert!(queue.is_empty());
     }
 
     #[test]

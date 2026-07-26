@@ -229,7 +229,8 @@ fn write_usb_timing_report(usb: &mut MountedUsb) -> bool {
     const DMA_WAIT_BUDGET_US: u32 = 10_000;
 
     let timing = nrf_dma_timing();
-    let pass = timing.clocked_samples > 0
+    let pass = !timing.counters_saturated()
+        && timing.clocked_samples > 0
         && timing.fallback_samples == 0
         && timing.timeout_samples == 0
         && timing.critical_section_clocked_samples > 0

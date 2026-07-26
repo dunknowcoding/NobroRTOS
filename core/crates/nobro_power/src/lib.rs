@@ -114,6 +114,7 @@ impl PowerLeaseKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PowerLease {
     slot: u16,
+    epoch: u32,
     generation: u32,
 }
 
@@ -144,12 +145,14 @@ impl LeaseSlot {
 /// shallowest safe power limit and all applicable typed veto reasons.
 pub struct PowerLeaseTable<const N: usize> {
     slots: [LeaseSlot; N],
+    epoch: u32,
 }
 
 impl<const N: usize> PowerLeaseTable<N> {
     pub const fn new() -> Self {
         Self {
             slots: [LeaseSlot::EMPTY; N],
+            epoch: 0,
         }
     }
 
@@ -158,21 +161,23 @@ impl<const N: usize> PowerLeaseTable<N> {
         owner: u16,
         kind: PowerLeaseKind,
     ) -> Result<PowerLease, PowerLeaseError> {
+        self.prepare_generation_epoch()?;
         let Some((slot, entry)) = self
             .slots
             .iter_mut()
             .enumerate()
-            .find(|(_, entry)| !entry.active)
+            .find(|(_, entry)| !entry.active && entry.generation < u32::MAX)
         else {
             return Err(PowerLeaseError::Full);
         };
         let slot = u16::try_from(slot).map_err(|_| PowerLeaseError::Full)?;
-        entry.generation = entry.generation.wrapping_add(1).max(1);
+        entry.generation += 1;
         entry.owner = owner;
         entry.kind = kind;
         entry.active = true;
         Ok(PowerLease {
             slot,
+            epoch: self.epoch,
             generation: entry.generation,
         })
     }
@@ -181,7 +186,7 @@ impl<const N: usize> PowerLeaseTable<N> {
         let Some(entry) = self.slots.get_mut(usize::from(lease.slot)) else {
             return Err(PowerLeaseError::Stale);
         };
-        if !entry.active || entry.generation != lease.generation {
+        if lease.epoch != self.epoch || !entry.active || entry.generation != lease.generation {
             return Err(PowerLeaseError::Stale);
         }
         entry.active = false;
@@ -192,10 +197,28 @@ impl<const N: usize> PowerLeaseTable<N> {
         let Some(entry) = self.slots.get(usize::from(lease.slot)) else {
             return Err(PowerLeaseError::Stale);
         };
-        if !entry.active || entry.generation != lease.generation {
+        if lease.epoch != self.epoch || !entry.active || entry.generation != lease.generation {
             return Err(PowerLeaseError::Stale);
         }
         Ok(entry.owner)
+    }
+
+    fn prepare_generation_epoch(&mut self) -> Result<(), PowerLeaseError> {
+        if self
+            .slots
+            .iter()
+            .any(|entry| !entry.active && entry.generation < u32::MAX)
+        {
+            return Ok(());
+        }
+        if self.slots.is_empty() || self.slots.iter().any(|entry| entry.active) {
+            return Err(PowerLeaseError::Full);
+        }
+        self.epoch = self.epoch.checked_add(1).ok_or(PowerLeaseError::Full)?;
+        for entry in &mut self.slots {
+            entry.generation = 0;
+        }
+        Ok(())
     }
 
     fn admit(&self, requested: PowerMode) -> (PowerMode, PowerVetoMask) {
@@ -1164,6 +1187,29 @@ mod transition_tests {
         power.release_lease(debug).unwrap();
         assert_eq!(power.release_lease(debug), Err(PowerLeaseError::Stale));
         power.release_lease(usb).unwrap();
+    }
+
+    #[test]
+    fn exhausted_slot_generation_advances_epoch_without_reviving_stale_lease() {
+        let mut leases = PowerLeaseTable::<1>::new();
+        leases.slots[0].generation = u32::MAX - 1;
+        let last = leases
+            .acquire(7, PowerLeaseKind::UsbActive)
+            .expect("last unique generation");
+        assert_eq!(leases.release(last), Ok(()));
+        let next = leases
+            .acquire(7, PowerLeaseKind::UsbActive)
+            .expect("fresh epoch");
+        assert_ne!(last, next);
+        assert_eq!(leases.release(last), Err(PowerLeaseError::Stale));
+        assert_eq!(leases.release(next), Ok(()));
+
+        leases.epoch = u32::MAX;
+        leases.slots[0].generation = u32::MAX;
+        assert_eq!(
+            leases.acquire(7, PowerLeaseKind::UsbActive),
+            Err(PowerLeaseError::Full)
+        );
     }
 
     #[test]

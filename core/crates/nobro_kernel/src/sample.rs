@@ -2,25 +2,29 @@
 
 /// Opaque handle into the static sample pool.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct PoolHandle(pub u32);
+pub struct PoolHandle(u64);
 
 impl PoolHandle {
-    pub const INVALID: Self = Self(u32::MAX);
+    pub const INVALID: Self = Self(u64::MAX);
 
     pub fn is_valid(self) -> bool {
-        self.0 != u32::MAX && self.generation() != 0
+        self.0 != u64::MAX && self.generation() != 0
     }
 
-    pub(crate) const fn from_parts(index: usize, generation: u32) -> Self {
-        Self((generation << 8) | index as u32)
+    pub(crate) const fn from_parts(index: usize, epoch: u16, generation: u32) -> Self {
+        Self(((epoch as u64) << 40) | ((generation as u64) << 8) | index as u64)
     }
 
     pub(crate) const fn index(self) -> usize {
         (self.0 & 0xFF) as usize
     }
 
+    pub(crate) const fn epoch(self) -> u16 {
+        ((self.0 >> 40) & 0xFFFF) as u16
+    }
+
     pub(crate) const fn generation(self) -> u32 {
-        self.0 >> 8
+        ((self.0 >> 8) & 0xFFFF_FFFF) as u32
     }
 }
 

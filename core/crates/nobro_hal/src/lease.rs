@@ -1,6 +1,6 @@
 //! Peripheral exclusive lease (ArduinoNRF PeripheralLease equivalent).
 
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering};
 
 use crate::traits::LeaseId;
 
@@ -72,6 +72,7 @@ pub enum LeaseError {
     AlreadyHeld,
     NotHeld,
     WrongOwner,
+    GenerationExhausted,
     Unsupported,
 }
 
@@ -97,6 +98,8 @@ struct LeaseSlot {
     taken: AtomicBool,
     owner: AtomicU8,
     generation: AtomicU32,
+    // Fits the slot's former padding on 32-bit targets.
+    epoch: AtomicU16,
 }
 
 impl LeaseSlot {
@@ -105,9 +108,13 @@ impl LeaseSlot {
             taken: AtomicBool::new(false),
             owner: AtomicU8::new(0),
             generation: AtomicU32::new(1),
+            epoch: AtomicU16::new(0),
         }
     }
 }
+
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(core::mem::size_of::<LeaseSlot>() == 8);
 
 static SLOTS: [LeaseSlot; 10] = [
     LeaseSlot::new(),
@@ -158,6 +165,26 @@ fn acquisition_conflicts(resource: Resource) -> bool {
         }
 }
 
+#[inline(always)]
+fn prepare_generation_epoch(slot: &LeaseSlot) -> Result<(), LeaseError> {
+    if slot.generation.load(Ordering::Acquire) < u32::MAX {
+        return Ok(());
+    }
+    let epoch = slot.epoch.load(Ordering::Acquire);
+    if epoch == u16::MAX {
+        return Err(LeaseError::GenerationExhausted);
+    }
+    slot.epoch.store(epoch + 1, Ordering::Release);
+    slot.generation.store(1, Ordering::Release);
+    Ok(())
+}
+
+fn advance_generation(slot: &LeaseSlot) {
+    let generation = slot.generation.load(Ordering::Acquire);
+    slot.generation
+        .store(generation.saturating_add(1), Ordering::Release);
+}
+
 pub struct ResourceLease;
 
 impl ResourceLease {
@@ -185,10 +212,7 @@ impl ResourceLease {
             crate::quiesce::resource(resource);
             slot.taken.store(false, Ordering::Release);
             slot.owner.store(0, Ordering::Release);
-            slot.generation.store(
-                slot.generation.load(Ordering::Relaxed).wrapping_add(1),
-                Ordering::Release,
-            );
+            advance_generation(slot);
             Ok(())
         })
     }
@@ -230,10 +254,7 @@ impl ResourceLease {
                     crate::quiesce::resource(Resource::ALL[index]);
                     slot.taken.store(false, Ordering::Release);
                     slot.owner.store(0, Ordering::Release);
-                    slot.generation.store(
-                        slot.generation.load(Ordering::Relaxed).wrapping_add(1),
-                        Ordering::Release,
-                    );
+                    advance_generation(slot);
                     released_mask |= 1u16 << index;
                 }
             }
@@ -250,32 +271,47 @@ impl ResourceLease {
             if acquisition_conflicts(resource) {
                 return Err(LeaseError::AlreadyHeld);
             }
+            prepare_generation_epoch(slot)?;
+            let epoch = slot.epoch.load(Ordering::Acquire);
             let generation = slot.generation.load(Ordering::Acquire);
             slot.owner.store(owner, Ordering::Release);
             slot.taken.store(true, Ordering::Release);
             Ok(LeaseGuard {
                 resource,
                 owner,
+                epoch,
                 generation,
                 active: true,
             })
         })
     }
 
-    fn token_is_live(resource: Resource, owner: u8, generation: u32) -> bool {
+    fn token_is_live(
+        resource: Resource,
+        owner: u8,
+        expected_epoch: u16,
+        expected_generation: u32,
+    ) -> bool {
         critical_section::with(|_| {
             let slot = &SLOTS[idx(resource)];
-            slot.taken.load(Ordering::Acquire)
+            slot.epoch.load(Ordering::Acquire) == expected_epoch
+                && slot.taken.load(Ordering::Acquire)
                 && slot.owner.load(Ordering::Acquire) == owner
-                && slot.generation.load(Ordering::Acquire) == generation
+                && slot.generation.load(Ordering::Acquire) == expected_generation
         })
     }
 
-    fn release_token(resource: Resource, owner: u8, generation: u32) -> Result<(), LeaseError> {
+    fn release_token(
+        resource: Resource,
+        owner: u8,
+        expected_epoch: u16,
+        expected_generation: u32,
+    ) -> Result<(), LeaseError> {
         critical_section::with(|_| {
             let slot = &SLOTS[idx(resource)];
-            if !slot.taken.load(Ordering::Acquire)
-                || slot.generation.load(Ordering::Acquire) != generation
+            if slot.epoch.load(Ordering::Acquire) != expected_epoch
+                || !slot.taken.load(Ordering::Acquire)
+                || slot.generation.load(Ordering::Acquire) != expected_generation
             {
                 return Err(LeaseError::NotHeld);
             }
@@ -285,10 +321,7 @@ impl ResourceLease {
             crate::quiesce::resource(resource);
             slot.taken.store(false, Ordering::Release);
             slot.owner.store(0, Ordering::Release);
-            slot.generation.store(
-                slot.generation.load(Ordering::Relaxed).wrapping_add(1),
-                Ordering::Release,
-            );
+            advance_generation(slot);
             Ok(())
         })
     }
@@ -298,7 +331,13 @@ impl ResourceLease {
 ///
 /// ```compile_fail
 /// use nobro_hal::{LeaseGuard, Resource};
-/// let forged = LeaseGuard { resource: Resource::Twim0, owner: 1, generation: 1, active: true };
+/// let forged = LeaseGuard {
+///     resource: Resource::Twim0,
+///     owner: 1,
+///     epoch: 0,
+///     generation: 1,
+///     active: true,
+/// };
 /// ```
 ///
 /// ```compile_fail
@@ -309,6 +348,7 @@ impl ResourceLease {
 pub struct LeaseGuard {
     resource: Resource,
     owner: u8,
+    epoch: u16,
     generation: u32,
     active: bool,
 }
@@ -325,13 +365,13 @@ impl LeaseGuard {
     /// Prove this exact acquisition is still live. Recovery invalidates all extant
     /// guards by advancing the slot generation, even if the same owner reacquires it.
     pub fn ensure_live(&self) -> Result<(), LeaseError> {
-        ResourceLease::token_is_live(self.resource, self.owner, self.generation)
+        ResourceLease::token_is_live(self.resource, self.owner, self.epoch, self.generation)
             .then_some(())
             .ok_or(LeaseError::NotHeld)
     }
 
     pub fn release(mut self) -> Result<(), LeaseError> {
-        ResourceLease::release_token(self.resource, self.owner, self.generation)?;
+        ResourceLease::release_token(self.resource, self.owner, self.epoch, self.generation)?;
         self.active = false;
         Ok(())
     }
@@ -340,7 +380,12 @@ impl LeaseGuard {
 impl Drop for LeaseGuard {
     fn drop(&mut self) {
         if self.active {
-            let _ = ResourceLease::release_token(self.resource, self.owner, self.generation);
+            let _ = ResourceLease::release_token(
+                self.resource,
+                self.owner,
+                self.epoch,
+                self.generation,
+            );
             self.active = false;
         }
     }
@@ -384,6 +429,7 @@ mod invariant_tests {
             s.taken.store(false, Ordering::Release);
             s.owner.store(0, Ordering::Release);
             s.generation.store(1, Ordering::Release);
+            s.epoch.store(0, Ordering::Release);
         }
     }
 
@@ -534,6 +580,35 @@ mod invariant_tests {
         assert_eq!(stale.ensure_live(), Err(LeaseError::NotHeld));
         drop(current);
         drop(stale);
+        reset_all();
+    }
+
+    #[test]
+    fn generation_rollover_advances_epoch_instead_of_reviving_old_guard() {
+        let _lock = test_lock();
+        reset_all();
+        let slot = &SLOTS[idx(Resource::Pwm0)];
+        slot.generation.store(u32::MAX - 1, Ordering::Release);
+
+        let stale = ResourceLease::acquire_guard(Resource::Pwm0, 3).unwrap();
+        assert_eq!(stale.ensure_live(), Ok(()));
+        assert_eq!(stale.release(), Ok(()));
+        let current = ResourceLease::acquire_guard(Resource::Pwm0, 3).unwrap();
+        assert_eq!(slot.epoch.load(Ordering::Acquire), 1);
+        assert_eq!(current.ensure_live(), Ok(()));
+        assert_eq!(
+            ResourceLease::release_token(Resource::Pwm0, 3, 0, u32::MAX),
+            Err(LeaseError::NotHeld)
+        );
+        assert_eq!(current.release(), Ok(()));
+
+        slot.epoch.store(u16::MAX, Ordering::Release);
+        slot.generation.store(u32::MAX, Ordering::Release);
+        assert!(matches!(
+            ResourceLease::acquire_guard(Resource::Pwm0, 3),
+            Err(LeaseError::GenerationExhausted)
+        ));
+        assert!(!ResourceLease::is_held(Resource::Pwm0));
         reset_all();
     }
 

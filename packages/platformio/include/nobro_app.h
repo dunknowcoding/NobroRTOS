@@ -23,11 +23,17 @@ extern "C" {
 /* Monotonic microsecond timebase. */
 uint64_t nobro_now_us(void);
 
-/* I2C write of `len` bytes to `addr`. Returns 0 on success, <0 on bus error. */
+/* Maximum bytes in either phase of one Tier-C I2C call. */
+#define NOBRO_I2C_MAX_PHASE_BYTES 255u
+
+/* I2C write of 0..NOBRO_I2C_MAX_PHASE_BYTES bytes to `addr`.
+ * A null pointer is allowed only when len is zero. Returns 0 on success,
+ * <0 on invalid input, policy rejection, or bus error. */
 int32_t nobro_i2c_write(uint8_t addr, const uint8_t *tx, uint32_t len);
 
-/* I2C write-then-read (register read): write `tx_len` bytes, then read `rx_len`
- * bytes from `addr`. Returns 0 on success, <0 on bus error. */
+/* I2C write-then-read (register read): both phases must contain
+ * 1..NOBRO_I2C_MAX_PHASE_BYTES bytes and the buffers must not overlap.
+ * Returns 0 on success, <0 on invalid input, policy rejection, or bus error. */
 int32_t nobro_i2c_write_read(uint8_t addr, const uint8_t *tx, uint32_t tx_len,
                              uint8_t *rx, uint32_t rx_len);
 

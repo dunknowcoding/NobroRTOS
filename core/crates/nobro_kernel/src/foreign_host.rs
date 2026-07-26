@@ -38,6 +38,88 @@ pub enum ForeignHostError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForeignBufferError {
+    Null,
+    Empty,
+    TooLong,
+    AddressOverflow,
+    Overlap,
+}
+
+/// Validate a foreign read-only byte range before an FFI adapter constructs a
+/// Rust slice. A null pointer is accepted only for an explicitly allowed
+/// zero-length range.
+pub fn validate_foreign_read(
+    pointer: *const u8,
+    len: u32,
+    max_len: u32,
+    allow_empty: bool,
+) -> Result<usize, ForeignBufferError> {
+    let len = validate_foreign_range(pointer.addr(), len, max_len, allow_empty)?;
+    if len != 0 && pointer.is_null() {
+        return Err(ForeignBufferError::Null);
+    }
+    Ok(len)
+}
+
+/// Validate disjoint read/write byte ranges for a foreign duplex operation.
+///
+/// Both phases must be non-empty. The function only inspects addresses and
+/// lengths; the caller remains responsible for constructing slices inside the
+/// foreign call's validity window.
+pub fn validate_foreign_read_write(
+    read: *const u8,
+    read_len: u32,
+    write: *mut u8,
+    write_len: u32,
+    max_phase_len: u32,
+) -> Result<(usize, usize), ForeignBufferError> {
+    let read_len = validate_foreign_read(read, read_len, max_phase_len, false)?;
+    let write_len = validate_foreign_range(write.addr(), write_len, max_phase_len, false)?;
+    if write.is_null() {
+        return Err(ForeignBufferError::Null);
+    }
+    let read_start = read.addr();
+    let write_start = write.addr();
+    let read_end = read_start
+        .checked_add(read_len)
+        .ok_or(ForeignBufferError::AddressOverflow)?;
+    let write_end = write_start
+        .checked_add(write_len)
+        .ok_or(ForeignBufferError::AddressOverflow)?;
+    if read_start < write_end && write_start < read_end {
+        return Err(ForeignBufferError::Overlap);
+    }
+    Ok((read_len, write_len))
+}
+
+fn validate_foreign_range(
+    address: usize,
+    len: u32,
+    max_len: u32,
+    allow_empty: bool,
+) -> Result<usize, ForeignBufferError> {
+    if len == 0 {
+        return if allow_empty {
+            Ok(0)
+        } else {
+            Err(ForeignBufferError::Empty)
+        };
+    }
+    if address == 0 {
+        return Err(ForeignBufferError::Null);
+    }
+    if len > max_len {
+        return Err(ForeignBufferError::TooLong);
+    }
+    let len = len as usize;
+    address
+        .checked_add(len)
+        .ok_or(ForeignBufferError::AddressOverflow)?;
+    Ok(len)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ForeignHostCall {
     pub capability: Capability,
     pub op: CapabilityTraceOp,
@@ -234,5 +316,49 @@ mod tests {
             .iter()
             .all(|record| record.module == ModuleId::Sensor));
         assert_eq!(trace[2].op, CapabilityTraceOp::Fault);
+    }
+
+    #[test]
+    fn foreign_ranges_reject_null_empty_oversize_wrap_and_overlap() {
+        assert_eq!(validate_foreign_read(core::ptr::null(), 0, 8, true), Ok(0));
+        assert_eq!(
+            validate_foreign_read(core::ptr::null(), 1, 8, true),
+            Err(ForeignBufferError::Null)
+        );
+        let bytes = [0u8; 8];
+        assert_eq!(
+            validate_foreign_read(bytes.as_ptr(), 0, 8, false),
+            Err(ForeignBufferError::Empty)
+        );
+        assert_eq!(
+            validate_foreign_read(bytes.as_ptr(), 9, 8, false),
+            Err(ForeignBufferError::TooLong)
+        );
+        assert_eq!(
+            validate_foreign_range(usize::MAX, 1, 8, false),
+            Err(ForeignBufferError::AddressOverflow)
+        );
+
+        let mut duplex = [0u8; 8];
+        assert_eq!(
+            validate_foreign_read_write(
+                duplex.as_ptr(),
+                4,
+                duplex.as_mut_ptr().wrapping_add(2),
+                4,
+                8
+            ),
+            Err(ForeignBufferError::Overlap)
+        );
+        assert_eq!(
+            validate_foreign_read_write(
+                duplex.as_ptr(),
+                4,
+                duplex.as_mut_ptr().wrapping_add(4),
+                4,
+                8
+            ),
+            Ok((4, 4))
+        );
     }
 }
