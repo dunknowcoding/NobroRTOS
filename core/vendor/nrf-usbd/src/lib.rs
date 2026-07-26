@@ -112,4 +112,19 @@ pub unsafe trait UsbPeripheral: Send {
     fn monotonic_us_32() -> Option<u32> {
         None
     }
+
+    /// Receives one EasyDMA completion-wait measurement.
+    ///
+    /// The wait itself runs with interrupts enabled. `elapsed_us` is present only
+    /// when [`UsbPeripheral::monotonic_us_32`] supplied a usable clock; otherwise
+    /// `failed_observations` is only a fallback count and must not be presented as
+    /// elapsed time. The hook must be bounded and non-blocking.
+    fn on_dma_wait(_elapsed_us: Option<u32>, _failed_observations: u32, _completed: bool) {}
+
+    /// Receives the elapsed time of one short EasyDMA setup or completion
+    /// critical section.
+    ///
+    /// `None` means the board did not provide a usable clock. This hook runs
+    /// after interrupts have been restored and must be bounded and non-blocking.
+    fn on_dma_critical_section(_elapsed_us: Option<u32>) {}
 }

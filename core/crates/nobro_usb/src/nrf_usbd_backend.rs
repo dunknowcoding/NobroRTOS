@@ -3,6 +3,8 @@
 //! struct.
 
 use core::mem::MaybeUninit;
+#[cfg(feature = "nrf-timing-diagnostics")]
+use core::sync::atomic::AtomicU32;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use cortex_m::peripheral::NVIC;
@@ -34,6 +36,71 @@ const DRIVER_FAULT_OUT_BASE: u8 = 0x20;
 const NRF_EP0_MAX_PACKET_SIZE: u8 = 64;
 static DRIVER_FAULT: AtomicU8 = AtomicU8::new(DRIVER_FAULT_NONE);
 static DRIVER_OPERATIONAL: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_CLOCKED_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_FALLBACK_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_COMPLETED_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_TIMEOUT_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_MAX_WAIT_US: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_MAX_FAILED_OBSERVATIONS: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_CRITICAL_SECTION_CLOCKED_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_CRITICAL_SECTION_FALLBACK_SAMPLES: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "nrf-timing-diagnostics")]
+static DMA_MAX_CRITICAL_SECTION_US: AtomicU32 = AtomicU32::new(0);
+
+/// Runtime EasyDMA wait instrumentation for the nRF52840 backend.
+///
+/// `max_wait_us` is meaningful only for `clocked_samples`; fallback observations
+/// are deliberately reported separately and are not time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg(feature = "nrf-timing-diagnostics")]
+pub struct NrfDmaTiming {
+    pub clocked_samples: u32,
+    pub fallback_samples: u32,
+    pub completed_samples: u32,
+    pub timeout_samples: u32,
+    pub max_wait_us: u32,
+    pub max_failed_observations: u32,
+    pub critical_section_clocked_samples: u32,
+    pub critical_section_fallback_samples: u32,
+    pub max_critical_section_us: u32,
+}
+
+#[cfg(feature = "nrf-timing-diagnostics")]
+fn update_max(target: &AtomicU32, candidate: u32) {
+    let mut current = target.load(Ordering::Relaxed);
+    while candidate > current {
+        match target.compare_exchange_weak(current, candidate, Ordering::Relaxed, Ordering::Relaxed)
+        {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+#[cfg(feature = "nrf-timing-diagnostics")]
+pub fn nrf_dma_timing() -> NrfDmaTiming {
+    NrfDmaTiming {
+        clocked_samples: DMA_CLOCKED_SAMPLES.load(Ordering::Acquire),
+        fallback_samples: DMA_FALLBACK_SAMPLES.load(Ordering::Acquire),
+        completed_samples: DMA_COMPLETED_SAMPLES.load(Ordering::Acquire),
+        timeout_samples: DMA_TIMEOUT_SAMPLES.load(Ordering::Acquire),
+        max_wait_us: DMA_MAX_WAIT_US.load(Ordering::Acquire),
+        max_failed_observations: DMA_MAX_FAILED_OBSERVATIONS.load(Ordering::Acquire),
+        critical_section_clocked_samples: DMA_CRITICAL_SECTION_CLOCKED_SAMPLES
+            .load(Ordering::Acquire),
+        critical_section_fallback_samples: DMA_CRITICAL_SECTION_FALLBACK_SAMPLES
+            .load(Ordering::Acquire),
+        max_critical_section_us: DMA_MAX_CRITICAL_SECTION_US.load(Ordering::Acquire),
+    }
+}
 
 fn encode_driver_fault(fault: UsbdFault) -> u8 {
     match fault {
@@ -128,24 +195,53 @@ unsafe impl UsbPeripheral for Nrf52840Usbd {
 
     fn monotonic_us_32() -> Option<u32> {
         // Nobro's nRF timebase reserves CC0 as its software-capture channel; CC1/CC2
-        // are event timestamps and CC3 is the deadline/wake compare. Reuse CC0 here
-        // while the driver's critical section excludes concurrent captures. Never
-        // capture into CC3: doing so would overwrite an armed scheduler deadline.
+        // are event timestamps and CC3 is the deadline/wake compare. Reuse CC0 only
+        // inside this very short critical section so an interrupt cannot interleave
+        // another software capture while the EasyDMA completion wait itself remains
+        // fully interruptible. Never capture into CC3: doing so would overwrite an
+        // armed scheduler deadline.
         // If TIMER0 has not been started, the vendored driver also advances its
         // explicit poll-count fallback, so a frozen zero cannot suppress timeout.
-        unsafe {
+        critical_section::with(|_| unsafe {
             let timer = &*nrf52840_pac::TIMER0::ptr();
-            if !timer0_is_microsecond_timebase(
+            if timer0_is_microsecond_timebase(
                 timer.mode.read().mode().is_timer(),
                 timer.bitmode.read().bitmode().is_32bit(),
                 timer.prescaler.read().prescaler().bits(),
             ) {
+                timer.tasks_capture[0].write(|w| w.bits(1));
+                Some(timer.cc[0].read().bits())
+            } else {
                 // Do not mutate CC0 or mislabel arbitrary timer ticks as microseconds
                 // when an application has not installed Nobro's 1 MHz timebase.
-                return None;
+                None
             }
-            timer.tasks_capture[0].write(|w| w.bits(1));
-            Some(timer.cc[0].read().bits())
+        })
+    }
+
+    #[cfg(feature = "nrf-timing-diagnostics")]
+    fn on_dma_wait(elapsed_us: Option<u32>, failed_observations: u32, completed: bool) {
+        if let Some(elapsed_us) = elapsed_us {
+            DMA_CLOCKED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            update_max(&DMA_MAX_WAIT_US, elapsed_us);
+        } else {
+            DMA_FALLBACK_SAMPLES.fetch_add(1, Ordering::Relaxed);
+        }
+        update_max(&DMA_MAX_FAILED_OBSERVATIONS, failed_observations);
+        if completed {
+            DMA_COMPLETED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+        } else {
+            DMA_TIMEOUT_SAMPLES.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[cfg(feature = "nrf-timing-diagnostics")]
+    fn on_dma_critical_section(elapsed_us: Option<u32>) {
+        if let Some(elapsed_us) = elapsed_us {
+            DMA_CRITICAL_SECTION_CLOCKED_SAMPLES.fetch_add(1, Ordering::Relaxed);
+            update_max(&DMA_MAX_CRITICAL_SECTION_US, elapsed_us);
+        } else {
+            DMA_CRITICAL_SECTION_FALLBACK_SAMPLES.fetch_add(1, Ordering::Relaxed);
         }
     }
 }

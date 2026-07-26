@@ -92,6 +92,11 @@ Ports live in `core/ports/<mcu-family>/` as isolated target workspaces.
    nonignored untracked source path and its content. Ignored `_work` output is excluded.
    This is local freshness bookkeeping, not signed or physical attestation.
 
+For an nRF USBD composition, implement `UsbPeripheral::monotonic_us_32` from a wrapping
+microsecond clock without overwriting an armed deadline compare. A missing clock is
+supported only as a poll-count fallback and carries no elapsed-time claim. Keep timestamp
+capture itself bounded; EasyDMA completion waits must remain interruptible.
+
 The public provider traits are in `nobro_hal::traits`. A provider tier means at least
 one real trait implementation exists for the target. A deep tier requires one native
 composition to implement every capability in the current provider vocabulary.

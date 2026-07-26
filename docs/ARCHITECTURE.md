@@ -662,13 +662,15 @@ the old empty event and retain a pending flag until a later `SERIAL_IN_EMPTY` ev
 Therefore flush never infers completion from free capacity. Host state-machine tests do
 not replace physical disconnect/reconnect evidence.
 
-The nRF backend bounds controller-ready and EasyDMA completion polling, retains late-DMA
-storage in permanently claimed aligned buffers, and propagates terminal direction/endpoint
-faults through the common error lane. Those finite waits still run inside a critical
-section and their limits count iterations, not elapsed time. Until target timing and a
-poll-driven transfer state machine close that gap, they are a liveness containment—not an
-interrupt-blackout or deadline guarantee. Unsupported nRF isochronous endpoints are
-rejected during allocation rather than reaching the regular endpoint arrays.
+The nRF backend advances controller readiness through non-blocking lifecycle states. EasyDMA
+setup and completion bookkeeping use short critical sections, but completion waits run with
+interrupts enabled under one atomic controller claim. A board monotonic clock supplies a
+10 ms elapsed-time limit; without it, the driver exposes only a conservative poll-count
+fallback and makes no time claim. Permanent aligned staging buffers remain quarantined after
+a terminal timeout, so late hardware completion cannot access caller storage. The optional
+`nrf-timing-diagnostics` feature reports clocked/fallback samples and maximum wait/masked
+times without charging normal images for those counters. Unsupported nRF isochronous
+endpoints are rejected during allocation rather than reaching regular endpoint arrays.
 
 ### Audio - bounded contract over board-owned I2S
 

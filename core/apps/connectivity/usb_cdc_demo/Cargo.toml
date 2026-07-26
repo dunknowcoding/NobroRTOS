@@ -41,3 +41,6 @@ board-nicenano-s140 = [
     "nobro-hal/board-nicenano-s140",
     "nobro-adapter-mpu9250-imu/board-nicenano-s140",
 ]
+# Optional on-device timing report for USB/EasyDMA validation. It is excluded
+# from normal product images and their static budgets.
+usb-timing-diagnostics = ["nobro-usb/nrf-timing-diagnostics"]

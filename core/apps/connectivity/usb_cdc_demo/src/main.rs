@@ -19,6 +19,8 @@ use nobro_hal::{
 };
 use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::SensorSal;
+#[cfg(feature = "usb-timing-diagnostics")]
+use nobro_usb::nrf_dma_timing;
 use nobro_usb::{CdcState, MountedUsb, UsbConfig, UsbStack};
 
 const OWNER_TWIM: u8 = 3;
@@ -218,6 +220,44 @@ fn write_machine_report(
     push_u32(&mut mline, &mut m, u32::from(pass));
     push(&mut mline, &mut m, b"\r\n");
     write_line(usb, &mline[..m])
+}
+
+#[cfg(feature = "usb-timing-diagnostics")]
+#[inline(never)]
+fn write_usb_timing_report(usb: &mut MountedUsb) -> bool {
+    const MASKED_BUDGET_US: u32 = 20;
+    const DMA_WAIT_BUDGET_US: u32 = 10_000;
+
+    let timing = nrf_dma_timing();
+    let pass = timing.clocked_samples > 0
+        && timing.fallback_samples == 0
+        && timing.timeout_samples == 0
+        && timing.critical_section_clocked_samples > 0
+        && timing.critical_section_fallback_samples == 0
+        && timing.max_critical_section_us <= MASKED_BUDGET_US
+        && timing.max_wait_us <= DMA_WAIT_BUDGET_US;
+    let mut line = [0u8; 192];
+    let mut n = 0usize;
+    push(&mut line, &mut n, b"NOBRO-USB-TIMING clocked=");
+    push_u32(&mut line, &mut n, timing.clocked_samples);
+    push(&mut line, &mut n, b" fallback=");
+    push_u32(&mut line, &mut n, timing.fallback_samples);
+    push(&mut line, &mut n, b" completed=");
+    push_u32(&mut line, &mut n, timing.completed_samples);
+    push(&mut line, &mut n, b" timeout=");
+    push_u32(&mut line, &mut n, timing.timeout_samples);
+    push(&mut line, &mut n, b" max_wait_us=");
+    push_u32(&mut line, &mut n, timing.max_wait_us);
+    push(&mut line, &mut n, b" cs_clocked=");
+    push_u32(&mut line, &mut n, timing.critical_section_clocked_samples);
+    push(&mut line, &mut n, b" cs_fallback=");
+    push_u32(&mut line, &mut n, timing.critical_section_fallback_samples);
+    push(&mut line, &mut n, b" max_cs_us=");
+    push_u32(&mut line, &mut n, timing.max_critical_section_us);
+    push(&mut line, &mut n, b" all_pass=");
+    push_u32(&mut line, &mut n, u32::from(pass));
+    push(&mut line, &mut n, b"\r\n");
+    write_line(usb, &line[..n])
 }
 
 #[cfg(feature = "board-nicenano-s140")]
@@ -451,6 +491,10 @@ fn main() -> ! {
             // report console parse (nobro_rtos.node / parseStatusLine).
             if !write_machine_report(&mut usb, who, reads, errors, accel_mg, pass) {
                 defmt::warn!("USB model-report backpressure");
+            }
+            #[cfg(feature = "usb-timing-diagnostics")]
+            if !write_usb_timing_report(&mut usb) {
+                defmt::warn!("USB timing-report backpressure");
             }
         }
     }

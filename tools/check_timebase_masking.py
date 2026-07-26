@@ -19,6 +19,9 @@ FILES = {
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",
     "ra_event_dma": ROOT / "core/ports/ra4m1/src/event_dma.rs",
     "ra_selftest": ROOT / "core/ports/ra4m1/src/main.rs",
+    "nrf_usbd": ROOT / "core/vendor/nrf-usbd/src/usbd.rs",
+    "nrf_usb_backend": ROOT / "core/crates/nobro_usb/src/nrf_usbd_backend.rs",
+    "nrf_usb_manifest": ROOT / "core/crates/nobro_usb/Cargo.toml",
 }
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
 RAW_MASK_TOKENS = (
@@ -210,6 +213,19 @@ def main() -> int:
             "SYST_COUNTFLAG",
         ),
         "samd_report": ("mask_max_cycles=", "mask_bound_us=", "mask_pass="),
+        "nrf_usbd": (
+            "DMA_COMPLETE_TIMEOUT_US",
+            "poll_dma_until(",
+            "dma_active",
+            "Keep interrupts",
+            "on_dma_critical_section",
+        ),
+        "nrf_usb_backend": (
+            "critical_section::with",
+            "nrf-timing-diagnostics",
+            "max_critical_section_us",
+        ),
+        "nrf_usb_manifest": ("nrf-timing-diagnostics",),
     }
     for name, tokens in required.items():
         for token in tokens:
@@ -233,6 +249,8 @@ def main() -> int:
         failures.append("firmware generator still selects the cortex-m PRIMASK implementation")
     if selection_token in text["samd_manifest"]:
         failures.append("SAMD21 still selects an unmeasured Cortex-M0 PRIMASK implementation")
+    if "poll_with_budget(DMA_COMPLETE_POLL_BUDGET" in text["nrf_usbd"]:
+        failures.append("nRF EasyDMA completion regressed to an in-section iteration wait")
     if failures:
         print("TIMEBASE MASKING GATE: FAIL")
         for failure in failures:
@@ -241,6 +259,7 @@ def main() -> int:
     print(
         "TIMEBASE MASKING GATE: PASS "
         "(nRF BASEPRI leaves deadline/watchdog-feeder priorities live; "
+        "nRF EasyDMA completion waits with interrupts enabled; "
         "Cortex-M0 fallback reports maximum PRIMASK time; "
         "RA4M1 provider only observes masks and its physical self-test owns the handoff)"
     )

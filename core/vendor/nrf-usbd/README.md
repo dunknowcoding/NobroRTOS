@@ -15,7 +15,8 @@ The maintained delta includes:
   D+ is connected;
 - nRF52840 revision-aware Nordic USBD anomaly workarounds and a factory-identity
   gate that fails closed before handoff or lifecycle writes on other silicon;
-- bounded EasyDMA failure reporting and process-wide DMA-buffer ownership; and
+- interruptible elapsed-time-bounded EasyDMA completion, terminal failure reporting,
+  and process-wide DMA-buffer ownership; and
 - endpoint-allocation and control-endpoint validation used by the shared `nobro-usb`
   backend.
 
@@ -29,6 +30,14 @@ request. The nRF board backend uses a request-only policy and never blindly writ
 Host tests and target linking cover the software contracts;
 successful enumeration, reconnect, and suspend/resume still require hardware validation for
 each supported silicon and bootloader combination.
+
+EasyDMA transfer setup and completion bookkeeping are serialized in short critical
+sections. The hardware completion wait runs with interrupts enabled under an atomic
+controller claim. A board-provided monotonic microsecond clock gives the wait a 10 ms
+elapsed-time boundary; without that clock, the conservative fallback remains a count of
+failed observations and must not be described as time. IN and OUT transfers use permanently
+claimed aligned staging storage. A timeout latches the first fault, disconnects D+, and
+retains the controller/storage claim so late EasyDMA completion cannot reach caller memory.
 
 This fork makes `UsbBus::force_reset()` non-blocking: `Ok` means D+ detach was accepted,
 and callers must continue polling the bus while the detach interval and reattachment finish.

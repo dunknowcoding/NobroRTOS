@@ -77,18 +77,19 @@ inside a critical section; an optional board monotonic clock supplies elapsed-ti
 with an explicitly weaker poll-count fallback when no clock is available. Suspend makes
 the data path unavailable, VBUS loss invalidates the session, and reconnect starts a fresh
 controller attach rather than reusing suspended state. `UsbStack::force_reenumeration()`
-exposes an explicit application detach/reattach for rate-limited recovery. EasyDMA
-completion still uses finite iteration budgets inside a critical section, quarantines its
-staging storage after a terminal timeout, and has no measured target interrupt-blackout
-bound. Host tests and target linking do not establish initial enumeration, unplug/replug,
-suspend/resume, or fault recovery on silicon; those lifecycle claims require physical
-evidence for the selected silicon and bootloader combination.
+exposes an explicit application detach/reattach for rate-limited recovery. EasyDMA setup
+and completion bookkeeping use short critical sections; completion waits run with
+interrupts enabled and use a 10 ms elapsed-time limit when the board supplies the required
+microsecond clock. The no-clock fallback remains a poll count, not a time guarantee.
+Permanent aligned storage is retained after a terminal timeout, so late DMA cannot touch
+expired caller buffers. Physical evidence applies only to its exact silicon, bootloader,
+clock, and firmware composition; it does not establish every unplug timing or electrical
+fault case.
 
 The nRF deadline timer applies cadence changes at an ISR boundary, and the timer-power
 sleep edge uses SEVONPEND/WFE instead of globally masking interrupts. BASEPRI ceiling
 contracts are available for bounded shared-state work and reject configurations that
-would mask the deadline or watchdog priority. This does not remove the separate USB
-critical-section limitation above.
+would mask the deadline or watchdog priority.
 
 USB configuration is backend-dependent. `UsbConfig` is only a request: nRF generates
 its descriptors from it, RA4M1 accepts only the exported fixed descriptor value, and the

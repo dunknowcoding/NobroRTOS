@@ -313,6 +313,8 @@ pub trait UsbStack {
 mod nrf_usbd_backend;
 #[cfg(feature = "backend-nrf-usbd")]
 use nrf_usbd_backend::NrfUsbdCdc;
+#[cfg(all(feature = "backend-nrf-usbd", feature = "nrf-timing-diagnostics"))]
+pub use nrf_usbd_backend::{nrf_dma_timing, NrfDmaTiming};
 
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",

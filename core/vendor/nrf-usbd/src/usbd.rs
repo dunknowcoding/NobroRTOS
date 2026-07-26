@@ -43,6 +43,7 @@ const DETACH_POLL_BUDGET: usize = 6_000_000;
 const PARITY_DMA_TIMEOUT_US: u32 = 100_000;
 const PARITY_DMA_POLL_BUDGET: usize = 6_000_000;
 const HANDOFF_DISABLE_POLL_BUDGET: usize = 100_000;
+const DMA_COMPLETE_TIMEOUT_US: u32 = 10_000;
 const DMA_COMPLETE_POLL_BUDGET: usize = 2_048;
 const ISO_SPLIT_HALF_IN: u32 = 0x80;
 
@@ -302,9 +303,11 @@ pub unsafe fn sanitize_handoff<T: UsbPeripheral>() -> HandoffSanitization {
 #[repr(align(4))]
 struct StaticDmaBuffer(UnsafeCell<[u8; DMA_BUFFER_SIZE]>);
 
-// Safety: all accesses occur inside the global critical section. USBD is a singleton
-// peripheral, and a fatal timeout permanently prevents this driver instance from issuing
-// another transfer. Static storage also remains valid if timed-out EasyDMA finishes late.
+// Safety: software accesses occur while `dma_active` is exclusively claimed; setup and
+// completion bookkeeping use short global critical sections, while hardware completion
+// waits run with interrupts enabled. USBD is a singleton peripheral, and a fatal timeout
+// retains the claim permanently. Static storage therefore remains valid if timed-out
+// EasyDMA finishes late.
 unsafe impl Sync for StaticDmaBuffer {}
 
 static DMA_IN_BUFFER: StaticDmaBuffer = StaticDmaBuffer(UnsafeCell::new([0; DMA_BUFFER_SIZE]));
@@ -398,6 +401,60 @@ fn poll_with_budget(limit: usize, mut ready: impl FnMut() -> bool) -> bool {
         core::hint::spin_loop();
     }
     false
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DmaWaitResult {
+    completed: bool,
+    elapsed_us: Option<u32>,
+    failed_observations: u32,
+}
+
+enum ReadPreparation {
+    Immediate(usize),
+    Dma {
+        applicable: errata::Applicability,
+        size: u32,
+        masked_us: Option<u32>,
+    },
+}
+
+fn elapsed_us(started_us: Option<u32>, finished_us: Option<u32>) -> Option<u32> {
+    started_us
+        .zip(finished_us)
+        .map(|(started, finished)| finished.wrapping_sub(started))
+}
+
+fn poll_dma_until(
+    mut ready: impl FnMut() -> bool,
+    mut now_us: impl FnMut() -> Option<u32>,
+    timeout_us: u32,
+    poll_budget: usize,
+) -> DmaWaitResult {
+    let started_us = now_us();
+    let mut wait = AsyncWait::new(started_us, timeout_us, poll_budget);
+    let mut failed_observations = 0_u32;
+    loop {
+        if ready() {
+            let finished_us = now_us();
+            return DmaWaitResult {
+                completed: true,
+                elapsed_us: elapsed_us(started_us, finished_us),
+                failed_observations,
+            };
+        }
+
+        failed_observations = failed_observations.saturating_add(1);
+        let observed_us = now_us();
+        if wait.failed_observation(observed_us) {
+            return DmaWaitResult {
+                completed: false,
+                elapsed_us: elapsed_us(started_us, observed_us),
+                failed_observations,
+            };
+        }
+        core::hint::spin_loop();
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -741,6 +798,10 @@ pub struct Usbd<T: UsbPeripheral> {
     fault: Mutex<Cell<TerminalFault>>,
     lifecycle: Mutex<Cell<Lifecycle>>,
     bootloader_handoff: Mutex<Cell<bool>>,
+    // Serializes the one nRF USBD EasyDMA engine while its completion wait runs
+    // outside the global critical section. A timeout deliberately leaves this set:
+    // the permanent staging buffer may still be owned by late hardware completion.
+    dma_active: AtomicBool,
 }
 
 impl<T: UsbPeripheral> Usbd<T> {
@@ -784,6 +845,7 @@ impl<T: UsbPeripheral> Usbd<T> {
             fault: Mutex::new(Cell::new(TerminalFault::new(initial_fault))),
             lifecycle: Mutex::new(Cell::new(Lifecycle::AwaitVbus)),
             bootloader_handoff: Mutex::new(Cell::new(false)),
+            dma_active: AtomicBool::new(false),
         }
     }
 
@@ -829,6 +891,21 @@ impl<T: UsbPeripheral> Usbd<T> {
             T::on_operational_change(false);
             T::on_fault(fault);
         }
+    }
+
+    fn claim_dma(&self) -> Result<(), UsbError> {
+        self.dma_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| UsbError::WouldBlock)
+    }
+
+    fn release_dma(&self) {
+        self.dma_active.store(false, Ordering::Release);
+    }
+
+    fn dma_is_active(&self) -> bool {
+        self.dma_active.load(Ordering::Acquire)
     }
 
     fn async_wait(timeout_us: u32, poll_budget: usize) -> AsyncWait {
@@ -1668,7 +1745,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn enable(&mut self) {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.has_fault(cs) || self.dma_is_active() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -1679,7 +1756,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn reset(&self) {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.has_fault(cs) || self.dma_is_active() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -1786,7 +1863,11 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             return Err(UsbError::BufferOverflow);
         }
 
-        critical_section::with(move |cs| {
+        let (applicable, setup_masked_us) = critical_section::with(move |cs| {
+            if self.dma_is_active() {
+                return Err(UsbError::WouldBlock);
+            }
+            let critical_started_us = T::monotonic_us_32();
             let applicable = self.operational_errata(cs)?;
             let regs = self.regs(&cs);
             let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
@@ -1810,6 +1891,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             if i != 0 && regs.epstatus.read().bits() & (1 << i) != 0 {
                 return Err(UsbError::WouldBlock);
             }
+            self.claim_dma()?;
 
             // EasyDMA may finish after a bounded timeout. A static staging buffer keeps
             // its pointer valid even after this call returns with `InvalidState`.
@@ -1873,9 +1955,29 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             // Kick off device -> host transmission. This starts DMA, so a compiler fence is needed.
             dma_start(applicable);
             regs.tasks_startepin[i].write(|w| w.tasks_startepin().set_bit());
-            if !poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
-                regs.events_endepin[i].read().events_endepin().bit_is_set()
-            }) {
+            Ok((
+                applicable,
+                elapsed_us(critical_started_us, T::monotonic_us_32()),
+            ))
+        })?;
+        T::on_dma_critical_section(setup_masked_us);
+
+        // EasyDMA completion can take multiple peripheral cycles. Keep interrupts
+        // enabled for that entire wait; `dma_active` prevents a re-entrant bus call
+        // from touching the controller or the process-lifetime staging buffers.
+        let regs = unsafe { &*(T::REGISTERS as *const RegisterBlock) };
+        let wait = poll_dma_until(
+            || regs.events_endepin[i].read().events_endepin().bit_is_set(),
+            T::monotonic_us_32,
+            DMA_COMPLETE_TIMEOUT_US,
+            DMA_COMPLETE_POLL_BUDGET,
+        );
+        T::on_dma_wait(wait.elapsed_us, wait.failed_observations, wait.completed);
+
+        let (result, completion_masked_us) = critical_section::with(move |cs| {
+            let critical_started_us = T::monotonic_us_32();
+            let regs = self.regs(&cs);
+            let result = if !wait.completed {
                 // Nordic forbids disabling USBD while an EasyDMA transfer may still
                 // be active. Detach D+ and fault the instance, but keep ENABLE and the
                 // active-lifetime Erratum 211 flag untouched. The process-wide staging
@@ -1883,22 +1985,40 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                 // safely reclaim this terminal controller state.
                 regs.usbpullup.write(|w| w.connect().disabled());
                 self.latch_fault(cs, UsbdFault::InDmaTimeout { endpoint: i as u8 });
-                return Err(UsbError::InvalidState);
-            }
-            regs.events_endepin[i].reset();
-            let amount = epin[i].amount.read().amount().bits();
-            let dma_odd = self.dma_odd.borrow(cs);
-            dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
-            dma_end(applicable);
+                Err(UsbError::InvalidState)
+            } else {
+                regs.events_endepin[i].reset();
+                let epin = [
+                    &regs.epin0,
+                    &regs.epin1,
+                    &regs.epin2,
+                    &regs.epin3,
+                    &regs.epin4,
+                    &regs.epin5,
+                    &regs.epin6,
+                    &regs.epin7,
+                ];
+                let amount = epin[i].amount.read().amount().bits();
+                let dma_odd = self.dma_odd.borrow(cs);
+                dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
+                dma_end(applicable);
 
-            // Clear EPSTATUS.EPIN[i] flag
-            regs.epstatus.write(|w| unsafe { w.bits(1 << i) });
+                // Clear EPSTATUS.EPIN[i] flag
+                regs.epstatus.write(|w| unsafe { w.bits(1 << i) });
 
-            // Mark the endpoint as busy
-            busy_in_endpoints.set(busy_in_endpoints.get() | (1 << i));
-
-            Ok(buf.len())
-        })
+                // Mark the endpoint as busy
+                let busy_in_endpoints = self.busy_in_endpoints.borrow(cs);
+                busy_in_endpoints.set(busy_in_endpoints.get() | (1 << i));
+                self.release_dma();
+                Ok(buf.len())
+            };
+            (
+                result,
+                elapsed_us(critical_started_us, T::monotonic_us_32()),
+            )
+        });
+        T::on_dma_critical_section(completion_masked_us);
+        result
     }
 
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> usb_device::Result<usize> {
@@ -1911,7 +2031,10 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
         }
 
         let i = ep_addr.index();
-        critical_section::with(move |cs| {
+        let preparation = critical_section::with(|cs| {
+            if self.dma_is_active() {
+                return Err(UsbError::WouldBlock);
+            }
             let applicable = self.operational_errata(cs)?;
             let regs = self.regs(&cs);
 
@@ -1926,7 +2049,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
                     let n = self.read_control_setup(regs, buf, &mut state)?;
                     ep0_state.set(state);
 
-                    return Ok(n);
+                    return Ok(ReadPreparation::Immediate(n));
                 } else {
                     // Is the endpoint ready?
                     if regs
@@ -1953,6 +2076,8 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             if size as usize > buf.len() || size as usize > DMA_BUFFER_SIZE {
                 return Err(UsbError::BufferOverflow);
             }
+            let critical_started_us = T::monotonic_us_32();
+            self.claim_dma()?;
 
             // Clear status
             if i == 0 {
@@ -1986,34 +2111,79 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             regs.events_endepout[i].reset();
             dma_start(applicable);
             regs.tasks_startepout[i].write(|w| w.tasks_startepout().set_bit());
-            let completed = poll_with_budget(DMA_COMPLETE_POLL_BUDGET, || {
+            Ok(ReadPreparation::Dma {
+                applicable,
+                size,
+                masked_us: elapsed_us(critical_started_us, T::monotonic_us_32()),
+            })
+        })?;
+        let (applicable, size, setup_masked_us) = match preparation {
+            ReadPreparation::Immediate(count) => return Ok(count),
+            ReadPreparation::Dma {
+                applicable,
+                size,
+                masked_us,
+            } => (applicable, size, masked_us),
+        };
+        T::on_dma_critical_section(setup_masked_us);
+
+        let regs = unsafe { &*(T::REGISTERS as *const RegisterBlock) };
+        let wait = poll_dma_until(
+            || {
                 regs.events_endepout[i]
                     .read()
                     .events_endepout()
                     .bit_is_set()
-            });
-            if !completed {
+            },
+            T::monotonic_us_32,
+            DMA_COMPLETE_TIMEOUT_US,
+            DMA_COMPLETE_POLL_BUDGET,
+        );
+        T::on_dma_wait(wait.elapsed_us, wait.failed_observations, wait.completed);
+
+        let (result, completion_masked_us) = critical_section::with(move |cs| {
+            let critical_started_us = T::monotonic_us_32();
+            let regs = self.regs(&cs);
+            let result = if !wait.completed {
                 // As above, an absent ENDEPOUT acknowledgement means EasyDMA may
                 // still own the permanent staging buffer. Disconnect the host, retain
                 // ENABLE and the 211 workaround, and require a system reset.
                 regs.usbpullup.write(|w| w.connect().disabled());
                 self.latch_fault(cs, UsbdFault::OutDmaTimeout { endpoint: i as u8 });
-                return publish_out_transfer(None, buf, size as usize);
-            }
-            regs.events_endepout[i].reset();
-            let amount = epout[i].amount.read().amount().bits();
-            let dma_odd = self.dma_odd.borrow(cs);
-            dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
-            dma_end(applicable);
-            let count = publish_out_transfer(Some(dma_buf), buf, size as usize)?;
+                publish_out_transfer(None, buf, size as usize)
+            } else {
+                regs.events_endepout[i].reset();
+                let epout = [
+                    &regs.epout0,
+                    &regs.epout1,
+                    &regs.epout2,
+                    &regs.epout3,
+                    &regs.epout4,
+                    &regs.epout5,
+                    &regs.epout6,
+                    &regs.epout7,
+                ];
+                let amount = epout[i].amount.read().amount().bits();
+                let dma_odd = self.dma_odd.borrow(cs);
+                dma_odd.set(accumulated_dma_odd(dma_odd.get(), amount));
+                dma_end(applicable);
+                let dma_buf = unsafe { &mut *DMA_OUT_BUFFER.0.get() };
+                let result = publish_out_transfer(Some(dma_buf), buf, size as usize);
 
-            // TODO: ISO
+                // TODO: ISO
 
-            // Enable the endpoint
-            regs.size.epout[i].reset();
-
-            Ok(count)
-        })
+                // Enable the endpoint
+                regs.size.epout[i].reset();
+                self.release_dma();
+                result
+            };
+            (
+                result,
+                elapsed_us(critical_started_us, T::monotonic_us_32()),
+            )
+        });
+        T::on_dma_critical_section(completion_masked_us);
+        result
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
@@ -2024,7 +2194,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             return;
         }
         critical_section::with(move |cs| {
-            if self.operational_errata(cs).is_err() {
+            if self.dma_is_active() || self.operational_errata(cs).is_err() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -2057,7 +2227,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
             return false;
         }
         critical_section::with(move |cs| {
-            if self.operational_errata(cs).is_err() {
+            if self.dma_is_active() || self.operational_errata(cs).is_err() {
                 return false;
             }
             let regs = self.regs(&cs);
@@ -2073,7 +2243,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn suspend(&self) {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) || !T::vbus_present() {
+            if self.has_fault(cs) || self.dma_is_active() || !T::vbus_present() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -2099,7 +2269,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
     #[inline]
     fn resume(&self) {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.has_fault(cs) || self.dma_is_active() {
                 return;
             }
             let regs = self.regs(&cs);
@@ -2114,7 +2284,7 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
     fn poll(&self) -> PollResult {
         critical_section::with(move |cs| {
-            if self.has_fault(cs) {
+            if self.has_fault(cs) || self.dma_is_active() {
                 return PollResult::None;
             }
             let regs = self.regs(&cs);
@@ -2273,6 +2443,9 @@ impl<T: UsbPeripheral> UsbBus for Usbd<T> {
 
     fn force_reset(&self) -> usb_device::Result<()> {
         critical_section::with(move |cs| {
+            if self.dma_is_active() {
+                return Err(UsbError::WouldBlock);
+            }
             if BOOTLOADER_HANDOFF_REQUEST.swap(false, Ordering::AcqRel) {
                 self.bootloader_handoff.borrow(cs).set(true);
             }
@@ -2369,15 +2542,15 @@ mod tests {
         abort_ep0_for_new_transaction, accumulated_dma_odd, acknowledge_usbevent,
         apply_handoff_sanitization, apply_session_register_sanitization, complete_enable_session,
         complete_wake_session, disable_preparation, endpoint_is_owned, initial_fault_for_silicon,
-        link_restore_allowed, observe_initial_detach, poll_with_budget, prepare_initial_detach,
-        publish_out_transfer, release_ep0_after_status_fallback, reset_ep0_transaction_registers,
-        sanitize_if_supported, suspend_resume_poll_result, validate_endpoint_request, AsyncWait,
-        DisablePreparation, EP0State, EnableSessionCompletion, ErrataOwnership,
-        HandoffSanitization, InitialDetachObservation, InitialDetachPreparation, Lifecycle,
-        PermanentClaim, RegisterBlock, StaticDmaBuffer, TerminalFault, TransferState, WakeTarget,
-        DMA_BUFFER_SIZE, HANDOFF_CONFIG_ZERO_OFFSETS, HANDOFF_EVENT_CLEAR_OFFSETS,
-        HANDOFF_W1C_CLEAR_OFFSETS, INITIAL_DETACH_TIMEOUT_US, ISO_SPLIT_HALF_IN,
-        SESSION_SANITIZATION_WRITE_COUNT,
+        link_restore_allowed, observe_initial_detach, poll_dma_until, poll_with_budget,
+        prepare_initial_detach, publish_out_transfer, release_ep0_after_status_fallback,
+        reset_ep0_transaction_registers, sanitize_if_supported, suspend_resume_poll_result,
+        validate_endpoint_request, AsyncWait, DisablePreparation, EP0State,
+        EnableSessionCompletion, ErrataOwnership, HandoffSanitization, InitialDetachObservation,
+        InitialDetachPreparation, Lifecycle, PermanentClaim, RegisterBlock, StaticDmaBuffer,
+        TerminalFault, TransferState, WakeTarget, DMA_BUFFER_SIZE, HANDOFF_CONFIG_ZERO_OFFSETS,
+        HANDOFF_EVENT_CLEAR_OFFSETS, HANDOFF_W1C_CLEAR_OFFSETS, INITIAL_DETACH_TIMEOUT_US,
+        ISO_SPLIT_HALF_IN, SESSION_SANITIZATION_WRITE_COUNT,
     };
     use crate::UsbdFault;
 
@@ -2565,6 +2738,54 @@ mod tests {
             calls.get() == 4
         }));
         assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn dma_wait_reports_elapsed_time_with_interrupt_friendly_polling() {
+        let ready_calls = Cell::new(0_u32);
+        let now = Cell::new(0_u32);
+        let result = poll_dma_until(
+            || {
+                ready_calls.set(ready_calls.get() + 1);
+                ready_calls.get() == 3
+            },
+            || {
+                let value = now.get();
+                now.set(value + 1);
+                Some(value)
+            },
+            10,
+            2,
+        );
+        assert!(result.completed);
+        assert_eq!(result.elapsed_us, Some(3));
+        assert_eq!(result.failed_observations, 2);
+    }
+
+    #[test]
+    fn dma_wait_elapsed_timeout_is_authoritative() {
+        let now = Cell::new(0_u32);
+        let result = poll_dma_until(
+            || false,
+            || {
+                let value = now.get();
+                now.set(value + 1);
+                Some(value)
+            },
+            3,
+            1,
+        );
+        assert!(!result.completed);
+        assert_eq!(result.elapsed_us, Some(3));
+        assert_eq!(result.failed_observations, 3);
+    }
+
+    #[test]
+    fn dma_wait_without_a_clock_is_only_a_poll_count() {
+        let result = poll_dma_until(|| false, || None, 100, 2);
+        assert!(!result.completed);
+        assert_eq!(result.elapsed_us, None);
+        assert_eq!(result.failed_observations, 2);
     }
 
     #[test]
