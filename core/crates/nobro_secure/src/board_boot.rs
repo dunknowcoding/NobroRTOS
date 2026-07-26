@@ -1133,6 +1133,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "exhaustive native crash-cut gate; representative signed transitions still run under Miri"
+    )]
     fn every_journal_power_cut_keeps_the_previous_record_bootable() {
         let baseline = initialized();
         let image_b = [0x5A; 128];
