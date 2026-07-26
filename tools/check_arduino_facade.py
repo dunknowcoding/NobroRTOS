@@ -20,6 +20,42 @@ int main() {
   ok.wire(imu, motor, 8).budget(motor, 800);
   assert(ok.admit() && ok.taskCount() == 2 && ok.wireCount() == 1);
 
+  nobro::NobroApp<10, 12> whole;
+  nobro::TaskId actuator = whole.task("actuator", nobro::hz(200), nobro::CONTROL);
+  nobro::TaskId imu2 = whole.task("imu", nobro::hz(100));
+  nobro::TaskId vision = whole.task("vision", nobro::hz(25), nobro::SERVICE);
+  nobro::TaskId audio = whole.task("audio", nobro::hz(100), nobro::SERVICE);
+  nobro::TaskId rfid = whole.task("rfid", nobro::hz(20));
+  nobro::TaskId power = whole.task("power", nobro::hz(10));
+  nobro::TaskId radio = whole.task("radio", nobro::hz(50), nobro::SERVICE);
+  nobro::TaskId fusion = whole.task("fusion", nobro::hz(100), nobro::CONTROL);
+  nobro::TaskId gateway = whole.task("gateway", nobro::hz(10), nobro::SERVICE);
+  nobro::TaskId health = whole.task("health", nobro::hz(5), nobro::SERVICE);
+  whole.budget(actuator, 800)
+      .budget(vision, 6000)
+      .budget(audio, 2500)
+      .budget(fusion, 3000)
+      .memory(vision, 20 * 1024, 4 * 1024)
+      .memory(audio, 16 * 1024, 4 * 1024)
+      .memory(radio, 12 * 1024, 4 * 1024)
+      .memory(fusion, 8 * 1024, 2 * 1024)
+      .wire(imu2, fusion, 8)
+      .wire(vision, fusion, 2)
+      .wire(audio, fusion, 4)
+      .wire(rfid, fusion, 2)
+      .wire(power, fusion, 2)
+      .wire(radio, fusion, 8)
+      .wire(fusion, actuator, 4)
+      .wire(fusion, gateway, 4)
+      .wire(power, actuator, 2)
+      .wire(health, gateway, 2)
+      .wire(radio, gateway, 8)
+      .wire(actuator, health, 2);
+  assert(whole.admit());
+  assert(whole.taskCount() == 10 && whole.wireCount() == 12);
+  assert(whole.flashUsed() <= 128ul * 1024ul);
+  assert(whole.ramUsed() <= 32ul * 1024ul);
+
   nobro::NobroApp<1, 1> capacity;
   capacity.task("a", 1000);
   assert(!capacity.task("b", 1000).valid());
