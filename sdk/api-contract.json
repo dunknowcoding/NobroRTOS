@@ -6184,7 +6184,7 @@
           }
         ],
         "path": "core/adapters/protocol/ros-imu-bridge/src/lib.rs",
-        "sha256": "7c30c986979489628ba932e3e857ab7a5b5ddd78b66853ef51ee88a30b862b2f"
+        "sha256": "7b77aa1e41cbdde8c95dd9a8220f9913d70f9dedbc093a6b97ea5378b3397e0a"
       },
       {
         "crate": "nobro-adapter-bmp280",

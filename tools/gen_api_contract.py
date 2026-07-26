@@ -40,8 +40,14 @@ def relative(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def canonical_text_bytes(path: Path) -> bytes:
+    """Return repository-text bytes independent of checkout line endings."""
+
+    return path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(canonical_text_bytes(path)).hexdigest()
 
 
 def cargo_name(lib: Path) -> str:
@@ -153,10 +159,10 @@ def mirror_records() -> list[dict[str, object]]:
 
     records = []
     for source, targets in groups:
-        source_bytes = source.read_bytes()
+        source_bytes = canonical_text_bytes(source)
         target_records = []
         for target in targets:
-            target_bytes = target.read_bytes()
+            target_bytes = canonical_text_bytes(target)
             normalized = GENERATED_BANNER.sub(b"", target_bytes, count=1)
             if normalized != source_bytes:
                 raise ValueError(
