@@ -134,6 +134,18 @@ pub struct TaskTable<const N: usize> {
     ready_next: [u8; N],
 }
 
+/// Complete scheduler state carried with a task when its owning core changes.
+///
+/// The record is crate-private because moving a task without the executor's
+/// admission and runtime checks would break the scheduler invariants.
+#[derive(Clone, Copy)]
+pub(crate) struct TaskTransferState {
+    slot: TaskSlot,
+    ready: bool,
+    periodic_ready: bool,
+    release_linked: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DueSelection {
     pub index: usize,
@@ -794,6 +806,147 @@ impl<const N: usize> TaskTable<N> {
             .copied()
     }
 
+    pub(crate) fn metas_with_transferred(
+        &self,
+        meta: TaskMeta,
+    ) -> Result<[Option<TaskMeta>; N], TaskTableError> {
+        if N > u32::BITS as usize || usize::from(self.len) >= N {
+            return Err(if N > u32::BITS as usize {
+                TaskTableError::ReadyMaskCapacity
+            } else {
+                TaskTableError::Full
+            });
+        }
+        if self
+            .slots
+            .iter()
+            .flatten()
+            .any(|slot| slot.meta.module == meta.module)
+        {
+            return Err(TaskTableError::DuplicateTask(meta.module));
+        }
+        let mut metas = self.metas();
+        metas[usize::from(self.len)] = Some(meta);
+        Ok(metas)
+    }
+
+    fn release_contains(&self, index: usize) -> bool {
+        let mut cursor = self.release_head;
+        while cursor != READY_NONE {
+            if usize::from(cursor) == index {
+                return true;
+            }
+            cursor = self.release_next[usize::from(cursor)];
+        }
+        false
+    }
+
+    fn collapse_bit(mask: u32, removed: usize) -> u32 {
+        let low_mask = if removed == 0 {
+            0
+        } else {
+            (1u32 << removed) - 1
+        };
+        let high = if removed + 1 >= u32::BITS as usize {
+            0
+        } else {
+            mask >> (removed + 1)
+        };
+        (mask & low_mask) | (high << removed)
+    }
+
+    fn collapse_index(index: u8, removed: usize) -> u8 {
+        if index == READY_NONE {
+            READY_NONE
+        } else if usize::from(index) > removed {
+            index - 1
+        } else if usize::from(index) == removed {
+            READY_NONE
+        } else {
+            index
+        }
+    }
+
+    pub(crate) fn detach_for_transfer(
+        &mut self,
+        module: ModuleId,
+    ) -> Result<TaskTransferState, TaskTableError> {
+        let Some(index) = self
+            .slots
+            .iter()
+            .position(|slot| slot.as_ref().is_some_and(|slot| slot.meta.module == module))
+        else {
+            return Err(TaskTableError::UnknownTask(module));
+        };
+        let bit = 1u32 << index;
+        let Some(slot) = self.slots[index] else {
+            return Err(TaskTableError::UnknownTask(module));
+        };
+        let state = TaskTransferState {
+            slot,
+            ready: self.ready_members & bit != 0,
+            periodic_ready: self.periodic_ready_members & bit != 0,
+            release_linked: self.release_contains(index),
+        };
+
+        self.remove_release(index);
+        let _ = self.take_selected(index);
+
+        let old_len = usize::from(self.len);
+        for cursor in index..old_len.saturating_sub(1) {
+            self.slots[cursor] = self.slots[cursor + 1];
+            self.release_next[cursor] = self.release_next[cursor + 1];
+            self.ready_next[cursor] = self.ready_next[cursor + 1];
+        }
+        if old_len != 0 {
+            let tail = old_len - 1;
+            self.slots[tail] = None;
+            self.release_next[tail] = READY_NONE;
+            self.ready_next[tail] = READY_NONE;
+        }
+        self.len = self.len.saturating_sub(1);
+
+        self.release_head = Self::collapse_index(self.release_head, index);
+        for link in self.release_next.iter_mut().take(usize::from(self.len)) {
+            *link = Self::collapse_index(*link, index);
+        }
+        for head in &mut self.ready_head {
+            *head = Self::collapse_index(*head, index);
+        }
+        for tail in &mut self.ready_tail {
+            *tail = Self::collapse_index(*tail, index);
+        }
+        for link in self.ready_next.iter_mut().take(usize::from(self.len)) {
+            *link = Self::collapse_index(*link, index);
+        }
+        self.ready_members = Self::collapse_bit(self.ready_members, index);
+        self.periodic_ready_members = Self::collapse_bit(self.periodic_ready_members, index);
+        Ok(state)
+    }
+
+    pub(crate) fn attach_transferred(
+        &mut self,
+        state: TaskTransferState,
+    ) -> Result<(), TaskTableError> {
+        let _ = self.metas_with_transferred(state.slot.meta)?;
+        let index = usize::from(self.len);
+        self.slots[index] = Some(state.slot);
+        self.release_next[index] = READY_NONE;
+        self.ready_next[index] = READY_NONE;
+        self.len = self.len.saturating_add(1);
+        if state.release_linked {
+            self.insert_release(index);
+        }
+        if state.ready {
+            self.enqueue_ready(index);
+            self.ready_members |= 1u32 << index;
+            if state.periodic_ready {
+                self.periodic_ready_members |= 1u32 << index;
+            }
+        }
+        Ok(())
+    }
+
     pub fn meta_at(&self, idx: usize) -> Option<TaskMeta> {
         self.slots.get(idx)?.as_ref().map(|slot| slot.meta)
     }
@@ -1351,6 +1504,71 @@ mod tests {
             table.wake_event(ModuleId::App(7)),
             Err(TaskTableError::UnknownTask(ModuleId::App(7)))
         );
+    }
+
+    #[test]
+    fn transferred_ready_task_preserves_phase_and_compacts_peer_queues() {
+        let mut source = TaskTable::<4>::new();
+        for module in 0..4 {
+            source
+                .add(
+                    TaskMeta::new(ModuleId::App(module), Criticality::User, 100, 10),
+                    0,
+                )
+                .unwrap();
+        }
+        assert_eq!(source.mark_due_releases(0), 4);
+
+        let moved = source.detach_for_transfer(ModuleId::App(1)).unwrap();
+        let mut destination = TaskTable::<4>::new();
+        destination.attach_transferred(moved).unwrap();
+
+        let mut source_order = [ModuleId::Kernel; 3];
+        for module in &mut source_order {
+            let selected = source.select_due(0).unwrap();
+            *module = source.meta_at(selected.index).unwrap().module;
+            let periodic = source.take_selected(selected.index);
+            source
+                .record_selected_poll(selected.index, 1, 1, Poll::Pending, periodic)
+                .unwrap();
+        }
+        assert_eq!(
+            source_order,
+            [ModuleId::App(0), ModuleId::App(2), ModuleId::App(3)]
+        );
+
+        let selected = destination.select_due(0).unwrap();
+        assert_eq!(
+            destination.meta_at(selected.index).unwrap().module,
+            ModuleId::App(1)
+        );
+        let periodic = destination.take_selected(selected.index);
+        assert!(periodic);
+        let stats = destination
+            .record_selected_poll(selected.index, 1, 1, Poll::Pending, periodic)
+            .unwrap();
+        assert_eq!(stats.next_due_us, 100);
+    }
+
+    #[test]
+    fn transferring_slot_thirty_one_keeps_ready_mask_bounded() {
+        let mut source = TaskTable::<32>::new();
+        for module in 0..32 {
+            source
+                .add(
+                    TaskMeta::new(ModuleId::App(module), Criticality::User, 100, 1),
+                    0,
+                )
+                .unwrap();
+        }
+        assert_eq!(source.mark_due_releases(0), 32);
+        let moved = source.detach_for_transfer(ModuleId::App(31)).unwrap();
+        assert_eq!(source.ready_members.count_ones(), 31);
+
+        let mut destination = TaskTable::<32>::new();
+        destination.attach_transferred(moved).unwrap();
+        assert_eq!(destination.ready_members, 1);
+        assert_eq!(destination.meta_at(0).unwrap().module, ModuleId::App(31));
     }
 
     #[test]

@@ -39,8 +39,9 @@ use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
     module_code, AdmissionPlan, ExecutorInstrumentation, FaultThresholds, KernelError, ModuleCtx,
-    ModuleId, ModuleRunState, Poll, Runtime, RuntimeError, StackFault, StackGuardTable,
-    StartupNode, SystemManifest, SystemProfile, TaskMeta, TaskTable, TaskTableError,
+    ModuleId, ModuleRunState, MulticoreTaskExecutor, Poll, Runtime, RuntimeError, StackFault,
+    StackGuardTable, StartupNode, SystemManifest, SystemProfile, TaskMeta, TaskTable,
+    TaskTableError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -942,6 +943,55 @@ impl<
             .set_task_power(module_code(module) as u16, power_uw)
     }
 
+    /// Move one admitted task to another stopped-between-cycles executor.
+    ///
+    /// Both task sets remain sealed. Before mutation, the destination runtime
+    /// must know an enabled instance of the module and its prospective task set
+    /// must pass the same response-time admission used by [`seal`](Self::seal).
+    /// Release phase, ready state, poll statistics, and future power attribution
+    /// move with the task; historical CPU/energy records remain on the core
+    /// that measured them.
+    pub fn transfer_task_to(
+        &mut self,
+        destination: &mut Self,
+        module: ModuleId,
+    ) -> Result<(), ExecError> {
+        if !self.sealed || !destination.sealed {
+            return Err(ExecError::NotSealed);
+        }
+        let source = self
+            .tasks
+            .get(module)
+            .ok_or(ExecError::Task(TaskTableError::UnknownTask(module)))?;
+        destination.runtime.ensure_module_enabled(module)?;
+        let prospective = destination.tasks.metas_with_transferred(source.meta)?;
+        for meta in prospective.iter().flatten() {
+            let response_us = response_time(*meta, &prospective, destination.wake_latency_us)?;
+            if response_us > u64::from(meta.deadline_us) {
+                return Err(ExecError::Unschedulable {
+                    module: meta.module,
+                    response_us,
+                    period_us: meta.deadline_us,
+                });
+            }
+        }
+
+        let power_uw = self.power.task_power_uw(module_code(module) as u16);
+        if !destination
+            .power
+            .set_task_power(module_code(module) as u16, power_uw)
+        {
+            return Err(ExecError::PowerLedgerFull);
+        }
+
+        let state = self.tasks.detach_for_transfer(module)?;
+        if let Err(error) = destination.tasks.attach_transferred(state) {
+            let _ = self.tasks.attach_transferred(state);
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
     pub fn suspend_module(
         &mut self,
         module: ModuleId,
@@ -1778,6 +1828,29 @@ impl<
     }
 }
 
+impl<
+        const TASKS: usize,
+        const STARTUP: usize,
+        const QUOTAS: usize,
+        const MAILBOX: usize,
+        const ALARMS: usize,
+        const KV: usize,
+        const HEALTH: usize,
+        const LOG: usize,
+    > MulticoreTaskExecutor
+    for KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+{
+    type Error = ExecError;
+
+    fn transfer_task_to(
+        &mut self,
+        destination: &mut Self,
+        module: ModuleId,
+    ) -> Result<(), Self::Error> {
+        KernelExecutor::transfer_task_to(self, destination, module)
+    }
+}
+
 /// Iterative response-time analysis for one task against the whole set.
 /// Priority: higher criticality preempts; equal criticality is counted as
 /// interference both ways (pessimistic, since the selector breaks ties by
@@ -1826,8 +1899,9 @@ mod tests {
     use super::*;
     use crate::{
         kernel_module_spec, Capability, CapabilitySet, Criticality, DeadlineContract,
-        DependencySet, FaultThresholds, MemoryBudget, MessageKind, ModuleSpec, StartupNode,
-        SystemManifest, SystemProfile,
+        DependencySet, FaultThresholds, MemoryBudget, MessageKind, ModuleSpec,
+        MulticoreExecutorLifecycle, MulticoreTransferError, StartupNode, SystemManifest,
+        SystemProfile,
     };
     use core::cell::Cell;
 
@@ -2129,6 +2203,139 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn multicore_transfer_moves_real_task_state_and_future_power_attribution() {
+        let mut source = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        let mut destination = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        source
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 100),
+                0,
+            )
+            .unwrap();
+        destination
+            .add_task(
+                TaskMeta::new(ModuleId::Actuator, Criticality::System, 2_000, 100)
+                    .with_phase_us(500),
+                0,
+            )
+            .unwrap();
+        assert!(source.set_task_power(ModuleId::Sensor, 7_500));
+        source.seal().unwrap();
+        destination.seal().unwrap();
+
+        // Establish non-zero statistics, then add an event wake while the next
+        // periodic release remains linked. Both states must survive the move.
+        let mut source_power = PowerHooks::default();
+        let source_clock_index = Cell::new(0usize);
+        let source_clock = [0, 5, 5];
+        source
+            .run_cycle(
+                || {
+                    let index = source_clock_index.get();
+                    source_clock_index.set(index.saturating_add(1));
+                    source_clock.get(index).copied().unwrap_or(5)
+                },
+                &mut source_power,
+                |_| Ok(Poll::Pending),
+            )
+            .unwrap();
+        source.tasks.wake_event(ModuleId::Sensor).unwrap();
+        let before = source.tasks.get(ModuleId::Sensor).unwrap();
+
+        let mut lifecycle = MulticoreExecutorLifecycle::<2, 2>::new();
+        lifecycle.place(0, ModuleId::Sensor, 1_000).unwrap();
+        lifecycle.place(1, ModuleId::Actuator, 500).unwrap();
+        lifecycle.start_all(|_| true, |_| {}).unwrap();
+        lifecycle
+            .transfer_executor(ModuleId::Sensor, 0, 1, &mut source, &mut destination)
+            .unwrap();
+
+        assert!(source.tasks.get(ModuleId::Sensor).is_none());
+        assert_eq!(destination.tasks.get(ModuleId::Sensor), Some(before));
+        assert!(lifecycle.owns(1, ModuleId::Sensor));
+        assert!(!lifecycle.owns(0, ModuleId::Sensor));
+        assert_eq!(
+            destination
+                .power
+                .task_power_uw(module_code(ModuleId::Sensor) as u16),
+            7_500
+        );
+
+        // The transferred event wake dispatches immediately, but consuming it
+        // does not shift the still-linked periodic release.
+        let mut destination_power = PowerHooks::default();
+        let destination_clock_index = Cell::new(0usize);
+        let destination_clock = [10, 15, 15];
+        let outcome = destination
+            .run_cycle(
+                || {
+                    let index = destination_clock_index.get();
+                    destination_clock_index.set(index.saturating_add(1));
+                    destination_clock.get(index).copied().unwrap_or(15)
+                },
+                &mut destination_power,
+                |ctx| {
+                    assert_eq!(ctx.module(), ModuleId::Sensor);
+                    Ok(Poll::Ready)
+                },
+            )
+            .unwrap();
+        assert_eq!(outcome.polled, Some(ModuleId::Sensor));
+        assert_eq!(
+            destination
+                .tasks
+                .get(ModuleId::Sensor)
+                .unwrap()
+                .stats
+                .next_due_us,
+            1_000
+        );
+    }
+
+    #[test]
+    fn multicore_transfer_rejects_unschedulable_destination_without_mutation() {
+        let mut source = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        let mut destination = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        source
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 600),
+                0,
+            )
+            .unwrap();
+        destination
+            .add_task(
+                TaskMeta::new(ModuleId::Actuator, Criticality::System, 1_000, 700),
+                0,
+            )
+            .unwrap();
+        source.seal().unwrap();
+        destination.seal().unwrap();
+        let source_before = source.tasks.get(ModuleId::Sensor);
+        let destination_before = destination.tasks.get(ModuleId::Actuator);
+
+        let mut lifecycle = MulticoreExecutorLifecycle::<2, 2>::new();
+        lifecycle.place(0, ModuleId::Sensor, 1_000).unwrap();
+        lifecycle.place(1, ModuleId::Actuator, 1_000).unwrap();
+        lifecycle.start_all(|_| true, |_| {}).unwrap();
+        assert!(matches!(
+            lifecycle.transfer_executor(ModuleId::Sensor, 0, 1, &mut source, &mut destination),
+            Err(MulticoreTransferError::Executor(ExecError::Unschedulable {
+                module: ModuleId::Sensor,
+                ..
+            }))
+        ));
+        assert_eq!(source.tasks.get(ModuleId::Sensor), source_before);
+        assert_eq!(
+            destination.tasks.get(ModuleId::Actuator),
+            destination_before
+        );
+        assert!(lifecycle.owns(0, ModuleId::Sensor));
+        assert!(!lifecycle.owns(1, ModuleId::Sensor));
+        assert_eq!(lifecycle.core_utilization(0), Some(1_000));
+        assert_eq!(lifecycle.core_utilization(1), Some(1_000));
     }
 
     #[test]

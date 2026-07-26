@@ -303,18 +303,26 @@ impl<const N: usize> ExecutorPower<N> {
         true
     }
 
-    pub fn account_task(&mut self, task_id: u16, active_us: u64) -> bool {
-        if self.profile_len > N {
-            return false;
-        }
-        let power_uw = self
-            .profile_task_ids
+    /// Return the power used for future accounting of `task_id`.
+    ///
+    /// This intentionally returns the default when no task-specific profile
+    /// exists.  A multicore scheduler can therefore preserve attribution when
+    /// ownership moves without exposing or copying the historical ledger.
+    pub fn task_power_uw(&self, task_id: u16) -> u64 {
+        self.profile_task_ids
             .iter()
             .zip(self.profile_power_uw.iter())
             .take(self.profile_len)
             .find(|(profile, _)| **profile == task_id)
             .map(|(_, power_uw)| *power_uw)
-            .unwrap_or(self.default_power_uw);
+            .unwrap_or(self.default_power_uw)
+    }
+
+    pub fn account_task(&mut self, task_id: u16, active_us: u64) -> bool {
+        if self.profile_len > N {
+            return false;
+        }
+        let power_uw = self.task_power_uw(task_id);
         let _ = self.manager.account_active(active_us);
         self.ledger.charge(task_id, active_us, power_uw)
     }

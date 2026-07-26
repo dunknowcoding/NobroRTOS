@@ -9,15 +9,30 @@
 //! preserved accounting, and giving one core a fault/recovery authority that
 //! never strands another core.
 //!
-//! It is deterministic and allocation-free. The actual executor start/stop is
-//! the caller's (a real per-core `KernelExecutor`, or a test double): every
-//! lifecycle method takes the action as an `FnMut` callback, so the coordinator
-//! is fully host testable without real cores or threads. Startup is
-//! transactional -- if any core fails to start, the cores already started are
-//! stopped in reverse order and the system returns fully down, never partially
-//! up.
+//! It is deterministic and allocation-free. Physical core start/stop remains
+//! the board port's responsibility and is supplied through bounded callbacks.
+//! Runtime ownership transfer uses [`MulticoreTaskExecutor`] so real
+//! [`KernelExecutor`](crate::KernelExecutor) task state moves before placement
+//! metadata commits. Startup is transactional -- if any core fails to start,
+//! the cores already started are stopped in reverse order and the system
+//! returns fully down, never partially up.
 
 use crate::ModuleId;
+
+/// Executor operation required for an ownership transfer between live cores.
+///
+/// Implementations must leave both executors unchanged on error. The kernel's
+/// implementation moves the complete task scheduling state and reruns
+/// destination response-time admission before changing either task table.
+pub trait MulticoreTaskExecutor {
+    type Error;
+
+    fn transfer_task_to(
+        &mut self,
+        destination: &mut Self,
+        module: ModuleId,
+    ) -> Result<(), Self::Error>;
+}
 
 /// One core executor's lifecycle state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,12 +63,28 @@ pub enum MulticoreError {
     StartFailed { core: u8 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MulticoreTransferError<E> {
+    Coordination(MulticoreError),
+    Executor(E),
+}
+
 const UTIL_LIMIT: u32 = 10_000;
 
 #[derive(Clone, Copy)]
 struct Owned {
     module: ModuleId,
     util_permyriad: u32,
+}
+
+#[derive(Clone, Copy)]
+struct TransferPlan {
+    from_index: usize,
+    to_index: usize,
+    source_slot: usize,
+    destination_slot: usize,
+    util_permyriad: u32,
+    destination_util: u32,
 }
 
 /// Coordinates `CORES` per-core executors, each retaining up to `SLOTS` owned
@@ -182,11 +213,45 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
     /// own the module, and the destination must not overload; otherwise nothing
     /// changes (no partial metadata transfer).
     ///
-    /// This coordinator cannot move a caller's executor work by itself. The
-    /// caller must first quiesce and migrate that work, then commit the matching
-    /// ownership change here. A same-core transfer is an idempotent no-op after
-    /// state and ownership validation.
+    /// This metadata-only variant is for callers that already moved or do not
+    /// own executor work. Prefer [`transfer_executor`](Self::transfer_executor)
+    /// when actual task ownership changes. A same-core transfer is an
+    /// idempotent no-op after state and ownership validation.
     pub fn transfer(&mut self, module: ModuleId, from: u8, to: u8) -> Result<(), MulticoreError> {
+        let plan = self.transfer_plan(module, from, to)?;
+        self.commit_transfer(plan);
+        Ok(())
+    }
+
+    /// Move real executor work first, then commit the matching ownership and
+    /// utilization metadata. All coordination checks run before either
+    /// executor is touched. A same-core move is an idempotent metadata check.
+    pub fn transfer_executor<E: MulticoreTaskExecutor>(
+        &mut self,
+        module: ModuleId,
+        from: u8,
+        to: u8,
+        source: &mut E,
+        destination: &mut E,
+    ) -> Result<(), MulticoreTransferError<E::Error>> {
+        let plan = self
+            .transfer_plan(module, from, to)
+            .map_err(MulticoreTransferError::Coordination)?;
+        if from != to {
+            source
+                .transfer_task_to(destination, module)
+                .map_err(MulticoreTransferError::Executor)?;
+        }
+        self.commit_transfer(plan);
+        Ok(())
+    }
+
+    fn transfer_plan(
+        &self,
+        module: ModuleId,
+        from: u8,
+        to: u8,
+    ) -> Result<TransferPlan, MulticoreError> {
         let from_index = self.check_core(from)?;
         let to_index = self.check_core(to)?;
         if self.states[from_index] != CoreExecutorState::Up {
@@ -205,7 +270,14 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
             return Err(MulticoreError::ModuleNotOnCore { core: from, module });
         };
         if from_index == to_index {
-            return Ok(());
+            return Ok(TransferPlan {
+                from_index,
+                to_index,
+                source_slot: slot_index,
+                destination_slot: slot_index,
+                util_permyriad: 0,
+                destination_util: self.core_util[to_index],
+            });
         }
         let util = self.owned[from_index][slot_index].unwrap().util_permyriad;
         let would_be = self.core_util[to_index].saturating_add(util);
@@ -216,17 +288,29 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
                 limit: UTIL_LIMIT,
             });
         }
-        let Some(dest_slot) = self.owned[to_index].iter_mut().find(|s| s.is_none()) else {
+        let Some(destination_slot) = self.owned[to_index].iter().position(Option::is_none) else {
             return Err(MulticoreError::CoreFull { core: to });
         };
-        *dest_slot = Some(Owned {
-            module,
+        Ok(TransferPlan {
+            from_index,
+            to_index,
+            source_slot: slot_index,
+            destination_slot,
             util_permyriad: util,
-        });
-        self.owned[from_index][slot_index] = None;
-        self.core_util[from_index] -= util;
-        self.core_util[to_index] = would_be;
-        Ok(())
+            destination_util: would_be,
+        })
+    }
+
+    fn commit_transfer(&mut self, plan: TransferPlan) {
+        if plan.from_index == plan.to_index {
+            return;
+        }
+        let owned = self.owned[plan.from_index][plan.source_slot];
+        self.owned[plan.to_index][plan.destination_slot] = owned;
+        self.owned[plan.from_index][plan.source_slot] = None;
+        self.core_util[plan.from_index] =
+            self.core_util[plan.from_index].saturating_sub(plan.util_permyriad);
+        self.core_util[plan.to_index] = plan.destination_util;
     }
 
     /// Record that a live core faulted. It retains its placement/accounting but

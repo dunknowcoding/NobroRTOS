@@ -836,6 +836,33 @@ crate. Each logical instance selects exactly one backend, while WiFi and BLE ins
 may coexist when board composition explicitly admits shared memory, interrupts,
 coexistence, and radio ownership. A portable trait is not a board-support claim.
 
+## Multicore executor ownership
+
+`MulticoreExecutorLifecycle` owns the fixed-capacity placement and lifecycle
+state for the per-core executors. `transfer_executor()` is the transactional
+runtime path: it validates both live-core states, ownership, destination slots,
+and utilization before asking the source executor to move work. The
+`KernelExecutor` implementation then:
+
+1. requires both task sets to be sealed and the destination runtime to admit
+   the module;
+2. reruns response-time admission over the prospective destination set;
+3. moves the task's exact release phase, ready state, statistics, and future
+   power attribution; and
+4. commits placement/accounting only after the executor move succeeds.
+
+An admission or capacity failure leaves both task tables and the placement
+unchanged. Historical CPU and energy entries remain attributed to the core
+that measured them; future entries accrue on the new owner. Runtime objects
+and peripheral handles are not byte-copied between cores. They must be
+pre-admitted on both executors or live in the bounded cross-core transport
+selected by the composition.
+
+Call the transfer only at a platform synchronization barrier where neither
+core is polling the two executors. Safe Rust's two mutable executor borrows
+express exclusive access inside the transfer, but starting and stopping the
+physical peer core remains a board-port responsibility.
+
 ### Why mountable, not `#[cfg]` sprinkled
 
 One trait plus one selected implementation keeps apps backend-agnostic when the whole

@@ -144,7 +144,10 @@ pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
-pub use multicore_runtime::{CoreExecutorState, MulticoreError, MulticoreExecutorLifecycle};
+pub use multicore_runtime::{
+    CoreExecutorState, MulticoreError, MulticoreExecutorLifecycle, MulticoreTaskExecutor,
+    MulticoreTransferError,
+};
 pub use nano::{
     GuardedNanoKernel, KernelLayer, NanoDependencies, NanoDispatcher, NanoError, NanoGovernance,
     NanoGovernanceError, NanoKernel, NanoObjectUsage, NanoRecovery, NanoRecoveryError,

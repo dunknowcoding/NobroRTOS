@@ -152,6 +152,16 @@ enabled/disabled pricing, pinned source ownership, measured runtime cost,
 repeated recovery, and physical playback/capture. Do not reuse that price for
 another codec or fill unknown runtime heap or DMA reservations with zero.
 
+For a dual-core port, construct and seal one `KernelExecutor` per participating
+core, pre-admit every transferable module in both runtimes, and keep peripheral
+ownership behind a bounded cross-core channel or a platform synchronization
+barrier. Use `MulticoreExecutorLifecycle::transfer_executor()` at that barrier;
+do not call metadata-only `transfer()` when actual task ownership is changing.
+The destination set is re-admitted before mutation, and a rejected move leaves
+both executors on their original cores. Record task/ISR/vendor-thread affinity,
+interrupt routing, DMA/cache coherence, queue capacity, and restart order in
+the board composition rather than hiding them in application code.
+
 The same split applies to ADC-DMA, LEDC, and RMT. Put a new implementation
 under the existing `sensors` or `servo` adapter category, keep the portable
 shape in `nobro-sensor` or `nobro-servo`, and expose a small optional facade.
