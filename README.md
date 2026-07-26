@@ -62,7 +62,7 @@ a prepared image and a safe flash path for the selected board profile.
 
 ```powershell
 git clone https://github.com/dunknowcoding/NobroRTOS && cd NobroRTOS
-python tools/run_checks.py --quick
+python tools/checks/run_checks.py --quick
 ```
 
 That checks public contracts, packages, tutorials, bindings, and documentation without
@@ -361,22 +361,22 @@ and inspect serial reports where the application exposes them.
 **No hardware on your desk?** The software side grades itself the same way:
 
 ```bash
-python tools/run_checks.py    # bindings + contracts + packages -> "RESULT: ALL PASS"
+python tools/checks/run_checks.py    # bindings + contracts + packages -> "RESULT: ALL PASS"
 ```
 
 ### Hardware support, honestly tiered
 
 "Supports N boards" hides more than it says, so NobroRTOS states exactly what each
 target gets. The machine-readable capability matrix is `core/boards/platform_tiers.json`
-(validated by `tools/check_platform_tiers.py`). Each native or Arduino composition
+(validated by `tools/checks/check_platform_tiers.py`). Each native or Arduino composition
 binds every capability to gates scoped to that exact platform, composition, and claim.
 Hosted jobs execute the declared argv from a clean, session-bound receipt directory and
 must return every required receipt. Each session is freshness-bound to the current Git
 HEAD, tracked diff, and nonignored untracked source content; ignored `_work` output is
 excluded. A target build is never treated as physical proof.
 Cross-compile coverage is
-`tools/check_portability.sh`; the extended build matrix (ports + boards + SDK) is
-`tools/ci_matrix.sh`.
+`tools/checks/check_portability.sh`; the extended build matrix (ports + boards + SDK) is
+`tools/checks/ci_matrix.sh`.
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
@@ -414,10 +414,10 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | On-device inference | Present | Bounded `AiInferenceSal` motion classifier with explicit memory and timeout contracts |
-| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/check_portability.sh` |
+| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/checks/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge | Present | Bounded topic/service/action/parameter contracts plus a SAL bridge trait |
-| SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/check_sdk_manifest.py`) |
+| SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/checks/check_sdk_manifest.py`) |
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
@@ -458,9 +458,9 @@ artifacts. It is intentionally ignored by Git.
 Validate public contracts and package metadata:
 
 ```powershell
-python tools/nobro_contract_tool.py check-host-contract
-python tools/nobro_contract_tool.py check-distribution-metadata
-python tools/nobro_contract_tool.py check-public-headers
+python tools/cli/nobro_contract_tool.py check-host-contract
+python tools/cli/nobro_contract_tool.py check-distribution-metadata
+python tools/cli/nobro_contract_tool.py check-public-headers
 ```
 
 Board-facing examples are kept as reusable library and contract references.

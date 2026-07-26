@@ -280,7 +280,7 @@ def validate_distribution_metadata(
     _require_contains(include_roots, "bindings/c/include", "SDK include roots")
     _require_contains(include_roots, "bindings/cpp/include", "SDK include roots")
     host_tools = tuple(sdk_manifest.get("host_tools", ()))
-    _require_contains(host_tools, "tools/nobro_contract_tool.py", "SDK host tools")
+    _require_contains(host_tools, "tools/cli/nobro_contract_tool.py", "SDK host tools")
     _require_equal(
         sdk_manifest.get("python_package"),
         EXPECTED_PYTHON_PACKAGE,
@@ -565,14 +565,14 @@ def _require_text(text: str, expected: str, label: str) -> None:
 def _require_vendored_header(path: Path, local: str, canonical: Path) -> None:
     """Self-contained package contract: the umbrella header includes the LOCAL vendored
     header (a Library-Manager install has no repo around it), and the vendored copy's
-    content matches the canonical one (tools/package_arduino.py --sync keeps it fresh;
+    content matches the canonical one (tools/release/package_arduino.py --sync keeps it fresh;
     its --check is the CI drift gate)."""
     text = path.read_text(encoding="utf-8")
     if f'#include "{local}"' not in text:
         raise ValueError(f"{path} must include the vendored {local}")
     vendored = path.parent / local
     if not vendored.exists():
-        raise ValueError(f"{vendored} missing - run tools/package_arduino.py --sync")
+        raise ValueError(f"{vendored} missing - run tools/release/package_arduino.py --sync")
     if canonical.read_text(encoding="utf-8") not in vendored.read_text(encoding="utf-8"):
         raise ValueError(f"{vendored} drifted from {canonical} - re-run --sync")
 

@@ -22,5 +22,11 @@ panic-halt = "0.2"
 
 [features]
 default = ["board-promicro-nosd"]
-board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
-board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]
+board-promicro-nosd = [
+    "nobro-hal/board-promicro-nosd",
+    "nobro-hal/platform-nrf52840-rt",
+]
+board-nicenano-s140 = [
+    "nobro-hal/board-nicenano-s140",
+    "nobro-hal/platform-nrf52840-rt",
+]

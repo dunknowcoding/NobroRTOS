@@ -67,8 +67,8 @@ not proof of a working port. Give it a globally unique `board_id` and describe:
 Run:
 
 ```bash
-python tools/check_board_profiles.py
-python tools/check_core_layout.py
+python tools/checks/check_board_profiles.py
+python tools/checks/check_core_layout.py
 ```
 
 ## Add an MCU-family port
@@ -87,7 +87,7 @@ Ports live in `core/ports/<mcu-family>/` as isolated target workspaces.
    exercises. Bind its runner to a hosted workflow job and receipt driver; the validator
    rejects a required gate that the driver does not invoke.
 8. Begin a clean receipt session, execute the matrix argv through
-   `tools/check_platform_tiers.py --run-gate`, and assert all runner receipts. Receipts
+   `tools/checks/check_platform_tiers.py --run-gate`, and assert all runner receipts. Receipts
    bind the current matrix and session to Git HEAD, the tracked diff, and every
    nonignored untracked source path and its content. Ignored `_work` output is excluded.
    This is local freshness bookkeeping, not signed or physical attestation.
@@ -140,10 +140,10 @@ or Ethernet. Do not put credentials, endpoints, or local tool paths in it.
    feature vocabulary and exact binding from the registry, so a new kind needs
    no Python source edit.
 
-Run `python tools/check_board_features.py`,
-`python tools/check_platform_tiers.py --selftest`, and the exact target gate.
+Run `python tools/checks/check_board_features.py`,
+`python tools/checks/check_platform_tiers.py --selftest`, and the exact target gate.
 The lifecycle host gate is also available directly as
-`python tools/check_provider_lifecycle.py --target <rust-host-target>`.
+`python tools/checks/check_provider_lifecycle.py --target <rust-host-target>`.
 `compile-only` is not physical support, and an unbound capability kind is not
 a platform claim.
 
@@ -194,5 +194,5 @@ sensor contract, while retaining independent prices and evidence.
 - [ ] The adapter/application/board/port lives in the existing categorized tree.
 - [ ] Every capacity and unsupported path is explicit.
 - [ ] Board and platform matrices describe only implemented public capabilities.
-- [ ] `python tools/run_checks.py` passes.
-- [ ] `tools/ci_matrix.sh` passes in an MSYS2 or POSIX shell.
+- [ ] `python tools/checks/run_checks.py` passes.
+- [ ] `tools/checks/ci_matrix.sh` passes in an MSYS2 or POSIX shell.

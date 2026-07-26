@@ -5,20 +5,19 @@
 
 | Command  | Does | Forwards to |
 | -------- | ---- | ----------- |
-| app      | validate / generate firmware from an app.json | tools/nobro_app.py |
-| flash    | flash an image (jlink / uf2 / arduino)        | tools/flash.py |
-| budget   | price worst-case stack/RAM/flash of an ELF    | tools/static_budget.py |
-| sign     | measure + sign a firmware image               | tools/sign_firmware.py |
-| package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/package_*.py, build_libnobro.py |
-| contract | inspect / decode host contracts               | tools/nobro_contract_tool.py |
-| project  | create/explain/build/run/report/shrink apps   | tools/nobro_project.py |
-| firmware | build nRF firmware from app.nobro or Python app JSON | tools/nobro_firmware_project.py |
-| adapter  | scaffold and register a bounded adapter              | tools/nobro_adapter.py |
+| app      | validate / generate firmware from an app.json | tools/cli/nobro_app.py |
+| flash    | flash an image (jlink / uf2 / arduino)        | tools/cli/flash.py |
+| budget   | price worst-case stack/RAM/flash of an ELF    | tools/cli/static_budget.py |
+| sign     | measure + sign a firmware image               | tools/cli/sign_firmware.py |
+| package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/release/, tools/build/ |
+| contract | inspect / decode host contracts               | tools/cli/nobro_contract_tool.py |
+| project  | create/explain/build/run/report/shrink apps   | tools/cli/nobro_project.py |
+| firmware | build nRF firmware from app.nobro or Python app JSON | tools/cli/nobro_firmware_project.py |
+| adapter  | scaffold and register a bounded adapter              | tools/cli/nobro_adapter.py |
 
 Each command accepts its underlying tool's flags unchanged. The mapping is data, so
 adding a command is one table row.
 """
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -27,20 +26,20 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "tools"
 
 COMMANDS = {
-    "app": "nobro_app.py",
-    "flash": "flash.py",
-    "budget": "static_budget.py",
-    "sign": "sign_firmware.py",
-    "contract": "nobro_contract_tool.py",
-    "project": "nobro_project.py",
-    "firmware": "nobro_firmware_project.py",
-    "adapter": "nobro_adapter.py",
+    "app": "cli/nobro_app.py",
+    "flash": "cli/flash.py",
+    "budget": "cli/static_budget.py",
+    "sign": "cli/sign_firmware.py",
+    "contract": "cli/nobro_contract_tool.py",
+    "project": "cli/nobro_project.py",
+    "firmware": "cli/nobro_firmware_project.py",
+    "adapter": "cli/nobro_adapter.py",
 }
 PACKAGE_KINDS = {
-    "arduino": "package_arduino.py",
-    "platformio": "package_platformio.py",
-    "uf2": "package_prebuilt_uf2.py",
-    "tierc": "build_libnobro.py",
+    "arduino": "release/package_arduino.py",
+    "platformio": "release/package_platformio.py",
+    "uf2": "release/package_prebuilt_uf2.py",
+    "tierc": "build/build_libnobro.py",
 }
 
 

@@ -4,7 +4,7 @@
 //! admission, kernel drive loop, the `extern "C"` host services, and the vector
 //! table/entry from cortex-m-rt. A C developer links their `nobro_app_init` /
 //! `nobro_app_poll` module against it with arm-none-eabi-gcc - see
-//! docs/USER_GUIDE.md and tools/build_libnobro.py.
+//! docs/USER_GUIDE.md and tools/build/build_libnobro.py.
 //! NobroRTOS C ABI demo.
 //!
 //! Tier C runtime staticlib: provides the `extern "C"` host services (the NobroRTOS C ABI), admits a
@@ -22,15 +22,14 @@ use core::{
     ptr,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
 };
-use cortex_m::asm;
 use defmt_rtt as _; // defmt.x linker section
 use panic_halt as _;
 
 use nobro_hal::{
     bus::TwimBus,
     lease::Resource,
-    traits::{HalClock, HalLease, HalTimebaseProvider},
-    ActivePlatform as Hal, Twim0, I2C_SCL_PIN, I2C_SDA_PIN,
+    traits::{HalClock, HalLease},
+    ActivePlatform as Hal, NrfTimerPower, Twim0, I2C_SCL_PIN, I2C_SDA_PIN,
 };
 use nobro_imu::{
     ImuHealthReport, IMU_HEALTH_REPORT_MAGIC, IMU_HEALTH_REPORT_VERSION, MIN_HEALTH_SAMPLES,
@@ -40,8 +39,8 @@ use nobro_kernel::{
     BootAssembly, CApp, CAppError, CTaskOptions, CTaskRole, CTaskStep, Capability, CapabilitySet,
     CapabilityTraceOp, Criticality, DeadlineContract, FaultThresholds, ForeignHostCall,
     ForeignHostContext, ForeignHostError, ForeignHostQuota, ForeignModuleRunner, KernelError,
-    ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, StartupDependency,
-    SystemProfile,
+    ManifestReport, MemoryBudget, ModuleId, ModuleLaunchGate, ModuleSpec, PowerMode, PowerPlatform,
+    StartupDependency, SystemProfile,
 };
 
 // ---- The NobroRTOS C ABI: host services callable from a C (or extern-"C") module ----
@@ -60,6 +59,10 @@ const C_I2C_MAX_PHASE_BYTES: u32 = 255;
 static mut C_APP: CApp<C_TASK_CAPACITY, C_WIRE_CAPACITY> = CApp::new();
 static C_APP_RUNNING: AtomicBool = AtomicBool::new(false);
 static LAST_STEP_ERROR: AtomicI32 = AtomicI32::new(0);
+// Single-threaded Tier-C dispatch owns both producer and consumer. The value is
+// never read from an interrupt and therefore does not pretend to be a portable
+// 64-bit atomic on 32-bit MCUs.
+static mut NEXT_RELEASE_US: Option<u64> = None;
 
 /// C layout for the compact explicit-override record in `nobro_app.h`.
 #[repr(C)]
@@ -218,7 +221,12 @@ pub unsafe extern "C" fn nobro_run() -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn nobro_poll() -> i32 {
     match unsafe { c_app() }.poll_at(Hal::now_us()) {
-        Ok(_) => 0,
+        Ok(report) => {
+            unsafe {
+                NEXT_RELEASE_US = report.next_release_us;
+            }
+            0
+        }
         Err(error @ CAppError::StepFailed { code, .. }) => {
             LAST_STEP_ERROR.store(code, Ordering::Relaxed);
             error.status()
@@ -403,7 +411,7 @@ type CDemoBoot = BootAssembly<4, 4, 4, 4, 4, 4, 4, 4, 16>;
 
 fn idle() -> ! {
     loop {
-        asm::delay(16_000_000);
+        cortex_m::asm::wfe();
     }
 }
 
@@ -443,9 +451,7 @@ fn admit() -> Option<CDemoBoot> {
 #[cortex_m_rt::entry]
 fn main() -> ! {
     Hal::acquire(Resource::Timer0, 2).ok();
-    unsafe {
-        Hal::init_timebase();
-    }
+    let mut power = unsafe { NrfTimerPower::init() };
     Hal::acquire(Resource::Twim0, 3).ok();
     unsafe { TwimBus::init_pins_unchecked(I2C_SDA_PIN, I2C_SCL_PIN) };
 
@@ -489,14 +495,21 @@ fn main() -> ! {
                 NOBRO_IMU_HEALTH_REPORT = report;
             }
         }
-        // Declarative task rates are checked from the microsecond clock, so poll
-        // them at a sub-default-jitter cadence. The legacy single-callback ABI
-        // keeps its historical relaxed cadence. This remains a busy-poll Tier-C
-        // composition; a later power-provider slice may replace it with compare/WFE.
-        asm::delay(if C_APP_RUNNING.load(Ordering::Acquire) {
-            1_000
+        // Sleep to the exact next declarative release. Legacy single-callback
+        // modules receive a bounded 6.25 ms compare cadence. The TIMER0
+        // provider closes the check-to-WFE race with SEVONPEND and never enters
+        // SYSTEMOFF, so Tier C no longer burns CPU between polls.
+        let now_us = Hal::now_us();
+        let next_release = unsafe { NEXT_RELEASE_US };
+        let wake_us = if C_APP_RUNNING.load(Ordering::Acquire) {
+            next_release.unwrap_or_else(|| now_us.saturating_add(1_000))
         } else {
-            400_000
-        });
+            now_us.saturating_add(6_250)
+        };
+        if wake_us > now_us {
+            if power.program_wake(Some(wake_us)).is_err() || power.enter(PowerMode::Idle).is_err() {
+                idle();
+            }
+        }
     }
 }

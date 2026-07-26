@@ -22,74 +22,74 @@ jobs:
           python-version: "3.11.9"
       - name: user release boundary
         run: |
-          python tools/check_release_boundary.py
-          python tools/check_ci_hermeticity.py --selftest
+          python tools/checks/check_release_boundary.py
+          python tools/checks/check_ci_hermeticity.py --selftest
       - name: python binding tests
         working-directory: bindings/python
         run: python -m unittest discover -s tests
       - name: software surface contract
-        run: python tools/nobro_contract_tool.py check-software-surface
+        run: python tools/cli/nobro_contract_tool.py check-software-surface
       - name: public documentation
-        run: python tools/check_public_docs.py
+        run: python tools/checks/check_public_docs.py
       - name: board profiles
-        run: python tools/check_board_profiles.py
+        run: python tools/checks/check_board_profiles.py
       - name: scalable core layout
-        run: python tools/check_core_layout.py
+        run: python tools/checks/check_core_layout.py
       - name: adapter catalog
         run: |
-          python tools/check_adapter_catalog.py
-          python tools/nobro_adapter.py --selftest
-          python tools/check_board_features.py --selftest
+          python tools/checks/check_adapter_catalog.py
+          python tools/cli/nobro_adapter.py --selftest
+          python tools/checks/check_board_features.py --selftest
       - name: one-file firmware project
-        run: python tools/nobro_firmware_project.py --selftest
+        run: python tools/cli/nobro_firmware_project.py --selftest
       - name: sdk manifest
         run: |
-          python tools/gen_api_contract.py --check
-          python tools/check_claim_contract.py
-          python tools/check_sdk_manifest.py
+          python tools/build/gen_api_contract.py --check
+          python tools/checks/check_claim_contract.py
+          python tools/checks/check_sdk_manifest.py
       - name: arduino package drift
         run: |
-          python tools/package_arduino.py --check
-          python tools/package_platformio.py --check
-          python tools/check_distribution_artifacts.py
-          python tools/check_arduino_facade.py
-          python tools/check_audio_facade.py
+          python tools/release/package_arduino.py --check
+          python tools/release/package_platformio.py --check
+          python tools/checks/check_distribution_artifacts.py
+          python tools/checks/check_arduino_facade.py
+          python tools/checks/check_audio_facade.py
       - name: web flasher + block editor + tutorials
         run: |
-          python tools/check_web_flasher.py
-          python tools/check_block_editor.py
-          python tools/tutorial_runner.py
+          python tools/checks/check_web_flasher.py
+          python tools/checks/check_block_editor.py
+          python tools/cli/tutorial_runner.py
       - name: codegen + public contract selftests
         run: |
-          python tools/ros_msg_gen.py --selftest
-          python tools/import_dts.py --selftest
-          python tools/check_release_versions.py --release
-          python tools/check_ros_bridge.py --selftest
-          python tools/check_udi.py --selftest
-          python tools/nobro_shrink.py --selftest
-          python tools/check_platform_tiers.py --selftest
+          python tools/cli/ros_msg_gen.py --selftest
+          python tools/cli/import_dts.py --selftest
+          python tools/checks/check_release_versions.py --release
+          python tools/checks/check_ros_bridge.py --selftest
+          python tools/checks/check_udi.py --selftest
+          python tools/cli/nobro_shrink.py --selftest
+          python tools/checks/check_platform_tiers.py --selftest
       - name: complete product experience gates
         run: |
-          python tools/nobro_app.py tutorials/hello-device/app.json
-          python tools/check_app_authoring.py
-          python tools/package_prebuilt_uf2.py --check
-          python tools/nobro_admission.py --selftest
+          python tools/cli/nobro_app.py tutorials/hello-device/app.json
+          python tools/checks/check_app_authoring.py
+          python tools/release/package_prebuilt_uf2.py --check
+          python tools/cli/nobro_admission.py --selftest
           python sdk/cli/nobro.py project --selftest
       - name: optimized-mode selftests (assert cannot be the only gate logic)
         # -O strips `assert`; these gates must still fail closed on their own logic.
         run: |
-          python -O tools/nobro_admission.py --selftest
-          python -O tools/check_platform_tiers.py --selftest
-          python -O tools/nobro_adapter.py --selftest
-          python -O tools/check_board_features.py --selftest
-          python -O tools/nobro_firmware_project.py --selftest
-          python -O tools/nobro_shrink.py --selftest
-          python -O tools/check_udi.py --selftest
-          python -O tools/check_ros_bridge.py --selftest
-          python -O tools/ros_msg_gen.py --selftest
-          python -O tools/import_dts.py --selftest
-          python -O tools/gen_api_contract.py --check
-          python -O tools/check_claim_contract.py
+          python -O tools/cli/nobro_admission.py --selftest
+          python -O tools/checks/check_platform_tiers.py --selftest
+          python -O tools/cli/nobro_adapter.py --selftest
+          python -O tools/checks/check_board_features.py --selftest
+          python -O tools/cli/nobro_firmware_project.py --selftest
+          python -O tools/cli/nobro_shrink.py --selftest
+          python -O tools/checks/check_udi.py --selftest
+          python -O tools/checks/check_ros_bridge.py --selftest
+          python -O tools/cli/ros_msg_gen.py --selftest
+          python -O tools/cli/import_dts.py --selftest
+          python -O tools/build/gen_api_contract.py --check
+          python -O tools/checks/check_claim_contract.py
   rust-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -108,19 +108,19 @@ jobs:
           python-version: "3.11.9"
       - name: build generated firmware and prebuilt UF2 experiences
         run: |
-          python tools/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
+          python tools/cli/nobro_firmware_project.py tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build
           python tutorials/rover-python/app.py _work/python-authoring/app.json
-          python tools/nobro_firmware_project.py _work/python-authoring/app.json --out _work/python-firmware --build
-          python tools/package_prebuilt_uf2.py --build
+          python tools/cli/nobro_firmware_project.py _work/python-authoring/app.json --out _work/python-firmware --build
+          python tools/release/package_prebuilt_uf2.py --build
       - name: comprehensive Rust gates
         timeout-minutes: 35
         run: |
-          python tools/check_platform_tiers.py --begin-receipts rust-matrix
-          python tools/run_checks.py --rust-only
-          python tools/check_platform_tiers.py --run-gate nrf52840-hal-host
-          python tools/check_platform_tiers.py --run-gate nrf52840-usb-host
-          python tools/check_platform_tiers.py --run-gate provider-lifecycle-host
-          python tools/check_platform_tiers.py --assert-receipts rust-matrix
+          python tools/checks/check_platform_tiers.py --begin-receipts rust-matrix
+          python tools/checks/run_checks.py --rust-only
+          python tools/checks/check_platform_tiers.py --run-gate nrf52840-hal-host
+          python tools/checks/check_platform_tiers.py --run-gate nrf52840-usb-host
+          python tools/checks/check_platform_tiers.py --run-gate provider-lifecycle-host
+          python tools/checks/check_platform_tiers.py --assert-receipts rust-matrix
 
   supply-chain-and-coverage:
     runs-on: ubuntu-latest
@@ -141,7 +141,7 @@ jobs:
         with:
           python-version: "3.11.9"
       - name: locked source and license policy
-        run: python tools/check_dependency_policy.py
+        run: python tools/checks/check_dependency_policy.py
       - name: advisory database audit
         working-directory: core
         # cargo-audit reads a lockfile directly and has no --locked option.
@@ -266,7 +266,7 @@ jobs:
             >> "$GITHUB_PATH"
       - name: full reproducible cross-MCU matrix
         timeout-minutes: 50
-        run: bash tools/ci_matrix.sh
+        run: bash tools/checks/ci_matrix.sh
 
   arduino-package:
     runs-on: ubuntu-latest
@@ -310,24 +310,24 @@ jobs:
         env:
           NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
         run: |
-          python tools/check_platform_tiers.py --begin-receipts arduino-package
-          python tools/check_platform_tiers.py --run-gate arduino-facade-contract
-          python tools/check_platform_tiers.py --run-gate arduino-ra4m1-compile
-          python tools/check_platform_tiers.py --run-gate arduino-wifis3-target-build
-          python tools/check_platform_tiers.py --run-gate arduino-ble-unor4-target-build
-          python tools/check_platform_tiers.py --run-gate arduino-esp-wifi-target-build
-          python tools/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
-          python tools/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
-          python tools/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
-          python tools/check_platform_tiers.py --assert-receipts arduino-package
+          python tools/checks/check_platform_tiers.py --begin-receipts arduino-package
+          python tools/checks/check_platform_tiers.py --run-gate arduino-facade-contract
+          python tools/checks/check_platform_tiers.py --run-gate arduino-ra4m1-compile
+          python tools/checks/check_platform_tiers.py --run-gate arduino-wifis3-target-build
+          python tools/checks/check_platform_tiers.py --run-gate arduino-ble-unor4-target-build
+          python tools/checks/check_platform_tiers.py --run-gate arduino-esp-wifi-target-build
+          python tools/checks/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
+          python tools/checks/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
+          python tools/checks/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
+          python tools/checks/check_platform_tiers.py --assert-receipts arduino-package
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
           git -C _work/ArduinoNRF-IMU checkout --detach 7c8248b8d37294be6cc545c3cf549e907ccbc955
           test "$(git -C _work/ArduinoNRF-IMU rev-parse HEAD)" = \
             "7c8248b8d37294be6cc545c3cf549e907ccbc955"
-          python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
-          python tools/check_niusimu_adapter.py --selftest
+          python tools/checks/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
+          python tools/checks/check_niusimu_adapter.py --selftest
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
@@ -338,7 +338,7 @@ jobs:
           git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
           test "$(git -C _work/ArduinoNRF-Zigbee rev-parse HEAD)" = \
             "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
-          python tools/check_wireless_integrations.py \
+          python tools/checks/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
       - name: pinned camera integration
@@ -347,10 +347,10 @@ jobs:
           git -C _work/NiusCam checkout --detach b03560adf4da07e4a16b4d9e658a01d74ccb9340
           test "$(git -C _work/NiusCam rev-parse HEAD)" = \
             "b03560adf4da07e4a16b4d9e658a01d74ccb9340"
-          python tools/check_camera_integrations.py --library _work/NiusCam --compile
+          python tools/checks/check_camera_integrations.py --library _work/NiusCam --compile
       - name: bounded ESP32 peripheral integrations
         run: |
-          python tools/check_esp32_peripheral_facade.py
+          python tools/checks/check_esp32_peripheral_facade.py
 
   arduino-nrf-package:
     runs-on: windows-latest
@@ -383,9 +383,9 @@ jobs:
         # This image no longer guarantees host GCC. The later ArduinoNRF step
         # compiles the package with its pinned native toolchain.
         run: |
-          python tools/gen_api_contract.py --check
-          python tools/check_claim_contract.py
-          python tools/check_distribution_artifacts.py --skip-header-compile
+          python tools/build/gen_api_contract.py --check
+          python tools/checks/check_claim_contract.py
+          python tools/checks/check_distribution_artifacts.py --skip-header-compile
       - name: install pinned ArduinoNRF core
         shell: pwsh
         timeout-minutes: 25
@@ -397,9 +397,9 @@ jobs:
         shell: pwsh
         timeout-minutes: 35
         run: |
-          python tools/check_platform_tiers.py --begin-receipts arduino-nrf-package
-          python tools/check_platform_tiers.py --run-gate arduino-nrf52840-compile
-          python tools/check_platform_tiers.py --assert-receipts arduino-nrf-package
+          python tools/checks/check_platform_tiers.py --begin-receipts arduino-nrf-package
+          python tools/checks/check_platform_tiers.py --run-gate arduino-nrf52840-compile
+          python tools/checks/check_platform_tiers.py --assert-receipts arduino-nrf-package
       - name: compile pinned NiusIMU integration (ArduinoNRF)
         shell: pwsh
         run: |
@@ -408,7 +408,7 @@ jobs:
           if ((git -C _work/ArduinoNRF-IMU rev-parse HEAD) -ne "7c8248b8d37294be6cc545c3cf549e907ccbc955") {
             throw "NiusIMU checkout drift"
           }
-          python tools/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+          python tools/checks/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
       - name: compile pinned NiusZigbee integration (ArduinoNRF)
         shell: pwsh
         run: |
@@ -422,4 +422,4 @@ jobs:
           if ((git -C _work/ArduinoNRF-Zigbee rev-parse HEAD) -ne "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9") {
             throw "NiusZigbee checkout drift"
           }
-          python tools/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-zigbee
+          python tools/checks/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-zigbee

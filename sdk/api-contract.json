@@ -1,5 +1,5 @@
 {
-  "generator": "tools/gen_api_contract.py",
+  "generator": "tools/build/gen_api_contract.py",
   "schema": "nobro-cross-language-api-v1",
   "signature_equivalent_mirrors": [
     {
@@ -9,17 +9,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_adc_dma.h",
-          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+          "sha256": "383d6001b67f5dfe6bb7ee01cf35423e494587d88ebe490d39de3797ea457ca5"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_adc_dma.h",
-          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+          "sha256": "383d6001b67f5dfe6bb7ee01cf35423e494587d88ebe490d39de3797ea457ca5"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_adc_dma.h",
-          "sha256": "3a97de20691f15de27f505c8eef9ca0360f9937dc4f50614bee44fa1686a9566"
+          "sha256": "383d6001b67f5dfe6bb7ee01cf35423e494587d88ebe490d39de3797ea457ca5"
         }
       ]
     },
@@ -30,17 +30,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_app.h",
-          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+          "sha256": "61ca2e69c60c5f082bb70033ca686424e09d927bec9b41e3175c9e9774fdd413"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_app.h",
-          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+          "sha256": "61ca2e69c60c5f082bb70033ca686424e09d927bec9b41e3175c9e9774fdd413"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_app.h",
-          "sha256": "cf9a2079f46e0f6387517be1d4172f18b0cdab801d0ab54a8fe24e4a0ec12c74"
+          "sha256": "61ca2e69c60c5f082bb70033ca686424e09d927bec9b41e3175c9e9774fdd413"
         }
       ]
     },
@@ -51,17 +51,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_audio.h",
-          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+          "sha256": "169bd05ec35a316ec1bc8eda5479017dede4479f768ce2e4e18b58ef25f9b309"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_audio.h",
-          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+          "sha256": "169bd05ec35a316ec1bc8eda5479017dede4479f768ce2e4e18b58ef25f9b309"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_audio.h",
-          "sha256": "8a6a49ddebbf26ab1958a4e10eae5d41511e8eed5cc63acfc330313e57733546"
+          "sha256": "169bd05ec35a316ec1bc8eda5479017dede4479f768ce2e4e18b58ef25f9b309"
         }
       ]
     },
@@ -72,17 +72,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_camera.h",
-          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+          "sha256": "f8d2cbbd8082426caffc174497053556e65181136bcfeca021233991ba283715"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_camera.h",
-          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+          "sha256": "f8d2cbbd8082426caffc174497053556e65181136bcfeca021233991ba283715"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_camera.h",
-          "sha256": "58116b4e11e1cb53fa1c18ab288004e674504e4572269cffdc0c5bc5a3c0b65d"
+          "sha256": "f8d2cbbd8082426caffc174497053556e65181136bcfeca021233991ba283715"
         }
       ]
     },
@@ -93,17 +93,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_imu.h",
-          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_imu.h",
-          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_imu.h",
-          "sha256": "f06d85489f9e24cd707f0d68cd8ef32d2e56c8d1bab0510ad98658573a86d2d0"
+          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
         }
       ]
     },
@@ -114,17 +114,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_pulse.h",
-          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+          "sha256": "c89366f5a825d941e8fb90f2ba6f7119583b3e8e917347897eb0f7b62b51992d"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_pulse.h",
-          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+          "sha256": "c89366f5a825d941e8fb90f2ba6f7119583b3e8e917347897eb0f7b62b51992d"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_pulse.h",
-          "sha256": "656c489462b46bd28070fc2eea318484973db61f9c9010116ee11818d4f017a8"
+          "sha256": "c89366f5a825d941e8fb90f2ba6f7119583b3e8e917347897eb0f7b62b51992d"
         }
       ]
     },
@@ -135,17 +135,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_rtos.h",
-          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_rtos.h",
-          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_rtos.h",
-          "sha256": "786707f5421bbf91853c421eded18d1aea7c11e50c728ac07f5e2c7566a24f9a"
+          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
         }
       ]
     },
@@ -156,17 +156,17 @@
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_wireless.h",
-          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_wireless.h",
-          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_wireless.h",
-          "sha256": "7573dac882090d6550c2d2f3778cee95010aebcf072394ed03a54cfb50a5ab8f"
+          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
         }
       ]
     },
@@ -304,12 +304,12 @@
     },
     {
       "source": "packages/arduino/src/NobroRTOS.h",
-      "source_sha256": "5484d5e19867ec05f7c8c62d1d485b11dade9fc49b76a707597d4da552f7e9a2",
+      "source_sha256": "eb68765f9a8ca76a0faac8081c156136f9d82c45cfa510c1c0d7f8edee7aa01d",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroRTOS.h",
-          "sha256": "5484d5e19867ec05f7c8c62d1d485b11dade9fc49b76a707597d4da552f7e9a2"
+          "sha256": "eb68765f9a8ca76a0faac8081c156136f9d82c45cfa510c1c0d7f8edee7aa01d"
         }
       ]
     }
@@ -838,7 +838,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/distribution.py",
-          "sha256": "9cf588e90ea53cb4d8326bbf71ef98c7db8aace1c054ea2483d51b3695244d07"
+          "sha256": "f89fbe840fc01a3de8ab78eed0f37e10200e9086d5c8f0ba2a18723829e570e1"
         },
         {
           "path": "bindings/python/nobro_rtos/host_contract.py",
@@ -3222,7 +3222,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "3c674d04c6d1d683d8cacd5bf3f86b874b04c0464bb724d4ac2718119f7802c9"
+        "sha256": "f616f7c60cb8eb289707e1aa0487956454cf7ac8ef4518aad0a75bc9349afad2"
       },
       {
         "crate": "nobro-ml",
@@ -4884,7 +4884,7 @@
           }
         ],
         "path": "core/crates/nobro_secure/src/lib.rs",
-        "sha256": "99e8c7eb8ce857af69c59d32697f85cd4a2f7a7ca0325622674fb59cc4234678"
+        "sha256": "eca8bd70d5817f8efd87396b882b1ff00693d9615089f50bf4d1b496a7be0c00"
       },
       {
         "crate": "nobro-sensor",
@@ -5111,7 +5111,7 @@
         "crate": "nobro-tierc",
         "exports": [],
         "path": "core/crates/nobro_tierc/src/lib.rs",
-        "sha256": "feb0ad67bb53f31a633d28e4c908778a7c8b5dbaf8bbdf659728e753bf5997a0"
+        "sha256": "f88d75faa886fdd1db5caaa15240627a43a258db9e5c0776e36718db5f515306"
       },
       {
         "crate": "nobro-usb",

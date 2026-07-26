@@ -22,7 +22,7 @@ different `backend_id`. Then add another backend without forking the application
 ## Exercise 2 — price the firmware
 
 ```bash
-python tools/static_budget.py core/target/thumbv7em-none-eabihf/release/udi_imu_demo
+python tools/cli/static_budget.py core/target/thumbv7em-none-eabihf/release/udi_imu_demo
 ```
 
 The tool reports static RAM, flash, call-graph stack depth, and a conservative static
@@ -32,7 +32,7 @@ target, compiler, interrupts, buses, and workload.
 ## Exercise 3 — run the portable checks
 
 ```bash
-python tools/run_checks.py
+python tools/checks/run_checks.py
 ```
 
 The command should end with `RESULT: ALL PASS`. Build outputs remain under ignored

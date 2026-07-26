@@ -21,9 +21,10 @@
 //!   measured, energy-charged, and recovered exactly like sync work (the
 //!   mixed-graph test below runs the reactor under the kernel executor).
 //!
-//! Capacity rule: `N <= 32` tasks per core (one ready-mask word). Cores are
-//! `'static` (the usual static-cell pattern) because wakers may outlive any
-//! stack frame.
+//! Capacity rule: `N <= WORDS * 32` tasks per core. The default `WORDS=1`
+//! preserves the compact 32-task form; larger reactors opt into enough fixed
+//! ready-mask words explicitly (for example `AsyncCore<64, 2>`). Cores are
+//! `'static` because wakers may outlive any stack frame.
 
 use core::cell::RefCell;
 use core::future::Future;
@@ -70,26 +71,35 @@ static VTABLE: RawWakerVTable = RawWakerVTable::new(
     |_| {},
 );
 
-/// The shared wake state for up to `N <= 32` tasks. Place in a `static`.
-pub struct AsyncCore<const N: usize> {
-    ready: AtomicU32,
+/// Fixed-capacity shared wake state. Place in a `static`.
+///
+/// `WORDS` is explicit so retained memory remains visible in the type and no
+/// unstable generic-const expression or heap-backed bitmap is required.
+pub struct AsyncCore<const N: usize, const WORDS: usize = 1> {
+    ready: [AtomicU32; WORDS],
     cells: [WakeCell; N],
 }
 
-impl<const N: usize> AsyncCore<N> {
+impl<const N: usize, const WORDS: usize> AsyncCore<N, WORDS> {
     pub const fn new() -> Self {
-        assert!(N <= 32, "AsyncCore supports at most 32 tasks per core");
+        assert!(WORDS > 0, "AsyncCore requires at least one ready word");
+        assert!(
+            N <= WORDS.saturating_mul(32),
+            "AsyncCore task count exceeds its ready-word capacity"
+        );
         Self {
-            ready: AtomicU32::new(0),
+            ready: [const { AtomicU32::new(0) }; WORDS],
             cells: [const { WakeCell::new() }; N],
         }
     }
 
     fn init(&'static self) {
         for (index, cell) in self.cells.iter().enumerate() {
-            cell.bit.store(index as u8, Ordering::Relaxed);
-            cell.ready
-                .store(&self.ready as *const _ as *mut _, Ordering::Release);
+            cell.bit.store((index % 32) as u8, Ordering::Relaxed);
+            cell.ready.store(
+                &self.ready[index / 32] as *const _ as *mut _,
+                Ordering::Release,
+            );
         }
     }
 
@@ -113,11 +123,13 @@ impl<const N: usize> AsyncCore<N> {
     /// interrupt, so hardware completion does not have to wait for a timer or
     /// periodic release.
     pub fn has_ready(&self) -> bool {
-        self.ready.load(Ordering::Acquire) != 0
+        self.ready
+            .iter()
+            .any(|word| word.load(Ordering::Acquire) != 0)
     }
 }
 
-impl<const N: usize> Default for AsyncCore<N> {
+impl<const N: usize, const WORDS: usize> Default for AsyncCore<N, WORDS> {
     fn default() -> Self {
         Self::new()
     }
@@ -143,16 +155,18 @@ pub enum ReactorError {
 }
 
 /// Fuel-bounded, wake-driven executor over caller-owned futures.
-pub struct ReactorExecutor<'a, const N: usize> {
-    core: &'static AsyncCore<N>,
+pub struct ReactorExecutor<'a, const N: usize, const WORDS: usize = 1> {
+    core: &'static AsyncCore<N, WORDS>,
     slots: [Option<Slot<'a>>; N],
     count: usize,
 }
 
-impl<'a, const N: usize> ReactorExecutor<'a, N> {
-    pub fn bind(core: &'static AsyncCore<N>) -> Self {
+impl<'a, const N: usize, const WORDS: usize> ReactorExecutor<'a, N, WORDS> {
+    pub fn bind(core: &'static AsyncCore<N, WORDS>) -> Self {
         core.init();
-        core.ready.store(0, Ordering::Release);
+        for word in &core.ready {
+            word.store(0, Ordering::Release);
+        }
         Self {
             core,
             slots: [const { None }; N],
@@ -166,7 +180,7 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
                 *slot = Some(Slot { future });
                 self.count += 1;
                 // Initial poll happens on the next run_ready pass.
-                self.core.ready.fetch_or(1 << index, Ordering::AcqRel);
+                self.core.ready[index / 32].fetch_or(1 << (index % 32), Ordering::AcqRel);
                 return Ok(index);
             }
         }
@@ -187,17 +201,22 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
     pub fn run_ready(&mut self, fuel: u32) -> ReactorStats {
         let mut stats = ReactorStats::default();
         let mut budget = fuel;
-        loop {
-            let mut batch = self.core.ready.fetch_and(0, Ordering::AcqRel);
-            if batch == 0 {
-                break;
-            }
+        while let Some((word_index, mut batch)) =
+            self.core
+                .ready
+                .iter()
+                .enumerate()
+                .find_map(|(word_index, word)| {
+                    let batch = word.swap(0, Ordering::AcqRel);
+                    (batch != 0).then_some((word_index, batch))
+                })
+        {
             while batch != 0 {
                 let ready_bit = batch & batch.wrapping_neg();
-                let index = ready_bit.trailing_zeros() as usize;
+                let index = word_index * 32 + ready_bit.trailing_zeros() as usize;
                 if budget == 0 {
                     // Preserve this bit and the batch's un-polled remainder.
-                    self.core.ready.fetch_or(batch, Ordering::AcqRel);
+                    self.core.ready[word_index].fetch_or(batch, Ordering::AcqRel);
                     stats.fuel_exhausted = true;
                     stats.live = self.count as u32;
                     return stats;
@@ -217,7 +236,7 @@ impl<'a, const N: usize> ReactorExecutor<'a, N> {
                 }
             }
             if budget == 0 {
-                if self.core.ready.load(Ordering::Acquire) != 0 {
+                if self.core.has_ready() {
                     stats.fuel_exhausted = true;
                 }
                 break;
@@ -740,7 +759,7 @@ trait ReactorCoreSource {
     fn identity(&self) -> usize;
 }
 
-impl<const N: usize> ReactorCoreSource for AsyncCore<N> {
+impl<const N: usize, const WORDS: usize> ReactorCoreSource for AsyncCore<N, WORDS> {
     fn has_ready(&self) -> bool {
         AsyncCore::has_ready(self)
     }
@@ -794,9 +813,9 @@ pub struct ReactorRuntimeDomain<'a> {
 }
 
 impl<'a> ReactorRuntimeDomain<'a> {
-    pub fn new<const TASKS: usize, const TIMERS: usize>(
+    pub fn new<const TASKS: usize, const WORDS: usize, const TIMERS: usize>(
         id: u8,
-        core: &'a AsyncCore<TASKS>,
+        core: &'a AsyncCore<TASKS, WORDS>,
         timers: &'a TimerQueue<TIMERS>,
     ) -> Self {
         Self { id, core, timers }
@@ -942,10 +961,10 @@ impl<'a, const D: usize> ReactorRuntimeSet<'a, D> {
 
     /// Poll the concrete executor only with its admitted per-cycle fuel.
     /// A different core, even with the same capacity, is rejected.
-    pub fn run_domain<const N: usize>(
+    pub fn run_domain<const N: usize, const WORDS: usize>(
         &self,
         module: crate::ModuleId,
-        reactor: &mut ReactorExecutor<'_, N>,
+        reactor: &mut ReactorExecutor<'_, N, WORDS>,
     ) -> Result<ReactorStats, ReactorRuntimeError> {
         let Some(bound) = self
             .domains
@@ -1613,6 +1632,53 @@ mod tests {
         assert_eq!(second.polled, 1);
         assert!(!second.fuel_exhausted);
         assert_eq!(POLLS[7].load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn multiword_ready_bitmap_polls_slots_above_thirty_one_without_scanning() {
+        static POLLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+
+        struct CountPending;
+        impl Future for CountPending {
+            type Output = ();
+
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                POLLS.fetch_add(1, Ordering::Relaxed);
+                Poll::Pending
+            }
+        }
+
+        let core: &'static AsyncCore<40, 2> = Box::leak(Box::new(AsyncCore::<40, 2>::new()));
+        let mut exec = ReactorExecutor::bind(core);
+        // Occupy the first 39 slots with futures that never wake again.
+        #[derive(Clone, Copy)]
+        struct Park;
+        impl Future for Park {
+            type Output = ();
+            fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+                Poll::Pending
+            }
+        }
+        let parks: &'static mut [Park; 39] = Box::leak(Box::new([Park; 39]));
+        for park in parks {
+            let pinned = Pin::new(park);
+            let task: SpawnedTask<'static> = pinned;
+            exec.spawn(task).unwrap();
+        }
+        let last: &'static mut CountPending = Box::leak(Box::new(CountPending));
+        let pinned = Pin::new(last);
+        let task: SpawnedTask<'static> = pinned;
+        let high_slot = exec.spawn(task).unwrap();
+        assert_eq!(high_slot, 39);
+
+        // Drain every initial poll, then wake only the second-word slot.
+        assert_eq!(exec.run_ready(40).polled, 40);
+        POLLS.store(0, Ordering::Relaxed);
+        core.waker_for(high_slot).wake_by_ref();
+        let stats = exec.run_ready(1);
+        assert_eq!(stats.polled, 1);
+        assert_eq!(stats.completed, 0);
+        assert_eq!(POLLS.load(Ordering::Relaxed), 1);
     }
 
     #[test]

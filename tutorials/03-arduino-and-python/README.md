@@ -15,7 +15,7 @@ core idea — self-verifying reports — using beginner-grade APIs.
 | --- | --- |
 | Arduino IDE 2.x | [arduino.cc/en/software](https://www.arduino.cc/en/software) |
 | Any Arduino-capable board (Uno, Nano, UNO R4, ESP32…) | whatever you have |
-| The NobroRTOS Arduino library | `sdk/` build or `_work/NobroRTOS-arduino.zip` via `python tools/package_arduino.py --zip` |
+| The NobroRTOS Arduino library | `sdk/` build or `_work/NobroRTOS-arduino.zip` via `python tools/release/package_arduino.py --zip` |
 
 ### Steps
 

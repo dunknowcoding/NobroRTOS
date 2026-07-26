@@ -4,6 +4,17 @@
 
 ### Changed
 
+- Bounded async reactors can opt into explicit multiword ready bitmaps, while
+  the compact one-word form remains the default.
+- The opt-in preemptive kernel can request a portable context switch when a
+  more critical task becomes ready, and provides fixed-capacity
+  priority-ceiling/inheritance mutex scheduling state with admission-priced
+  hold bounds.
+- Tier-C nRF runtimes sleep on the exact next-release timer compare instead of
+  busy delaying, without entering `SYSTEMOFF`.
+- Public tooling is organized by role under `tools/cli`, `tools/build`,
+  `tools/release`, and `tools/checks`; the SDK dispatcher remains the normal
+  user-facing entry point.
 - `nobro-wireless` now separates the bounded byte data plane from
   allocation-free `WifiStack` and `BleStack` lifecycle contracts. Owned
   fallible mounts, runtime-only WiFi credentials, stable instance limits,

@@ -284,6 +284,6 @@ building native NobroRTOS firmware, adding a port/adapter, or running the comple
 validation matrix. See
 <https://github.com/dunknowcoding/NobroRTOS/blob/master/docs/ARDUINO_PLATFORMIO.md>.
 
-`python tools/package_arduino.py --check` verifies the vendored canonical
+`python tools/release/package_arduino.py --check` verifies the vendored canonical
 headers and license. Release archives are generated from that verified package
 surface and are not source-controlled.

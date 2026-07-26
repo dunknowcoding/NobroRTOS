@@ -287,6 +287,62 @@ impl<const N: usize> SliceController<N> {
         true
     }
 
+    /// Publish a ready transition and proactively request a context switch when
+    /// the new task is more urgent than the running task.
+    ///
+    /// This is the portable ready-to-preempt contract: board ports decide how
+    /// to pend their architectural switch, while the controller keeps the
+    /// transition pending until the port confirms it through
+    /// [`commit_pending_switch_at`](Self::commit_pending_switch_at). Equal or
+    /// lower urgency remains cooperative and incurs no port call.
+    pub fn mark_ready_and_request_preemption(
+        &mut self,
+        module: ModuleId,
+        port: &mut impl SlicePort,
+    ) -> Result<SliceDecision, SliceError> {
+        let next = self
+            .slots
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.task.module == module))
+            .ok_or(SliceError::NoReadyTask)?;
+        let next_slot = self.slots[next].as_mut().ok_or(SliceError::NoReadyTask)?;
+        next_slot.ready = true;
+        next_slot.suspended = false;
+
+        if let Some(pending) = self.pending {
+            return Ok(SliceDecision::Pending {
+                from: pending.from,
+                to: pending.to,
+                forced: pending.forced,
+            });
+        }
+        let Some(current) = self.current else {
+            return Ok(SliceDecision::None);
+        };
+        if current == next {
+            return Ok(SliceDecision::None);
+        }
+        let from = self.slots[current].ok_or(SliceError::NoReadyTask)?;
+        let to = self.slots[next].ok_or(SliceError::NoReadyTask)?;
+        if to.task.criticality <= from.task.criticality {
+            return Ok(SliceDecision::None);
+        }
+        port.pend_switch(from.task.context, to.task.context, false)
+            .map_err(|_| SliceError::Port)?;
+        self.pending = Some(PendingSwitch {
+            current,
+            next,
+            from: from.task.context,
+            to: to.task.context,
+            forced: false,
+        });
+        Ok(SliceDecision::Switch {
+            from: from.task.context,
+            to: to.task.context,
+            forced: false,
+        })
+    }
+
     fn choose(&self, exclude: Option<usize>) -> Option<usize> {
         let mut selected: Option<usize> = None;
         for offset in 0..N {
@@ -414,9 +470,16 @@ impl<const N: usize> SliceController<N> {
         let current_slot = self.slots[pending.current]
             .as_mut()
             .expect("current slice slot");
-        current_slot.suspended = true;
-        current_slot.ready = false;
-        current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
+        if pending.forced {
+            current_slot.suspended = true;
+            current_slot.ready = false;
+            current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
+        } else {
+            // A priority preemption pauses rather than faults the previous
+            // task; it remains eligible to resume after the urgent task yields.
+            current_slot.suspended = false;
+            current_slot.ready = true;
+        }
         self.current = Some(pending.next);
         self.cursor = (pending.next + 1) % N.max(1);
         sentinel.disarm();
@@ -450,6 +513,8 @@ mod tests {
     #[derive(Default)]
     struct Port {
         switches: u32,
+        proactive_switches: u32,
+        forced_switches: u32,
         fail: bool,
     }
 
@@ -462,11 +527,15 @@ mod tests {
             _to: SliceContext,
             forced: bool,
         ) -> Result<(), Self::Error> {
-            assert!(forced);
             if self.fail {
                 Err(())
             } else {
                 self.switches += 1;
+                if forced {
+                    self.forced_switches += 1;
+                } else {
+                    self.proactive_switches += 1;
+                }
                 Ok(())
             }
         }
@@ -537,6 +606,7 @@ mod tests {
             }
         ));
         assert_eq!(port.switches, 1);
+        assert_eq!(port.forced_switches, 1);
         assert_eq!(controller.forced_suspends(ModuleId::Actuator), Some(0));
         assert_eq!(controller.current, Some(1));
         assert!(matches!(
@@ -623,6 +693,7 @@ mod tests {
         let mut failing = Port {
             switches: 0,
             fail: true,
+            ..Port::default()
         };
         assert_eq!(
             controller.on_budget_interrupt(101, &sentinel, &mut failing),
@@ -657,6 +728,68 @@ mod tests {
         assert_eq!(
             sentinel.check(1_101).map(|stuck| stuck.module_code),
             Some(module_code(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn higher_priority_ready_transition_requests_portable_preemption() {
+        let mut storage = [0u64; 64];
+        let base = storage.as_mut_ptr() as usize;
+        let mut controller = SliceController::<2>::new();
+        controller
+            .add(SliceTask::new(
+                ModuleId::Sensor,
+                Criticality::User,
+                100,
+                base,
+                256,
+            ))
+            .unwrap();
+        controller
+            .add(SliceTask::new(
+                ModuleId::Actuator,
+                Criticality::HardRealtime,
+                50,
+                base + 256,
+                256,
+            ))
+            .unwrap();
+        controller.mark_ready(ModuleId::Sensor);
+        let sentinel = ExecutionSentinel::new();
+        assert_eq!(
+            controller.start_next_at(0, &sentinel).unwrap().module,
+            ModuleId::Sensor
+        );
+
+        let mut port = Port::default();
+        assert!(matches!(
+            controller
+                .mark_ready_and_request_preemption(ModuleId::Actuator, &mut port)
+                .unwrap(),
+            SliceDecision::Switch {
+                from: SliceContext {
+                    module: ModuleId::Sensor,
+                    ..
+                },
+                to: SliceContext {
+                    module: ModuleId::Actuator,
+                    ..
+                },
+                forced: false,
+            }
+        ));
+        assert_eq!(port.proactive_switches, 1);
+        assert_eq!(port.forced_switches, 0);
+
+        controller
+            .commit_pending_switch_at(10, &sentinel)
+            .expect("priority switch commits");
+        assert_eq!(controller.current, Some(1));
+        assert_eq!(controller.forced_suspends(ModuleId::Sensor), Some(0));
+        assert_eq!(sentinel.check(60), None);
+        assert_eq!(
+            sentinel.check(61).map(|stuck| stuck.module_code),
+            Some(module_code(ModuleId::Actuator))
         );
     }
 

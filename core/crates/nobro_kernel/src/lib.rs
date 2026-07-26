@@ -8,8 +8,8 @@ extern crate std;
 pub use nobro_admission::InterruptProfile;
 pub use nobro_power::{
     attach_participant, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode, PowerParticipant,
-    PowerPlatformChain, PowerTransition, PowerVetoMask, PowerVetoReason, SystemOffWake,
-    SystemOffWakeError, WakeStyle,
+    PowerPlatform, PowerPlatformChain, PowerTransition, PowerVetoMask, PowerVetoReason,
+    SystemOffWake, SystemOffWakeError, WakeStyle,
 };
 
 pub mod admission;
@@ -49,6 +49,8 @@ pub mod objects;
 pub mod pool;
 #[cfg(feature = "preemptive")]
 pub mod preemption;
+#[cfg(feature = "preemptive")]
+pub mod priority_mutex;
 pub mod quota;
 pub mod recovery;
 pub mod report;
@@ -168,6 +170,11 @@ pub use pool::{CompactImuPayload, SamplePool};
 pub use preemption::{
     InterruptHandoff, InterruptReceipt, SliceContext, SliceController, SliceDecision, SliceError,
     SlicePort, SliceProtection, SliceTask,
+};
+#[cfg(feature = "preemptive")]
+pub use priority_mutex::{
+    BoundedPriorityMutex, MutexAcquire, MutexPriority, MutexRelease, MutexTaskId,
+    PriorityMutexContract, PriorityMutexError,
 };
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{

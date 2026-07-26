@@ -437,56 +437,56 @@ python -m nobro_rtos check-host-contract
 From the repository root, use the local tool wrapper:
 
 ```powershell
-python tools/nobro_contract_tool.py doctor
-python tools/nobro_contract_tool.py check-host-contract
-python tools/nobro_contract_tool.py check-distribution-metadata
-python tools/nobro_contract_tool.py check-public-headers
-python tools/nobro_contract_tool.py check-python-surface
-python tools/nobro_contract_tool.py check-cli-command-surface
-python tools/nobro_contract_tool.py check-software-surface
-python tools/nobro_contract_tool.py check-starter-templates
-python tools/nobro_contract_tool.py check-ai-route
-python tools/nobro_contract_tool.py check-ai-route-matrix
-python tools/nobro_contract_tool.py check-ai-preflight-matrix
-python tools/nobro_contract_tool.py check-ros-preflight-matrix
-python tools/nobro_contract_tool.py check-recovery-matrix
-python tools/nobro_contract_tool.py check-watchdog-matrix
-python tools/nobro_contract_tool.py check-scheduler-matrix
-python tools/nobro_contract_tool.py check-event-log-matrix
-python tools/nobro_contract_tool.py check-quota-matrix
-python tools/nobro_contract_tool.py check-degrade-matrix
-python tools/nobro_contract_tool.py check-startup-matrix
-python tools/nobro_contract_tool.py check-boot-summary-matrix
-python tools/nobro_contract_tool.py check-bundle-matrix
-python tools/nobro_contract_tool.py check-report-matrix
+python tools/cli/nobro_contract_tool.py doctor
+python tools/cli/nobro_contract_tool.py check-host-contract
+python tools/cli/nobro_contract_tool.py check-distribution-metadata
+python tools/cli/nobro_contract_tool.py check-public-headers
+python tools/cli/nobro_contract_tool.py check-python-surface
+python tools/cli/nobro_contract_tool.py check-cli-command-surface
+python tools/cli/nobro_contract_tool.py check-software-surface
+python tools/cli/nobro_contract_tool.py check-starter-templates
+python tools/cli/nobro_contract_tool.py check-ai-route
+python tools/cli/nobro_contract_tool.py check-ai-route-matrix
+python tools/cli/nobro_contract_tool.py check-ai-preflight-matrix
+python tools/cli/nobro_contract_tool.py check-ros-preflight-matrix
+python tools/cli/nobro_contract_tool.py check-recovery-matrix
+python tools/cli/nobro_contract_tool.py check-watchdog-matrix
+python tools/cli/nobro_contract_tool.py check-scheduler-matrix
+python tools/cli/nobro_contract_tool.py check-event-log-matrix
+python tools/cli/nobro_contract_tool.py check-quota-matrix
+python tools/cli/nobro_contract_tool.py check-degrade-matrix
+python tools/cli/nobro_contract_tool.py check-startup-matrix
+python tools/cli/nobro_contract_tool.py check-boot-summary-matrix
+python tools/cli/nobro_contract_tool.py check-bundle-matrix
+python tools/cli/nobro_contract_tool.py check-report-matrix
 ```
 
 Decode a boot diagnostic code:
 
 ```powershell
-python tools/nobro_contract_tool.py decode-boot 0x04040003
+python tools/cli/nobro_contract_tool.py decode-boot 0x04040003
 ```
 
 Validate a contract bundle JSON file:
 
 ```powershell
-python tools/nobro_contract_tool.py validate-bundle path\to\bundle.json
+python tools/cli/nobro_contract_tool.py validate-bundle path\to\bundle.json
 ```
 
 Decode a report JSON file:
 
 ```powershell
-python tools/nobro_contract_tool.py decode-report manifest path\to\manifest_report.json
-python tools/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
-python tools/nobro_contract_tool.py decode-report board_package path\to\board_package_report.json
-python tools/nobro_contract_tool.py decode-report admission path\to\admission_report.json
-python tools/nobro_contract_tool.py decode-report runtime path\to\runtime_report.json
-python tools/nobro_contract_tool.py decode-report health path\to\health_report.json
-python tools/nobro_contract_tool.py decode-report event_log path\to\event_log_report.json
-python tools/nobro_contract_tool.py decode-report module_runtime path\to\module_runtime_report.json
-python tools/nobro_contract_tool.py decode-report degrade_application path\to\degrade_report.json
-python tools/nobro_contract_tool.py decode-report ai_model path\to\ai_model_report.json
-python tools/nobro_contract_tool.py decode-report ros_bridge path\to\ros_bridge_report.json
+python tools/cli/nobro_contract_tool.py decode-report manifest path\to\manifest_report.json
+python tools/cli/nobro_contract_tool.py decode-report adapter_compatibility path\to\adapter_report.json
+python tools/cli/nobro_contract_tool.py decode-report board_package path\to\board_package_report.json
+python tools/cli/nobro_contract_tool.py decode-report admission path\to\admission_report.json
+python tools/cli/nobro_contract_tool.py decode-report runtime path\to\runtime_report.json
+python tools/cli/nobro_contract_tool.py decode-report health path\to\health_report.json
+python tools/cli/nobro_contract_tool.py decode-report event_log path\to\event_log_report.json
+python tools/cli/nobro_contract_tool.py decode-report module_runtime path\to\module_runtime_report.json
+python tools/cli/nobro_contract_tool.py decode-report degrade_application path\to\degrade_report.json
+python tools/cli/nobro_contract_tool.py decode-report ai_model path\to\ai_model_report.json
+python tools/cli/nobro_contract_tool.py decode-report ros_bridge path\to\ros_bridge_report.json
 ```
 
 AI and ROS report decoding includes host-contract labels for backend,
@@ -497,7 +497,7 @@ event-log payload fields, and degraded-mode summary counters.
 Summarize a boot report bundle:
 
 ```powershell
-python tools/nobro_contract_tool.py summarize-boot path\to\boot_reports.json
+python tools/cli/nobro_contract_tool.py summarize-boot path\to\boot_reports.json
 ```
 
 The boot summary output mirrors the host contract: it includes

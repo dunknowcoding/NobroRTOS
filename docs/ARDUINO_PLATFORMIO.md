@@ -10,7 +10,7 @@ distributions:
 
 The release process copies the canonical Arduino directory to the dedicated
 repository. It does not maintain an independent implementation there.
-`tools/package_arduino.py --check` also requires the PlatformIO C++ facade and
+`tools/release/package_arduino.py --check` also requires the PlatformIO C++ facade and
 vendored C ABI headers to match the Arduino/canonical sources byte-for-byte.
 
 ## Choose the surface
@@ -126,10 +126,10 @@ contract before flashing.
 From the main repository:
 
 ```bash
-python tools/package_arduino.py --sync
-python tools/package_arduino.py --check
-python tools/check_distribution_artifacts.py
-python tools/check_release_versions.py --release
+python tools/release/package_arduino.py --sync
+python tools/release/package_arduino.py --check
+python tools/checks/check_distribution_artifacts.py
+python tools/checks/check_release_versions.py --release
 ```
 
 Only the clean package-root contents are copied to `NobroRTOS-Arduino`.

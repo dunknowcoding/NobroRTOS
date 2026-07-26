@@ -70,7 +70,7 @@ not a passing result.
 - **Serial boards:** most demos also print their report line over USB-CDC/UART; any
   serial monitor shows the same `all_pass=1`.
 - **No hardware at all:** the Python simulators under `bindings/python` and the host
-  test suite (`cargo test` on the portable crates, `tools/ci_matrix.sh`) exercise the
+  test suite (`cargo test` on the portable crates, `tools/checks/ci_matrix.sh`) exercise the
   same contracts on your desktop.
 
 ### Performance notes (facts, not folklore)
@@ -100,7 +100,7 @@ SoftDevice S140.
 2. Drag `nobrortos-starter-s140.uf2` onto the drive. The board reboots on its own.
 
 There is currently no published release artifact in this repository. A trusted builder runs
-`python tools/package_prebuilt_uf2.py --build` and hands you the file from
+`python tools/release/package_prebuilt_uf2.py --build` and hands you the file from
 `_work/prebuilt/`.
 
 ### 2. Watch it explain itself
@@ -221,21 +221,21 @@ rustup target add thumbv7em-none-eabihf          # or your board's target
 cd core
 cargo build -p kernel-selftest --release          # build firmware
 cd ..
-python3 tools/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
-python3 tools/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2-capable board
-python3 tools/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
+python3 tools/cli/flash.py jlink --bin app.bin --addr 0x1000   # J-Link (nRF)
+python3 tools/cli/flash.py uf2  --file app.uf2 --drive <DRIVE> # UF2-capable board
+python3 tools/cli/flash.py arduino --port <PORT> --fqbn <FQBN> --build-dir <DIR>  # ESP/AVR
 ```
 
-`tools/flash.py` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
-override the J-Link path with the `JLINK_EXE` env var. `tools/bin2uf2.py` converts raw
+`tools/cli/flash.py` is one flashing abstraction over J-Link, UF2 drag-drop, and arduino-cli;
+override the J-Link path with the `JLINK_EXE` env var. `tools/build/bin2uf2.py` converts raw
 binaries only for its explicit nRF52840, RP2040, and RP2350-Arm family IDs.
 
 ### Cross-MCU, one command
 
 ```bash
-bash tools/check_portability.sh   # builds the portable core for all 6 MCU families
-bash tools/ci_matrix.sh           # host tests + portability + port builds + validators
-bash tools/lint_gate.sh           # clippy -D warnings gate
+bash tools/checks/check_portability.sh   # builds the portable core for all 6 MCU families
+bash tools/checks/ci_matrix.sh           # host tests + portability + port builds + validators
+bash tools/checks/lint_gate.sh           # clippy -D warnings gate
 ```
 
 ### Editors and IDEs (all optional)
@@ -259,7 +259,7 @@ separate typed step so hardware metadata does not become a second scheduler mode
 ### Other OS / SDK surfaces
 
 - **Linux/macOS/Windows**: identical Cargo + Python flow; only the flashing backend differs.
-- **CI**: `tools/ci_matrix.sh` is a single exit-coded gate for GitHub Actions / GitLab CI.
+- **CI**: `tools/checks/ci_matrix.sh` is a single exit-coded gate for GitHub Actions / GitLab CI.
 - **C / C++**: `bindings/c` + `bindings/cpp` expose the module ABI for non-Rust codebases.
 - **Web flasher / PlatformIO packaging**: the SDK manifest (`sdk/sdk-manifest.json`,
-  validated by `tools/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.
+  validated by `tools/checks/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.

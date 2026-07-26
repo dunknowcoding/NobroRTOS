@@ -2,7 +2,7 @@
 
 The complete public surface: Rust crates, the C ABI, the Python package, and
 the host contract. The generated per-crate index is [api-index.md](api-index.md)
-(regenerate with `python tools/gen_api_index.py`).
+(regenerate with `python tools/build/gen_api_index.py`).
 
 ### Crate roles at a glance (ml vs ai vs nn)
 
@@ -374,10 +374,10 @@ let policy = nobro_secure::BootVectorPolicy::cortex_m(
 let plan = secure_boot.boot_plan(&boot_key, image, &manifest, policy)?;
 ```
 
-`tools/sign_firmware.py` can emit a matching legacy HMAC manifest JSON:
+`tools/cli/sign_firmware.py` can emit a matching legacy HMAC manifest JSON:
 
 ```powershell
-python tools/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
+python tools/cli/sign_firmware.py app.bin --version 8 --load-addr 0x1000 --entry-addr 0x1101 --stack-top 0x20010000 --manifest-out _work\app.manifest.json
 ```
 
 ### Transactional Database Persistence
@@ -590,6 +590,23 @@ committed the PSP switch. The port preserves BASEPRI per PSP context.
 `SliceTask::allows_fpu(true)` raises the stack floor by 136 bytes: 72 bytes of
 hardware extended frame plus 64 bytes for S16-S31.
 
+When an interrupt, timer, or provider makes a more critical task runnable,
+`mark_ready_and_request_preemption(module, port)` requests the same portable
+port switch immediately. The previous task stays runnable instead of being
+faulted; scheduler state changes only after
+`commit_pending_switch_at(now_us, sentinel)`. Equal- or lower-criticality
+ready transitions remain cooperative. A target without a verified
+`SlicePort` implementation cannot claim P-SLICE support.
+
+`BoundedPriorityMutex<WAITERS>` is scheduler-owned, fixed-capacity mutex state
+for shared resources. It combines priority ceiling and inheritance, transfers
+ownership to the most urgent waiter with FIFO ties, and returns effective
+priorities for the scheduler/port to apply. It does not lock Rust data by
+itself. Call `PriorityMutexContract::charge(task_meta)` before ordinary
+response-time admission so the declared maximum hold time participates in the
+task's blocking bound. Higher numeric `MutexPriority` values are more urgent;
+queue overflow, re-entry, duplicate waiters, and invalid releases fail closed.
+
 The nRF board package also supplies the process-wide `critical-section`
 implementation. It uses BASEPRI 3 for the no-SoftDevice profile and BASEPRI 6
 for S140, so admitted deadline/watchdog priorities remain serviceable while
@@ -796,6 +813,12 @@ let reactors = plan.bind_runtime([
         1, &TELEMETRY_CORE, &TELEMETRY_TIMERS)),
 ])?;
 ```
+
+An `AsyncCore<N>` uses one 32-bit ready word by default. For more than 32 task
+slots, declare the ready-word capacity explicitly, for example
+`AsyncCore<64, 2>`. Admission remains explicit (`N <= WORDS * 32`), retained
+RAM stays visible in the type, and the executor visits set bits rather than
+scanning unused capacity.
 
 Pass the resulting priority tokens to nRF completion providers through
 `PpiWakeRoute::acquire_with_priority` or `Spim0::acquire_with_priority`.

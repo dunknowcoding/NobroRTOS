@@ -12,7 +12,7 @@ runtime archive: `libnobro.a`.
 | Thing | Where |
 | --- | --- |
 | `arm-none-eabi-gcc` | [Arm GNU toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) (Windows: the MSYS2 `arm-none-eabi-gcc` package also works) |
-| The Tier C bundle | someone with Rust runs `python tools/build_libnobro.py --build` → gives you `_work/tierc/` (archive + headers + linker scripts + build scripts) |
+| The Tier C bundle | someone with Rust runs `python tools/build/build_libnobro.py --build` → gives you `_work/tierc/` (archive + headers + linker scripts + build scripts) |
 | Optional: an nRF52840 board + SWD probe to run it | tier 01's board + a J-Link/CMSIS-DAP |
 
 ## Step 1 — Meet the whole API
