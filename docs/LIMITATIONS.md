@@ -110,7 +110,10 @@ firmware. Host-visible absence alone cannot distinguish failure to execute a boo
 from failure to enumerate its USB identity.
 
 `nobro-wireless` supplies a bounded data plane, selected concrete transports,
-and portable WiFi/BLE lifecycle contracts. One exact UNO R4/WiFiS3 0.6.0
+portable WiFi/BLE lifecycle contracts, and an independently mounted native
+TCP/UDP/DNS contract. The Arduino implementation owns fixed socket slots and
+caller-lent payload buffers, but its selected vendor stack still owns internal
+heap, tasks, and controller buffers. One exact UNO R4/WiFiS3 0.6.0
 workload has zero-disabled proof, state-restoring association, DNS, TCP,
 leave, quiesce, and recovery evidence, and a complete RA-side/controller-image
 price. The pinned Arduino-ESP32 3.3.10 backend has C3 zero-disabled proof plus
@@ -132,8 +135,9 @@ per-instance backend selection, radio ownership, coexistence, and
 vendor-managed resources before support is promoted. `ManagedLink::send_at`
 checks the deadline for one immediate attempt; scheduling priority and retry
 execution remain outside it. The CC2530 backend is a raw initialized 127-byte
-IEEE 802.15.4 PSDU transport, while `ZIGBEE_APS` is metadata rather than an
-implemented Zigbee APS stack.
+IEEE 802.15.4 PSDU transport. The optional APS data service requires an already
+joined NWK backend and deliberately omits formation, joining, ZDO, security,
+and fragmentation; CC2530 raw mode does not satisfy that boundary.
 
 The exact UNO R4 ArduinoBLE 2.1.0 adapter is implemented and physically
 verified. Its disabled facade has zero flash/RAM delta, and exact BLE-only plus

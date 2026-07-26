@@ -151,22 +151,22 @@
     },
     {
       "source": "bindings/c/include/nobro_wireless.h",
-      "source_sha256": "21bb1921e25671ea09d169252da1f64e6a0697ff12504b6291391a0e3f69f3e5",
+      "source_sha256": "d1d76aecd0a40f808e213d89c8718ae028b7fbf9b7bae0191fd604a2c01f9d4f",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_wireless.h",
-          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
+          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_wireless.h",
-          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
+          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_wireless.h",
-          "sha256": "852dae462c1141fc9d2b822cf9dc1e3500f197ad96203d530f3e97efa588eebe"
+          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
         }
       ]
     },
@@ -205,12 +205,23 @@
     },
     {
       "source": "packages/arduino/src/NobroArduinoEspWiFi.h",
-      "source_sha256": "94b9e20073a3bc4a9128a9a50879fb7c63acd357c0e67f759b76db0cb627eeb7",
+      "source_sha256": "10cfe75c943e1b1ab2f452d53ae0dccf42d57e8b5ea65da661799af783a4a7b7",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroArduinoEspWiFi.h",
-          "sha256": "94b9e20073a3bc4a9128a9a50879fb7c63acd357c0e67f759b76db0cb627eeb7"
+          "sha256": "10cfe75c943e1b1ab2f452d53ae0dccf42d57e8b5ea65da661799af783a4a7b7"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroArduinoNativeNetwork.h",
+      "source_sha256": "9ce3441189ff8143aab8fc0ea7cc78d4fb448a9fffe3c8868b03a8134340abff",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoNativeNetwork.h",
+          "sha256": "9ce3441189ff8143aab8fc0ea7cc78d4fb448a9fffe3c8868b03a8134340abff"
         }
       ]
     },
@@ -227,12 +238,12 @@
     },
     {
       "source": "packages/arduino/src/NobroArduinoWiFiS3.h",
-      "source_sha256": "08de3bb30d0f41da0b3023f04ffab73468c69b6f7d1ec331e15885fec2f48dbd",
+      "source_sha256": "6e9154fcfd79f57b7d37284d913d512219c4b1371f0cb1a638c7139b9af7a0c6",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroArduinoWiFiS3.h",
-          "sha256": "08de3bb30d0f41da0b3023f04ffab73468c69b6f7d1ec331e15885fec2f48dbd"
+          "sha256": "6e9154fcfd79f57b7d37284d913d512219c4b1371f0cb1a638c7139b9af7a0c6"
         }
       ]
     },
@@ -631,6 +642,14 @@
           "nobro_ble_event_kind_t",
           "nobro_ble_event_t",
           "nobro_ble_stack_diagnostics_t",
+          "nobro_ipv4_address_t",
+          "nobro_network_buffer_model_t",
+          "nobro_network_capabilities_t",
+          "nobro_network_endpoint_t",
+          "nobro_network_io_receipt_t",
+          "nobro_network_mount_receipt_t",
+          "nobro_network_socket_kind_t",
+          "nobro_network_socket_t",
           "nobro_stack_family_t",
           "nobro_stack_identity_t",
           "nobro_stack_result_t",
@@ -651,7 +670,7 @@
           "nobro_wireless_storage_mode_t"
         ],
         "path": "bindings/c/include/nobro_wireless.h",
-        "sha256": "21bb1921e25671ea09d169252da1f64e6a0697ff12504b6291391a0e3f69f3e5"
+        "sha256": "d1d76aecd0a40f808e213d89c8718ae028b7fbf9b7bae0191fd604a2c01f9d4f"
       }
     ],
     "cpp": [
@@ -4978,6 +4997,181 @@
         "sha256": "f66679cbf8450ce70dea2b118a5935150cc235f0295301b71419e96ab4a039de"
       },
       {
+        "crate": "nobro-services",
+        "exports": [
+          {
+            "kind": "struct",
+            "name": "ServiceInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "ServiceState"
+          },
+          {
+            "kind": "enum",
+            "name": "ServiceError"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbHostCapabilities"
+          },
+          {
+            "kind": "fn",
+            "name": "valid"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbDevice"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbHostMountReceipt"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbTransferReceipt"
+          },
+          {
+            "kind": "trait",
+            "name": "UsbHostBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbHostMountError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedUsbHost"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "enumerate"
+          },
+          {
+            "kind": "fn",
+            "name": "transfer"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "enum",
+            "name": "PixelFormat"
+          },
+          {
+            "kind": "enum",
+            "name": "DisplayBufferModel"
+          },
+          {
+            "kind": "struct",
+            "name": "DisplayCapabilities"
+          },
+          {
+            "kind": "fn",
+            "name": "frame_bytes"
+          },
+          {
+            "kind": "fn",
+            "name": "valid"
+          },
+          {
+            "kind": "struct",
+            "name": "DisplayMountReceipt"
+          },
+          {
+            "kind": "struct",
+            "name": "PresentReceipt"
+          },
+          {
+            "kind": "trait",
+            "name": "DisplayBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedDisplay"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "present"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "ParsedCommand"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "arg"
+          },
+          {
+            "kind": "fn",
+            "name": "line"
+          },
+          {
+            "kind": "struct",
+            "name": "BoundedShell"
+          },
+          {
+            "kind": "fn",
+            "name": "parse"
+          }
+        ],
+        "path": "core/crates/nobro_services/src/lib.rs",
+        "sha256": "cfb91fc3d163cc66ce66714cc6c9844efc39a10f5d307b94acd9e2758b2ffcde"
+      },
+      {
         "crate": "nobro-servo",
         "exports": [
           {
@@ -5084,6 +5278,70 @@
             "name": "into_flash"
           },
           {
+            "kind": "enum",
+            "name": "FileSystemError"
+          },
+          {
+            "kind": "struct",
+            "name": "FileSystemMountError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_flash"
+          },
+          {
+            "kind": "struct",
+            "name": "FileMetadata"
+          },
+          {
+            "kind": "struct",
+            "name": "FileCommitReceipt"
+          },
+          {
+            "kind": "struct",
+            "name": "AtomicFileSystem"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "write"
+          },
+          {
+            "kind": "fn",
+            "name": "remove"
+          },
+          {
+            "kind": "fn",
+            "name": "read"
+          },
+          {
+            "kind": "fn",
+            "name": "metadata"
+          },
+          {
+            "kind": "fn",
+            "name": "file_count"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_flash"
+          },
+          {
             "kind": "fn",
             "name": "mount"
           },
@@ -5105,7 +5363,7 @@
           }
         ],
         "path": "core/crates/nobro_storage/src/lib.rs",
-        "sha256": "13d537a28e99c29e4cd87b70c3949e4971a2632ad36bdb73e9979e0d134d43b7"
+        "sha256": "69392b4e6f9edfea5b373daddd5cfd54482f2bee198b591da99f6ef122e7294a"
       },
       {
         "crate": "nobro-tierc",
@@ -5404,6 +5662,18 @@
             "name": "StackFamily"
           },
           {
+            "kind": "struct",
+            "name": "StackInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
             "kind": "enum",
             "name": "StackState"
           },
@@ -5414,6 +5684,10 @@
           {
             "kind": "fn",
             "name": "valid_for"
+          },
+          {
+            "kind": "struct",
+            "name": "StackMountReceipt"
           },
           {
             "kind": "enum",
@@ -5474,6 +5748,10 @@
           {
             "kind": "fn",
             "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "mount_instance"
           },
           {
             "kind": "fn",
@@ -5569,6 +5847,10 @@
           },
           {
             "kind": "fn",
+            "name": "mount_instance"
+          },
+          {
+            "kind": "fn",
             "name": "state"
           },
           {
@@ -5602,6 +5884,118 @@
           {
             "kind": "fn",
             "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "enum",
+            "name": "IpAddress"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkEndpoint"
+          },
+          {
+            "kind": "enum",
+            "name": "NetworkSocketKind"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkSocket"
+          },
+          {
+            "kind": "enum",
+            "name": "NetworkBufferModel"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkCapabilities"
+          },
+          {
+            "kind": "fn",
+            "name": "valid"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkMountReceipt"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkIoReceipt"
+          },
+          {
+            "kind": "trait",
+            "name": "NativeNetworkStack"
+          },
+          {
+            "kind": "struct",
+            "name": "NetworkMountError"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedNetwork"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "open_socket"
+          },
+          {
+            "kind": "fn",
+            "name": "connect"
+          },
+          {
+            "kind": "fn",
+            "name": "resolve"
+          },
+          {
+            "kind": "fn",
+            "name": "send"
+          },
+          {
+            "kind": "fn",
+            "name": "receive"
+          },
+          {
+            "kind": "fn",
+            "name": "close_socket"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
           },
           {
             "kind": "fn",
@@ -5825,7 +6219,7 @@
           }
         ],
         "path": "core/crates/nobro_wireless/src/lib.rs",
-        "sha256": "66282712e4e321c6c61e6b18f71bf1ab6655923d439c1b787760bba1396ada4c"
+        "sha256": "de391ff9189549bc64f6cac503474ff0aa1aeec3b6af7ae8779d38de40e082e4"
       },
       {
         "crate": "nobro-adapter-motion-ai",

@@ -229,6 +229,13 @@ No-heap sensor utilities, transport-agnostic.
 - **enum**: `AdcDmaState`, `AdcDmaError`
 - **fn**: `update`, `is_stuck`, `out_of_range`, `observe`, `finalize`, `apply`, `bias`, `tick`, `tmr_vote`
 
+## `nobro-services`
+Optional, allocation-free application services.
+- **trait**: `UsbHostBackend`, `DisplayBackend`
+- **struct**: `ServiceInstanceId`, `UsbHostCapabilities`, `UsbDevice`, `UsbHostMountReceipt`, `UsbTransferReceipt`, `UsbHostMountError`, `MountedUsbHost`, `DisplayCapabilities`, `DisplayMountReceipt`, `PresentReceipt`, `MountedDisplay`, `ParsedCommand`, `BoundedShell`
+- **enum**: `ServiceState`, `ServiceError`, `PixelFormat`, `DisplayBufferModel`
+- **fn**: `valid`, `into_backend`, `mount`, `enumerate`, `transfer`, `quiesce`, `recover`, `into_backend`, `frame_bytes`, `valid`, `mount`, `present`, `quiesce`, `recover`, `into_backend`, `arg`, `line`, `parse`
+
 ## `nobro-servo`
 Allocation-free servo command contract.
 - **trait**: `ServoBackend`, `PwmEngineBackend`, `PulseEngineBackend`
@@ -238,9 +245,9 @@ Allocation-free servo command contract.
 ## `nobro-storage`
 Power-fail-safe, wear-leveled key-value flash store.
 - **trait**: `Flash`
-- **struct**: `KvStore`, `BlobStore`
-- **enum**: `KvError`
-- **fn**: `mount`, `read`, `replace`, `into_flash`, `mount`, `get`, `put`, `into_flash`
+- **struct**: `KvStore`, `BlobStore`, `FileSystemMountError`, `FileMetadata`, `FileCommitReceipt`, `AtomicFileSystem`
+- **enum**: `KvError`, `FileSystemError`
+- **fn**: `mount`, `read`, `replace`, `into_flash`, `into_flash`, `mount`, `write`, `remove`, `read`, `metadata`, `file_count`, `into_flash`, `mount`, `get`, `put`, `into_flash`
 
 ## `nobro-tierc`
 `libnobro.a` - the prebuilt NobroRTOS runtime for Tier C (C developers, no Rust).
@@ -254,7 +261,7 @@ Modular, mountable USB device stack for NobroRTOS.
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.
-- **trait**: `WirelessBackend`, `WifiStack`, `BleStack`, `SpiIo`, `ByteIo`
-- **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `StackIdentity`, `StackMountError`, `WifiCredentials`, `WifiNetwork`, `MountedWifi`, `BleEvent`, `BleEventQueue`, `MountedBle`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
-- **enum**: `Protocol`, `LinkState`, `LinkError`, `StackFamily`, `StackState`, `StackError`, `BleEventKind`, `AdvKind`, `RfidError`, `MacFrameType`
-- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `valid_for`, `into_backend`, `new`, `set_ssid`, `ssid`, `mount`, `state`, `scan`, `join`, `leave`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `set_payload`, `payload`, `push`, `pop`, `mount`, `state`, `advertise`, `stop_advertising`, `poll_event`, `respond_gatt`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `initialize`, `join`, `poll_frame`
+- **trait**: `WirelessBackend`, `WifiStack`, `BleStack`, `NativeNetworkStack`, `SpiIo`, `ByteIo`
+- **struct**: `LinkDescriptor`, `Packet`, `TxContract`, `LinkBudget`, `LinkDiagnostics`, `ManagedLink`, `StackInstanceId`, `StackIdentity`, `StackMountReceipt`, `StackMountError`, `WifiCredentials`, `WifiNetwork`, `MountedWifi`, `BleEvent`, `BleEventQueue`, `MountedBle`, `NetworkEndpoint`, `NetworkSocket`, `NetworkCapabilities`, `NetworkInstanceId`, `NetworkMountReceipt`, `NetworkIoReceipt`, `NetworkMountError`, `MountedNetwork`, `BleAdvBuilder`, `RfidReaderDescriptor`, `RfidUid`, `Mfrc522`, `Cc2530`
+- **enum**: `Protocol`, `LinkState`, `LinkError`, `StackFamily`, `StackState`, `StackError`, `BleEventKind`, `IpAddress`, `NetworkSocketKind`, `NetworkBufferModel`, `AdvKind`, `RfidError`, `MacFrameType`
+- **fn**: `copy_from`, `as_slice`, `send_at`, `recv`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `valid_for`, `into_backend`, `new`, `set_ssid`, `ssid`, `mount`, `mount_instance`, `state`, `scan`, `join`, `leave`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `set_payload`, `payload`, `push`, `pop`, `mount`, `mount_instance`, `state`, `advertise`, `stop_advertising`, `poll_event`, `respond_gatt`, `quiesce`, `recover`, `backend`, `backend_mut`, `into_backend`, `valid`, `into_backend`, `mount`, `open_socket`, `connect`, `resolve`, `send`, `receive`, `close_socket`, `quiesce`, `recover`, `into_backend`, `build`, `build_as`, `build_scan_response`, `from_slice`, `as_slice`, `into_inner`, `reader_descriptor`, `init`, `request_a`, `anticollision_level1`, `poll_uid`, `transceive`, `iso14443a_bcc`, `validate_anticollision`, `has_next_cascade`, `mac_frame_type`, `new`, `initialize`, `join`, `poll_frame`

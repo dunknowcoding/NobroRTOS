@@ -8,6 +8,7 @@ remain independently selectable members exposed through small Nobro facades.
 | Member or backend | Public integration | Current boundary |
 | --- | --- | --- |
 | WiFi stack contract | `WifiStack` / `MountedWifi` | Portable lifecycle plus configuration-priced UNO R4 WiFiS3 and Arduino-ESP32 C3 station bindings |
+| Native IP data plane | `NativeNetworkStack` / `MountedNetwork` / `NobroArduinoNativeNetwork.h` | Owned logical instance, stable TCP/UDP/DNS/MTU/socket/buffer limits, stale-handle generations, deadlines, and fixed socket slots over selected vendor stacks |
 | Arduino-ESP32 WiFi 3.3.10 | `wireless/wifi/arduino-esp` / `NobroArduinoEspWiFi.h` | ESP32/C3/S3 target builds; C3 zero-disabled plus priced association/DNS/TCP/lifecycle evidence at four HTTP operations/s |
 | Arduino WiFiS3 | `wireless/wifi/arduino-wifis3` / `NobroArduinoWiFiS3.h` | Exact UNO R4/WiFiS3 0.6.0 zero-disabled, association, DNS, TCP, lifecycle, and RA-side/controller-image price |
 | BLE stack contract | `BleStack` / `MountedBle` / `BleEventQueue` | Portable lifecycle plus physically verified UNO R4 ArduinoBLE, ESP32-C3 NimBLE, and classic ESP32 Bluedroid bindings |
@@ -20,14 +21,15 @@ remain independently selectable members exposed through small Nobro facades.
 | NiusWireless 0.2.0 NRF24L01 | Register-level driver; two-radio RP2040 link physically verified | Other board/radio compositions require separate evidence |
 | NiusWireless 0.2.0 PN532 | I2C/SPI driver; SAMD21 SPI status and IRQ/auth/read/write paths physically verified | Other boards and modes require separate evidence |
 | NiusWireless HC06, HC12 | Upstream inventory only | Upstream modules are currently stubs |
-| NiusZigbee 1.0.0 / CC2530 | ArduinoNRF library integration | Friendly Nobro facade is not yet complete |
+| Zigbee APS data service | `zigbee-aps` feature / `ApsDataService` | Optional bounded unfragmented APS data frames over an already joined Zigbee NWK provider; no formation, joining, ZDO, security, or fragmentation |
+| NiusZigbee 1.0.0 / CC2530 | ArduinoNRF library integration / raw `Cc2530` backend | Raw IEEE 802.15.4 only; it cannot mount as the APS service without an independently selected joined-NWK provider |
 
-WiFi and BLE control are separate traits beneath the common data plane.
-Mounting is fallible and returns ownership on failure. WiFi credentials borrow
-runtime caller storage and never enter board metadata. BLE callbacks move
-through a caller-sized fixed queue. Backend id, MTU, queue capacity, and GATT
-limits are stable per logical instance; a board or vendor stack is supported
-only after its separate adapter and evidence gates pass.
+WiFi association, BLE control, and native IP data are independently selectable
+instances. Mounting is fallible and returns ownership on failure. Mount receipts
+identify the caller-selected logical instance and stable backend limits. WiFi
+credentials borrow runtime caller storage and never enter board metadata. BLE
+callbacks move through a caller-sized fixed queue. A board or vendor stack is
+supported only after its separate adapter and evidence gates pass.
 
 ## Adaptive traffic without a heavier core
 
@@ -78,10 +80,12 @@ never relabels best-effort delivery as fixed-rate success.
 
 The WiFiS3 facade uses the installed Arduino Renesas board driver rather than
 reimplementing its coprocessor protocol. It retains no credentials and copies
-scan results into caller-owned fixed records. WiFiS3 itself uses dynamic
-strings and synchronous modem calls; Nobro can report elapsed deadline misses
-after those calls return but cannot preempt them. TCP/UDP clients, endpoints,
-and response buffers remain caller-owned. Three state-restoring cycles passed
+scan results into caller-owned fixed records. The separate
+`ArduinoWiFiS3Network` owns one fixed TCP slot and one fixed UDP slot, lends
+payload buffers from the caller, rejects stale socket generations, and exposes
+the vendor-managed buffer model. WiFiS3 itself uses dynamic strings and
+synchronous modem calls; Nobro can report elapsed deadline misses after those
+calls return but cannot preempt them. Three state-restoring cycles passed
 75/75 HTTP transactions at one operation/s with zero deadline misses, zero
 retained heap, a 1,068 B transient heap peak, a 1,024 B RA stack reservation
 and observed high-water, 42,771,027 call-active cycles/s, and a conservative
@@ -119,7 +123,9 @@ the pinned core's official `WiFi.h` and uses the ESP-IDF driver bundled with
 that package instead of maintaining a parallel driver. Blocking scan avoids
 the core's asynchronous completion race and consumes one fixed record
 workspace. `persistent(false)` plus bounded failed-association cleanup keeps
-credentials out of persistent storage and clears the vendor RAM copy.
+credentials out of persistent storage and clears the vendor RAM copy. The
+separate `ArduinoEspNativeNetwork` uses the same fixed-slot TCP/UDP/DNS contract
+as WiFiS3 while declaring its vendor-managed buffers explicitly.
 Repeated C3 association, DNS, TCP, leave, quiesce, and recovery passed in a
 state-restoring isolated test. The exact no-debug C3 workload is priced for
 four HTTP transactions/s: 650,013 B flash, 21,788 B static RAM, 60,348 B

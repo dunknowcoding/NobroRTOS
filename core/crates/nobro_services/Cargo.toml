@@ -1,0 +1,14 @@
+[package]
+name = "nobro-services"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+filesystem = ["dep:nobro-storage"]
+usb-host = []
+display = []
+shell = []
+
+[dependencies]
+nobro-storage = { path = "../nobro_storage", optional = true }

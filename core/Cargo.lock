@@ -978,6 +978,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-services"
+version = "0.3.2"
+dependencies = [
+ "nobro-storage",
+]
+
+[[package]]
 name = "nobro-servo"
 version = "0.3.2"
 dependencies = [

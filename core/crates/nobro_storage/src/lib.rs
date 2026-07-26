@@ -172,6 +172,396 @@ impl<F: Flash> BlobStore<F> {
     }
 }
 
+const FILE_SYSTEM_MAGIC: u32 = 0x4E46_5331; // "NFS1"
+const FILE_SYSTEM_VERSION: u8 = 1;
+const FILE_SYSTEM_HEADER_BYTES: usize = 13;
+const FILE_RECORD_HEADER_BYTES: usize = 7;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileSystemError<E> {
+    InvalidConfig,
+    InvalidName,
+    WorkspaceTooSmall,
+    Full,
+    NotFound,
+    Corrupt,
+    Flash(E),
+}
+
+impl<E> From<KvError<E>> for FileSystemError<E> {
+    fn from(error: KvError<E>) -> Self {
+        match error {
+            KvError::Full => Self::WorkspaceTooSmall,
+            KvError::Flash(error) => Self::Flash(error),
+        }
+    }
+}
+
+pub struct FileSystemMountError<F: Flash> {
+    flash: F,
+    error: FileSystemError<F::Error>,
+}
+
+impl<F: Flash> FileSystemMountError<F> {
+    pub const fn error(&self) -> &FileSystemError<F::Error> {
+        &self.error
+    }
+
+    pub fn into_flash(self) -> F {
+        self.flash
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileMetadata<'a> {
+    pub name: &'a [u8],
+    pub len: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileCommitReceipt {
+    pub generation: u32,
+    /// The new image is committed even when erasing the obsolete page must be
+    /// retried on a later successful write.
+    pub cleanup_pending: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FileEntry<const NAME_BYTES: usize, const DATA_BYTES: usize> {
+    used: bool,
+    name_len: usize,
+    data_len: usize,
+    name: [u8; NAME_BYTES],
+    data: [u8; DATA_BYTES],
+}
+
+impl<const NAME_BYTES: usize, const DATA_BYTES: usize> FileEntry<NAME_BYTES, DATA_BYTES> {
+    const EMPTY: Self = Self {
+        used: false,
+        name_len: 0,
+        data_len: 0,
+        name: [0; NAME_BYTES],
+        data: [0; DATA_BYTES],
+    };
+
+    fn name(&self) -> &[u8] {
+        &self.name[..self.name_len]
+    }
+
+    fn data(&self) -> &[u8] {
+        &self.data[..self.data_len]
+    }
+}
+
+/// Fixed-capacity transactional filesystem over [`BlobStore`].
+///
+/// Names, file data, and the directory are stored in compile-time arrays. Each
+/// mutation serializes into caller-owned scratch storage and atomically replaces
+/// the complete image, so a power loss exposes either the old or new directory.
+pub struct AtomicFileSystem<
+    F: Flash,
+    const FILES: usize,
+    const NAME_BYTES: usize,
+    const DATA_BYTES: usize,
+> {
+    store: BlobStore<F>,
+    entries: [FileEntry<NAME_BYTES, DATA_BYTES>; FILES],
+}
+
+impl<F: Flash, const FILES: usize, const NAME_BYTES: usize, const DATA_BYTES: usize>
+    AtomicFileSystem<F, FILES, NAME_BYTES, DATA_BYTES>
+{
+    pub const fn image_bytes() -> usize {
+        FILE_SYSTEM_HEADER_BYTES.saturating_add(
+            FILES.saturating_mul(
+                FILE_RECORD_HEADER_BYTES
+                    .saturating_add(NAME_BYTES)
+                    .saturating_add(DATA_BYTES),
+            ),
+        )
+    }
+
+    fn config_valid() -> bool {
+        FILES != 0
+            && FILES <= u16::MAX as usize
+            && NAME_BYTES != 0
+            && NAME_BYTES <= u16::MAX as usize
+            && DATA_BYTES <= u32::MAX as usize
+            && Self::image_bytes() <= BlobStore::<F>::capacity()
+    }
+
+    fn valid_name(name: &[u8]) -> bool {
+        !name.is_empty()
+            && name.len() <= NAME_BYTES
+            && name
+                .iter()
+                .all(|byte| *byte >= 0x20 && *byte != b'/' && *byte != b'\\')
+    }
+
+    fn put_u16(output: &mut [u8], offset: &mut usize, value: u16) {
+        output[*offset..*offset + 2].copy_from_slice(&value.to_le_bytes());
+        *offset += 2;
+    }
+
+    fn put_u32(output: &mut [u8], offset: &mut usize, value: u32) {
+        output[*offset..*offset + 4].copy_from_slice(&value.to_le_bytes());
+        *offset += 4;
+    }
+
+    fn take_u16(input: &[u8], offset: &mut usize) -> u16 {
+        let value = u16::from_le_bytes([input[*offset], input[*offset + 1]]);
+        *offset += 2;
+        value
+    }
+
+    fn take_u32(input: &[u8], offset: &mut usize) -> u32 {
+        let value = u32::from_le_bytes([
+            input[*offset],
+            input[*offset + 1],
+            input[*offset + 2],
+            input[*offset + 3],
+        ]);
+        *offset += 4;
+        value
+    }
+
+    fn decode(
+        input: &[u8],
+    ) -> Result<[FileEntry<NAME_BYTES, DATA_BYTES>; FILES], FileSystemError<F::Error>> {
+        if input.len() != Self::image_bytes() {
+            return Err(FileSystemError::Corrupt);
+        }
+        let mut offset = 0;
+        let magic = Self::take_u32(input, &mut offset);
+        let version = input[offset];
+        offset += 1;
+        let files = usize::from(Self::take_u16(input, &mut offset));
+        let name_bytes = usize::from(Self::take_u16(input, &mut offset));
+        let data_bytes = Self::take_u32(input, &mut offset) as usize;
+        if magic != FILE_SYSTEM_MAGIC
+            || version != FILE_SYSTEM_VERSION
+            || files != FILES
+            || name_bytes != NAME_BYTES
+            || data_bytes != DATA_BYTES
+        {
+            return Err(FileSystemError::Corrupt);
+        }
+
+        let mut entries = [FileEntry::EMPTY; FILES];
+        let mut index = 0;
+        while index < FILES {
+            let used = input[offset];
+            offset += 1;
+            let name_len = usize::from(Self::take_u16(input, &mut offset));
+            let data_len = Self::take_u32(input, &mut offset) as usize;
+            let name_start = offset;
+            offset += NAME_BYTES;
+            let data_start = offset;
+            offset += DATA_BYTES;
+            if used > 1 || name_len > NAME_BYTES || data_len > DATA_BYTES {
+                return Err(FileSystemError::Corrupt);
+            }
+            if used == 0 {
+                if name_len != 0 || data_len != 0 {
+                    return Err(FileSystemError::Corrupt);
+                }
+            } else {
+                let name = &input[name_start..name_start + name_len];
+                if !Self::valid_name(name) {
+                    return Err(FileSystemError::Corrupt);
+                }
+                entries[index].used = true;
+                entries[index].name_len = name_len;
+                entries[index].data_len = data_len;
+                entries[index].name[..name_len].copy_from_slice(name);
+                entries[index].data[..data_len]
+                    .copy_from_slice(&input[data_start..data_start + data_len]);
+                if entries[..index]
+                    .iter()
+                    .any(|entry| entry.used && entry.name() == name)
+                {
+                    return Err(FileSystemError::Corrupt);
+                }
+            }
+            index += 1;
+        }
+        Ok(entries)
+    }
+
+    fn encode(&self, output: &mut [u8]) -> Result<usize, FileSystemError<F::Error>> {
+        let size = Self::image_bytes();
+        if output.len() < size {
+            return Err(FileSystemError::WorkspaceTooSmall);
+        }
+        output[..size].fill(0);
+        let mut offset = 0;
+        Self::put_u32(output, &mut offset, FILE_SYSTEM_MAGIC);
+        output[offset] = FILE_SYSTEM_VERSION;
+        offset += 1;
+        Self::put_u16(output, &mut offset, FILES as u16);
+        Self::put_u16(output, &mut offset, NAME_BYTES as u16);
+        Self::put_u32(output, &mut offset, DATA_BYTES as u32);
+        for entry in &self.entries {
+            output[offset] = u8::from(entry.used);
+            offset += 1;
+            Self::put_u16(output, &mut offset, entry.name_len as u16);
+            Self::put_u32(output, &mut offset, entry.data_len as u32);
+            output[offset..offset + entry.name_len].copy_from_slice(entry.name());
+            offset += NAME_BYTES;
+            output[offset..offset + entry.data_len].copy_from_slice(entry.data());
+            offset += DATA_BYTES;
+        }
+        Ok(size)
+    }
+
+    pub fn mount(flash: F, scratch: &mut [u8]) -> Result<Self, FileSystemMountError<F>> {
+        let store = BlobStore::mount(flash);
+        if !Self::config_valid() {
+            return Err(FileSystemMountError {
+                flash: store.into_flash(),
+                error: FileSystemError::InvalidConfig,
+            });
+        }
+        let entries = match store.read(scratch) {
+            Ok(None) => [FileEntry::EMPTY; FILES],
+            Ok(Some(len)) => match Self::decode(&scratch[..len]) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    return Err(FileSystemMountError {
+                        flash: store.into_flash(),
+                        error,
+                    });
+                }
+            },
+            Err(error) => {
+                return Err(FileSystemMountError {
+                    flash: store.into_flash(),
+                    error: error.into(),
+                });
+            }
+        };
+        Ok(Self { store, entries })
+    }
+
+    fn find(&self, name: &[u8]) -> Option<usize> {
+        self.entries
+            .iter()
+            .position(|entry| entry.used && entry.name() == name)
+    }
+
+    fn commit(
+        &mut self,
+        scratch: &mut [u8],
+    ) -> Result<FileCommitReceipt, FileSystemError<F::Error>> {
+        let len = self.encode(scratch)?;
+        let before = self.store.generation();
+        match self.store.replace(&scratch[..len]) {
+            Ok(()) => Ok(FileCommitReceipt {
+                generation: self.store.generation(),
+                cleanup_pending: false,
+            }),
+            Err(KvError::Flash(_)) if self.store.generation() != before => Ok(FileCommitReceipt {
+                generation: self.store.generation(),
+                cleanup_pending: true,
+            }),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn write(
+        &mut self,
+        name: &[u8],
+        data: &[u8],
+        scratch: &mut [u8],
+    ) -> Result<FileCommitReceipt, FileSystemError<F::Error>> {
+        if !Self::valid_name(name) {
+            return Err(FileSystemError::InvalidName);
+        }
+        if data.len() > DATA_BYTES {
+            return Err(FileSystemError::Full);
+        }
+        let index = self
+            .find(name)
+            .or_else(|| self.entries.iter().position(|entry| !entry.used))
+            .ok_or(FileSystemError::Full)?;
+        let previous = self.entries[index];
+        let entry = &mut self.entries[index];
+        *entry = FileEntry::EMPTY;
+        entry.used = true;
+        entry.name_len = name.len();
+        entry.data_len = data.len();
+        entry.name[..name.len()].copy_from_slice(name);
+        entry.data[..data.len()].copy_from_slice(data);
+        match self.commit(scratch) {
+            Ok(receipt) => Ok(receipt),
+            Err(error) => {
+                self.entries[index] = previous;
+                Err(error)
+            }
+        }
+    }
+
+    pub fn remove(
+        &mut self,
+        name: &[u8],
+        scratch: &mut [u8],
+    ) -> Result<FileCommitReceipt, FileSystemError<F::Error>> {
+        if !Self::valid_name(name) {
+            return Err(FileSystemError::InvalidName);
+        }
+        let index = self.find(name).ok_or(FileSystemError::NotFound)?;
+        let previous = self.entries[index];
+        self.entries[index] = FileEntry::EMPTY;
+        match self.commit(scratch) {
+            Ok(receipt) => Ok(receipt),
+            Err(error) => {
+                self.entries[index] = previous;
+                Err(error)
+            }
+        }
+    }
+
+    pub fn read(
+        &self,
+        name: &[u8],
+        output: &mut [u8],
+    ) -> Result<Option<usize>, FileSystemError<F::Error>> {
+        if !Self::valid_name(name) {
+            return Err(FileSystemError::InvalidName);
+        }
+        let Some(index) = self.find(name) else {
+            return Ok(None);
+        };
+        let data = self.entries[index].data();
+        if output.len() < data.len() {
+            return Err(FileSystemError::Full);
+        }
+        output[..data.len()].copy_from_slice(data);
+        Ok(Some(data.len()))
+    }
+
+    pub fn metadata(&self, slot: usize) -> Option<FileMetadata<'_>> {
+        self.entries.get(slot).and_then(|entry| {
+            entry.used.then_some(FileMetadata {
+                name: entry.name(),
+                len: entry.data_len,
+            })
+        })
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.entries.iter().filter(|entry| entry.used).count()
+    }
+
+    pub const fn generation(&self) -> u32 {
+        self.store.generation()
+    }
+
+    pub fn into_flash(self) -> F {
+        self.store.into_flash()
+    }
+}
+
 impl<F: Flash> KvStore<F> {
     fn flash<T>(result: Result<T, F::Error>) -> Result<T, KvError<F::Error>> {
         result.map_err(KvError::Flash)
@@ -523,5 +913,82 @@ mod tests {
                     || (len == new.len() && recovered[..len] == new)
             );
         }
+    }
+
+    type TestFiles = AtomicFileSystem<MockFlash, 2, 8, 16>;
+
+    #[test]
+    fn filesystem_write_remove_and_remount_preserve_directory() {
+        let mut scratch = [0u8; TestFiles::image_bytes()];
+        let mut files = TestFiles::mount(MockFlash::new(), &mut scratch)
+            .ok()
+            .unwrap();
+        assert_eq!(files.file_count(), 0);
+        let first = files.write(b"config", b"alpha", &mut scratch).unwrap();
+        assert_eq!(first.generation, 1);
+        assert!(!first.cleanup_pending);
+        files.write(b"log", b"one", &mut scratch).unwrap();
+        files.write(b"config", b"beta", &mut scratch).unwrap();
+        assert_eq!(files.file_count(), 2);
+        assert_eq!(
+            files.metadata(0),
+            Some(FileMetadata {
+                name: b"config",
+                len: 4,
+            })
+        );
+
+        let mut output = [0u8; 16];
+        assert_eq!(files.read(b"config", &mut output), Ok(Some(4)));
+        assert_eq!(&output[..4], b"beta");
+        files.remove(b"log", &mut scratch).unwrap();
+        assert_eq!(files.read(b"log", &mut output), Ok(None));
+
+        let files = TestFiles::mount(files.into_flash(), &mut scratch)
+            .ok()
+            .unwrap();
+        assert_eq!(files.file_count(), 1);
+        assert_eq!(files.read(b"config", &mut output), Ok(Some(4)));
+        assert_eq!(&output[..4], b"beta");
+    }
+
+    #[test]
+    fn every_filesystem_failure_point_recovers_old_or_new_file() {
+        let mut scratch = [0u8; TestFiles::image_bytes()];
+        let mut baseline = TestFiles::mount(MockFlash::new(), &mut scratch)
+            .ok()
+            .unwrap();
+        baseline.write(b"config", b"old", &mut scratch).unwrap();
+        let baseline_flash = baseline.into_flash();
+
+        for cutoff in 0..36 {
+            let mut flash = baseline_flash.clone();
+            flash.writes_until_failure = Some(cutoff);
+            let mut files = TestFiles::mount(flash, &mut scratch).ok().unwrap();
+            let _ = files.write(b"config", b"new-value", &mut scratch);
+            let mut flash = files.into_flash();
+            flash.writes_until_failure = None;
+            let files = TestFiles::mount(flash, &mut scratch).ok().unwrap();
+            let mut output = [0u8; 16];
+            let len = files.read(b"config", &mut output).unwrap().unwrap();
+            assert!(
+                (len == 3 && &output[..len] == b"old")
+                    || (len == 9 && &output[..len] == b"new-value")
+            );
+        }
+    }
+
+    #[test]
+    fn filesystem_alternates_pages_without_wear_hotspot() {
+        let mut scratch = [0u8; TestFiles::image_bytes()];
+        let mut files = TestFiles::mount(MockFlash::new(), &mut scratch)
+            .ok()
+            .unwrap();
+        for value in 0..12u8 {
+            files.write(b"counter", &[value], &mut scratch).unwrap();
+        }
+        let flash = files.into_flash();
+        assert!(flash.erases[0] > 0 && flash.erases[1] > 0);
+        assert!(flash.erases[0].abs_diff(flash.erases[1]) <= 1);
     }
 }

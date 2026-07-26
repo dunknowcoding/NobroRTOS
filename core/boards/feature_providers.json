@@ -986,6 +986,8 @@
         "feature": "nobro-esp-wifi-disabled",
         "forbidden_symbols": [
           "ArduinoEspWiFiStack",
+          "ArduinoEspNativeNetwork",
+          "ArduinoNativeNetwork",
           "WiFiClass",
           "WiFiGenericClass",
           "esp_wifi_init"
@@ -1079,6 +1081,8 @@
         "feature": "nobro-wifis3-disabled",
         "forbidden_symbols": [
           "ArduinoWiFiS3Stack",
+          "ArduinoWiFiS3Network",
+          "ArduinoNativeNetwork",
           "CWifi",
           "ModemClass",
           "WiFiS3"

@@ -10,8 +10,28 @@
 #endif
 
 #include <WiFiS3.h>
+#include "NobroArduinoNativeNetwork.h"
 
 namespace nobro {
+
+struct ArduinoWiFiS3NativeProvider {
+    typedef WiFiClient TcpClient;
+    typedef WiFiUDP UdpSocket;
+
+    static const char *backendId() { return "arduino-wifis3-native-ip"; }
+    static uint16_t mtu() { return 1460; }
+    // The coprocessor owns these buffers and WiFiS3 does not publish exact
+    // capacities. Zero means vendor-opaque, not allocation-free.
+    static uint32_t rxBufferBytes() { return 0; }
+    static uint32_t txBufferBytes() { return 0; }
+    static bool ready() { return WiFi.status() == WL_CONNECTED; }
+    static int resolve(const char *host, IPAddress &address) {
+        return WiFi.hostByName(host, address);
+    }
+};
+
+typedef ArduinoNativeNetwork<ArduinoWiFiS3NativeProvider, 1, 1>
+    ArduinoWiFiS3Network;
 
 /*
  * Bounded association/lifecycle facade for the Arduino Renesas WiFiS3 stack.
@@ -23,8 +43,8 @@ namespace nobro {
  * deadline miss can therefore be measured and reported after a call returns,
  * but the wrapper cannot preempt the vendor call.
  *
- * The facade intentionally stops at association. TCP/UDP clients and their
- * endpoints remain separate, caller-owned data-plane objects.
+ * The independently mountable ArduinoWiFiS3Network data plane owns fixed TCP
+ * and UDP slots. Association and sockets remain separate logical instances.
  */
 class ArduinoWiFiS3Stack {
 public:

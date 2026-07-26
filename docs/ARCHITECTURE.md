@@ -177,8 +177,9 @@ fleet firmware-signing authority.
 images. Both use two flash pages, wrap-aware generations, integrity validation,
 and a commit-last selection point. `nobro-database::PersistentTable` feeds its
 stable schema image into the transactional blob path using caller-owned scratch
-memory. Board ports define the reserved pages and implement fallible erase,
-program, and readback verification.
+memory. `AtomicFileSystem` adds a fixed file table, bounded names/data, and
+old-or-new power-cut semantics over that same blob path. Board ports define the
+reserved pages and implement fallible erase, program, and readback verification.
 
 ### Recovery Model
 
@@ -780,17 +781,21 @@ Implemented today in `nobro-wireless`:
   explicitly; the portable crate does not select a vendor stack from a board profile.
 - `Mfrc522<SpiIo>` implements bounded ISO 14443A UID polling, and `Cc2530<ByteIo>`
   implements an initialized raw IEEE 802.15.4 PSDU transport behind `WirelessBackend`,
-  bounded by the 127-byte PHY frame limit. It is not a Zigbee join/network/APS stack;
-  `ZIGBEE_APS` is catalog descriptor metadata only.
+  bounded by the 127-byte PHY frame limit. It is not a Zigbee join/network/APS
+  stack. The optional `zigbee-aps` feature implements bounded, unfragmented APS
+  data frames only over a separately supplied, already joined NWK backend; it
+  does not add formation, joining, ZDO, security, or fragmentation.
 - `BleAdvBuilder` constructs advertising packets. It is not a BLE controller/host
   stack, and a protocol descriptor is not proof that a board implements that protocol.
 - `WifiStack` and `BleStack` are distinct allocation-free lifecycle contracts beneath
   the common data plane. `MountedWifi`/`MountedBle` own fallible mounting; credentials
   remain runtime-only, and `BleEventQueue` bounds callback-to-task transfer.
+- `NativeNetworkStack`/`MountedNetwork` form a separate owned TCP/UDP/DNS data
+  plane with stable socket, MTU, buffer, protocol, and lifecycle limits.
 - `wireless/wifi/arduino-wifis3` and `NobroArduinoWiFiS3.h` form the first
   concrete WiFiS3 bridge. The facade owns no credentials or heap,
-  copies at most the caller's scan capacity, and keeps TCP/UDP endpoints
-  separate. The UNO R4 board core still owns its process-wide
+  copies at most the caller's scan capacity, and composes the separately mounted
+  fixed-slot `ArduinoWiFiS3Network`. The UNO R4 board core still owns its process-wide
   UART/coprocessor stack, blocking calls, dynamic strings, sockets, and
   controller resources. One exact WiFiS3 0.6.0 binding has zero-disabled,
   state-restoring association/DNS/TCP/lifecycle evidence and a complete
@@ -800,7 +805,8 @@ Implemented today in `nobro-wireless`:
   source minima of 22,288 B / three persistent application/USB task stacks.
 - `wireless/wifi/arduino-esp` and `NobroArduinoEspWiFi.h` add the same bounded
   station lifecycle for ESP32, ESP32-C3, and ESP32-S3 through the pinned
-  Arduino-ESP32 3.3.10 board package. The facade disables credential
+  Arduino-ESP32 3.3.10 board package. `ArduinoEspNativeNetwork` supplies the
+  same independently mounted fixed-slot data-plane contract. The facade disables credential
   persistence for its calls and retains no credentials, but ESP-IDF still owns
   process-wide radio, event-loop, TCP/IP, task, socket, and heap resources.
   The exact C3 path has state-restoring association, DNS, TCP, and lifecycle

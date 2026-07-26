@@ -198,6 +198,31 @@ The keyword-spotting feature contract is fixed at
 16 kHz mono, one second, 15 frames, and 8 log-energy bands, so a PDM or I2S
 adapter only has to supply bounded PCM windows.
 
+### Variable Networks And Optional Services
+
+Mount WiFi association and its native IP data plane as separate logical
+instances. `MountedNetwork` exposes the selected backend's TCP, UDP, DNS, MTU,
+socket count, and buffer model. Arduino users select the board package normally,
+then use `ArduinoWiFiS3Network` or `ArduinoEspNativeNetwork`; both use fixed
+socket slots and caller-lent payload buffers. Vendor calls can still be
+synchronous, so a reported post-call deadline miss is not hard cancellation.
+
+Raw CC2530 traffic remains IEEE 802.15.4. Enable `nobro-wireless/zigbee-aps`
+only when an adapter supplies an already joined Zigbee NWK backend. That feature
+does not form or join networks and does not add ZDO, security, or fragmentation.
+
+The `nobro-services` crate has no default features. In a repository workspace
+checkout, enable only what the application uses:
+
+```toml
+nobro-services = { path = "core/crates/nobro_services", features = ["filesystem", "shell"] }
+```
+
+The filesystem has compile-time file/name/data capacities and caller-owned
+scratch storage. USB host and display mount with stable capability receipts;
+the shell parser uses fixed line and argument arrays. None of these services is
+linked by the nano core unless the application explicitly selects it.
+
 ### Diagnostics
 
 NobroRTOS exports fixed-layout reports with `NOBRO_*` symbols. The canonical

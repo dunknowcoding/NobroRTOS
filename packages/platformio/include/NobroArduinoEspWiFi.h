@@ -11,8 +11,26 @@
 
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include "NobroArduinoNativeNetwork.h"
 
 namespace nobro {
+
+struct ArduinoEspNativeProvider {
+    typedef WiFiClient TcpClient;
+    typedef WiFiUDP UdpSocket;
+
+    static const char *backendId() { return "arduino-esp-native-ip"; }
+    static uint16_t mtu() { return 1460; }
+    static uint32_t rxBufferBytes() { return 0; }
+    static uint32_t txBufferBytes() { return 0; }
+    static bool ready() { return WiFi.status() == WL_CONNECTED; }
+    static int resolve(const char *host, IPAddress &address) {
+        return WiFi.hostByName(host, address);
+    }
+};
+
+typedef ArduinoNativeNetwork<ArduinoEspNativeProvider, 1, 1>
+    ArduinoEspNativeNetwork;
 
 /*
  * Bounded station-association facade for the Arduino-ESP32 WiFi stack.
@@ -23,8 +41,8 @@ namespace nobro {
  * process-wide tasks, callbacks, heap, radio, and TCP/IP resources; those must
  * be measured for each exact board composition before admission pricing.
  *
- * The facade stops at association. TCP/UDP/TLS clients remain separate,
- * caller-owned data-plane objects with their own endpoint and buffer policy.
+ * The independently mountable ArduinoEspNativeNetwork data plane owns fixed
+ * TCP and UDP slots. TLS remains a separate optional provider.
  */
 class ArduinoEspWiFiStack {
 public:

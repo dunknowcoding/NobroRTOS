@@ -21,6 +21,8 @@ Current contents:
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
 - `src/NobroArduinoWiFiS3.h` with an opt-in UNO R4 WiFi association facade,
   caller-sized scan output, runtime-only credentials, and explicit lifecycle.
+- `src/NobroArduinoNativeNetwork.h` with fixed TCP/UDP slots, caller-lent
+  payload buffers, DNS, stale-handle generations, and explicit mount receipts.
 - `src/NobroArduinoBLE.h` with an opt-in UNO R4 ArduinoBLE peripheral facade,
   caller-owned events, provider disconnect, and explicit lifecycle.
 - `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
@@ -174,6 +176,7 @@ Include the optional facade only in an UNO R4 WiFi sketch:
 #include <NobroArduinoWiFiS3.h>
 
 nobro::ArduinoWiFiS3Stack wifi;
+nobro::ArduinoWiFiS3Network network;
 ```
 
 `mount()`, `scan()`, `join()`, `poll()`, `leave()`, `quiesce()`, and
@@ -184,7 +187,10 @@ library remains authoritative for the board's UART/coprocessor protocol.
 
 WiFiS3 internally uses dynamic strings and synchronous modem calls. The
 facade reports a deadline miss after a call returns; it cannot preempt that
-call. TCP/UDP clients and endpoints remain separate caller-owned objects.
+call. After association, mount `network` as a separate logical instance. It
+owns one fixed TCP and one fixed UDP slot, while endpoint and payload storage
+remain caller-controlled; its capabilities explicitly report vendor-managed
+internal buffers.
 One exact UNO R4/WiFiS3 0.6.0 workload passed three state-restoring scan,
 association, DNS, 25-transaction HTTP, leave, quiesce, and recovery cycles at
 one operation/s. Its complete RA workload image, heap/stack/CPU/latency,
@@ -234,11 +240,13 @@ Include `NobroArduinoEspWiFi.h` explicitly on an ESP32-family Arduino target:
 #include <NobroArduinoEspWiFi.h>
 
 nobro::ArduinoEspWiFiStack wifi;
+nobro::ArduinoEspNativeNetwork network;
 ```
 
 The facade uses the board package's official `WiFi` stack and bundled ESP-IDF
 driver, keeps credentials runtime-only, and exposes a bounded scan and
-association lifecycle. The exact C3 path has repeated association, DNS, TCP,
+association lifecycle. The separately mounted `network` object uses the same
+fixed-slot TCP/UDP/DNS contract as WiFiS3. The exact C3 path has repeated association, DNS, TCP,
 leave, quiesce, and recovery evidence as well as a byte-identical disabled
 composition. Arduino-ESP32/ESP-IDF still owns its radio, event loop, TCP/IP
 stack, heap, and tasks. The exact no-debug C3 workload is configuration-priced

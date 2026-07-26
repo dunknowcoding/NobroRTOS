@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define NOBRO_WIRELESS_API_VERSION 0x0103u
+#define NOBRO_WIRELESS_API_VERSION 0x0104u
 
 typedef enum nobro_wireless_protocol {
     NOBRO_WIRELESS_UNKNOWN = 0,
@@ -299,6 +299,58 @@ typedef struct nobro_wifi_stack_diagnostics {
     uint32_t recoveries;
     uint32_t transport_faults;
 } nobro_wifi_stack_diagnostics_t;
+
+typedef enum nobro_network_socket_kind {
+    NOBRO_NETWORK_TCP = 1,
+    NOBRO_NETWORK_UDP = 2
+} nobro_network_socket_kind_t;
+
+typedef enum nobro_network_buffer_model {
+    NOBRO_NETWORK_CALLER_LENT = 1,
+    NOBRO_NETWORK_FIXED_OWNED = 2,
+    NOBRO_NETWORK_VENDOR_MANAGED = 3
+} nobro_network_buffer_model_t;
+
+typedef struct nobro_ipv4_address {
+    uint8_t octets[4];
+} nobro_ipv4_address_t;
+
+typedef struct nobro_network_endpoint {
+    nobro_ipv4_address_t address;
+    uint16_t port;
+} nobro_network_endpoint_t;
+
+/* A generation changes whenever a slot is reopened, so an old handle cannot
+ * silently address a different connection in the same slot. */
+typedef struct nobro_network_socket {
+    nobro_network_socket_kind_t kind;
+    uint16_t slot;
+    uint16_t generation;
+} nobro_network_socket_t;
+
+typedef struct nobro_network_capabilities {
+    const char *backend_id;
+    uint16_t max_tcp_sockets;
+    uint16_t max_udp_sockets;
+    uint16_t mtu;
+    /* Zero with NOBRO_NETWORK_VENDOR_MANAGED means vendor-opaque capacity,
+     * not zero allocation. */
+    uint32_t rx_buffer_bytes;
+    uint32_t tx_buffer_bytes;
+    nobro_network_buffer_model_t buffer_model;
+    bool dns;
+} nobro_network_capabilities_t;
+
+typedef struct nobro_network_mount_receipt {
+    uint16_t instance;
+    nobro_network_capabilities_t capabilities;
+    uint32_t lifecycle_generation;
+} nobro_network_mount_receipt_t;
+
+typedef struct nobro_network_io_receipt {
+    nobro_network_socket_t socket;
+    uint16_t bytes;
+} nobro_network_io_receipt_t;
 
 #define NOBRO_BLE_GATT_VALUE_MAX 20u
 

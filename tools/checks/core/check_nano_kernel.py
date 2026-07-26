@@ -191,6 +191,26 @@ def build_case(root: pathlib.Path, source_text: str | dict, ceiling: int,
 
 def main() -> int:
     try:
+        dependencies = subprocess.check_output(
+            [
+                "cargo",
+                "tree",
+                "--locked",
+                "-p",
+                "nobro-kernel",
+                "--no-default-features",
+                "--edges",
+                "normal",
+                "--prefix",
+                "none",
+            ],
+            cwd=ROOT / "core",
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if re.search(r"(?m)^nobro-services(?:\s|$)", dependencies):
+            raise AssertionError("nobro-nano dependency tree pulled optional services")
         with tempfile.TemporaryDirectory(prefix="nobro-nano-") as tmp:
             root = pathlib.Path(tmp)
             simple = build_case(root / "simple", SIMPLE, 3_000, 64, 128, 192)

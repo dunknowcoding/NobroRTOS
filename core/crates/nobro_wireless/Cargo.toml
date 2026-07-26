@@ -19,3 +19,4 @@ nobro-net = { path = "../nobro_net" }
 [features]
 default = []
 alloc = []
+zigbee-aps = []

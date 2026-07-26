@@ -361,6 +361,23 @@ pub enum StackFamily {
     Thread,
 }
 
+/// Caller-selected logical connectivity-stack instance.
+///
+/// The value identifies a composition slot, never a USB/serial port or physical
+/// board. A concrete backend value is still owned by exactly one mounted instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackInstanceId(u16);
+
+impl StackInstanceId {
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
 /// Observable lifecycle shared by mountable connectivity stacks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StackState {
@@ -394,6 +411,16 @@ impl StackIdentity {
             && self.rx_queue_slots != 0
             && self.tx_queue_slots != 0
     }
+}
+
+/// Exact result of mounting one logical WiFi or BLE stack instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackMountReceipt {
+    pub instance: StackInstanceId,
+    pub identity: StackIdentity,
+    /// Starts at one for a newly mounted owned backend. Backend-specific recovery
+    /// counters remain available through provider diagnostics.
+    pub lifecycle_generation: u32,
 }
 
 /// Protocol-control failure. Vendor-specific detail remains in provider diagnostics.
@@ -534,8 +561,9 @@ pub struct MountedWifi<B> {
 }
 
 impl<B: WifiStack> MountedWifi<B> {
-    pub fn mount(mut backend: B) -> Result<Self, StackMountError<B>> {
-        if !backend.stack_identity().valid_for(StackFamily::Wifi) {
+    fn mount_owned(mut backend: B) -> Result<(Self, StackIdentity), StackMountError<B>> {
+        let identity = backend.stack_identity();
+        if !identity.valid_for(StackFamily::Wifi) {
             return Err(StackMountError {
                 backend,
                 error: StackError::InvalidIdentity,
@@ -550,7 +578,29 @@ impl<B: WifiStack> MountedWifi<B> {
                 error: StackError::BackendFault,
             });
         }
-        Ok(Self { backend })
+        Ok((Self { backend }, identity))
+    }
+
+    pub fn mount(backend: B) -> Result<Self, StackMountError<B>> {
+        Self::mount_owned(backend).map(|(mounted, _)| mounted)
+    }
+
+    /// Mount with an exact logical-instance receipt. Compatibility callers may
+    /// continue to use [`Self::mount`] without retaining receipt state.
+    pub fn mount_instance(
+        instance: StackInstanceId,
+        backend: B,
+    ) -> Result<(Self, StackMountReceipt), StackMountError<B>> {
+        Self::mount_owned(backend).map(|(mounted, identity)| {
+            (
+                mounted,
+                StackMountReceipt {
+                    instance,
+                    identity,
+                    lifecycle_generation: 1,
+                },
+            )
+        })
     }
 
     pub fn state(&mut self) -> StackState {
@@ -748,8 +798,9 @@ pub struct MountedBle<B> {
 }
 
 impl<B: BleStack> MountedBle<B> {
-    pub fn mount(mut backend: B) -> Result<Self, StackMountError<B>> {
-        if !backend.stack_identity().valid_for(StackFamily::Ble) {
+    fn mount_owned(mut backend: B) -> Result<(Self, StackIdentity), StackMountError<B>> {
+        let identity = backend.stack_identity();
+        if !identity.valid_for(StackFamily::Ble) {
             return Err(StackMountError {
                 backend,
                 error: StackError::InvalidIdentity,
@@ -764,7 +815,28 @@ impl<B: BleStack> MountedBle<B> {
                 error: StackError::BackendFault,
             });
         }
-        Ok(Self { backend })
+        Ok((Self { backend }, identity))
+    }
+
+    pub fn mount(backend: B) -> Result<Self, StackMountError<B>> {
+        Self::mount_owned(backend).map(|(mounted, _)| mounted)
+    }
+
+    /// Mount with an exact logical-instance receipt.
+    pub fn mount_instance(
+        instance: StackInstanceId,
+        backend: B,
+    ) -> Result<(Self, StackMountReceipt), StackMountError<B>> {
+        Self::mount_owned(backend).map(|(mounted, identity)| {
+            (
+                mounted,
+                StackMountReceipt {
+                    instance,
+                    identity,
+                    lifecycle_generation: 1,
+                },
+            )
+        })
     }
 
     pub fn state(&mut self) -> StackState {
@@ -833,6 +905,335 @@ impl<B: BleStack> MountedBle<B> {
 /// Mesh primitives retain their focused implementation crate, while the domain
 /// facade gives applications one import path for link and mesh composition.
 pub use nobro_net::{PrioQueue, Route, RoutingTable, SeenSet, TimeSync};
+
+// ------------------------------------------------------------ native IP data plane
+
+/// IP address accepted by a concrete vendor or native network stack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IpAddress {
+    V4([u8; 4]),
+    V6([u8; 16]),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkEndpoint {
+    pub address: IpAddress,
+    pub port: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkSocketKind {
+    Tcp,
+    Udp,
+}
+
+/// Opaque backend-issued socket handle. Generation prevents a stale handle from
+/// silently naming a newly opened socket in the same slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkSocket {
+    pub slot: u16,
+    pub generation: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkBufferModel {
+    CallerLent,
+    FixedOwned,
+    VendorManaged,
+}
+
+/// Stable limits for one native IP data-plane backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkCapabilities {
+    pub backend_id: &'static str,
+    pub max_sockets: u16,
+    pub mtu: u16,
+    pub rx_buffer_bytes: u32,
+    pub tx_buffer_bytes: u32,
+    pub buffer_model: NetworkBufferModel,
+    pub tcp: bool,
+    pub udp: bool,
+    pub ipv6: bool,
+    pub dns: bool,
+}
+
+impl NetworkCapabilities {
+    pub fn valid(self) -> bool {
+        !self.backend_id.is_empty()
+            && self.max_sockets != 0
+            && self.mtu != 0
+            && (self.tcp || self.udp)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkInstanceId(u16);
+
+impl NetworkInstanceId {
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkMountReceipt {
+    pub instance: NetworkInstanceId,
+    pub capabilities: NetworkCapabilities,
+    pub lifecycle_generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkIoReceipt {
+    pub socket: NetworkSocket,
+    pub bytes: u16,
+}
+
+/// Native TCP/UDP data plane supplied by a selected vendor or board stack.
+///
+/// WiFi/BLE control remains a separate stack instance. This trait does not
+/// implement TCP/IP itself; it gives applications one bounded, owned contract
+/// for ESP-IDF, WiFiS3, CYW43, smoltcp, or another independently selected
+/// backend.
+pub trait NativeNetworkStack {
+    fn capabilities(&self) -> NetworkCapabilities;
+    fn state(&mut self) -> StackState;
+    fn mount_network(&mut self) -> Result<(), StackError>;
+    fn open_socket(
+        &mut self,
+        kind: NetworkSocketKind,
+        local_port: u16,
+    ) -> Result<NetworkSocket, StackError>;
+    fn connect(
+        &mut self,
+        socket: NetworkSocket,
+        remote: NetworkEndpoint,
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError>;
+    fn resolve(
+        &mut self,
+        host: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<IpAddress, StackError>;
+    fn send(
+        &mut self,
+        socket: NetworkSocket,
+        payload: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<usize, StackError>;
+    fn receive(
+        &mut self,
+        socket: NetworkSocket,
+        output: &mut [u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<usize, StackError>;
+    fn close_socket(&mut self, socket: NetworkSocket) -> Result<(), StackError>;
+    fn quiesce_network(&mut self) -> Result<(), StackError>;
+    fn recover_network(&mut self) -> Result<(), StackError>;
+}
+
+pub struct NetworkMountError<B> {
+    backend: B,
+    error: StackError,
+}
+
+impl<B> NetworkMountError<B> {
+    pub const fn error(&self) -> StackError {
+        self.error
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+/// Exactly one owned backend mounted as one logical native-network instance.
+pub struct MountedNetwork<B> {
+    backend: B,
+    capabilities: NetworkCapabilities,
+}
+
+impl<B: NativeNetworkStack> MountedNetwork<B> {
+    pub fn mount(
+        instance: NetworkInstanceId,
+        mut backend: B,
+    ) -> Result<(Self, NetworkMountReceipt), NetworkMountError<B>> {
+        let capabilities = backend.capabilities();
+        if !capabilities.valid() {
+            return Err(NetworkMountError {
+                backend,
+                error: StackError::InvalidIdentity,
+            });
+        }
+        if let Err(error) = backend.mount_network() {
+            return Err(NetworkMountError { backend, error });
+        }
+        if backend.state() != StackState::Ready {
+            return Err(NetworkMountError {
+                backend,
+                error: StackError::BackendFault,
+            });
+        }
+        Ok((
+            Self {
+                backend,
+                capabilities,
+            },
+            NetworkMountReceipt {
+                instance,
+                capabilities,
+                lifecycle_generation: 1,
+            },
+        ))
+    }
+
+    pub const fn capabilities(&self) -> NetworkCapabilities {
+        self.capabilities
+    }
+
+    pub fn open_socket(
+        &mut self,
+        kind: NetworkSocketKind,
+        local_port: u16,
+    ) -> Result<NetworkSocket, StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        if (kind == NetworkSocketKind::Tcp && !self.capabilities.tcp)
+            || (kind == NetworkSocketKind::Udp && !self.capabilities.udp)
+        {
+            return Err(StackError::InvalidConfig);
+        }
+        self.backend.open_socket(kind, local_port)
+    }
+
+    pub fn connect(
+        &mut self,
+        socket: NetworkSocket,
+        remote: NetworkEndpoint,
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<(), StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        if deadline_us <= now_us {
+            return Err(StackError::DeadlineElapsed);
+        }
+        if matches!(remote.address, IpAddress::V6(_)) && !self.capabilities.ipv6 {
+            return Err(StackError::InvalidConfig);
+        }
+        self.backend.connect(socket, remote, now_us, deadline_us)
+    }
+
+    pub fn resolve(
+        &mut self,
+        host: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<IpAddress, StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        if !self.capabilities.dns || host.is_empty() || host.len() > 253 {
+            return Err(StackError::InvalidConfig);
+        }
+        if deadline_us <= now_us {
+            return Err(StackError::DeadlineElapsed);
+        }
+        self.backend.resolve(host, now_us, deadline_us)
+    }
+
+    pub fn send(
+        &mut self,
+        socket: NetworkSocket,
+        payload: &[u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<NetworkIoReceipt, StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        if payload.is_empty() || payload.len() > usize::from(self.capabilities.mtu) {
+            return Err(StackError::InvalidConfig);
+        }
+        if deadline_us <= now_us {
+            return Err(StackError::DeadlineElapsed);
+        }
+        let bytes = self.backend.send(socket, payload, now_us, deadline_us)?;
+        if bytes > payload.len() || bytes > usize::from(u16::MAX) {
+            return Err(StackError::BackendFault);
+        }
+        Ok(NetworkIoReceipt {
+            socket,
+            bytes: bytes as u16,
+        })
+    }
+
+    pub fn receive(
+        &mut self,
+        socket: NetworkSocket,
+        output: &mut [u8],
+        now_us: u64,
+        deadline_us: u64,
+    ) -> Result<NetworkIoReceipt, StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        if output.is_empty() || deadline_us <= now_us {
+            return Err(if output.is_empty() {
+                StackError::InvalidConfig
+            } else {
+                StackError::DeadlineElapsed
+            });
+        }
+        let bytes = self.backend.receive(socket, output, now_us, deadline_us)?;
+        if bytes > output.len() || bytes > usize::from(u16::MAX) {
+            return Err(StackError::BackendFault);
+        }
+        Ok(NetworkIoReceipt {
+            socket,
+            bytes: bytes as u16,
+        })
+    }
+
+    pub fn close_socket(&mut self, socket: NetworkSocket) -> Result<(), StackError> {
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::NotReady);
+        }
+        self.backend.close_socket(socket)
+    }
+
+    pub fn quiesce(&mut self) -> Result<(), StackError> {
+        self.backend.quiesce_network()?;
+        if self.backend.state() != StackState::Quiesced {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn recover(&mut self) -> Result<(), StackError> {
+        self.backend.recover_network()?;
+        if self.backend.state() != StackState::Ready {
+            return Err(StackError::BackendFault);
+        }
+        Ok(())
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+#[cfg(any(test, feature = "zigbee-aps"))]
+pub mod zigbee_aps;
 
 // ---------------------------------------------------------------- BLE advertising
 
@@ -2351,5 +2752,228 @@ mod tests {
         assert_eq!(link.recv(&mut destination), 0);
         assert_eq!(link.diagnostics().rx_packets, 0);
         assert_eq!(link.diagnostics().rx_rejected, 1);
+    }
+
+    #[test]
+    fn logical_stack_mounts_report_instance_and_backend_limits() {
+        let (_, wifi_receipt) =
+            MountedWifi::mount_instance(StackInstanceId::new(4), MockWifi::new(false))
+                .ok()
+                .unwrap();
+        assert_eq!(wifi_receipt.instance.get(), 4);
+        assert_eq!(wifi_receipt.identity.backend_id, "test-wifi");
+        assert_eq!(wifi_receipt.identity.family, StackFamily::Wifi);
+        assert_eq!(wifi_receipt.lifecycle_generation, 1);
+
+        let (_, ble_receipt) = MountedBle::mount_instance(StackInstanceId::new(9), MockBle::new())
+            .ok()
+            .unwrap();
+        assert_eq!(ble_receipt.instance.get(), 9);
+        assert_eq!(ble_receipt.identity.backend_id, "test-ble");
+        assert_eq!(ble_receipt.identity.service_slots, 1);
+        assert_eq!(ble_receipt.identity.characteristic_slots, 2);
+    }
+
+    struct FakeNativeNetwork {
+        state: StackState,
+        payload: [u8; 64],
+        payload_len: usize,
+        socket_open: bool,
+    }
+
+    impl FakeNativeNetwork {
+        const fn new() -> Self {
+            Self {
+                state: StackState::Down,
+                payload: [0; 64],
+                payload_len: 0,
+                socket_open: false,
+            }
+        }
+
+        const fn socket() -> NetworkSocket {
+            NetworkSocket {
+                slot: 0,
+                generation: 1,
+            }
+        }
+
+        fn accepts(&self, socket: NetworkSocket) -> bool {
+            self.socket_open && socket == Self::socket()
+        }
+    }
+
+    impl NativeNetworkStack for FakeNativeNetwork {
+        fn capabilities(&self) -> NetworkCapabilities {
+            NetworkCapabilities {
+                backend_id: "test-native-ip",
+                max_sockets: 2,
+                mtu: 64,
+                rx_buffer_bytes: 64,
+                tx_buffer_bytes: 64,
+                buffer_model: NetworkBufferModel::CallerLent,
+                tcp: true,
+                udp: true,
+                ipv6: false,
+                dns: true,
+            }
+        }
+
+        fn state(&mut self) -> StackState {
+            self.state
+        }
+
+        fn mount_network(&mut self) -> Result<(), StackError> {
+            self.state = StackState::Ready;
+            Ok(())
+        }
+
+        fn open_socket(
+            &mut self,
+            _kind: NetworkSocketKind,
+            _local_port: u16,
+        ) -> Result<NetworkSocket, StackError> {
+            if self.state != StackState::Ready || self.socket_open {
+                return Err(StackError::Busy);
+            }
+            self.socket_open = true;
+            Ok(Self::socket())
+        }
+
+        fn connect(
+            &mut self,
+            socket: NetworkSocket,
+            _remote: NetworkEndpoint,
+            _now_us: u64,
+            _deadline_us: u64,
+        ) -> Result<(), StackError> {
+            if self.accepts(socket) {
+                Ok(())
+            } else {
+                Err(StackError::NotReady)
+            }
+        }
+
+        fn resolve(
+            &mut self,
+            host: &[u8],
+            _now_us: u64,
+            _deadline_us: u64,
+        ) -> Result<IpAddress, StackError> {
+            if host == b"example.test" {
+                Ok(IpAddress::V4([192, 0, 2, 1]))
+            } else {
+                Err(StackError::BackendFault)
+            }
+        }
+
+        fn send(
+            &mut self,
+            socket: NetworkSocket,
+            payload: &[u8],
+            _now_us: u64,
+            _deadline_us: u64,
+        ) -> Result<usize, StackError> {
+            if !self.accepts(socket) {
+                return Err(StackError::NotReady);
+            }
+            self.payload[..payload.len()].copy_from_slice(payload);
+            self.payload_len = payload.len();
+            Ok(payload.len())
+        }
+
+        fn receive(
+            &mut self,
+            socket: NetworkSocket,
+            output: &mut [u8],
+            _now_us: u64,
+            _deadline_us: u64,
+        ) -> Result<usize, StackError> {
+            if !self.accepts(socket) {
+                return Err(StackError::NotReady);
+            }
+            let count = self.payload_len.min(output.len());
+            output[..count].copy_from_slice(&self.payload[..count]);
+            self.payload_len = 0;
+            Ok(count)
+        }
+
+        fn close_socket(&mut self, socket: NetworkSocket) -> Result<(), StackError> {
+            if !self.accepts(socket) {
+                return Err(StackError::NotReady);
+            }
+            self.socket_open = false;
+            Ok(())
+        }
+
+        fn quiesce_network(&mut self) -> Result<(), StackError> {
+            self.socket_open = false;
+            self.state = StackState::Quiesced;
+            Ok(())
+        }
+
+        fn recover_network(&mut self) -> Result<(), StackError> {
+            self.state = StackState::Ready;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn native_network_contract_is_bounded_owned_and_deadline_aware() {
+        let (mut network, receipt) =
+            MountedNetwork::mount(NetworkInstanceId::new(3), FakeNativeNetwork::new())
+                .ok()
+                .unwrap();
+        assert_eq!(receipt.instance.get(), 3);
+        assert_eq!(receipt.capabilities.backend_id, "test-native-ip");
+        assert_eq!(
+            receipt.capabilities.buffer_model,
+            NetworkBufferModel::CallerLent
+        );
+        assert_eq!(
+            network.resolve(b"example.test", 1, 10),
+            Ok(IpAddress::V4([192, 0, 2, 1]))
+        );
+
+        let socket = network.open_socket(NetworkSocketKind::Tcp, 0).unwrap();
+        let endpoint = NetworkEndpoint {
+            address: IpAddress::V4([192, 0, 2, 1]),
+            port: 443,
+        };
+        assert_eq!(network.connect(socket, endpoint, 1, 10), Ok(()));
+        assert_eq!(
+            network.connect(
+                socket,
+                NetworkEndpoint {
+                    address: IpAddress::V6([0; 16]),
+                    port: 443,
+                },
+                1,
+                10,
+            ),
+            Err(StackError::InvalidConfig)
+        );
+        assert_eq!(
+            network.send(socket, b"ping", 10, 10),
+            Err(StackError::DeadlineElapsed)
+        );
+        assert_eq!(network.send(socket, b"ping", 1, 10).unwrap().bytes, 4);
+        let mut output = [0u8; 8];
+        assert_eq!(
+            network.receive(socket, &mut output, 2, 10).unwrap().bytes,
+            4
+        );
+        assert_eq!(&output[..4], b"ping");
+        assert_eq!(network.close_socket(socket), Ok(()));
+        assert_eq!(network.quiesce(), Ok(()));
+        assert_eq!(
+            network.open_socket(NetworkSocketKind::Udp, 1234),
+            Err(StackError::NotReady)
+        );
+        assert_eq!(network.recover(), Ok(()));
+        assert_eq!(
+            network.open_socket(NetworkSocketKind::Udp, 1234),
+            Ok(FakeNativeNetwork::socket())
+        );
     }
 }

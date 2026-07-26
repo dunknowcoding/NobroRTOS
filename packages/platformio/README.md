@@ -68,7 +68,9 @@ are explicit at compile time.
 
 UNO R4 WiFi projects may include `NobroArduinoWiFiS3.h` directly. The
 facade uses the platform's own WiFiS3 library for bounded association
-lifecycle and caller-sized scan output. One exact WiFiS3 0.6.0 workload has
+lifecycle and caller-sized scan output. Its independently mounted
+`ArduinoWiFiS3Network` provides fixed TCP/UDP slots, DNS, stale-handle
+generations, and caller-lent payload buffers. One exact WiFiS3 0.6.0 workload has
 zero-disabled, physical DNS/TCP/lifecycle, and RA-side/controller-image price
 evidence; controller-internal runtime resources, other firmware/workloads,
 and complete shared-controller BLE pricing remain separate. The pinned
@@ -87,7 +89,8 @@ CPU, and the complete shared-controller resource price remain unmeasured.
 
 ESP32-family Arduino projects may include `NobroArduinoEspWiFi.h` directly.
 It delegates to the selected platform's official `WiFi` stack and keeps
-credentials runtime-only. ESP32/C3/S3 compilation, C3 zero-disabled linkage,
+credentials runtime-only. `ArduinoEspNativeNetwork` supplies the same
+separately mounted fixed-slot TCP/UDP/DNS contract. ESP32/C3/S3 compilation, C3 zero-disabled linkage,
 and exact C3 association/DNS/TCP/lifecycle evidence are present. One no-debug
 C3 workload is completely priced at four HTTP transactions/s; other targets,
 rates, socket workloads, and WiFi/BLE coexistence require separate evidence.

@@ -90,6 +90,8 @@ as topology metadata, not exposed as a Python payload transport.
 | `nobro-secure` | Secure boot decisions, attestation, rollback guard, key store, tamper seal, and audit log |
 | `nobro-net` | Mesh routing, secure links, OTA chunking, store-forward queues, fleet OTA rollout planning |
 | `nobro-wireless` | Bounded link contracts, protocol descriptors/helpers, and implemented `WirelessBackend` adapters such as MFRC522 and CC2530 |
+| `nobro-storage` | Wear-leveled KV records, transactional blobs, and a fixed-capacity atomic filesystem |
+| `nobro-services` | Feature-selected filesystem, USB-host, display, and shell services kept outside the nano dependency tree |
 | `nobro-camera` | Frame leases, capture admission, stream backpressure, recovery, and diagnostics |
 | `nobro-host` | Host-side constants, report layouts, labels, and status helpers |
 
@@ -175,8 +177,9 @@ and retry attempts/state belong to the caller.
 that arm (or a wildcard). `LinkDiagnostics` adds public `rx_rejected`, so downstream
 struct literals must initialize it; `Default` remains available. The CC2530 descriptor
 is now `IEEE802154_RAW` with the 127-byte PSDU limit after explicit initialization.
-`ZIGBEE_APS` remains catalog metadata and is not an implemented Zigbee join/NWK/APS
-stack.
+The optional `zigbee-aps` feature implements the APS data-frame boundary over
+an already joined NWK provider; it is not a Zigbee formation/join/ZDO/security
+stack and does not make the raw CC2530 backend APS-capable.
 
 ### Neural Network API
 
@@ -221,8 +224,10 @@ or retry a failed attempt: priority is scheduler-owned and retry state is caller
 The crate currently includes concrete MFRC522 and CC2530 implementations plus protocol
 helpers such as `BleAdvBuilder`. After explicit initialization, `Cc2530<ByteIo>` is a raw
 IEEE 802.15.4 PSDU transport with the 127-byte PHY limit; it does not join a Zigbee
-network or implement APS. `ZIGBEE_APS` remains descriptor metadata, not evidence of an
-implemented Zigbee stack. A descriptor or packet builder by itself is not board support.
+network or implement APS. `ApsDataService` can encode/decode bounded unfragmented
+APS unicast, broadcast, and group data frames, enforce acknowledgement rules,
+and reject duplicate source/counter pairs. It mounts only an explicitly joined
+`ApsNetworkBackend`; raw 802.15.4 does not satisfy that trait.
 
 `WifiStack` and `BleStack` provide separate lifecycle contracts beneath
 `ManagedLink`/`WirelessBackend`; `MountedWifi` and `MountedBle` return backend ownership
@@ -234,6 +239,15 @@ bindings exist under
 `wireless/wifi/arduino-wifis3` and `wireless/wifi/arduino-esp`. Their Arduino
 facades copy scan results into caller storage, borrow runtime credentials, and
 expose scan/join/leave/quiesce/recovery through the selected board package.
+
+`NativeNetworkStack` and `MountedNetwork` separately own a selected TCP/UDP/DNS
+data plane. Capabilities report backend id, socket count, MTU, protocol support,
+IPv6/DNS support, and buffer ownership. `NetworkSocket` generations reject stale
+handles. `NobroArduinoNativeNetwork.h` instantiates the same fixed-slot contract
+as `ArduinoWiFiS3Network` and `ArduinoEspNativeNetwork`; payload and receive
+storage remain caller-lent while the selected board package owns its internal
+buffers and heap. A zero byte count with the vendor-managed buffer model means
+the board package does not disclose that capacity, not that it allocates zero.
 
 Promoted provider compositions can wrap their backend with
 `nobro_device::ProviderLifecycle`. Its session token is generation-tagged;
@@ -408,6 +422,12 @@ flash pages. Payload and checksum are written before the commit marker, and moun
 selects the newest valid generation. A reset during erase or programming therefore
 exposes either the complete old image or the complete new image.
 
+`nobro-storage::AtomicFileSystem<F, FILES, NAME_BYTES, DATA_BYTES>` stores a
+fixed directory and bounded file contents in that transaction image. Mount,
+write, and remove use caller-owned scratch storage. File count, name length,
+file length, and total image capacity are compile-time bounded; repeated writes
+alternate pages rather than concentrating erase wear.
+
 `nobro-database::PersistentTable` combines that transaction protocol with
 `Table<V, N>`'s stable `RecordCodec`. Callers supply a scratch buffer, keeping load
 and save allocation-free:
@@ -418,6 +438,13 @@ let mut image = [0u8; 256];
 let table = persisted.load::<Reading, 8>(&mut image)?;
 persisted.save(&table, &mut image)?;
 ```
+
+### Optional Services
+
+`nobro-services` has no default features and is not a dependency of
+`nobro-nano`. Applications can select `filesystem`, `usb-host`, `display`, or
+`shell` independently. USB host and display use fallible owned mounts with
+stable capability receipts; shell parsing uses fixed line and argument arrays.
 
 ### Kernel API
 

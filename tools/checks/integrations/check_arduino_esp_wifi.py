@@ -104,8 +104,51 @@ void setup() {
 void loop() {}
 """
 
+NATIVE_FEATURE = r"""#include <NobroRTOS.h>
+#include <NobroArduinoEspWiFi.h>
+
+nobro::ArduinoEspNativeNetwork network;
+volatile bool exerciseProvider = false;
+
+void setup() {
+  if (exerciseProvider) {
+    nobro_network_mount_receipt_t mount_receipt = {};
+    nobro_network_socket_t socket = {};
+    nobro_network_io_receipt_t io_receipt = {};
+    nobro_ipv4_address_t resolved = {};
+    nobro_network_endpoint_t endpoint = {};
+    const uint8_t host[] = {'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm'};
+    uint8_t reply[16] = {};
+    endpoint.address.octets[0] = 192;
+    endpoint.address.octets[1] = 0;
+    endpoint.address.octets[2] = 2;
+    endpoint.address.octets[3] = 1;
+    endpoint.port = 80;
+    const uint64_t now = micros();
+    network.mount(1, mount_receipt);
+    network.resolve(host, sizeof(host), now, now + 1000, resolved);
+    network.open(NOBRO_NETWORK_TCP, 0, socket);
+    network.connect(socket, endpoint, now, now + 1000);
+    network.send(socket, host, sizeof(host), now, now + 1000, io_receipt);
+    network.receive(socket, reply, sizeof(reply), now, now + 1000, io_receipt);
+    network.close(socket);
+    network.open(NOBRO_NETWORK_UDP, 1234, socket);
+    network.connect(socket, endpoint, now, now + 1000);
+    network.close(socket);
+    network.quiesce();
+    network.recover();
+  }
+  Serial.begin(115200);
+  Serial.println(network.capabilities().backend_id);
+  Serial.println(network.staticRamBytes());
+}
+void loop() {}
+"""
+
 FORBIDDEN_DISABLED = (
     "ArduinoEspWiFiStack",
+    "ArduinoEspNativeNetwork",
+    "ArduinoNativeNetwork",
     "WiFiClass",
     "WiFiGenericClass",
     "esp_wifi_init",
@@ -337,14 +380,18 @@ def verify_metadata() -> None:
     ):
         raise RuntimeError("Arduino-ESP32 WiFi receipt gate is stale")
 
-    header = (PACKAGE / "src" / "NobroArduinoEspWiFi.h").read_text(
-        encoding="utf-8"
+    header = "\n".join(
+        (PACKAGE / "src" / name).read_text(encoding="utf-8")
+        for name in ("NobroArduinoEspWiFi.h", "NobroArduinoNativeNetwork.h")
     )
     for token in (
         "#if !defined(NOBRO_ESP_WIFI_DISABLED)",
         "#if !defined(ARDUINO_ARCH_ESP32)",
         "#include <WiFi.h>",
         "#include <esp_wifi.h>",
+        '#include "NobroArduinoNativeNetwork.h"',
+        "ArduinoEspNativeNetwork",
+        "NOBRO_NETWORK_VENDOR_MANAGED",
         "WiFi.persistent(false);",
         "WiFi.STA.begin(false)",
         "esp_wifi_scan_start(&config, true)",
@@ -386,11 +433,16 @@ def main() -> int:
             verify_disabled_map(disabled[2])
 
             enabled_sizes: list[tuple[str, int, int]] = []
+            native_sizes: list[tuple[str, int, int]] = []
             for index, fqbn in enumerate(FQBNS):
                 enabled = compile_sketch(
                     cli, root, f"enabled-{index}", FEATURE, fqbn
                 )
                 enabled_sizes.append((fqbn, enabled[0], enabled[1]))
+                native = compile_sketch(
+                    cli, root, f"native-{index}", NATIVE_FEATURE, fqbn
+                )
+                native_sizes.append((fqbn, native[0], native[1]))
             c3_enabled = enabled_sizes[0]
             if c3_enabled[1] <= baseline[0] or c3_enabled[2] < baseline[1]:
                 raise RuntimeError(
@@ -420,6 +472,13 @@ def main() -> int:
             )
             for fqbn, flash, ram in enabled_sizes:
                 print(f"  PASS {fqbn} enabled flash={flash} ram={ram}")
+            if native_sizes[0][1] <= baseline[0] or native_sizes[0][2] < baseline[1]:
+                raise RuntimeError(
+                    "ESP32-C3 native data plane is not observable: "
+                    f"baseline={baseline[:2]} native={native_sizes[0][1:]}"
+                )
+            for fqbn, flash, ram in native_sizes:
+                print(f"  PASS {fqbn} native-network flash={flash} ram={ram}")
     except (OSError, RuntimeError, ValueError) as error:
         print(f"ARDUINO ESP WIFI: FAIL ({error})")
         return 1

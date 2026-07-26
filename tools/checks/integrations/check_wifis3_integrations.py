@@ -113,8 +113,51 @@ void setup() {
 void loop() {}
 '''
 
+NATIVE_FEATURE = r'''#include <NobroRTOS.h>
+#include <NobroArduinoWiFiS3.h>
+
+nobro::ArduinoWiFiS3Network network;
+volatile bool exerciseProvider = false;
+
+void setup() {
+  if (exerciseProvider) {
+    nobro_network_mount_receipt_t mount_receipt = {};
+    nobro_network_socket_t socket = {};
+    nobro_network_io_receipt_t io_receipt = {};
+    nobro_ipv4_address_t resolved = {};
+    nobro_network_endpoint_t endpoint = {};
+    const uint8_t host[] = {'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm'};
+    uint8_t reply[16] = {};
+    endpoint.address.octets[0] = 192;
+    endpoint.address.octets[1] = 0;
+    endpoint.address.octets[2] = 2;
+    endpoint.address.octets[3] = 1;
+    endpoint.port = 80;
+    const uint64_t now = micros();
+    network.mount(1, mount_receipt);
+    network.resolve(host, sizeof(host), now, now + 1000, resolved);
+    network.open(NOBRO_NETWORK_TCP, 0, socket);
+    network.connect(socket, endpoint, now, now + 1000);
+    network.send(socket, host, sizeof(host), now, now + 1000, io_receipt);
+    network.receive(socket, reply, sizeof(reply), now, now + 1000, io_receipt);
+    network.close(socket);
+    network.open(NOBRO_NETWORK_UDP, 1234, socket);
+    network.connect(socket, endpoint, now, now + 1000);
+    network.close(socket);
+    network.quiesce();
+    network.recover();
+  }
+  Serial.begin(115200);
+  Serial.println(network.capabilities().backend_id);
+  Serial.println(network.staticRamBytes());
+}
+void loop() {}
+'''
+
 FORBIDDEN_DISABLED = (
     "ArduinoWiFiS3Stack",
+    "ArduinoWiFiS3Network",
+    "ArduinoNativeNetwork",
     "CWifi",
     "ModemClass",
     "WiFiS3",
@@ -369,10 +412,16 @@ def verify_metadata() -> None:
     ):
         raise RuntimeError("WiFiS3 tier claim or receipt gate is stale")
 
-    header = (PACKAGE / "src" / "NobroArduinoWiFiS3.h").read_text(encoding="utf-8")
+    header = "\n".join(
+        (PACKAGE / "src" / name).read_text(encoding="utf-8")
+        for name in ("NobroArduinoWiFiS3.h", "NobroArduinoNativeNetwork.h")
+    )
     for token in (
         "#if !defined(NOBRO_WIFI_S3_DISABLED)",
         '#include <WiFiS3.h>',
+        '#include "NobroArduinoNativeNetwork.h"',
+        "ArduinoWiFiS3Network",
+        "NOBRO_NETWORK_VENDOR_MANAGED",
         "vendorManagedHeap() const { return true; }",
         "cannot preempt the vendor call",
         "runtime-only",
@@ -393,6 +442,7 @@ def main() -> int:
             baseline = compile_sketch(cli, root, "baseline", BASELINE)
             disabled = compile_sketch(cli, root, "disabled", DISABLED)
             enabled = compile_sketch(cli, root, "enabled", FEATURE)
+            native = compile_sketch(cli, root, "native-network", NATIVE_FEATURE)
             if baseline[:2] != disabled[:2]:
                 raise RuntimeError(
                     "disabled WiFiS3 facade is not zero-cost: "
@@ -404,11 +454,18 @@ def main() -> int:
                     "enabled WiFiS3 price is not observable: "
                     f"baseline={baseline[:2]} enabled={enabled[:2]}"
                 )
+            if native[0] <= baseline[0] or native[1] < baseline[1]:
+                raise RuntimeError(
+                    "native WiFiS3 data plane is not observable: "
+                    f"baseline={baseline[:2]} native={native[:2]}"
+                )
             print(
                 "  PASS zero-disabled "
                 f"flash={baseline[0]} ram={baseline[1]}; "
                 f"enabled-delta flash={enabled[0] - baseline[0]} "
-                f"ram={enabled[1] - baseline[1]}"
+                f"ram={enabled[1] - baseline[1]}; "
+                f"native-delta flash={native[0] - baseline[0]} "
+                f"ram={native[1] - baseline[1]}"
             )
     except (OSError, RuntimeError, ValueError) as error:
         print(f"WIFIS3 INTEGRATIONS: FAIL ({error})")

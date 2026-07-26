@@ -23,7 +23,8 @@ HOST_CRATES = [
     "nobro-admission", "nobro-net", "nobro-crypto", "nobro-ml", "nobro-imu", "nobro-sensor", "nobro-power",
     "nobro-sal", "nobro-kernel", "nobro-classic", "nobro-control",
     "nobro-database", "nobro-secure", "nobro-storage",
-    "nobro-device", "nobro-wireless", "nobro-camera", "nobro-nn", "nobro-ai", "nobro-host",
+    "nobro-device", "nobro-wireless", "nobro-camera", "nobro-nn", "nobro-ai",
+    "nobro-services", "nobro-host",
     "nobro-usb", "nobro-hal", "nobro-adapter-bmp280",
     "nobro-adapter-icm45686", "nobro-adapter-ina3221", "nobro-adapter-motion-ai",
     "nobro-adapter-mpu9250-imu", "nobro-adapter-nn-motion-ai",
@@ -85,9 +86,15 @@ def gate_specs(quick, rust_only=False, extended=False):
             CORE,
         ))
         specs.append((
-            "wireless adaptive alloc feature tests",
+            "wireless optional feature tests",
             ["cargo", "test", "--locked", "--target", host_target(),
-             "-p", "nobro-wireless", "--features", "alloc"],
+             "-p", "nobro-wireless", "--all-features"],
+            CORE,
+        ))
+        specs.append((
+            "optional application service tests",
+            ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-services", "--all-features"],
             CORE,
         ))
         specs.append((
@@ -125,6 +132,13 @@ def gate_specs(quick, rust_only=False, extended=False):
             ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
              "--target", host_target(), "-p", "nobro-kernel", "--features",
              "preemptive", "--", "-D", "warnings"],
+            CORE,
+        ))
+        specs.append((
+            "optional application service clippy",
+            ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
+             "--target", host_target(), "-p", "nobro-services", "--all-features",
+             "--", "-D", "warnings"],
             CORE,
         ))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
