@@ -128,8 +128,8 @@ From the main repository:
 ```bash
 python tools/release/package_arduino.py --sync
 python tools/release/package_arduino.py --check
-python tools/checks/check_distribution_artifacts.py
-python tools/checks/check_release_versions.py --release
+python tools/checks/release/check_distribution_artifacts.py
+python tools/checks/release/check_release_versions.py --release
 ```
 
 Only the clean package-root contents are copied to `NobroRTOS-Arduino`.

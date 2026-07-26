@@ -4,7 +4,7 @@
 Zephyr/Linux describe a board in DeviceTree; NobroRTOS boards are data-first board.json.
 This importer parses the DTS subset that maps cleanly - compatible, model, the code/app
 flash partition, the SRAM region, and the status LED gpio - and emits a board.json that
-passes tools/checks/check_board_profiles.py. Everything DeviceTree does NOT carry (NobroRTOS
+passes tools/checks/platforms/check_board_profiles.py. Everything DeviceTree does NOT carry (NobroRTOS
 software budgets, the cargo feature name, servo/trigger pins) is filled with reviewable
 defaults and listed under "_review" so nothing is silently invented.
 
@@ -22,7 +22,12 @@ import sys
 
 sys.path.insert(
     0,
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "checks"),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "checks",
+        "platforms",
+    ),
 )
 import check_board_profiles as cbp  # reuse the real validator  # noqa: E402
 

@@ -24,7 +24,7 @@ interrupt/DMA/clock/boot ownership. Profiles whose startup must remain in a main
 port name that manifest instead of pretending a generic image is safe.
 These mirror the compiled `BoardDesc`/`BoardPackage` fixtures in
 `crates/nobro_hal/src/board.rs` and `crates/nobro_hal/src/board_catalog.rs`, and are
-checked for internal consistency by `tools/checks/check_board_profiles.py`.
+checked for internal consistency by `tools/checks/platforms/check_board_profiles.py`.
 
 An application crate selects exactly one board via its `feature` (for example,
 `board-promicro-nosd`). A board profile is a validated compatibility contract; full

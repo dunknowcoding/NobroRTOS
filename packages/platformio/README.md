@@ -108,5 +108,5 @@ validates a bounded declaration; native execution and target evidence remain in
 the main NobroRTOS repository.
 
 `python tools/release/package_arduino.py --check` verifies the vendored headers and
-license. `python tools/checks/check_distribution_artifacts.py` packs and clean-install
+license. `python tools/checks/release/check_distribution_artifacts.py` packs and clean-install
 checks the package without publishing it.

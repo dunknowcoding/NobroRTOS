@@ -7,7 +7,7 @@ Public, portable tooling is grouped by role:
 | [`cli/`](cli/) | Users and SDK integrations | Project, firmware, flashing, diagnostics, admission, and code-generation commands |
 | [`build/`](build/) | Build systems | Linker, image, ABI, and generated-source helpers |
 | [`release/`](release/) | Release maintainers | Arduino, PlatformIO, UF2, and Tier-C artifact packagers |
-| [`checks/`](checks/) | Contributors and CI | Reproducible source, package, portability, and integration gates |
+| [`checks/`](checks/) | Contributors and CI | Reproducible gates grouped into core, platform, integration, product, and release-policy domains |
 
 Use the SDK dispatcher for normal work:
 

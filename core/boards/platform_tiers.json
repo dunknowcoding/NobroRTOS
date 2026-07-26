@@ -298,7 +298,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_esp32_peripheral_integrations.py"],
+      "command": ["python", "tools/checks/integrations/check_esp32_peripheral_integrations.py"],
       "claim_scopes": [
         {
           "platform": "esp32c3",
@@ -324,7 +324,7 @@
       "cwd": ".",
       "command": [
         "python",
-        "tools/checks/check_audio_integrations.py",
+        "tools/checks/integrations/check_audio_integrations.py",
         "--library",
         "_work/NiusAudio",
         "--compile"
@@ -448,7 +448,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_facade.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_facade.py"],
       "claim_scopes": [
         {
           "platform": "ra4m1",
@@ -467,7 +467,7 @@
       "runner": "rust-matrix",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_provider_lifecycle.py", "--target", "{host_target}"],
+      "command": ["python", "tools/checks/platforms/check_provider_lifecycle.py", "--target", "{host_target}"],
       "claim_scopes": [
         {
           "platform": "ra4m1",
@@ -501,7 +501,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_compile.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_compile.py"],
       "environment": {
         "NOBRO_ARDUINO_FQBNS": "arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3"
       },
@@ -518,7 +518,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_wifis3_integrations.py"],
+      "command": ["python", "tools/checks/integrations/check_wifis3_integrations.py"],
       "claim_scopes": [
         {
           "platform": "ra4m1",
@@ -532,7 +532,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_ble_integrations.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_ble_integrations.py"],
       "claim_scopes": [
         {
           "platform": "ra4m1",
@@ -546,7 +546,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_esp_wifi.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_esp_wifi.py"],
       "claim_scopes": [
         {
           "platform": "esp32c3",
@@ -560,7 +560,7 @@
       "runner": "arduino-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_esp_ble.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_esp_ble.py"],
       "claim_scopes": [
         {
           "platform": "esp32",
@@ -584,7 +584,7 @@
       "runner": "arduino-nrf-package",
       "required": true,
       "cwd": ".",
-      "command": ["python", "tools/checks/check_arduino_compile.py"],
+      "command": ["python", "tools/checks/integrations/check_arduino_compile.py"],
       "environment": {
         "NOBRO_ARDUINO_FQBNS": "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
       },

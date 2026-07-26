@@ -1,12 +1,22 @@
 # Checks
 
-Reproducible contributor and hosted-CI gates. `run_checks.py` is the portable
-local entry point; `ci_matrix.sh` adds the cross-MCU build matrix.
+Reproducible contributor and hosted-CI gates. Use `run_checks.py` as the
+portable local entry point; `ci_matrix.sh` adds the cross-MCU build matrix.
 
-`check_firmware_generation.py` builds the same compact application for every
-board profile that declares a standalone `application-image` contract. This
-guards the board-owned target, linker, startup, clock, interrupt, DMA, and boot
-metadata used by `nobro firmware`.
+| Directory | Scope |
+| --- | --- |
+| [`core/`](core/) | Kernel, timing, layout, dependency, and nano-runtime invariants |
+| [`platforms/`](platforms/) | Board profiles, capability tiers, firmware generation, and portability |
+| [`integrations/`](integrations/) | Arduino, adapters, peripherals, wireless, audio, camera, and ROS |
+| [`product/`](product/) | App authoring, editor, web flasher, and UDI surfaces |
+| [`release/`](release/) | Public boundary, documentation, packages, versions, and CI integrity |
+
+The category directories are implementation details of the gate runner. Normal
+local validation remains:
+
+```console
+python tools/checks/run_checks.py
+```
 
 Hardware campaigns, competitor comparisons, raw evidence, and local device
 identities are private maintainer inputs and are not part of this directory.

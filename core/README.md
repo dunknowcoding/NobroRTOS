@@ -13,5 +13,5 @@ The directory tree is the ownership model:
 Cross-domain membership is summarized in `adapters/catalog.json`; it does not create a
 second source hierarchy. Only one category level is allowed under adapters, apps, and
 boards. A library that supports many modules remains one library member with a concise
-inventory instead of producing duplicate directories. `tools/checks/check_core_layout.py`
+inventory instead of producing duplicate directories. `tools/checks/core/check_core_layout.py`
 enforces the shape.

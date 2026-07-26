@@ -369,14 +369,14 @@ python tools/checks/run_checks.py    # bindings + contracts + packages -> "RESUL
 
 "Supports N boards" hides more than it says, so NobroRTOS states exactly what each
 target gets. The machine-readable capability matrix is `core/boards/platform_tiers.json`
-(validated by `tools/checks/check_platform_tiers.py`). Each native or Arduino composition
+(validated by `tools/checks/platforms/check_platform_tiers.py`). Each native or Arduino composition
 binds every capability to gates scoped to that exact platform, composition, and claim.
 Hosted jobs execute the declared argv from a clean, session-bound receipt directory and
 must return every required receipt. Each session is freshness-bound to the current Git
 HEAD, tracked diff, and nonignored untracked source content; ignored `_work` output is
 excluded. A target build is never treated as physical proof.
 Cross-compile coverage is
-`tools/checks/check_portability.sh`; the extended build matrix (ports + boards + SDK) is
+`tools/checks/platforms/check_portability.sh`; the extended build matrix (ports + boards + SDK) is
 `tools/checks/ci_matrix.sh`.
 
 | Tier | What it means | Targets today |
@@ -415,10 +415,10 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
 | AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
 | On-device inference | Present | Bounded `AiInferenceSal` motion classifier with explicit memory and timeout contracts |
-| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/checks/check_portability.sh` |
+| Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/checks/platforms/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |
 | ROS bridge | Present | Bounded topic/service/action/parameter contracts plus a SAL bridge trait |
-| SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/checks/check_sdk_manifest.py`) |
+| SDK packaging | Validated | Standalone SDK, Arduino, and PlatformIO metadata contract-checked + manifest paths validated (`tools/checks/release/check_sdk_manifest.py`) |
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |

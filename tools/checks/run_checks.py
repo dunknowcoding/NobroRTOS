@@ -74,7 +74,7 @@ def gate_specs(quick, rust_only=False, extended=False):
     specs = []
     if not quick:
         specs.append(("dependency source/license policy",
-                      [py, "tools/checks/check_dependency_policy.py"], ROOT))
+                      [py, "tools/checks/core/check_dependency_policy.py"], ROOT))
         cargo = ["cargo", "test", "--locked", "--target", host_target()]
         for c in HOST_CRATES:
             cargo += ["-p", c]
@@ -129,7 +129,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ))
         specs.append(("cargo fmt", ["cargo", "fmt", "--all", "--", "--check"], CORE))
         specs.append(("nano kernel build/admission/symbol budgets",
-                      [py, "tools/checks/check_nano_kernel.py"], ROOT))
+                      [py, "tools/checks/core/check_nano_kernel.py"], ROOT))
         specs += [
             ("USB RA4M1 backend host tests", ["cargo", "test", "--locked", "--target", host_target(),
              "-p", "nobro-usb", "--no-default-features", "--features", "backend-ra-usbfs"], CORE),
@@ -154,68 +154,68 @@ def gate_specs(quick, rust_only=False, extended=False):
                  "--target", host_target(),
                  "-p", "nobro-database", "-p", "nobro-storage", "-p", "nobro-net",
                  "-p", "nobro-secure", "-p", "nobro-hal"], CORE),
-                ("Miri bounded async", [py, "tools/checks/check_async_miri.py"], ROOT),
+                ("Miri bounded async", [py, "tools/checks/core/check_async_miri.py"], ROOT),
             ]
     if rust_only:
         return specs
     specs += [
-        ("release boundary", [py, "tools/checks/check_release_boundary.py"], ROOT),
-        ("CI evidence hermeticity", [py, "tools/checks/check_ci_hermeticity.py", "--selftest"], ROOT),
-        ("accounting semantics", [py, "tools/checks/check_accounting_semantics.py"], ROOT),
-        ("deadline masking", [py, "tools/checks/check_timebase_masking.py"], ROOT),
+        ("release boundary", [py, "tools/checks/release/check_release_boundary.py"], ROOT),
+        ("CI evidence hermeticity", [py, "tools/checks/release/check_ci_hermeticity.py", "--selftest"], ROOT),
+        ("accounting semantics", [py, "tools/checks/core/check_accounting_semantics.py"], ROOT),
+        ("deadline masking", [py, "tools/checks/core/check_timebase_masking.py"], ROOT),
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "tools/cli/nobro_contract_tool.py", "check-software-surface"], ROOT),
-        ("public docs", [py, "tools/checks/check_public_docs.py"], ROOT),
+        ("public docs", [py, "tools/checks/release/check_public_docs.py"], ROOT),
         ("static budget analyzer", [py, "tools/cli/static_budget.py", "--selftest"], ROOT),
         ("flash tool fail-closed parser", [py, "tools/cli/flash.py", "--selftest"], ROOT),
-        ("board profiles", [py, "tools/checks/check_board_profiles.py"], ROOT),
-        ("core layout", [py, "tools/checks/check_core_layout.py"], ROOT),
+        ("board profiles", [py, "tools/checks/platforms/check_board_profiles.py"], ROOT),
+        ("core layout", [py, "tools/checks/core/check_core_layout.py"], ROOT),
         ("api contract", [py, "tools/build/gen_api_contract.py", "--check"], ROOT),
-        ("claim contract", [py, "tools/checks/check_claim_contract.py"], ROOT),
-        ("sdk manifest", [py, "tools/checks/check_sdk_manifest.py"], ROOT),
+        ("claim contract", [py, "tools/checks/core/check_claim_contract.py"], ROOT),
+        ("sdk manifest", [py, "tools/checks/release/check_sdk_manifest.py"], ROOT),
         ("arduino package", [py, "tools/release/package_arduino.py", "--check"], ROOT),
-        ("distribution artifacts", [py, "tools/checks/check_distribution_artifacts.py"], ROOT),
+        ("distribution artifacts", [py, "tools/checks/release/check_distribution_artifacts.py"], ROOT),
         ("PlatformIO release archive", [py, "tools/release/package_platformio.py", "--check"], ROOT),
-        ("arduino representative compile", [py, "tools/checks/check_arduino_compile.py"], ROOT),
-        ("arduino facade contracts", [py, "tools/checks/check_arduino_facade.py"], ROOT),
+        ("arduino representative compile", [py, "tools/checks/integrations/check_arduino_compile.py"], ROOT),
+        ("arduino facade contracts", [py, "tools/checks/integrations/check_arduino_facade.py"], ROOT),
         (
             "provider lifecycle contracts",
             [
                 py,
-                "tools/checks/check_provider_lifecycle.py",
+                "tools/checks/platforms/check_provider_lifecycle.py",
                 "--target",
                 host_target(),
             ],
             ROOT,
         ),
         ("ArduinoBLE UNO R4 integrations",
-         [py, "tools/checks/check_arduino_ble_integrations.py"], ROOT),
+         [py, "tools/checks/integrations/check_arduino_ble_integrations.py"], ROOT),
         ("Arduino-ESP32 BLE integrations",
-         [py, "tools/checks/check_arduino_esp_ble.py"], ROOT),
-        ("audio facade contracts", [py, "tools/checks/check_audio_facade.py"], ROOT),
+         [py, "tools/checks/integrations/check_arduino_esp_ble.py"], ROOT),
+        ("audio facade contracts", [py, "tools/checks/integrations/check_audio_facade.py"], ROOT),
         ("ESP32 peripheral facade contracts",
-         [py, "tools/checks/check_esp32_peripheral_facade.py"], ROOT),
-        ("NiusIMU adapter contracts", [py, "tools/checks/check_niusimu_adapter.py", "--selftest"], ROOT),
-        ("web flasher", [py, "tools/checks/check_web_flasher.py"], ROOT),
-        ("block editor", [py, "tools/checks/check_block_editor.py"], ROOT),
+         [py, "tools/checks/integrations/check_esp32_peripheral_facade.py"], ROOT),
+        ("NiusIMU adapter contracts", [py, "tools/checks/integrations/check_niusimu_adapter.py", "--selftest"], ROOT),
+        ("web flasher", [py, "tools/checks/product/check_web_flasher.py"], ROOT),
+        ("block editor", [py, "tools/checks/product/check_block_editor.py"], ROOT),
         ("tutorials", [py, "tools/cli/tutorial_runner.py"], ROOT),
         ("app catalog", [py, "tools/cli/nobro_app.py", "tutorials/hello-device/app.json"], ROOT),
-        ("app authoring parity", [py, "tools/checks/check_app_authoring.py"], ROOT),
+        ("app authoring parity", [py, "tools/checks/product/check_app_authoring.py"], ROOT),
         ("ros msg codegen", [py, "tools/cli/ros_msg_gen.py", "--selftest"], ROOT),
         ("dts import", [py, "tools/cli/import_dts.py", "--selftest"], ROOT),
         ("prebuilt uf2 loop", [py, "tools/release/package_prebuilt_uf2.py", "--check"], ROOT),
         ("tier-c link", [py, "tools/build/build_libnobro.py", "--check"], ROOT),
         ("admission analysis", [py, "tools/cli/nobro_admission.py", "--selftest"], ROOT),
         ("capacity right-sizing", [py, "tools/cli/nobro_shrink.py", "--selftest"], ROOT),
-        ("platform tiers", [py, "tools/checks/check_platform_tiers.py", "--selftest"], ROOT),
-        ("board-feature registry", [py, "tools/checks/check_board_features.py", "--selftest"], ROOT),
-        ("adapter catalog", [py, "tools/checks/check_adapter_catalog.py"], ROOT),
+        ("platform tiers", [py, "tools/checks/platforms/check_platform_tiers.py", "--selftest"], ROOT),
+        ("board-feature registry", [py, "tools/checks/platforms/check_board_features.py", "--selftest"], ROOT),
+        ("adapter catalog", [py, "tools/checks/integrations/check_adapter_catalog.py"], ROOT),
         ("adapter scaffold", [py, "tools/cli/nobro_adapter.py", "--selftest"], ROOT),
         ("firmware project", [py, "tools/cli/nobro_firmware_project.py", "--selftest"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),
-        ("release versions", [py, "tools/checks/check_release_versions.py", "--release"], ROOT),
-        ("ros bridge contract", [py, "tools/checks/check_ros_bridge.py", "--selftest"], ROOT),
-        ("udi surface", [py, "tools/checks/check_udi.py", "--selftest"], ROOT),
+        ("release versions", [py, "tools/checks/release/check_release_versions.py", "--release"], ROOT),
+        ("ros bridge contract", [py, "tools/checks/integrations/check_ros_bridge.py", "--selftest"], ROOT),
+        ("udi surface", [py, "tools/checks/product/check_udi.py", "--selftest"], ROOT),
     ]
     if extended:
         specs.append(("cross-MCU matrix", ["bash", "tools/checks/ci_matrix.sh"], ROOT))

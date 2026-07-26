@@ -234,7 +234,7 @@ binaries only for its explicit nRF52840, RP2040, and RP2350-Arm family IDs.
 ### Cross-MCU, one command
 
 ```bash
-bash tools/checks/check_portability.sh   # builds the portable core for all 6 MCU families
+bash tools/checks/platforms/check_portability.sh   # builds the portable core for all 6 MCU families
 bash tools/checks/ci_matrix.sh           # host tests + portability + port builds + validators
 bash tools/checks/lint_gate.sh           # clippy -D warnings gate
 ```
@@ -263,4 +263,4 @@ separate typed step so hardware metadata does not become a second scheduler mode
 - **CI**: `tools/checks/ci_matrix.sh` is a single exit-coded gate for GitHub Actions / GitLab CI.
 - **C / C++**: `bindings/c` + `bindings/cpp` expose the module ABI for non-Rust codebases.
 - **Web flasher / PlatformIO packaging**: the SDK manifest (`sdk/sdk-manifest.json`,
-  validated by `tools/checks/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.
+  validated by `tools/checks/release/check_sdk_manifest.py`) declares the Arduino + PlatformIO surfaces.
