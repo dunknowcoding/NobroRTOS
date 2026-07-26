@@ -1,0 +1,17 @@
+[package]
+name = "boot-slot-demo"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "boot_slot_demo"
+path = "src/main.rs"
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+defmt = "0.3"
+defmt-rtt = "0.4"
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "signature"] }
+nobro-secure = { path = "../../../crates/nobro_secure", default-features = false }
+panic-halt = "0.2"

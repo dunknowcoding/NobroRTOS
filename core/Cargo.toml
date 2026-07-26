@@ -67,6 +67,7 @@ members = [
     "apps/kernel/rtc_sleep_demo",
     "apps/kernel/stack_guard_demo",
     "apps/kernel/isolation_demo",
+    "apps/kernel/boot_slot_demo",
     "apps/control/pwm_bank_demo",
     "apps/control/config_actuator_demo",
     "apps/ai/gesture_demo",

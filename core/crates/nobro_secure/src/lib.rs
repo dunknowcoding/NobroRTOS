@@ -3,7 +3,11 @@
 
 use nobro_crypto::sha256::{hmac_sha256, sha256, Sha256};
 
+mod board_boot;
+mod factory;
 mod security_v2;
+pub use board_boot::*;
+pub use factory::*;
 pub use security_v2::*;
 
 /// Device attestation: prove firmware identity by HMAC over a nonce + the

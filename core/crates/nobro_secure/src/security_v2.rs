@@ -46,6 +46,8 @@ pub enum SignedBootError {
 pub struct VerifiedSignedImage {
     plan: VerifiedBootPlan,
     manifest_digest: [u8; 32],
+    image_measurement: [u8; 32],
+    manifest: SignedImageManifest,
 }
 
 impl VerifiedSignedImage {
@@ -55,6 +57,14 @@ impl VerifiedSignedImage {
 
     pub const fn manifest_digest(&self) -> [u8; 32] {
         self.manifest_digest
+    }
+
+    pub const fn image_measurement(&self) -> [u8; 32] {
+        self.image_measurement
+    }
+
+    pub const fn manifest(&self) -> SignedImageManifest {
+        self.manifest
     }
 }
 
@@ -103,7 +113,22 @@ pub fn verify_signed_boot<const N: usize>(
     if image.len() != manifest.image_len as usize {
         return Err(SignedBootError::Plan(BootPlanError::SizeMismatch));
     }
-    if sha256(image) != manifest.measurement {
+    verify_signed_measurement(sha256(image), manifest, keys, vectors, rollback_floor)
+}
+
+/// Verify a signed manifest against a measurement produced by a board's
+/// streaming flash reader.
+///
+/// This is the reset-time counterpart to [`verify_signed_boot`]: a boot adapter
+/// need not copy a complete memory-mapped slot into RAM to re-authenticate it.
+pub fn verify_signed_measurement<const N: usize>(
+    image_measurement: [u8; 32],
+    manifest: &SignedImageManifest,
+    keys: &PinnedKeyPolicy<N>,
+    vectors: BootVectorPolicy,
+    rollback_floor: u32,
+) -> Result<VerifiedSignedImage, SignedBootError> {
+    if image_measurement != manifest.measurement {
         return Err(SignedBootError::Tampered);
     }
     if manifest.version < rollback_floor {
@@ -152,6 +177,8 @@ pub fn verify_signed_boot<const N: usize>(
             stack_top: manifest.stack_top,
         },
         manifest_digest: manifest.signing_digest(),
+        image_measurement: manifest.measurement,
+        manifest: *manifest,
     })
 }
 

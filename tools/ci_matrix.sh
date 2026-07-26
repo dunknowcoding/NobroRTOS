@@ -64,6 +64,10 @@ gate "nRF52840 PSP/PendSV target build" \
     ! cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
     --no-default-features --features platform-nrf52840-rt,board-nicenano-s140,cortex-m-slice'
 
+gate "board boot slot adapter target build" \
+  bash -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
+    -p boot-slot-demo'
+
 gate "deadline masking" python tools/check_timebase_masking.py
 
 gate "accounting semantics" python tools/check_accounting_semantics.py
