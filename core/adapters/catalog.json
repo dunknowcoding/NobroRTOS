@@ -39,8 +39,8 @@
     {
       "id": "source-arduino-nrf-imu",
       "source": "https://github.com/dunknowcoding/ArduinoNRF-IMU",
-      "revision": "7c8248b8d37294be6cc545c3cf549e907ccbc955",
-      "version": "0.3.0",
+      "revision": "0fb18445c99bf4a28693f409187942d72325adb5",
+      "version": "0.4.1",
       "license": "Apache-2.0",
       "pinned": true,
       "clean": true
@@ -120,8 +120,8 @@
     {
       "id": "source-niuswireless",
       "source": "https://github.com/dunknowcoding/NiusWireless",
-      "revision": "11240978724418eb4647fa385cef4c684cf29060",
-      "version": "0.2.0",
+      "revision": "6eeffdb62dff4dbefccf2622e051ea91c0b06081",
+      "version": "0.2.1",
       "license": "MIT",
       "pinned": true,
       "clean": true
@@ -859,10 +859,14 @@
         "target-build"
       ],
       "supported_targets": [
-        "arduino:nrf52"
+        "arduino:avr",
+        "arduino:esp32",
+        "arduino:nrf52",
+        "arduino:renesas",
+        "arduino:samd"
       ],
       "limitations": [
-        "Pinned revision uses ArduinoNRF-specific bus recovery on its promoted path."
+        "Cross-architecture compilation is not physical promotion; each exact sensor and bus still requires its own evidence."
       ],
       "sensor_drivers": [
         "ADXL345",

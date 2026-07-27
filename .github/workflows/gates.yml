@@ -323,17 +323,17 @@ jobs:
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
-          git -C _work/ArduinoNRF-IMU checkout --detach 7c8248b8d37294be6cc545c3cf549e907ccbc955
+          git -C _work/ArduinoNRF-IMU checkout --detach 0fb18445c99bf4a28693f409187942d72325adb5
           test "$(git -C _work/ArduinoNRF-IMU rev-parse HEAD)" = \
-            "7c8248b8d37294be6cc545c3cf549e907ccbc955"
+            "0fb18445c99bf4a28693f409187942d72325adb5"
           python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
           python tools/checks/integrations/check_niusimu_adapter.py --selftest
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout --detach 11240978724418eb4647fa385cef4c684cf29060
+          git -C _work/NiusWireless checkout --detach 6eeffdb62dff4dbefccf2622e051ea91c0b06081
           test "$(git -C _work/NiusWireless rev-parse HEAD)" = \
-            "11240978724418eb4647fa385cef4c684cf29060"
+            "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
           git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
           test "$(git -C _work/ArduinoNRF-Zigbee rev-parse HEAD)" = \
@@ -404,8 +404,8 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
-          git -C _work/ArduinoNRF-IMU checkout --detach 7c8248b8d37294be6cc545c3cf549e907ccbc955
-          if ((git -C _work/ArduinoNRF-IMU rev-parse HEAD) -ne "7c8248b8d37294be6cc545c3cf549e907ccbc955") {
+          git -C _work/ArduinoNRF-IMU checkout --detach 0fb18445c99bf4a28693f409187942d72325adb5
+          if ((git -C _work/ArduinoNRF-IMU rev-parse HEAD) -ne "0fb18445c99bf4a28693f409187942d72325adb5") {
             throw "NiusIMU checkout drift"
           }
           python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
@@ -413,8 +413,8 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout --detach 11240978724418eb4647fa385cef4c684cf29060
-          if ((git -C _work/NiusWireless rev-parse HEAD) -ne "11240978724418eb4647fa385cef4c684cf29060") {
+          git -C _work/NiusWireless checkout --detach 6eeffdb62dff4dbefccf2622e051ea91c0b06081
+          if ((git -C _work/NiusWireless rev-parse HEAD) -ne "6eeffdb62dff4dbefccf2622e051ea91c0b06081") {
             throw "NiusWireless checkout drift"
           }
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
@@ -422,4 +422,4 @@ jobs:
           if ((git -C _work/ArduinoNRF-Zigbee rev-parse HEAD) -ne "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9") {
             throw "NiusZigbee checkout drift"
           }
-          python tools/checks/integrations/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-zigbee
+          python tools/checks/integrations/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-nrf --compile-zigbee

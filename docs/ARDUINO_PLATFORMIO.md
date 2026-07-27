@@ -45,6 +45,10 @@ Add `NOBRO_ARDUINO_ENABLE_SPI` only when used. Optional NiusIMU,
 NiusWireless, and NiusCam facades require the matching library; they are not
 forced dependencies of the base package.
 
+The NiusIMU 0.4.1 facade is compile-gated on AVR, SAMD, Renesas, ESP32, and
+ArduinoNRF target families. This is source-compatibility evidence, not a claim
+that every sensor and bus combination has been physically promoted.
+
 UNO R4 WiFi uses its board package's WiFiS3 implementation through the
 explicit `NobroArduinoWiFiS3.h` facade. It is not included by the base
 package. The exact WiFiS3 0.6.0 binding has zero-disabled target proof and

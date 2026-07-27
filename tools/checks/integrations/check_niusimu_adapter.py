@@ -11,8 +11,15 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
-PIN = "7c8248b8d37294be6cc545c3cf549e907ccbc955"
-VERSION = "0.3.0"
+PIN = "0fb18445c99bf4a28693f409187942d72325adb5"
+VERSION = "0.4.1"
+SUPPORTED_TARGETS = {
+    "arduino:avr",
+    "arduino:esp32",
+    "arduino:nrf52",
+    "arduino:renesas",
+    "arduino:samd",
+}
 
 CASES = {
     "mpu6050_i2c": r'''#include <GY521.h>
@@ -166,6 +173,8 @@ def verify_checkout(library: pathlib.Path) -> None:
     )
     if provenance["version"] != VERSION or provenance["revision"] != PIN:
         raise RuntimeError("NiusIMU catalog pin differs from the integration pin")
+    if set(member["supported_targets"]) != SUPPORTED_TARGETS:
+        raise RuntimeError("NiusIMU catalog target families differ from the integration gate")
     actual_sensors = sorted(path.name for path in (library / "src" / "sensors").iterdir() if path.is_dir())
     actual_boards = sorted(path.name for path in (library / "src" / "boards").iterdir() if path.is_dir())
     if actual_sensors != sorted(member["sensor_drivers"]):

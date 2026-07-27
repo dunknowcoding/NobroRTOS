@@ -10,7 +10,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
-WIRELESS_PIN = "11240978724418eb4647fa385cef4c684cf29060"
+WIRELESS_PIN = "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
 ZIGBEE_PIN = "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
 MODULES = {"HC06", "HC12", "LoRa", "NRF24L01", "PN532", "RC522"}
 STUBS = {"HC06", "HC12"}
@@ -34,6 +34,12 @@ void loop() {}
 
 ZIGBEE_CASE = r'''#include <CC2530Radio.h>
 CC2530Radio radio;
+void setup() { if (false) radio.begin(); }
+void loop() {}
+'''
+
+NRF24_CASE = r'''#include <NiusWireless.h>
+NiusNRF24L01 radio(9, 10);
 void setup() { if (false) radio.begin(); }
 void loop() {}
 '''
@@ -93,14 +99,16 @@ def main() -> int:
     parser.add_argument("--niuswireless", type=pathlib.Path, required=True)
     parser.add_argument("--niuszigbee", type=pathlib.Path, required=True)
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--compile-nrf", action="store_true",
+                        help="compile the complete NiusWireless source tree on ArduinoNRF")
     parser.add_argument("--compile-zigbee", action="store_true",
                         help="requires the Windows-only ArduinoNRF toolchain")
     args = parser.parse_args()
     try:
-        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.0")
+        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.1")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.0")
         verify_inventory(wireless, zigbee)
-        if args.compile or args.compile_zigbee:
+        if args.compile or args.compile_nrf or args.compile_zigbee:
             cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
             if not cli:
                 raise RuntimeError("arduino-cli not found")
@@ -109,6 +117,10 @@ def main() -> int:
                 if args.compile:
                     for case, (fqbn, source) in CASES.items():
                         compile_sketch(cli, wireless, case, fqbn, source, base)
+                if args.compile_nrf:
+                    compile_sketch(cli, wireless, "nrf24",
+                                   "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled",
+                                   NRF24_CASE, base)
                 if args.compile_zigbee:
                     compile_sketch(cli, zigbee, "zigbee",
                                    "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled",
