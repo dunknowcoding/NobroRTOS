@@ -2138,7 +2138,7 @@ mod tests {
             runtime.alarms().next_due(20),
             Some(Alarm::once(AlarmId(2), ModuleId::Sensor, 20))
         );
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(
             report.last_error,
             crate::error_code(KernelError::DeadlineMissed)
@@ -2236,7 +2236,7 @@ mod tests {
 
         assert_eq!(runtime.kv_get(KvKey(3)), Some(KvValue::U32(9)));
         assert_eq!(outcome.state, SystemState::Degraded);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.total_errors, 1);
         assert_eq!(report.error_events, 2);
     }
@@ -2264,7 +2264,7 @@ mod tests {
 
         let report = runtime.runtime_report();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.state, crate::state_code(SystemState::Running));
         assert_eq!(report.module_count, 2);
         assert_eq!(report.mailbox_len, 1);
@@ -2286,7 +2286,7 @@ mod tests {
 
         let report = runtime.event_log_report();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.event_count, runtime.recovery().events().len() as u32);
         assert_eq!(
             report.latest_module_tag,
@@ -2335,7 +2335,7 @@ mod tests {
 
         let report = runtime.module_runtime_report();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.module_count, runtime.plan().module_count() as u32);
         assert_eq!(report.faulted_count, 1);
         assert_eq!(
@@ -3283,7 +3283,7 @@ mod tests {
         let mut runtime = runtime();
 
         let report = runtime.degrade_application_report();
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.requested_count, 0);
         assert_eq!(report.reason, crate::degrade_reason_code(None));
 
@@ -3300,7 +3300,7 @@ mod tests {
             .unwrap();
 
         let report = runtime.degrade_application_report();
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.requested_count, 1);
         assert_eq!(report.disabled_count, 1);
         assert_eq!(report.already_disabled_count, 0);
@@ -3443,7 +3443,7 @@ mod tests {
                 .missed,
             1
         );
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.total_errors, 1);
     }
 

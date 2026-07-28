@@ -210,7 +210,7 @@ pub struct AdmissionReport {
     pub pool_used_slots: u32,
     pub pool_limit_slots: u32,
     pub error_code: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AdmissionReport {
@@ -229,7 +229,7 @@ impl AdmissionReport {
             pool_used_slots: 0,
             pool_limit_slots: 0,
             error_code: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -248,7 +248,7 @@ impl AdmissionReport {
             pool_limit_slots: u32::from(plan.profile.pool_slot_limit),
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -258,7 +258,7 @@ impl AdmissionReport {
             error_code: error.code(),
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -271,21 +271,21 @@ impl AdmissionReport {
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ADMISSION_REPORT_MAGIC;
         self.version = ADMISSION_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ADMISSION_REPORT_MAGIC
             && self.version == ADMISSION_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -439,7 +439,7 @@ mod tests {
 
         let report = AdmissionReport::from_plan(&plan);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.admitted, 1);
         assert_eq!(report.module_count, 2);
         assert_eq!(report.startup_len, 2);
@@ -459,7 +459,7 @@ mod tests {
 
         let report = AdmissionReport::from_result(admission.as_ref().map_err(|error| *error));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.admitted, 1);
         assert_eq!(report.module_count, 2);
     }
@@ -469,12 +469,12 @@ mod tests {
         let mut report =
             AdmissionReport::from_error(AdmissionError::UnknownStartupNode(ModuleId::App(1)));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.admitted, 0);
         assert_eq!(report.error_code, 6);
 
         report.error_code = 9;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -483,7 +483,7 @@ mod tests {
             ModuleId::App(3),
         )));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.admitted, 0);
         assert_eq!(report.error_code, 6);
     }

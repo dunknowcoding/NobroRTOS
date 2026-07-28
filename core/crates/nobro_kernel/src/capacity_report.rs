@@ -525,7 +525,7 @@ pub struct CapacityReport<const N: usize> {
     pub workload_id: [u8; 32],
     pub declaration_id: [u8; 32],
     pub resources: [CapacityResourceRecord; N],
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl<const N: usize> CapacityReport<N> {
@@ -604,7 +604,7 @@ impl<const N: usize> CapacityReport<N> {
             workload_id: campaign.identity.workload_id,
             declaration_id: campaign.identity.declaration_id,
             resources: [CapacityResourceRecord::zeroed(); N],
-            checksum: 0,
+            diagnostic_checksum: 0,
         };
 
         // Never inspect a live stack (or any other resource source) from a
@@ -616,7 +616,7 @@ impl<const N: usize> CapacityReport<N> {
             | CAPACITY_FLAG_INCOMPLETE
             | CAPACITY_FLAG_SIZE_OVERFLOW;
         if report.flags & preflight_failures != 0 {
-            report.checksum = report.compute_checksum();
+            report.diagnostic_checksum = report.compute_diagnostic_checksum();
             return report;
         }
 
@@ -667,19 +667,19 @@ impl<const N: usize> CapacityReport<N> {
             | CAPACITY_FLAG_INCOMPLETE
             | CAPACITY_FLAG_SIZE_OVERFLOW;
         report.completed = u32::from(report.flags & structural_failures == 0);
-        report.checksum = report.compute_checksum();
+        report.diagnostic_checksum = report.compute_diagnostic_checksum();
         report
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == CAPACITY_REPORT_MAGIC
             && self.version == CAPACITY_REPORT_VERSION
             && usize::try_from(self.report_bytes).ok() == Some(core::mem::size_of::<Self>())
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn is_convertible(&self) -> bool {
-        self.verify_checksum() && self.completed == 1
+        self.diagnostic_checksum_matches() && self.completed == 1
     }
 
     /// View the initialized, padding-free report as its transport bytes.
@@ -697,7 +697,7 @@ impl<const N: usize> CapacityReport<N> {
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         let bytes = self.as_bytes();
         bytes[..bytes.len() - core::mem::size_of::<u32>()]
             .iter()
@@ -862,7 +862,7 @@ mod tests {
             .unwrap();
         let guards = StackGuardTable::<1>::new();
         let report = campaign.report(&registry, &mailbox, &guards);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert!(!report.is_convertible());
         assert_ne!(report.flags & CAPACITY_FLAG_UNEXPECTED_PATH, 0);
         assert_ne!(report.flags & CAPACITY_FLAG_SESSION_MISMATCH, 0);
@@ -889,7 +889,7 @@ mod tests {
             .unwrap();
         let guards = StackGuardTable::<0>::new();
         let report = campaign.report(&registry, &mailbox, &guards);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert!(!report.is_convertible());
         assert_ne!(report.flags & CAPACITY_FLAG_RESOURCE_MISSING, 0);
         assert_eq!(report.resources[0].resource_id, [1; 32]);
@@ -960,7 +960,7 @@ mod tests {
         assert_eq!(report.session_id, 21);
         assert_eq!(report.resources[0].observed_peak, 1);
         report.resources[0].observed_peak ^= 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -1005,7 +1005,7 @@ mod tests {
             .unwrap();
         let guards = StackGuardTable::<0>::new();
         let report = campaign.report(&registry, &mailbox, &guards);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert!(!report.is_convertible());
         assert_ne!(report.flags & CAPACITY_FLAG_INCOMPLETE, 0);
         assert_eq!(report.resources, [CapacityResourceRecord::zeroed(); 1]);
@@ -1043,7 +1043,7 @@ mod tests {
             .unwrap();
 
         let report = campaign.report(&registry, &mailbox, &guards);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert!(!report.is_convertible());
         assert_ne!(report.flags & CAPACITY_FLAG_INCOMPLETE, 0);
         assert_eq!(report.resources, [CapacityResourceRecord::zeroed(); 2]);

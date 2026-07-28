@@ -48,7 +48,7 @@ BOARD_PROFILE_FIELDS = (
     "servo_center_us",
     "led_pin",
     "mvk_trigger_pin",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 BOARD_PACKAGE_FIELDS = (
@@ -71,7 +71,7 @@ BOARD_PACKAGE_FIELDS = (
     "servo_pin",
     "mvk_trigger_pin",
     "error_code",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 MANIFEST_FIELDS = (
@@ -89,7 +89,7 @@ MANIFEST_FIELDS = (
     "error_code",
     "error_module_tag",
     "error_capability_bits",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 ADAPTER_COMPAT_FIELDS = (
@@ -106,7 +106,7 @@ ADAPTER_COMPAT_FIELDS = (
     "error_code",
     "error_module_tag",
     "error_capability_bits",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 AI_MODEL_FIELDS = (
@@ -122,7 +122,7 @@ AI_MODEL_FIELDS = (
     "route_preference",
     "stale_after_us",
     "endpoint_failure_limit",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 ROS_BRIDGE_FIELDS = (
@@ -137,7 +137,7 @@ ROS_BRIDGE_FIELDS = (
     "parameter_count",
     "total_buffer_bytes",
     "max_timeout_us",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 ADMISSION_FIELDS = (
@@ -154,7 +154,7 @@ ADMISSION_FIELDS = (
     "pool_used_slots",
     "pool_limit_slots",
     "error_code",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 RUNTIME_FIELDS = (
@@ -176,7 +176,7 @@ RUNTIME_FIELDS = (
     "quota_pool_used_slots",
     "event_count",
     "dropped_events",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 HEALTH_FIELDS = (
@@ -194,7 +194,7 @@ HEALTH_FIELDS = (
     "fatal_events",
     "last_seen_us_lo",
     "last_seen_us_hi",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 EVENT_LOG_FIELDS = (
@@ -213,7 +213,7 @@ EVENT_LOG_FIELDS = (
     "latest_payload_kind",
     "latest_payload0",
     "latest_payload1",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 MODULE_RUNTIME_FIELDS = (
@@ -233,7 +233,7 @@ MODULE_RUNTIME_FIELDS = (
     "latest_recovery_count",
     "latest_change_us_lo",
     "latest_change_us_hi",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 DEGRADE_APPLICATION_FIELDS = (
@@ -246,7 +246,7 @@ DEGRADE_APPLICATION_FIELDS = (
     "reason",
     "applied_at_us_lo",
     "applied_at_us_hi",
-    "checksum",
+    "diagnostic_checksum",
 )
 
 
@@ -534,7 +534,7 @@ class FixedReport:
         if (
             self.fields["magic"] == 0
             and self.fields["version"] == 0
-            and self.fields["checksum"] == 0
+            and self.fields["diagnostic_checksum"] == 0
         ):
             return ReportStatus.MISSING
         if (
@@ -544,7 +544,7 @@ class FixedReport:
             return ReportStatus.CORRUPT
         if self.fields["completed"] == 0:
             return ReportStatus.IN_PROGRESS
-        if not self.verify_checksum():
+        if not self.diagnostic_checksum_matches():
             return ReportStatus.CORRUPT
         if self.ok_field is None:
             return ReportStatus.PASS
@@ -556,15 +556,15 @@ class FixedReport:
     def passing(self) -> bool:
         return self.status == ReportStatus.PASS
 
-    def verify_checksum(self) -> bool:
-        return self.fields["checksum"] == self.compute_checksum()
+    def diagnostic_checksum_matches(self) -> bool:
+        return self.fields["diagnostic_checksum"] == self.compute_diagnostic_checksum()
 
-    def compute_checksum(self) -> int:
-        checksum = 0
+    def compute_diagnostic_checksum(self) -> int:
+        diagnostic_checksum = 0
         for name, value in self.fields.items():
-            if name != "checksum":
-                checksum ^= value
-        return checksum & 0xFFFF_FFFF
+            if name != "diagnostic_checksum":
+                diagnostic_checksum ^= value
+        return diagnostic_checksum & 0xFFFF_FFFF
 
     def error_label(self) -> str | None:
         if self.status != ReportStatus.FAIL:
@@ -585,7 +585,7 @@ class FixedReport:
             "kind": self.kind.value,
             "status": self.status.value,
             "passing": self.passing,
-            "checksum_ok": self.verify_checksum(),
+            "diagnostic_checksum_ok": self.diagnostic_checksum_matches(),
             "count": self.fields[self.count_field] if self.count_field else None,
             "required_bits": self.fields.get("required_bits", 0),
             "owned_bits": self.fields.get("owned_bits", 0),
@@ -730,8 +730,8 @@ class FixedReport:
             return None
 
 
-def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, int]:
-    """Return a copy of a report payload with magic/version/completed/checksum set."""
+def finalize_diagnostic_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, int]:
+    """Return a copy of a report payload with magic/version/completed/diagnostic_checksum set."""
 
     report_kind = ReportKind(kind)
     fields = dict(payload)
@@ -777,13 +777,13 @@ def seal_report(kind: ReportKind | str, payload: dict[str, Any]) -> dict[str, in
     fields["magic"] = expected_magic
     fields["version"] = REPORT_VERSION
     fields["completed"] = 1
-    fields["checksum"] = 0
+    fields["diagnostic_checksum"] = 0
     normalized = _normalize_fields(fields, field_names)
-    checksum = 0
+    diagnostic_checksum = 0
     for name, value in normalized.items():
-        if name != "checksum":
-            checksum ^= value
-    normalized["checksum"] = checksum & 0xFFFF_FFFF
+        if name != "diagnostic_checksum":
+            diagnostic_checksum ^= value
+    normalized["diagnostic_checksum"] = diagnostic_checksum & 0xFFFF_FFFF
     return normalized
 
 

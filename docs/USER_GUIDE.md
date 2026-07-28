@@ -107,8 +107,8 @@ let boot = AppBoot::build(
     0,
 )?;
 
-assert!(boot.manifest_report.verify_checksum());
-assert!(boot.admission_report.verify_checksum());
+assert!(boot.manifest_report.diagnostic_checksum_matches());
+assert!(boot.admission_report.diagnostic_checksum_matches());
 ```
 
 Firmware that depends on `nobro-hal` can enable `nobro-kernel/hal-profile` and
@@ -134,7 +134,7 @@ let failure = match AppBoot::build_with_failure(
     Err(failure) => failure,
 };
 
-assert!(failure.manifest_report.verify_checksum());
+assert!(failure.manifest_report.diagnostic_checksum_matches());
 ```
 
 Both successful assemblies and `BootAssemblyFailure` expose `reports()`, so
@@ -243,8 +243,11 @@ Important reports:
 - `NOBRO_MODULE_RUNTIME_REPORT`
 - `NOBRO_DEGRADE_APPLICATION_REPORT`
 
-Reports are designed to be copied from memory as `repr(C)` records and checked
-with simple XOR checksums.
+Reports are designed to be copied from memory as `repr(C)` records. Their
+explicit diagnostic checksums detect accidental copy/read errors only; they do
+not authenticate a report. Use
+`nobro_secure::AuthenticatedReportEnvelope::open` before making a trust
+decision from bytes that crossed an untrusted boundary.
 
 Host-side simulators mirror selected runtime contracts for early design and CI
 checks:
@@ -354,7 +357,7 @@ initialization.
 The CLI command surface checker validates command registration and README
 coverage together, so onboarding instructions fail early when a command name
 drifts.
-The report matrix checker verifies fixed-report status classes, checksum
+The report matrix checker verifies fixed-report status classes, diagnostic-checksum
 handling, error labels, and decoded runtime, AI model, and ROS bridge fields.
 The AI route checker validates route-policy behavior without contacting a
 remote inference endpoint. It can model on-device, edge-sidecar, remote API,
@@ -393,7 +396,7 @@ and cycle paths for the same deterministic planner. Rust startup graphs can also
 transitive impact of a faulted dependency in reverse startup order, which gives
 recovery code a stable quiesce-before-restart list.
 The boot summary matrix checker validates all-pass, missing-stage,
-corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+diagnostic-checksum mismatch, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for host-side boot report review.
 The bundle matrix checker validates module naming, capability ownership,
 AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency
@@ -540,8 +543,10 @@ cargo build -p my-control-app --release
 
 Flash and read the reports (see [GETTING_STARTED.md](GETTING_STARTED.md)). A booted
 app populates `NOBRO_MANIFEST_REPORT` (magic `NBMF`) and `NOBRO_ADMISSION_REPORT`
-(magic `NBAD`); both carry the module count and a sealed checksum, so a host tool
-confirms the manifest assembled and admission passed without a `defmt` decoder.
+(magic `NBAD`); both carry the module count and a finalized diagnostic checksum,
+so a host tool detects accidental snapshot corruption and reads the assembly and
+admission result without a `defmt` decoder. This local diagnostic is not
+authentication.
 
 Verified end to end on the development board: a generated `driver`-criticality app compiles for
 `thumbv7em`, boots, assembles a 2-module manifest (kernel + your module), and passes

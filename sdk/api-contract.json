@@ -130,22 +130,22 @@
     },
     {
       "source": "bindings/c/include/nobro_rtos.h",
-      "source_sha256": "73dbc483d7fe88a699ff8aae9f3ca85860d8f2638a5b29fdce6b71649d18026c",
+      "source_sha256": "dcc87c95a73c8727e57e74b2376b4ff0af3eee78bf4e5a916713d32a36f43ef8",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_rtos.h",
-          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
+          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_rtos.h",
-          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
+          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_rtos.h",
-          "sha256": "ec62f6ccb3a5206bc07d2af366ef47295151069ce5f8ec5d85a3b2a805792f24"
+          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
         }
       ]
     },
@@ -463,7 +463,7 @@
           "if (request_bytes > service.request_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
           "if (topic.depth == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO;",
           "if (value_bytes > parameter.value_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
-          "static inline uint32_t nobro_report_checksum_words(const uint32_t *words, size_t word_count) { uint32_t checksum = 0u;",
+          "static inline uint32_t nobro_report_diagnostic_checksum_words(const uint32_t *words, size_t word_count) { uint32_t diagnostic_checksum = 0u;",
           "uint32_t local_arena_bytes = (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) ? contract.arena_bytes : 0u;",
           "uint32_t required_ram_bytes = nobro_saturating_add_u32( nobro_saturating_add_u32( nobro_saturating_add_u32(input_bytes, limits.output_capacity_bytes), limits.scratch_bytes ), local_arena_bytes );",
           "uint32_t stale_after_us = nobro_ai_effective_stale_after_us(policy, contract);",
@@ -472,13 +472,13 @@
           "} if ((contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) && contract.arena_bytes == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING;",
           "} if (action.timeout_us == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;",
           "} if (action.timeout_us > budget_us) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;",
-          "} if (checksum != computed_checksum) { return NOBRO_REPORT_STATUS_CORRUPT;",
           "} if (completed == 0u) { return NOBRO_REPORT_STATUS_IN_PROGRESS;",
           "} if (contract.backend == NOBRO_AI_BACKEND_EDGE_SIDECAR && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_EDGE_SIDECAR;",
           "} if (contract.backend == NOBRO_AI_BACKEND_HYBRID) { if ((policy.preference == NOBRO_AI_ROUTE_LOCAL_ONLY || policy.preference == NOBRO_AI_ROUTE_PREFER_LOCAL) && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
           "} if (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
           "} if (contract.backend == NOBRO_AI_BACKEND_REMOTE_API && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_REMOTE_API;",
           "} if (contract.stale_after_us == 0u || policy.stale_after_us < contract.stale_after_us) { return policy.stale_after_us;",
+          "} if (diagnostic_checksum != computed_diagnostic_checksum) { return NOBRO_REPORT_STATUS_CORRUPT;",
           "} if (feedback_capacity_bytes < action.feedback_bytes_max || result_capacity_bytes < action.result_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;",
           "} if (has_ok_field != 0 && ok == 0u) { return NOBRO_REPORT_STATUS_FAIL;",
           "} if (input_bytes > (uint32_t)contract.input_bytes_max) { error_bits |= NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE;",
@@ -503,39 +503,39 @@
           "} static inline int nobro_report_status_is_passing(nobro_report_status_t status) { return status == NOBRO_REPORT_STATUS_PASS;",
           "} static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t model_id, uint32_t input_bytes, nobro_ai_invocation_limits_t limits ) { nobro_ai_route_decision_t route = nobro_ai_route_decide(policy, contract, state, limits.budget_us);",
           "} static inline nobro_ai_route_decision_t nobro_ai_route_decide( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t budget_us ) { uint8_t failure_limit = policy.endpoint_failure_limit == 0u ? 1u : policy.endpoint_failure_limit;",
-          "} static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ADAPTER_COMPAT_REPORT_MAGIC, report->magic, report->version, report->completed, report->compatible, 1, report->checksum, nobro_adapter_compat_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ADMISSION_REPORT_MAGIC, report->magic, report->version, report->completed, report->admitted, 1, report->checksum, nobro_admission_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_AI_MODEL_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_ai_model_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_BOARD_PACKAGE_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->checksum, nobro_board_package_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_BOARD_PROFILE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_board_profile_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_degrade_application_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_EVENT_LOG_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_event_log_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_HEALTH_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_health_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_MANIFEST_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->checksum, nobro_manifest_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_MODULE_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_module_runtime_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_report_status_from_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t checksum, uint32_t computed_checksum ) { if (magic == 0u && version == 0u && checksum == 0u) { return NOBRO_REPORT_STATUS_MISSING;",
-          "} static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_ROS_BRIDGE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_ros_bridge_report_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report ) { return nobro_report_status_from_checksum( NOBRO_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->checksum, nobro_runtime_report_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ADAPTER_COMPAT_REPORT_MAGIC, report->magic, report->version, report->completed, report->compatible, 1, report->diagnostic_checksum, nobro_adapter_compat_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ADMISSION_REPORT_MAGIC, report->magic, report->version, report->completed, report->admitted, 1, report->diagnostic_checksum, nobro_admission_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_AI_MODEL_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_ai_model_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_BOARD_PACKAGE_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->diagnostic_checksum, nobro_board_package_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_BOARD_PROFILE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_board_profile_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_degrade_application_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_EVENT_LOG_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_event_log_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_HEALTH_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_health_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_MANIFEST_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->diagnostic_checksum, nobro_manifest_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_MODULE_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_module_runtime_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t diagnostic_checksum, uint32_t computed_diagnostic_checksum ) { if (magic == 0u && version == 0u && diagnostic_checksum == 0u) { return NOBRO_REPORT_STATUS_MISSING;",
+          "} static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ROS_BRIDGE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_ros_bridge_report_diagnostic_checksum(report) );",
+          "} static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_runtime_report_diagnostic_checksum(report) );",
           "} static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight( nobro_ros_action_contract_t action, uint16_t goal_bytes, uint16_t feedback_capacity_bytes, uint16_t result_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
           "} static inline nobro_ros_bridge_preflight_t nobro_ros_parameter_preflight( nobro_ros_parameter_contract_t parameter, uint16_t value_bytes ) { uint32_t error_bits = 0u;",
           "} static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight( nobro_ros_service_contract_t service, uint16_t request_bytes, uint16_t response_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
           "} static inline nobro_ros_bridge_preflight_t nobro_ros_topic_preflight( nobro_ros_topic_contract_t topic, uint16_t payload_bytes ) { uint32_t error_bits = 0u;",
-          "} static inline uint32_t nobro_adapter_compat_report_checksum( const nobro_adapter_compat_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->compatible ^ report->adapter_count ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
-          "} static inline uint32_t nobro_admission_report_checksum( const nobro_admission_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->admitted ^ report->module_count ^ report->startup_len ^ report->flash_used_bytes ^ report->flash_limit_bytes ^ report->ram_used_bytes ^ report->ram_limit_bytes ^ report->pool_used_slots ^ report->pool_limit_slots ^ report->error_code;",
+          "} static inline uint32_t nobro_adapter_compat_report_diagnostic_checksum( const nobro_adapter_compat_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->compatible ^ report->adapter_count ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
+          "} static inline uint32_t nobro_admission_report_diagnostic_checksum( const nobro_admission_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->admitted ^ report->module_count ^ report->startup_len ^ report->flash_used_bytes ^ report->flash_limit_bytes ^ report->ram_used_bytes ^ report->ram_limit_bytes ^ report->pool_used_slots ^ report->pool_limit_slots ^ report->error_code;",
           "} static inline uint32_t nobro_ai_effective_stale_after_us( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract ) { if (policy.stale_after_us == 0u) { return contract.stale_after_us;",
-          "} static inline uint32_t nobro_ai_model_report_checksum( const nobro_ai_model_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->backend ^ report->model_id ^ report->input_bytes_max ^ report->output_bytes_max ^ report->arena_bytes ^ report->timeout_us ^ report->route_preference ^ report->stale_after_us ^ report->endpoint_failure_limit;",
-          "} static inline uint32_t nobro_board_package_report_checksum( const nobro_board_package_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->platform_hash ^ report->board_hash ^ report->boot_layout ^ report->app_flash_start ^ report->app_flash_len_bytes ^ report->ram_start ^ report->ram_len_bytes ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->led_pin ^ report->servo_pin ^ report->mvk_trigger_pin ^ report->error_code;",
-          "} static inline uint32_t nobro_board_profile_report_checksum( const nobro_board_profile_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->platform_hash ^ report->board_hash ^ report->app_flash_start ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->servo_pin ^ report->servo_center_us ^ report->led_pin ^ report->mvk_trigger_pin;",
-          "} static inline uint32_t nobro_degrade_application_report_checksum( const nobro_degrade_application_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->requested_count ^ report->disabled_count ^ report->already_disabled_count ^ report->reason ^ report->applied_at_us_lo ^ report->applied_at_us_hi;",
-          "} static inline uint32_t nobro_event_log_report_checksum( const nobro_event_log_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->event_count ^ report->capacity ^ report->dropped_events ^ report->latest_seq ^ report->latest_at_us_lo ^ report->latest_at_us_hi ^ report->latest_module_tag ^ report->latest_severity ^ report->latest_kind ^ report->latest_payload_kind ^ report->latest_payload0 ^ report->latest_payload1;",
-          "} static inline uint32_t nobro_health_report_checksum( const nobro_health_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_tag ^ report->total_errors ^ report->consecutive_errors ^ report->last_error ^ report->last_action ^ report->event_count ^ report->dropped_events ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo ^ report->last_seen_us_hi;",
-          "} static inline uint32_t nobro_manifest_report_checksum(const nobro_manifest_report_t *report) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->module_count ^ report->fingerprint ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
-          "} static inline uint32_t nobro_module_runtime_report_checksum( const nobro_module_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_count ^ report->capacity ^ report->active_count ^ report->suspended_count ^ report->faulted_count ^ report->recovering_count ^ report->disabled_count ^ report->latest_module_tag ^ report->latest_state ^ report->latest_fault_count ^ report->latest_recovery_count ^ report->latest_change_us_lo ^ report->latest_change_us_hi;",
+          "} static inline uint32_t nobro_ai_model_report_diagnostic_checksum( const nobro_ai_model_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->backend ^ report->model_id ^ report->input_bytes_max ^ report->output_bytes_max ^ report->arena_bytes ^ report->timeout_us ^ report->route_preference ^ report->stale_after_us ^ report->endpoint_failure_limit;",
+          "} static inline uint32_t nobro_board_package_report_diagnostic_checksum( const nobro_board_package_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->platform_hash ^ report->board_hash ^ report->boot_layout ^ report->app_flash_start ^ report->app_flash_len_bytes ^ report->ram_start ^ report->ram_len_bytes ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->led_pin ^ report->servo_pin ^ report->mvk_trigger_pin ^ report->error_code;",
+          "} static inline uint32_t nobro_board_profile_report_diagnostic_checksum( const nobro_board_profile_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->platform_hash ^ report->board_hash ^ report->app_flash_start ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->servo_pin ^ report->servo_center_us ^ report->led_pin ^ report->mvk_trigger_pin;",
+          "} static inline uint32_t nobro_degrade_application_report_diagnostic_checksum( const nobro_degrade_application_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->requested_count ^ report->disabled_count ^ report->already_disabled_count ^ report->reason ^ report->applied_at_us_lo ^ report->applied_at_us_hi;",
+          "} static inline uint32_t nobro_event_log_report_diagnostic_checksum( const nobro_event_log_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->event_count ^ report->capacity ^ report->dropped_events ^ report->latest_seq ^ report->latest_at_us_lo ^ report->latest_at_us_hi ^ report->latest_module_tag ^ report->latest_severity ^ report->latest_kind ^ report->latest_payload_kind ^ report->latest_payload0 ^ report->latest_payload1;",
+          "} static inline uint32_t nobro_health_report_diagnostic_checksum( const nobro_health_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_tag ^ report->total_errors ^ report->consecutive_errors ^ report->last_error ^ report->last_action ^ report->event_count ^ report->dropped_events ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo ^ report->last_seen_us_hi;",
+          "} static inline uint32_t nobro_manifest_report_diagnostic_checksum(const nobro_manifest_report_t *report) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->module_count ^ report->fingerprint ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
+          "} static inline uint32_t nobro_module_runtime_report_diagnostic_checksum( const nobro_module_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_count ^ report->capacity ^ report->active_count ^ report->suspended_count ^ report->faulted_count ^ report->recovering_count ^ report->disabled_count ^ report->latest_module_tag ^ report->latest_state ^ report->latest_fault_count ^ report->latest_recovery_count ^ report->latest_change_us_lo ^ report->latest_change_us_hi;",
           "} static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t action) { return (uint32_t)action.goal_bytes_max + (uint32_t)action.feedback_bytes_max + (uint32_t)action.result_bytes_max;",
-          "} static inline uint32_t nobro_ros_bridge_report_checksum( const nobro_ros_bridge_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->transport ^ report->bridge_id_hash ^ report->topic_count ^ report->service_count ^ report->action_count ^ report->parameter_count ^ report->total_buffer_bytes ^ report->max_timeout_us;",
+          "} static inline uint32_t nobro_ros_bridge_report_diagnostic_checksum( const nobro_ros_bridge_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->transport ^ report->bridge_id_hash ^ report->topic_count ^ report->service_count ^ report->action_count ^ report->parameter_count ^ report->total_buffer_bytes ^ report->max_timeout_us;",
           "} static inline uint32_t nobro_ros_service_buffer_bytes(nobro_ros_service_contract_t service) { return (uint32_t)service.request_bytes_max + (uint32_t)service.response_bytes_max;",
           "} static inline uint32_t nobro_ros_topic_buffer_bytes(nobro_ros_topic_contract_t topic) { return (uint32_t)topic.depth * (uint32_t)topic.max_message_bytes;",
-          "} static inline uint32_t nobro_runtime_report_checksum( const nobro_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->state ^ report->module_count ^ report->mailbox_len ^ report->mailbox_dropped ^ report->alarm_len ^ report->next_alarm_due_us_lo ^ report->next_alarm_due_us_hi ^ report->kv_len ^ report->kv_writes ^ report->kv_deletes ^ report->quota_flash_used_bytes ^ report->quota_ram_used_bytes ^ report->quota_pool_used_slots ^ report->event_count ^ report->dropped_events;",
+          "} static inline uint32_t nobro_runtime_report_diagnostic_checksum( const nobro_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->state ^ report->module_count ^ report->mailbox_len ^ report->mailbox_dropped ^ report->alarm_len ^ report->next_alarm_due_us_lo ^ report->next_alarm_due_us_hi ^ report->kv_len ^ report->kv_writes ^ report->kv_deletes ^ report->quota_flash_used_bytes ^ report->quota_ram_used_bytes ^ report->quota_pool_used_slots ^ report->event_count ^ report->dropped_events;",
           "} static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right) { uint32_t result = left + right;",
           "} static inline uint32_t nobro_stable_hash32_bytes(const uint8_t *bytes, size_t byte_count) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
           "} static inline uint32_t nobro_stable_hash32_cstr(const char *value) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
@@ -614,7 +614,7 @@
           "nobro_runtime_report_t"
         ],
         "path": "bindings/c/include/nobro_rtos.h",
-        "sha256": "73dbc483d7fe88a699ff8aae9f3ca85860d8f2638a5b29fdce6b71649d18026c"
+        "sha256": "dcc87c95a73c8727e57e74b2376b4ff0af3eee78bf4e5a916713d32a36f43ef8"
       },
       {
         "declarations": [
@@ -772,7 +772,7 @@
         "ReportKind",
         "ReportSlot",
         "ReportStatus",
-        "seal_report",
+        "finalize_diagnostic_report",
         "ProjectTarget",
         "ProjectTemplate",
         "ProjectMaterializationReport",
@@ -833,7 +833,7 @@
       "modules": [
         {
           "path": "bindings/python/nobro_rtos/__init__.py",
-          "sha256": "b2935e64f5bc90f57ae1cdc91d615b1c5ef4168b4187a2f495501d9d1732e74a"
+          "sha256": "7ec6f22fc31068dbffdac7a0172c350f838abdccdb35e69fd28bc31d703cc6a0"
         },
         {
           "path": "bindings/python/nobro_rtos/__main__.py",
@@ -845,7 +845,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/cli.py",
-          "sha256": "3ca039e57c7591a65b8c22367f393c0735df129986bcf2896c6b68d2962b96e6"
+          "sha256": "cb8d556dbaa77a8bb89392f7c68f6a60b5d47f8fd899b1e52418407edce427f8"
         },
         {
           "path": "bindings/python/nobro_rtos/contracts.py",
@@ -857,11 +857,11 @@
         },
         {
           "path": "bindings/python/nobro_rtos/distribution.py",
-          "sha256": "25769b60f9b33afe59d0cc26683a101daaa555e8d8578afb88ce379d82274d8a"
+          "sha256": "12176da5af616f9f6cf2d5c28333605684ee8c649249eabde2a3640bed4e67c0"
         },
         {
           "path": "bindings/python/nobro_rtos/host_contract.py",
-          "sha256": "e8935d37bb3755d865207e654270dcd5bcce22db18891d997476ba59233d2700"
+          "sha256": "fab62b86156a2bee35da9b2ca6aa1f4b030804c3c7c35469f64e484a9912fb7b"
         },
         {
           "path": "bindings/python/nobro_rtos/module_gen.py",
@@ -881,7 +881,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/reports.py",
-          "sha256": "2339bf65d5fe2d57c288430a7b0d317a7344ad4f6b52f9c7595252f79b3dae50"
+          "sha256": "92bbe137f4694e8d263a6b61aa04b877e97c8e2e4fb1ef54df7d89738050fd32"
         },
         {
           "path": "bindings/python/nobro_rtos/rust_app_gen.py",
@@ -909,7 +909,7 @@
         }
       ],
       "path": "bindings/python/nobro_rtos/__init__.py",
-      "sha256": "b2935e64f5bc90f57ae1cdc91d615b1c5ef4168b4187a2f495501d9d1732e74a"
+      "sha256": "7ec6f22fc31068dbffdac7a0172c350f838abdccdb35e69fd28bc31d703cc6a0"
     },
     "rust": [
       {
@@ -2767,11 +2767,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2787,11 +2787,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2807,11 +2807,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2835,11 +2835,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2863,11 +2863,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2883,11 +2883,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2903,11 +2903,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2935,11 +2935,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -2975,11 +2975,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -3007,11 +3007,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -3039,11 +3039,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -3075,11 +3075,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "fn",
@@ -3087,7 +3087,7 @@
           }
         ],
         "path": "core/crates/nobro_host/src/lib.rs",
-        "sha256": "6330b262700ba5fce89990b9d3f15379a0600df99d97bbad4e95059788b5de58"
+        "sha256": "5cc25381454bd6887cfa2359a2c8d1cfd1c641b3b05398905cdeef722f26f756"
       },
       {
         "crate": "nobro-imu",
@@ -3122,11 +3122,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "struct",
@@ -3190,7 +3190,7 @@
           }
         ],
         "path": "core/crates/nobro_imu/src/lib.rs",
-        "sha256": "21d36d4260727e1904f88d0c0c1f8e011d2735417d706116bfdad97bb1150b58"
+        "sha256": "fd0cc9aa2d4b5ec36c2a2d42062e8e5c6a0ae53e28699cb6485bfd61d57f16c5"
       },
       {
         "crate": "nobro-kernel",
@@ -4264,11 +4264,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "struct",
@@ -4520,11 +4520,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "trait",
@@ -4636,11 +4636,11 @@
           },
           {
             "kind": "fn",
-            "name": "seal"
+            "name": "finalize_diagnostic"
           },
           {
             "kind": "fn",
-            "name": "verify_checksum"
+            "name": "diagnostic_checksum_matches"
           },
           {
             "kind": "struct",
@@ -4760,7 +4760,7 @@
           }
         ],
         "path": "core/crates/nobro_sal/src/lib.rs",
-        "sha256": "6f7283145eb33b86de45bf6218eee20ba53f9d12d12224dcc1a154a0f55b68c5"
+        "sha256": "8fd589dfe96ab522155463112a0d581389822748aac7eab0a0eaf3b48fdaf589"
       },
       {
         "crate": "nobro-secure",
@@ -5417,7 +5417,7 @@
         "crate": "nobro-tierc",
         "exports": [],
         "path": "core/crates/nobro_tierc/src/lib.rs",
-        "sha256": "f88d75faa886fdd1db5caaa15240627a43a258db9e5c0776e36718db5f515306"
+        "sha256": "93e6caa9f28a52c430933ba852539520256aea2a4cf6bdf9359a548056a765ef"
       },
       {
         "crate": "nobro-usb",

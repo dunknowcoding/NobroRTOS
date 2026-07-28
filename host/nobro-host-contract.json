@@ -7,6 +7,11 @@
     "touch_baud": 1200,
     "lock_per_port": true
   },
+  "report_diagnostic_checksum": {
+    "purpose": "accidental local copy/read error detection only",
+    "authentication": false,
+    "untrusted_boundary": "require nobro-secure AuthenticatedReportEnvelope::open before trust decisions"
+  },
   "ina_monitor": {
     "jsonl_line_rate_hz_max": 50
   },
@@ -73,7 +78,7 @@
       "symbol": "NOBRO_AI_MODEL_REPORT",
       "magic": "0x4E424149",
       "version": 1,
-      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; route policy fields are zero when no policy is attached"
+      "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; route policy fields are zero when no policy is attached"
     },
     "backend_codes": {
       "1": "on_device",
@@ -101,7 +106,7 @@
       "symbol": "NOBRO_ROS_BRIDGE_REPORT",
       "magic": "0x4E425253",
       "version": 1,
-      "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; IDs and entity names use FNV-1a 32-bit hashes"
+      "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; IDs and entity names use FNV-1a 32-bit hashes"
     },
     "hash": "fnv1a32_utf8",
     "transport_codes": {
@@ -128,7 +133,7 @@
     "symbol": "NOBRO_EVENT_LOG_REPORT",
     "magic": "0x4E42454C",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest event timestamp split into lo/hi",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; latest event timestamp split into lo/hi",
     "severity_codes": {
       "0": "trace",
       "1": "info",
@@ -158,7 +163,7 @@
     "symbol": "NOBRO_MODULE_RUNTIME_REPORT",
     "magic": "0x4E424D52",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; latest module state timestamp split into lo/hi",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; latest module state timestamp split into lo/hi",
     "state_codes": {
       "1": "registered",
       "2": "active",
@@ -172,7 +177,7 @@
     "symbol": "NOBRO_DEGRADE_APPLICATION_REPORT",
     "magic": "0x4E424447",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; applied timestamp split into lo/hi",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; applied timestamp split into lo/hi",
     "reason_codes": {
       "0": "none",
       "1": "flash_budget",
@@ -185,7 +190,7 @@
     "symbol": "NOBRO_RUNTIME_REPORT",
     "magic": "0x4E425254",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; 64-bit alarm due timestamp split into lo/hi",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; 64-bit alarm due timestamp split into lo/hi",
     "state_codes": {
       "0": "cold_boot",
       "1": "validate_manifest",
@@ -200,20 +205,20 @@
     "symbol": "NOBRO_BOARD_PROFILE_REPORT",
     "magic": "0x4E424250",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; platform and board IDs are FNV-1a 32-bit hashes",
     "catalog": "nobro-hal::BOARD_PROFILES",
     "status": {
-      "missing": "magic/version/checksum are zero",
+      "missing": "magic/version/diagnostic_checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
-      "pass": "checksum valid",
-      "corrupt": "bad magic, version, or checksum"
+      "pass": "diagnostic_checksum valid",
+      "corrupt": "bad magic, version, or diagnostic_checksum"
     }
   },
   "board_package_report": {
     "symbol": "NOBRO_BOARD_PACKAGE_REPORT",
     "magic": "0x4E42424B",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; platform and board IDs are FNV-1a 32-bit hashes",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; platform and board IDs are FNV-1a 32-bit hashes",
     "catalog": "nobro-hal::BOARD_PACKAGES",
     "boot_layout_codes": {
       "1": "no_softdevice",
@@ -221,11 +226,11 @@
       "255": "custom"
     },
     "status": {
-      "missing": "magic/version/checksum are zero",
+      "missing": "magic/version/diagnostic_checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
-      "pass": "checksum valid and valid is non-zero",
-      "fail": "checksum valid and valid is zero; error_code identifies the class",
-      "corrupt": "bad magic, version, or checksum"
+      "pass": "diagnostic_checksum valid and valid is non-zero",
+      "fail": "diagnostic_checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or diagnostic_checksum"
     },
     "error_codes": {
       "1": "empty_platform_id",
@@ -241,13 +246,13 @@
     "symbol": "NOBRO_MANIFEST_REPORT",
     "magic": "0x4E424D46",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum; fingerprint is FNV-1a over module contracts",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum; fingerprint is FNV-1a over module contracts",
     "status": {
-      "missing": "magic/version/checksum are zero",
+      "missing": "magic/version/diagnostic_checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
-      "pass": "checksum valid and valid is non-zero",
-      "fail": "checksum valid and valid is zero; error_code identifies the class",
-      "corrupt": "bad magic, version, or checksum"
+      "pass": "diagnostic_checksum valid and valid is non-zero",
+      "fail": "diagnostic_checksum valid and valid is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or diagnostic_checksum"
     },
     "error_codes": {
       "1": "full",
@@ -271,13 +276,13 @@
     "symbol": "NOBRO_ADAPTER_COMPAT_REPORT",
     "magic": "0x4E424143",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum",
     "status": {
-      "missing": "magic/version/checksum are zero",
+      "missing": "magic/version/diagnostic_checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
-      "pass": "checksum valid and compatible is non-zero",
-      "fail": "checksum valid and compatible is zero; error_code identifies the class",
-      "corrupt": "bad magic, version, or checksum"
+      "pass": "diagnostic_checksum valid and compatible is non-zero",
+      "fail": "diagnostic_checksum valid and compatible is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or diagnostic_checksum"
     },
     "error_codes": {
       "1": "full",
@@ -291,13 +296,13 @@
     "symbol": "NOBRO_ADMISSION_REPORT",
     "magic": "0x4E424144",
     "version": 1,
-    "layout": "repr(C) u32 fields; checksum is xor of all fields except checksum",
+    "layout": "repr(C) u32 fields; diagnostic_checksum is xor of all fields except diagnostic_checksum",
     "status": {
-      "missing": "magic/version/checksum are zero",
+      "missing": "magic/version/diagnostic_checksum are zero",
       "in_progress": "magic/version valid but completed is zero",
-      "pass": "checksum valid and admitted is non-zero",
-      "fail": "checksum valid and admitted is zero; error_code identifies the class",
-      "corrupt": "bad magic, version, or checksum"
+      "pass": "diagnostic_checksum valid and admitted is non-zero",
+      "fail": "diagnostic_checksum valid and admitted is zero; error_code identifies the class",
+      "corrupt": "bad magic, version, or diagnostic_checksum"
     },
     "error_codes": {
       "1": "manifest",

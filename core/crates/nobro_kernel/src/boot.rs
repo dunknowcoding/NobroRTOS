@@ -268,9 +268,9 @@ mod tests {
 
         assert_eq!(assembly.manifest.len(), 3);
         assert_eq!(assembly.startup.len(), 3);
-        assert!(assembly.manifest_report.verify_checksum());
+        assert!(assembly.manifest_report.diagnostic_checksum_matches());
         assert_eq!(assembly.manifest_report.valid, 1);
-        assert!(assembly.admission_report.verify_checksum());
+        assert!(assembly.admission_report.diagnostic_checksum_matches());
         assert_eq!(assembly.admission_report.admitted, 1);
         let reports = assembly.reports();
         assert_eq!(reports.manifest, assembly.manifest_report);
@@ -313,7 +313,7 @@ mod tests {
                 ..
             })
         ));
-        assert!(failure.manifest_report.verify_checksum());
+        assert!(failure.manifest_report.diagnostic_checksum_matches());
         assert_eq!(failure.manifest_report.valid, 0);
         assert_eq!(failure.admission_report, AdmissionReport::zeroed());
         let reports = failure.reports();
@@ -344,9 +344,9 @@ mod tests {
             failure.error,
             BootAssemblyError::Admission(AdmissionError::Startup(crate::StartupError::Cycle))
         ));
-        assert!(failure.manifest_report.verify_checksum());
+        assert!(failure.manifest_report.diagnostic_checksum_matches());
         assert_eq!(failure.manifest_report.valid, 1);
-        assert!(failure.admission_report.verify_checksum());
+        assert!(failure.admission_report.diagnostic_checksum_matches());
         assert_eq!(failure.admission_report.admitted, 0);
         assert_eq!(failure.admission_report.error_code, 2);
         let reports = failure.reports();
@@ -380,7 +380,7 @@ mod tests {
                 depends_on: ModuleId::Kernel,
             })
         );
-        assert!(failure.manifest_report.verify_checksum());
+        assert!(failure.manifest_report.diagnostic_checksum_matches());
         assert_eq!(failure.manifest_report.valid, 1);
         assert_eq!(failure.admission_report, AdmissionReport::zeroed());
     }

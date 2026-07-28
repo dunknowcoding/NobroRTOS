@@ -173,14 +173,14 @@ Host-side contract constants shared by scripts, tools, and documentation.
 - **trait**: `HostReport`
 - **struct**: `HostContract`, `BootDiagnostic`, `ReportSlot`, `BootSummary`, `BootReports`, `BoardProfileReport`, `BoardPackageReport`, `ManifestReport`, `AdapterCompatibilityReport`, `AiModelReport`, `RosBridgeReport`, `AdmissionReport`, `RuntimeReport`, `EventLogReport`, `ModuleRuntimeReport`, `DegradeApplicationReport`, `HealthReport`
 - **enum**: `BootLayout`, `ReportStatus`, `BootStage`
-- **fn**: `diagnostic`, `slots`, `summary`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `seal`, `verify_checksum`, `status`, `set_next_alarm_due_us`, `next_alarm_due_us`, `seal`, `verify_checksum`, `status`, `latest_at_us`, `seal`, `verify_checksum`, `status`, `latest_change_us`, `seal`, `verify_checksum`, `status`, `set_applied_at_us`, `applied_at_us`, `seal`, `verify_checksum`, `status`, `set_last_seen_us`, `last_seen_us`, `seal`, `verify_checksum`, `status`
+- **fn**: `diagnostic`, `slots`, `summary`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_next_alarm_due_us`, `next_alarm_due_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_change_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_applied_at_us`, `applied_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_last_seen_us`, `last_seen_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`
 
 ## `nobro-imu`
 Canonical, allocation-free IMU domain contracts for NobroRTOS.
 - **trait**: `ImuBackend`
 - **struct**: `ImuHealthReport`, `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`
 - **enum**: `ImuEvent`
-- **fn**: `seal`, `verify_checksum`, `magnitude3`
+- **fn**: `finalize_diagnostic`, `diagnostic_checksum_matches`, `magnitude3`
 
 ## `nobro-kernel`
 NobroRTOS kernel: Sample envelope, error policy, and scheduling hooks.
@@ -216,7 +216,7 @@ NobroRTOS service abstraction layer with portable capability traits.
 - **trait**: `AdapterManifest`, `BusSal`, `StreamSal`, `RadioSal`, `ActuatorSal`, `SensorSal`, `ImuSal`, `TempSal`, `CryptoSal`, `RosBridgeSal`, `AiInferenceSal`
 - **struct**: `AdapterDescriptor`, `AdapterCompatibilityReport`, `AdapterSet`, `AdapterPreflight`, `RosTopicContract`, `RosServiceContract`, `RosActionContract`, `RosParameterContract`, `RosBridgeContract`, `RosBridgePreflight`, `RosBridgeContractReport`, `AiRuntimeState`, `AiRouteDecision`, `AiRoutePolicy`, `ModelRegistry`, `AiModelContract`, `AiModelContractReport`, `AiInferenceRequest`, `AiInferenceResult`, `AiInvocationLimits`, `AiInvocationPreflight`
 - **enum**: `AdapterSetError`, `RosBridgeTransport`, `AiBackendKind`, `AiRoutePreference`, `AiRouteTarget`, `AiRegistryError`
-- **fn**: `from_result`, `seal`, `verify_checksum`, `add`, `add_manifest`, `validate_profile`, `compatibility_report`, `descriptor`, `copy_descriptors`, `total_budget`, `owned_capabilities`, `required_capabilities`, `len`, `is_empty`, `add`, `add_manifest`, `compatibility_report`, `descriptor`, `copy_descriptors`, `buffer_bytes`, `buffer_bytes`, `buffer_bytes`, `from_parts`, `preflight_ros_topic`, `preflight_ros_service`, `preflight_ros_action`, `preflight_ros_parameter`, `from_contract`, `seal`, `verify_checksum`, `decide`, `register`, `resolve`, `len`, `is_empty`, `route`, `from_contract`, `from_contract_and_policy`, `seal`, `verify_checksum`, `preflight_ai_invocation`, `default_action`
+- **fn**: `from_result`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `add`, `add_manifest`, `validate_profile`, `compatibility_report`, `descriptor`, `copy_descriptors`, `total_budget`, `owned_capabilities`, `required_capabilities`, `len`, `is_empty`, `add`, `add_manifest`, `compatibility_report`, `descriptor`, `copy_descriptors`, `buffer_bytes`, `buffer_bytes`, `buffer_bytes`, `from_parts`, `preflight_ros_topic`, `preflight_ros_service`, `preflight_ros_action`, `preflight_ros_parameter`, `from_contract`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `decide`, `register`, `resolve`, `len`, `is_empty`, `route`, `from_contract`, `from_contract_and_policy`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `preflight_ai_invocation`, `default_action`
 
 ## `nobro-secure`
 Security + data-integrity primitives.

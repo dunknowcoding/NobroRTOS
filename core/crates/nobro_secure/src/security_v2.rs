@@ -452,6 +452,26 @@ pub struct AuthenticatedReportEnvelope {
     pub tag: [u8; 32],
 }
 
+/// A report payload admitted through the keyed authentication boundary.
+///
+/// Its fields are private so code making a trust decision cannot construct this
+/// token from an unkeyed diagnostic checksum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerifiedReportPayload<'a> {
+    sequence: u32,
+    payload: &'a [u8],
+}
+
+impl<'a> VerifiedReportPayload<'a> {
+    pub const fn sequence(&self) -> u32 {
+        self.sequence
+    }
+
+    pub const fn payload(&self) -> &'a [u8] {
+        self.payload
+    }
+}
+
 impl AuthenticatedReportEnvelope {
     pub fn seal(key: &[u8; 32], sequence: u32, payload: &[u8]) -> Self {
         let payload_digest = sha256(payload);
@@ -465,13 +485,25 @@ impl AuthenticatedReportEnvelope {
     }
 
     pub fn verify(&self, key: &[u8; 32], payload: &[u8]) -> bool {
+        self.open(key, payload).is_some()
+    }
+
+    /// Authenticate an untrusted report payload before it enters a trust
+    /// decision. Unkeyed report diagnostics are deliberately not accepted here.
+    pub fn open<'a>(&self, key: &[u8; 32], payload: &'a [u8]) -> Option<VerifiedReportPayload<'a>> {
         if payload.len() != self.payload_len as usize || sha256(payload) != self.payload_digest {
-            return false;
+            return None;
         }
-        verify_tag(
+        if !verify_tag(
             &self.tag,
             &report_tag(key, self.sequence, self.payload_len, &self.payload_digest),
-        )
+        ) {
+            return None;
+        }
+        Some(VerifiedReportPayload {
+            sequence: self.sequence,
+            payload,
+        })
     }
 }
 
@@ -715,7 +747,11 @@ mod tests {
         let key = [9; 32];
         let payload = b"health report";
         let envelope = AuthenticatedReportEnvelope::seal(&key, 4, payload);
+        let verified = envelope.open(&key, payload).unwrap();
+        assert_eq!(verified.sequence(), 4);
+        assert_eq!(verified.payload(), payload);
         assert!(envelope.verify(&key, payload));
+        assert!(envelope.open(&[8; 32], payload).is_none());
         assert!(!envelope.verify(&key, b"health repors"));
         let mut changed = envelope;
         changed.sequence += 1;

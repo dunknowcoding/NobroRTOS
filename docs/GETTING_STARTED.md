@@ -62,7 +62,8 @@ whether the processor reached bootloader code.
 ### What "PASS" means
 
 The app seals a fixed-layout report (`NOBRO_*_REPORT`) and consumers check `magic`,
-`completed`, `all_pass`, and its checksum. A silent target or unavailable peripheral is
+`completed`, `all_pass`, and its diagnostic checksum. That unkeyed value detects
+accidental snapshot corruption only; it is not authentication. A silent target or unavailable peripheral is
 not a passing result.
 
 ### No probe? No board?

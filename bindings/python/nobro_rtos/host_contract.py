@@ -17,6 +17,7 @@ EXPECTED_TOP_LEVEL_KEYS = frozenset(
     {
         "cdc",
         "upload",
+        "report_diagnostic_checksum",
         "ina_monitor",
         "boot_diagnostics",
         "module_tags",
@@ -38,6 +39,11 @@ EXPECTED_TOP_LEVEL_KEYS = frozenset(
 EXPECTED_SECTION_KEYS = {
     "cdc": {"maintenance_mi", "user_mi"},
     "upload": {"touch_baud", "lock_per_port"},
+    "report_diagnostic_checksum": {
+        "purpose",
+        "authentication",
+        "untrusted_boundary",
+    },
     "ina_monitor": {"jsonl_line_rate_hz_max"},
     "boot_diagnostics": {
         "stage_order",
@@ -213,6 +219,7 @@ class HostContract:
         for key, expected in EXPECTED_SECTION_KEYS.items():
             self._require_exact_keys(key, expected)
         self._validate_basic_sections()
+        self._validate_report_diagnostic_checksum()
         boot = self._require_object("boot_diagnostics")
 
         stages = tuple(boot.get("stage_order", ()))
@@ -227,6 +234,16 @@ class HostContract:
         self._validate_report_contracts()
         self._validate_ai_contracts()
         self._validate_ros_bridge_contracts()
+
+    def _validate_report_diagnostic_checksum(self) -> None:
+        policy = self._require_object("report_diagnostic_checksum")
+        if policy.get("authentication") is not False:
+            raise ValueError("report diagnostic checksum must not claim authentication")
+        if "accidental" not in str(policy.get("purpose", "")).casefold():
+            raise ValueError("report diagnostic checksum purpose must remain diagnostic-only")
+        boundary = str(policy.get("untrusted_boundary", ""))
+        if "AuthenticatedReportEnvelope::open" not in boundary:
+            raise ValueError("untrusted reports must require the authenticated open path")
 
     def capability_label(self, capability: Capability) -> str:
         return self.payload["capability_bits"][str(int(capability))]

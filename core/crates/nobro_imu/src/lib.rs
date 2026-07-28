@@ -3,6 +3,8 @@
 //! Sensor adapters and external-library adapters implement this API. The
 //! domain crate deliberately contains no chip registers, bus ownership, or
 //! board policy.
+//! `ImuHealthReport::diagnostic_checksum` detects accidental snapshot damage;
+//! it does not authenticate report bytes.
 #![cfg_attr(not(test), no_std)]
 
 pub const IMU_API_VERSION: u16 = 0x0100;
@@ -28,7 +30,7 @@ pub struct ImuHealthReport {
     pub accel_mag_mg: u32,
     pub gyro_mag_mdps: u32,
     pub temperature_centi_c: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ImuHealthReport {
@@ -47,11 +49,11 @@ impl ImuHealthReport {
             accel_mag_mg: 0,
             gyro_mag_mdps: 0,
             temperature_centi_c: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = IMU_HEALTH_REPORT_MAGIC;
         self.version = IMU_HEALTH_REPORT_VERSION;
         self.healthy = u32::from(
@@ -64,15 +66,15 @@ impl ImuHealthReport {
                 && (500..=6000).contains(&self.temperature_centi_c),
         );
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
-        self.checksum == self.compute_checksum()
+    pub fn diagnostic_checksum_matches(&self) -> bool {
+        self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -232,8 +234,8 @@ mod tests {
             temperature_centi_c: 2500,
             ..ImuHealthReport::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         assert_eq!(report.healthy, 1);
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
     }
 }

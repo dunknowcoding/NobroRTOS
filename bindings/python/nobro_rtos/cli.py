@@ -41,7 +41,7 @@ from .distribution import (
     validate_python_public_surface,
 )
 from .host_contract import BootDiagnostic, find_repo_root, load_repo_host_contract
-from .reports import BootReportSummary, FixedReport, ReportKind, seal_report
+from .reports import BootReportSummary, FixedReport, ReportKind, finalize_diagnostic_report
 from .templates import (
     ProjectTarget,
     build_project_template,
@@ -185,7 +185,7 @@ def main() -> int:
     )
     sample_report = subparsers.add_parser(
         "sample-report",
-        help="print a sealed sample fixed report as JSON",
+        help="print a diagnostically finalized sample fixed report as JSON",
     )
     sample_report.add_argument(
         "kind",
@@ -2195,7 +2195,7 @@ def _ai_preference_from_label(label: str) -> AiRoutePreference:
 
 def _sample_report(kind: str) -> dict[str, int]:
     if kind == "admission":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.ADMISSION,
             {
                 "admitted": 1,
@@ -2210,7 +2210,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "runtime":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.RUNTIME,
             {
                 "state": 3,
@@ -2227,7 +2227,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "health":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.HEALTH,
             {
                 "module_tag": 5,
@@ -2242,7 +2242,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "event_log":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.EVENT_LOG,
             {
                 "event_count": 3,
@@ -2258,7 +2258,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "module_runtime":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.MODULE_RUNTIME,
             {
                 "module_count": 2,
@@ -2273,7 +2273,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "degrade_application":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.DEGRADE_APPLICATION,
             {
                 "requested_count": 2,
@@ -2285,7 +2285,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "ai_model":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.AI_MODEL,
             {
                 "backend": int(AiBackendKind.HYBRID),
@@ -2300,7 +2300,7 @@ def _sample_report(kind: str) -> dict[str, int]:
             },
         )
     if kind == "ros_bridge":
-        return seal_report(
+        return finalize_diagnostic_report(
             ReportKind.ROS_BRIDGE,
             {
                 "transport": 1,
@@ -2353,7 +2353,7 @@ def _report_sample_decode_scenario() -> dict[str, object]:
     errors: list[str] = []
     for kind, report in decoded.items():
         _expect_equal(report["status"], "pass", f"{kind}.status", errors)
-        _expect_equal(report["checksum_ok"], True, f"{kind}.checksum_ok", errors)
+        _expect_equal(report["diagnostic_checksum_ok"], True, f"{kind}.diagnostic_checksum_ok", errors)
 
     _expect_equal(decoded["admission"]["admitted"], True, "admission.admitted", errors)
     _expect_equal(
@@ -2401,7 +2401,7 @@ def _report_sample_decode_scenario() -> dict[str, object]:
         "decoded": {
             kind: {
                 "status": report["status"],
-                "checksum_ok": report["checksum_ok"],
+                "diagnostic_checksum_ok": report["diagnostic_checksum_ok"],
                 **{
                     key: report[key]
                     for key in (
@@ -2424,7 +2424,7 @@ def _report_sample_decode_scenario() -> dict[str, object]:
 
 
 def _report_status_class_scenario() -> dict[str, object]:
-    pass_payload = seal_report(
+    pass_payload = finalize_diagnostic_report(
         ReportKind.MANIFEST,
         {
             "valid": 1,
@@ -2438,15 +2438,15 @@ def _report_status_class_scenario() -> dict[str, object]:
     in_progress["completed"] = 0
     corrupt_magic = dict(pass_payload)
     corrupt_magic["magic"] = 0
-    corrupt_checksum = dict(pass_payload)
-    corrupt_checksum["module_count"] = 3
+    corrupt_diagnostic_checksum = dict(pass_payload)
+    corrupt_diagnostic_checksum["module_count"] = 3
 
     reports = {
         "missing": FixedReport.from_dict(ReportKind.MANIFEST, {}).to_dict(),
         "in_progress": FixedReport.from_dict(ReportKind.MANIFEST, in_progress).to_dict(),
         "corrupt_magic": FixedReport.from_dict(ReportKind.MANIFEST, corrupt_magic).to_dict(),
-        "corrupt_checksum": FixedReport.from_dict(
-            ReportKind.MANIFEST, corrupt_checksum
+        "corrupt_diagnostic_checksum": FixedReport.from_dict(
+            ReportKind.MANIFEST, corrupt_diagnostic_checksum
         ).to_dict(),
         "pass": FixedReport.from_dict(ReportKind.MANIFEST, pass_payload).to_dict(),
     }
@@ -2456,14 +2456,14 @@ def _report_status_class_scenario() -> dict[str, object]:
     _expect_equal(statuses["in_progress"], "in_progress", "in_progress.status", errors)
     _expect_equal(statuses["corrupt_magic"], "corrupt", "corrupt_magic.status", errors)
     _expect_equal(
-        statuses["corrupt_checksum"], "corrupt", "corrupt_checksum.status", errors
+        statuses["corrupt_diagnostic_checksum"], "corrupt", "corrupt_diagnostic_checksum.status", errors
     )
     _expect_equal(statuses["pass"], "pass", "pass.status", errors)
-    _expect_equal(reports["pass"]["checksum_ok"], True, "pass.checksum_ok", errors)
+    _expect_equal(reports["pass"]["diagnostic_checksum_ok"], True, "pass.diagnostic_checksum_ok", errors)
     _expect_equal(
-        reports["corrupt_checksum"]["checksum_ok"],
+        reports["corrupt_diagnostic_checksum"]["diagnostic_checksum_ok"],
         False,
-        "corrupt_checksum.checksum_ok",
+        "corrupt_diagnostic_checksum.diagnostic_checksum_ok",
         errors,
     )
 
@@ -2472,8 +2472,8 @@ def _report_status_class_scenario() -> dict[str, object]:
         "passing": len(errors) == 0,
         "errors": errors,
         "statuses": statuses,
-        "checksum_ok": {
-            name: report["checksum_ok"] for name, report in reports.items()
+        "diagnostic_checksum_ok": {
+            name: report["diagnostic_checksum_ok"] for name, report in reports.items()
         },
     }
 
@@ -2481,7 +2481,7 @@ def _report_status_class_scenario() -> dict[str, object]:
 def _report_failure_label_scenario() -> dict[str, object]:
     board_package = FixedReport.from_dict(
         ReportKind.BOARD_PACKAGE,
-        seal_report(
+        finalize_diagnostic_report(
             ReportKind.BOARD_PACKAGE,
             {
                 "valid": 0,
@@ -2504,7 +2504,7 @@ def _report_failure_label_scenario() -> dict[str, object]:
     ).to_dict()
     adapter = FixedReport.from_dict(
         ReportKind.ADAPTER_COMPAT,
-        seal_report(
+        finalize_diagnostic_report(
             ReportKind.ADAPTER_COMPAT,
             {
                 "compatible": 0,
@@ -2517,7 +2517,7 @@ def _report_failure_label_scenario() -> dict[str, object]:
     ).to_dict()
     admission = FixedReport.from_dict(
         ReportKind.ADMISSION,
-        seal_report(ReportKind.ADMISSION, {"admitted": 0, "error_code": 5}),
+        finalize_diagnostic_report(ReportKind.ADMISSION, {"admitted": 0, "error_code": 5}),
     ).to_dict()
 
     errors: list[str] = []
@@ -2604,7 +2604,7 @@ def _boot_summary_scenario(
 
 def _boot_pass_reports() -> dict[str, dict[str, int]]:
     return {
-        "board_profile": seal_report(
+        "board_profile": finalize_diagnostic_report(
             ReportKind.BOARD_PROFILE,
             {
                 "platform_hash": 0x1111,
@@ -2620,7 +2620,7 @@ def _boot_pass_reports() -> dict[str, dict[str, int]]:
                 "mvk_trigger_pin": 17,
             },
         ),
-        "board_package": seal_report(
+        "board_package": finalize_diagnostic_report(
             ReportKind.BOARD_PACKAGE,
             {
                 "valid": 1,
@@ -2640,7 +2640,7 @@ def _boot_pass_reports() -> dict[str, dict[str, int]]:
                 "mvk_trigger_pin": 17,
             },
         ),
-        "manifest": seal_report(
+        "manifest": finalize_diagnostic_report(
             ReportKind.MANIFEST,
             {
                 "valid": 1,
@@ -2648,7 +2648,7 @@ def _boot_pass_reports() -> dict[str, dict[str, int]]:
                 "fingerprint": 0x1234,
             },
         ),
-        "adapter_compatibility": seal_report(
+        "adapter_compatibility": finalize_diagnostic_report(
             ReportKind.ADAPTER_COMPAT,
             {
                 "compatible": 1,
@@ -2702,7 +2702,7 @@ def _boot_manifest_corrupt_scenario() -> dict[str, object]:
     reports["manifest"] = dict(reports["manifest"])
     reports["manifest"]["module_count"] = 3
     return _boot_summary_scenario(
-        "manifest_checksum_corruption_stops_boot",
+        "manifest_diagnostic_checksum_corruption_stops_boot",
         reports,
         expected_passing=False,
         expected_stage="manifest",
@@ -2720,7 +2720,7 @@ def _boot_manifest_corrupt_scenario() -> dict[str, object]:
 
 def _boot_adapter_failure_scenario() -> dict[str, object]:
     reports = _boot_pass_reports()
-    reports["adapter_compatibility"] = seal_report(
+    reports["adapter_compatibility"] = finalize_diagnostic_report(
         ReportKind.ADAPTER_COMPAT,
         {
             "compatible": 0,

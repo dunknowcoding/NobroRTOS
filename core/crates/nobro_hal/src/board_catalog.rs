@@ -288,7 +288,7 @@ mod tests {
         for entry in BOARD_PACKAGES {
             assert_eq!(entry.package.validate(), Ok(()));
             let report = entry.report();
-            assert!(report.verify_checksum());
+            assert!(report.diagnostic_checksum_matches());
             assert_eq!(report.valid, 1);
             assert_eq!(report.error_code, 0);
         }
@@ -298,7 +298,7 @@ mod tests {
     fn board_profile_entries_are_reportable() {
         for entry in BOARD_PROFILES {
             let report = entry.report();
-            assert!(report.verify_checksum());
+            assert!(report.diagnostic_checksum_matches());
             assert_eq!(report.completed, 1);
             assert_eq!(report.app_flash_start, entry.app_flash_start);
             assert_eq!(report.flash_budget_bytes, entry.capacity.flash_budget_bytes);

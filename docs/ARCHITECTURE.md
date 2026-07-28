@@ -464,7 +464,8 @@ Fault handling is intentionally small:
 - `RecoveryCoordinator` composes health, lifecycle transitions, watchdog-style
   deadline faults, and event logging into one testable recovery path.
 - `HealthReport` turns supervisor snapshots into fixed-layout host-readable
-  records with the same checksum discipline as health and admission reports.
+  records with the same diagnostic-checksum discipline as health and admission
+  reports; this remains accidental-corruption detection, not authentication.
 - `EventLogReport` summarizes the fixed event ring for host tools, including
   capacity, drops, and the latest event's module, severity, kind, and payload.
 - `ModuleRuntimeReport` summarizes module runtime states for host tools,
@@ -529,7 +530,8 @@ hard-real-time paths.
 Before adding a hardware-dependent feature, add at least one software gate:
 
 - a host unit test
-- a checksumed host-readable report
+- a diagnostic-checksummed host-readable report (accidental-corruption
+  detection only)
 - a register snapshot comparison
 - a board feature/linker validation
 - a no-hardware stub adapter
@@ -564,8 +566,9 @@ The next step is not a larger kernel; it is stronger contracts:
   multi-priority reactor domains with one admitted driver task per domain plus
   explicit cross-domain channels
 - health reports exported through the same host contract as runtime reports
-- fixed-layout health reports with checksums for CDC, memory inspection, or another stream
-  readers
+- fixed-layout health reports with explicitly unkeyed diagnostic checksums for
+  CDC, memory inspection, or other local readers; untrusted transports require
+  the authenticated report envelope
 - app assembly patterns that connect adapter preflight, board package reports,
   and `BootAssembly` without adding runtime plugin registries
 

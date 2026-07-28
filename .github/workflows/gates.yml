@@ -30,7 +30,9 @@ jobs:
       - name: software surface contract
         run: python sdk/cli/nobro.py contract check-software-surface
       - name: public documentation
-        run: python tools/checks/release/check_public_docs.py
+        run: |
+          python tools/checks/release/check_public_docs.py
+          python tools/checks/core/check_report_trust_boundary.py
       - name: board profiles
         run: python tools/checks/platforms/check_board_profiles.py
       - name: scalable core layout

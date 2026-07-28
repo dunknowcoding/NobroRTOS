@@ -490,7 +490,7 @@ fn main() -> ! {
         }
         if unsafe { READS } >= MIN_HEALTH_SAMPLES {
             let mut report = unsafe { NOBRO_IMU_HEALTH_REPORT };
-            report.seal();
+            report.finalize_diagnostic();
             unsafe {
                 NOBRO_IMU_HEALTH_REPORT = report;
             }

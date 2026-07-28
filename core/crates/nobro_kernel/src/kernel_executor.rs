@@ -2486,7 +2486,7 @@ mod tests {
             .unwrap();
 
         let report = recorder.report();
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.dispatch_samples, 2);
         assert_eq!(report.simultaneous_release_groups, 1);
         assert_eq!(report.simultaneous_max_width, 2);

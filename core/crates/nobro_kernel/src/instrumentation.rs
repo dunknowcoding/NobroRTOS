@@ -97,7 +97,7 @@ pub struct ExecutorTimingReport {
     /// Extra task slots inspected by attribution-only simultaneous-peer scans.
     pub probe_scan_slots_total_lo: u32,
     pub probe_scan_slots_total_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ExecutorTimingReport {
@@ -141,7 +141,7 @@ impl ExecutorTimingReport {
             probe_clock_reads: 0,
             probe_scan_slots_total_lo: 0,
             probe_scan_slots_total_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -202,7 +202,7 @@ impl ExecutorTimingReport {
         self.flags & EXECUTOR_FLAG_CLOCK_INVALID == 0
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == EXECUTOR_TIMING_REPORT_MAGIC
             && self.version == EXECUTOR_TIMING_REPORT_VERSION
             && self.completed == 1
@@ -211,10 +211,10 @@ impl ExecutorTimingReport {
             && self.declaration_id != 0
             && self.flags & EXECUTOR_FATAL_FLAGS == 0
             && self.flags & !EXECUTOR_KNOWN_FLAGS == 0
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn seal(&mut self) {
+    fn finalize_diagnostic(&mut self) {
         self.magic = EXECUTOR_TIMING_REPORT_MAGIC;
         self.version = EXECUTOR_TIMING_REPORT_VERSION;
         let identity_complete =
@@ -229,11 +229,11 @@ impl ExecutorTimingReport {
             self.flags |= EXECUTOR_FLAG_INCOMPLETE;
         }
         self.completed = u32::from(self.flags & EXECUTOR_FATAL_FLAGS == 0);
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         let words = unsafe {
             core::slice::from_raw_parts(
                 (self as *const Self).cast::<u32>(),
@@ -242,7 +242,9 @@ impl ExecutorTimingReport {
         };
         words
             .iter()
-            .fold(FNV1A32_OFFSET, |checksum, word| hash_u32(checksum, *word))
+            .fold(FNV1A32_OFFSET, |diagnostic_checksum, word| {
+                hash_u32(diagnostic_checksum, *word)
+            })
     }
 }
 
@@ -307,7 +309,7 @@ impl<const GROUPS: usize> ExecutorInstrumentation<GROUPS> {
         if self.groups.iter().any(|group| group.used) {
             report.flags |= EXECUTOR_FLAG_PARTIAL_RELEASE_GROUP | EXECUTOR_FLAG_INCOMPLETE;
         }
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -617,7 +619,7 @@ mod tests {
         record_poll(&mut recorder, 200, 215, 1, 21, 3);
         record_poll(&mut recorder, 100, 145, 1, 12, 4);
         let report = recorder.report();
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.completed, 1);
         assert_eq!(report.release_dispatch_total_us(), 105);
         assert_eq!(report.release_dispatch_max_us, 45);
@@ -635,15 +637,15 @@ mod tests {
 
         let mut unknown_flags = report;
         unknown_flags.flags |= 1 << 31;
-        unknown_flags.checksum = 0;
-        unknown_flags.checksum = unknown_flags.compute_checksum();
-        assert!(!unknown_flags.verify_checksum());
+        unknown_flags.diagnostic_checksum = 0;
+        unknown_flags.diagnostic_checksum = unknown_flags.compute_diagnostic_checksum();
+        assert!(!unknown_flags.diagnostic_checksum_matches());
 
         let mut incomplete_header = report;
         incomplete_header.completed = 0;
-        incomplete_header.checksum = 0;
-        incomplete_header.checksum = incomplete_header.compute_checksum();
-        assert!(!incomplete_header.verify_checksum());
+        incomplete_header.diagnostic_checksum = 0;
+        incomplete_header.diagnostic_checksum = incomplete_header.compute_diagnostic_checksum();
+        assert!(!incomplete_header.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -659,7 +661,7 @@ mod tests {
         partial.record_poll_attempt();
         let report = partial.report();
         assert_eq!(report.completed, 0);
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
 
         let mut partial_group = ExecutorInstrumentation::<1>::with_identity(IDENTITY);
         partial_group.record_poll_attempt();
@@ -668,7 +670,7 @@ mod tests {
         let report = partial_group.report();
         assert_eq!(report.completed, 0);
         assert_ne!(report.flags & EXECUTOR_FLAG_PARTIAL_RELEASE_GROUP, 0);
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
 
         let mut saturated = ExecutorInstrumentation::<1>::with_identity(IDENTITY);
         saturated.record_selection(1, 1, 0, u64::from(u32::MAX) + 1, 2);

@@ -164,7 +164,7 @@ fn try_finalize_eval() {
         temperature_centi_c: LAST_TEMP_CENTI.load(Ordering::Acquire),
         ..ImuHealthReport::zeroed()
     };
-    report.seal();
+    report.finalize_diagnostic();
 
     unsafe {
         NOBRO_IMU_HEALTH_REPORT = report;

@@ -1,4 +1,7 @@
 //! Platform-agnostic self-test snapshot types.
+//!
+//! Snapshot diagnostic checksums are unkeyed accidental-corruption checks, not
+//! authentication.
 
 use crate::board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPins, BusLayout, ServoProfile,
@@ -47,7 +50,7 @@ pub struct BoardProfileReport {
     pub servo_center_us: u32,
     pub led_pin: u32,
     pub mvk_trigger_pin: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl BoardProfileReport {
@@ -67,7 +70,7 @@ impl BoardProfileReport {
             servo_center_us: 0,
             led_pin: 0,
             mvk_trigger_pin: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -104,25 +107,25 @@ impl BoardProfileReport {
             mvk_trigger_pin: u32::from(pins.mvk_trigger_pin),
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = BOARD_PROFILE_REPORT_MAGIC;
         self.version = BOARD_PROFILE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == BOARD_PROFILE_REPORT_MAGIC
             && self.version == BOARD_PROFILE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -162,7 +165,7 @@ pub struct BoardPackageReport {
     pub servo_pin: u32,
     pub mvk_trigger_pin: u32,
     pub error_code: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl BoardPackageReport {
@@ -187,7 +190,7 @@ impl BoardPackageReport {
             servo_pin: 0,
             mvk_trigger_pin: 0,
             error_code: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -212,25 +215,25 @@ impl BoardPackageReport {
             error_code: validation.err().map_or(0, |error| error.code()),
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = BOARD_PACKAGE_REPORT_MAGIC;
         self.version = BOARD_PACKAGE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == BOARD_PACKAGE_REPORT_MAGIC
             && self.version == BOARD_PACKAGE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -283,7 +286,7 @@ mod tests {
     fn board_profile_report_seals_board_contract() {
         let mut report = BoardProfileReport::from_board::<TestBoard>();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, BOARD_PROFILE_REPORT_MAGIC);
         assert_eq!(report.platform_hash, hash_str("cortex_m"));
         assert_eq!(report.board_hash, hash_str("test-board"));
@@ -295,7 +298,7 @@ mod tests {
         assert_eq!(report.servo_pin, 2);
 
         report.max_modules += 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -308,7 +311,7 @@ mod tests {
         );
         let mut report = BoardPackageReport::from_package(&package);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, BOARD_PACKAGE_REPORT_MAGIC);
         assert_eq!(report.valid, 1);
         assert_eq!(report.error_code, 0);
@@ -319,7 +322,7 @@ mod tests {
         assert_eq!(report.ram_start, 0x2000_0000);
 
         report.ram_len_bytes += 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -334,7 +337,7 @@ mod tests {
 
         let report = BoardPackageReport::from_package(&package);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.valid, 0);
         assert_eq!(report.error_code, 7);
     }

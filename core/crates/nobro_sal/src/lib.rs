@@ -1,4 +1,7 @@
 //! NobroRTOS service abstraction layer with portable capability traits.
+//!
+//! Contract-report diagnostic checksums detect accidental snapshot damage only;
+//! they are not authentication.
 
 #![no_std]
 
@@ -101,7 +104,7 @@ pub struct AdapterCompatibilityReport {
     pub error_code: u32,
     pub error_module_tag: u32,
     pub error_capability_bits: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AdapterCompatibilityReport {
@@ -120,7 +123,7 @@ impl AdapterCompatibilityReport {
             error_code: 0,
             error_module_tag: 0,
             error_capability_bits: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -147,25 +150,25 @@ impl AdapterCompatibilityReport {
             report.error_capability_bits = error.capability_bits();
         }
 
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ADAPTER_COMPAT_REPORT_MAGIC;
         self.version = ADAPTER_COMPAT_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ADAPTER_COMPAT_REPORT_MAGIC
             && self.version == ADAPTER_COMPAT_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -785,7 +788,7 @@ pub struct RosBridgeContractReport {
     pub parameter_count: u32,
     pub total_buffer_bytes: u32,
     pub max_timeout_us: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl RosBridgeContractReport {
@@ -802,7 +805,7 @@ impl RosBridgeContractReport {
             parameter_count: 0,
             total_buffer_bytes: 0,
             max_timeout_us: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -818,25 +821,25 @@ impl RosBridgeContractReport {
             max_timeout_us: contract.max_timeout_us,
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ROS_BRIDGE_REPORT_MAGIC;
         self.version = ROS_BRIDGE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ROS_BRIDGE_REPORT_MAGIC
             && self.version == ROS_BRIDGE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1248,7 +1251,7 @@ pub struct AiModelContractReport {
     pub route_preference: u32,
     pub stale_after_us: u32,
     pub endpoint_failure_limit: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AiModelContractReport {
@@ -1266,7 +1269,7 @@ impl AiModelContractReport {
             route_preference: 0,
             stale_after_us: 0,
             endpoint_failure_limit: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1294,25 +1297,25 @@ impl AiModelContractReport {
                 .unwrap_or(0),
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = AI_MODEL_REPORT_MAGIC;
         self.version = AI_MODEL_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == AI_MODEL_REPORT_MAGIC
             && self.version == AI_MODEL_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1844,7 +1847,7 @@ mod tests {
         let bridge = LoopbackRos;
         let report = RosBridgeContractReport::from_contract(bridge.contract());
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, ROS_BRIDGE_REPORT_MAGIC);
         assert_eq!(report.version, ROS_BRIDGE_REPORT_VERSION);
         assert_eq!(report.transport, RosBridgeTransport::Serial as u32);
@@ -1947,7 +1950,7 @@ mod tests {
             .with_stale_after_us(100_000);
         let report = AiModelContractReport::from_contract_and_policy(contract, Some(policy));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, AI_MODEL_REPORT_MAGIC);
         assert_eq!(report.version, AI_MODEL_REPORT_VERSION);
         assert_eq!(report.backend, AiBackendKind::Hybrid as u32);
@@ -1970,7 +1973,7 @@ mod tests {
             .with_stale_after_us(100_000);
         let report = AiModelContractReport::from_contract(contract);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.route_preference, 0);
         assert_eq!(report.stale_after_us, 100_000);
         assert_eq!(report.endpoint_failure_limit, 0);
@@ -2138,7 +2141,7 @@ mod tests {
 
         let report = adapters.compatibility_report(SystemProfile::new(4096, 1024, 4, 2));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, ADAPTER_COMPAT_REPORT_MAGIC);
         assert_eq!(report.version, ADAPTER_COMPAT_REPORT_VERSION);
         assert_eq!(report.compatible, 1);
@@ -2167,7 +2170,7 @@ mod tests {
 
         let report = adapters.compatibility_report(SystemProfile::new(4096, 1024, 4, 2));
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.compatible, 0);
         assert_eq!(
             report.error_code,
@@ -2197,7 +2200,7 @@ mod tests {
             preflight.first_error(),
             Some(AdapterSetError::DuplicateModule(ModuleId::Sensor))
         );
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.compatible, 0);
         assert_eq!(
             report.error_code,

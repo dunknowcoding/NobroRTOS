@@ -159,6 +159,11 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("python bindings", [py, "-m", "unittest", "discover", "-s", "tests"], bindings),
         ("software surface", [py, "sdk/cli/nobro.py", "contract", "check-software-surface"], ROOT),
         ("public docs", [py, "tools/checks/release/check_public_docs.py"], ROOT),
+        (
+            "report trust boundary",
+            [py, "tools/checks/core/check_report_trust_boundary.py"],
+            ROOT,
+        ),
         ("static budget analyzer", [py, "sdk/cli/nobro.py", "budget", "--selftest"], ROOT),
         ("flash tool fail-closed parser", [py, "sdk/cli/nobro.py", "flash", "--selftest"], ROOT),
         ("board profiles", [py, "tools/checks/platforms/check_board_profiles.py"], ROOT),

@@ -50,8 +50,8 @@ REQUIRED_REPORT_SURFACES = (
     ),
 )
 REQUIRED_C_HELPERS = (
-    "nobro_report_checksum_words",
-    "nobro_report_status_from_checksum",
+    "nobro_report_diagnostic_checksum_words",
+    "nobro_report_status_from_diagnostic_checksum",
     "nobro_stable_hash32_cstr",
     "nobro_ai_effective_stale_after_us",
     "nobro_ai_route_decide",
@@ -486,8 +486,8 @@ def validate_public_header_surface(
         _require_text(c_header, c_struct, f"{report_name} C report")
         _require_text(
             c_header,
-            f"nobro_{report_name}_report_checksum",
-            f"{report_name} checksum helper",
+            f"nobro_{report_name}_report_diagnostic_checksum",
+            f"{report_name} diagnostic checksum helper",
         )
         _require_text(
             c_header,

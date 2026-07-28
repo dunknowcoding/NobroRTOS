@@ -869,7 +869,7 @@ pub struct ManifestReport {
     pub error_code: u32,
     pub error_module_tag: u32,
     pub error_capability_bits: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ManifestReport {
@@ -889,7 +889,7 @@ impl ManifestReport {
             error_code: 0,
             error_module_tag: 0,
             error_capability_bits: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -917,25 +917,25 @@ impl ManifestReport {
             report.error_capability_bits = error.capability_bits();
         }
 
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = MANIFEST_REPORT_MAGIC;
         self.version = MANIFEST_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == MANIFEST_REPORT_MAGIC
             && self.version == MANIFEST_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1515,7 +1515,7 @@ mod tests {
             }),
         );
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, MANIFEST_REPORT_MAGIC);
         assert_eq!(report.version, MANIFEST_REPORT_VERSION);
         assert_eq!(report.valid, 1);
@@ -1538,7 +1538,7 @@ mod tests {
             }),
         );
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.valid, 0);
         assert_eq!(
             report.error_code,

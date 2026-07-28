@@ -73,7 +73,7 @@ from .reports import (
     ReportKind,
     ReportSlot,
     ReportStatus,
-    seal_report,
+    finalize_diagnostic_report,
 )
 from .templates import (
     ProjectMaterializationReport,
@@ -203,7 +203,7 @@ __all__ = [
     "ReportKind",
     "ReportSlot",
     "ReportStatus",
-    "seal_report",
+    "finalize_diagnostic_report",
     "ProjectTarget",
     "ProjectTemplate",
     "ProjectMaterializationReport",

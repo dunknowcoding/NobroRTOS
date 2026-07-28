@@ -1,4 +1,7 @@
 //! Host-side contract constants shared by scripts, tools, and documentation.
+//!
+//! Fixed-report diagnostic checksums only classify local snapshots as complete
+//! or accidentally corrupted. They do not authenticate untrusted bytes.
 
 #![no_std]
 
@@ -459,12 +462,12 @@ pub trait HostReport {
     fn raw_magic(&self) -> u32;
     fn raw_version(&self) -> u32;
     fn completed(&self) -> u32;
-    fn checksum(&self) -> u32;
-    fn verify_checksum(&self) -> bool;
+    fn diagnostic_checksum(&self) -> u32;
+    fn diagnostic_checksum_matches(&self) -> bool;
     fn status(&self) -> ReportStatus;
 
     fn is_missing(&self) -> bool {
-        self.raw_magic() == 0 && self.raw_version() == 0 && self.checksum() == 0
+        self.raw_magic() == 0 && self.raw_version() == 0 && self.diagnostic_checksum() == 0
     }
 
     fn has_expected_header(&self) -> bool {
@@ -543,12 +546,12 @@ macro_rules! impl_host_report {
                 self.completed
             }
 
-            fn checksum(&self) -> u32 {
-                self.checksum
+            fn diagnostic_checksum(&self) -> u32 {
+                self.diagnostic_checksum
             }
 
-            fn verify_checksum(&self) -> bool {
-                <$report>::verify_checksum(self)
+            fn diagnostic_checksum_matches(&self) -> bool {
+                <$report>::diagnostic_checksum_matches(self)
             }
 
             fn status(&self) -> ReportStatus {
@@ -716,7 +719,7 @@ pub struct BoardProfileReport {
     pub servo_center_us: u32,
     pub led_pin: u32,
     pub mvk_trigger_pin: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl BoardProfileReport {
@@ -736,26 +739,26 @@ impl BoardProfileReport {
             servo_center_us: 0,
             led_pin: 0,
             mvk_trigger_pin: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = BOARD_PROFILE_REPORT_MAGIC;
         self.version = BOARD_PROFILE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == BOARD_PROFILE_REPORT_MAGIC
             && self.version == BOARD_PROFILE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != BOARD_PROFILE_REPORT_MAGIC || self.version != BOARD_PROFILE_REPORT_VERSION
@@ -765,14 +768,14 @@ impl BoardProfileReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -812,7 +815,7 @@ pub struct BoardPackageReport {
     pub servo_pin: u32,
     pub mvk_trigger_pin: u32,
     pub error_code: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl BoardPackageReport {
@@ -837,26 +840,26 @@ impl BoardPackageReport {
             servo_pin: 0,
             mvk_trigger_pin: 0,
             error_code: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = BOARD_PACKAGE_REPORT_MAGIC;
         self.version = BOARD_PACKAGE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == BOARD_PACKAGE_REPORT_MAGIC
             && self.version == BOARD_PACKAGE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != BOARD_PACKAGE_REPORT_MAGIC || self.version != BOARD_PACKAGE_REPORT_VERSION
@@ -866,7 +869,7 @@ impl BoardPackageReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         if self.valid != 0 {
@@ -876,7 +879,7 @@ impl BoardPackageReport {
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -916,7 +919,7 @@ pub struct ManifestReport {
     pub error_code: u32,
     pub error_module_tag: u32,
     pub error_capability_bits: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ManifestReport {
@@ -936,26 +939,26 @@ impl ManifestReport {
             error_code: 0,
             error_module_tag: 0,
             error_capability_bits: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = MANIFEST_REPORT_MAGIC;
         self.version = MANIFEST_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == MANIFEST_REPORT_MAGIC
             && self.version == MANIFEST_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != MANIFEST_REPORT_MAGIC || self.version != MANIFEST_REPORT_VERSION {
@@ -964,7 +967,7 @@ impl ManifestReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         if self.valid != 0 {
@@ -982,7 +985,7 @@ impl ManifestReport {
         capability_mask_label(self.error_capability_bits)
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1016,7 +1019,7 @@ pub struct AdapterCompatibilityReport {
     pub error_code: u32,
     pub error_module_tag: u32,
     pub error_capability_bits: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AdapterCompatibilityReport {
@@ -1035,26 +1038,26 @@ impl AdapterCompatibilityReport {
             error_code: 0,
             error_module_tag: 0,
             error_capability_bits: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ADAPTER_COMPAT_REPORT_MAGIC;
         self.version = ADAPTER_COMPAT_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ADAPTER_COMPAT_REPORT_MAGIC
             && self.version == ADAPTER_COMPAT_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != ADAPTER_COMPAT_REPORT_MAGIC
@@ -1065,7 +1068,7 @@ impl AdapterCompatibilityReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         if self.compatible != 0 {
@@ -1083,7 +1086,7 @@ impl AdapterCompatibilityReport {
         capability_mask_label(self.error_capability_bits)
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1115,7 +1118,7 @@ pub struct AiModelReport {
     pub route_preference: u32,
     pub stale_after_us: u32,
     pub endpoint_failure_limit: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AiModelReport {
@@ -1133,26 +1136,26 @@ impl AiModelReport {
             route_preference: 0,
             stale_after_us: 0,
             endpoint_failure_limit: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = AI_MODEL_REPORT_MAGIC;
         self.version = AI_MODEL_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == AI_MODEL_REPORT_MAGIC
             && self.version == AI_MODEL_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != AI_MODEL_REPORT_MAGIC || self.version != AI_MODEL_REPORT_VERSION {
@@ -1161,13 +1164,13 @@ impl AiModelReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         ReportStatus::Pass
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1197,7 +1200,7 @@ pub struct RosBridgeReport {
     pub parameter_count: u32,
     pub total_buffer_bytes: u32,
     pub max_timeout_us: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl RosBridgeReport {
@@ -1214,26 +1217,26 @@ impl RosBridgeReport {
             parameter_count: 0,
             total_buffer_bytes: 0,
             max_timeout_us: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ROS_BRIDGE_REPORT_MAGIC;
         self.version = ROS_BRIDGE_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ROS_BRIDGE_REPORT_MAGIC
             && self.version == ROS_BRIDGE_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != ROS_BRIDGE_REPORT_MAGIC || self.version != ROS_BRIDGE_REPORT_VERSION {
@@ -1242,13 +1245,13 @@ impl RosBridgeReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         ReportStatus::Pass
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1279,7 +1282,7 @@ pub struct AdmissionReport {
     pub pool_used_slots: u32,
     pub pool_limit_slots: u32,
     pub error_code: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl AdmissionReport {
@@ -1298,26 +1301,26 @@ impl AdmissionReport {
             pool_used_slots: 0,
             pool_limit_slots: 0,
             error_code: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = ADMISSION_REPORT_MAGIC;
         self.version = ADMISSION_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == ADMISSION_REPORT_MAGIC
             && self.version == ADMISSION_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != ADMISSION_REPORT_MAGIC || self.version != ADMISSION_REPORT_VERSION {
@@ -1326,7 +1329,7 @@ impl AdmissionReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if !self.verify_checksum() {
+        if !self.diagnostic_checksum_matches() {
             return ReportStatus::Corrupt;
         }
         if self.admitted != 0 {
@@ -1336,7 +1339,7 @@ impl AdmissionReport {
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1374,7 +1377,7 @@ pub struct RuntimeReport {
     pub quota_pool_used_slots: u32,
     pub event_count: u32,
     pub dropped_events: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl RuntimeReport {
@@ -1398,7 +1401,7 @@ impl RuntimeReport {
             quota_pool_used_slots: 0,
             event_count: 0,
             dropped_events: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1415,22 +1418,22 @@ impl RuntimeReport {
         runtime_state_label(self.state)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = RUNTIME_REPORT_MAGIC;
         self.version = RUNTIME_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == RUNTIME_REPORT_MAGIC
             && self.version == RUNTIME_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != RUNTIME_REPORT_MAGIC || self.version != RUNTIME_REPORT_VERSION {
@@ -1439,14 +1442,14 @@ impl RuntimeReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1486,7 +1489,7 @@ pub struct EventLogReport {
     pub latest_payload_kind: u32,
     pub latest_payload0: u32,
     pub latest_payload1: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl EventLogReport {
@@ -1507,7 +1510,7 @@ impl EventLogReport {
             latest_payload_kind: 0,
             latest_payload0: 0,
             latest_payload1: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1531,22 +1534,22 @@ impl EventLogReport {
         module_tag_label(self.latest_module_tag)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = EVENT_LOG_REPORT_MAGIC;
         self.version = EVENT_LOG_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == EVENT_LOG_REPORT_MAGIC
             && self.version == EVENT_LOG_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != EVENT_LOG_REPORT_MAGIC || self.version != EVENT_LOG_REPORT_VERSION {
@@ -1555,14 +1558,14 @@ impl EventLogReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1600,7 +1603,7 @@ pub struct ModuleRuntimeReport {
     pub latest_recovery_count: u32,
     pub latest_change_us_lo: u32,
     pub latest_change_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ModuleRuntimeReport {
@@ -1622,7 +1625,7 @@ impl ModuleRuntimeReport {
             latest_recovery_count: 0,
             latest_change_us_lo: 0,
             latest_change_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1638,22 +1641,22 @@ impl ModuleRuntimeReport {
         module_tag_label(self.latest_module_tag)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = MODULE_RUNTIME_REPORT_MAGIC;
         self.version = MODULE_RUNTIME_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == MODULE_RUNTIME_REPORT_MAGIC
             && self.version == MODULE_RUNTIME_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != MODULE_RUNTIME_REPORT_MAGIC
@@ -1664,14 +1667,14 @@ impl ModuleRuntimeReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1703,7 +1706,7 @@ pub struct DegradeApplicationReport {
     pub reason: u32,
     pub applied_at_us_lo: u32,
     pub applied_at_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl DegradeApplicationReport {
@@ -1718,7 +1721,7 @@ impl DegradeApplicationReport {
             reason: 0,
             applied_at_us_lo: 0,
             applied_at_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1735,22 +1738,22 @@ impl DegradeApplicationReport {
         degrade_reason_label(self.reason)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = DEGRADE_APPLICATION_REPORT_MAGIC;
         self.version = DEGRADE_APPLICATION_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == DEGRADE_APPLICATION_REPORT_MAGIC
             && self.version == DEGRADE_APPLICATION_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != DEGRADE_APPLICATION_REPORT_MAGIC
@@ -1761,14 +1764,14 @@ impl DegradeApplicationReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -1798,7 +1801,7 @@ pub struct HealthReport {
     pub fatal_events: u32,
     pub last_seen_us_lo: u32,
     pub last_seen_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl HealthReport {
@@ -1820,7 +1823,7 @@ impl HealthReport {
             fatal_events: 0,
             last_seen_us_lo: 0,
             last_seen_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -1837,22 +1840,22 @@ impl HealthReport {
         module_tag_label(self.module_tag)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = HEALTH_REPORT_MAGIC;
         self.version = Self::VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == HEALTH_REPORT_MAGIC
             && self.version == Self::VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
     pub fn status(&self) -> ReportStatus {
-        if self.magic == 0 && self.version == 0 && self.checksum == 0 {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
             return ReportStatus::Missing;
         }
         if self.magic != HEALTH_REPORT_MAGIC || self.version != Self::VERSION {
@@ -1861,14 +1864,14 @@ impl HealthReport {
         if self.completed == 0 {
             return ReportStatus::InProgress;
         }
-        if self.verify_checksum() {
+        if self.diagnostic_checksum_matches() {
             ReportStatus::Pass
         } else {
             ReportStatus::Corrupt
         }
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -2220,14 +2223,14 @@ mod tests {
             ..HealthReport::zeroed()
         };
         report.set_last_seen_us(0x1234_5678_9ABC_DEF0);
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.last_seen_us(), 0x1234_5678_9ABC_DEF0);
         assert_eq!(report.module_label(), Some("radio"));
 
         report.total_errors += 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
         assert_eq!(report.status(), ReportStatus::Corrupt);
     }
 
@@ -2245,9 +2248,9 @@ mod tests {
             pool_limit_slots: 8,
             ..AdmissionReport::zeroed()
         };
-        pass.seal();
+        pass.finalize_diagnostic();
 
-        assert!(pass.verify_checksum());
+        assert!(pass.diagnostic_checksum_matches());
         assert_eq!(pass.status(), ReportStatus::Pass);
 
         let mut fail = AdmissionReport {
@@ -2255,7 +2258,7 @@ mod tests {
             error_code: 2,
             ..AdmissionReport::zeroed()
         };
-        fail.seal();
+        fail.finalize_diagnostic();
 
         assert_eq!(fail.status(), ReportStatus::Fail(2));
     }
@@ -2276,9 +2279,9 @@ mod tests {
             mvk_trigger_pin: 17,
             ..BoardProfileReport::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.status(), ReportStatus::Pass);
 
         report.servo_pin += 1;
@@ -2305,9 +2308,9 @@ mod tests {
             mvk_trigger_pin: 17,
             ..BoardPackageReport::zeroed()
         };
-        pass.seal();
+        pass.finalize_diagnostic();
 
-        assert!(pass.verify_checksum());
+        assert!(pass.diagnostic_checksum_matches());
         assert_eq!(pass.status(), ReportStatus::Pass);
 
         let mut fail = BoardPackageReport {
@@ -2315,7 +2318,7 @@ mod tests {
             error_code: 7,
             ..pass
         };
-        fail.seal();
+        fail.finalize_diagnostic();
 
         assert_eq!(fail.status(), ReportStatus::Fail(7));
         assert_eq!(board_package_error_label(7), Some("duplicate_critical_pin"));
@@ -2336,9 +2339,9 @@ mod tests {
             pool_used_slots: 6,
             ..ManifestReport::zeroed()
         };
-        pass.seal();
+        pass.finalize_diagnostic();
 
-        assert!(pass.verify_checksum());
+        assert!(pass.diagnostic_checksum_matches());
         assert_eq!(pass.status(), ReportStatus::Pass);
 
         let mut fail = ManifestReport {
@@ -2349,7 +2352,7 @@ mod tests {
             error_capability_bits: 0x02,
             ..ManifestReport::zeroed()
         };
-        fail.seal();
+        fail.finalize_diagnostic();
 
         assert_eq!(fail.status(), ReportStatus::Fail(4));
         assert_eq!(fail.error_module_label(), Some("sensor"));
@@ -2368,7 +2371,7 @@ mod tests {
         };
 
         assert!(HostReport::is_missing(&report));
-        report.seal();
+        report.finalize_diagnostic();
 
         assert_eq!(
             <ManifestReport as HostReport>::SYMBOL,
@@ -2378,7 +2381,7 @@ mod tests {
         assert_eq!(HostReport::raw_version(&report), MANIFEST_REPORT_VERSION);
         assert_eq!(HostReport::completed(&report), 1);
         assert!(HostReport::has_expected_header(&report));
-        assert!(HostReport::verify_checksum(&report));
+        assert!(HostReport::diagnostic_checksum_matches(&report));
         assert_eq!(HostReport::status(&report), ReportStatus::Pass);
     }
 
@@ -2394,9 +2397,9 @@ mod tests {
             pool_used_slots: 3,
             ..AdapterCompatibilityReport::zeroed()
         };
-        pass.seal();
+        pass.finalize_diagnostic();
 
-        assert!(pass.verify_checksum());
+        assert!(pass.diagnostic_checksum_matches());
         assert_eq!(pass.status(), ReportStatus::Pass);
 
         let mut fail = AdapterCompatibilityReport {
@@ -2407,7 +2410,7 @@ mod tests {
             error_capability_bits: 0x02,
             ..AdapterCompatibilityReport::zeroed()
         };
-        fail.seal();
+        fail.finalize_diagnostic();
 
         assert_eq!(fail.status(), ReportStatus::Fail(3));
         assert_eq!(fail.error_module_label(), Some("bus"));
@@ -2430,7 +2433,7 @@ mod tests {
             endpoint_failure_limit: 2,
             ..AiModelReport::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
 
         assert_eq!(report.status(), ReportStatus::Pass);
         assert_eq!(HostReport::raw_magic(&report), AI_MODEL_REPORT_MAGIC);
@@ -2453,7 +2456,7 @@ mod tests {
             max_timeout_us: 100_000,
             ..RosBridgeReport::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
 
         assert_eq!(report.status(), ReportStatus::Pass);
         assert_eq!(HostReport::raw_magic(&report), ROS_BRIDGE_REPORT_MAGIC);
@@ -2479,7 +2482,7 @@ mod tests {
             mvk_trigger_pin: 17,
             ..BoardProfileReport::zeroed()
         };
-        board.seal();
+        board.finalize_diagnostic();
 
         let mut package = BoardPackageReport {
             valid: 1,
@@ -2499,14 +2502,14 @@ mod tests {
             mvk_trigger_pin: 17,
             ..BoardPackageReport::zeroed()
         };
-        package.seal();
+        package.finalize_diagnostic();
 
         let mut adapter = AdapterCompatibilityReport {
             compatible: 1,
             adapter_count: 2,
             ..AdapterCompatibilityReport::zeroed()
         };
-        adapter.seal();
+        adapter.finalize_diagnostic();
 
         let mut manifest = ManifestReport {
             valid: 1,
@@ -2514,7 +2517,7 @@ mod tests {
             fingerprint: 0x1234,
             ..ManifestReport::zeroed()
         };
-        manifest.seal();
+        manifest.finalize_diagnostic();
 
         let mut admission = AdmissionReport {
             admitted: 1,
@@ -2522,14 +2525,14 @@ mod tests {
             startup_len: 3,
             ..AdmissionReport::zeroed()
         };
-        admission.seal();
+        admission.finalize_diagnostic();
 
         let mut runtime = RuntimeReport {
             state: 3,
             module_count: 3,
             ..RuntimeReport::zeroed()
         };
-        runtime.seal();
+        runtime.finalize_diagnostic();
 
         let reports = BootReports::new(board, package, manifest, adapter, admission, runtime);
         let slots = reports.slots();
@@ -2589,7 +2592,7 @@ mod tests {
         let mut failed_adapter = adapter;
         failed_adapter.compatible = 0;
         failed_adapter.error_code = 3;
-        failed_adapter.seal();
+        failed_adapter.finalize_diagnostic();
         let reports =
             BootReports::new(board, package, manifest, failed_adapter, admission, runtime);
         assert_eq!(
@@ -2685,9 +2688,9 @@ mod tests {
             ..RuntimeReport::zeroed()
         };
         report.set_next_alarm_due_us(0x0123_4567_89AB_CDEF);
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.next_alarm_due_us(), 0x0123_4567_89AB_CDEF);
         assert_eq!(report.state_label(), Some("running"));
         assert_eq!(report.status(), ReportStatus::Pass);
@@ -2713,9 +2716,9 @@ mod tests {
         };
         report.latest_at_us_lo = 0x89AB_CDEF;
         report.latest_at_us_hi = 0x0123_4567;
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.latest_at_us(), 0x0123_4567_89AB_CDEF);
         assert_eq!(report.latest_module_label(), Some("sensor"));
         assert_eq!(report.latest_severity_label(), Some("error"));
@@ -2749,9 +2752,9 @@ mod tests {
         };
         report.latest_change_us_lo = 0x89AB_CDEF;
         report.latest_change_us_hi = 0x0123_4567;
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.latest_change_us(), 0x0123_4567_89AB_CDEF);
         assert_eq!(report.latest_module_label(), Some("sensor"));
         assert_eq!(report.latest_state_label(), Some("faulted"));
@@ -2775,9 +2778,9 @@ mod tests {
             ..DegradeApplicationReport::zeroed()
         };
         report.set_applied_at_us(0x0123_4567_89AB_CDEF);
-        report.seal();
+        report.finalize_diagnostic();
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.applied_at_us(), 0x0123_4567_89AB_CDEF);
         assert_eq!(report.reason_label(), Some("module_limit"));
         assert_eq!(report.status(), ReportStatus::Pass);
@@ -2818,7 +2821,7 @@ mod tests {
             admitted: 1,
             ..AdmissionReport::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report.flash_used_bytes += 1;
 
         assert_eq!(report.status(), ReportStatus::Corrupt);

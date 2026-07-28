@@ -25,13 +25,17 @@ report.magic = NOBRO_MANIFEST_REPORT_MAGIC;
 report.version = NOBRO_REPORT_VERSION;
 report.completed = 1;
 report.valid = 1;
-report.checksum = nobro_manifest_report_checksum(&report);
+report.diagnostic_checksum =
+    nobro_manifest_report_diagnostic_checksum(&report);
 
 nobro::rtos::ManifestReportView view(report);
 if (!nobro::rtos::passing(view.status())) {
     return -1;
 }
 ```
+
+The diagnostic checksum is only an unkeyed accidental-copy/read check. It does
+not authenticate report bytes from an untrusted transport.
 
 ## Authoring a module in C++
 

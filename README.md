@@ -356,8 +356,10 @@ folders use the `nobro_*` project prefix.
 
 nRF52840 is the deep-HAL profile; other rows in the support matrix may implement only
 selected providers or the portable core. Fixed `NOBRO_*` reports expose explicit
-completion and checksum fields. Users can deploy a prepared image with `nobro flash`
-and inspect serial reports where the application exposes them.
+completion and diagnostic-checksum fields. These unkeyed checks detect accidental
+copy/read corruption only; they do not authenticate a report. Users can deploy a
+prepared image with `nobro flash` and inspect serial reports where the application
+exposes them.
 
 **No hardware on your desk?** The software side grades itself the same way:
 
@@ -476,7 +478,7 @@ Board-facing examples are kept as reusable library and contract references.
 | [API Manual](docs/API.md) | Public crate contracts and examples |
 | [System Architecture](docs/ARCHITECTURE.md) | Layering, memory discipline, recovery model |
 | [Porting Guide](docs/PORTING.md) | Adding boards and preserving board/package contracts |
-| [Host Contract](docs/API.md) | `NOBRO_*` ABI, checksum rules, stage order |
+| [Host Contract](docs/API.md) | `NOBRO_*` ABI, diagnostic-checksum rules, stage order |
 | [Operations Guide](docs/USER_GUIDE.md) | Maintenance habits and validation gates |
 
 ## Design Principles

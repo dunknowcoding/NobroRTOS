@@ -29,7 +29,9 @@ The header currently mirrors:
 - `nobro_ros_bridge_contract_t`
 - ROS topic, service, action, and parameter contract records
 
-Each report has inline checksum and status helpers:
+Each report has inline diagnostic-checksum and status helpers. The unkeyed
+diagnostic checksum detects accidental copy/read errors only; it is not
+authentication:
 
 ```c
 nobro_manifest_report_t report = {0};
@@ -37,7 +39,8 @@ report.magic = NOBRO_MANIFEST_REPORT_MAGIC;
 report.version = NOBRO_REPORT_VERSION;
 report.completed = 1;
 report.valid = 1;
-report.checksum = nobro_manifest_report_checksum(&report);
+report.diagnostic_checksum =
+    nobro_manifest_report_diagnostic_checksum(&report);
 
 if (nobro_manifest_report_status(&report) != NOBRO_REPORT_STATUS_PASS) {
     return -1;

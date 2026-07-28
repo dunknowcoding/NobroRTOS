@@ -73,7 +73,7 @@ from nobro_rtos import (
     preflight_ros_service,
     preflight_ros_topic,
     repair_project_template,
-    seal_report,
+    finalize_diagnostic_report,
     stable_hash32,
     startup_dependency_impact,
     validate_cli_command_surface,
@@ -1298,7 +1298,7 @@ class ContractBuilderTests(unittest.TestCase):
             "missing",
         )
         self.assertEqual(
-            scenarios["status_classes_are_reported"]["statuses"]["corrupt_checksum"],
+            scenarios["status_classes_are_reported"]["statuses"]["corrupt_diagnostic_checksum"],
             "corrupt",
         )
         self.assertEqual(
@@ -2093,8 +2093,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(diagnostic.status, "pass")
         self.assertIsNone(diagnostic.error_label)
 
-    def test_manifest_report_decoder_accepts_sealed_pass(self) -> None:
-        payload = seal_report(
+    def test_manifest_report_decoder_accepts_finalized_diagnostic_pass(self) -> None:
+        payload = finalize_diagnostic_report(
             ReportKind.MANIFEST,
             {
                 "valid": 1,
@@ -2112,11 +2112,11 @@ class ContractBuilderTests(unittest.TestCase):
 
         self.assertEqual(report.status, ReportStatus.PASS)
         self.assertTrue(report.passing)
-        self.assertTrue(report.verify_checksum())
+        self.assertTrue(report.diagnostic_checksum_matches())
         self.assertEqual(report.to_dict()["count"], 2)
 
-    def test_board_profile_report_decoder_accepts_sealed_pass(self) -> None:
-        payload = seal_report(
+    def test_board_profile_report_decoder_accepts_finalized_diagnostic_pass(self) -> None:
+        payload = finalize_diagnostic_report(
             ReportKind.BOARD_PROFILE,
             {
                 "platform_hash": 0x1111,
@@ -2136,11 +2136,11 @@ class ContractBuilderTests(unittest.TestCase):
         report = FixedReport.from_dict(ReportKind.BOARD_PROFILE, payload)
 
         self.assertEqual(report.status, ReportStatus.PASS)
-        self.assertTrue(report.verify_checksum())
+        self.assertTrue(report.diagnostic_checksum_matches())
         self.assertEqual(report.to_dict()["raw"]["servo_pin"], 24)
 
     def test_board_package_report_decoder_preserves_failure_context(self) -> None:
-        payload = seal_report(
+        payload = finalize_diagnostic_report(
             ReportKind.BOARD_PACKAGE,
             {
                 "valid": 0,
@@ -2168,7 +2168,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.error_label(), "duplicate_critical_pin")
 
     def test_adapter_report_decoder_preserves_failure_context(self) -> None:
-        payload = seal_report(
+        payload = finalize_diagnostic_report(
             ReportKind.ADAPTER_COMPAT,
             {
                 "compatible": 0,
@@ -2188,7 +2188,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(summary["error_module_label"], "bus")
 
     def test_ai_model_report_decoder_preserves_route_policy(self) -> None:
-        payload = seal_report(
+        payload = finalize_diagnostic_report(
             ReportKind.AI_MODEL,
             {
                 "backend": int(AiBackendKind.HYBRID),
@@ -2207,7 +2207,7 @@ class ContractBuilderTests(unittest.TestCase):
         summary = report.to_dict()
 
         self.assertEqual(report.status, ReportStatus.PASS)
-        self.assertTrue(report.verify_checksum())
+        self.assertTrue(report.diagnostic_checksum_matches())
         self.assertEqual(summary["backend"], "hybrid")
         self.assertEqual(summary["route_preference"], "hybrid_fallback")
         self.assertEqual(summary["raw"]["route_preference"], 4)
@@ -2222,7 +2222,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertIsNone(summary["route_preference"])
 
     def test_ros_bridge_report_decoder_preserves_resource_summary(self) -> None:
-        payload = seal_report(
+        payload = finalize_diagnostic_report(
             ReportKind.ROS_BRIDGE,
             {
                 "transport": 1,
@@ -2240,7 +2240,7 @@ class ContractBuilderTests(unittest.TestCase):
         summary = report.to_dict()
 
         self.assertEqual(report.status, ReportStatus.PASS)
-        self.assertTrue(report.verify_checksum())
+        self.assertTrue(report.diagnostic_checksum_matches())
         self.assertEqual(summary["transport"], "serial")
         self.assertEqual(summary["raw"]["topic_count"], 2)
         self.assertEqual(summary["raw"]["total_buffer_bytes"], 768)
@@ -2277,7 +2277,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(decoded["degrade_application"]["applied_at_us"], 0x1_0000_0020)
 
     def test_admission_report_decoder_preserves_failure_context(self) -> None:
-        payload = seal_report(
+        payload = finalize_diagnostic_report(
             ReportKind.ADMISSION,
             {
                 "admitted": 0,
@@ -3119,8 +3119,8 @@ class ContractBuilderTests(unittest.TestCase):
             report["dependencies"],
         )
 
-    def test_report_decoder_marks_corrupt_checksum(self) -> None:
-        payload = seal_report(
+    def test_report_decoder_marks_corrupt_diagnostic_checksum(self) -> None:
+        payload = finalize_diagnostic_report(
             ReportKind.MANIFEST,
             {
                 "valid": 1,
@@ -3135,7 +3135,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(report.status, ReportStatus.CORRUPT)
 
     def test_boot_summary_reports_first_missing_stage(self) -> None:
-        manifest = seal_report(
+        manifest = finalize_diagnostic_report(
             ReportKind.MANIFEST,
             {
                 "valid": 1,
@@ -3156,7 +3156,7 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertEqual(payload["observed_count"], 6)
 
     def test_boot_summary_reports_adapter_failure_after_passing_early_slots(self) -> None:
-        board_profile = seal_report(
+        board_profile = finalize_diagnostic_report(
             ReportKind.BOARD_PROFILE,
             {
                 "platform_hash": 0x1111,
@@ -3172,7 +3172,7 @@ class ContractBuilderTests(unittest.TestCase):
                 "mvk_trigger_pin": 17,
             },
         )
-        board_package = seal_report(
+        board_package = finalize_diagnostic_report(
             ReportKind.BOARD_PACKAGE,
             {
                 "valid": 1,
@@ -3192,7 +3192,7 @@ class ContractBuilderTests(unittest.TestCase):
                 "mvk_trigger_pin": 17,
             },
         )
-        manifest = seal_report(
+        manifest = finalize_diagnostic_report(
             ReportKind.MANIFEST,
             {
                 "valid": 1,
@@ -3200,7 +3200,7 @@ class ContractBuilderTests(unittest.TestCase):
                 "fingerprint": 0x1234,
             },
         )
-        adapter = seal_report(
+        adapter = finalize_diagnostic_report(
             ReportKind.ADAPTER_COMPAT,
             {
                 "compatible": 0,
@@ -3254,7 +3254,7 @@ class ContractBuilderTests(unittest.TestCase):
             5,
         )
         self.assertEqual(
-            scenarios["manifest_checksum_corruption_stops_boot"]["summary"][
+            scenarios["manifest_diagnostic_checksum_corruption_stops_boot"]["summary"][
                 "first_status"
             ],
             "corrupt",

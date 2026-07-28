@@ -197,6 +197,11 @@ typedef struct nobro_ros_bridge_contract {
     uint32_t max_timeout_us;
 } nobro_ros_bridge_contract_t;
 
+/*
+ * Report diagnostic_checksum fields are unkeyed accidental-corruption checks.
+ * They do not authenticate report bytes. An untrusted transport must use the
+ * nobro-secure authenticated report envelope before any trust decision.
+ */
 typedef struct nobro_board_profile_report {
     uint32_t magic;
     uint32_t version;
@@ -212,7 +217,7 @@ typedef struct nobro_board_profile_report {
     uint32_t servo_center_us;
     uint32_t led_pin;
     uint32_t mvk_trigger_pin;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_board_profile_report_t;
 
 typedef struct nobro_board_package_report {
@@ -235,7 +240,7 @@ typedef struct nobro_board_package_report {
     uint32_t servo_pin;
     uint32_t mvk_trigger_pin;
     uint32_t error_code;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_board_package_report_t;
 
 typedef struct nobro_manifest_report {
@@ -253,7 +258,7 @@ typedef struct nobro_manifest_report {
     uint32_t error_code;
     uint32_t error_module_tag;
     uint32_t error_capability_bits;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_manifest_report_t;
 
 typedef struct nobro_adapter_compat_report {
@@ -270,7 +275,7 @@ typedef struct nobro_adapter_compat_report {
     uint32_t error_code;
     uint32_t error_module_tag;
     uint32_t error_capability_bits;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_adapter_compat_report_t;
 
 typedef struct nobro_ai_model_report {
@@ -286,7 +291,7 @@ typedef struct nobro_ai_model_report {
     uint32_t route_preference;
     uint32_t stale_after_us;
     uint32_t endpoint_failure_limit;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_ai_model_report_t;
 
 typedef struct nobro_ros_bridge_report {
@@ -301,7 +306,7 @@ typedef struct nobro_ros_bridge_report {
     uint32_t parameter_count;
     uint32_t total_buffer_bytes;
     uint32_t max_timeout_us;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_ros_bridge_report_t;
 
 typedef struct nobro_admission_report {
@@ -318,7 +323,7 @@ typedef struct nobro_admission_report {
     uint32_t pool_used_slots;
     uint32_t pool_limit_slots;
     uint32_t error_code;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_admission_report_t;
 
 typedef struct nobro_runtime_report {
@@ -340,7 +345,7 @@ typedef struct nobro_runtime_report {
     uint32_t quota_pool_used_slots;
     uint32_t event_count;
     uint32_t dropped_events;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_runtime_report_t;
 
 typedef struct nobro_health_report {
@@ -358,7 +363,7 @@ typedef struct nobro_health_report {
     uint32_t fatal_events;
     uint32_t last_seen_us_lo;
     uint32_t last_seen_us_hi;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_health_report_t;
 
 typedef struct nobro_event_log_report {
@@ -377,7 +382,7 @@ typedef struct nobro_event_log_report {
     uint32_t latest_payload_kind;
     uint32_t latest_payload0;
     uint32_t latest_payload1;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_event_log_report_t;
 
 typedef struct nobro_module_runtime_report {
@@ -397,7 +402,7 @@ typedef struct nobro_module_runtime_report {
     uint32_t latest_recovery_count;
     uint32_t latest_change_us_lo;
     uint32_t latest_change_us_hi;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_module_runtime_report_t;
 
 typedef struct nobro_degrade_application_report {
@@ -410,7 +415,7 @@ typedef struct nobro_degrade_application_report {
     uint32_t reason;
     uint32_t applied_at_us_lo;
     uint32_t applied_at_us_hi;
-    uint32_t checksum;
+    uint32_t diagnostic_checksum;
 } nobro_degrade_application_report_t;
 
 NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t),
@@ -438,13 +443,13 @@ NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32
 NOBRO_STATIC_ASSERT(sizeof(nobro_degrade_application_report_t) == 10u * sizeof(uint32_t),
                     "unexpected degrade application report size");
 
-static inline uint32_t nobro_report_checksum_words(const uint32_t *words, size_t word_count) {
-    uint32_t checksum = 0u;
+static inline uint32_t nobro_report_diagnostic_checksum_words(const uint32_t *words, size_t word_count) {
+    uint32_t diagnostic_checksum = 0u;
     size_t index = 0u;
     for (index = 0u; index < word_count; ++index) {
-        checksum ^= words[index];
+        diagnostic_checksum ^= words[index];
     }
-    return checksum;
+    return diagnostic_checksum;
 }
 
 static inline uint32_t nobro_stable_hash32_bytes(const uint8_t *bytes, size_t byte_count) {
@@ -760,17 +765,17 @@ static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight(
     return preflight;
 }
 
-static inline nobro_report_status_t nobro_report_status_from_checksum(
+static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum(
     uint32_t expected_magic,
     uint32_t magic,
     uint32_t version,
     uint32_t completed,
     uint32_t ok,
     int has_ok_field,
-    uint32_t checksum,
-    uint32_t computed_checksum
+    uint32_t diagnostic_checksum,
+    uint32_t computed_diagnostic_checksum
 ) {
-    if (magic == 0u && version == 0u && checksum == 0u) {
+    if (magic == 0u && version == 0u && diagnostic_checksum == 0u) {
         return NOBRO_REPORT_STATUS_MISSING;
     }
     if (magic != expected_magic || version != NOBRO_REPORT_VERSION) {
@@ -779,7 +784,7 @@ static inline nobro_report_status_t nobro_report_status_from_checksum(
     if (completed == 0u) {
         return NOBRO_REPORT_STATUS_IN_PROGRESS;
     }
-    if (checksum != computed_checksum) {
+    if (diagnostic_checksum != computed_diagnostic_checksum) {
         return NOBRO_REPORT_STATUS_CORRUPT;
     }
     if (has_ok_field != 0 && ok == 0u) {
@@ -788,7 +793,7 @@ static inline nobro_report_status_t nobro_report_status_from_checksum(
     return NOBRO_REPORT_STATUS_PASS;
 }
 
-static inline uint32_t nobro_board_profile_report_checksum(
+static inline uint32_t nobro_board_profile_report_diagnostic_checksum(
     const nobro_board_profile_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->platform_hash
@@ -801,19 +806,19 @@ static inline uint32_t nobro_board_profile_report_checksum(
 static inline nobro_report_status_t nobro_board_profile_report_status(
     const nobro_board_profile_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_BOARD_PROFILE_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_board_profile_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_board_profile_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_board_package_report_checksum(
+static inline uint32_t nobro_board_package_report_diagnostic_checksum(
     const nobro_board_package_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->valid
@@ -827,19 +832,19 @@ static inline uint32_t nobro_board_package_report_checksum(
 static inline nobro_report_status_t nobro_board_package_report_status(
     const nobro_board_package_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_BOARD_PACKAGE_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         report->valid,
         1,
-        report->checksum,
-        nobro_board_package_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_board_package_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_manifest_report_checksum(const nobro_manifest_report_t *report) {
+static inline uint32_t nobro_manifest_report_diagnostic_checksum(const nobro_manifest_report_t *report) {
     return report->magic ^ report->version ^ report->completed ^ report->valid
         ^ report->module_count ^ report->fingerprint ^ report->required_bits
         ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes
@@ -850,19 +855,19 @@ static inline uint32_t nobro_manifest_report_checksum(const nobro_manifest_repor
 static inline nobro_report_status_t nobro_manifest_report_status(
     const nobro_manifest_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_MANIFEST_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         report->valid,
         1,
-        report->checksum,
-        nobro_manifest_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_manifest_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_adapter_compat_report_checksum(
+static inline uint32_t nobro_adapter_compat_report_diagnostic_checksum(
     const nobro_adapter_compat_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->compatible
@@ -874,19 +879,19 @@ static inline uint32_t nobro_adapter_compat_report_checksum(
 static inline nobro_report_status_t nobro_adapter_compat_report_status(
     const nobro_adapter_compat_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_ADAPTER_COMPAT_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         report->compatible,
         1,
-        report->checksum,
-        nobro_adapter_compat_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_adapter_compat_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_ai_model_report_checksum(
+static inline uint32_t nobro_ai_model_report_diagnostic_checksum(
     const nobro_ai_model_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->backend
@@ -898,19 +903,19 @@ static inline uint32_t nobro_ai_model_report_checksum(
 static inline nobro_report_status_t nobro_ai_model_report_status(
     const nobro_ai_model_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_AI_MODEL_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_ai_model_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_ai_model_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_ros_bridge_report_checksum(
+static inline uint32_t nobro_ros_bridge_report_diagnostic_checksum(
     const nobro_ros_bridge_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->transport
@@ -922,19 +927,19 @@ static inline uint32_t nobro_ros_bridge_report_checksum(
 static inline nobro_report_status_t nobro_ros_bridge_report_status(
     const nobro_ros_bridge_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_ROS_BRIDGE_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_ros_bridge_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_ros_bridge_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_admission_report_checksum(
+static inline uint32_t nobro_admission_report_diagnostic_checksum(
     const nobro_admission_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->admitted
@@ -946,19 +951,19 @@ static inline uint32_t nobro_admission_report_checksum(
 static inline nobro_report_status_t nobro_admission_report_status(
     const nobro_admission_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_ADMISSION_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         report->admitted,
         1,
-        report->checksum,
-        nobro_admission_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_admission_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_runtime_report_checksum(
+static inline uint32_t nobro_runtime_report_diagnostic_checksum(
     const nobro_runtime_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->state
@@ -973,19 +978,19 @@ static inline uint32_t nobro_runtime_report_checksum(
 static inline nobro_report_status_t nobro_runtime_report_status(
     const nobro_runtime_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_RUNTIME_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_runtime_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_runtime_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_health_report_checksum(
+static inline uint32_t nobro_health_report_diagnostic_checksum(
     const nobro_health_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->module_tag
@@ -998,19 +1003,19 @@ static inline uint32_t nobro_health_report_checksum(
 static inline nobro_report_status_t nobro_health_report_status(
     const nobro_health_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_HEALTH_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_health_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_health_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_event_log_report_checksum(
+static inline uint32_t nobro_event_log_report_diagnostic_checksum(
     const nobro_event_log_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->event_count
@@ -1023,19 +1028,19 @@ static inline uint32_t nobro_event_log_report_checksum(
 static inline nobro_report_status_t nobro_event_log_report_status(
     const nobro_event_log_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_EVENT_LOG_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_event_log_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_event_log_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_module_runtime_report_checksum(
+static inline uint32_t nobro_module_runtime_report_diagnostic_checksum(
     const nobro_module_runtime_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->module_count
@@ -1049,19 +1054,19 @@ static inline uint32_t nobro_module_runtime_report_checksum(
 static inline nobro_report_status_t nobro_module_runtime_report_status(
     const nobro_module_runtime_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_MODULE_RUNTIME_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_module_runtime_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_module_runtime_report_diagnostic_checksum(report)
     );
 }
 
-static inline uint32_t nobro_degrade_application_report_checksum(
+static inline uint32_t nobro_degrade_application_report_diagnostic_checksum(
     const nobro_degrade_application_report_t *report
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->requested_count
@@ -1072,15 +1077,15 @@ static inline uint32_t nobro_degrade_application_report_checksum(
 static inline nobro_report_status_t nobro_degrade_application_report_status(
     const nobro_degrade_application_report_t *report
 ) {
-    return nobro_report_status_from_checksum(
+    return nobro_report_status_from_diagnostic_checksum(
         NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC,
         report->magic,
         report->version,
         report->completed,
         1u,
         0,
-        report->checksum,
-        nobro_degrade_application_report_checksum(report)
+        report->diagnostic_checksum,
+        nobro_degrade_application_report_diagnostic_checksum(report)
     );
 }
 

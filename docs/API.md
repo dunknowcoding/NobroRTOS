@@ -404,8 +404,10 @@ port supplies the durable store and the final jump. `ProtectedRollbackBackend`
 separates reading the protected monotonic floor from advancing it after trial
 confirmation. `ProtectedKeyBackend` similarly lets a platform provision and
 authenticate without exporting key bytes, while
-`AuthenticatedReportEnvelope` is the integrity boundary for reports used in
-trust decisions.
+`AuthenticatedReportEnvelope::open` is the keyed authentication boundary for
+reports used in trust decisions. It returns a private-field
+`VerifiedReportPayload`; an unkeyed diagnostic checksum cannot create that
+token.
 
 The older `SecureBoot::boot_plan` HMAC path remains for per-device authentication
 and compatibility. It verifies image length, address range, entry/stack vector
@@ -481,7 +483,7 @@ let report = nobro_kernel::ManifestReport::from_result(
     &manifest,
     manifest.validate_profile(profile),
 );
-assert!(report.verify_checksum());
+assert!(report.diagnostic_checksum_matches());
 assert_eq!(report.valid, 1);
 ```
 
@@ -534,7 +536,7 @@ let failure = match AppBoot::build_with_failure(
     Ok(_) => unreachable!(),
     Err(failure) => failure,
 };
-assert!(failure.manifest_report.verify_checksum());
+assert!(failure.manifest_report.diagnostic_checksum_matches());
 ```
 
 Use `BootAssembly::reports()` or `BootAssemblyFailure::reports()` when app code
@@ -542,7 +544,7 @@ only needs to export the sealed startup reports:
 
 ```rust
 let reports = failure.reports();
-assert!(reports.manifest.verify_checksum());
+assert!(reports.manifest.diagnostic_checksum_matches());
 ```
 
 Adapter preflight writes `NOBRO_ADAPTER_COMPAT_REPORT` before hardware-facing
@@ -975,12 +977,12 @@ The `check-startup-matrix` CLI validates no-dependency, dependency-chain,
 fan-in/fan-out, dependency-impact, unknown-node, self-cycle, duplicate-edge,
 and cycle paths for startup graph construction.
 The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
-corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+diagnostic-checksum mismatch, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
 The `check-bundle-matrix` CLI validates contract bundle roundtrip, capability
 ownership, module naming, AI/ROS uniqueness, hard-realtime deadline, and startup
 dependency error paths.
-The `check-report-matrix` CLI validates fixed report status classes, checksum
+The `check-report-matrix` CLI validates fixed report status classes, diagnostic-checksum
 handling, failure labels, and decoded runtime, AI model, and ROS bridge fields.
 `AiInvocationConstraints` and `preflight_ai_invocation` validate AI inference
 admission before any model or endpoint is contacted. They check buffer sizes,
@@ -1039,7 +1041,7 @@ for module in impact.affected.iter().take(impact.affected_count).flatten() {
 ```
 
 `check-boot-summary-matrix` verifies first-diagnostic priority, diagnostic-code
-layout, checksum corruption, failed-adapter labels, in-progress reports, and
+layout, diagnostic-checksum corruption, failed-adapter labels, in-progress reports, and
 per-status counts for the same host report path. `check-report-matrix` keeps the
 individual fixed-report decoders locked to stable status and domain-field
 semantics.
@@ -1234,7 +1236,7 @@ defaults reviewable without switching Cargo features:
 ```rust
 for entry in nobro_hal::BOARD_PROFILES {
     let report = entry.report();
-    assert!(report.verify_checksum());
+    assert!(report.diagnostic_checksum_matches());
 }
 ```
 
@@ -1263,7 +1265,7 @@ record:
 
 ```rust
 let report = nobro_hal::BoardPackageReport::from_package(&nobro_hal::ACTIVE_BOARD_PACKAGE);
-assert!(report.verify_checksum());
+assert!(report.diagnostic_checksum_matches());
 ```
 
 Board package catalog entries make current board layouts reviewable without switching
@@ -1272,7 +1274,7 @@ Cargo features:
 ```rust
 for entry in nobro_hal::BOARD_PACKAGES {
     assert_eq!(entry.package.validate(), Ok(()));
-    assert!(entry.report().verify_checksum());
+    assert!(entry.report().diagnostic_checksum_matches());
 }
 ```
 
@@ -1516,7 +1518,7 @@ let report = nobro_sal::AiModelContractReport::from_contract_and_policy(
     contract,
     Some(policy),
 );
-assert!(report.verify_checksum());
+assert!(report.diagnostic_checksum_matches());
 assert_eq!(report.route_preference, nobro_sal::AiRoutePreference::HybridFallback as u32);
 ```
 
@@ -1553,7 +1555,7 @@ entity counts, total buffer demand, and maximum timeout:
 
 ```rust
 let report = nobro_sal::RosBridgeContractReport::from_contract(contract);
-assert!(report.verify_checksum());
+assert!(report.diagnostic_checksum_matches());
 assert_eq!(report.transport, nobro_sal::RosBridgeTransport::Serial as u32);
 ```
 
@@ -1616,7 +1618,7 @@ use nobro_host::{HostReport, RuntimeReport, RUNTIME_REPORT_SYMBOL};
 fn inspect(report: &RuntimeReport) {
     assert_eq!(RuntimeReport::SYMBOL, RUNTIME_REPORT_SYMBOL);
     let status = report.status();
-    let checksum_ok = report.verify_checksum();
+    let diagnostic_checksum_ok = report.diagnostic_checksum_matches();
 }
 ```
 
@@ -1675,9 +1677,9 @@ Reports use the same status categories:
 
 - `missing`: zeroed report slot
 - `in_progress`: valid header, incomplete report
-- `pass`: complete and checksum-valid success
-- `fail`: complete and checksum-valid domain failure
-- `corrupt`: invalid header, version, or checksum
+- `pass`: complete success whose diagnostic checksum matches
+- `fail`: complete domain failure whose diagnostic checksum matches
+- `corrupt`: invalid header, version, or diagnostic-checksum mismatch
 
 Host tools should decode the first non-passing boot stage in this order:
 
@@ -1699,12 +1701,21 @@ Python host tooling mirrors this shape in `BootReportSummary.to_dict()` and the
 `summarize-boot` CLI command, including the same diagnostic code layout and
 per-status count fields.
 Use `check-boot-summary-matrix` to validate all-pass, missing-stage,
-corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+diagnostic-checksum mismatch, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths before changing report layouts or host tooling.
-### Checksum Rule
+### Diagnostic Checksum Rule
 
-Fixed reports use XOR checksums over every `u32` field except `checksum`.
-Timestamps wider than `u32` are split into low and high words.
+Fixed reports expose `diagnostic_checksum`,
+`diagnostic_checksum_matches()`, and `finalize_diagnostic()`. Most fixed
+reports XOR every `u32` field except `diagnostic_checksum`; timing
+instrumentation uses FNV-1a over its fixed words. Timestamps wider than `u32`
+are split into low and high words.
+
+These unkeyed values detect accidental partial-copy, stale-snapshot, and
+memory-read errors only. They provide neither authenticity nor adversarial
+integrity. A report arriving across an attacker-controlled boundary must be
+opened through `nobro_secure::AuthenticatedReportEnvelope::open` before it is
+used for a trust decision.
 
 ### Diagnostic Code
 

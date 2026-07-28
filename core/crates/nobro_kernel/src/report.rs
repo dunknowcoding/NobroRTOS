@@ -1,4 +1,8 @@
 //! Fixed-layout reports emitted by firmware and decoded by host tools.
+//!
+//! `diagnostic_checksum` is an unkeyed accidental-copy/read check, never an
+//! authenticity decision. Bytes crossing an untrusted boundary must be opened
+//! by `nobro-secure`'s authenticated report envelope first.
 
 use crate::{
     manifest::module_code, Action, EventKind, EventLog, EventPayload, EventRecord, EventSeverity,
@@ -39,7 +43,7 @@ pub struct HealthReport {
     pub fatal_events: u32,
     pub last_seen_us_lo: u32,
     pub last_seen_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl HealthReport {
@@ -63,7 +67,7 @@ impl HealthReport {
             fatal_events: 0,
             last_seen_us_lo: 0,
             last_seen_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -106,7 +110,7 @@ impl HealthReport {
             last_seen_us_hi: (snapshot.counters.last_seen_us >> 32) as u32,
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -126,21 +130,21 @@ impl HealthReport {
         (u64::from(self.last_seen_us_hi) << 32) | u64::from(self.last_seen_us_lo)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = HEALTH_REPORT_MAGIC;
         self.version = HEALTH_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == HEALTH_REPORT_MAGIC
             && self.version == HEALTH_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -218,7 +222,7 @@ pub struct RuntimeReport {
     pub quota_pool_used_slots: u32,
     pub event_count: u32,
     pub dropped_events: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl RuntimeReport {
@@ -242,7 +246,7 @@ impl RuntimeReport {
             quota_pool_used_slots: 0,
             event_count: 0,
             dropped_events: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -265,7 +269,7 @@ impl RuntimeReport {
             dropped_events: input.dropped_events,
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -273,21 +277,21 @@ impl RuntimeReport {
         (u64::from(self.next_alarm_due_us_hi) << 32) | u64::from(self.next_alarm_due_us_lo)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = RUNTIME_REPORT_MAGIC;
         self.version = RUNTIME_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == RUNTIME_REPORT_MAGIC
             && self.version == RUNTIME_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -328,7 +332,7 @@ pub struct ModuleRuntimeReport {
     pub latest_recovery_count: u32,
     pub latest_change_us_lo: u32,
     pub latest_change_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl ModuleRuntimeReport {
@@ -350,7 +354,7 @@ impl ModuleRuntimeReport {
             latest_recovery_count: 0,
             latest_change_us_lo: 0,
             latest_change_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -368,7 +372,7 @@ impl ModuleRuntimeReport {
         if let Some(entry) = guard.latest_changed() {
             report.write_latest(entry);
         }
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -385,21 +389,21 @@ impl ModuleRuntimeReport {
         (u64::from(self.latest_change_us_hi) << 32) | u64::from(self.latest_change_us_lo)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = MODULE_RUNTIME_REPORT_MAGIC;
         self.version = MODULE_RUNTIME_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == MODULE_RUNTIME_REPORT_MAGIC
             && self.version == MODULE_RUNTIME_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -431,7 +435,7 @@ pub struct DegradeApplicationReport {
     pub reason: u32,
     pub applied_at_us_lo: u32,
     pub applied_at_us_hi: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl DegradeApplicationReport {
@@ -446,7 +450,7 @@ impl DegradeApplicationReport {
             reason: 0,
             applied_at_us_lo: 0,
             applied_at_us_hi: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -460,7 +464,7 @@ impl DegradeApplicationReport {
             applied_at_us_hi: (application.applied_at_us >> 32) as u32,
             ..Self::zeroed()
         };
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -468,21 +472,21 @@ impl DegradeApplicationReport {
         (u64::from(self.applied_at_us_hi) << 32) | u64::from(self.applied_at_us_lo)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = DEGRADE_APPLICATION_REPORT_MAGIC;
         self.version = DEGRADE_APPLICATION_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == DEGRADE_APPLICATION_REPORT_MAGIC
             && self.version == DEGRADE_APPLICATION_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -513,7 +517,7 @@ pub struct EventLogReport {
     pub latest_payload_kind: u32,
     pub latest_payload0: u32,
     pub latest_payload1: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl EventLogReport {
@@ -534,7 +538,7 @@ impl EventLogReport {
             latest_payload_kind: 0,
             latest_payload0: 0,
             latest_payload1: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 
@@ -548,7 +552,7 @@ impl EventLogReport {
         if let Some(record) = events.latest() {
             report.write_latest(record);
         }
-        report.seal();
+        report.finalize_diagnostic();
         report
     }
 
@@ -569,21 +573,21 @@ impl EventLogReport {
         (u64::from(self.latest_at_us_hi) << 32) | u64::from(self.latest_at_us_lo)
     }
 
-    pub fn seal(&mut self) {
+    pub fn finalize_diagnostic(&mut self) {
         self.magic = EVENT_LOG_REPORT_MAGIC;
         self.version = EVENT_LOG_REPORT_VERSION;
         self.completed = 1;
-        self.checksum = 0;
-        self.checksum = self.compute_checksum();
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
     }
 
-    pub fn verify_checksum(&self) -> bool {
+    pub fn diagnostic_checksum_matches(&self) -> bool {
         self.magic == EVENT_LOG_REPORT_MAGIC
             && self.version == EVENT_LOG_REPORT_VERSION
-            && self.checksum == self.compute_checksum()
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
     }
 
-    fn compute_checksum(&self) -> u32 {
+    fn compute_diagnostic_checksum(&self) -> u32 {
         self.magic
             ^ self.version
             ^ self.completed
@@ -733,7 +737,7 @@ mod tests {
 
         let report = HealthReport::from_supervisor(&supervisor, ModuleId::Sensor).expect("report");
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.module_tag, module_tag(ModuleId::Sensor));
         assert_eq!(report.total_errors, 1);
         assert_eq!(report.consecutive_errors, 1);
@@ -752,9 +756,9 @@ mod tests {
         let mut report =
             HealthReport::from_supervisor(&supervisor, ModuleId::Radio).expect("report");
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         report.total_errors += 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -784,7 +788,7 @@ mod tests {
             dropped_events: 1,
         });
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.state, state_code(SystemState::Running));
         assert_eq!(report.next_alarm_due_us(), 0x1234_5678_9ABC_DEF0);
         assert_eq!(report.quota_pool_used_slots, 2);
@@ -798,9 +802,9 @@ mod tests {
             ..RuntimeReportInput::default()
         });
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         report.module_count += 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 
     #[test]
@@ -826,7 +830,7 @@ mod tests {
 
         let report = ModuleRuntimeReport::from_guard(&guard);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, MODULE_RUNTIME_REPORT_MAGIC);
         assert_eq!(report.module_count, 3);
         assert_eq!(report.capacity, 3);
@@ -854,7 +858,7 @@ mod tests {
             applied_at_us: 0x1_0000_0040,
         });
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, DEGRADE_APPLICATION_REPORT_MAGIC);
         assert_eq!(report.requested_count, 3);
         assert_eq!(report.disabled_count, 2);
@@ -886,7 +890,7 @@ mod tests {
 
         let report = EventLogReport::from_event_log(&events);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.magic, EVENT_LOG_REPORT_MAGIC);
         assert_eq!(report.event_count, 2);
         assert_eq!(report.capacity, 2);
@@ -905,11 +909,11 @@ mod tests {
         let events = EventLog::<1>::new();
         let mut report = EventLogReport::from_event_log(&events);
 
-        assert!(report.verify_checksum());
+        assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.event_count, 0);
         assert_eq!(report.capacity, 1);
 
         report.event_count = 1;
-        assert!(!report.verify_checksum());
+        assert!(!report.diagnostic_checksum_matches());
     }
 }
