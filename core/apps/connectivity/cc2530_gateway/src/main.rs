@@ -33,7 +33,7 @@ struct Report {
     commands: u32,
     last_len: u32,
     last_frame: [u8; CAP],
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E5A_4757; // "NZGW"
 
@@ -53,7 +53,7 @@ static mut NOBRO_CC2530_GATEWAY_REPORT: Report = Report {
     commands: 0,
     last_len: 0,
     last_frame: [0; CAP],
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// Per-type frame tally, updated on each capture.
@@ -167,7 +167,7 @@ fn seal(fw: u32, pongs: u32, c: Counts, last: &[u8], last_len: u32) {
             commands: c.command,
             last_len,
             last_frame,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 }

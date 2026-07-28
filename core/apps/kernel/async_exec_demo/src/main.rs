@@ -29,7 +29,7 @@ struct AsyncExecReport {
     stall_pass: u32,
     rounds_used: u32,
     tasks_completed: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 #[no_mangle]
@@ -44,7 +44,7 @@ static mut NOBRO_ASYNC_EXEC_REPORT: AsyncExecReport = AsyncExecReport {
     stall_pass: 0,
     rounds_used: 0,
     tasks_completed: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 struct Countdown<'c> {
@@ -137,7 +137,7 @@ fn main() -> ! {
             stall_pass: st,
             rounds_used: rounds,
             tasks_completed: completed,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

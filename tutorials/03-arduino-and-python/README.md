@@ -3,7 +3,7 @@
 *Your first real programming language contact — with high-level APIs that stay small.*
 
 Two independent paths; do either or both. In each, you'll work with NobroRTOS's
-core idea — self-verifying reports — using beginner-grade APIs.
+core idea — fixed diagnostic reports — using beginner-grade APIs.
 
 ---
 
@@ -21,18 +21,21 @@ core idea — self-verifying reports — using beginner-grade APIs.
 
 1. Arduino IDE → **Sketch → Include Library → Add .ZIP Library…** → pick the zip.
 2. **File → Examples → NobroRTOS → ReportReader** — open it and read: it builds a
-   report exactly like device firmware, seals its checksum, then decodes it.
+   report exactly like device firmware, finalizes its diagnostic checksum, then
+   decodes it. This unkeyed check detects accidental corruption; it does not
+   authenticate the report.
 3. Upload, open the Serial Monitor at **115200**:
 
 ```
 magic      = 0x4E425254  (runtime report)
 all_pass   = 1
-checksum   = 0x4E425258  (valid)
+diagnostic checksum = 0x4E425258  (matches)
 VERDICT    : PASS
 ```
 
-4. Now break it: flip one number in `demo_report[]` and re-upload. The checksum
-   check catches the corruption — **that's the whole philosophy in one sketch.**
+4. Now break it: flip one number in `demo_report[]` and re-upload. The
+   diagnostic check catches the accidental corruption. Use an authenticated
+   envelope whenever the report crosses an attacker-controlled boundary.
 
 ## Path B: Python
 

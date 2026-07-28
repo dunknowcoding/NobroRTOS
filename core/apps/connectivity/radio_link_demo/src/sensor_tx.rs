@@ -14,7 +14,7 @@ use panic_halt as _;
 
 #[path = "common.rs"]
 mod common;
-use common::{checksum, start_hfxo, RadioReport, MAGIC};
+use common::{diagnostic_checksum, start_hfxo, RadioReport, MAGIC};
 
 #[no_mangle]
 #[used]
@@ -101,9 +101,9 @@ fn main() -> ! {
             rx_received: 0,
             last_seq: accel_mag_mg,
             all_pass: u32::from(tx_sent >= 10 && (800..1200).contains(&accel_mag_mg)),
-            checksum: 0,
+            diagnostic_checksum: 0,
         };
-        r.checksum = checksum(&r);
+        r.diagnostic_checksum = diagnostic_checksum(&r);
         unsafe {
             NOBRO_RADIO_REPORT = r;
         }

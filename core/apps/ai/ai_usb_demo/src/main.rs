@@ -38,7 +38,7 @@ struct AiUsbReport {
     last_class: u32,
     confidence_q15: u32,
     accel_mg: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const AI_USB_MAGIC: u32 = 0x4E42_4155; // "NBAU"
 
@@ -54,7 +54,7 @@ static mut NOBRO_AI_USB_REPORT: AiUsbReport = AiUsbReport {
     last_class: 0,
     confidence_q15: 0,
     accel_mg: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 #[inline(never)]
@@ -177,7 +177,7 @@ fn step_inference(
                             NOBRO_AI_USB_REPORT.last_class = u32::from(*last_class);
                             NOBRO_AI_USB_REPORT.confidence_q15 = u32::from(*last_conf_q15);
                             NOBRO_AI_USB_REPORT.accel_mg = u32::from(*accel_mg);
-                            NOBRO_AI_USB_REPORT.checksum = cs;
+                            NOBRO_AI_USB_REPORT.diagnostic_checksum = cs;
                         }
                         SamplePool::release(sample.handle);
                         return true;

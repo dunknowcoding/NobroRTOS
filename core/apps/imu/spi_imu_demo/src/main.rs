@@ -33,7 +33,7 @@ struct SpiImuReport {
     raw_ax: u32,
     raw_ay: u32,
     raw_az: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E42_5350; // "NBSP" (NoBro SPi)
 
@@ -51,7 +51,7 @@ static mut NOBRO_SPI_IMU_REPORT: SpiImuReport = SpiImuReport {
     raw_ax: 0,
     raw_ay: 0,
     raw_az: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// Integer square root (Newton's method) - no libm, no float, for the accel magnitude.
@@ -185,7 +185,7 @@ fn main() -> ! {
                     raw_ax,
                     raw_ay,
                     raw_az,
-                    checksum: cs,
+                    diagnostic_checksum: cs,
                 };
             }
         }

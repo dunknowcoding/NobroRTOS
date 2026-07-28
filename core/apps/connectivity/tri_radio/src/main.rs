@@ -28,7 +28,7 @@ struct Report {
     radio_tx: u32,
     cc_pongs: u32,
     cc_frames: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E54_5249; // "NTRI"
 
@@ -43,7 +43,7 @@ static mut NOBRO_TRI_RADIO_REPORT: Report = Report {
     radio_tx: 0,
     cc_pongs: 0,
     cc_frames: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 // ---------------------------------------------------------------- RADIO (BLE mode)
@@ -324,7 +324,7 @@ fn main() -> ! {
                 radio_tx,
                 cc_pongs,
                 cc_frames,
-                checksum: cs,
+                diagnostic_checksum: cs,
             };
         }
     }

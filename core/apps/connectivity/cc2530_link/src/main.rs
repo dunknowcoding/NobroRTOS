@@ -25,7 +25,7 @@ struct Report {
     pongs: u32,
     rx_frames: u32,
     rx_bytes: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E43_3235; // "NC25"
 
@@ -41,7 +41,7 @@ static mut NOBRO_CC2530_REPORT: Report = Report {
     pongs: 0,
     rx_frames: 0,
     rx_bytes: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 // ------------------------------------------------------------------ legacy UART0
@@ -193,7 +193,7 @@ fn seal(fw: u32, pings: u32, pongs: u32, frames: u32, rx_bytes: u32) {
             pongs,
             rx_frames: frames,
             rx_bytes,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 }

@@ -25,7 +25,7 @@ struct Report {
     boot_count: u32,
     rows: u32,
     image_len: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E44_4250; // "NDBP"
 
@@ -40,7 +40,7 @@ static mut NOBRO_DB_PERSIST_REPORT: Report = Report {
     boot_count: 0,
     rows: 0,
     image_len: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// One row of persisted state: a value plus a fixed marker that must survive intact.
@@ -211,7 +211,7 @@ fn main() -> ! {
             boot_count,
             rows,
             image_len: image_len as u32,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

@@ -31,7 +31,7 @@ struct Report {
     angle_mdeg: u32, // i32 bit-cast: final fused tilt in milli-degrees
     pulse_us: u32,   // final PID-driven servo pulse command
     loops: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E43_544C; // "NCTL"
 
@@ -46,7 +46,7 @@ static mut NOBRO_CONTROL_REPORT: Report = Report {
     angle_mdeg: 0,
     pulse_us: 0,
     loops: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn rd(dev: &mut NobroSpiDevice, reg: u8) -> Result<u8, ()> {
@@ -186,7 +186,7 @@ fn main() -> ! {
             angle_mdeg: am,
             pulse_us,
             loops,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

@@ -33,7 +33,7 @@ struct AiEvalReport {
     confidence_q15: u32,
     latency_us: u32,
     accel_mag_mg: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 impl AiEvalReport {
@@ -49,7 +49,7 @@ impl AiEvalReport {
             confidence_q15: 0,
             latency_us: 0,
             accel_mag_mg: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 }
@@ -130,7 +130,7 @@ fn main() -> ! {
                     && latency <= contract.timeout_us
                     && (800..1200).contains(&last_accel);
                 let all_pass = u32::from(pass);
-                let checksum = AI_MAGIC
+                let diagnostic_checksum = AI_MAGIC
                     ^ 1
                     ^ completed
                     ^ all_pass
@@ -148,7 +148,7 @@ fn main() -> ! {
                     NOBRO_AI_EVAL_REPORT.accel_mag_mg = last_accel;
                     NOBRO_AI_EVAL_REPORT.completed = completed;
                     NOBRO_AI_EVAL_REPORT.all_pass = all_pass;
-                    NOBRO_AI_EVAL_REPORT.checksum = checksum;
+                    NOBRO_AI_EVAL_REPORT.diagnostic_checksum = diagnostic_checksum;
                 }
             }
         }

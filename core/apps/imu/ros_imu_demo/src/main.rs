@@ -33,7 +33,7 @@ struct RosEvalReport {
     dropped: u32,
     max_depth: u32,
     buffer_bytes: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 impl RosEvalReport {
@@ -49,7 +49,7 @@ impl RosEvalReport {
             dropped: 0,
             max_depth: 0,
             buffer_bytes: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 }
@@ -127,7 +127,7 @@ fn main() -> ! {
             && max_depth <= DEPTH as u32
             && buffer_bytes == (DEPTH * MAX_MSG) as u32;
         let all_pass = u32::from(pass);
-        let checksum = ROS_MAGIC
+        let diagnostic_checksum = ROS_MAGIC
             ^ 1
             ^ completed
             ^ all_pass
@@ -144,7 +144,7 @@ fn main() -> ! {
             NOBRO_ROS_EVAL_REPORT.transmitted = transmitted;
             NOBRO_ROS_EVAL_REPORT.dropped = dropped;
             NOBRO_ROS_EVAL_REPORT.max_depth = max_depth;
-            NOBRO_ROS_EVAL_REPORT.checksum = checksum;
+            NOBRO_ROS_EVAL_REPORT.diagnostic_checksum = diagnostic_checksum;
         }
 
         asm::delay(150_000);

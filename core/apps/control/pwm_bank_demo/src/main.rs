@@ -20,7 +20,7 @@ struct Report {
     lease_ok: u32,
     readback_ok: u32,
     freq_hz: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E50_5742; // "NPWB"
 
@@ -34,7 +34,7 @@ static mut NOBRO_PWM_BANK_REPORT: Report = Report {
     lease_ok: 0,
     readback_ok: 0,
     freq_hz: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const OWNER_A: u8 = 11;
@@ -84,7 +84,7 @@ fn main() -> ! {
             lease_ok: lo,
             readback_ok,
             freq_hz,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

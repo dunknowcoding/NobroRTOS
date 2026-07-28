@@ -28,7 +28,7 @@ struct Report {
     synth_ok: u32, // bit0 tap, bit1 shake, bit2 tilt, bit3 idle
     live_none: u32,
     live_samples: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E47_5354; // "NGST"
 
@@ -42,7 +42,7 @@ static mut NOBRO_GESTURE_REPORT: Report = Report {
     synth_ok: 0,
     live_none: 0,
     live_samples: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn rd(dev: &mut NobroSpiDevice, reg: u8) -> Result<u8, ()> {
@@ -189,7 +189,7 @@ fn main() -> ! {
             synth_ok,
             live_none,
             live_samples,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

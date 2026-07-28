@@ -42,7 +42,7 @@ struct NnReport {
     train_acc_milli: u32,
     preflight_pass: u32,
     required_ram: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E4E_4E31; // "NNN1"
 
@@ -61,7 +61,7 @@ static mut NOBRO_NN_REPORT: NnReport = NnReport {
     train_acc_milli: 0,
     preflight_pass: 0,
     required_ram: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn rd(dev: &mut NobroSpiDevice, reg: u8) -> u8 {
@@ -202,7 +202,7 @@ fn main() -> ! {
             train_acc_milli: TRAIN_ACC_MILLI,
             preflight_pass,
             required_ram,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

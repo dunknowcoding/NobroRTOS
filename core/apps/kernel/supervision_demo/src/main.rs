@@ -25,7 +25,7 @@ struct Report {
     escalation_seq: u32, // nibbles: healthy(0)->restart(1)->degrade(2)->reboot(3)
     recovered: u32,
     radio_stayed_healthy: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E53_5550; // "NSUP"
 
@@ -39,7 +39,7 @@ static mut NOBRO_SUPERVISION_REPORT: Report = Report {
     escalation_seq: 0,
     recovered: 0,
     radio_stayed_healthy: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn sev(a: SupervisionAction) -> u32 {
@@ -128,7 +128,7 @@ fn main() -> ! {
             escalation_seq,
             recovered,
             radio_stayed_healthy,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

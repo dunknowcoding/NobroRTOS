@@ -30,7 +30,7 @@ struct RecoveryReport {
     err_action: u32,
     err_state: u32,
     final_state: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const REC_MAGIC: u32 = 0x4E42_5243; // "NBRC"
 
@@ -46,7 +46,7 @@ static mut NOBRO_RECOVERY_REPORT: RecoveryReport = RecoveryReport {
     err_action: 0,
     err_state: 0,
     final_state: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn state_u32(s: SystemState) -> u32 {
@@ -124,7 +124,7 @@ fn main() -> ! {
             err_action,
             err_state,
             final_state,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

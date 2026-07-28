@@ -13,7 +13,7 @@ pub struct RadioReport {
     pub rx_received: u32,
     pub last_seq: u32,
     pub all_pass: u32,
-    pub checksum: u32,
+    pub diagnostic_checksum: u32,
 }
 
 impl RadioReport {
@@ -26,7 +26,7 @@ impl RadioReport {
             rx_received: 0,
             last_seq: 0,
             all_pass: 0,
-            checksum: 0,
+            diagnostic_checksum: 0,
         }
     }
 }
@@ -39,6 +39,6 @@ pub fn start_hfxo() {
     }
 }
 
-pub fn checksum(r: &RadioReport) -> u32 {
+pub fn diagnostic_checksum(r: &RadioReport) -> u32 {
     r.magic ^ r.version ^ r.role ^ r.tx_sent ^ r.rx_received ^ r.last_seq ^ r.all_pass
 }

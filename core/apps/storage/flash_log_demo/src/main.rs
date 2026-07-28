@@ -19,7 +19,7 @@ struct Report {
     page_addr: u32,
     samples_written: u32,
     samples_verified: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E46_4C47; // "NFLG"
 
@@ -33,7 +33,7 @@ static mut NOBRO_FLASH_LOG_REPORT: Report = Report {
     page_addr: 0,
     samples_written: 0,
     samples_verified: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const NVMC: u32 = 0x4001_E000;
@@ -113,7 +113,7 @@ fn main() -> ! {
             page_addr: page,
             samples_written: written,
             samples_verified: verified,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

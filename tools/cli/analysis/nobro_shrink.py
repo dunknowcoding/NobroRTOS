@@ -399,9 +399,9 @@ def convert_capacity_binary(
     if report_bytes != expected_bytes:
         raise ValueError("capacity report has an invalid fixed-layout size")
     expected_checksum = _fnv1a32(data[:-4])
-    (checksum,) = struct.unpack_from("<I", data, len(data) - 4)
-    if checksum != expected_checksum:
-        raise ValueError("capacity report checksum mismatch")
+    (diagnostic_checksum,) = struct.unpack_from("<I", data, len(data) - 4)
+    if diagnostic_checksum != expected_checksum:
+        raise ValueError("capacity report diagnostic checksum mismatch")
     if completed != 1 or flags != 0:
         raise ValueError("capacity report is structurally incomplete")
     if resource_count == 0 or resource_count != len(campaign["resources"]):

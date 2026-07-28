@@ -34,7 +34,7 @@ struct ClosedLoopReport {
     last_cmd_us: u32,
     last_readback_us: u32,
     accel_mg: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const CL_MAGIC: u32 = 0x4E42_434C; // "NBCL"
 const OWNER_TWIM: u8 = 3;
@@ -53,7 +53,7 @@ static mut NOBRO_CLOSEDLOOP_REPORT: ClosedLoopReport = ClosedLoopReport {
     last_cmd_us: 0,
     last_readback_us: 0,
     accel_mg: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 #[entry]
@@ -133,7 +133,7 @@ fn main() -> ! {
                 NOBRO_CLOSEDLOOP_REPORT.last_cmd_us = cmd_us;
                 NOBRO_CLOSEDLOOP_REPORT.last_readback_us = readback;
                 NOBRO_CLOSEDLOOP_REPORT.accel_mg = accel_mg;
-                NOBRO_CLOSEDLOOP_REPORT.checksum = cs;
+                NOBRO_CLOSEDLOOP_REPORT.diagnostic_checksum = cs;
             }
         }
 

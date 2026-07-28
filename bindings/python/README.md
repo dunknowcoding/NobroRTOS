@@ -193,10 +193,10 @@ The `check-startup-matrix` CLI validates no-dependency, dependency-chain,
 fan-in/fan-out, dependency-impact, unknown-node, self-cycle, duplicate-edge,
 and cycle paths for the deterministic startup planner.
 The `check-boot-summary-matrix` CLI validates all-pass, missing-stage,
-corrupt-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
+corrupt-diagnostic-checksum, failed-adapter, in-progress-stage, diagnostic-code, and
 status-count paths for boot report summaries.
 The `check-report-matrix` CLI validates fixed report pass, fail, missing,
-in-progress, corrupt, checksum, error-label, AI model, and ROS bridge decode
+in-progress, corrupt, diagnostic-checksum, error-label, AI model, and ROS bridge decode
 paths.
 `RuntimeDrillSimulator` composes planning, quota, event-log, and recovery
 checks into one deterministic pressure drill.
@@ -422,7 +422,7 @@ module set, making startup sequencing reviewable before firmware code is
 assembled. The startup matrix checker validates no-dependency, chain,
 fan-in/fan-out, unknown-node, self-cycle, duplicate-edge, and cycle paths.
 The boot summary matrix checker validates first-diagnostic priority,
-diagnostic-code layout, checksum corruption, adapter failure labels, and
+diagnostic-code layout, diagnostic-checksum corruption, adapter failure labels, and
 per-status counts.
 The bundle matrix checker validates module naming, capability ownership,
 AI/ROS descriptor uniqueness, hard-realtime deadlines, startup dependency

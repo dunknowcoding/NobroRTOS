@@ -22,7 +22,7 @@ struct Report {
     written: u32,
     newest_seq: u32,
     recovered_ok: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E54_5247; // "NTRG"
 
@@ -36,7 +36,7 @@ static mut NOBRO_TELERING_REPORT: Report = Report {
     written: 0,
     newest_seq: 0,
     recovered_ok: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const NVMC: u32 = 0x4001_E000;
@@ -165,7 +165,7 @@ fn main() -> ! {
                 written,
                 newest_seq,
                 recovered_ok,
-                checksum: cs,
+                diagnostic_checksum: cs,
             },
         );
     }

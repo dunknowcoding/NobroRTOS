@@ -22,7 +22,7 @@ struct Report {
     gets_ok: u32,
     active_page: u32,
     remount_ok: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E4B_5631; // "NKV1"
 
@@ -37,7 +37,7 @@ static mut NOBRO_KV_REPORT: Report = Report {
     gets_ok: 0,
     active_page: 0,
     remount_ok: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const NVMC: u32 = 0x4001_E000;
@@ -140,7 +140,7 @@ fn main() -> ! {
             gets_ok,
             active_page,
             remount_ok,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

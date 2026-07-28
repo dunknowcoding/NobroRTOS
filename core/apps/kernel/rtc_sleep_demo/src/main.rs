@@ -26,7 +26,7 @@ struct Report {
     requested_low_power: u32,
     selected_idle: u32,
     effective_idle: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E52_5443; // "NRTC"
 
@@ -42,7 +42,7 @@ static mut NOBRO_RTC_SLEEP_REPORT: Report = Report {
     requested_low_power: 0,
     selected_idle: 0,
     effective_idle: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const CLOCK: u32 = 0x4000_0000;
@@ -180,7 +180,7 @@ fn main() -> ! {
             requested_low_power,
             selected_idle,
             effective_idle,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

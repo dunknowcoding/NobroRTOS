@@ -16,7 +16,7 @@ struct UdiImuReport {
     reads: u32,
     errors: u32,
     temp_centi_c: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E55_4449; // "NUDI"
 
@@ -33,7 +33,7 @@ static mut NOBRO_UDI_IMU_REPORT: UdiImuReport = UdiImuReport {
     reads: 0,
     errors: 0,
     temp_centi_c: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// MPU-9250 die temperature: TEMP_OUT counts -> centi-degrees C.
@@ -359,7 +359,7 @@ fn main() -> ! {
             reads,
             errors,
             temp_centi_c: temp,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

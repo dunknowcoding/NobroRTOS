@@ -20,7 +20,7 @@ struct Report {
     dump_pc: u32,
     dump_cfsr: u32,
     dump_valid: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E43_5253; // "NCRS"
 
@@ -34,7 +34,7 @@ static mut NOBRO_CRASH_REPORT: Report = Report {
     dump_pc: 0,
     dump_cfsr: 0,
     dump_valid: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const DUMP_PAGE: u32 = 0x8_2000;
@@ -92,7 +92,8 @@ unsafe fn flash_word(addr: u32, val: u32) {
 #[exception]
 unsafe fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
     wr32(0xE000_ED94, 0); // MPU off: the dump path must not fault again
-                          // Persist the crash record: magic, PC, LR, xPSR, CFSR, HFSR, checksum.
+                          // Persist the crash record: magic, PC, LR, xPSR, CFSR, HFSR,
+                          // and an unkeyed diagnostic checksum.
     let pc = ef.pc();
     let lr = ef.lr();
     let xpsr = ef.xpsr();
@@ -132,7 +133,7 @@ fn main() -> ! {
                     dump_pc: 0,
                     dump_cfsr: 0,
                     dump_valid: 0,
-                    checksum: 0xAAAA_0001,
+                    diagnostic_checksum: 0xAAAA_0001,
                 },
             );
             // NVMC writes AND into existing bits - the dump page must start erased.
@@ -175,7 +176,7 @@ fn main() -> ! {
                 dump_pc: pc,
                 dump_cfsr: cfsr,
                 dump_valid,
-                checksum: rcs,
+                diagnostic_checksum: rcs,
             },
         );
     }

@@ -40,7 +40,7 @@ struct Report {
     switched_record: u32,
     module_a_value: u32,
     module_b_value: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 #[no_mangle]
@@ -58,7 +58,7 @@ static mut NOBRO_ISOLATION_REPORT: Report = Report {
     switched_record: 0,
     module_a_value: 0,
     module_b_value: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 #[repr(align(256))]
@@ -137,7 +137,7 @@ fn MemoryManagement() {
         write_register(CFSR, 0xFF);
         if CortexMSliceSwitch::switch(&MODULE_A_CONTEXT, &MODULE_B_CONTEXT).is_err() {
             core::ptr::write_volatile(
-                core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.checksum),
+                core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.diagnostic_checksum),
                 0xDEAD_0001,
             );
         }
@@ -166,7 +166,7 @@ fn SVCall() {
             && module_b_value == 0xBBBB_0002
             && core::ptr::read_volatile(core::ptr::addr_of!(MODULE_B_DATA.0[1])) == 0;
         let all_pass = u32::from(pass);
-        let checksum = MAGIC
+        let diagnostic_checksum = MAGIC
             ^ VERSION
             ^ 1
             ^ all_pass
@@ -195,7 +195,7 @@ fn SVCall() {
                 switched_record,
                 module_a_value,
                 module_b_value,
-                checksum,
+                diagnostic_checksum,
             },
         );
     }
@@ -204,7 +204,7 @@ fn SVCall() {
 #[exception]
 unsafe fn HardFault(frame: &cortex_m_rt::ExceptionFrame) -> ! {
     core::ptr::write_volatile(
-        core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.checksum),
+        core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.diagnostic_checksum),
         0xDEAD_0000 | (frame.pc() & 0xFFFF),
     );
     loop {

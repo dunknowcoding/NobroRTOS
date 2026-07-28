@@ -29,7 +29,7 @@ struct Report {
     lease_ok: u32,
     capability_ok: u32,
     frames_sent: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E52_4332; // "NRC2"
 
@@ -43,7 +43,7 @@ static mut NOBRO_RADIO_COMMS_REPORT: Report = Report {
     lease_ok: 0,
     capability_ok: 0,
     frames_sent: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn start_hfxo() {
@@ -123,7 +123,7 @@ fn main() -> ! {
             lease_ok: lo,
             capability_ok: co,
             frames_sent,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

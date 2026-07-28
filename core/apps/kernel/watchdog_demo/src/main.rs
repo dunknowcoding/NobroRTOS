@@ -20,7 +20,7 @@ struct Report {
     reset_reason: u32,
     recovered: u32,
     wdt_crv: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E57_4447; // "NWDG"
 
@@ -34,7 +34,7 @@ static mut NOBRO_WDT_REPORT: Report = Report {
     reset_reason: 0,
     recovered: 0,
     wdt_crv: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const RESETREAS: u32 = 0x4000_0400;
@@ -68,7 +68,7 @@ fn main() -> ! {
                 reset_reason: reason,
                 recovered: 1,
                 wdt_crv: CRV,
-                checksum: cs,
+                diagnostic_checksum: cs,
             };
             loop {
                 cortex_m::asm::delay(16_000_000);
@@ -84,7 +84,7 @@ fn main() -> ! {
             reset_reason: reason,
             recovered: 0,
             wdt_crv: CRV,
-            checksum: 0,
+            diagnostic_checksum: 0,
         };
         wr(WDT + 0x504, CRV); // CRV: ~0.5 s
         wr(WDT + 0x508, 1); // RREN: enable reload register 0

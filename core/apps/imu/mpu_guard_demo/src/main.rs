@@ -29,7 +29,7 @@ struct Report {
     fault_module: u32,
     fault_was_data_access: u32,
     fault_addr: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E4D_5055; // "NMPU"
 
@@ -46,7 +46,7 @@ static mut NOBRO_MPU_REPORT: Report = Report {
     fault_module: 0,
     fault_was_data_access: 0,
     fault_addr: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// The protected block: 256-byte aligned so it can be an MPU region base.
@@ -106,7 +106,7 @@ fn MemoryManagement() {
         if n > 3 {
             // fault storm: park with diagnostics instead of looping forever
             core::ptr::write_volatile(
-                core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+                core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.diagnostic_checksum),
                 0xDEAD_0001,
             );
             loop {}
@@ -125,7 +125,10 @@ unsafe fn HardFault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
         core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.write_after_ok),
         ef.pc(),
     );
-    core::ptr::write_volatile(core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum), rd(CFSR));
+    core::ptr::write_volatile(
+        core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.diagnostic_checksum),
+        rd(CFSR),
+    );
     loop {}
 }
 
@@ -160,7 +163,7 @@ fn main() -> ! {
             fault_module: 0,
             fault_was_data_access: 0,
             fault_addr: 0,
-            checksum: 0xAAAA_0001,
+            diagnostic_checksum: 0xAAAA_0001,
         };
     }
 
@@ -181,12 +184,12 @@ fn main() -> ! {
     unsafe {
         plan.install().unwrap();
         core::ptr::write_volatile(
-            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.diagnostic_checksum),
             0xAAAA_0002,
         ); // MPU armed
         core::ptr::write_volatile(&mut GUARDED.0[1], 0x3333_4444);
         core::ptr::write_volatile(
-            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.checksum),
+            core::ptr::addr_of_mut!(NOBRO_MPU_REPORT.diagnostic_checksum),
             0xAAAA_0003,
         ); // survived
     }
@@ -228,7 +231,7 @@ fn main() -> ! {
                 fault_module,
                 fault_was_data_access,
                 fault_addr,
-                checksum: cs,
+                diagnostic_checksum: cs,
             },
         );
     }

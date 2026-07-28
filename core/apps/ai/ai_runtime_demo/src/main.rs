@@ -27,7 +27,7 @@ struct Report {
     routes_ok: u32,
     nn_latency_us: u32,
     nn_class: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E41_4952; // "NAIR"
 
@@ -42,7 +42,7 @@ static mut NOBRO_AI_RUNTIME_REPORT: Report = Report {
     routes_ok: 0,
     nn_latency_us: 0,
     nn_class: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const LLM_ID: u32 = 0x4C4C_4D31; // "LLM1"
@@ -177,7 +177,7 @@ fn main() -> ! {
             routes_ok,
             nn_latency_us,
             nn_class: u32::from(nn_class),
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

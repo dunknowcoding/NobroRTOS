@@ -24,7 +24,7 @@ struct Report {
     idle_class: u32,
     walk_class: u32,
     shake_class: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E4E_4E33; // "NNN3"
 
@@ -38,7 +38,7 @@ static mut NOBRO_NN3_REPORT: Report = Report {
     idle_class: 0,
     walk_class: 0,
     shake_class: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 fn build_window(pattern: impl Fn(usize) -> u16) -> [u8; 64] {
@@ -98,7 +98,7 @@ fn main() -> ! {
             idle_class: ic,
             walk_class: wc,
             shake_class: sc,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

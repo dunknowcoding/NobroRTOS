@@ -39,7 +39,7 @@ pub struct BootSlotReport {
     protected_unchanged: u32,
     trial_generation: u32,
     confirmed_generation: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 #[no_mangle]
@@ -54,7 +54,7 @@ pub static mut NOBRO_BOOT_SLOT_REPORT: BootSlotReport = BootSlotReport {
     protected_unchanged: 0,
     trial_generation: 0,
     confirmed_generation: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 struct NrfNvmc;
@@ -188,7 +188,7 @@ fn token(
     .unwrap()
 }
 
-fn checksum(words: &[u32]) -> u32 {
+fn diagnostic_checksum(words: &[u32]) -> u32 {
     words
         .iter()
         .fold(0x70B0_0700, |sum, word| sum.rotate_left(5) ^ word)
@@ -284,7 +284,7 @@ fn main() -> ! {
             protected_unchanged: fields[7],
             trial_generation: fields[8],
             confirmed_generation: fields[9],
-            checksum: checksum(&fields),
+            diagnostic_checksum: diagnostic_checksum(&fields),
         };
     }
 

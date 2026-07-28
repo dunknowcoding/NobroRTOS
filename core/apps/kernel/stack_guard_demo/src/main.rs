@@ -27,7 +27,7 @@ struct Report {
     attributed_module: u32,
     rearmed_ok: u32,
     guard_addr: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E53_474B; // "NSGK"
 
@@ -43,7 +43,7 @@ static mut NOBRO_STACK_REPORT: Report = Report {
     attributed_module: 0,
     rearmed_ok: 0,
     guard_addr: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 const GUARD_BYTES: usize = 64;
@@ -119,7 +119,7 @@ fn main() -> ! {
             attributed_module,
             rearmed_ok,
             guard_addr,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 

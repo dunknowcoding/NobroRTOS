@@ -15,6 +15,7 @@ RUST_ROOTS = (
     ROOT / "core" / "adapters",
     ROOT / "core" / "boards",
     ROOT / "core" / "ports",
+    ROOT / "core" / "apps",
 )
 DIAGNOSTIC_REPORT_TYPES = (
     "HealthReport",
@@ -54,18 +55,23 @@ def tracked_files() -> tuple[pathlib.Path, ...]:
 
 def rust_report_errors(path: pathlib.Path, text: str) -> list[str]:
     errors: list[str] = []
-    for report_type in DIAGNOSTIC_REPORT_TYPES:
-        struct = re.search(
-            rf"\bpub\s+struct\s+{re.escape(report_type)}(?:\s*<[^{{>]+>)?\s*\{{"
-            rf"(?P<body>.*?)\n\}}",
+    report_structs = {
+        match.group("name"): match.group("body")
+        for match in re.finditer(
+            r"\b(?:pub\s+)?struct\s+(?P<name>(?:[A-Za-z0-9_]*Report|Report))"
+            r"(?:\s*<[^{}]+>)?\s*\{(?P<body>.*?)\n\}",
             text,
             re.DOTALL,
         )
-        if struct is None:
+    }
+    for name, body in report_structs.items():
+        if re.search(r"\b(?:pub\s+)?checksum\s*:", body):
+            errors.append(f"{path}: {name} exposes ambiguous checksum field")
+
+    for report_type in DIAGNOSTIC_REPORT_TYPES:
+        body = report_structs.get(report_type)
+        if body is None:
             continue
-        body = struct.group("body")
-        if re.search(r"\bpub\s+checksum\s*:", body):
-            errors.append(f"{path}: {report_type} exports ambiguous checksum field")
         if "pub diagnostic_checksum:" not in body:
             errors.append(f"{path}: {report_type} lacks diagnostic_checksum field")
 
@@ -142,9 +148,15 @@ def audit() -> list[str]:
             ROOT / "docs/API.md",
             ROOT / "docs/USER_GUIDE.md",
             ROOT / "docs/ARCHITECTURE.md",
+            ROOT / "bindings/python/README.md",
+            ROOT / "tutorials/03-arduino-and-python/README.md",
         )
     )
-    for ambiguous in ("sealed checksum", "checksum-valid"):
+    for ambiguous in (
+        "sealed checksum",
+        "seals its checksum",
+        "self-verifying reports",
+    ):
         if ambiguous in public_docs.casefold():
             errors.append(f"public docs retain ambiguous phrase {ambiguous!r}")
     for required in (
@@ -168,7 +180,7 @@ impl HealthReport {
 }
 """
     found = rust_report_errors(pathlib.Path("fixture.rs"), bad)
-    if len(found) != 4:
+    if len(found) < 4 or not any("ambiguous checksum field" in item for item in found):
         raise RuntimeError(f"report trust-boundary selftest failed: {found}")
 
 
@@ -180,7 +192,8 @@ def main() -> int:
     print(
         "REPORT TRUST BOUNDARY: "
         f"{'PASS' if not errors else 'FAIL'} "
-        f"({len(DIAGNOSTIC_REPORT_TYPES)} diagnostic report types)"
+        f"(all tracked Rust report structs; "
+        f"{len(DIAGNOSTIC_REPORT_TYPES)} typed contract families)"
     )
     return int(bool(errors))
 

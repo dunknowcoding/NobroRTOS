@@ -24,7 +24,7 @@ struct Report {
     all_pass: u32,
     tested: u32,
     passed: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E4C_4553; // "NLES"
 
@@ -37,7 +37,7 @@ static mut NOBRO_LEASE_REPORT: Report = Report {
     all_pass: 0,
     tested: 0,
     passed: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 /// Full arbitration cycle for one resource: exclusive acquire, conflict rejected,
@@ -100,7 +100,7 @@ fn main() -> ! {
             all_pass: ap,
             tested,
             passed,
-            checksum: cs,
+            diagnostic_checksum: cs,
         };
     }
 
