@@ -18,8 +18,8 @@ import check_board_features
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
 FEATURES = ROOT / "core" / "boards" / "feature_providers.json"
-PIN = "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2"
-VERSION = "0.3.1"
+PIN = "ec21d000474fc3378a08eee1d71c16015796583d"
+VERSION = "0.3.2"
 FQBN = "esp32:esp32:esp32s3"
 BINDING_ID = "binding-audio-esp32s3-es8311"
 EVIDENCE_GATE = "esp32s3-arduino-audio-target-build"
@@ -27,7 +27,7 @@ LIFECYCLE_GATE = "provider-lifecycle-host"
 WORKLOAD_NAMESPACE = "esp32s3-es8311-arduino"
 WORKLOAD_WORDS = [16_000, 1, 0, 192, 0]
 EXPECTED_FIXED_PRICE = {
-    "flash_bytes": 87_589,
+    "flash_bytes": 87_769,
     "static_ram_bytes": 2_508,
     "retained_heap_bytes": 16_164,
     "stack_bytes": 0,
@@ -48,6 +48,7 @@ EXPECTED_RUNTIME_PRICE = {
 EXPECTED_TARGET_BUILD_PRICES = {
     (87_557, 2_508),
     (87_589, 2_508),
+    (87_769, 2_508),
 }
 EXPECTED_FIXED_PROVENANCE = {
     "flash_bytes": "measured",
@@ -69,7 +70,7 @@ EXPECTED_RUNTIME_PROVENANCE = {
     "latency_max_cycles": "measured",
 }
 EXPECTED_PRICE_BASIS = {
-    "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.1",
+    "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.2",
     "fixed": (
         "conservative maximum of pinned Windows/Linux same-target isolated link "
         "deltas, active retained-heap delta after repeated recovery, and pinned "

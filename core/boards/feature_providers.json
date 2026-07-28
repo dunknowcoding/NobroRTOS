@@ -1424,7 +1424,7 @@
         "operations_per_second": 100
       },
       "measured_fixed_price": {
-        "flash_bytes": 87589,
+        "flash_bytes": 87769,
         "static_ram_bytes": 2508,
         "retained_heap_bytes": 16164,
         "stack_bytes": 0,
