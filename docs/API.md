@@ -650,8 +650,15 @@ process-wide critical-section transaction. A budget overrun outside a critical
 section is suspendable; one inside a section remains pending until the section
 exits and must escalate to the watchdog if it never exits. `on_budget_interrupt`
 queues the PendSV request without changing the current task; call
-`commit_pending_switch_at(now_us, sentinel)` only after the port has actually
-committed the PSP switch. The port preserves BASEPRI per PSP context.
+`commit_pending_switch_and_publish_at(now_us, sentinel, handoff)` only after
+the port has actually committed the PSP switch. Drain `ForcedSuspendHandoff`
+from privileged dispatcher context and pass the receipt to
+`route_forced_suspend`; this records a scheduler deadline fault and selects
+module-scoped recovery. Repeated events retain a bounded count, while mixed
+module identities are rejected rather than routed ambiguously. Use
+`commit_pending_switch_at` only when the caller deliberately handles forced
+suspension attribution through another equivalent bounded path. The port
+preserves BASEPRI per PSP context.
 `SliceTask::allows_fpu(true)` raises the stack floor by 136 bytes: 72 bytes of
 hardware extended frame plus 64 bytes for S16-S31.
 
@@ -661,7 +668,10 @@ port switch immediately. The previous task stays runnable instead of being
 faulted; scheduler state changes only after
 `commit_pending_switch_at(now_us, sentinel)`. Equal- or lower-criticality
 ready transitions remain cooperative. A target without a verified
-`SlicePort` implementation cannot claim P-SLICE support.
+`SlicePort` implementation cannot claim P-SLICE support. A port that reports
+only `SlicePortCapabilities::privileged_only()` admission-rejects
+`SliceProtection::UnprivilegedMpu`; currently only the explicit bare-nRF MPU
+composition reports MPU capability.
 
 `BoundedPriorityMutex<WAITERS>` is scheduler-owned, fixed-capacity mutex state
 for shared resources. It combines priority ceiling and inheritance, transfers

@@ -144,9 +144,9 @@ pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHooks};
 pub use mailbox::{Mailbox, MailboxError, MailboxWork, Message, MessageKind};
 pub use manifest::{
-    kernel_module_spec, kernel_owned_capabilities, module_code, Capability, CapabilitySet,
-    Criticality, DeadlineContract, ManifestError, ManifestReport, MemoryBudget, ModuleSpec,
-    ObjectQuota, SystemBudget, SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC,
+    kernel_module_spec, kernel_owned_capabilities, module_code, module_from_code, Capability,
+    CapabilitySet, Criticality, DeadlineContract, ManifestError, ManifestReport, MemoryBudget,
+    ModuleSpec, ObjectQuota, SystemBudget, SystemManifest, SystemProfile, MANIFEST_REPORT_MAGIC,
     MANIFEST_REPORT_VERSION,
 };
 pub use module_ctx::ModuleCtx;
@@ -168,8 +168,9 @@ pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{CompactImuPayload, SamplePool};
 #[cfg(feature = "preemptive")]
 pub use preemption::{
-    InterruptHandoff, InterruptReceipt, SliceContext, SliceController, SliceDecision, SliceError,
-    SlicePort, SlicePortCapabilities, SliceProtection, SliceTask,
+    route_forced_suspend, ForcedSuspendHandoff, ForcedSuspendHandoffError, ForcedSuspendReceipt,
+    ForcedSuspendRouteError, InterruptHandoff, InterruptReceipt, SliceContext, SliceController,
+    SliceDecision, SliceError, SlicePort, SlicePortCapabilities, SliceProtection, SliceTask,
 };
 #[cfg(feature = "preemptive")]
 pub use priority_mutex::{

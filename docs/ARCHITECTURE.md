@@ -428,12 +428,18 @@ Fault handling is intentionally small:
   transaction. A queued forced switch is committed only after the port reports
   the PSP switch complete, so a ceiling-held overrun keeps the old task and
   sentinel attribution until the section exits; a section that never exits
-  requires watchdog escalation.
+  requires watchdog escalation. After a forced switch commits,
+  `ForcedSuspendHandoff` publishes the suspended module to privileged
+  dispatcher context. `route_forced_suspend` then requests module-scoped
+  recovery; conflicting module identities fail closed instead of recovering
+  the wrong module.
   The current port is a bare-nRF profile: combining `cortex-m-slice` with
   `board-nicenano-s140` fails at compile time because it programs PendSV through
   CMSIS and does not yet integrate interrupt control through the SoftDevice API.
-  Cooperative execution remains the default, and neither profile
-  implies unprivileged execution or MPU isolation.
+  Cooperative execution remains the default and cannot forcibly suspend a
+  non-yielding poll. Privileged slices are not an isolation boundary. Every
+  port other than the explicitly MPU-capable bare-nRF composition rejects an
+  unprivileged slice at admission.
 - Native nRF board features install one BASEPRI-backed implementation for the
   ecosystem-wide `critical-section` ABI. Bare builds mask logical priorities
   3-7 and S140 builds mask application priorities 6-7; deadline/watchdog/P-ISR

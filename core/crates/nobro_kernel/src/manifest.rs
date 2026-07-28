@@ -999,9 +999,52 @@ pub const fn module_code(module: ModuleId) -> u32 {
     }
 }
 
+/// Decode the stable compact module code used by ISR handoffs and reports.
+///
+/// Zero is deliberately invalid because lock-free publications use it as the
+/// empty marker.
+pub const fn module_from_code(code: u32) -> Option<ModuleId> {
+    match code {
+        1 => Some(ModuleId::Kernel),
+        2 => Some(ModuleId::Hal),
+        3 => Some(ModuleId::Bus),
+        4 => Some(ModuleId::Radio),
+        5 => Some(ModuleId::Sensor),
+        6 => Some(ModuleId::Actuator),
+        7 => Some(ModuleId::Stream),
+        8 => Some(ModuleId::Crypto),
+        9 => Some(ModuleId::Ai),
+        0x100..=0x1ff => Some(ModuleId::App((code - 0x100) as u8)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_codes_round_trip_and_zero_stays_reserved() {
+        let modules = [
+            ModuleId::Kernel,
+            ModuleId::Hal,
+            ModuleId::Bus,
+            ModuleId::Radio,
+            ModuleId::Sensor,
+            ModuleId::Actuator,
+            ModuleId::Stream,
+            ModuleId::Crypto,
+            ModuleId::Ai,
+            ModuleId::App(0),
+            ModuleId::App(u8::MAX),
+        ];
+        for module in modules {
+            assert_eq!(module_from_code(module_code(module)), Some(module));
+        }
+        assert_eq!(module_from_code(0), None);
+        assert_eq!(module_from_code(10), None);
+        assert_eq!(module_from_code(0x200), None);
+    }
 
     #[test]
     fn in_place_initialization_matches_const_constructor() {

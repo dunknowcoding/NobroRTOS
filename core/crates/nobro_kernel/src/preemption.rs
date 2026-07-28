@@ -9,7 +9,11 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::{module_code, Criticality, ExecutionSentinel, ModuleId};
+use crate::{
+    module_code, module_from_code, Action, Criticality, ExecutionSentinel, FaultContext,
+    FaultPolicy, FaultSource, HealthCounters, HealthFault, ModuleId, RecoveryOutcome, Runtime,
+    RuntimeError,
+};
 
 /// Lock-free ISR-to-executor publication. Saturated event bits remain set until
 /// drained; exact ready bits are idempotent.
@@ -62,6 +66,146 @@ impl Default for InterruptHandoff {
     fn default() -> Self {
         Self::new()
     }
+}
+
+const FORCED_MODULE_MASK: u32 = 0x1ff;
+const FORCED_COUNT_SHIFT: u32 = 9;
+const FORCED_COUNT_MASK: u32 = 0x003f_ffff;
+const FORCED_IDENTITY_CONFLICT: u32 = 1 << 31;
+
+/// One allocation-free forced-suspension publication from PendSV to the
+/// privileged recovery dispatcher.
+///
+/// The first module identity is retained until drained. Repeated publications
+/// saturate a count; a second identity sets a sticky conflict bit so recovery
+/// fails closed instead of acting on the wrong module.
+pub struct ForcedSuspendHandoff {
+    state: AtomicU32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ForcedSuspendReceipt {
+    pub module: ModuleId,
+    pub occurrences: u32,
+    pub identity_conflict: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForcedSuspendHandoffError {
+    CorruptModuleCode(u32),
+}
+
+impl ForcedSuspendHandoff {
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicU32::new(0),
+        }
+    }
+
+    /// ISR-safe bounded publication after the architectural switch commits.
+    pub fn publish(&self, module: ModuleId) {
+        let code = module_code(module);
+        debug_assert!(code != 0 && code <= FORCED_MODULE_MASK);
+        let _ = self
+            .state
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                if current == 0 {
+                    return Some(code | (1 << FORCED_COUNT_SHIFT));
+                }
+                let retained = current & FORCED_MODULE_MASK;
+                let count = (current >> FORCED_COUNT_SHIFT) & FORCED_COUNT_MASK;
+                let next_count = count.saturating_add(1).min(FORCED_COUNT_MASK);
+                let conflict = (current & FORCED_IDENTITY_CONFLICT)
+                    | if retained == code {
+                        0
+                    } else {
+                        FORCED_IDENTITY_CONFLICT
+                    };
+                Some(retained | (next_count << FORCED_COUNT_SHIFT) | conflict)
+            });
+    }
+
+    pub fn drain(&self) -> Result<Option<ForcedSuspendReceipt>, ForcedSuspendHandoffError> {
+        let state = self.state.swap(0, Ordering::AcqRel);
+        if state == 0 {
+            return Ok(None);
+        }
+        let code = state & FORCED_MODULE_MASK;
+        let module =
+            module_from_code(code).ok_or(ForcedSuspendHandoffError::CorruptModuleCode(code))?;
+        Ok(Some(ForcedSuspendReceipt {
+            module,
+            occurrences: (state >> FORCED_COUNT_SHIFT) & FORCED_COUNT_MASK,
+            identity_conflict: state & FORCED_IDENTITY_CONFLICT != 0,
+        }))
+    }
+}
+
+impl Default for ForcedSuspendHandoff {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForcedSuspendRouteError {
+    IdentityConflict {
+        first_module: ModuleId,
+        occurrences: u32,
+    },
+    Runtime(RuntimeError),
+}
+
+impl From<RuntimeError> for ForcedSuspendRouteError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
+struct ForcedSuspendPolicy;
+
+impl FaultPolicy for ForcedSuspendPolicy {
+    fn decide(
+        &mut self,
+        _module: ModuleId,
+        _fault: &HealthFault,
+        _counters: &HealthCounters,
+    ) -> Action {
+        Action::RebootModule
+    }
+}
+
+/// Route a committed forced suspension into module-scoped recovery.
+///
+/// Call this from privileged dispatcher context after draining the PendSV
+/// handoff, never from the budget ISR itself. A conflicting identity is refused;
+/// a valid receipt always selects `RebootModule`, not whole-board reset.
+pub fn route_forced_suspend<
+    const STARTUP: usize,
+    const QUOTAS: usize,
+    const MAILBOX: usize,
+    const ALARMS: usize,
+    const KV: usize,
+    const HEALTH: usize,
+    const LOG: usize,
+>(
+    runtime: &mut Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+    receipt: ForcedSuspendReceipt,
+    now_us: u64,
+) -> Result<RecoveryOutcome, ForcedSuspendRouteError> {
+    if receipt.identity_conflict {
+        return Err(ForcedSuspendRouteError::IdentityConflict {
+            first_module: receipt.module,
+            occurrences: receipt.occurrences,
+        });
+    }
+    let fault = HealthFault::new(
+        crate::KernelError::DeadlineMissed,
+        FaultContext::new(FaultSource::Scheduler, 1, receipt.occurrences, 0),
+    );
+    runtime
+        .record_fault(receipt.module, fault, now_us, &mut ForcedSuspendPolicy)
+        .map_err(Into::into)
 }
 
 /// One task-owned PSP stack. The platform port owns the saved PSP value; the
@@ -558,6 +702,24 @@ impl<const N: usize> SliceController<N> {
         })
     }
 
+    /// Commit a completed PendSV switch and publish forced suspension for
+    /// privileged module-scoped recovery.
+    pub fn commit_pending_switch_and_publish_at(
+        &mut self,
+        now_us: u64,
+        sentinel: &ExecutionSentinel,
+        handoff: &ForcedSuspendHandoff,
+    ) -> Result<SliceDecision, SliceError> {
+        let decision = self.commit_pending_switch_at(now_us, sentinel)?;
+        if let SliceDecision::Switch {
+            from, forced: true, ..
+        } = decision
+        {
+            handoff.publish(from.module);
+        }
+        Ok(decision)
+    }
+
     pub fn forced_suspends(&self, module: ModuleId) -> Option<u32> {
         self.slots
             .iter()
@@ -634,6 +796,33 @@ mod tests {
     }
 
     #[test]
+    fn forced_suspend_handoff_retains_identity_count_and_conflict() {
+        let handoff = ForcedSuspendHandoff::new();
+        assert_eq!(handoff.drain(), Ok(None));
+        handoff.publish(ModuleId::Sensor);
+        handoff.publish(ModuleId::Sensor);
+        assert_eq!(
+            handoff.drain(),
+            Ok(Some(ForcedSuspendReceipt {
+                module: ModuleId::Sensor,
+                occurrences: 2,
+                identity_conflict: false,
+            }))
+        );
+
+        handoff.publish(ModuleId::Sensor);
+        handoff.publish(ModuleId::Radio);
+        assert_eq!(
+            handoff.drain(),
+            Ok(Some(ForcedSuspendReceipt {
+                module: ModuleId::Sensor,
+                occurrences: 2,
+                identity_conflict: true,
+            }))
+        );
+    }
+
+    #[test]
     fn controller_validates_owned_psp_stacks_and_prefers_criticality() {
         let mut storage = [0u64; 64];
         let base = storage.as_mut_ptr() as usize;
@@ -703,8 +892,9 @@ mod tests {
             sentinel.check(150).map(|stuck| stuck.module_code),
             Some(module_code(ModuleId::Actuator))
         );
+        let handoff = ForcedSuspendHandoff::new();
         let committed = controller
-            .commit_pending_switch_at(150, &sentinel)
+            .commit_pending_switch_and_publish_at(150, &sentinel, &handoff)
             .expect("pending switch commits");
         assert!(matches!(
             committed,
@@ -722,6 +912,14 @@ mod tests {
         ));
         assert_eq!(controller.forced_suspends(ModuleId::Actuator), Some(1));
         assert_eq!(controller.current, Some(0));
+        assert_eq!(
+            handoff.drain(),
+            Ok(Some(ForcedSuspendReceipt {
+                module: ModuleId::Actuator,
+                occurrences: 1,
+                identity_conflict: false,
+            }))
+        );
         assert_eq!(sentinel.check(249), None);
         assert_eq!(
             sentinel.check(251).map(|stuck| stuck.module_code),
@@ -947,5 +1145,75 @@ mod tests {
             ..Port::default()
         };
         assert!(controller.add_for_port(task, &isolated).is_ok());
+    }
+
+    #[test]
+    fn committed_forced_suspend_routes_to_module_recovery_not_board_reset() {
+        use crate::{
+            kernel_module_spec, CapabilitySet, DeadlineContract, DependencySet, MemoryBudget,
+            ModuleRunState, ModuleSpec, StartupNode, SystemManifest, SystemProfile,
+        };
+
+        type TestRuntime = Runtime<2, 2, 1, 0, 0, 2, 0>;
+        let manifest = SystemManifest::<2>::from_specs(&[
+            kernel_module_spec(
+                MemoryBudget::new(16 * 1024, 4 * 1024, 1),
+                DeadlineContract::new(20_000, 0),
+            ),
+            ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+                .requires(CapabilitySet::empty())
+                .owns(CapabilitySet::empty())
+                .memory(MemoryBudget::new(4 * 1024, 1024, 0)),
+        ])
+        .unwrap();
+        let startup = [
+            StartupNode::new(ModuleId::Kernel, DependencySet::empty()),
+            StartupNode::new(ModuleId::Sensor, DependencySet::empty().with_index(0)),
+        ];
+        let mut runtime = TestRuntime::admit(
+            &manifest,
+            &startup,
+            SystemProfile::NRF52840_CORE,
+            crate::FaultThresholds::DEFAULT,
+        )
+        .unwrap();
+        runtime.boot_to_running(0).unwrap();
+
+        let outcome = route_forced_suspend(
+            &mut runtime,
+            ForcedSuspendReceipt {
+                module: ModuleId::Sensor,
+                occurrences: 1,
+                identity_conflict: false,
+            },
+            101,
+        )
+        .unwrap();
+        assert_eq!(outcome.module, ModuleId::Sensor);
+        assert_eq!(outcome.action, Action::RebootModule);
+        assert_eq!(
+            runtime.module_state(ModuleId::Sensor),
+            Some(ModuleRunState::Recovering)
+        );
+        assert_eq!(
+            runtime.module_state(ModuleId::Kernel),
+            Some(ModuleRunState::Active)
+        );
+
+        assert_eq!(
+            route_forced_suspend(
+                &mut runtime,
+                ForcedSuspendReceipt {
+                    module: ModuleId::Sensor,
+                    occurrences: 2,
+                    identity_conflict: true,
+                },
+                102,
+            ),
+            Err(ForcedSuspendRouteError::IdentityConflict {
+                first_module: ModuleId::Sensor,
+                occurrences: 2,
+            })
+        );
     }
 }
