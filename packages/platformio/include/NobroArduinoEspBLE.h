@@ -41,6 +41,7 @@ public:
           connected_(false),
           advertising_active_(false),
           advertising_config_failed_(false),
+          advertising_config_pending_(0),
           queue_overflowed_(false),
           owns_global_stack_(false),
           last_call_us_(0),
@@ -195,18 +196,36 @@ public:
          * callbacks. Observe the package's custom GAP hook and do not report
          * success until the controller confirms advertising started.
          */
+        const uint64_t budget = deadline_us - now_us;
+        const uint32_t bounded_budget =
+            budget > UINT32_MAX
+                ? UINT32_MAX
+                : static_cast<uint32_t>(budget);
         beginAdvertisingTransition();
-        const bool configured =
+        bool configured =
             advertising_->setAdvertisementData(advertisement) &&
-            advertising_->setScanResponseData(scan_response);
-        if (configured) {
+            awaitAdvertisingConfiguration(bounded_budget);
+        uint32_t configuration_us =
+            static_cast<uint32_t>(micros() - started);
+        if (configured && configuration_us < bounded_budget) {
+            /*
+             * Bluedroid accepts only one GAP data-configuration operation at
+             * a time. Starting raw advertising and scan-response writes
+             * back-to-back races ESP_ERR_INVALID_STATE under scheduler load.
+             */
+            beginAdvertisingTransition();
+            configured =
+                advertising_->setScanResponseData(scan_response) &&
+                awaitAdvertisingConfiguration(
+                    bounded_budget - configuration_us);
+            configuration_us =
+                static_cast<uint32_t>(micros() - started);
+        }
+        if (configured && configuration_us < bounded_budget) {
             advertising_->start();
-            const uint64_t budget = deadline_us - now_us;
-            const uint32_t bounded_budget =
-                budget > UINT32_MAX
-                    ? UINT32_MAX
-                    : static_cast<uint32_t>(budget);
-            advertised = awaitAdvertising(true, bounded_budget);
+            advertised =
+                awaitAdvertising(
+                    true, bounded_budget - configuration_us);
         }
 #elif defined(CONFIG_NIMBLE_ENABLED)
         const bool configured =
@@ -420,14 +439,20 @@ private:
         } else if (event == ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT) {
             advertising_active_ = false;
         } else if (event == ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT &&
-                   param->adv_data_raw_cmpl.status !=
-                       ESP_BT_STATUS_SUCCESS) {
-            advertising_config_failed_ = true;
+                   advertising_config_pending_ != 0) {
+            if (param->adv_data_raw_cmpl.status !=
+                ESP_BT_STATUS_SUCCESS) {
+                advertising_config_failed_ = true;
+            }
+            --advertising_config_pending_;
         } else if (
             event == ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT &&
-            param->scan_rsp_data_raw_cmpl.status !=
+            advertising_config_pending_ != 0) {
+            if (param->scan_rsp_data_raw_cmpl.status !=
                 ESP_BT_STATUS_SUCCESS) {
-            advertising_config_failed_ = true;
+                advertising_config_failed_ = true;
+            }
+            --advertising_config_pending_;
         }
         portEXIT_CRITICAL(&mux_);
     }
@@ -479,7 +504,28 @@ private:
         portENTER_CRITICAL(&mux_);
         advertising_active_ = false;
         advertising_config_failed_ = false;
+        advertising_config_pending_ = 1;
         portEXIT_CRITICAL(&mux_);
+    }
+
+    bool awaitAdvertisingConfiguration(uint32_t timeout_us) {
+        const uint32_t started = micros();
+        while (true) {
+            portENTER_CRITICAL(&mux_);
+            const uint8_t pending = advertising_config_pending_;
+            const bool failed = advertising_config_failed_;
+            portEXIT_CRITICAL(&mux_);
+            if (failed) {
+                return false;
+            }
+            if (pending == 0) {
+                return true;
+            }
+            if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
+                return false;
+            }
+            delay(1);
+        }
     }
 
     bool isAdvertisingActive() {
@@ -681,6 +727,7 @@ private:
     bool connected_;
     bool advertising_active_;
     bool advertising_config_failed_;
+    uint8_t advertising_config_pending_;
     bool queue_overflowed_;
     bool owns_global_stack_;
     uint32_t last_call_us_;

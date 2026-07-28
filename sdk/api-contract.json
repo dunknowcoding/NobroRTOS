@@ -194,12 +194,12 @@
     },
     {
       "source": "packages/arduino/src/NobroArduinoEspBLE.h",
-      "source_sha256": "d37d5e3ad8540b926897461efc24104145f898631243ed85e3265901636a366d",
+      "source_sha256": "352501cb3c4848acd2701188ff18f943f1e4d8ffd0e56334d9cbfe96bfe32c5c",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroArduinoEspBLE.h",
-          "sha256": "d37d5e3ad8540b926897461efc24104145f898631243ed85e3265901636a366d"
+          "sha256": "352501cb3c4848acd2701188ff18f943f1e4d8ffd0e56334d9cbfe96bfe32c5c"
         }
       ]
     },

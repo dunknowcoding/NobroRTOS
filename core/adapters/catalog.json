@@ -57,8 +57,8 @@
     {
       "id": "source-arduino-nrf-zigbee",
       "source": "https://github.com/dunknowcoding/ArduinoNRF-Zigbee",
-      "revision": "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9",
-      "version": "1.0.0",
+      "revision": "39a3203d0528323dba80585abfa2304edc4d6e70",
+      "version": "1.0.1",
       "license": "Apache-2.0",
       "pinned": true,
       "clean": true
@@ -102,8 +102,8 @@
     {
       "id": "source-niusaudio",
       "source": "https://github.com/dunknowcoding/NiusAudio",
-      "revision": "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2",
-      "version": "0.3.1",
+      "revision": "ec21d000474fc3378a08eee1d71c16015796583d",
+      "version": "0.3.2",
       "license": "Apache-2.0",
       "pinned": true,
       "clean": true

@@ -304,9 +304,9 @@ jobs:
       - name: prepare pinned audio member
         run: |
           git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
-          git -C _work/NiusAudio checkout --detach fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2
+          git -C _work/NiusAudio checkout --detach ec21d000474fc3378a08eee1d71c16015796583d
           test "$(git -C _work/NiusAudio rev-parse HEAD)" = \
-            "fa2d3913c790b2856f95bce51e5fbd77b8c5c2b2"
+            "ec21d000474fc3378a08eee1d71c16015796583d"
       - name: compile public package examples (AVR, UNO R4, ESP32-S3)
         timeout-minutes: 35
         env:
@@ -337,9 +337,9 @@ jobs:
           test "$(git -C _work/NiusWireless rev-parse HEAD)" = \
             "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
-          git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
+          git -C _work/ArduinoNRF-Zigbee checkout --detach 39a3203d0528323dba80585abfa2304edc4d6e70
           test "$(git -C _work/ArduinoNRF-Zigbee rev-parse HEAD)" = \
-            "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
+            "39a3203d0528323dba80585abfa2304edc4d6e70"
           python tools/checks/integrations/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
@@ -420,8 +420,8 @@ jobs:
             throw "NiusWireless checkout drift"
           }
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
-          git -C _work/ArduinoNRF-Zigbee checkout --detach 4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9
-          if ((git -C _work/ArduinoNRF-Zigbee rev-parse HEAD) -ne "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9") {
+          git -C _work/ArduinoNRF-Zigbee checkout --detach 39a3203d0528323dba80585abfa2304edc4d6e70
+          if ((git -C _work/ArduinoNRF-Zigbee rev-parse HEAD) -ne "39a3203d0528323dba80585abfa2304edc4d6e70") {
             throw "NiusZigbee checkout drift"
           }
           python tools/checks/integrations/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-nrf --compile-zigbee

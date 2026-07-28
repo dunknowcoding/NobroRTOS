@@ -22,7 +22,7 @@ remain independently selectable members exposed through small Nobro facades.
 | NiusWireless 0.2.1 PN532 | I2C/SPI driver; SAMD21 SPI status and IRQ/auth/read/write paths physically verified | Other boards and modes require separate evidence |
 | NiusWireless HC06, HC12 | Upstream inventory only | Upstream modules are currently stubs |
 | Zigbee APS data service | `zigbee-aps` feature / `ApsDataService` | Optional bounded unfragmented APS data frames over an already joined Zigbee NWK provider; no formation, joining, ZDO, security, or fragmentation |
-| NiusZigbee 1.0.0 / CC2530 | ArduinoNRF library integration / raw `Cc2530` backend | Raw IEEE 802.15.4 only; it cannot mount as the APS service without an independently selected joined-NWK provider |
+| NiusZigbee 1.0.1 / CC2530 | ArduinoNRF library integration / raw `Cc2530` backend | Raw IEEE 802.15.4 only; it cannot mount as the APS service without an independently selected joined-NWK provider |
 
 WiFi association, BLE control, and native IP data are independently selectable
 instances. Mounting is fallible and returns ownership on failure. Mount receipts

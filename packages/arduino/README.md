@@ -101,7 +101,7 @@ measured WCET evidence.
 
 ## NiusAudio composition
 
-Install NiusAudio 0.3.1 and include its facade explicitly:
+Install NiusAudio 0.3.2 and include its facade explicitly:
 
 ```cpp
 #include <NiusAudio.h>

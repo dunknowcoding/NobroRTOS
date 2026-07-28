@@ -523,6 +523,8 @@ def verify_metadata() -> None:
         "BLEDevice::setCustomGapHandler(bluedroidGapEvent)",
         "ESP_GAP_BLE_ADV_START_COMPLETE_EVT",
         "advertising_config_failed_",
+        "advertising_config_pending_",
+        "awaitAdvertisingConfiguration(",
         "characteristic->getData()",
         "vendorManagedHeap() const { return true; }",
         "vendorManagedTasks() const { return true; }",
