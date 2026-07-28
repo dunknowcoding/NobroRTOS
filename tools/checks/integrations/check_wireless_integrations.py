@@ -11,7 +11,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
 WIRELESS_PIN = "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
-ZIGBEE_PIN = "4d4fb8f1afa7a4406d2a0bf399f6249681bc62b9"
+ZIGBEE_PIN = "39a3203d0528323dba80585abfa2304edc4d6e70"
 MODULES = {"HC06", "HC12", "LoRa", "NRF24L01", "PN532", "RC522"}
 STUBS = {"HC06", "HC12"}
 
@@ -106,7 +106,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.1")
-        zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.0")
+        zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.1")
         verify_inventory(wireless, zigbee)
         if args.compile or args.compile_nrf or args.compile_zigbee:
             cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
