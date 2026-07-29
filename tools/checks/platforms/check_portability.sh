@@ -35,7 +35,7 @@ for entry in "${TARGETS[@]}"; do
     echo "[SKIP] ${t}  - ${d} (run: rustup target add ${t})"
     continue
   fi
-  if cargo build --locked ${PORTABLE} --release --target "${t}" >/dev/null 2>&1; then
+  if cargo build --locked ${PORTABLE} --no-default-features --release --target "${t}" >/dev/null 2>&1; then
     echo "[ OK ] ${t}  - ${d}"
     pass=$((pass + 1))
   else

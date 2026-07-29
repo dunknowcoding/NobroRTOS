@@ -6432,10 +6432,14 @@
           {
             "kind": "fn",
             "name": "scan_device_count"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
           }
         ],
         "path": "core/adapters/bus/embedded-hal-i2c/src/lib.rs",
-        "sha256": "a1dda42d9b7fddc012caab730c64cfd85a78362f3b3ace20093b549c9c6658d1"
+        "sha256": "23fb78a8a83788e7a1cf3c7dacb5c8247159434480e0221d139b26f4fcfdb601"
       },
       {
         "crate": "nobro-eh-spi",
@@ -6608,7 +6612,7 @@
           }
         ],
         "path": "core/adapters/imu/mpu9250-imu/src/lib.rs",
-        "sha256": "30bb175b4e39dc6aacdab007bd43a5c84c1e28c0250963140fe9c87ebe1a35a2"
+        "sha256": "b615deffed028f1aa5fd921c33b3ac4e5dcf08f3cc1d22f27d1bc7936a04d624"
       },
       {
         "crate": "nobro-adapter-ina3221",

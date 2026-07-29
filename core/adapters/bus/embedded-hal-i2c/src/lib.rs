@@ -10,7 +10,7 @@
 #![no_std]
 
 use embedded_hal::i2c::{Error, ErrorKind, ErrorType, I2c, Operation};
-use nobro_hal::{BusError, TwimBus};
+use nobro_hal::{BusError, Resource, ResourceLease, TwimBus};
 
 /// Error wrapper so the HAL's `BusError` satisfies `embedded_hal::i2c::Error`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -43,6 +43,14 @@ impl NobroI2c {
     pub fn scan_device_count(&self) -> Result<u8, NobroI2cError> {
         self.bus.scan(|_| {}).map_err(NobroI2cError)
     }
+
+    /// Reacquire and initialize the same logical bus after provider recovery.
+    pub fn recover(&mut self, owner: u8, sda: u8, scl: u8) -> Result<(), NobroI2cError> {
+        ResourceLease::release(Resource::Twim0, owner)
+            .map_err(|_| NobroI2cError(BusError::LeaseDenied))?;
+        *self = Self::new(owner, sda, scl)?;
+        Ok(())
+    }
 }
 
 impl ErrorType for NobroI2c {
@@ -55,8 +63,14 @@ impl I2c for NobroI2c {
         address: u8,
         operations: &mut [Operation<'_>],
     ) -> Result<(), Self::Error> {
-        // Each operation maps to a bounded TWIM transfer. Matches the HAL's existing
-        // stop-start framing (see Twim0::write_read), which the supported sensors use.
+        if let [Operation::Write(bytes), Operation::Read(buffer)] = operations {
+            return self
+                .bus
+                .write_read(address, bytes, buffer)
+                .map_err(NobroI2cError);
+        }
+        // Preserve the common register-read repeated-start path above. Other
+        // transactions remain bounded and map one operation at a time.
         for op in operations {
             match op {
                 Operation::Write(bytes) => {

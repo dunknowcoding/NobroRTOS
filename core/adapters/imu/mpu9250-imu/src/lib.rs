@@ -50,7 +50,7 @@ pub trait InterruptSource {
 
 pub trait BusLease<B> {
     fn validate(&self) -> bool;
-    fn recover(&mut self, bus: B) -> Result<B, Mpu9250Error>;
+    fn recover(&mut self, bus: &mut B) -> Result<(), Mpu9250Error>;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -72,8 +72,8 @@ impl<B> BusLease<B> for NoLease {
         true
     }
 
-    fn recover(&mut self, bus: B) -> Result<B, Mpu9250Error> {
-        Ok(bus)
+    fn recover(&mut self, _bus: &mut B) -> Result<(), Mpu9250Error> {
+        Ok(())
     }
 }
 
@@ -84,7 +84,7 @@ pub struct Mpu9250TransportDiagnostics {
 }
 
 pub struct PortableMpu9250Imu<B, C, D, I, L> {
-    bus: Option<B>,
+    bus: B,
     clock: C,
     delay: D,
     irq: I,
@@ -117,7 +117,7 @@ where
         owner: u8,
     ) -> Result<Self, Mpu9250Error> {
         let mut sensor = Self {
-            bus: Some(bus),
+            bus,
             clock,
             delay,
             irq,
@@ -150,7 +150,7 @@ where
 
     fn bus_mut(&mut self) -> Result<&mut B, Mpu9250Error> {
         self.ensure_lease()?;
-        self.bus.as_mut().ok_or(Mpu9250Error::NotReady)
+        Ok(&mut self.bus)
     }
 
     fn read_reg(&mut self, address: u8, register: u8) -> Result<u8, Mpu9250Error> {
@@ -328,9 +328,7 @@ where
     fn recover(&mut self) -> Result<(), Self::Error> {
         self.diagnostics.recovery_attempts = self.diagnostics.recovery_attempts.saturating_add(1);
         self.ready = false;
-        let old = self.bus.take().ok_or(Mpu9250Error::NotReady)?;
-        let replacement = self.lease.recover(old)?;
-        self.bus = Some(replacement);
+        self.lease.recover(&mut self.bus)?;
         match self.initialize() {
             Ok(()) => {
                 self.diagnostics.recoveries = self.diagnostics.recoveries.saturating_add(1);
@@ -452,9 +450,9 @@ mod nrf {
             ResourceLease::owner(Resource::Twim0) == Some(self.owner)
         }
 
-        fn recover(&mut self, bus: NobroI2c) -> Result<NobroI2c, Mpu9250Error> {
-            drop(bus);
-            NobroI2c::new(self.owner, I2C_SDA_PIN, I2C_SCL_PIN).map_err(|_| Mpu9250Error::Bus)
+        fn recover(&mut self, bus: &mut NobroI2c) -> Result<(), Mpu9250Error> {
+            bus.recover(self.owner, I2C_SDA_PIN, I2C_SCL_PIN)
+                .map_err(|_| Mpu9250Error::Bus)
         }
     }
 
@@ -576,8 +574,8 @@ mod tests {
             fn validate(&self) -> bool {
                 false
             }
-            fn recover(&mut self, bus: MockBus) -> Result<MockBus, Mpu9250Error> {
-                Ok(bus)
+            fn recover(&mut self, _bus: &mut MockBus) -> Result<(), Mpu9250Error> {
+                Ok(())
             }
         }
         assert!(matches!(
