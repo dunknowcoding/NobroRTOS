@@ -42,6 +42,8 @@ public:
           advertising_active_(false),
           advertising_config_failed_(false),
           advertising_config_pending_(0),
+          advertising_start_failed_(false),
+          advertising_start_failed_us_(0),
           queue_overflowed_(false),
           owns_global_stack_(false),
           last_call_us_(0),
@@ -201,10 +203,8 @@ public:
             budget > UINT32_MAX
                 ? UINT32_MAX
                 : static_cast<uint32_t>(budget);
-        beginAdvertisingTransition();
-        bool configured =
-            advertising_->setAdvertisementData(advertisement) &&
-            awaitAdvertisingConfiguration(bounded_budget);
+        bool configured = configureAdvertisingData(
+            advertisement, false, bounded_budget);
         uint32_t configuration_us =
             static_cast<uint32_t>(micros() - started);
         if (configured && configuration_us < bounded_budget) {
@@ -213,19 +213,14 @@ public:
              * a time. Starting raw advertising and scan-response writes
              * back-to-back races ESP_ERR_INVALID_STATE under scheduler load.
              */
-            beginAdvertisingTransition();
-            configured =
-                advertising_->setScanResponseData(scan_response) &&
-                awaitAdvertisingConfiguration(
-                    bounded_budget - configuration_us);
+            configured = configureAdvertisingData(
+                scan_response, true, bounded_budget - configuration_us);
             configuration_us =
                 static_cast<uint32_t>(micros() - started);
         }
         if (configured && configuration_us < bounded_budget) {
-            advertising_->start();
-            advertised =
-                awaitAdvertising(
-                    true, bounded_budget - configuration_us);
+            advertised = startAdvertising(
+                bounded_budget - configuration_us);
         }
 #elif defined(CONFIG_NIMBLE_ENABLED)
         const bool configured =
@@ -434,8 +429,11 @@ private:
                                   esp_ble_gap_cb_param_t *param) {
         portENTER_CRITICAL(&mux_);
         if (event == ESP_GAP_BLE_ADV_START_COMPLETE_EVT) {
-            advertising_active_ =
+            const bool succeeded =
                 param->adv_start_cmpl.status == ESP_BT_STATUS_SUCCESS;
+            advertising_active_ = succeeded;
+            advertising_start_failed_ = !succeeded;
+            advertising_start_failed_us_ = succeeded ? 0 : micros();
         } else if (event == ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT) {
             advertising_active_ = false;
         } else if (event == ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT &&
@@ -506,6 +504,146 @@ private:
         advertising_config_failed_ = false;
         advertising_config_pending_ = 1;
         portEXIT_CRITICAL(&mux_);
+    }
+
+    bool advertisingConfigurationPending() {
+        portENTER_CRITICAL(&mux_);
+        const bool pending = advertising_config_pending_ != 0;
+        portEXIT_CRITICAL(&mux_);
+        return pending;
+    }
+
+    void beginAdvertisingStartTransition() {
+        portENTER_CRITICAL(&mux_);
+        advertising_active_ = false;
+        advertising_start_failed_ = false;
+        advertising_start_failed_us_ = 0;
+        portEXIT_CRITICAL(&mux_);
+    }
+
+    bool advertisingStartFailed() {
+        portENTER_CRITICAL(&mux_);
+        const bool failed = advertising_start_failed_;
+        portEXIT_CRITICAL(&mux_);
+        return failed;
+    }
+
+    bool awaitAdvertisingStart(uint32_t timeout_us) {
+        const uint32_t started = micros();
+        while (!isAdvertisingActive()) {
+            portENTER_CRITICAL(&mux_);
+            const bool failed = advertising_start_failed_;
+            const uint32_t failed_us = advertising_start_failed_us_;
+            portEXIT_CRITICAL(&mux_);
+            /*
+             * Arduino-ESP32's Bluedroid wrapper retries one failed start from
+             * its GAP callback. Give that vendor retry a short bounded grace
+             * period; a later success callback clears the failure marker.
+             */
+            if (failed &&
+                static_cast<uint32_t>(micros() - failed_us) >= 100000U) {
+                return false;
+            }
+            if (static_cast<uint32_t>(micros() - started) >= timeout_us) {
+                return false;
+            }
+            delay(1);
+        }
+        return true;
+    }
+
+    bool startAdvertising(uint32_t timeout_us) {
+        const uint32_t started = micros();
+        for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+            beginAdvertisingStartTransition();
+            const bool accepted = advertising_->start();
+            if (accepted) {
+                const uint32_t elapsed =
+                    static_cast<uint32_t>(micros() - started);
+                if (elapsed >= timeout_us) {
+                    return false;
+                }
+                if (awaitAdvertisingStart(timeout_us - elapsed)) {
+                    return true;
+                }
+                /*
+                 * No failure callback means an accepted vendor transition
+                 * may still complete. Never overlap that in-flight request.
+                 */
+                if (!advertisingStartFailed()) {
+                    return false;
+                }
+            }
+            /*
+             * A disconnect can leave Bluedroid briefly unable to accept a
+             * fresh start. An immediate rejection schedules no callback and
+             * is safe to retry after a bounded settling interval.
+             */
+            const uint32_t elapsed =
+                static_cast<uint32_t>(micros() - started);
+            const uint32_t settle_us =
+                static_cast<uint32_t>(10000U * (attempt + 1U));
+            if (elapsed >= timeout_us ||
+                settle_us >= timeout_us - elapsed) {
+                return false;
+            }
+            delay((settle_us + 999U) / 1000U);
+        }
+        return false;
+    }
+
+    void cancelRejectedAdvertisingTransition() {
+        portENTER_CRITICAL(&mux_);
+        advertising_config_pending_ = 0;
+        portEXIT_CRITICAL(&mux_);
+    }
+
+    bool configureAdvertisingData(BLEAdvertisementData &data,
+                                  bool scan_response,
+                                  uint32_t timeout_us) {
+        const uint32_t started = micros();
+        for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+            beginAdvertisingTransition();
+            const bool accepted =
+                scan_response
+                    ? advertising_->setScanResponseData(data)
+                    : advertising_->setAdvertisementData(data);
+            if (!accepted) {
+                /*
+                 * A rejected setter schedules no GAP completion callback.
+                 * Clear only our pending marker, then allow the preceding
+                 * Bluedroid transition a bounded settling interval.
+                 */
+                cancelRejectedAdvertisingTransition();
+            } else {
+                const uint32_t elapsed =
+                    static_cast<uint32_t>(micros() - started);
+                if (elapsed >= timeout_us) {
+                    return false;
+                }
+                if (awaitAdvertisingConfiguration(timeout_us - elapsed)) {
+                    return true;
+                }
+                /*
+                 * A still-pending request timed out and may complete later;
+                 * never overlap it with another vendor request. A completed
+                 * failure has pending==0 and is safe to retry.
+                 */
+                if (advertisingConfigurationPending()) {
+                    return false;
+                }
+            }
+            const uint32_t elapsed =
+                static_cast<uint32_t>(micros() - started);
+            const uint32_t settle_us =
+                static_cast<uint32_t>(10000U * (attempt + 1U));
+            if (elapsed >= timeout_us ||
+                settle_us >= timeout_us - elapsed) {
+                return false;
+            }
+            delay((settle_us + 999U) / 1000U);
+        }
+        return false;
     }
 
     bool awaitAdvertisingConfiguration(uint32_t timeout_us) {
@@ -613,6 +751,8 @@ private:
         connected_ = false;
         advertising_active_ = false;
         advertising_config_failed_ = false;
+        advertising_start_failed_ = false;
+        advertising_start_failed_us_ = 0;
         portEXIT_CRITICAL(&mux_);
         queueEvent(NOBRO_BLE_DISCONNECTED);
     }
@@ -658,6 +798,11 @@ private:
     void resetEventState() {
         portENTER_CRITICAL(&mux_);
         connected_ = false;
+        advertising_active_ = false;
+        advertising_config_failed_ = false;
+        advertising_config_pending_ = 0;
+        advertising_start_failed_ = false;
+        advertising_start_failed_us_ = 0;
         queue_overflowed_ = false;
         event_head_ = 0;
         event_tail_ = 0;
@@ -728,6 +873,8 @@ private:
     bool advertising_active_;
     bool advertising_config_failed_;
     uint8_t advertising_config_pending_;
+    bool advertising_start_failed_;
+    uint32_t advertising_start_failed_us_;
     bool queue_overflowed_;
     bool owns_global_stack_;
     uint32_t last_call_us_;
