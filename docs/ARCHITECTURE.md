@@ -37,6 +37,13 @@ maturity, evidence class, supported targets, limitations, and provenance are
 orthogonal fields. A component may belong to multiple domains by reference
 without duplicating its source or provenance. Board profiles remain outside
 this relationship catalog because platform tiers already own board support.
+Every component has one `primary_domain`; additional domain membership is an
+alias relationship, never duplicate ownership. Support advances only through
+the cataloged, compiled, implemented, physical, promoted, and released states.
+The catalog owns the first three states, exact feature bindings own physical
+and promoted claims, and versioned package or release manifests own released
+claims. The catalog rejects implicit promotion, so a successful target build
+cannot become a physical board/module claim.
 
 Board-varying engines use a second, data-only extension boundary in
 `core/boards/feature_providers.json`. It separates the portable contract,

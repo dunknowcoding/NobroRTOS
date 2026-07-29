@@ -333,9 +333,9 @@ jobs:
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout --detach 6eeffdb62dff4dbefccf2622e051ea91c0b06081
+          git -C _work/NiusWireless checkout --detach 97e2883a0df4ba50c1b0e248e9c72869cc44240b
           test "$(git -C _work/NiusWireless rev-parse HEAD)" = \
-            "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
+            "97e2883a0df4ba50c1b0e248e9c72869cc44240b"
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee
           git -C _work/ArduinoNRF-Zigbee checkout --detach 39a3203d0528323dba80585abfa2304edc4d6e70
           test "$(git -C _work/ArduinoNRF-Zigbee rev-parse HEAD)" = \
@@ -415,8 +415,8 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
-          git -C _work/NiusWireless checkout --detach 6eeffdb62dff4dbefccf2622e051ea91c0b06081
-          if ((git -C _work/NiusWireless rev-parse HEAD) -ne "6eeffdb62dff4dbefccf2622e051ea91c0b06081") {
+          git -C _work/NiusWireless checkout --detach 97e2883a0df4ba50c1b0e248e9c72869cc44240b
+          if ((git -C _work/NiusWireless rev-parse HEAD) -ne "97e2883a0df4ba50c1b0e248e9c72869cc44240b") {
             throw "NiusWireless checkout drift"
           }
           git clone https://github.com/dunknowcoding/ArduinoNRF-Zigbee.git _work/ArduinoNRF-Zigbee

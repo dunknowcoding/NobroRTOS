@@ -10,7 +10,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
-WIRELESS_PIN = "6eeffdb62dff4dbefccf2622e051ea91c0b06081"
+WIRELESS_PIN = "97e2883a0df4ba50c1b0e248e9c72869cc44240b"
 ZIGBEE_PIN = "39a3203d0528323dba80585abfa2304edc4d6e70"
 MODULES = {"HC06", "HC12", "LoRa", "NRF24L01", "PN532", "RC522"}
 STUBS = {"HC06", "HC12"}
@@ -68,6 +68,16 @@ def verify_inventory(wireless: pathlib.Path, zigbee: pathlib.Path) -> None:
     actual = {path.name for path in (wireless / "src" / "modules").iterdir() if path.is_dir()}
     if actual != MODULES:
         raise RuntimeError(f"NiusWireless module inventory drift: {sorted(actual)}")
+    readme_lines = (wireless / "README.md").read_text(encoding="utf-8").splitlines()
+    public_rows = {
+        line.split("|")[1].strip(): line
+        for line in readme_lines
+        if line.startswith("| HC-")
+    }
+    for label in ("HC-12 long-range serial", "HC-06 / HC-05 Bluetooth"):
+        row = public_rows.get(label, "")
+        if "Stub (fail-closed API surface)" not in row or "| Full |" in row:
+            raise RuntimeError(f"{label} public support status must remain an explicit stub")
     for module in STUBS:
         sources = list((wireless / "src" / "modules" / module).glob("*.cpp"))
         if not sources or not any("Status: STUB" in source.read_text(encoding="utf-8", errors="replace")
@@ -105,7 +115,7 @@ def main() -> int:
                         help="requires the Windows-only ArduinoNRF toolchain")
     args = parser.parse_args()
     try:
-        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.1")
+        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.2")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.1")
         verify_inventory(wireless, zigbee)
         if args.compile or args.compile_nrf or args.compile_zigbee:

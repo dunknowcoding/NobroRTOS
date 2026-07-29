@@ -8,6 +8,39 @@
     "mcu_ports": "core/ports/<mcu-family>",
     "ecosystems": "relationships in this catalog; never source directories"
   },
+  "support_model": {
+    "schema": "nobro-support-state-v1",
+    "states": [
+      "cataloged",
+      "compiled",
+      "implemented",
+      "physical",
+      "promoted",
+      "released"
+    ],
+    "transitions": [
+      "cataloged->compiled",
+      "compiled->implemented",
+      "implemented->physical",
+      "physical->promoted",
+      "promoted->released"
+    ],
+    "state_owners": {
+      "cataloged": "core/adapters/catalog.json",
+      "compiled": "core/adapters/catalog.json",
+      "implemented": "core/adapters/catalog.json",
+      "physical": "core/boards/feature_providers.json exact bindings",
+      "promoted": "core/boards/feature_providers.json exact bindings",
+      "released": "versioned package and release manifests"
+    },
+    "component_stage_map": {
+      "absent": "cataloged",
+      "stub": "cataloged",
+      "compile-only": "compiled",
+      "implemented": "implemented"
+    },
+    "implicit_promotion": false
+  },
   "provenance": [
     {
       "id": "source-arduino-ble",
@@ -120,8 +153,8 @@
     {
       "id": "source-niuswireless",
       "source": "https://github.com/dunknowcoding/NiusWireless",
-      "revision": "6eeffdb62dff4dbefccf2622e051ea91c0b06081",
-      "version": "0.2.1",
+      "revision": "97e2883a0df4ba50c1b0e248e9c72869cc44240b",
+      "version": "0.2.2",
       "license": "MIT",
       "pinned": true,
       "clean": true
@@ -139,6 +172,7 @@
   "components": [
     {
       "id": "adapter-ai-motion",
+      "primary_domain": "ai",
       "name": "motion-ai",
       "kind": "adapter",
       "path": "core/adapters/ai/motion-ai",
@@ -154,6 +188,7 @@
     },
     {
       "id": "adapter-ai-nn-motion",
+      "primary_domain": "ai",
       "name": "nn-motion-ai",
       "kind": "adapter",
       "path": "core/adapters/ai/nn-motion-ai",
@@ -169,6 +204,7 @@
     },
     {
       "id": "adapter-audio-esp32s3-es8311",
+      "primary_domain": "audio",
       "name": "esp32s3-es8311",
       "kind": "adapter",
       "path": "core/adapters/audio/esp32s3-es8311",
@@ -187,6 +223,7 @@
     },
     {
       "id": "adapter-bus-embedded-hal-i2c",
+      "primary_domain": "bus",
       "name": "embedded-hal-i2c",
       "kind": "adapter",
       "path": "core/adapters/bus/embedded-hal-i2c",
@@ -205,6 +242,7 @@
     },
     {
       "id": "adapter-bus-embedded-hal-spi",
+      "primary_domain": "bus",
       "name": "embedded-hal-spi",
       "kind": "adapter",
       "path": "core/adapters/bus/embedded-hal-spi",
@@ -223,6 +261,7 @@
     },
     {
       "id": "adapter-imu-icm45686",
+      "primary_domain": "imu",
       "name": "icm45686",
       "kind": "adapter",
       "path": "core/adapters/imu/icm45686",
@@ -240,6 +279,7 @@
     },
     {
       "id": "adapter-imu-mpu9250",
+      "primary_domain": "imu",
       "name": "mpu9250-imu",
       "kind": "adapter",
       "path": "core/adapters/imu/mpu9250-imu",
@@ -258,6 +298,7 @@
     },
     {
       "id": "adapter-power-ina3221",
+      "primary_domain": "power",
       "name": "ina3221",
       "kind": "adapter",
       "path": "core/adapters/power/ina3221",
@@ -275,6 +316,7 @@
     },
     {
       "id": "adapter-protocol-ros-imu-bridge",
+      "primary_domain": "protocol",
       "name": "ros-imu-bridge",
       "kind": "adapter",
       "path": "core/adapters/protocol/ros-imu-bridge",
@@ -292,6 +334,7 @@
     },
     {
       "id": "adapter-sensors-bmp280",
+      "primary_domain": "sensors",
       "name": "bmp280",
       "kind": "adapter",
       "path": "core/adapters/sensors/bmp280",
@@ -309,6 +352,7 @@
     },
     {
       "id": "adapter-sensors-esp32-adc-continuous",
+      "primary_domain": "sensors",
       "name": "esp32-adc-continuous",
       "kind": "adapter",
       "path": "core/adapters/sensors/esp32-adc-continuous",
@@ -330,6 +374,7 @@
     },
     {
       "id": "adapter-servo-esp32-ledc",
+      "primary_domain": "servo",
       "name": "esp32-ledc",
       "kind": "adapter",
       "path": "core/adapters/servo/esp32-ledc",
@@ -351,6 +396,7 @@
     },
     {
       "id": "adapter-servo-esp32-rmt",
+      "primary_domain": "servo",
       "name": "esp32-rmt",
       "kind": "adapter",
       "path": "core/adapters/servo/esp32-rmt",
@@ -372,6 +418,7 @@
     },
     {
       "id": "adapter-servo-roboservo",
+      "primary_domain": "servo",
       "name": "robo-servo",
       "kind": "adapter",
       "path": "core/adapters/servo/robo-servo",
@@ -390,6 +437,7 @@
     },
     {
       "id": "adapter-virtual-sensor-stub",
+      "primary_domain": "virtual",
       "name": "sensor-stub",
       "kind": "adapter",
       "path": "core/adapters/virtual/sensor-stub",
@@ -407,6 +455,7 @@
     },
     {
       "id": "adapter-wireless-ble-arduino-ble",
+      "primary_domain": "wireless",
       "name": "arduino-ble",
       "kind": "adapter",
       "path": "core/adapters/wireless/ble/arduino-ble",
@@ -428,6 +477,7 @@
     },
     {
       "id": "adapter-wireless-ble-arduino-esp",
+      "primary_domain": "wireless",
       "name": "arduino-esp",
       "kind": "adapter",
       "path": "core/adapters/wireless/ble/arduino-esp",
@@ -450,6 +500,7 @@
     },
     {
       "id": "adapter-wireless-radio-comms",
+      "primary_domain": "wireless",
       "name": "radio-comms",
       "kind": "adapter",
       "path": "core/adapters/wireless/radio-comms",
@@ -468,6 +519,7 @@
     },
     {
       "id": "adapter-wireless-wifi-arduino-esp",
+      "primary_domain": "wireless",
       "name": "arduino-esp",
       "kind": "adapter",
       "path": "core/adapters/wireless/wifi/arduino-esp",
@@ -490,6 +542,7 @@
     },
     {
       "id": "adapter-wireless-wifi-arduino-wifis3",
+      "primary_domain": "wireless",
       "name": "arduino-wifis3",
       "kind": "adapter",
       "path": "core/adapters/wireless/wifi/arduino-wifis3",
@@ -509,6 +562,7 @@
     },
     {
       "id": "contract-ai",
+      "primary_domain": "ai",
       "name": "nobro-ai",
       "kind": "contract",
       "path": "core/crates/nobro_ai",
@@ -526,6 +580,7 @@
     },
     {
       "id": "contract-audio",
+      "primary_domain": "audio",
       "name": "nobro-audio",
       "kind": "contract",
       "path": "core/crates/nobro_audio",
@@ -543,6 +598,7 @@
     },
     {
       "id": "contract-camera",
+      "primary_domain": "camera",
       "name": "nobro-camera",
       "kind": "contract",
       "path": "core/crates/nobro_camera",
@@ -560,6 +616,7 @@
     },
     {
       "id": "contract-crypto",
+      "primary_domain": "crypto",
       "name": "nobro-crypto",
       "kind": "contract",
       "path": "core/crates/nobro_crypto",
@@ -577,6 +634,7 @@
     },
     {
       "id": "contract-imu",
+      "primary_domain": "imu",
       "name": "nobro-imu",
       "kind": "contract",
       "path": "core/crates/nobro_imu",
@@ -593,6 +651,7 @@
     },
     {
       "id": "contract-power",
+      "primary_domain": "power",
       "name": "nobro-power",
       "kind": "contract",
       "path": "core/crates/nobro_power",
@@ -610,6 +669,7 @@
     },
     {
       "id": "contract-sensors",
+      "primary_domain": "sensors",
       "name": "nobro-sensor",
       "kind": "contract",
       "path": "core/crates/nobro_sensor",
@@ -627,6 +687,7 @@
     },
     {
       "id": "contract-servo",
+      "primary_domain": "servo",
       "name": "nobro-servo",
       "kind": "contract",
       "path": "core/crates/nobro_servo",
@@ -644,6 +705,7 @@
     },
     {
       "id": "contract-wireless",
+      "primary_domain": "wireless",
       "name": "nobro-wireless",
       "kind": "contract",
       "path": "core/crates/nobro_wireless",
@@ -662,6 +724,7 @@
     },
     {
       "id": "host-ina-monitor",
+      "primary_domain": "power",
       "name": "INA Monitor",
       "kind": "host-product",
       "provenance_id": "source-ina-monitor",
@@ -679,6 +742,7 @@
     },
     {
       "id": "library-arduino-ble",
+      "primary_domain": "wireless",
       "name": "ArduinoBLE",
       "kind": "library",
       "provenance_id": "source-arduino-ble",
@@ -699,6 +763,7 @@
     },
     {
       "id": "library-arduino-esp-ble",
+      "primary_domain": "wireless",
       "name": "Arduino-ESP32 BLE",
       "kind": "library",
       "provenance_id": "source-arduino-esp32",
@@ -721,6 +786,7 @@
     },
     {
       "id": "library-arduino-esp-wifi",
+      "primary_domain": "wireless",
       "name": "Arduino-ESP32 WiFi",
       "kind": "library",
       "provenance_id": "source-arduino-esp32",
@@ -742,6 +808,7 @@
     },
     {
       "id": "library-arduino-wifis3",
+      "primary_domain": "wireless",
       "name": "Arduino WiFiS3",
       "kind": "library",
       "provenance_id": "source-arduino-renesas",
@@ -761,6 +828,7 @@
     },
     {
       "id": "library-difinders",
+      "primary_domain": "sensors",
       "name": "DiFinders",
       "kind": "library",
       "provenance_id": "source-difinders",
@@ -778,6 +846,7 @@
     },
     {
       "id": "library-ina-series-sensor",
+      "primary_domain": "power",
       "name": "INA Series Sensor",
       "kind": "library",
       "provenance_id": "source-ina-series-sensor",
@@ -795,6 +864,7 @@
     },
     {
       "id": "library-niusaudio",
+      "primary_domain": "audio",
       "name": "NiusAudio",
       "kind": "library",
       "provenance_id": "source-niusaudio",
@@ -813,12 +883,13 @@
     },
     {
       "id": "library-niuscam",
+      "primary_domain": "camera",
       "name": "NiusCam",
       "kind": "library",
       "provenance_id": "source-niuscam",
       "facade": "packages/arduino/src/NobroNiusCam.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "target-build"
       ],
@@ -826,11 +897,13 @@
         "arduino:esp32"
       ],
       "limitations": [
-        "Per-sensor runtime promotion remains separate from facade compilation."
+        "Per-sensor physical and promoted states remain exact binding claims; component implementation and target compilation do not promote a camera composition.",
+        "The bounded capture facade implements deadline, capacity, backpressure, quiesce, recovery, and diagnostics over NiusCam 0.2.0."
       ]
     },
     {
       "id": "library-niuscrypto",
+      "primary_domain": "crypto",
       "name": "NiusCrypto",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-crypto",
@@ -848,6 +921,7 @@
     },
     {
       "id": "library-niusimu",
+      "primary_domain": "imu",
       "name": "NiusIMU",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-imu",
@@ -937,6 +1011,7 @@
     },
     {
       "id": "library-niusthread",
+      "primary_domain": "wireless",
       "name": "NiusThread",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-thread",
@@ -954,24 +1029,30 @@
     },
     {
       "id": "library-niuswireless",
+      "primary_domain": "wireless",
       "name": "NiusWireless",
       "kind": "library",
       "provenance_id": "source-niuswireless",
       "facade": "packages/arduino/src/NobroNiusWireless.h",
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
         "target-build"
       ],
       "supported_targets": [
-        "upstream:arduino"
+        "arduino:esp32s3",
+        "arduino:nrf52",
+        "arduino:renesas"
       ],
       "limitations": [
-        "Backend state remains per protocol; a facade build is not physical support."
+        "HC-12 and HC-05/06 are explicit fail-closed upstream stubs and are not implemented support.",
+        "Target compilation and library implementation do not promote an exact radio, RFID, or board composition.",
+        "The Nobro facade implements fail-closed health lifecycle for NiusBase members and a bounded LoRa payload data plane; protocol-specific data planes remain separate."
       ]
     },
     {
       "id": "library-niuszigbee",
+      "primary_domain": "wireless",
       "name": "NiusZigbee",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-zigbee",
@@ -989,6 +1070,7 @@
     },
     {
       "id": "library-roboservo",
+      "primary_domain": "servo",
       "name": "RoboServo",
       "kind": "library",
       "provenance_id": "source-roboservo",

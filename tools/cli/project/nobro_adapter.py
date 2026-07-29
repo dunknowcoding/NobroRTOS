@@ -144,6 +144,13 @@ def scaffold(
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     if catalog.get("schema") != "nobro-adapter-catalog-v2":
         raise ScaffoldError("adapter scaffolding requires catalog v2")
+    support_model = catalog.get("support_model")
+    if (
+        not isinstance(support_model, dict)
+        or support_model.get("schema") != "nobro-support-state-v1"
+        or support_model.get("implicit_promotion") is not False
+    ):
+        raise ScaffoldError("adapter scaffolding requires explicit support-state v1")
     domain_record = next(
         (record for record in catalog["domains"] if record["id"] == domain),
         None,
@@ -168,6 +175,7 @@ def scaffold(
     contract = contracts.get(contract_ids[0]) if contract_ids else None
     component = {
         "id": component_id,
+        "primary_domain": domain,
         "name": name,
         "kind": "adapter",
         "path": relative.as_posix(),
@@ -275,9 +283,14 @@ def selftest() -> int:
             adapters.mkdir(parents=True)
             catalog = {
                 "schema": "nobro-adapter-catalog-v2",
+                "support_model": {
+                    "schema": "nobro-support-state-v1",
+                    "implicit_promotion": False,
+                },
                 "provenance": [],
                 "components": [{
                     "id": "contract-sensors",
+                    "primary_domain": "sensors",
                     "name": "nobro-sensor",
                     "kind": "contract",
                     "path": "core/crates/nobro_sensor",
@@ -338,6 +351,7 @@ def selftest() -> int:
             assert result["domains"][0]["component_ids"] == [
                 "adapter-sensors-demo-part"
             ]
+            assert result["components"][0]["primary_domain"] == "sensors"
             feature = json.loads(
                 (boards / "feature_providers.json").read_text(encoding="utf-8")
             )

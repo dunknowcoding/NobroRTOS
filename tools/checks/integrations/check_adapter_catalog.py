@@ -16,6 +16,35 @@ EVIDENCE = {"host-test", "target-build", "physical"}
 KINDS = {"contract", "adapter", "library", "host-product"}
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9-]*$")
 REVISION = re.compile(r"^[0-9a-f]{40}$")
+SUPPORT_STATES = [
+    "cataloged",
+    "compiled",
+    "implemented",
+    "physical",
+    "promoted",
+    "released",
+]
+SUPPORT_TRANSITIONS = [
+    "cataloged->compiled",
+    "compiled->implemented",
+    "implemented->physical",
+    "physical->promoted",
+    "promoted->released",
+]
+SUPPORT_STATE_OWNERS = {
+    "cataloged": "core/adapters/catalog.json",
+    "compiled": "core/adapters/catalog.json",
+    "implemented": "core/adapters/catalog.json",
+    "physical": "core/boards/feature_providers.json exact bindings",
+    "promoted": "core/boards/feature_providers.json exact bindings",
+    "released": "versioned package and release manifests",
+}
+COMPONENT_STAGE_MAP = {
+    "absent": "cataloged",
+    "stub": "cataloged",
+    "compile-only": "compiled",
+    "implemented": "implemented",
+}
 
 
 def _sorted_unique_strings(value: object, *, allow_empty: bool = True) -> bool:
@@ -27,14 +56,99 @@ def _sorted_unique_strings(value: object, *, allow_empty: bool = True) -> bool:
     )
 
 
-def validate() -> list[str]:
+def _support_model_errors(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return ["support_model must be an object"]
     errors: list[str] = []
+    if value.get("schema") != "nobro-support-state-v1":
+        errors.append("support_model has an unknown schema")
+    if value.get("states") != SUPPORT_STATES:
+        errors.append("support_model states must preserve the canonical order")
+    if value.get("transitions") != SUPPORT_TRANSITIONS:
+        errors.append("support_model transitions must preserve the canonical chain")
+    if value.get("state_owners") != SUPPORT_STATE_OWNERS:
+        errors.append("support_model state owners must remain explicit")
+    if value.get("component_stage_map") != COMPONENT_STAGE_MAP:
+        errors.append("support_model component stage map must remain explicit")
+    if value.get("implicit_promotion") is not False:
+        errors.append("support_model must reject implicit promotion")
+    return errors
+
+
+def _primary_domain_errors(
+    components: dict[str, dict[str, object]],
+    memberships: dict[str, set[str]],
+    domain_ids: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    for component_id, component in components.items():
+        primary = component.get("primary_domain")
+        if not isinstance(primary, str) or primary not in domain_ids:
+            errors.append(f"{component_id}: primary_domain is missing or unknown")
+            continue
+        if primary not in memberships.get(component_id, set()):
+            errors.append(
+                f"{component_id}: primary_domain {primary} lacks a domain relationship"
+            )
+    return errors
+
+
+def _policy_selftest() -> list[str]:
+    errors: list[str] = []
+    good_model = {
+        "schema": "nobro-support-state-v1",
+        "states": list(SUPPORT_STATES),
+        "transitions": list(SUPPORT_TRANSITIONS),
+        "state_owners": dict(SUPPORT_STATE_OWNERS),
+        "component_stage_map": dict(COMPONENT_STAGE_MAP),
+        "implicit_promotion": False,
+    }
+    if _support_model_errors(good_model):
+        errors.append("support-model self-test rejected the canonical model")
+    bad_model = dict(good_model)
+    bad_model["implicit_promotion"] = True
+    if "support_model must reject implicit promotion" not in _support_model_errors(
+        bad_model
+    ):
+        errors.append("support-model self-test accepted implicit promotion")
+    bad_model = dict(good_model)
+    bad_model["transitions"] = SUPPORT_TRANSITIONS[:-1]
+    if not any(
+        "canonical chain" in error for error in _support_model_errors(bad_model)
+    ):
+        errors.append("support-model self-test accepted an incomplete transition chain")
+
+    components = {
+        "adapter-demo": {"primary_domain": "sensors"},
+        "library-demo": {"primary_domain": "wireless"},
+    }
+    memberships = {
+        "adapter-demo": {"sensors"},
+        "library-demo": {"sensors"},
+    }
+    domain_errors = _primary_domain_errors(
+        components, memberships, {"sensors", "wireless"}
+    )
+    if not any("library-demo" in error for error in domain_errors):
+        errors.append("primary-domain self-test accepted an unrelated owner")
+    components["library-demo"].pop("primary_domain")
+    domain_errors = _primary_domain_errors(
+        components, memberships, {"sensors", "wireless"}
+    )
+    if not any("missing or unknown" in error for error in domain_errors):
+        errors.append("primary-domain self-test accepted a missing owner")
+    return errors
+
+
+def validate() -> list[str]:
+    errors = _policy_selftest()
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     layout = json.loads(LAYOUT.read_text(encoding="utf-8"))
     allowed_categories = set(layout["adapter_categories"])
 
     if catalog.get("schema") != "nobro-adapter-catalog-v2":
         errors.append("unexpected catalog schema")
+    errors.extend(_support_model_errors(catalog.get("support_model")))
 
     provenance: dict[str, dict[str, object]] = {}
     for record in catalog.get("provenance", []):
@@ -130,6 +244,9 @@ def validate() -> list[str]:
         errors.append(f"unused provenance records: {sorted(unused_provenance)}")
 
     domains: dict[str, dict[str, object]] = {}
+    memberships: dict[str, set[str]] = {
+        component_id: set() for component_id in components
+    }
     related_components: set[str] = set()
     related_adapters: set[str] = set()
     aliases: set[str] = set()
@@ -167,6 +284,7 @@ def validate() -> list[str]:
                 if expected_kind and component.get("kind") != expected_kind:
                     errors.append(f"{domain_id}: {component_id} is not a {expected_kind}")
                 related_components.add(component_id)
+                memberships[component_id].add(str(domain_id))
                 if component.get("kind") == "adapter":
                     path_value = str(component["path"])
                     path_domain = pathlib.PurePosixPath(path_value).parts[2]
@@ -194,6 +312,7 @@ def validate() -> list[str]:
         errors.append(
             f"adapter categories without domain relationships: {sorted(allowed_categories-set(domains))}"
         )
+    errors.extend(_primary_domain_errors(components, memberships, set(domains)))
 
     actual_adapters = {
         path.parent.relative_to(ROOT).as_posix()

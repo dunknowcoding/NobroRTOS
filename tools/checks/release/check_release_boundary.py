@@ -132,6 +132,7 @@ WINDOWS_RESERVED_BASENAMES = {
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
+FORBIDDEN_OWNERSHIP_PARTS = {"ecosystem", "ecosystems"}
 
 PRIVACY_PATTERNS = (
     (
@@ -481,6 +482,12 @@ def _policy_selftest() -> list[str]:
     )
     if "tracked paths collide on normalized case-insensitive filesystems" not in collision_errors:
         errors.append("portable-path self-test missed a case collision")
+    ownership_errors = _validate_layout(
+        {"docs/ecosystem/guide.md"},
+        {"docs/ecosystem/guide.md": ("100644", "0")},
+    )
+    if "tracked ecosystem hierarchy duplicates source ownership" not in ownership_errors:
+        errors.append("public-layout self-test missed a duplicate ecosystem hierarchy")
 
     valid_workflow = (
         "jobs:\n  build:\n    runs-on: \"windows-latest\"\n"
@@ -515,6 +522,8 @@ def _validate_layout(
         if not _is_portable_repo_path(relative):
             continue
         path = pathlib.PurePosixPath(relative)
+        if any(part.casefold() in FORBIDDEN_OWNERSHIP_PARTS for part in path.parts):
+            errors.append("tracked ecosystem hierarchy duplicates source ownership")
         if _path_has_non_public_marker(path) or _privacy_hits(relative):
             errors.append("tracked path violates the public privacy convention")
         if len(path.parts) == 1:
