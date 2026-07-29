@@ -129,20 +129,20 @@ gate "exactly one nRF board composition" \
 gate "reset platform evidence receipts" \
   python tools/checks/platforms/check_platform_tiers.py --begin-receipts cross-mcu
 
-gate "nRF52840 HAL target build" \
-  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-target-build
+gate "nRF52840 no-SoftDevice HAL target build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-nosd-target-build
 
-gate "nRF52840 USB target build" \
-  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-usb-target-build
+gate "nRF52840 S140 HAL target build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-s140-target-build
 
-gate "nRF52840 USB application link builds" \
+gate "nRF52840 no-SoftDevice USB target build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-nosd-usb-target-build
+
+gate "nRF52840 S140 USB target build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-s140-usb-target-build
+
+gate "nRF52840 AI USB application link build" \
   "$CURRENT_BASH" -c 'cd core && \
-    cargo build --locked --release --target thumbv7em-none-eabihf \
-      -p usb-cdc-demo --bin usb_cdc_demo --no-default-features \
-      --features board-promicro-nosd && \
-    cargo build --locked --release --target thumbv7em-none-eabihf \
-      -p usb-cdc-demo --bin usb_cdc_demo_s140 --no-default-features \
-      --features board-promicro-s140 && \
     cargo build --locked --release --target thumbv7em-none-eabihf \
       -p ai-usb-demo --bin ai_usb_demo --no-default-features \
       --features board-promicro-nosd'

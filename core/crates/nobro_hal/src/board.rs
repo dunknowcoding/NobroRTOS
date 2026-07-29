@@ -3,34 +3,8 @@
 //! `board-promicro-nosd`: no-SoftDevice layout, app at 0x1000.
 //! `board-promicro-s140`: S140 SoftDevice layout, app at 0x26000.
 
-use crate::board_desc::{
-    BoardCapacity, BoardDesc, BoardPackage, BoardPins, BootLayout, BootProfile,
-};
-
-#[cfg(feature = "board-promicro-s140")]
-pub const APP_FLASH_START: u32 = 0x26000;
-#[cfg(not(feature = "board-promicro-s140"))]
-pub const APP_FLASH_START: u32 = 0x1000;
-
-#[cfg(feature = "board-promicro-s140")]
-pub const APP_FLASH_LEN_BYTES: u32 = 798_720;
-#[cfg(not(feature = "board-promicro-s140"))]
-pub const APP_FLASH_LEN_BYTES: u32 = 1020 * 1024;
-
-#[cfg(feature = "board-promicro-s140")]
-pub const RAM_START: u32 = 0x2000_6000;
-#[cfg(not(feature = "board-promicro-s140"))]
-pub const RAM_START: u32 = 0x2000_0000;
-
-#[cfg(feature = "board-promicro-s140")]
-pub const RAM_LEN_BYTES: u32 = 0x3A000;
-#[cfg(not(feature = "board-promicro-s140"))]
-pub const RAM_LEN_BYTES: u32 = 256 * 1024;
-
-#[cfg(feature = "board-promicro-s140")]
-pub const BOOT_LAYOUT: BootLayout = BootLayout::SoftDeviceS140V6;
-#[cfg(not(feature = "board-promicro-s140"))]
-pub const BOOT_LAYOUT: BootLayout = BootLayout::NoSoftDevice;
+use crate::board_catalog::{PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE};
+use crate::board_desc::{BoardCapacity, BoardDesc, BoardPackage, BoardPins, BootLayout};
 
 pub const LED_PIN: u8 = 15;
 pub const I2C_SDA_PIN: u8 = 32; // P1.00 / D6
@@ -47,58 +21,59 @@ pub const SPI_MOSI_PIN: u8 = 22;
 pub const SPI_CS_PIN: u8 = 24;
 pub const IMU_INT_PIN: u8 = 11;
 pub const IMU_FSYNC_PIN: u8 = 32;
-pub const NOBRO_FLASH_BUDGET_BYTES: u32 = 80 * 1024;
-pub const NOBRO_RAM_BUDGET_BYTES: u32 = 32 * 1024;
-pub const NOBRO_SAMPLE_POOL_SLOTS: u16 = 8;
-pub const NOBRO_MAX_MODULES: usize = 16;
-pub const BOOT_PROFILE: BootProfile = BootProfile::new(
-    BOOT_LAYOUT,
-    APP_FLASH_START,
-    APP_FLASH_LEN_BYTES,
-    RAM_START,
-    RAM_LEN_BYTES,
-);
-pub const BOARD_PINS: BoardPins = BoardPins::new(LED_PIN, SERVO_PWM_PIN, MVK_TRIGGER_PIN);
-pub const ACTIVE_BOARD_PACKAGE: BoardPackage = BoardPackage::new(
-    Board::PLATFORM_ID,
-    Board::BOARD_ID,
-    BOOT_PROFILE,
-    Board::CAPACITY,
-    BOARD_PINS,
-);
 
-pub struct Board;
+/// Exact ProMicro composition with a bootloader but no resident SoftDevice.
+pub struct ProMicroNrf52840NoSoftDevice;
 
-impl Board {
-    pub const APP_START: u32 = APP_FLASH_START;
+/// Exact ProMicro composition with the S140 v6 SoftDevice-reserved layout.
+pub struct ProMicroNrf52840S140V6;
 
-    pub fn name() -> &'static str {
-        Board::BOARD_ID
-    }
+macro_rules! impl_promicro_board {
+    ($board:ty, $package:expr) => {
+        impl $board {
+            pub const APP_START: u32 = $package.boot.app_flash_start;
 
-    pub const fn package() -> BoardPackage {
-        ACTIVE_BOARD_PACKAGE
-    }
+            pub fn name() -> &'static str {
+                <$board as BoardDesc>::BOARD_ID
+            }
+
+            pub const fn package() -> BoardPackage {
+                $package
+            }
+        }
+
+        impl BoardDesc for $board {
+            const PLATFORM_ID: &'static str = $package.platform_id;
+            const BOARD_ID: &'static str = $package.board_id;
+            const APP_FLASH_START: u32 = $package.boot.app_flash_start;
+            const CAPACITY: BoardCapacity = $package.capacity;
+            const LED_PIN: Option<u8> = $package.pins.led_pin;
+            const SERVO_PWM_PIN: Option<u8> = $package.pins.servo_pwm_pin;
+            const SERVO_CENTER_US: u32 = SERVO_CENTER_US;
+            const MVK_TRIGGER_PIN: Option<u8> = $package.pins.mvk_trigger_pin;
+        }
+    };
 }
 
-impl BoardDesc for Board {
-    const PLATFORM_ID: &'static str = "nrf52840";
-    #[cfg(feature = "board-promicro-s140")]
-    const BOARD_ID: &'static str = "promicro_nrf52840_s140";
-    #[cfg(not(feature = "board-promicro-s140"))]
-    const BOARD_ID: &'static str = "promicro_nrf52840_nosd";
-    const APP_FLASH_START: u32 = APP_FLASH_START;
-    const CAPACITY: BoardCapacity = BoardCapacity::new(
-        NOBRO_FLASH_BUDGET_BYTES,
-        NOBRO_RAM_BUDGET_BYTES,
-        NOBRO_SAMPLE_POOL_SLOTS,
-        NOBRO_MAX_MODULES,
-    );
-    const LED_PIN: Option<u8> = Some(15);
-    const SERVO_PWM_PIN: Option<u8> = Some(24);
-    const SERVO_CENTER_US: u32 = 1500;
-    const MVK_TRIGGER_PIN: Option<u8> = Some(17);
-}
+impl_promicro_board!(ProMicroNrf52840NoSoftDevice, PROMICRO_NRF52840_NOSD_PACKAGE);
+impl_promicro_board!(ProMicroNrf52840S140V6, PROMICRO_NRF52840_S140_PACKAGE);
+
+#[cfg(feature = "board-promicro-s140")]
+pub type Board = ProMicroNrf52840S140V6;
+#[cfg(not(feature = "board-promicro-s140"))]
+pub type Board = ProMicroNrf52840NoSoftDevice;
+
+pub const ACTIVE_BOARD_PACKAGE: BoardPackage = Board::package();
+pub const APP_FLASH_START: u32 = ACTIVE_BOARD_PACKAGE.boot.app_flash_start;
+pub const APP_FLASH_LEN_BYTES: u32 = ACTIVE_BOARD_PACKAGE.boot.app_flash_len_bytes;
+pub const RAM_START: u32 = ACTIVE_BOARD_PACKAGE.boot.ram_start;
+pub const RAM_LEN_BYTES: u32 = ACTIVE_BOARD_PACKAGE.boot.ram_len_bytes;
+pub const BOOT_LAYOUT: BootLayout = ACTIVE_BOARD_PACKAGE.boot.layout;
+pub const NOBRO_FLASH_BUDGET_BYTES: u32 = ACTIVE_BOARD_PACKAGE.capacity.flash_budget_bytes;
+pub const NOBRO_RAM_BUDGET_BYTES: u32 = ACTIVE_BOARD_PACKAGE.capacity.ram_budget_bytes;
+pub const NOBRO_SAMPLE_POOL_SLOTS: u16 = ACTIVE_BOARD_PACKAGE.capacity.sample_pool_slots;
+pub const NOBRO_MAX_MODULES: usize = ACTIVE_BOARD_PACKAGE.capacity.max_modules;
+pub const BOARD_PINS: BoardPins = ACTIVE_BOARD_PACKAGE.pins;
 
 #[cfg(test)]
 mod tests {
@@ -126,6 +101,22 @@ mod tests {
 
         #[cfg(not(feature = "board-promicro-s140"))]
         assert_eq!(Board::package().boot.layout, BootLayout::NoSoftDevice);
+    }
+
+    #[test]
+    fn both_exact_packages_remain_available_without_feature_switching() {
+        assert_eq!(
+            ProMicroNrf52840NoSoftDevice::package(),
+            PROMICRO_NRF52840_NOSD_PACKAGE
+        );
+        assert_eq!(
+            ProMicroNrf52840S140V6::package(),
+            PROMICRO_NRF52840_S140_PACKAGE
+        );
+        assert_ne!(
+            ProMicroNrf52840NoSoftDevice::APP_START,
+            ProMicroNrf52840S140V6::APP_START
+        );
     }
 
     #[test]

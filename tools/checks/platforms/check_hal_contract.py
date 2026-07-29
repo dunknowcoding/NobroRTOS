@@ -292,9 +292,9 @@ def selftest() -> int:
         raise RuntimeError("false-deep negative did not fail")
 
     broken_matrix = copy.deepcopy(matrix)
-    broken_matrix["platforms"]["nrf52840"]["compositions"]["native"]["claims"].pop(
-        "timebase"
-    )
+    broken_matrix["platforms"]["nrf52840"]["compositions"]["native-nosd"][
+        "claims"
+    ].pop("timebase")
     if not any(
         "platform claims differ" in item
         for item in validate(contract, broken_matrix)

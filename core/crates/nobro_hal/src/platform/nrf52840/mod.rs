@@ -1,7 +1,7 @@
 //! nRF52840 platform backend and first NobroRTOS HAL port.
 
 use crate::board;
-use crate::board_desc::{BusLayout, ServoProfile};
+use crate::board_desc::{BoardDesc, BusLayout, ServoProfile};
 use crate::bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
 use crate::deadline_timer::DeadlineTimer;
 use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
@@ -15,17 +15,114 @@ use crate::traits::{
     HardwareCapabilityWitness, LeaseClass, LeaseId, PlatformHal, TransferMode,
 };
 
-pub struct Nrf52840;
+/// Exact native composition for a ProMicro nRF52840 without a resident
+/// SoftDevice. Optional PSP/PendSV time slicing is valid only for this type.
+pub struct Nrf52840NoSoftDevice;
 
-impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840 {}
-impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840 {}
+/// Exact native composition for a ProMicro nRF52840 with S140 v6 resident.
+/// Its application IRQ ceiling preserves the SoftDevice-owned priority bands.
+pub struct Nrf52840S140V6;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NrfPreemptionMode {
+    OptionalCortexMSlice,
+    CooperativeOnly,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NrfRuntimeContract {
+    pub boot_layout: crate::board_desc::BootLayout,
+    pub app_flash_start: u32,
+    pub ram_start: u32,
+    pub irq_ceiling_logical: u8,
+    pub preemption: NrfPreemptionMode,
+    /// NobroRTOS USB-capable firmware uses bounded System-ON idle; it never
+    /// enters SYSTEMOFF as an implicit idle action.
+    pub system_on_idle_only: bool,
+    /// The USBD backend is singleton-owned and participates in the power veto
+    /// and bounded re-enumeration lifecycle.
+    pub usb_lifecycle_guarded: bool,
+}
+
+pub trait ExactNrf52840 {
+    const RUNTIME: NrfRuntimeContract;
+}
+
+impl ExactNrf52840 for Nrf52840NoSoftDevice {
+    const RUNTIME: NrfRuntimeContract = NrfRuntimeContract {
+        boot_layout: crate::board_catalog::PROMICRO_NRF52840_NOSD_PACKAGE
+            .boot
+            .layout,
+        app_flash_start: crate::board_catalog::PROMICRO_NRF52840_NOSD_PACKAGE
+            .boot
+            .app_flash_start,
+        ram_start: crate::board_catalog::PROMICRO_NRF52840_NOSD_PACKAGE
+            .boot
+            .ram_start,
+        irq_ceiling_logical: 3,
+        preemption: NrfPreemptionMode::OptionalCortexMSlice,
+        system_on_idle_only: true,
+        usb_lifecycle_guarded: true,
+    };
+}
+
+impl ExactNrf52840 for Nrf52840S140V6 {
+    const RUNTIME: NrfRuntimeContract = NrfRuntimeContract {
+        boot_layout: crate::board_catalog::PROMICRO_NRF52840_S140_PACKAGE
+            .boot
+            .layout,
+        app_flash_start: crate::board_catalog::PROMICRO_NRF52840_S140_PACKAGE
+            .boot
+            .app_flash_start,
+        ram_start: crate::board_catalog::PROMICRO_NRF52840_S140_PACKAGE
+            .boot
+            .ram_start,
+        irq_ceiling_logical: 6,
+        preemption: NrfPreemptionMode::CooperativeOnly,
+        system_on_idle_only: true,
+        usb_lifecycle_guarded: true,
+    };
+}
+
+#[cfg(feature = "board-promicro-s140")]
+pub type Nrf52840 = Nrf52840S140V6;
+#[cfg(not(feature = "board-promicro-s140"))]
+pub type Nrf52840 = Nrf52840NoSoftDevice;
+
+/// Compile-time selected exact backend retained for source compatibility.
+pub type Active = Nrf52840;
+
+trait ActiveNrf52840Backend: ExactNrf52840 {}
+#[cfg(not(feature = "board-promicro-s140"))]
+impl ActiveNrf52840Backend for Nrf52840NoSoftDevice {}
+#[cfg(feature = "board-promicro-s140")]
+impl ActiveNrf52840Backend for Nrf52840S140V6 {}
+
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Nrf52840NoSoftDevice {}
+// The DMA-completion witness is provided by the interrupt-driven,
+// cancellation-safe SPIM EasyDMA path. `nrf-twim-async` adds the corresponding
+// TWIM provider but is not required for this composition-level capability.
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }>
+    for Nrf52840NoSoftDevice
+{
+}
+impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840NoSoftDevice {}
+
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840S140V6 {}
 
 const PPI_BASE: u32 = 0x4001_F000;
 const PPI_CHEN: u32 = 0x500;
@@ -112,7 +209,7 @@ pub const fn bus_layout() -> BusLayout {
     }
 }
 
-impl HalCompatibility for Nrf52840 {
+impl HalCompatibility for Nrf52840NoSoftDevice {
     const DECLARATION: HardwareCapabilityDeclaration = {
         let witnesses = HardwareCapabilitySet::EMPTY
             .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
@@ -131,7 +228,7 @@ impl HalCompatibility for Nrf52840 {
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "deep-native-v2",
+            "deep-native-nosd-v2",
             CapabilityProfileKind::Deep,
             supported,
             supported,
@@ -144,23 +241,72 @@ impl HalCompatibility for Nrf52840 {
     };
 }
 
-const _: [(); 1] = [(); <Nrf52840 as HalCompatibility>::DECLARATION.is_valid() as usize];
-const _: [(); 1] = [(); <Nrf52840 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
-
-impl PlatformHal for Nrf52840 {
-    const PLATFORM_ID: &'static str = "nrf52840";
-    type Board = board::Board;
+impl HalCompatibility for Nrf52840S140V6 {
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(HardwareCapability::Deadline)
+            .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
+            .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
+                HardwareCapability::DmaCompletion,
+            )
+            .witnessed::<Self, { HardwareCapability::Servo as u8 }>(HardwareCapability::Servo)
+            .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
+            .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
+        let supported = witnesses;
+        let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Cache)
+            .with(HardwareCapability::Multicore);
+        HardwareCapabilityDeclaration::new(
+            "deep-native-s140-v2",
+            CapabilityProfileKind::Deep,
+            supported,
+            supported,
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(supported)
+                .without(inapplicable),
+            witnesses,
+        )
+    };
 }
 
-impl HalTimebaseProvider for Nrf52840 {
+const _: [(); 1] =
+    [(); <Nrf52840NoSoftDevice as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Nrf52840NoSoftDevice as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
+const _: [(); 1] = [(); <Nrf52840S140V6 as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Nrf52840S140V6 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
+
+#[cfg(not(feature = "board-promicro-s140"))]
+impl PlatformHal for Nrf52840NoSoftDevice {
+    const PLATFORM_ID: &'static str = "nrf52840";
+    type Board = board::ProMicroNrf52840NoSoftDevice;
+}
+
+#[cfg(feature = "board-promicro-s140")]
+impl PlatformHal for Nrf52840S140V6 {
+    const PLATFORM_ID: &'static str = "nrf52840";
+    type Board = board::ProMicroNrf52840S140V6;
+}
+
+impl<T: ActiveNrf52840Backend> HalTimebaseProvider for T {
     unsafe fn init_timebase() {
         MicroTimer::init();
     }
 }
 
-impl HalSchedulingProvider for Nrf52840 {
+impl<T: ActiveNrf52840Backend + PlatformHal> HalSchedulingProvider for T {
     fn servo_profile() -> ServoProfile {
-        ServoProfile::new(50, board::SERVO_CENTER_US, board::SERVO_PWM_PIN)
+        ServoProfile::new(
+            50,
+            <T::Board as BoardDesc>::SERVO_CENTER_US,
+            <T::Board as BoardDesc>::SERVO_PWM_PIN
+                .expect("exact nRF52840 composition must select a servo pin"),
+        )
     }
 
     unsafe fn init_scheduling_demo(profile: ServoProfile) {
@@ -171,13 +317,13 @@ impl HalSchedulingProvider for Nrf52840 {
     }
 }
 
-impl HalClock for Nrf52840 {
+impl<T: ActiveNrf52840Backend> HalClock for T {
     fn now_us() -> u64 {
         MicroTimer::now_us()
     }
 }
 
-impl HalLease for Nrf52840 {
+impl<T: ActiveNrf52840Backend> HalLease for T {
     fn acquire(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError> {
         ResourceLease::acquire(map_lease(resource.into())?, owner)
     }
@@ -217,7 +363,7 @@ fn map_lease(resource: LeaseId) -> Result<Resource, LeaseError> {
     }
 }
 
-impl HalDeadline for Nrf52840 {
+impl<T: ActiveNrf52840Backend> HalDeadline for T {
     unsafe fn init() {
         DeadlineTimer::init();
     }
@@ -239,7 +385,7 @@ impl HalDeadline for Nrf52840 {
     }
 }
 
-impl HalServoPwm for Nrf52840 {
+impl<T: ActiveNrf52840Backend> HalServoPwm for T {
     unsafe fn init_50hz(pin: u8, pulse_us: u32) {
         let _ = crate::pwm::PwmServo::init_50hz(pin, pulse_us);
     }
@@ -253,7 +399,7 @@ impl HalServoPwm for Nrf52840 {
     }
 }
 
-impl HalEventCapture for Nrf52840 {
+impl<T: ActiveNrf52840Backend> HalEventCapture for T {
     unsafe fn init() {
         RadioRxSim::init();
     }
@@ -314,9 +460,6 @@ impl HalSpi for crate::spim_hw::Spim0 {
     }
 }
 
-/// Compile-time selected active backend.
-pub type Active = Nrf52840;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +490,28 @@ mod tests {
             map_lease(LeaseId::new(LeaseClass::Spi, 7)),
             Err(LeaseError::Unsupported)
         );
+    }
+
+    #[test]
+    fn exact_boot_compositions_publish_distinct_runtime_contracts() {
+        let nosd = Nrf52840NoSoftDevice::RUNTIME;
+        let s140 = Nrf52840S140V6::RUNTIME;
+
+        assert_eq!(
+            nosd.boot_layout,
+            crate::board_desc::BootLayout::NoSoftDevice
+        );
+        assert_eq!(
+            s140.boot_layout,
+            crate::board_desc::BootLayout::SoftDeviceS140V6
+        );
+        assert_eq!(nosd.irq_ceiling_logical, 3);
+        assert_eq!(s140.irq_ceiling_logical, 6);
+        assert_eq!(nosd.preemption, NrfPreemptionMode::OptionalCortexMSlice);
+        assert_eq!(s140.preemption, NrfPreemptionMode::CooperativeOnly);
+        assert!(nosd.system_on_idle_only && s140.system_on_idle_only);
+        assert!(nosd.usb_lifecycle_guarded && s140.usb_lifecycle_guarded);
+        assert_ne!(nosd.app_flash_start, s140.app_flash_start);
+        assert_ne!(nosd.ram_start, s140.ram_start);
     }
 }

@@ -38,7 +38,7 @@
     "byte_io"
   ],
   "tiers": {
-    "deep": "one native composition satisfies its versioned deep profile with exact compiled witnesses",
+    "deep": "each declared native composition satisfies its versioned deep profile with exact compiled witnesses",
     "provider": "one or more portable provider traits implemented for the target",
     "core": "target startup and status path available; portable peripheral providers are incomplete",
     "absent": "no maintained target integration"
@@ -165,12 +165,17 @@
       "claim_scopes": [
         {
           "platform": "nrf52840",
-          "composition": "native",
+          "composition": "native-nosd",
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+        },
+        {
+          "platform": "nrf52840",
+          "composition": "native-s140",
           "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
         }
       ]
     },
-    "nrf52840-target-build": {
+    "nrf52840-nosd-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
       "required": true,
@@ -190,7 +195,32 @@
       "claim_scopes": [
         {
           "platform": "nrf52840",
-          "composition": "native",
+          "composition": "native-nosd",
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+        }
+      ]
+    },
+    "nrf52840-s140-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "build",
+        "-p",
+        "nobro-hal",
+        "--no-default-features",
+        "--features",
+        "board-promicro-s140,nrf-twim-async",
+        "--target",
+        "thumbv7em-none-eabihf",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native-s140",
           "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
         }
       ]
@@ -214,29 +244,68 @@
       "claim_scopes": [
         {
           "platform": "nrf52840",
-          "composition": "native",
+          "composition": "native-nosd",
+          "capabilities": ["usb"]
+        },
+        {
+          "platform": "nrf52840",
+          "composition": "native-s140",
           "capabilities": ["usb"]
         }
       ]
     },
-    "nrf52840-usb-target-build": {
+    "nrf52840-nosd-usb-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
       "required": true,
       "cwd": "core",
       "command": [
         "cargo",
-        "check",
+        "build",
         "--locked",
+        "--release",
         "-p",
-        "usb-stack-demo",
+        "usb-cdc-demo",
+        "--bin",
+        "usb_cdc_demo",
+        "--no-default-features",
+        "--features",
+        "board-promicro-nosd",
         "--target",
         "thumbv7em-none-eabihf"
       ],
       "claim_scopes": [
         {
           "platform": "nrf52840",
-          "composition": "native",
+          "composition": "native-nosd",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "nrf52840-s140-usb-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "usb-cdc-demo",
+        "--bin",
+        "usb_cdc_demo_s140",
+        "--no-default-features",
+        "--features",
+        "board-promicro-s140",
+        "--target",
+        "thumbv7em-none-eabihf"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "nrf52840",
+          "composition": "native-s140",
           "capabilities": ["usb"]
         }
       ]
@@ -472,7 +541,12 @@
         },
         {
           "platform": "nrf52840",
-          "composition": "arduino",
+          "composition": "arduino-nosd",
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        },
+        {
+          "platform": "nrf52840",
+          "composition": "arduino-s140",
           "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         }
       ]
@@ -601,12 +675,17 @@
       "cwd": ".",
       "command": ["python", "tools/checks/integrations/check_arduino_compile.py"],
       "environment": {
-        "NOBRO_ARDUINO_FQBNS": "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+        "NOBRO_ARDUINO_FQBNS": "arduinonrf:nrf52:promicro_nrf52840:bootloader=autonosd,usbcdc=enabled;arduinonrf:nrf52:promicro_nrf52840:bootloader=auto,usbcdc=enabled"
       },
       "claim_scopes": [
         {
           "platform": "nrf52840",
-          "composition": "arduino",
+          "composition": "arduino-nosd",
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        },
+        {
+          "platform": "nrf52840",
+          "composition": "arduino-s140",
           "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         }
       ]
@@ -618,22 +697,70 @@
       "tier": "deep",
       "implementation_root": "core/crates/nobro_hal/src/platform/nrf52840",
       "compositions": {
-        "native": {
+        "native-nosd": {
           "surface": "native",
+          "board_profile": "promicro_nrf52840_nosd",
+          "runtime_contract": {
+            "boot_layout": "NoSoftDevice",
+            "app_flash_start": 4096,
+            "ram_start": 536870912,
+            "irq_ceiling_logical": 3,
+            "preemption": "optional-cortex-m-slice",
+            "idle": "system-on-only",
+            "usb": "single-owner-with-power-veto-and-reenumeration"
+          },
           "claims": {
-            "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-usb-target-build"]},
-            "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]}
+            "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-nosd-usb-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]}
           }
         },
-        "arduino": {
+        "native-s140": {
+          "surface": "native",
+          "board_profile": "promicro_nrf52840_s140",
+          "runtime_contract": {
+            "boot_layout": "SoftDeviceS140V6",
+            "app_flash_start": 155648,
+            "ram_start": 536895488,
+            "irq_ceiling_logical": 6,
+            "preemption": "cooperative-only",
+            "idle": "system-on-only",
+            "usb": "single-owner-with-power-veto-and-reenumeration"
+          },
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-s140-usb-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]}
+          }
+        },
+        "arduino-nosd": {
           "surface": "arduino",
+          "board_profile": "promicro_nrf52840_nosd",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "adc": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "i2c": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "spi": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]}
+          }
+        },
+        "arduino-s140": {
+          "surface": "arduino",
+          "board_profile": "promicro_nrf52840_s140",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
             "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},

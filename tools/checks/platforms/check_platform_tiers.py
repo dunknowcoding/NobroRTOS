@@ -58,11 +58,42 @@ PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 SAFE_ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 WORKFLOW = ROOT / ".github" / "workflows" / "gates.yml"
+BOARD_PROFILE_ROOT = ROOT / "core" / "boards"
+NRF_RUNTIME_KEYS = {
+    "boot_layout",
+    "app_flash_start",
+    "ram_start",
+    "irq_ceiling_logical",
+    "preemption",
+    "idle",
+    "usb",
+}
 
 
 def _duplicates(values: list[str]) -> set[str]:
     seen: set[str] = set()
     return {value for value in values if value in seen or seen.add(value)}
+
+
+def _integer(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value, 0)
+        except ValueError:
+            return None
+    return None
+
+
+def _board_profiles() -> dict[str, dict]:
+    profiles: dict[str, dict] = {}
+    for path in BOARD_PROFILE_ROOT.glob("*/*/board.json"):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        board_id = record.get("board_id")
+        if isinstance(board_id, str):
+            profiles[board_id] = record
+    return profiles
 
 
 def _resolved_repository_path(path_text: object) -> pathlib.Path | None:
@@ -107,6 +138,7 @@ def validate(
     if feature_registry is None:
         feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
     adapter_catalog = json.loads(ADAPTER_CATALOG.read_text(encoding="utf-8"))
+    board_profiles = _board_profiles()
     errors.extend(check_board_features.validate(feature_registry, adapter_catalog))
     hal_contract = json.loads(check_hal_contract.CONTRACT.read_text(encoding="utf-8"))
     errors.extend(check_hal_contract.validate(hal_contract, matrix))
@@ -386,6 +418,75 @@ def validate(
                 errors.append(f"{comp_prefix}: unknown surface {surface!r}")
                 continue
             vocabulary = native_vocabulary if surface == "native" else arduino_vocabulary
+            board_profile_id = composition.get("board_profile")
+            runtime_contract = composition.get("runtime_contract")
+            board_profile = board_profiles.get(board_profile_id)
+            if board_profile_id is not None and not isinstance(board_profile, dict):
+                errors.append(f"{comp_prefix}: board_profile must name an exact board profile")
+            elif (
+                isinstance(board_profile, dict)
+                and board_profile.get("platform_id") != platform_id
+            ):
+                errors.append(
+                    f"{comp_prefix}: board_profile belongs to another platform"
+                )
+            if runtime_contract is not None:
+                if surface != "native":
+                    errors.append(
+                        f"{comp_prefix}: exact runtime contracts require a native surface"
+                    )
+                if not isinstance(runtime_contract, dict) or set(runtime_contract) != NRF_RUNTIME_KEYS:
+                    errors.append(
+                        f"{comp_prefix}: runtime_contract must classify the exact nRF runtime keys"
+                    )
+                elif isinstance(board_profile, dict):
+                    boot = board_profile.get("boot", {})
+                    expected = {
+                        "boot_layout": boot.get("layout"),
+                        "app_flash_start": _integer(boot.get("app_flash_start")),
+                        "ram_start": _integer(boot.get("ram_start")),
+                    }
+                    for field, value in expected.items():
+                        if runtime_contract.get(field) != value:
+                            errors.append(
+                                f"{comp_prefix}.runtime_contract.{field}: "
+                                "does not match the exact board profile"
+                            )
+                    if runtime_contract.get("idle") != "system-on-only":
+                        errors.append(
+                            f"{comp_prefix}.runtime_contract.idle: nRF USB compositions "
+                            "must not claim SYSTEMOFF"
+                        )
+                    if runtime_contract.get("usb") != (
+                        "single-owner-with-power-veto-and-reenumeration"
+                    ):
+                        errors.append(
+                            f"{comp_prefix}.runtime_contract.usb: exact USB lifecycle is missing"
+                        )
+                    preemption = runtime_contract.get("preemption")
+                    if preemption not in {"optional-cortex-m-slice", "cooperative-only"}:
+                        errors.append(
+                            f"{comp_prefix}.runtime_contract.preemption: unknown mode"
+                        )
+                    ceiling = runtime_contract.get("irq_ceiling_logical")
+                    if not isinstance(ceiling, int) or isinstance(ceiling, bool):
+                        errors.append(
+                            f"{comp_prefix}.runtime_contract.irq_ceiling_logical: "
+                            "must be an integer"
+                        )
+                    layout_contracts = {
+                        "NoSoftDevice": (3, "optional-cortex-m-slice"),
+                        "SoftDeviceS140V6": (6, "cooperative-only"),
+                    }
+                    expected_runtime = layout_contracts.get(boot.get("layout"))
+                    if expected_runtime is not None and (
+                        ceiling,
+                        preemption,
+                    ) != expected_runtime:
+                        errors.append(
+                            f"{comp_prefix}.runtime_contract: IRQ ceiling/preemption "
+                            "does not match the boot composition"
+                        )
             claims = composition.get("claims")
             if not isinstance(claims, dict) or not claims:
                 errors.append(f"{comp_prefix}: claims must be a non-empty object")
@@ -1049,6 +1150,24 @@ def selftest() -> int:
     good = json.loads(MATRIX.read_text(encoding="utf-8"))
     feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
     _expect(validate(good) == [], f"real matrix should be clean: {validate(good)}")
+    wrong_nrf_layout = copy.deepcopy(good)
+    wrong_nrf_layout["platforms"]["nrf52840"]["compositions"]["native-s140"][
+        "runtime_contract"
+    ]["ram_start"] = 0x20000000
+    _expect_error(
+        validate(wrong_nrf_layout),
+        "does not match the exact board profile",
+    )
+    unsafe_nrf_sleep = copy.deepcopy(good)
+    unsafe_nrf_sleep["platforms"]["nrf52840"]["compositions"]["native-nosd"][
+        "runtime_contract"
+    ]["idle"] = "systemoff"
+    _expect_error(validate(unsafe_nrf_sleep), "must not claim SYSTEMOFF")
+    wrong_board_platform = copy.deepcopy(good)
+    wrong_board_platform["platforms"]["nrf52840"]["compositions"]["arduino-nosd"][
+        "board_profile"
+    ] = "uno_r4_wifi"
+    _expect_error(validate(wrong_board_platform), "belongs to another platform")
     missing_binding_target = copy.deepcopy(feature_registry)
     missing_binding_target["bindings"][0]["evidence_gates"] = [
         "provider-lifecycle-host"
