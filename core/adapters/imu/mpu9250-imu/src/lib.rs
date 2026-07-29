@@ -1,8 +1,14 @@
-//! MPU9250-family adapter over real TWIM.
+//! Portable MPU9250-family adapter.
+//!
+//! Sensor logic is generic over an injected `embedded-hal` I2C bus, monotonic
+//! clock, delay, interrupt source, and lease controller. The retained
+//! [`Mpu9250Imu`] alias composes those contracts with the nRF52840 provider, so
+//! existing applications keep their source API without making the driver itself
+//! an nRF driver.
 
 #![no_std]
 
-use nobro_hal::{bus::TwimBus, traits::HalClock, ActivePlatform as Hal, I2C_SCL_PIN, I2C_SDA_PIN};
+use embedded_hal::{delay::DelayNs, i2c::I2c};
 use nobro_imu::{
     magnitude3, ImuBackend, ImuDiagnostics, ImuEvent, ImuFamily, ImuIdentity, ImuSample,
 };
@@ -28,12 +34,61 @@ pub enum Mpu9250Error {
     NotFound,
     WhoAmMismatch,
     Bus,
+    Lease,
     PoolFull,
     NotReady,
 }
 
-pub struct Mpu9250Imu {
-    bus: TwimBus,
+pub trait MonotonicClock {
+    fn now_us(&self) -> u64;
+}
+
+pub trait InterruptSource {
+    const PRESENT: bool;
+    fn take_pending(&mut self) -> bool;
+}
+
+pub trait BusLease<B> {
+    fn validate(&self) -> bool;
+    fn recover(&mut self, bus: B) -> Result<B, Mpu9250Error>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoInterrupt;
+
+impl InterruptSource for NoInterrupt {
+    const PRESENT: bool = false;
+
+    fn take_pending(&mut self) -> bool {
+        false
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoLease;
+
+impl<B> BusLease<B> for NoLease {
+    fn validate(&self) -> bool {
+        true
+    }
+
+    fn recover(&mut self, bus: B) -> Result<B, Mpu9250Error> {
+        Ok(bus)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mpu9250TransportDiagnostics {
+    pub irq_events: u32,
+    pub lease_rejections: u32,
+}
+
+pub struct PortableMpu9250Imu<B, C, D, I, L> {
+    bus: Option<B>,
+    clock: C,
+    delay: D,
+    irq: I,
+    lease: L,
     addr: u8,
     who_am_i: u8,
     owner: u8,
@@ -42,17 +97,82 @@ pub struct Mpu9250Imu {
     last_temp_centi: u32,
     last_gyro_mdps: u32,
     diagnostics: ImuDiagnostics,
+    transport_diagnostics: Mpu9250TransportDiagnostics,
 }
 
-impl Mpu9250Imu {
-    pub fn probe_and_init(owner: u8) -> Result<Self, Mpu9250Error> {
-        let bus = TwimBus::new_twim0(owner).map_err(|_| Mpu9250Error::Bus)?;
-        bus.init_pins(I2C_SDA_PIN, I2C_SCL_PIN)
-            .map_err(|_| Mpu9250Error::Bus)?;
+impl<B, C, D, I, L> PortableMpu9250Imu<B, C, D, I, L>
+where
+    B: I2c,
+    C: MonotonicClock,
+    D: DelayNs,
+    I: InterruptSource,
+    L: BusLease<B>,
+{
+    pub fn mount(
+        bus: B,
+        clock: C,
+        delay: D,
+        irq: I,
+        lease: L,
+        owner: u8,
+    ) -> Result<Self, Mpu9250Error> {
+        let mut sensor = Self {
+            bus: Some(bus),
+            clock,
+            delay,
+            irq,
+            lease,
+            addr: 0,
+            who_am_i: 0,
+            owner,
+            ready: false,
+            bmp280_present: false,
+            last_temp_centi: 0,
+            last_gyro_mdps: 0,
+            diagnostics: ImuDiagnostics::default(),
+            transport_diagnostics: Mpu9250TransportDiagnostics::default(),
+        };
+        sensor.initialize()?;
+        Ok(sensor)
+    }
 
+    fn ensure_lease(&mut self) -> Result<(), Mpu9250Error> {
+        if self.lease.validate() {
+            Ok(())
+        } else {
+            self.transport_diagnostics.lease_rejections = self
+                .transport_diagnostics
+                .lease_rejections
+                .saturating_add(1);
+            Err(Mpu9250Error::Lease)
+        }
+    }
+
+    fn bus_mut(&mut self) -> Result<&mut B, Mpu9250Error> {
+        self.ensure_lease()?;
+        self.bus.as_mut().ok_or(Mpu9250Error::NotReady)
+    }
+
+    fn read_reg(&mut self, address: u8, register: u8) -> Result<u8, Mpu9250Error> {
+        let mut value = [0u8; 1];
+        self.bus_mut()?
+            .write_read(address, &[register], &mut value)
+            .map_err(|_| Mpu9250Error::Bus)?;
+        Ok(value[0])
+    }
+
+    fn write_reg(&mut self, address: u8, register: u8, value: u8) -> Result<(), Mpu9250Error> {
+        self.bus_mut()?
+            .write(address, &[register, value])
+            .map_err(|_| Mpu9250Error::Bus)
+    }
+
+    fn initialize(&mut self) -> Result<(), Mpu9250Error> {
+        self.ready = false;
+        self.ensure_lease()?;
         let mut found = None;
         for addr in [0x68u8, 0x69] {
-            if let Ok(id) = bus.read_reg(addr, REG_WHO_AM_I) {
+            if let Ok(id) = self.read_reg(addr, REG_WHO_AM_I) {
                 if matches!(id, WHO_MPU6050 | WHO_MPU6500 | WHO_MPU9250 | WHO_MPU9255) {
                     found = Some((addr, id));
                     break;
@@ -60,77 +180,69 @@ impl Mpu9250Imu {
             }
         }
         let (addr, who_am_i) = found.ok_or(Mpu9250Error::NotFound)?;
+        self.addr = addr;
+        self.who_am_i = who_am_i;
 
-        bus.write_reg(addr, REG_PWR_MGMT_1, 0x01)
-            .map_err(|_| Mpu9250Error::Bus)?;
-        spin_wait(500_000);
-        bus.write_reg(addr, 0x1A, 0x03)
-            .map_err(|_| Mpu9250Error::Bus)?;
-        bus.write_reg(addr, 0x1B, 0x00)
-            .map_err(|_| Mpu9250Error::Bus)?;
-        bus.write_reg(addr, 0x1C, 0x00)
-            .map_err(|_| Mpu9250Error::Bus)?;
+        self.write_reg(addr, REG_PWR_MGMT_1, 0x01)?;
+        self.delay.delay_us(8_000);
+        self.write_reg(addr, 0x1A, 0x03)?;
+        self.write_reg(addr, 0x1B, 0x00)?;
+        self.write_reg(addr, 0x1C, 0x00)?;
 
-        let bmp280_present = bus
+        self.bmp280_present = self
             .read_reg(BMP280_ADDR, REG_BMP280_ID)
             .map(|id| id == 0x58)
             .unwrap_or(false);
-
-        Ok(Self {
-            bus,
-            addr,
-            who_am_i,
-            owner,
-            ready: true,
-            bmp280_present,
-            last_temp_centi: 0,
-            last_gyro_mdps: 0,
-            diagnostics: ImuDiagnostics::default(),
-        })
+        self.ready = true;
+        Ok(())
     }
 
     /// Die temperature from the most recent burst, in centi-degrees C.
-    pub fn last_temp_centi_c(&self) -> u32 {
+    pub const fn last_temp_centi_c(&self) -> u32 {
         self.last_temp_centi
     }
 
     /// Gyro magnitude from the most recent burst, in milli-deg/s.
-    pub fn last_gyro_mag_mdps(&self) -> u32 {
+    pub const fn last_gyro_mag_mdps(&self) -> u32 {
         self.last_gyro_mdps
     }
 
-    pub fn addr(&self) -> u8 {
+    pub const fn addr(&self) -> u8 {
         self.addr
     }
 
-    pub fn who_am_i(&self) -> u8 {
+    pub const fn who_am_i(&self) -> u8 {
         self.who_am_i
     }
 
-    pub fn bmp280_present(&self) -> bool {
+    pub const fn bmp280_present(&self) -> bool {
         self.bmp280_present
     }
 
-    pub fn owner(&self) -> u8 {
+    pub const fn owner(&self) -> u8 {
         self.owner
     }
 
-    pub fn scan_device_count(owner: u8) -> Result<u8, Mpu9250Error> {
-        let bus = TwimBus::new_twim0(owner).map_err(|_| Mpu9250Error::Bus)?;
-        bus.init_pins(I2C_SDA_PIN, I2C_SCL_PIN)
-            .map_err(|_| Mpu9250Error::Bus)?;
-        bus.scan(|_| {}).map_err(|_| Mpu9250Error::Bus)
+    pub const fn interrupt_present(&self) -> bool {
+        I::PRESENT
+    }
+
+    pub const fn transport_diagnostics(&self) -> Mpu9250TransportDiagnostics {
+        self.transport_diagnostics
     }
 
     fn read_burst(&mut self) -> Result<([f32; 3], [f32; 3]), Mpu9250Error> {
         if !self.ready {
             return Err(Mpu9250Error::NotReady);
         }
-        // One burst from ACCEL_XOUT_H covers accel (6), temperature (2), gyro (6):
-        // the MPU register map is contiguous, so a 14-byte read gets all three.
+        if self.irq.take_pending() {
+            self.transport_diagnostics.irq_events =
+                self.transport_diagnostics.irq_events.saturating_add(1);
+        }
+        let address = self.addr;
         let mut raw = [0u8; 14];
-        self.bus
-            .write_read(self.addr, &[REG_ACCEL_XOUT_H], &mut raw)
+        self.bus_mut()?
+            .write_read(address, &[REG_ACCEL_XOUT_H], &mut raw)
             .map_err(|_| Mpu9250Error::Bus)?;
 
         let ax = i16::from_be_bytes([raw[0], raw[1]]);
@@ -141,15 +253,12 @@ impl Mpu9250Imu {
         let gy = i16::from_be_bytes([raw[10], raw[11]]);
         let gz = i16::from_be_bytes([raw[12], raw[13]]);
 
-        // +/-2 g and +/-250 dps factory defaults.
         let accel_g = [
             ax as f32 / 16_384.0,
             ay as f32 / 16_384.0,
             az as f32 / 16_384.0,
         ];
         let gyro_dps = [gx as f32 / 131.0, gy as f32 / 131.0, gz as f32 / 131.0];
-
-        // MPU-9250 die temperature: degC = raw / 333.87 + 21.0.
         let temp_c = temp_raw as f32 / 333.87 + 21.0;
         self.last_temp_centi = if temp_c > 0.0 {
             (temp_c * 100.0) as u32
@@ -160,12 +269,18 @@ impl Mpu9250Imu {
             gyro_dps[0] * gyro_dps[0] + gyro_dps[1] * gyro_dps[1] + gyro_dps[2] * gyro_dps[2],
         );
         self.last_gyro_mdps = (gmag * 1000.0) as u32;
-
         Ok((accel_g, gyro_dps))
     }
 }
 
-impl ImuBackend for Mpu9250Imu {
+impl<B, C, D, I, L> ImuBackend for PortableMpu9250Imu<B, C, D, I, L>
+where
+    B: I2c,
+    C: MonotonicClock,
+    D: DelayNs,
+    I: InterruptSource,
+    L: BusLease<B>,
+{
     type Error = Mpu9250Error;
 
     fn identity(&mut self) -> Result<ImuIdentity, Self::Error> {
@@ -180,8 +295,6 @@ impl ImuBackend for Mpu9250Imu {
             family,
             who_am_i: self.who_am_i,
             address: self.addr,
-            // The chip may contain an AK8963, but this native backend does not yet
-            // acquire it. Capability reports describe delivered data, not silicon.
             has_magnetometer: false,
         })
     }
@@ -207,21 +320,22 @@ impl ImuBackend for Mpu9250Imu {
             accel_mag_mg: magnitude3(accel_mg),
             gyro_mdps,
             temperature_centi_c: self.last_temp_centi as i32,
-            timestamp_us: Hal::now_us(),
+            timestamp_us: self.clock.now_us(),
             ..ImuSample::default()
         })
     }
 
     fn recover(&mut self) -> Result<(), Self::Error> {
         self.diagnostics.recovery_attempts = self.diagnostics.recovery_attempts.saturating_add(1);
-        match Self::probe_and_init(self.owner) {
-            Ok(mut replacement) => {
-                replacement.diagnostics = self.diagnostics;
-                replacement.diagnostics.recoveries =
-                    replacement.diagnostics.recoveries.saturating_add(1);
-                replacement.diagnostics.consecutive_errors = 0;
-                replacement.diagnostics.last_event = ImuEvent::Recovered;
-                *self = replacement;
+        self.ready = false;
+        let old = self.bus.take().ok_or(Mpu9250Error::NotReady)?;
+        let replacement = self.lease.recover(old)?;
+        self.bus = Some(replacement);
+        match self.initialize() {
+            Ok(()) => {
+                self.diagnostics.recoveries = self.diagnostics.recoveries.saturating_add(1);
+                self.diagnostics.consecutive_errors = 0;
+                self.diagnostics.last_event = ImuEvent::Recovered;
                 Ok(())
             }
             Err(error) => {
@@ -236,7 +350,7 @@ impl ImuBackend for Mpu9250Imu {
     }
 }
 
-impl AdapterManifest for Mpu9250Imu {
+impl<B, C, D, I, L> AdapterManifest for PortableMpu9250Imu<B, C, D, I, L> {
     fn module_spec() -> ModuleSpec {
         ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
             .requires(
@@ -250,7 +364,14 @@ impl AdapterManifest for Mpu9250Imu {
     }
 }
 
-impl SensorSal for Mpu9250Imu {
+impl<B, C, D, I, L> SensorSal for PortableMpu9250Imu<B, C, D, I, L>
+where
+    B: I2c,
+    C: MonotonicClock,
+    D: DelayNs,
+    I: InterruptSource,
+    L: BusLease<B>,
+{
     type Error = Mpu9250Error;
 
     fn poll(&mut self) -> Result<Option<Sample>, Self::Error> {
@@ -265,7 +386,15 @@ impl SensorSal for Mpu9250Imu {
 }
 
 pub fn module_spec() -> ModuleSpec {
-    Mpu9250Imu::module_spec()
+    ModuleSpec::new(ModuleId::Sensor, Criticality::Driver)
+        .requires(
+            CapabilitySet::empty()
+                .with(Capability::Bus0)
+                .with(Capability::SamplePool)
+                .with(Capability::Timebase),
+        )
+        .owns(CapabilitySet::empty().with(Capability::Bus0))
+        .memory(MemoryBudget::new(30 * 1024, 2 * 1024, 2))
 }
 
 pub fn accel_mag_mg(accel_g: [f32; 3]) -> u32 {
@@ -278,8 +407,182 @@ pub fn imu_plausible(accel_g: [f32; 3]) -> bool {
     (0.64..1.69).contains(&mag_sq)
 }
 
-fn spin_wait(iterations: u32) {
-    for _ in 0..iterations {
-        cortex_m::asm::nop();
+#[cfg(feature = "nrf52840")]
+mod nrf {
+    use super::*;
+    use nobro_eh_i2c::NobroI2c;
+    use nobro_hal::{
+        traits::HalClock, ActivePlatform, Resource, ResourceLease, I2C_SCL_PIN, I2C_SDA_PIN,
+    };
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NrfClock;
+
+    impl MonotonicClock for NrfClock {
+        fn now_us(&self) -> u64 {
+            ActivePlatform::now_us()
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NrfDelay;
+
+    impl DelayNs for NrfDelay {
+        fn delay_ns(&mut self, ns: u32) {
+            let cycles = ns / 16 + 1;
+            for _ in 0..cycles {
+                cortex_m::asm::nop();
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct NrfLease {
+        owner: u8,
+    }
+
+    impl NrfLease {
+        pub const fn new(owner: u8) -> Self {
+            Self { owner }
+        }
+    }
+
+    impl BusLease<NobroI2c> for NrfLease {
+        fn validate(&self) -> bool {
+            ResourceLease::owner(Resource::Twim0) == Some(self.owner)
+        }
+
+        fn recover(&mut self, bus: NobroI2c) -> Result<NobroI2c, Mpu9250Error> {
+            drop(bus);
+            NobroI2c::new(self.owner, I2C_SDA_PIN, I2C_SCL_PIN).map_err(|_| Mpu9250Error::Bus)
+        }
+    }
+
+    pub type Mpu9250Imu = PortableMpu9250Imu<NobroI2c, NrfClock, NrfDelay, NoInterrupt, NrfLease>;
+
+    impl Mpu9250Imu {
+        pub fn probe_and_init(owner: u8) -> Result<Self, Mpu9250Error> {
+            let bus =
+                NobroI2c::new(owner, I2C_SDA_PIN, I2C_SCL_PIN).map_err(|_| Mpu9250Error::Bus)?;
+            Self::mount(
+                bus,
+                NrfClock,
+                NrfDelay,
+                NoInterrupt,
+                NrfLease::new(owner),
+                owner,
+            )
+        }
+
+        pub fn scan_device_count(owner: u8) -> Result<u8, Mpu9250Error> {
+            let bus =
+                NobroI2c::new(owner, I2C_SDA_PIN, I2C_SCL_PIN).map_err(|_| Mpu9250Error::Bus)?;
+            bus.scan_device_count().map_err(|_| Mpu9250Error::Bus)
+        }
+    }
+}
+
+#[cfg(feature = "nrf52840")]
+pub use nrf::{Mpu9250Imu, NrfClock, NrfDelay, NrfLease};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedded_hal::i2c::{Error, ErrorKind, ErrorType, Operation};
+
+    #[derive(Clone, Copy, Debug)]
+    struct MockError;
+
+    impl Error for MockError {
+        fn kind(&self) -> ErrorKind {
+            ErrorKind::Other
+        }
+    }
+
+    struct MockBus;
+
+    impl ErrorType for MockBus {
+        type Error = MockError;
+    }
+
+    impl I2c for MockBus {
+        fn transaction(
+            &mut self,
+            address: u8,
+            operations: &mut [Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            let register = operations.iter().find_map(|operation| match operation {
+                Operation::Write(bytes) => bytes.first().copied(),
+                Operation::Read(_) => None,
+            });
+            for operation in operations {
+                if let Operation::Read(bytes) = operation {
+                    bytes.fill(0);
+                    match (address, register) {
+                        (0x68, Some(REG_WHO_AM_I)) => bytes[0] = WHO_MPU9250,
+                        (BMP280_ADDR, Some(REG_BMP280_ID)) => bytes[0] = 0x58,
+                        (0x68, Some(REG_ACCEL_XOUT_H)) if bytes.len() == 14 => {
+                            bytes[4] = 0x40;
+                        }
+                        _ => return Err(MockError),
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct Clock;
+    impl MonotonicClock for Clock {
+        fn now_us(&self) -> u64 {
+            123
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct Delay;
+    impl DelayNs for Delay {
+        fn delay_ns(&mut self, _ns: u32) {}
+    }
+
+    #[derive(Clone, Copy)]
+    struct Irq(bool);
+    impl InterruptSource for Irq {
+        const PRESENT: bool = true;
+        fn take_pending(&mut self) -> bool {
+            core::mem::take(&mut self.0)
+        }
+    }
+
+    #[test]
+    fn portable_composition_mounts_samples_recovers_and_tracks_irq() {
+        let mut imu =
+            PortableMpu9250Imu::mount(MockBus, Clock, Delay, Irq(true), NoLease, 7).unwrap();
+        assert_eq!(imu.who_am_i(), WHO_MPU9250);
+        assert!(imu.bmp280_present());
+        let sample = ImuBackend::sample(&mut imu).unwrap();
+        assert_eq!(sample.timestamp_us, 123);
+        assert_eq!(sample.accel_mg[2], 1000);
+        assert_eq!(imu.transport_diagnostics().irq_events, 1);
+        ImuBackend::recover(&mut imu).unwrap();
+        assert_eq!(ImuBackend::diagnostics(&imu).recoveries, 1);
+    }
+
+    #[test]
+    fn invalid_lease_fails_before_bus_io() {
+        struct Denied;
+        impl BusLease<MockBus> for Denied {
+            fn validate(&self) -> bool {
+                false
+            }
+            fn recover(&mut self, bus: MockBus) -> Result<MockBus, Mpu9250Error> {
+                Ok(bus)
+            }
+        }
+        assert!(matches!(
+            PortableMpu9250Imu::mount(MockBus, Clock, Delay, Irq(false), Denied, 1),
+            Err(Mpu9250Error::Lease)
+        ));
     }
 }

@@ -24,7 +24,7 @@ Bounded ESP32-S3 + ES8311 bridge.
 ## `nobro-eh-i2c`
 `embedded-hal` 1.0 I2C adapter over the NobroRTOS TWIM bus.
 - **struct**: `NobroI2cError`, `NobroI2c`
-- **fn**: `new`
+- **fn**: `new`, `scan_device_count`
 
 ## `nobro-eh-spi`
 `embedded-hal` 1.0 `SpiDevice` adapter over the NobroRTOS SPIM0 bus.
@@ -36,10 +36,11 @@ ICM-45686 sensor adapter, generic over `embedded-hal` I2C.
 - **fn**: `to_milli`, `new`, `who_am_i`, `decode_accel`, `decode_gyro`
 
 ## `nobro-adapter-mpu9250-imu`
-MPU9250-family adapter over real TWIM.
-- **struct**: `Mpu9250Imu`
+Portable MPU9250-family adapter.
+- **trait**: `MonotonicClock`, `InterruptSource`, `BusLease`
+- **struct**: `NoInterrupt`, `NoLease`, `Mpu9250TransportDiagnostics`, `PortableMpu9250Imu`, `NrfClock`, `NrfDelay`, `NrfLease`
 - **enum**: `Mpu9250Error`
-- **fn**: `probe_and_init`, `last_temp_centi_c`, `last_gyro_mag_mdps`, `addr`, `who_am_i`, `bmp280_present`, `owner`, `scan_device_count`, `module_spec`, `accel_mag_mg`, `imu_plausible`
+- **fn**: `mount`, `module_spec`, `accel_mag_mg`, `imu_plausible`, `probe_and_init`, `scan_device_count`
 
 ## `nobro-adapter-ina3221`
 INA3221 3-channel power monitor driver, generic over `embedded_hal::i2c::I2c`.

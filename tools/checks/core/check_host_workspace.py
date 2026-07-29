@@ -59,6 +59,7 @@ HOST_PACKAGES = (
     "nobro-servo",
     "nobro-storage",
     "nobro-wireless",
+    "portable-adapter-conformance",
 )
 
 # The value names the target gate responsible for the package. These exclusions

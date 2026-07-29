@@ -8,8 +8,14 @@
 //! approachability of an Arduino library.
 #![cfg_attr(not(test), no_std)]
 
+mod portable_adapter;
 mod provider_lifecycle;
 mod ram_receipt;
+pub use portable_adapter::{
+    AdapterBackendKind, AdapterCapability, AdapterCapabilitySet, MountedAdapter,
+    PortableAdapterBackend, PortableAdapterContract, PortableAdapterDiagnostics,
+    PortableAdapterError,
+};
 pub use provider_lifecycle::{
     ProviderCancellationReceipt, ProviderFaultKind, ProviderFaultReceipt, ProviderLifecycle,
     ProviderLifecycleError, ProviderLifecycleState, ProviderOperation, ProviderOwnedResources,

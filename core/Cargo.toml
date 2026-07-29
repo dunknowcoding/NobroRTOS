@@ -49,6 +49,7 @@ members = [
     "apps/imu/eh_imu_demo",
     "apps/interop/c_abi_module",
     "apps/interop/c_abi_demo",
+    "apps/interop/portable_adapter_conformance",
     "apps/ai/ai_imu_demo",
     "apps/imu/ros_imu_demo",
     "apps/ai/ai_usb_demo",

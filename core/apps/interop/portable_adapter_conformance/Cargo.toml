@@ -1,0 +1,8 @@
+[package]
+name = "portable-adapter-conformance"
+version.workspace = true
+edition.workspace = true
+description = "Reusable non-vacuous conformance application for portable adapter backends"
+
+[dependencies]
+nobro-device = { path = "../../../crates/nobro_device" }

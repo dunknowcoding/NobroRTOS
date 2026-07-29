@@ -12,7 +12,8 @@ cd "$(dirname "$0")/../../../core" || exit 1
 
 PORTABLE="-p nobro-sal -p nobro-kernel -p nobro-net -p nobro-crypto -p nobro-ml \
 -p nobro-sensor -p nobro-power -p nobro-nn -p nobro-adapter-ina3221 -p nobro-adapter-bmp280 \
--p nobro-adapter-icm45686 -p nobro-adapter-nn-motion-ai"
+-p nobro-adapter-icm45686 -p nobro-adapter-mpu9250-imu -p nobro-adapter-nn-motion-ai \
+-p portable-adapter-conformance"
 
 TARGETS=(
   "thumbv6m-none-eabi|Cortex-M0+ (SAMD, RP2040)"

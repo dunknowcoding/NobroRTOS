@@ -115,6 +115,15 @@ gate "HAL/SAL v2 no_std contracts" \
       --features contract-only --target thumbv7em-none-eabihf && \
     cargo check --locked -p nobro-device --target thumbv7em-none-eabihf'
 
+gate "portable adapter conformance" \
+  "$CURRENT_BASH" -c 'cd core && \
+    cargo test --locked --target "$HOST_TARGET" -p nobro-device \
+      -p nobro-adapter-mpu9250-imu --no-default-features \
+      -p portable-adapter-conformance && \
+    cargo check --locked --target thumbv6m-none-eabi \
+      -p nobro-adapter-mpu9250-imu --no-default-features \
+      -p portable-adapter-conformance'
+
 gate "exactly one nRF board composition" \
   "$CURRENT_BASH" -c 'cd core && \
     cargo check --locked -p nobro-hal --target thumbv7em-none-eabihf \

@@ -35,6 +35,14 @@ impl NobroI2c {
         bus.init_pins(sda, scl).map_err(NobroI2cError)?;
         Ok(Self { bus })
     }
+
+    /// Count responding devices without exposing the nRF-specific bus object.
+    ///
+    /// Portable drivers should normally probe only their documented addresses.
+    /// This method exists for the retained nRF diagnostic application.
+    pub fn scan_device_count(&self) -> Result<u8, NobroI2cError> {
+        self.bus.scan(|_| {}).map_err(NobroI2cError)
+    }
 }
 
 impl ErrorType for NobroI2c {

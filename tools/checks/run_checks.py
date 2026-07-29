@@ -209,6 +209,11 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("platform tiers", [py, "tools/checks/platforms/check_platform_tiers.py", "--selftest"], ROOT),
         ("board-feature registry", [py, "tools/checks/platforms/check_board_features.py", "--selftest"], ROOT),
         ("adapter catalog", [py, "tools/checks/integrations/check_adapter_catalog.py"], ROOT),
+        (
+            "portable adapter contract",
+            [py, "tools/checks/integrations/check_portable_adapter_contract.py"],
+            ROOT,
+        ),
         ("adapter scaffold", [py, "sdk/cli/nobro.py", "adapter", "--selftest"], ROOT),
         ("firmware project", [py, "sdk/cli/nobro.py", "firmware", "--selftest"], ROOT),
         ("project experience", [py, "sdk/cli/nobro.py", "project", "--selftest"], ROOT),

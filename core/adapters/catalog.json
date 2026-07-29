@@ -290,10 +290,11 @@
         "target-build"
       ],
       "supported_targets": [
+        "embedded-hal-1",
         "nrf52840"
       ],
       "limitations": [
-        "The native transport path is nRF52840-scoped."
+        "Public physical evidence is currently limited to the nRF52840 composition."
       ]
     },
     {

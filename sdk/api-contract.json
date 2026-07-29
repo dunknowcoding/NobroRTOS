@@ -2325,7 +2325,7 @@
           }
         ],
         "path": "core/crates/nobro_device/src/lib.rs",
-        "sha256": "6c798aeee2ff44af870ccfe488119490d6c1d5acdc9eac3ca55abe14097111d1"
+        "sha256": "45f14518f08deba998ad05394bf1f02e5d29678f37ba94f725e5856d1788b1dd"
       },
       {
         "crate": "nobro-hal",
@@ -6428,10 +6428,14 @@
           {
             "kind": "fn",
             "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "scan_device_count"
           }
         ],
         "path": "core/adapters/bus/embedded-hal-i2c/src/lib.rs",
-        "sha256": "1965fac94048829796bcf9c04839ff7d38fd3543722282fd82b850852b8577d7"
+        "sha256": "a1dda42d9b7fddc012caab730c64cfd85a78362f3b3ace20093b549c9c6658d1"
       },
       {
         "crate": "nobro-eh-spi",
@@ -6499,40 +6503,68 @@
             "name": "Mpu9250Error"
           },
           {
+            "kind": "trait",
+            "name": "MonotonicClock"
+          },
+          {
+            "kind": "trait",
+            "name": "InterruptSource"
+          },
+          {
+            "kind": "trait",
+            "name": "BusLease"
+          },
+          {
             "kind": "struct",
-            "name": "Mpu9250Imu"
+            "name": "NoInterrupt"
+          },
+          {
+            "kind": "struct",
+            "name": "NoLease"
+          },
+          {
+            "kind": "struct",
+            "name": "Mpu9250TransportDiagnostics"
+          },
+          {
+            "kind": "struct",
+            "name": "PortableMpu9250Imu"
           },
           {
             "kind": "fn",
-            "name": "probe_and_init"
+            "name": "mount"
           },
           {
-            "kind": "fn",
-            "name": "last_temp_centi_c"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "last_gyro_mag_mdps"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "addr"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "who_am_i"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "bmp280_present"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "owner"
+            "kind": "const",
+            "name": "fn"
           },
           {
-            "kind": "fn",
-            "name": "scan_device_count"
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
           },
           {
             "kind": "fn",
@@ -6545,10 +6577,38 @@
           {
             "kind": "fn",
             "name": "imu_plausible"
+          },
+          {
+            "kind": "struct",
+            "name": "NrfClock"
+          },
+          {
+            "kind": "struct",
+            "name": "NrfDelay"
+          },
+          {
+            "kind": "struct",
+            "name": "NrfLease"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "type",
+            "name": "Mpu9250Imu"
+          },
+          {
+            "kind": "fn",
+            "name": "probe_and_init"
+          },
+          {
+            "kind": "fn",
+            "name": "scan_device_count"
           }
         ],
         "path": "core/adapters/imu/mpu9250-imu/src/lib.rs",
-        "sha256": "4c100c7a286ca3873efcf48da47b17c1c6c203ee244dd5457857a993eebbcecd"
+        "sha256": "30bb175b4e39dc6aacdab007bd43a5c84c1e28c0250963140fe9c87ebe1a35a2"
       },
       {
         "crate": "nobro-adapter-ina3221",
