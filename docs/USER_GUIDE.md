@@ -56,7 +56,16 @@ Board layout is selected by feature:
 | Feature | App origin | Use |
 | ------- | ---------- | --- |
 | `board-promicro-nosd` | `0x1000` | ProMicro-style nRF52840 images without SoftDevice |
-| `board-nicenano-s140` | `0x26000` | nRF52840 images that coexist with SoftDevice S140 v6 layout |
+| `board-promicro-s140` | `0x26000` | ProMicro nRF52840 images that coexist with SoftDevice S140 v6 layout |
+
+`board-nicenano-s140` remains a compatibility alias for existing projects. New
+configurations should use `board-promicro-s140`, which keeps physical board
+identity separate from the S140 boot layout.
+
+Custom `BoardDesc` implementations now declare diagnostic pins as `Option<u8>`.
+Wrap real selections in `Some(pin)` and use `None` when a resource is absent or
+unselected. Fixed-width reports encode `None` as `OPTIONAL_PIN_ABSENT`; GPIO 0
+remains a valid, distinct pin.
 
 Example:
 

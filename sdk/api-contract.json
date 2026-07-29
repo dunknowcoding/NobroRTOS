@@ -885,7 +885,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/rust_app_gen.py",
-          "sha256": "29835e8f1a1d6c8b6863ce83b5eaf57dbf0054068bdfdd938ba2c375f9c7b5f4"
+          "sha256": "c627cf481624c3f67ba9c1be49487ce9556eb770e7948d2aed7411e118e1baea"
         },
         {
           "path": "bindings/python/nobro_rtos/sim.py",
@@ -2325,7 +2325,7 @@
           }
         ],
         "path": "core/crates/nobro_device/src/lib.rs",
-        "sha256": "d9a4cd173cc603b74ad0be72ba6ba049a4f402decab2dab843503f67fccf28c5"
+        "sha256": "6c798aeee2ff44af870ccfe488119490d6c1d5acdc9eac3ca55abe14097111d1"
       },
       {
         "crate": "nobro-hal",
@@ -2336,7 +2336,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "67713df7b74001e05208750619ae4ae0045a2afd592a0d13c0f8e7cfcdf5e947"
+        "sha256": "71d04e7c56bdb45761db51da31987cd05135ba0645ce0fe7db429bf92fd40f4d"
       },
       {
         "crate": "nobro-host",
@@ -3087,7 +3087,7 @@
           }
         ],
         "path": "core/crates/nobro_host/src/lib.rs",
-        "sha256": "5cc25381454bd6887cfa2359a2c8d1cfd1c641b3b05398905cdeef722f26f756"
+        "sha256": "3f5fa5895341149bb6ec2b275eb994e60909ae4bb6c38100daf7c4cd24f03149"
       },
       {
         "crate": "nobro-imu",

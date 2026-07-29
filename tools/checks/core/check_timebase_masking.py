@@ -216,7 +216,7 @@ def main() -> int:
             "PendSvWouldPreemptCeiling",
         ),
         "hal_lib": (
-            'all(feature = "cortex-m-slice", feature = "board-nicenano-s140")',
+            'all(feature = "cortex-m-slice", feature = "board-promicro-s140")',
             "current port programs PendSV through CMSIS",
             "no SoftDevice NVIC integration",
         ),

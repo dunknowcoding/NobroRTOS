@@ -12,7 +12,7 @@ required-features = ["board-promicro-nosd"]
 [[bin]]
 name = "imu_i2c_demo_s140"
 path = "src/main_s140.rs"
-required-features = ["board-nicenano-s140"]
+required-features = ["board-promicro-s140"]
 
 [dependencies]
 nobro-adapter-mpu9250-imu = { path = "../../../adapters/imu/mpu9250-imu", default-features = false }
@@ -36,3 +36,4 @@ board-nicenano-s140 = [
     "nobro-hal/board-nicenano-s140",
     "nobro-adapter-mpu9250-imu/board-nicenano-s140",
 ]
+board-promicro-s140 = ["board-nicenano-s140"]

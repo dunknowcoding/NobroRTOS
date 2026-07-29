@@ -1,0 +1,34 @@
+{
+  "schema": "nobro-board-profile-v2",
+  "board_id": "xiao_esp32s3_sense",
+  "platform_id": "esp32s3",
+  "feature": "board-xiao-esp32s3-sense",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "espressif:esp32-s3",
+    "physical_board": "seeed:xiao-esp32s3-sense",
+    "boot_layout": "espressif:second-stage-app",
+    "framework_core": "arduino:esp32",
+    "hal_stack": null,
+    "usb_stack": null
+  },
+  "description": "Seeed XIAO ESP32S3 Sense camera board",
+  "boot": {
+    "layout": "Esp32FrameworkOwned",
+    "app_flash_start": null,
+    "app_flash_len_bytes": null,
+    "ram_start": null,
+    "ram_len_bytes": null
+  },
+  "capacity": {
+    "flash_budget_bytes": 131072,
+    "ram_budget_bytes": 65536,
+    "sample_pool_slots": 8,
+    "max_modules": 16
+  },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The exact ESP32-S3 runtime and camera composition are not implemented yet."
+  },
+  "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
+}

@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "esp32c3_supermini",
   "platform_id": "esp32c3",
   "feature": "port-esp32c3",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "espressif:esp32-c3",
+    "physical_board": "generic:esp32-c3-supermini",
+    "boot_layout": "espressif:second-stage-app-0x10000",
+    "framework_core": "nobro:esp-hal",
+    "hal_stack": "nobro:esp32c3",
+    "usb_stack": "espressif:usb-serial-jtag"
+  },
   "description": "ESP32-C3 Supermini (RISC-V rv32imc), NobroRTOS portable-core port over USB-Serial-JTAG",
   "boot": {
     "layout": "Esp32IdfApp",
@@ -26,5 +36,5 @@
     "clock": "esp-hal startup owns clock selection and timer calibration",
     "boot": "ESP image metadata and partition offset are owned by the maintained port"
   },
-  "pins": { "led": 8, "servo_pwm": -1, "mvk_trigger": -1 }
+  "pins": { "led": 8, "servo_pwm": null, "mvk_trigger": null }
 }

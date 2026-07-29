@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "promicro_nrf52840_s140",
   "platform_id": "nrf52840",
-  "feature": "board-nicenano-s140",
+  "feature": "board-promicro-s140",
+  "feature_aliases": ["board-nicenano-s140"],
+  "composition": {
+    "silicon": "nordic:nrf52840",
+    "physical_board": "generic:promicro-nrf52840",
+    "boot_layout": "arduinonrf:s140-v6-bootloader",
+    "framework_core": "nobro:cortex-m-rt",
+    "hal_stack": "nobro:nrf52840",
+    "usb_stack": "nobro:tachi-usb"
+  },
   "description": "nRF52840 development board coexisting with the S140 v6 SoftDevice (app at 0x26000)",
   "boot": {
     "layout": "SoftDeviceS140V6",
@@ -23,7 +33,7 @@
     "linker_script": "core/memory-s140.x",
     "memory_profile": "s140",
     "rustflags": ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"],
-    "hal_feature": "board-nicenano-s140",
+    "hal_feature": "board-promicro-s140",
     "interrupts": "application vectors start at 0x26000 and remain compatible with the resident S140 layout",
     "dma": "disabled unless an explicitly selected provider owns its channel, interrupt, and buffers",
     "clock": "provider-owned; the generator does not infer frequency or timing bounds",

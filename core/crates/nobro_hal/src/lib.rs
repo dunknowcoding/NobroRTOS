@@ -15,18 +15,18 @@ pub mod platform;
 pub mod snapshots;
 pub mod traits;
 
-#[cfg(all(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))]
+#[cfg(all(feature = "board-promicro-nosd", feature = "board-promicro-s140"))]
 compile_error!("nobro-hal: enable exactly one board-* feature");
 
-#[cfg(all(feature = "cortex-m-slice", feature = "board-nicenano-s140"))]
+#[cfg(all(feature = "cortex-m-slice", feature = "board-promicro-s140"))]
 compile_error!(
-    "nobro-hal: cortex-m-slice cannot be combined with board-nicenano-s140; \
+    "nobro-hal: cortex-m-slice cannot be combined with board-promicro-s140; \
      the current port programs PendSV through CMSIS and has no SoftDevice NVIC integration"
 );
 
 #[cfg(all(
     feature = "platform-nrf52840",
-    not(any(feature = "board-promicro-nosd", feature = "board-nicenano-s140"))
+    not(any(feature = "board-promicro-nosd", feature = "board-promicro-s140"))
 ))]
 compile_error!("nobro-hal: enable one board-* feature");
 
@@ -59,9 +59,10 @@ pub mod timer;
 pub mod twim_hw;
 
 pub use board_catalog::{
-    package_for_feature, profile_for_feature, BoardPackageDefinition, BoardProfileDefinition,
-    BOARD_PACKAGES, BOARD_PROFILES, NRF52840_BOARD_CAPACITY, NRF52840_BOARD_PINS,
-    NRF52840_SERVO_CENTER_US, PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
+    exact_profile_for_feature, package_for_feature, profile_for_feature, BoardPackageDefinition,
+    BoardProfileDefinition, ExactBoardProfileDefinition, BOARD_PACKAGES, BOARD_PROFILES,
+    EXACT_BOARD_PROFILES, NRF52840_BOARD_CAPACITY, NRF52840_BOARD_PINS, NRF52840_SERVO_CENTER_US,
+    PROMICRO_NRF52840_NOSD_PACKAGE, PROMICRO_NRF52840_S140_PACKAGE,
 };
 pub use board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPackageError, BoardPins, BootLayout, BootProfile,
@@ -76,7 +77,7 @@ pub use platform::ActivePlatform;
 pub use snapshots::{
     BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,
     BOARD_PACKAGE_REPORT_MAGIC, BOARD_PACKAGE_REPORT_VERSION, BOARD_PROFILE_REPORT_MAGIC,
-    BOARD_PROFILE_REPORT_VERSION,
+    BOARD_PROFILE_REPORT_VERSION, OPTIONAL_PIN_ABSENT,
 };
 pub use traits::{
     CapabilityDeclarationState, CapabilityProfileKind, HalAlarm, HalBus, HalByteIo, HalClock,

@@ -1318,7 +1318,7 @@ pub mod board_catalog {
     pub const NRF52840_S140: BoardModule = BoardModule {
         board_id: "promicro_nrf52840_s140",
         platform_id: "nrf52840",
-        feature: "board-nicenano-s140",
+        feature: "board-promicro-s140",
         flash_budget_bytes: 81920,
         ram_budget_bytes: 32768,
         has_usb: true,

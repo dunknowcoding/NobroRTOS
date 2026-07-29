@@ -18,10 +18,12 @@ mod implementation {
     struct Nrf52840PriorityCeiling;
     set_impl!(Nrf52840PriorityCeiling);
 
-    #[cfg(feature = "board-promicro-nosd")]
+    #[cfg(all(feature = "board-promicro-nosd", not(feature = "board-promicro-s140")))]
     const RAW_CEILING: u8 = super::PriorityCeiling::NRF52840_BARE.raw();
-    #[cfg(feature = "board-nicenano-s140")]
+    #[cfg(feature = "board-promicro-s140")]
     const RAW_CEILING: u8 = super::PriorityCeiling::NRF52840_S140.raw();
+    #[cfg(not(any(feature = "board-promicro-nosd", feature = "board-promicro-s140")))]
+    const RAW_CEILING: u8 = super::PriorityCeiling::NRF52840_BARE.raw();
 
     unsafe impl Impl for Nrf52840PriorityCeiling {
         unsafe fn acquire() -> RawRestoreState {
@@ -76,10 +78,12 @@ impl CompletionInterruptPriority {
     const PRIORITY_LEVELS: u8 = 8;
     const SHIFT: u8 = 5;
 
-    #[cfg(feature = "board-promicro-nosd")]
+    #[cfg(all(feature = "board-promicro-nosd", not(feature = "board-promicro-s140")))]
     const MIN_LOGICAL: u8 = 3;
-    #[cfg(feature = "board-nicenano-s140")]
+    #[cfg(feature = "board-promicro-s140")]
     const MIN_LOGICAL: u8 = 6;
+    #[cfg(not(any(feature = "board-promicro-nosd", feature = "board-promicro-s140")))]
+    const MIN_LOGICAL: u8 = 3;
 
     pub const fn new(logical: u8) -> Result<Self, CompletionInterruptPriorityError> {
         if logical >= Self::PRIORITY_LEVELS {
@@ -212,7 +216,7 @@ mod tests {
             assert_eq!(CompletionInterruptPriority::new(3).unwrap().logical(), 3);
             assert_eq!(CompletionInterruptPriority::board_default().logical(), 3);
         }
-        #[cfg(feature = "board-nicenano-s140")]
+        #[cfg(feature = "board-promicro-s140")]
         {
             assert_eq!(
                 CompletionInterruptPriority::new(5),

@@ -157,7 +157,8 @@ panic-halt = "0.2"
 [features]
 default = ["board-promicro-nosd"]
 board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
-board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]
+board-promicro-s140 = ["nobro-hal/board-promicro-s140"]
+board-nicenano-s140 = ["board-promicro-s140"]
 """
 
 

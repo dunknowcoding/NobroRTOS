@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "rp2350_pico2w",
   "platform_id": "rp2350",
   "feature": "port-rp2350",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "raspberrypi:rp2350",
+    "physical_board": "raspberrypi:pico-2-w",
+    "boot_layout": "raspberrypi:rp2350-image-def",
+    "framework_core": "nobro:rp235x-hal",
+    "hal_stack": "nobro:rp2350",
+    "usb_stack": "nobro:rp-usb"
+  },
   "description": "Raspberry Pi Pico 2 W (RP2350, Cortex-M33), NobroRTOS portable-core port over USB-CDC with self-DFU to BOOTSEL",
   "boot": {
     "layout": "Rp2350ImageDef",
@@ -26,5 +36,5 @@
     "clock": "rp235x-hal board startup owns PLL and timer configuration",
     "boot": "ROM IMAGE_DEF scanning and BOOTSEL recovery are owned by the maintained port"
   },
-  "pins": { "led": 25, "servo_pwm": -1, "mvk_trigger": -1 }
+  "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

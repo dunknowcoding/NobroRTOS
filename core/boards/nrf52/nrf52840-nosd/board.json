@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "promicro_nrf52840_nosd",
   "platform_id": "nrf52840",
   "feature": "board-promicro-nosd",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "nordic:nrf52840",
+    "physical_board": "generic:promicro-nrf52840",
+    "boot_layout": "arduinonrf:nosd-bootloader",
+    "framework_core": "nobro:cortex-m-rt",
+    "hal_stack": "nobro:nrf52840",
+    "usb_stack": "nobro:tachi-usb"
+  },
   "description": "nRF52840 development board, no-SoftDevice layout (app at 0x1000)",
   "boot": {
     "layout": "NoSoftDevice",

@@ -152,22 +152,48 @@ def import_board(text):
         lo, hi = cbp.PLATFORM_RAM.get(platform, (0x2000_0000, 0x2000_8000))
         ram_start, ram_len = lo, hi - lo
     if led is None:
-        review.append("pins.led: no led gpio found - defaulted to 0")
-        led = 0
+        review.append("pins.led: no led gpio found - left absent")
 
     layout = START_TO_LAYOUT.get(flash_start, "Custom")
     if layout == "Custom":
         review.append(f"boot.layout: app_flash_start {flash_start:#x} matches no known "
                       "layout - set layout manually")
+    if (
+        platform == "nrf52840"
+        and layout == "SoftDeviceS140V6"
+        and ram_start == 0x2000_0000
+        and ram_len >= 0x6000
+    ):
+        ram_start += 0x6000
+        ram_len -= 0x6000
+        review.append(
+            "boot.ram_start/len: reserved the S140 v6 RAM prefix from the "
+            "physical SRAM region"
+        )
     review.append("feature: cargo feature name is not in DTS - set the board-* feature")
     review.append("capacity.*: NobroRTOS software budgets are not in DTS - tune them")
     review.append("pins.servo_pwm / pins.mvk_trigger: not derived from DTS - set if used")
 
+    board_id = re.sub(
+        r"[^a-z0-9_]+",
+        "_",
+        (model or f"{platform}_imported").lower().replace(" ", "_"),
+    ).strip("_")
     board = {
-        "board_id": (model or f"{platform}_imported").lower().replace(" ", "_"),
+        "schema": "nobro-board-profile-v2",
+        "board_id": board_id,
         "platform_id": platform,
         "feature": f"board-{platform}-imported",
+        "feature_aliases": [],
         "description": (model or "imported from DeviceTree") + " (DTS import - review)",
+        "composition": {
+            "silicon": f"imported:{platform}",
+            "physical_board": f"imported:{board_id}",
+            "boot_layout": f"imported:{layout.lower()}",
+            "framework_core": None,
+            "hal_stack": None,
+            "usb_stack": None,
+        },
         "boot": {
             "layout": layout,
             "app_flash_start": hex(flash_start),
@@ -181,7 +207,14 @@ def import_board(text):
             "sample_pool_slots": 8,
             "max_modules": 16,
         },
-        "pins": {"led": led, "servo_pwm": 0, "mvk_trigger": 0},
+        "pins": {"led": led, "servo_pwm": None, "mvk_trigger": None},
+        "firmware_generation": {
+            "support": "unavailable",
+            "reason": (
+                "DTS import does not select a startup, framework, HAL, or "
+                "stack composition."
+            ),
+        },
         "_review": review,
     }
     return board
@@ -226,7 +259,8 @@ def selftest():
     ok = (board["platform_id"] == "nrf52840"
           and board["boot"]["app_flash_start"] == "0x26000"
           and board["boot"]["layout"] == "SoftDeviceS140V6"
-          and board["boot"]["ram_len_bytes"] == 0x40000
+          and board["boot"]["ram_start"] == "0x20006000"
+          and board["boot"]["ram_len_bytes"] == 0x3A000
           and board["pins"]["led"] == 15
           and not errs)
     print(f"platform_id : {board['platform_id']}")

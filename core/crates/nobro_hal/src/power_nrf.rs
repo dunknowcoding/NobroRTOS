@@ -7,9 +7,9 @@ use nrf52840_pac::TIMER0;
 
 const COMPARE: usize = 3;
 const SCB_SCR_SEVONPEND: u32 = 1 << 4;
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 const TIMER0_PRIORITY_RAW: u8 = 2 << 5;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 const TIMER0_PRIORITY_RAW: u8 = 0;
 static ARMED_READY: AtomicU32 = AtomicU32::new(0);
 static PENDING_READY: AtomicU32 = AtomicU32::new(0);

@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "samd21_uf2_generic",
   "platform_id": "samd21",
   "feature": "board-samd21-uf2",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "microchip:atsamd21g18a",
+    "physical_board": "generic:samd21-uf2",
+    "boot_layout": "arduino:samd21-8k",
+    "framework_core": "nobro:cortex-m-rt",
+    "hal_stack": "nobro:samd21",
+    "usb_stack": "microchip:samd-usb"
+  },
   "description": "Generic SAMD21 UF2/SAM-BA-class board profile",
   "boot": {
     "layout": "Custom",
@@ -29,5 +39,5 @@
     "clock": "the generated contract-only image configures no clock and claims no timing provider; provider-bearing firmware uses the maintained SAMD21 runtime",
     "boot": "UF2 or SAM-BA-class 8 KiB bootloader; generated application origin is exactly 0x2000"
   },
-  "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": 6 }
+  "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
 }

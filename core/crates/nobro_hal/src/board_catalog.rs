@@ -5,6 +5,37 @@ use crate::{
     snapshots::{BoardPackageReport, BoardProfileReport},
 };
 
+/// Exact, generated identity and resource facts for one board composition.
+///
+/// `EXACT_BOARD_PROFILES` is generated from `core/boards/*/*/board.json`; CI
+/// rejects a stale generated file. Runtime packages may implement only a subset,
+/// but unavailable profiles remain typed and honest rather than disappearing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExactBoardProfileDefinition {
+    pub source: &'static str,
+    pub schema: &'static str,
+    pub board_id: &'static str,
+    pub platform_id: &'static str,
+    pub feature: &'static str,
+    pub feature_aliases: &'static [&'static str],
+    pub silicon_id: Option<&'static str>,
+    pub physical_board_id: &'static str,
+    pub boot_layout_id: &'static str,
+    pub framework_core_id: Option<&'static str>,
+    pub hal_stack_id: Option<&'static str>,
+    pub usb_stack_id: Option<&'static str>,
+    pub boot_layout: &'static str,
+    pub app_flash_start: Option<u32>,
+    pub app_flash_len_bytes: Option<u32>,
+    pub ram_start: Option<u32>,
+    pub ram_len_bytes: Option<u32>,
+    pub capacity: BoardCapacity,
+    pub pins: BoardPins,
+    pub firmware_support: &'static str,
+}
+
+include!("generated_board_profiles.rs");
+
 pub const NRF52840_PLATFORM_ID: &str = "nrf52840";
 pub const SAMD21_PLATFORM_ID: &str = "samd21";
 pub const RA4M1_PLATFORM_ID: &str = "ra4m1";
@@ -23,16 +54,16 @@ pub const NRF52840_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(80 * 1024,
 pub const NRF52840_BOARD_PINS: BoardPins = BoardPins::new(15, 24, 17);
 pub const NRF52840_SERVO_CENTER_US: u32 = 1500;
 pub const SAMD21_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(48 * 1024, 12 * 1024, 4, 8);
-pub const SAMD21_BOARD_PINS: BoardPins = BoardPins::new(13, 5, 6);
+pub const SAMD21_BOARD_PINS: BoardPins = BoardPins::optional(Some(13), None, None);
 pub const RA4M1_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(96 * 1024, 16 * 1024, 8, 12);
-pub const RA4M1_BOARD_PINS: BoardPins = BoardPins::new(13, 5, 14);
+pub const RA4M1_BOARD_PINS: BoardPins = BoardPins::optional(Some(13), Some(5), None);
 pub const STM32F4_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(128 * 1024, 64 * 1024, 8, 16);
-pub const STM32F4_BOARD_PINS: BoardPins = BoardPins::new(13, 6, 7);
+pub const STM32F4_BOARD_PINS: BoardPins = BoardPins::optional(None, None, None);
 pub const TEENSY4_BOARD_CAPACITY: BoardCapacity =
     BoardCapacity::new(256 * 1024, 128 * 1024, 16, 24);
-pub const TEENSY4_BOARD_PINS: BoardPins = BoardPins::new(13, 2, 3);
+pub const TEENSY4_BOARD_PINS: BoardPins = BoardPins::optional(None, None, None);
 pub const CORTEX_M_BOARD_CAPACITY: BoardCapacity = BoardCapacity::new(32 * 1024, 8 * 1024, 4, 6);
-pub const CORTEX_M_BOARD_PINS: BoardPins = BoardPins::new(1, 2, 3);
+pub const CORTEX_M_BOARD_PINS: BoardPins = BoardPins::optional(None, None, None);
 
 pub const PROMICRO_NRF52840_NOSD_PACKAGE: BoardPackage = BoardPackage::new(
     NRF52840_PLATFORM_ID,
@@ -174,7 +205,7 @@ pub const BOARD_PACKAGES: [BoardPackageDefinition; 7] = [
         package: PROMICRO_NRF52840_NOSD_PACKAGE,
     },
     BoardPackageDefinition {
-        feature: "board-nicenano-s140",
+        feature: "board-promicro-s140",
         package: PROMICRO_NRF52840_S140_PACKAGE,
     },
     BoardPackageDefinition {
@@ -210,7 +241,7 @@ pub const BOARD_PROFILES: [BoardProfileDefinition; 7] = [
         servo_center_us: NRF52840_SERVO_CENTER_US,
     },
     BoardProfileDefinition {
-        feature: "board-nicenano-s140",
+        feature: "board-promicro-s140",
         platform_id: NRF52840_PLATFORM_ID,
         board_id: PROMICRO_NRF52840_S140_ID,
         app_flash_start: 0x26000,
@@ -266,6 +297,7 @@ pub const BOARD_PROFILES: [BoardProfileDefinition; 7] = [
 ];
 
 pub fn package_for_feature(feature: &str) -> Option<BoardPackageDefinition> {
+    let feature = canonical_feature(feature);
     BOARD_PACKAGES
         .iter()
         .copied()
@@ -273,10 +305,24 @@ pub fn package_for_feature(feature: &str) -> Option<BoardPackageDefinition> {
 }
 
 pub fn profile_for_feature(feature: &str) -> Option<BoardProfileDefinition> {
+    let feature = canonical_feature(feature);
     BOARD_PROFILES
         .iter()
         .copied()
         .find(|entry| entry.feature == feature)
+}
+
+pub fn exact_profile_for_feature(feature: &str) -> Option<ExactBoardProfileDefinition> {
+    EXACT_BOARD_PROFILES.iter().copied().find(|entry| {
+        entry.feature == feature || entry.feature_aliases.iter().any(|alias| *alias == feature)
+    })
+}
+
+fn canonical_feature(feature: &str) -> &str {
+    match feature {
+        "board-nicenano-s140" => "board-promicro-s140",
+        feature => feature,
+    }
 }
 
 #[cfg(test)]
@@ -308,12 +354,27 @@ mod tests {
                 u32::from(entry.capacity.sample_pool_slots)
             );
             assert_eq!(report.max_modules, entry.capacity.max_modules as u32);
-            assert_eq!(report.servo_pin, u32::from(entry.pins.servo_pwm_pin));
+            assert_eq!(
+                report.servo_pin,
+                entry
+                    .pins
+                    .servo_pwm_pin
+                    .map_or(crate::snapshots::OPTIONAL_PIN_ABSENT, u32::from)
+            );
             assert_eq!(report.servo_center_us, entry.servo_center_us);
-            assert_eq!(report.led_pin, u32::from(entry.pins.led_pin));
+            assert_eq!(
+                report.led_pin,
+                entry
+                    .pins
+                    .led_pin
+                    .map_or(crate::snapshots::OPTIONAL_PIN_ABSENT, u32::from)
+            );
             assert_eq!(
                 report.mvk_trigger_pin,
-                u32::from(entry.pins.mvk_trigger_pin)
+                entry
+                    .pins
+                    .mvk_trigger_pin
+                    .map_or(crate::snapshots::OPTIONAL_PIN_ABSENT, u32::from)
             );
         }
     }
@@ -335,14 +396,39 @@ mod tests {
     }
 
     #[test]
+    fn compiled_packages_equal_generated_exact_profiles() {
+        for package_entry in BOARD_PACKAGES {
+            let exact =
+                exact_profile_for_feature(package_entry.feature).expect("generated exact profile");
+            let package = package_entry.package;
+
+            assert_eq!(exact.platform_id, package.platform_id);
+            assert_eq!(exact.board_id, package.board_id);
+            assert_eq!(exact.app_flash_start, Some(package.boot.app_flash_start));
+            assert_eq!(
+                exact.app_flash_len_bytes,
+                Some(package.boot.app_flash_len_bytes)
+            );
+            assert_eq!(exact.ram_start, Some(package.boot.ram_start));
+            assert_eq!(exact.ram_len_bytes, Some(package.boot.ram_len_bytes));
+            assert_eq!(exact.capacity, package.capacity);
+            assert_eq!(exact.pins, package.pins);
+        }
+    }
+
+    #[test]
     fn board_package_entries_cover_current_boot_layouts() {
         let nosd = package_for_feature("board-promicro-nosd").expect("nosd entry");
-        let s140 = package_for_feature("board-nicenano-s140").expect("s140 entry");
+        let s140 = package_for_feature("board-promicro-s140").expect("s140 entry");
 
         assert_eq!(nosd.package.boot.layout, BootLayout::NoSoftDevice);
         assert_eq!(nosd.package.boot.app_flash_start, 0x1000);
         assert_eq!(s140.package.boot.layout, BootLayout::SoftDeviceS140V6);
         assert_eq!(s140.package.boot.app_flash_start, 0x26000);
+        assert_eq!(
+            package_for_feature("board-nicenano-s140"),
+            package_for_feature("board-promicro-s140")
+        );
         assert_eq!(
             package_for_feature("board-samd21-uf2")
                 .expect("samd21 entry")

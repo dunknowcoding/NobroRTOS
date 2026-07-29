@@ -1,0 +1,34 @@
+{
+  "schema": "nobro-board-profile-v2",
+  "board_id": "raspberry_pi_pico_rp2040",
+  "platform_id": "rp2040",
+  "feature": "board-pico-rp2040",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "raspberrypi:rp2040",
+    "physical_board": "raspberrypi:pico",
+    "boot_layout": "raspberrypi:rp2040-boot2",
+    "framework_core": null,
+    "hal_stack": null,
+    "usb_stack": null
+  },
+  "description": "Official Raspberry Pi Pico with RP2040 and ROM BOOTSEL recovery",
+  "boot": {
+    "layout": "Rp2040Boot2",
+    "app_flash_start": "0x10000000",
+    "app_flash_len_bytes": 2097152,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 270336
+  },
+  "capacity": {
+    "flash_budget_bytes": 65536,
+    "ram_budget_bytes": 32768,
+    "sample_pool_slots": 8,
+    "max_modules": 12
+  },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The shared RP2040 runtime, PIO/DMA/USB lifecycle, and exact firmware build are not implemented yet."
+  },
+  "pins": { "led": 25, "servo_pwm": null, "mvk_trigger": null }
+}

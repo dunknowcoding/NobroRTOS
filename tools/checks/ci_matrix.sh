@@ -69,7 +69,7 @@ gate "nRF52840 PSP/PendSV target build" \
     cargo build --locked --target thumbv7em-none-eabihf \
     -p isolation-demo --release && \
     ! cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
-    --no-default-features --features platform-nrf52840-rt,board-nicenano-s140,cortex-m-slice'
+    --no-default-features --features platform-nrf52840-rt,board-promicro-s140,cortex-m-slice'
 
 gate "board boot slot adapter target build" \
   "$CURRENT_BASH" -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
@@ -115,6 +115,17 @@ gate "HAL/SAL v2 no_std contracts" \
       --features contract-only --target thumbv7em-none-eabihf && \
     cargo check --locked -p nobro-device --target thumbv7em-none-eabihf'
 
+gate "exactly one nRF board composition" \
+  "$CURRENT_BASH" -c 'cd core && \
+    cargo check --locked -p nobro-hal --target thumbv7em-none-eabihf \
+      --no-default-features --features board-promicro-s140 && \
+    cargo check --locked -p nobro-hal --target thumbv7em-none-eabihf \
+      --no-default-features --features board-nicenano-s140 && \
+    ! cargo check --locked -p nobro-hal --target thumbv7em-none-eabihf \
+      --no-default-features --features platform-nrf52840 && \
+    ! cargo check --locked -p nobro-hal --target thumbv7em-none-eabihf \
+      --no-default-features --features board-promicro-nosd,board-promicro-s140'
+
 gate "reset platform evidence receipts" \
   python tools/checks/platforms/check_platform_tiers.py --begin-receipts cross-mcu
 
@@ -131,7 +142,7 @@ gate "nRF52840 USB application link builds" \
       --features board-promicro-nosd && \
     cargo build --locked --release --target thumbv7em-none-eabihf \
       -p usb-cdc-demo --bin usb_cdc_demo_s140 --no-default-features \
-      --features board-nicenano-s140 && \
+      --features board-promicro-s140 && \
     cargo build --locked --release --target thumbv7em-none-eabihf \
       -p ai-usb-demo --bin ai_usb_demo --no-default-features \
       --features board-promicro-nosd'

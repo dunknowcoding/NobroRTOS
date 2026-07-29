@@ -10,6 +10,7 @@
 //! capture, servo PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
+use nobro_hal::board_catalog::EXACT_RP2350_PICO2W;
 use nobro_hal::{
     BoardCapacity, BoardDesc, CapabilityProfileKind, HardwareCapability,
     HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
@@ -38,16 +39,21 @@ impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for 
 pub struct Rp2350Board;
 
 impl BoardDesc for Rp2350Board {
-    const PLATFORM_ID: &'static str = "rp2350";
-    const BOARD_ID: &'static str = "pico2";
+    const PLATFORM_ID: &'static str = EXACT_RP2350_PICO2W.platform_id;
+    const BOARD_ID: &'static str = EXACT_RP2350_PICO2W.board_id;
     // App image runs from XIP flash after the boot2 + image-def block.
-    const APP_FLASH_START: u32 = 0x1000_0000;
+    const APP_FLASH_START: u32 = match EXACT_RP2350_PICO2W.app_flash_start {
+        Some(start) => start,
+        None => 0,
+    };
     // 520 KiB SRAM / 4 MiB flash: a generous share for the software budget.
-    const CAPACITY: BoardCapacity = BoardCapacity::new(256 * 1024, 256 * 1024, 8, 16);
-    const LED_PIN: u8 = 25;
-    const SERVO_PWM_PIN: u8 = 2;
+    const CAPACITY: BoardCapacity = EXACT_RP2350_PICO2W.capacity;
+    // Pico 2 W routes its LED through the wireless device rather than a direct
+    // RP2350 GPIO, so the board-level pin is intentionally absent.
+    const LED_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.led_pin;
+    const SERVO_PWM_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.servo_pwm_pin;
     const SERVO_CENTER_US: u32 = 1500;
-    const MVK_TRIGGER_PIN: u8 = 3;
+    const MVK_TRIGGER_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.mvk_trigger_pin;
 }
 
 impl HalClock for Rp2350 {

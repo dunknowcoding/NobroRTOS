@@ -10,10 +10,14 @@ pub trait BoardDesc {
     const APP_FLASH_START: u32;
     /// Default NobroRTOS software budget for this board family.
     const CAPACITY: BoardCapacity;
-    const LED_PIN: u8;
-    const SERVO_PWM_PIN: u8;
+    /// Optional board LED. `None` means that the exact board profile does not
+    /// provide or select one; callers must not invent a fallback GPIO.
+    const LED_PIN: Option<u8>;
+    /// Optional servo/PWM output selected by the board composition.
+    const SERVO_PWM_PIN: Option<u8>;
     const SERVO_CENTER_US: u32;
-    const MVK_TRIGGER_PIN: u8;
+    /// Optional measurement/verification trigger output.
+    const MVK_TRIGGER_PIN: Option<u8>;
 }
 
 /// Board-class budget used before firmware touches hardware.
@@ -97,13 +101,26 @@ impl BootLayout {
 /// Board pins that are critical to bring-up and diagnostics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoardPins {
-    pub led_pin: u8,
-    pub servo_pwm_pin: u8,
-    pub mvk_trigger_pin: u8,
+    pub led_pin: Option<u8>,
+    pub servo_pwm_pin: Option<u8>,
+    pub mvk_trigger_pin: Option<u8>,
 }
 
 impl BoardPins {
+    /// Construct a profile where all three conventional diagnostic pins exist.
+    ///
+    /// This remains as the source-compatible convenience constructor for
+    /// existing board packages. New exact profiles should use [`Self::optional`]
+    /// whenever a resource is absent or intentionally unselected.
     pub const fn new(led_pin: u8, servo_pwm_pin: u8, mvk_trigger_pin: u8) -> Self {
+        Self::optional(Some(led_pin), Some(servo_pwm_pin), Some(mvk_trigger_pin))
+    }
+
+    pub const fn optional(
+        led_pin: Option<u8>,
+        servo_pwm_pin: Option<u8>,
+        mvk_trigger_pin: Option<u8>,
+    ) -> Self {
         Self {
             led_pin,
             servo_pwm_pin,
@@ -156,7 +173,7 @@ impl BoardPackage {
                 ram_len_bytes,
             ),
             B::CAPACITY,
-            BoardPins::new(B::LED_PIN, B::SERVO_PWM_PIN, B::MVK_TRIGGER_PIN),
+            BoardPins::optional(B::LED_PIN, B::SERVO_PWM_PIN, B::MVK_TRIGGER_PIN),
         )
     }
 
@@ -224,9 +241,10 @@ impl BoardPackage {
         if self.boot.ram_start < ram_min || ram_end > ram_max {
             return Err(BoardPackageError::RamOutsidePlatformRange);
         }
-        if self.pins.led_pin == self.pins.servo_pwm_pin
-            || self.pins.led_pin == self.pins.mvk_trigger_pin
-            || self.pins.servo_pwm_pin == self.pins.mvk_trigger_pin
+        let duplicate = |left: Option<u8>, right: Option<u8>| matches!((left, right), (Some(left), Some(right)) if left == right);
+        if duplicate(self.pins.led_pin, self.pins.servo_pwm_pin)
+            || duplicate(self.pins.led_pin, self.pins.mvk_trigger_pin)
+            || duplicate(self.pins.servo_pwm_pin, self.pins.mvk_trigger_pin)
         {
             return Err(BoardPackageError::DuplicateCriticalPin);
         }
@@ -311,10 +329,10 @@ mod tests {
         const BOARD_ID: &'static str = "test-board";
         const APP_FLASH_START: u32 = 0x1000;
         const CAPACITY: BoardCapacity = BoardCapacity::new(64 * 1024, 16 * 1024, 4, 8);
-        const LED_PIN: u8 = 1;
-        const SERVO_PWM_PIN: u8 = 2;
+        const LED_PIN: Option<u8> = Some(1);
+        const SERVO_PWM_PIN: Option<u8> = Some(2);
         const SERVO_CENTER_US: u32 = 1500;
-        const MVK_TRIGGER_PIN: u8 = 3;
+        const MVK_TRIGGER_PIN: Option<u8> = Some(3);
     }
 
     #[test]
@@ -359,5 +377,18 @@ mod tests {
             package.validate(),
             Err(BoardPackageError::DuplicateCriticalPin)
         );
+    }
+
+    #[test]
+    fn absent_pins_are_valid_and_never_collide() {
+        let mut package = BoardPackage::from_board::<TestBoard>(
+            BootLayout::NoSoftDevice,
+            64 * 1024,
+            0x2000_0000,
+            16 * 1024,
+        );
+        package.pins = BoardPins::optional(Some(1), None, None);
+
+        assert_eq!(package.validate(), Ok(()));
     }
 }

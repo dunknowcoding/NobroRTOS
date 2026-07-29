@@ -13,6 +13,18 @@ pub const BOARD_PACKAGE_REPORT_MAGIC: u32 = 0x4E42_424B; // "NBBK"
 pub const BOARD_PACKAGE_REPORT_VERSION: u32 = 1;
 const FNV1A32_OFFSET: u32 = 0x811C_9DC5;
 const FNV1A32_PRIME: u32 = 0x0100_0193;
+/// Stable report encoding for an optional pin that is not present or selected.
+///
+/// Rust-facing board contracts use `Option<u8>`; the fixed-width C report ABI
+/// uses this value so absence cannot be confused with GPIO 0.
+pub const OPTIONAL_PIN_ABSENT: u32 = u32::MAX;
+
+const fn report_pin(pin: Option<u8>) -> u32 {
+    match pin {
+        Some(pin) => pin as u32,
+        None => OPTIONAL_PIN_ABSENT,
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PwmSnapshot {
@@ -80,7 +92,7 @@ impl BoardProfileReport {
             B::BOARD_ID,
             B::APP_FLASH_START,
             B::CAPACITY,
-            BoardPins::new(B::LED_PIN, B::SERVO_PWM_PIN, B::MVK_TRIGGER_PIN),
+            BoardPins::optional(B::LED_PIN, B::SERVO_PWM_PIN, B::MVK_TRIGGER_PIN),
             B::SERVO_CENTER_US,
         )
     }
@@ -101,10 +113,10 @@ impl BoardProfileReport {
             ram_budget_bytes: capacity.ram_budget_bytes,
             sample_pool_slots: u32::from(capacity.sample_pool_slots),
             max_modules: capacity.max_modules as u32,
-            servo_pin: u32::from(pins.servo_pwm_pin),
+            servo_pin: report_pin(pins.servo_pwm_pin),
             servo_center_us,
-            led_pin: u32::from(pins.led_pin),
-            mvk_trigger_pin: u32::from(pins.mvk_trigger_pin),
+            led_pin: report_pin(pins.led_pin),
+            mvk_trigger_pin: report_pin(pins.mvk_trigger_pin),
             ..Self::zeroed()
         };
         report.finalize_diagnostic();
@@ -209,9 +221,9 @@ impl BoardPackageReport {
             ram_budget_bytes: package.capacity.ram_budget_bytes,
             sample_pool_slots: u32::from(package.capacity.sample_pool_slots),
             max_modules: package.capacity.max_modules as u32,
-            led_pin: u32::from(package.pins.led_pin),
-            servo_pin: u32::from(package.pins.servo_pwm_pin),
-            mvk_trigger_pin: u32::from(package.pins.mvk_trigger_pin),
+            led_pin: report_pin(package.pins.led_pin),
+            servo_pin: report_pin(package.pins.servo_pwm_pin),
+            mvk_trigger_pin: report_pin(package.pins.mvk_trigger_pin),
             error_code: validation.err().map_or(0, |error| error.code()),
             ..Self::zeroed()
         };
@@ -276,10 +288,10 @@ mod tests {
         const BOARD_ID: &'static str = "test-board";
         const APP_FLASH_START: u32 = 0x4000;
         const CAPACITY: BoardCapacity = BoardCapacity::new(64 * 1024, 16 * 1024, 8, 4);
-        const LED_PIN: u8 = 1;
-        const SERVO_PWM_PIN: u8 = 2;
+        const LED_PIN: Option<u8> = Some(1);
+        const SERVO_PWM_PIN: Option<u8> = Some(2);
         const SERVO_CENTER_US: u32 = 1500;
-        const MVK_TRIGGER_PIN: u8 = 3;
+        const MVK_TRIGGER_PIN: Option<u8> = Some(3);
     }
 
     #[test]
@@ -341,6 +353,24 @@ mod tests {
         assert_eq!(report.valid, 0);
         assert_eq!(report.error_code, 7);
     }
+
+    #[test]
+    fn optional_pin_absence_has_a_stable_non_gpio_encoding() {
+        let mut package = BoardPackage::from_board::<TestBoard>(
+            crate::board_desc::BootLayout::Custom,
+            64 * 1024,
+            0x2000_0000,
+            16 * 1024,
+        );
+        package.pins = BoardPins::optional(Some(0), None, None);
+
+        let report = BoardPackageReport::from_package(&package);
+
+        assert_eq!(report.led_pin, 0);
+        assert_eq!(report.servo_pin, OPTIONAL_PIN_ABSENT);
+        assert_eq!(report.mvk_trigger_pin, OPTIONAL_PIN_ABSENT);
+        assert!(report.diagnostic_checksum_matches());
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -361,7 +391,7 @@ pub struct BoardParity {
     pub flash_start: u32,
     pub capacity: BoardCapacity,
     pub bus: BusLayout,
-    pub servo_pin: u8,
+    pub servo_pin: Option<u8>,
     pub servo_center_us: u32,
 }
 

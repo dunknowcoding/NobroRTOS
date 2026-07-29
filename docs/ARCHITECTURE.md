@@ -297,7 +297,7 @@ Board compatibility must be data-first:
   `board-*` feature.
 - App and adapter crates must disable default features on HAL dependencies and
   re-enable board features explicitly. This keeps `board-promicro-nosd` from
-  leaking into `board-nicenano-s140` builds through dependency defaults.
+  leaking into `board-promicro-s140` builds through dependency defaults.
 - Hardware parity checks read registers back into snapshot structs.
 - Host tools consume `nobro-host` constants or `host/nobro-host-contract.json`
   rather than duplicating magic values.
@@ -441,7 +441,7 @@ Fault handling is intentionally small:
   recovery; conflicting module identities fail closed instead of recovering
   the wrong module.
   The current port is a bare-nRF profile: combining `cortex-m-slice` with
-  `board-nicenano-s140` fails at compile time because it programs PendSV through
+  `board-promicro-s140` fails at compile time because it programs PendSV through
   CMSIS and does not yet integrate interrupt control through the SoftDevice API.
   Cooperative execution remains the default and cannot forcibly suspend a
   non-yielding poll. Privileged slices are not an isolation boundary. Every

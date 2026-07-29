@@ -1,0 +1,34 @@
+{
+  "schema": "nobro-board-profile-v2",
+  "board_id": "esp_wroom32_30pin",
+  "platform_id": "esp32",
+  "feature": "board-esp-wroom32-30pin",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "espressif:esp32",
+    "physical_board": "generic:esp-wroom32-30pin",
+    "boot_layout": "espressif:second-stage-app",
+    "framework_core": "arduino:esp32",
+    "hal_stack": null,
+    "usb_stack": null
+  },
+  "description": "ESP-WROOM-32 30-pin development board with external USB-to-UART bridge",
+  "boot": {
+    "layout": "Esp32FrameworkOwned",
+    "app_flash_start": null,
+    "app_flash_len_bytes": null,
+    "ram_start": null,
+    "ram_len_bytes": null
+  },
+  "capacity": {
+    "flash_budget_bytes": 131072,
+    "ram_budget_bytes": 49152,
+    "sample_pool_slots": 8,
+    "max_modules": 12
+  },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The exact classic ESP32 runtime, partition, and dual-core composition are not implemented yet."
+  },
+  "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
+}

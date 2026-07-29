@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "stm32f4_generic",
   "platform_id": "stm32f4",
   "feature": "board-stm32f4-generic",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "st:stm32f4-unspecified",
+    "physical_board": "generic:stm32f4",
+    "boot_layout": "unselected",
+    "framework_core": null,
+    "hal_stack": null,
+    "usb_stack": null
+  },
   "description": "Generic STM32F4 Cortex-M4 board profile",
   "boot": {
     "layout": "Custom",
@@ -20,5 +30,5 @@
     "support": "unavailable",
     "reason": "The generic STM32F4 profile has no exact part, startup crate, clock tree, vector ownership, DMA map, or bootloader contract."
   },
-  "pins": { "led": 13, "servo_pwm": 6, "mvk_trigger": 7 }
+  "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

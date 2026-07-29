@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "uno_r4_wifi",
   "platform_id": "ra4m1",
   "feature": "port-ra4m1",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "renesas:ra4m1",
+    "physical_board": "arduino:uno-r4-wifi",
+    "boot_layout": "arduino:uno-r4-dfu-16k",
+    "framework_core": "nobro:cortex-m-rt",
+    "hal_stack": "nobro:ra4m1",
+    "usb_stack": "renesas:usbfs"
+  },
   "description": "Arduino UNO R4 WiFi (RA4M1, Cortex-M4), stock 16 KiB DFU layout and Arduino Renesas provider layer",
   "boot": {
     "layout": "Custom",
@@ -29,5 +39,5 @@
     "clock": "the generated contract-only image configures no clock and claims no timing provider; provider-bearing firmware uses the maintained RA4M1 runtime",
     "boot": "stock UNO R4 bootloader; generated application origin is exactly 0x4000"
   },
-  "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": 14 }
+  "pins": { "led": 13, "servo_pwm": 5, "mvk_trigger": null }
 }

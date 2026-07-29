@@ -10,6 +10,7 @@
 //! Deadline, event, PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
+use nobro_hal::board_catalog::EXACT_ESP32C3_SUPERMINI;
 use nobro_hal::{
     BoardCapacity, BoardDesc, CapabilityProfileKind, HardwareCapability,
     HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
@@ -25,16 +26,19 @@ impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Esp32C3 {}
 pub struct Esp32C3Board;
 
 impl BoardDesc for Esp32C3Board {
-    const PLATFORM_ID: &'static str = "esp32c3";
-    const BOARD_ID: &'static str = "esp32c3-devkit";
+    const PLATFORM_ID: &'static str = EXACT_ESP32C3_SUPERMINI.platform_id;
+    const BOARD_ID: &'static str = EXACT_ESP32C3_SUPERMINI.board_id;
     // App image runs from memory-mapped flash after the 2nd-stage bootloader.
-    const APP_FLASH_START: u32 = 0x0001_0000;
+    const APP_FLASH_START: u32 = match EXACT_ESP32C3_SUPERMINI.app_flash_start {
+        Some(start) => start,
+        None => 0,
+    };
     // 400 KiB SRAM / 4 MiB flash: a conservative share for the software budget.
-    const CAPACITY: BoardCapacity = BoardCapacity::new(256 * 1024, 200 * 1024, 8, 16);
-    const LED_PIN: u8 = 8;
-    const SERVO_PWM_PIN: u8 = 4;
+    const CAPACITY: BoardCapacity = EXACT_ESP32C3_SUPERMINI.capacity;
+    const LED_PIN: Option<u8> = EXACT_ESP32C3_SUPERMINI.pins.led_pin;
+    const SERVO_PWM_PIN: Option<u8> = EXACT_ESP32C3_SUPERMINI.pins.servo_pwm_pin;
     const SERVO_CENTER_US: u32 = 1500;
-    const MVK_TRIGGER_PIN: u8 = 5;
+    const MVK_TRIGGER_PIN: Option<u8> = EXACT_ESP32C3_SUPERMINI.pins.mvk_trigger_pin;
 }
 
 impl HalClock for Esp32C3 {

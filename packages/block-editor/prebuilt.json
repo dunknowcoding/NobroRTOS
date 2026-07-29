@@ -3,7 +3,7 @@
   "package": "usb-cdc-demo",
   "binary": "usb_cdc_demo_s140",
   "features": [
-    "board-nicenano-s140"
+    "board-promicro-s140"
   ],
   "uf2_name": "nobrortos-starter-s140.uf2",
   "uf2_family": 2913282112,

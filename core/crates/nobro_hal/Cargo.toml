@@ -31,7 +31,10 @@ contract-only = []
 
 # Board packages are mutually exclusive and depend on platform-nrf52840.
 board-promicro-nosd = ["platform-nrf52840"]
-board-nicenano-s140 = ["platform-nrf52840"]
+board-promicro-s140 = ["platform-nrf52840"]
+# Compatibility alias retained for existing applications. The alias selects the
+# exact ProMicro + S140 composition; it does not claim a different physical board.
+board-nicenano-s140 = ["board-promicro-s140"]
 
 [dev-dependencies]
 # host-side critical_section impl so lease invariant tests link + run on x86

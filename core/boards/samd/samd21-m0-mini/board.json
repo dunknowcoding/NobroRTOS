@@ -1,0 +1,34 @@
+{
+  "schema": "nobro-board-profile-v2",
+  "board_id": "samd21_m0_mini",
+  "platform_id": "samd21",
+  "feature": "board-samd21-m0-mini",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "microchip:atsamd21g18a",
+    "physical_board": "generic:samd21-m0-mini",
+    "boot_layout": "arduino:samd21-8k",
+    "framework_core": "arduino:samd",
+    "hal_stack": null,
+    "usb_stack": null
+  },
+  "description": "SAMD21 M0-Mini Arduino Zero-compatible board with an 8 KiB boot region",
+  "boot": {
+    "layout": "Custom",
+    "app_flash_start": "0x2000",
+    "app_flash_len_bytes": 253952,
+    "ram_start": "0x20000000",
+    "ram_len_bytes": 32768
+  },
+  "capacity": {
+    "flash_budget_bytes": 49152,
+    "ram_budget_bytes": 12288,
+    "sample_pool_slots": 4,
+    "max_modules": 8
+  },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "Exact Arduino-core/native runtime selection and physical lifecycle verification are not implemented yet."
+  },
+  "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
+}

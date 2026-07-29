@@ -35,3 +35,4 @@ board-nicenano-s140 = [
     "nobro-hal/board-nicenano-s140",
     "nobro-adapter-mpu9250-imu/board-nicenano-s140",
 ]
+board-promicro-s140 = ["board-nicenano-s140"]

@@ -1,35 +1,35 @@
-//! ProMicro / nice!nano nRF52840 board constants.
+//! ProMicro nRF52840 board constants.
 //!
 //! `board-promicro-nosd`: no-SoftDevice layout, app at 0x1000.
-//! `board-nicenano-s140`: S140 SoftDevice layout, app at 0x26000.
+//! `board-promicro-s140`: S140 SoftDevice layout, app at 0x26000.
 
 use crate::board_desc::{
     BoardCapacity, BoardDesc, BoardPackage, BoardPins, BootLayout, BootProfile,
 };
 
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 pub const APP_FLASH_START: u32 = 0x26000;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 pub const APP_FLASH_START: u32 = 0x1000;
 
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 pub const APP_FLASH_LEN_BYTES: u32 = 798_720;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 pub const APP_FLASH_LEN_BYTES: u32 = 1020 * 1024;
 
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 pub const RAM_START: u32 = 0x2000_6000;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 pub const RAM_START: u32 = 0x2000_0000;
 
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 pub const RAM_LEN_BYTES: u32 = 0x3A000;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 pub const RAM_LEN_BYTES: u32 = 256 * 1024;
 
-#[cfg(feature = "board-nicenano-s140")]
+#[cfg(feature = "board-promicro-s140")]
 pub const BOOT_LAYOUT: BootLayout = BootLayout::SoftDeviceS140V6;
-#[cfg(not(feature = "board-nicenano-s140"))]
+#[cfg(not(feature = "board-promicro-s140"))]
 pub const BOOT_LAYOUT: BootLayout = BootLayout::NoSoftDevice;
 
 pub const LED_PIN: u8 = 15;
@@ -83,9 +83,9 @@ impl Board {
 
 impl BoardDesc for Board {
     const PLATFORM_ID: &'static str = "nrf52840";
-    #[cfg(feature = "board-nicenano-s140")]
+    #[cfg(feature = "board-promicro-s140")]
     const BOARD_ID: &'static str = "promicro_nrf52840_s140";
-    #[cfg(not(feature = "board-nicenano-s140"))]
+    #[cfg(not(feature = "board-promicro-s140"))]
     const BOARD_ID: &'static str = "promicro_nrf52840_nosd";
     const APP_FLASH_START: u32 = APP_FLASH_START;
     const CAPACITY: BoardCapacity = BoardCapacity::new(
@@ -94,10 +94,10 @@ impl BoardDesc for Board {
         NOBRO_SAMPLE_POOL_SLOTS,
         NOBRO_MAX_MODULES,
     );
-    const LED_PIN: u8 = 15;
-    const SERVO_PWM_PIN: u8 = 24;
+    const LED_PIN: Option<u8> = Some(15);
+    const SERVO_PWM_PIN: Option<u8> = Some(24);
     const SERVO_CENTER_US: u32 = 1500;
-    const MVK_TRIGGER_PIN: u8 = 17;
+    const MVK_TRIGGER_PIN: Option<u8> = Some(17);
 }
 
 #[cfg(test)]
@@ -121,20 +121,20 @@ mod tests {
 
     #[test]
     fn active_board_package_matches_selected_boot_layout() {
-        #[cfg(feature = "board-nicenano-s140")]
+        #[cfg(feature = "board-promicro-s140")]
         assert_eq!(Board::package().boot.layout, BootLayout::SoftDeviceS140V6);
 
-        #[cfg(not(feature = "board-nicenano-s140"))]
+        #[cfg(not(feature = "board-promicro-s140"))]
         assert_eq!(Board::package().boot.layout, BootLayout::NoSoftDevice);
     }
 
     #[test]
     fn active_board_package_matches_entry() {
-        #[cfg(feature = "board-nicenano-s140")]
+        #[cfg(feature = "board-promicro-s140")]
         let entry =
-            crate::board_catalog::package_for_feature("board-nicenano-s140").expect("s140 entry");
+            crate::board_catalog::package_for_feature("board-promicro-s140").expect("s140 entry");
 
-        #[cfg(not(feature = "board-nicenano-s140"))]
+        #[cfg(not(feature = "board-promicro-s140"))]
         let entry =
             crate::board_catalog::package_for_feature("board-promicro-nosd").expect("nosd entry");
 
@@ -143,11 +143,11 @@ mod tests {
 
     #[test]
     fn active_board_profile_matches_entry() {
-        #[cfg(feature = "board-nicenano-s140")]
+        #[cfg(feature = "board-promicro-s140")]
         let entry =
-            crate::board_catalog::profile_for_feature("board-nicenano-s140").expect("s140 entry");
+            crate::board_catalog::profile_for_feature("board-promicro-s140").expect("s140 entry");
 
-        #[cfg(not(feature = "board-nicenano-s140"))]
+        #[cfg(not(feature = "board-promicro-s140"))]
         let entry =
             crate::board_catalog::profile_for_feature("board-promicro-nosd").expect("nosd entry");
 

@@ -1,7 +1,17 @@
 {
+  "schema": "nobro-board-profile-v2",
   "board_id": "teensy4_generic",
   "platform_id": "imxrt1062",
   "feature": "board-teensy4-generic",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "nxp:imxrt1062",
+    "physical_board": "pjrc:teensy-4-class",
+    "boot_layout": "pjrc:teensy-loader",
+    "framework_core": null,
+    "hal_stack": null,
+    "usb_stack": null
+  },
   "description": "Generic i.MX RT1062 / Teensy 4-class board profile",
   "boot": {
     "layout": "Custom",
@@ -20,5 +30,5 @@
     "support": "unavailable",
     "reason": "The generic Teensy 4-class profile does not own the board-specific image header, startup, memory aliases, clock, interrupt, DMA, and boot contracts."
   },
-  "pins": { "led": 13, "servo_pwm": 2, "mvk_trigger": 3 }
+  "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

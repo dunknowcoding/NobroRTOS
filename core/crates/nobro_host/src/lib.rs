@@ -79,7 +79,7 @@ impl BootLayout {
     pub const fn cargo_feature(self) -> &'static str {
         match self {
             Self::NoSoftDevice => "board-promicro-nosd",
-            Self::SoftDeviceS140V6 => "board-nicenano-s140",
+            Self::SoftDeviceS140V6 => "board-promicro-s140",
             Self::Custom => "custom-board",
         }
     }
@@ -1982,7 +1982,7 @@ mod tests {
         );
         assert_eq!(
             BootLayout::SoftDeviceS140V6.cargo_feature(),
-            "board-nicenano-s140"
+            "board-promicro-s140"
         );
         assert_eq!(BootLayout::Custom.cargo_feature(), "custom-board");
         assert_eq!(BootLayout::NoSoftDevice.code(), 1);

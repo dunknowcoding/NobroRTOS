@@ -1,0 +1,34 @@
+{
+  "schema": "nobro-board-profile-v2",
+  "board_id": "arduino_nano_v3_atmega328p",
+  "platform_id": "atmega328p",
+  "feature": "board-nano-v3",
+  "feature_aliases": [],
+  "composition": {
+    "silicon": "microchip:atmega328p",
+    "physical_board": "arduino:nano-v3",
+    "boot_layout": "arduino:optiboot-2k",
+    "framework_core": "arduino:avr",
+    "hal_stack": null,
+    "usb_stack": null
+  },
+  "description": "Arduino Nano V3.0-class ATmega328P board; USB belongs to the external serial bridge",
+  "boot": {
+    "layout": "AvrOptiboot2K",
+    "app_flash_start": "0x0",
+    "app_flash_len_bytes": 30720,
+    "ram_start": "0x100",
+    "ram_len_bytes": 2048
+  },
+  "capacity": {
+    "flash_budget_bytes": 16384,
+    "ram_budget_bytes": 1024,
+    "sample_pool_slots": 2,
+    "max_modules": 4
+  },
+  "firmware_generation": {
+    "support": "unavailable",
+    "reason": "The constrained AVR runtime and Arduino-core composition are not implemented yet."
+  },
+  "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
+}
