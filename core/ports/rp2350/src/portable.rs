@@ -10,7 +10,10 @@
 //! capture, servo PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
-use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
+use nobro_hal::{
+    BoardCapacity, BoardDesc, CapabilityProfileKind, HardwareCapability,
+    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
+};
 
 /// RP2350 TIMER0 register block. Offsets from RP2350 datasheet section 12.8.
 /// The timer increments once per microsecond (the watchdog tick divides the
@@ -27,6 +30,9 @@ fn reg(offset: usize) -> *const u32 {
 
 /// The RP2350 portable platform backend.
 pub struct Rp2350;
+
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Rp2350 {}
 
 /// Minimal board descriptor so `PlatformHal` has an associated `Board`.
 pub struct Rp2350Board;
@@ -66,9 +72,30 @@ impl HalTimebaseProvider for Rp2350 {
 }
 
 impl HalCompatibility for Rp2350 {
-    const CAPABILITIES: HardwareCapabilitySet =
-        HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
+                HardwareCapability::Timebase,
+            )
+            .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
+                HardwareCapability::DmaCompletion,
+            );
+        let supported = witnesses;
+        HardwareCapabilityDeclaration::new(
+            "provider-rp2-v2",
+            CapabilityProfileKind::Constrained,
+            supported,
+            supported,
+            HardwareCapabilitySet::EMPTY,
+            HardwareCapabilitySet::ALL.without(supported),
+            witnesses,
+        )
+    };
 }
+
+const _: [(); 1] = [(); <Rp2350 as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Rp2350 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 impl PlatformHal for Rp2350 {
     const PLATFORM_ID: &'static str = "rp2350";

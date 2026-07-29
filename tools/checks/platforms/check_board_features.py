@@ -89,6 +89,10 @@ LIFECYCLE_DIMENSIONS = {
     "generation_invalidation",
     "quiesce_release_receipt",
     "application_static_cleanup",
+    "operation_deadline",
+    "cancellation_receipt",
+    "reset_receipt",
+    "fault_receipt",
 }
 LIFECYCLE_STATUS_VALUES = {"verified", "limited", "not-applicable"}
 

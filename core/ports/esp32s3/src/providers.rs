@@ -7,22 +7,50 @@ use esp_hal::{
     time::Duration, timer::OneShotTimer, usb_serial_jtag::UsbSerialJtag, Blocking, DriverMode,
 };
 use nobro_hal::{
-    HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c, HalPwmChannel, HalSpi,
-    HardwareCapability, HardwareCapabilitySet, TransferMode,
+    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c,
+    HalPwmChannel, HalSpi, HardwareCapability, HardwareCapabilityDeclaration,
+    HardwareCapabilitySet, HardwareCapabilityWitness, TransferMode,
 };
 
 pub struct Esp32S3Providers;
 
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Esp32S3Providers {}
+
 impl HalCompatibility for Esp32S3Providers {
-    const CAPABILITIES: HardwareCapabilitySet = HardwareCapabilitySet::EMPTY
-        .with(HardwareCapability::Timebase)
-        .with(HardwareCapability::DeadlineTimer)
-        .with(HardwareCapability::ServoPwm)
-        .with(HardwareCapability::Bus)
-        .with(HardwareCapability::I2c)
-        .with(HardwareCapability::Spi)
-        .with(HardwareCapability::Usb);
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
+                HardwareCapability::Timebase,
+            )
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(
+                HardwareCapability::Deadline,
+            )
+            .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
+            .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
+        let supported = witnesses;
+        HardwareCapabilityDeclaration::new(
+            "provider-esp32s3-v2",
+            CapabilityProfileKind::Constrained,
+            supported,
+            supported,
+            HardwareCapabilitySet::EMPTY,
+            HardwareCapabilitySet::ALL.without(supported),
+            witnesses,
+        )
+    };
 }
+
+const _: [(); 1] =
+    [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 pub struct Esp32S3Clock;
 

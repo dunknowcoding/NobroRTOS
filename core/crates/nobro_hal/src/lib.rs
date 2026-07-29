@@ -79,9 +79,12 @@ pub use snapshots::{
     BOARD_PROFILE_REPORT_VERSION,
 };
 pub use traits::{
-    HalAlarm, HalBus, HalByteIo, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalI2c,
-    HalLease, HalPwmChannel, HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider,
-    HardwareCapability, HardwareCapabilitySet, LeaseClass, LeaseId, PlatformHal, TransferMode,
+    CapabilityDeclarationState, CapabilityProfileKind, HalAlarm, HalBus, HalByteIo, HalClock,
+    HalCompatibility, HalDeadline, HalEventCapture, HalI2c, HalLease, HalPwmChannel,
+    HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider, HardwareCapability,
+    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness, LeaseClass,
+    LeaseId, PlatformHal, TransferMode, HARDWARE_CAPABILITY_CONTRACT_VERSION,
+    HARDWARE_CAPABILITY_COUNT,
 };
 
 #[cfg(feature = "platform-nrf52840")]

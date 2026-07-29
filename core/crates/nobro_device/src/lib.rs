@@ -11,8 +11,10 @@
 mod provider_lifecycle;
 mod ram_receipt;
 pub use provider_lifecycle::{
-    ProviderLifecycle, ProviderLifecycleError, ProviderLifecycleState, ProviderOwnedResources,
-    ProviderQuiesceReceipt, ProviderRecoveryReceipt, ProviderReleaseReceipt, ProviderSession,
+    ProviderCancellationReceipt, ProviderFaultKind, ProviderFaultReceipt, ProviderLifecycle,
+    ProviderLifecycleError, ProviderLifecycleState, ProviderOperation, ProviderOwnedResources,
+    ProviderProgress, ProviderQuiesceReceipt, ProviderRecoveryReceipt, ProviderReleaseReceipt,
+    ProviderResetReceipt, ProviderSession,
 };
 pub use ram_receipt::{
     DeploymentRamReceipt, RamPlacement, RamReceiptError, RamRegion, RamRegionKind,

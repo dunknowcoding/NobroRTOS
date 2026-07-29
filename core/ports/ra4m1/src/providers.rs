@@ -14,7 +14,8 @@ use core::cell::UnsafeCell;
 
 use cortex_m::peripheral::{DCB, DWT, SYST};
 use nobro_hal::{
-    HalAlarm, HalByteIo, HalClock, HalCompatibility, HardwareCapability, HardwareCapabilitySet,
+    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HardwareCapability,
+    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
 };
 use nobro_usb::{CdcState, MountedUsb, Stage, UsbIoError, UsbStack, RA4M1_USB_CONFIG};
 
@@ -24,12 +25,41 @@ const SYST_MAX_RELOAD: u32 = 0x00ff_ffff;
 
 pub struct Ra4m1Providers;
 
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Ra4m1Providers {}
+
 impl HalCompatibility for Ra4m1Providers {
-    const CAPABILITIES: HardwareCapabilitySet = HardwareCapabilitySet::EMPTY
-        .with(HardwareCapability::Timebase)
-        .with(HardwareCapability::DeadlineTimer)
-        .with(HardwareCapability::Usb);
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
+                HardwareCapability::Timebase,
+            )
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(
+                HardwareCapability::Deadline,
+            )
+            .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
+                HardwareCapability::DmaCompletion,
+            )
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
+        let supported = witnesses;
+        HardwareCapabilityDeclaration::new(
+            "provider-ra4m1-v2",
+            CapabilityProfileKind::Constrained,
+            supported,
+            supported,
+            HardwareCapabilitySet::EMPTY,
+            HardwareCapabilitySet::ALL.without(supported),
+            witnesses,
+        )
+    };
 }
+
+const _: [(); 1] =
+    [(); <Ra4m1Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Ra4m1Providers as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 #[derive(Clone, Copy)]
 struct ClockState {

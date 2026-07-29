@@ -29,3 +29,8 @@ checked for internal consistency by `tools/checks/platforms/check_board_profiles
 An application crate selects exactly one board via its `feature` (for example,
 `board-promicro-nosd`). A board profile is a validated compatibility contract; full
 peripheral support lands when the matching HAL platform backend is added.
+
+Native capability truth is separate from board facts. The versioned vocabulary,
+deep/constrained profiles, four-state declarations, and exact compiled witnesses
+live in [`hal_contract_v2.json`](hal_contract_v2.json) and are reconciled with
+`platform_tiers.json` by the HAL contract gate.

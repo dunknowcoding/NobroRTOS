@@ -7,31 +7,74 @@ use crate::board_desc::{BoardDesc, ServoProfile};
 use crate::lease::LeaseError;
 use crate::snapshots::EventCaptureSnapshot;
 
+pub const HARDWARE_CAPABILITY_CONTRACT_VERSION: u16 = 2;
+pub const HARDWARE_CAPABILITY_COUNT: usize = 23;
+
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HardwareCapability {
-    Timebase,
-    ResourceLease,
-    DeadlineTimer,
-    EventCapture,
-    ServoPwm,
-    Bus,
-    I2c,
-    Spi,
-    Usb,
+    Timebase = 0,
+    Deadline = 1,
+    Event = 2,
+    DmaCompletion = 3,
+    Gpio = 4,
+    Irq = 5,
+    Uart = 6,
+    ByteIo = 7,
+    Adc = 8,
+    Pwm = 9,
+    Servo = 10,
+    Pulse = 11,
+    I2c = 12,
+    Spi = 13,
+    Usb = 14,
+    Watchdog = 15,
+    Rtc = 16,
+    Flash = 17,
+    Reset = 18,
+    Power = 19,
+    Cache = 20,
+    Multicore = 21,
+    Lease = 22,
 }
+
+/// Compile-time witness that one exact composition has wired a capability.
+///
+/// Implement this marker only beside the concrete provider composition. The
+/// target build compiles the implementation and `HardwareCapabilitySet::witnessed`
+/// refuses to construct the witness bit without it.
+pub trait HardwareCapabilityWitness<const CAPABILITY: u8> {}
 
 impl HardwareCapability {
     pub const fn bit(self) -> u32 {
+        1 << (self as u8)
+    }
+
+    pub const fn id(self) -> &'static str {
         match self {
-            Self::Timebase => 1 << 0,
-            Self::ResourceLease => 1 << 1,
-            Self::DeadlineTimer => 1 << 2,
-            Self::EventCapture => 1 << 3,
-            Self::ServoPwm => 1 << 4,
-            Self::Bus => 1 << 5,
-            Self::I2c => 1 << 6,
-            Self::Spi => 1 << 7,
-            Self::Usb => 1 << 8,
+            Self::Timebase => "timebase",
+            Self::Deadline => "deadline",
+            Self::Event => "event",
+            Self::DmaCompletion => "dma_completion",
+            Self::Gpio => "gpio",
+            Self::Irq => "irq",
+            Self::Uart => "uart",
+            Self::ByteIo => "byte_io",
+            Self::Adc => "adc",
+            Self::Pwm => "pwm",
+            Self::Servo => "servo",
+            Self::Pulse => "pulse",
+            Self::I2c => "i2c",
+            Self::Spi => "spi",
+            Self::Usb => "usb",
+            Self::Watchdog => "watchdog",
+            Self::Rtc => "rtc",
+            Self::Flash => "flash",
+            Self::Reset => "reset",
+            Self::Power => "power",
+            Self::Cache => "cache",
+            Self::Multicore => "multicore",
+            Self::Lease => "lease",
         }
     }
 }
@@ -41,6 +84,7 @@ pub struct HardwareCapabilitySet(pub u32);
 
 impl HardwareCapabilitySet {
     pub const EMPTY: Self = Self(0);
+    pub const ALL: Self = Self((1 << HARDWARE_CAPABILITY_COUNT) - 1);
 
     pub const fn from_bits(bits: u32) -> Self {
         Self(bits)
@@ -51,6 +95,25 @@ impl HardwareCapabilitySet {
     }
 
     pub const fn with(self, capability: HardwareCapability) -> Self {
+        Self(self.0 | capability.bit())
+    }
+
+    /// Add a capability only when the composition supplies its compile witness.
+    ///
+    /// ```compile_fail
+    /// use nobro_hal::{HardwareCapability, HardwareCapabilitySet};
+    ///
+    /// struct UnwitnessedComposition;
+    /// let _ = HardwareCapabilitySet::EMPTY
+    ///     .witnessed::<UnwitnessedComposition, { HardwareCapability::Usb as u8 }>(
+    ///         HardwareCapability::Usb,
+    ///     );
+    /// ```
+    pub const fn witnessed<T, const CAPABILITY: u8>(self, capability: HardwareCapability) -> Self
+    where
+        T: HardwareCapabilityWitness<CAPABILITY>,
+    {
+        assert!(capability as u8 == CAPABILITY);
         Self(self.0 | capability.bit())
     }
 
@@ -65,14 +128,143 @@ impl HardwareCapabilitySet {
     pub const fn missing(self, required: Self) -> Self {
         Self(required.0 & !self.0)
     }
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+
+    pub const fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
+    }
+
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub const fn only_known(self) -> bool {
+        self.0 & !Self::ALL.0 == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapabilityProfileKind {
+    Deep,
+    Constrained,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapabilityDeclarationState {
+    Required,
+    Supported,
+    HardwareInapplicable,
+    Unimplemented,
+}
+
+/// Versioned, four-state capability declaration for one exact composition.
+///
+/// `profile_required` names the selected profile's requirements. A required
+/// capability remains in [`CapabilityDeclarationState::Required`] until a
+/// concrete compiled witness moves it to `Supported`. Hardware-inapplicable
+/// and unimplemented are separate fail-closed states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HardwareCapabilityDeclaration {
+    pub contract_version: u16,
+    pub profile_id: &'static str,
+    pub profile_kind: CapabilityProfileKind,
+    pub profile_required: HardwareCapabilitySet,
+    pub supported: HardwareCapabilitySet,
+    pub hardware_inapplicable: HardwareCapabilitySet,
+    pub unimplemented: HardwareCapabilitySet,
+    pub trait_witnesses: HardwareCapabilitySet,
+}
+
+impl HardwareCapabilityDeclaration {
+    pub const fn new(
+        profile_id: &'static str,
+        profile_kind: CapabilityProfileKind,
+        profile_required: HardwareCapabilitySet,
+        supported: HardwareCapabilitySet,
+        hardware_inapplicable: HardwareCapabilitySet,
+        unimplemented: HardwareCapabilitySet,
+        trait_witnesses: HardwareCapabilitySet,
+    ) -> Self {
+        Self {
+            contract_version: HARDWARE_CAPABILITY_CONTRACT_VERSION,
+            profile_id,
+            profile_kind,
+            profile_required,
+            supported,
+            hardware_inapplicable,
+            unimplemented,
+            trait_witnesses,
+        }
+    }
+
+    pub const fn pending_required(self) -> HardwareCapabilitySet {
+        self.supported.missing(self.profile_required)
+    }
+
+    pub const fn state(self, capability: HardwareCapability) -> CapabilityDeclarationState {
+        if self.supported.contains(capability) {
+            CapabilityDeclarationState::Supported
+        } else if self.profile_required.contains(capability) {
+            CapabilityDeclarationState::Required
+        } else if self.hardware_inapplicable.contains(capability) {
+            CapabilityDeclarationState::HardwareInapplicable
+        } else {
+            CapabilityDeclarationState::Unimplemented
+        }
+    }
+
+    pub const fn profile_is_satisfied(self) -> bool {
+        self.pending_required().is_empty()
+    }
+
+    pub const fn is_exact_profile(self) -> bool {
+        self.profile_is_satisfied() && self.supported.bits() == self.profile_required.bits()
+    }
+
+    pub const fn is_valid(self) -> bool {
+        let pending = self.pending_required();
+        let classified = self
+            .supported
+            .union(pending)
+            .union(self.hardware_inapplicable)
+            .union(self.unimplemented);
+        self.contract_version == HARDWARE_CAPABILITY_CONTRACT_VERSION
+            && !self.profile_id.is_empty()
+            && self.profile_required.only_known()
+            && self.supported.only_known()
+            && self.hardware_inapplicable.only_known()
+            && self.unimplemented.only_known()
+            && self.trait_witnesses.only_known()
+            && self.supported.bits() == self.trait_witnesses.bits()
+            && self
+                .supported
+                .intersection(self.hardware_inapplicable)
+                .is_empty()
+            && self.supported.intersection(self.unimplemented).is_empty()
+            && pending.intersection(self.hardware_inapplicable).is_empty()
+            && pending.intersection(self.unimplemented).is_empty()
+            && self
+                .hardware_inapplicable
+                .intersection(self.unimplemented)
+                .is_empty()
+            && classified.bits() == HardwareCapabilitySet::ALL.bits()
+    }
 }
 
 /// Platform capability metadata for host-side and compile-time compatibility checks.
 pub trait HalCompatibility {
-    const CAPABILITIES: HardwareCapabilitySet;
+    const DECLARATION: HardwareCapabilityDeclaration;
+    const CAPABILITIES: HardwareCapabilitySet = Self::DECLARATION.supported;
 
     fn supports(required: HardwareCapabilitySet) -> bool {
-        Self::CAPABILITIES.contains_all(required)
+        Self::DECLARATION.supported.contains_all(required)
     }
 }
 
@@ -336,17 +528,84 @@ mod tests {
     fn capability_sets_report_missing_bits() {
         let platform = HardwareCapabilitySet::EMPTY
             .with(HardwareCapability::Timebase)
-            .with(HardwareCapability::ResourceLease);
+            .with(HardwareCapability::Lease);
         let required = HardwareCapabilitySet::EMPTY
             .with(HardwareCapability::Timebase)
-            .with(HardwareCapability::Bus);
+            .with(HardwareCapability::I2c);
 
         assert!(platform.contains(HardwareCapability::Timebase));
         assert!(!platform.contains_all(required));
         assert_eq!(
             platform.missing(required),
-            HardwareCapabilitySet::EMPTY.with(HardwareCapability::Bus)
+            HardwareCapabilitySet::EMPTY.with(HardwareCapability::I2c)
         );
+    }
+
+    #[test]
+    fn capability_declaration_partitions_every_v2_capability() {
+        let required = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Timebase)
+            .with(HardwareCapability::Deadline);
+        let supported = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+        let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Multicore);
+        let unimplemented = HardwareCapabilitySet::ALL
+            .without(required)
+            .without(inapplicable);
+        let declaration = HardwareCapabilityDeclaration::new(
+            "test-constrained-v2",
+            CapabilityProfileKind::Constrained,
+            required,
+            supported,
+            inapplicable,
+            unimplemented,
+            supported,
+        );
+
+        assert!(declaration.is_valid());
+        assert!(!declaration.profile_is_satisfied());
+        assert_eq!(
+            declaration.state(HardwareCapability::Deadline),
+            CapabilityDeclarationState::Required
+        );
+        assert_eq!(
+            declaration.state(HardwareCapability::Timebase),
+            CapabilityDeclarationState::Supported
+        );
+        assert_eq!(
+            declaration.state(HardwareCapability::Multicore),
+            CapabilityDeclarationState::HardwareInapplicable
+        );
+        assert_eq!(
+            declaration.state(HardwareCapability::Gpio),
+            CapabilityDeclarationState::Unimplemented
+        );
+    }
+
+    #[test]
+    fn declaration_rejects_unwitnessed_support_and_overlapping_states() {
+        let supported = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+        let unimplemented = HardwareCapabilitySet::ALL.without(supported);
+        let unwitnessed = HardwareCapabilityDeclaration::new(
+            "bad-v2",
+            CapabilityProfileKind::Deep,
+            supported,
+            supported,
+            HardwareCapabilitySet::EMPTY,
+            unimplemented,
+            HardwareCapabilitySet::EMPTY,
+        );
+        assert!(!unwitnessed.is_valid());
+
+        let overlap = HardwareCapabilityDeclaration::new(
+            "bad-v2",
+            CapabilityProfileKind::Deep,
+            supported,
+            supported,
+            supported,
+            unimplemented,
+            supported,
+        );
+        assert!(!overlap.is_valid());
     }
 
     #[test]

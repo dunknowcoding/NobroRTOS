@@ -1,20 +1,35 @@
 {
   "schema": "nobro-platform-support-v2",
   "feature_registry": "core/boards/feature_providers.json",
+  "hal_contract": "core/boards/hal_contract_v2.json",
   "reference_platform": "nrf52840",
   "providers": [
     "timebase",
     "deadline",
-    "event_capture",
+    "event",
     "dma_completion",
-    "servo_pwm",
+    "gpio",
+    "irq",
+    "uart",
+    "byte_io",
+    "adc",
+    "pwm",
+    "servo",
+    "pulse",
     "i2c",
     "spi",
     "usb",
+    "watchdog",
+    "rtc",
+    "flash",
+    "reset",
+    "power",
+    "cache",
+    "multicore",
     "lease"
   ],
   "facade_offers": [
-    "clock",
+    "timebase",
     "deadline",
     "adc",
     "pwm",
@@ -23,7 +38,7 @@
     "byte_io"
   ],
   "tiers": {
-    "deep": "one native composition implements every currently declared provider capability",
+    "deep": "one native composition satisfies its versioned deep profile with exact compiled witnesses",
     "provider": "one or more portable provider traits implemented for the target",
     "core": "target startup and status path available; portable peripheral providers are incomplete",
     "absent": "no maintained target integration"
@@ -151,7 +166,7 @@
         {
           "platform": "nrf52840",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event_capture", "dma_completion", "servo_pwm", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
         }
       ]
     },
@@ -176,7 +191,7 @@
         {
           "platform": "nrf52840",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event_capture", "dma_completion", "servo_pwm", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
         }
       ]
     },
@@ -347,7 +362,7 @@
         {
           "platform": "esp32s3",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "servo_pwm", "i2c", "spi", "usb"]
+          "capabilities": ["timebase", "deadline", "pwm", "i2c", "spi", "usb"]
         }
       ]
     },
@@ -453,12 +468,12 @@
         {
           "platform": "ra4m1",
           "composition": "arduino",
-          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         },
         {
           "platform": "nrf52840",
           "composition": "arduino",
-          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         }
       ]
     },
@@ -509,7 +524,7 @@
         {
           "platform": "ra4m1",
           "composition": "arduino",
-          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         }
       ]
     },
@@ -592,7 +607,7 @@
         {
           "platform": "nrf52840",
           "composition": "arduino",
-          "capabilities": ["clock", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+          "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
         }
       ]
     }
@@ -608,9 +623,9 @@
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "event_capture": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
-            "servo_pwm": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
+            "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-usb-target-build"]},
@@ -620,7 +635,7 @@
         "arduino": {
           "surface": "arduino",
           "claims": {
-            "clock": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
+            "timebase": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
             "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
             "adc": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
             "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-nrf52840-compile"]},
@@ -728,7 +743,7 @@
           "claims": {
             "timebase": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "deadline": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
-            "servo_pwm": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "i2c": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "spi": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["esp32s3-usb-host", "esp32s3-target-build"]}
@@ -774,7 +789,7 @@
         "arduino": {
           "surface": "arduino",
           "claims": {
-            "clock": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
+            "timebase": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "deadline": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "adc": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},
             "pwm": {"maturity": "implemented", "evidence": ["arduino-facade-contract", "arduino-ra4m1-compile"]},

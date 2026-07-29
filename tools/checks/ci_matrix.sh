@@ -109,6 +109,12 @@ gate "flash tool fail-closed parser" python sdk/cli/nobro.py flash --selftest
 gate "portability matrix (6 MCU families)" \
   "$CURRENT_BASH" tools/checks/platforms/check_portability.sh
 
+gate "HAL/SAL v2 no_std contracts" \
+  "$CURRENT_BASH" -c 'cd core && \
+    cargo check --locked -p nobro-hal --no-default-features \
+      --features contract-only --target thumbv7em-none-eabihf && \
+    cargo check --locked -p nobro-device --target thumbv7em-none-eabihf'
+
 gate "reset platform evidence receipts" \
   python tools/checks/platforms/check_platform_tiers.py --begin-receipts cross-mcu
 

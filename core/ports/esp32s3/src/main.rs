@@ -28,7 +28,7 @@ fn main() -> ! {
     let started = Esp32S3Clock::now_us();
     let required = HardwareCapabilitySet::EMPTY
         .with(HardwareCapability::Timebase)
-        .with(HardwareCapability::DeadlineTimer)
+        .with(HardwareCapability::Deadline)
         .with(HardwareCapability::Usb);
     let providers_ok = Esp32S3Providers::supports(required);
     let armed = alarm.arm_after_us(2_000).is_ok();

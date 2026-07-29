@@ -205,6 +205,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("tier-c link", [py, "tools/build/build_libnobro.py", "--check"], ROOT),
         ("admission analysis", [py, "sdk/cli/nobro.py", "admit", "--selftest"], ROOT),
         ("capacity right-sizing", [py, "sdk/cli/nobro.py", "shrink", "--selftest"], ROOT),
+        ("HAL/SAL contract", [py, "tools/checks/platforms/check_hal_contract.py", "--selftest"], ROOT),
         ("platform tiers", [py, "tools/checks/platforms/check_platform_tiers.py", "--selftest"], ROOT),
         ("board-feature registry", [py, "tools/checks/platforms/check_board_features.py", "--selftest"], ROOT),
         ("adapter catalog", [py, "tools/checks/integrations/check_adapter_catalog.py"], ROOT),

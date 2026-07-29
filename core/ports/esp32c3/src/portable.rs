@@ -1,19 +1,25 @@
 //! Portable HAL provider contract on the ESP32-C3.
 //!
-//! Implements the SAME portable `nobro_hal` provider traits as the nRF52840
-//! deep HAL — a real RISC-V (rv32imc) backend, not an nRF-shaped placeholder.
+//! Implements the same portable `nobro_hal` provider traits as the nRF52840
+//! deep HAL: a real RISC-V (rv32imc) backend, not an nRF-shaped placeholder.
 //! The foundational timebase provider is implemented against esp-hal's tested
 //! systimer (`esp_hal::time::now()`, a 1 MHz monotonic instant), so kernel
 //! code generic over `HalClock`/`HalTimebaseProvider` runs unchanged here.
 //!
-//! Scope: timebase and compatibility/identity providers are implemented. Deadline
-//! capture, PWM, I2C/SPI, and lease providers remain unavailable on this port.
+//! Scope: timebase, USB, and compatibility/identity providers are implemented.
+//! Deadline, event, PWM, I2C/SPI, and lease providers remain unavailable on this port.
 
 use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
-use nobro_hal::{BoardCapacity, BoardDesc, HardwareCapability, HardwareCapabilitySet};
+use nobro_hal::{
+    BoardCapacity, BoardDesc, CapabilityProfileKind, HardwareCapability,
+    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
+};
 
 /// The ESP32-C3 portable platform backend.
 pub struct Esp32C3;
+
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Esp32C3 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Esp32C3 {}
 
 /// Minimal board descriptor so `PlatformHal` has an associated `Board`.
 pub struct Esp32C3Board;
@@ -47,9 +53,29 @@ impl HalTimebaseProvider for Esp32C3 {
 }
 
 impl HalCompatibility for Esp32C3 {
-    const CAPABILITIES: HardwareCapabilitySet =
-        HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
+                HardwareCapability::Timebase,
+            )
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
+        let supported = witnesses;
+        HardwareCapabilityDeclaration::new(
+            "provider-esp32c3-v2",
+            CapabilityProfileKind::Constrained,
+            supported,
+            supported,
+            HardwareCapabilitySet::EMPTY,
+            HardwareCapabilitySet::ALL.without(supported),
+            witnesses,
+        )
+    };
 }
+
+const _: [(); 1] =
+    [(); <Esp32C3 as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] =
+    [(); <Esp32C3 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 impl PlatformHal for Esp32C3 {
     const PLATFORM_ID: &'static str = "esp32c3";

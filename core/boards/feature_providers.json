@@ -56,7 +56,11 @@
     "deterministic_recovery",
     "generation_invalidation",
     "quiesce_release_receipt",
-    "application_static_cleanup"
+    "application_static_cleanup",
+    "operation_deadline",
+    "cancellation_receipt",
+    "reset_receipt",
+    "fault_receipt"
   ],
   "lifecycle_status_values": [
     "verified",
@@ -83,10 +87,18 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
-        "bus_reset": "The ArduinoBLE API does not expose an independent controller bus-reset operation; owned quiesce and full stack remount are the supported recovery boundary."
+        "bus_reset": "The ArduinoBLE API does not expose an independent controller bus-reset operation; owned quiesce and full stack remount are the supported recovery boundary.",
+        "operation_deadline": "The facade has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The facade has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Full remount is available, but it has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed facade faults have not yet been bridged to the v2 fault receipt."
       }
     },
     {
@@ -108,11 +120,19 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
         "absent_device": "The Bluetooth controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
-        "bus_reset": "The facade supports bounded controller teardown/remount, but does not expose a separate Bluedroid or NimBLE controller-reset primitive."
+        "bus_reset": "The facade supports bounded controller teardown/remount, but does not expose a separate Bluedroid or NimBLE controller-reset primitive.",
+        "operation_deadline": "The facade has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The facade has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Full remount is available, but it has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed facade faults have not yet been bridged to the v2 fault receipt."
       }
     },
     {
@@ -134,12 +154,20 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
         "absent_device": "The WiFi controller is integrated into the promoted ESP32 targets rather than a detachable peripheral.",
         "bus_reset": "The facade supports bounded disconnect, teardown, and remount, but no independent radio-controller reset.",
-        "stale_session": "The facade invalidates link state, while application-owned vendor socket objects remain outside its generation tracking."
+        "stale_session": "The facade invalidates link state, while application-owned vendor socket objects remain outside its generation tracking.",
+        "operation_deadline": "The facade has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The facade has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Controller remount is available, but it has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed facade faults have not yet been bridged to the v2 fault receipt."
       }
     },
     {
@@ -161,11 +189,19 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
         "bus_reset": "WiFiS3 1.5.0 exposes disconnect and stack remount, not an independent ESP32-S3 controller hard-reset operation.",
-        "stale_session": "The facade invalidates link state, while caller-owned WiFiClient socket objects remain outside its generation tracking."
+        "stale_session": "The facade invalidates link state, while caller-owned WiFiClient socket objects remain outside its generation tracking.",
+        "operation_deadline": "The facade has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The facade has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Controller remount is available, but it has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed facade faults have not yet been bridged to the v2 fault receipt."
       }
     },
     {
@@ -187,13 +223,21 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
         "absent_device": "The SAR ADC is integrated into the promoted ESP32 targets.",
         "detach_reconnect": "The integrated SAR ADC is not a detachable device.",
         "bus_reset": "The persistent transport owns an ADC-DMA engine rather than a resettable external bus.",
-        "stale_session": "The owned transport rejects I/O while quiesced, but does not publish a transferable session-generation token."
+        "stale_session": "The owned transport rejects I/O while quiesced, but does not publish a transferable session-generation token.",
+        "operation_deadline": "The transport has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The transport has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Transport restart is available, but it has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed transport faults have not yet been bridged to the v2 fault receipt."
       }
     },
     {
@@ -215,11 +259,19 @@
         "deterministic_recovery": "verified",
         "generation_invalidation": "verified",
         "quiesce_release_receipt": "verified",
-        "application_static_cleanup": "verified"
+        "application_static_cleanup": "verified",
+        "operation_deadline": "limited",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
       },
       "limitations": {
         "bus_reset": "Recovery reinitializes the codec and I2S transport, but the facade does not expose a separate I2C bus-reset primitive.",
-        "stale_session": "The adapter owns one transport instance and rejects I/O outside READY; it does not publish transferable session handles."
+        "stale_session": "The adapter owns one transport instance and rejects I/O outside READY; it does not publish transferable session handles.",
+        "operation_deadline": "The adapter has bounded calls but has not adopted the v2 per-operation deadline token.",
+        "cancellation_receipt": "The adapter has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Codec and transport remount are available, but have not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed adapter faults have not yet been bridged to the v2 fault receipt."
       }
     }
   ],

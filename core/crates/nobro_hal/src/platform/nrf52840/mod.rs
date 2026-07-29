@@ -9,12 +9,23 @@ use crate::radio_sim::RadioRxSim;
 use crate::snapshots::EventCaptureSnapshot;
 use crate::timer::MicroTimer;
 use crate::traits::{
-    HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalI2c, HalLease,
-    HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider, HardwareCapability,
-    HardwareCapabilitySet, LeaseClass, LeaseId, PlatformHal, TransferMode,
+    CapabilityProfileKind, HalBus, HalClock, HalCompatibility, HalDeadline, HalEventCapture,
+    HalI2c, HalLease, HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider,
+    HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
+    HardwareCapabilityWitness, LeaseClass, LeaseId, PlatformHal, TransferMode,
 };
 
 pub struct Nrf52840;
+
+impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840 {}
 
 const PPI_BASE: u32 = 0x4001_F000;
 const PPI_CHEN: u32 = 0x500;
@@ -102,16 +113,39 @@ pub const fn bus_layout() -> BusLayout {
 }
 
 impl HalCompatibility for Nrf52840 {
-    const CAPABILITIES: HardwareCapabilitySet = HardwareCapabilitySet::EMPTY
-        .with(HardwareCapability::Timebase)
-        .with(HardwareCapability::ResourceLease)
-        .with(HardwareCapability::DeadlineTimer)
-        .with(HardwareCapability::EventCapture)
-        .with(HardwareCapability::ServoPwm)
-        .with(HardwareCapability::Bus)
-        .with(HardwareCapability::I2c)
-        .with(HardwareCapability::Spi);
+    const DECLARATION: HardwareCapabilityDeclaration = {
+        let witnesses = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(HardwareCapability::Deadline)
+            .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
+            .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
+                HardwareCapability::DmaCompletion,
+            )
+            .witnessed::<Self, { HardwareCapability::Servo as u8 }>(HardwareCapability::Servo)
+            .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
+            .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
+        let supported = witnesses;
+        let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Cache)
+            .with(HardwareCapability::Multicore);
+        HardwareCapabilityDeclaration::new(
+            "deep-native-v2",
+            CapabilityProfileKind::Deep,
+            supported,
+            supported,
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(supported)
+                .without(inapplicable),
+            witnesses,
+        )
+    };
 }
+
+const _: [(); 1] = [(); <Nrf52840 as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] = [(); <Nrf52840 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 impl PlatformHal for Nrf52840 {
     const PLATFORM_ID: &'static str = "nrf52840";
@@ -291,16 +325,19 @@ mod tests {
     fn nrf52840_declares_demo_hardware_capabilities() {
         let required = HardwareCapabilitySet::EMPTY
             .with(HardwareCapability::Timebase)
-            .with(HardwareCapability::ResourceLease)
-            .with(HardwareCapability::DeadlineTimer)
-            .with(HardwareCapability::EventCapture)
-            .with(HardwareCapability::ServoPwm)
-            .with(HardwareCapability::Bus)
+            .with(HardwareCapability::Lease)
+            .with(HardwareCapability::Deadline)
+            .with(HardwareCapability::Event)
+            .with(HardwareCapability::DmaCompletion)
+            .with(HardwareCapability::Servo)
             .with(HardwareCapability::I2c)
-            .with(HardwareCapability::Spi);
+            .with(HardwareCapability::Spi)
+            .with(HardwareCapability::Usb);
 
         assert!(Nrf52840::supports(required));
         assert_eq!(Nrf52840::CAPABILITIES.missing(required).bits(), 0);
+        assert!(Nrf52840::DECLARATION.is_valid());
+        assert!(Nrf52840::DECLARATION.is_exact_profile());
         assert_eq!(<TwimBus as HalI2c>::TRANSFER_MODE, TransferMode::Polling);
         assert_eq!(
             <crate::spim_hw::Spim0 as HalSpi>::TRANSFER_MODE,

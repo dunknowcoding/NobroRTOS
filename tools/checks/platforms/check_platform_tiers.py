@@ -37,6 +37,7 @@ import tempfile
 from unittest import mock
 
 import check_board_features
+import check_hal_contract
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -107,6 +108,8 @@ def validate(
         feature_registry = json.loads(FEATURE_REGISTRY.read_text(encoding="utf-8"))
     adapter_catalog = json.loads(ADAPTER_CATALOG.read_text(encoding="utf-8"))
     errors.extend(check_board_features.validate(feature_registry, adapter_catalog))
+    hal_contract = json.loads(check_hal_contract.CONTRACT.read_text(encoding="utf-8"))
+    errors.extend(check_hal_contract.validate(hal_contract, matrix))
     if matrix.get("feature_registry") != "core/boards/feature_providers.json":
         errors.append("feature_registry must name the public board-feature registry")
     feature_capabilities = check_board_features.capability_ids(feature_registry)
@@ -450,13 +453,6 @@ def validate(
 
         if tier == "provider" and native_claims == 0:
             errors.append(f"{prefix}: provider tier requires at least one native claim")
-        if tier == "deep" and not any(
-            providers.issubset(capabilities) for capabilities in complete_native_compositions
-        ):
-            errors.append(
-                f"{prefix}: deep tier requires one native composition with every implemented "
-                "provider capability"
-            )
         if tier == "absent" and compositions:
             errors.append(f"{prefix}: absent tier cannot publish compositions")
 
@@ -1072,7 +1068,7 @@ def selftest() -> int:
 
     false_deep = copy.deepcopy(good)
     false_deep["platforms"]["rp2350"]["tier"] = "deep"
-    _expect_error(validate(false_deep), "deep tier requires one native composition")
+    _expect_error(validate(false_deep), "profile kind does not match the platform tier")
 
     unknown_claim = copy.deepcopy(good)
     unknown_claim["platforms"]["rp2350"]["compositions"]["native"]["claims"]["magic"] = {
@@ -1207,9 +1203,9 @@ def selftest() -> int:
             }
         ],
     }
-    _expect(
-        validate(future_composition, check_runner_bindings=False) == [],
-        "a separately evidenced future composition must validate",
+    _expect_error(
+        validate(future_composition, check_runner_bindings=False),
+        "HAL declarations do not exactly cover native platform compositions",
     )
 
     missing_root = copy.deepcopy(good)

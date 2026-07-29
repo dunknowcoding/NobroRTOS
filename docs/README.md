@@ -1,6 +1,6 @@
 # NobroRTOS Documentation
 
-Eight documents, one purpose each. Start at the top; go deeper as needed.
+Start at the top; go deeper as needed.
 
 | Document | Read it when you want to... |
 | --- | --- |
@@ -9,6 +9,7 @@ Eight documents, one purpose each. Start at the top; go deeper as needed.
 | [API.md](API.md) | look up the public surface: Rust crates, C ABI, Python package, host contract |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | understand the layers, design rules, mountable backends, and the Universal Driver Interface |
 | [PORTING.md](PORTING.md) | adapt existing bounded logic or port NobroRTOS to new silicon |
+| [HAL_SAL_CONTRACT.md](HAL_SAL_CONTRACT.md) | declare granular native capabilities, profiles, witnesses, and provider lifecycles |
 | [LIMITATIONS.md](LIMITATIONS.md) | see exact scheduling, resource, isolation, tooling, and platform support boundaries |
 | [ERROR_CODES.md](ERROR_CODES.md) | decode a stable `NOBRO-E0xx` failure and take the first recovery step |
 | [api-index.md](api-index.md) | scan the generated per-crate symbol index (appendix to API.md) |

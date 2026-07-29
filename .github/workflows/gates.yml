@@ -69,6 +69,7 @@ jobs:
           python tools/checks/integrations/check_ros_bridge.py --selftest
           python tools/checks/product/check_udi.py --selftest
           python sdk/cli/nobro.py shrink --selftest
+          python tools/checks/platforms/check_hal_contract.py --selftest
           python tools/checks/platforms/check_platform_tiers.py --selftest
       - name: complete product experience gates
         run: |
@@ -81,6 +82,7 @@ jobs:
         # -O strips `assert`; these gates must still fail closed on their own logic.
         run: |
           python -O sdk/cli/nobro.py admit --selftest
+          python -O tools/checks/platforms/check_hal_contract.py --selftest
           python -O tools/checks/platforms/check_platform_tiers.py --selftest
           python -O sdk/cli/nobro.py adapter --selftest
           python -O tools/checks/platforms/check_board_features.py --selftest
