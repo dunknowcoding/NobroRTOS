@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+## 0.3.3 - 2026-07-29
+
 ### Changed
+
+- ESP32 Bluedroid advertising configuration and post-disconnect restart now
+  use bounded, caller-deadline retries only after rejection or completed failure;
+  accepted pending transitions are never overlapped and timeouts fail closed.
 
 - `nobro firmware` now reads board-owned target/linker/startup contracts and
   target-builds standalone nRF52840, RA4M1, and SAMD21 application layouts.

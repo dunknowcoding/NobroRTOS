@@ -43,6 +43,15 @@ BANNER = (
 )
 
 
+def package_version() -> str:
+    for line in (PKG / "library.properties").read_text(encoding="utf-8").splitlines():
+        if line.startswith("version="):
+            version = line.removeprefix("version=").strip()
+            if version:
+                return version
+    raise RuntimeError("packages/arduino/library.properties has no version")
+
+
 def vendored_text(h: Path) -> str:
     return BANNER.format(name=h.name) + h.read_text(encoding="utf-8")
 
@@ -123,7 +132,7 @@ def make_zip() -> int:
     rc = check()
     if rc:
         return rc
-    out = ROOT / "_work" / "NobroRTOS-arduino.zip"
+    out = ROOT / "_work" / f"NobroRTOS-Arduino-{package_version()}.zip"
     out.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(PKG.rglob("*")):
