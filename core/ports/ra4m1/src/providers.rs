@@ -1,104 +1,172 @@
 //! Reusable RA4M1 providers used by the native Rust port.
 //!
-//! The clock uses the Cortex-M4 DWT counter after the board clock is configured at
-//! 48 MHz. Callers must sample it at least once per 32-bit counter wrap (about 89.48 s).
-//! It measures active core-clock time: clock-stopping sleep/deep-standby and debugger
-//! halts are not promised to advance it. Reinitialize or reconcile it against an always-on
-//! source after such a transition. The deadline provider owns SysTick and composes
-//! long deadlines from bounded 24-bit chunks; callers do not inherit the raw SysTick
-//! reload ceiling. ADC, PWM, I2C, and SPI on Arduino UNO R4 are exposed through
-//! `NobroArduinoProviders.h`, which delegates to the installed Arduino Renesas core
-//! instead of duplicating FSP.
+//! AGT0 is a LOCO-clocked monotonic source and AGT1 is a chained one-shot alarm.
+//! Both continue through ordinary Cortex-M `WFI` CPU sleep. Deep software standby
+//! resets or stops composition-owned state and is intentionally not claimed here.
 
 use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
-use cortex_m::peripheral::{DCB, DWT, SYST};
 use nobro_hal::{
-    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HardwareCapability,
-    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
+    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalLease,
+    HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
+    HardwareCapabilityWitness,
 };
 use nobro_usb::{CdcState, MountedUsb, Stage, UsbIoError, UsbStack, RA4M1_USB_CONFIG};
 
-const CORE_CLOCK_HZ: u64 = 48_000_000;
-const CYCLES_PER_US: u64 = CORE_CLOCK_HZ / 1_000_000;
-const SYST_MAX_RELOAD: u32 = 0x00ff_ffff;
+use crate::lease::{Ra4m1LeaseGuard, Ra4m1Leases};
+use crate::power_reset::{PowerVeto, Ra4m1Power};
+use nobro_hal::LeaseId;
+
+const LOCO_HZ: u64 = 32_768;
+const AGT_PERIOD_TICKS: u64 = 65_536;
+#[cfg(target_arch = "arm")]
+const AGT0: usize = 0x4008_4000;
+#[cfg(target_arch = "arm")]
+const AGT1: usize = 0x4008_4100;
+#[cfg(target_arch = "arm")]
+const AGT_COUNT: usize = 0x00;
+#[cfg(target_arch = "arm")]
+const AGTCR: usize = 0x08;
+#[cfg(target_arch = "arm")]
+const AGTMR1: usize = 0x09;
+#[cfg(target_arch = "arm")]
+const AGTMR2: usize = 0x0a;
+#[cfg(target_arch = "arm")]
+const AGTIOC: usize = 0x0c;
+#[cfg(target_arch = "arm")]
+const ICU_IELSR_BASE: usize = 0x4000_6300;
+#[cfg(target_arch = "arm")]
+const IELSR_IR: u32 = 1 << 16;
+#[cfg(target_arch = "arm")]
+const ELC_EVENT_AGT0_INT: u32 = 30;
+#[cfg(target_arch = "arm")]
+const ELC_EVENT_AGT1_INT: u32 = 33;
+pub const RA4M1_CLOCK_IRQ: usize = 28;
+pub const RA4M1_ALARM_IRQ: usize = 29;
+#[cfg(target_arch = "arm")]
+const NVIC_ISER: usize = 0xE000_E100;
+#[cfg(target_arch = "arm")]
+const NVIC_ICER: usize = 0xE000_E180;
+#[cfg(target_arch = "arm")]
+const NVIC_ICPR: usize = 0xE000_E280;
+#[cfg(target_arch = "arm")]
+const NVIC_IPR: usize = 0xE000_E400;
+#[cfg(target_arch = "arm")]
+const MSTPCRD: usize = 0x4004_7008;
+#[cfg(target_arch = "arm")]
+const PRCR: usize = 0x4001_E3FE;
+#[cfg(target_arch = "arm")]
+const AGT0_MSTP: u32 = 1 << 3;
+#[cfg(target_arch = "arm")]
+const AGT1_MSTP: u32 = 1 << 2;
+#[cfg(target_arch = "arm")]
+const AGT_TUNDF: u8 = 1 << 5;
+#[cfg(target_arch = "arm")]
+const AGT_RUNNING: u8 = 1 << 1;
+#[cfg(target_arch = "arm")]
+const AGT_FORCE_STOP: u8 = 0xf4;
+#[cfg(target_arch = "arm")]
+const AGT_START: u8 = 0xf1;
+#[cfg(target_arch = "arm")]
+const AGT_LOCO_TIMER_MODE: u8 = 0x41;
+const CLOCK_OWNER: u8 = 0xf0;
+const ALARM_OWNER: u8 = 0xf1;
 
 pub struct Ra4m1Providers;
 
 impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Ra4m1Providers {}
 
 impl HalCompatibility for Ra4m1Providers {
     const DECLARATION: HardwareCapabilityDeclaration = {
         let witnesses = HardwareCapabilitySet::EMPTY
-            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
-                HardwareCapability::Timebase,
-            )
-            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(
-                HardwareCapability::Deadline,
-            )
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(HardwareCapability::Deadline)
+            .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
             )
-            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
+            .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
+            .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
+            .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
+            .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
+            .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
+            .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
+        let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Cache)
+            .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
             "provider-ra4m1-v2",
-            CapabilityProfileKind::Constrained,
+            CapabilityProfileKind::Deep,
             supported,
             supported,
-            HardwareCapabilitySet::EMPTY,
-            HardwareCapabilitySet::ALL.without(supported),
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(supported)
+                .without(inapplicable),
             witnesses,
         )
     };
 }
 
-const _: [(); 1] =
-    [(); <Ra4m1Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] = [(); <Ra4m1Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
 const _: [(); 1] =
     [(); <Ra4m1Providers as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
 #[derive(Clone, Copy)]
 struct ClockState {
-    last_cycles: u32,
-    total_cycles: u64,
+    epochs: u64,
     initialized: bool,
 }
 
 impl ClockState {
     const fn uninitialized() -> Self {
         Self {
-            last_cycles: 0,
-            total_cycles: 0,
+            epochs: 0,
             initialized: false,
         }
     }
 
-    const fn started_at(current: u32) -> Self {
+    const fn started() -> Self {
         Self {
-            last_cycles: current,
-            total_cycles: 0,
+            epochs: 0,
             initialized: true,
         }
     }
 
-    /// Extend one observed 32-bit sample into accumulated cycles.
-    ///
-    /// This is deliberately pure with respect to hardware: the caller owns
-    /// synchronization and supplies the DWT sample. `wrapping_sub` accounts for one
-    /// wrap, while the documented sampling contract rules out two unseen wraps.
-    fn observe(&mut self, current: u32) -> Option<u64> {
+    fn observe(&self, down_counter: u16) -> Option<u64> {
         if !self.initialized {
             return None;
         }
-        self.total_cycles = self
-            .total_cycles
-            .saturating_add(u64::from(current.wrapping_sub(self.last_cycles)));
-        self.last_cycles = current;
-        Some(self.total_cycles)
+        Some(
+            self.epochs
+                .saturating_mul(AGT_PERIOD_TICKS)
+                .saturating_add(u64::from(u16::MAX - down_counter)),
+        )
+    }
+
+    fn underflow(&mut self) {
+        if self.initialized {
+            self.epochs = self.epochs.saturating_add(1);
+        }
     }
 }
 
@@ -112,44 +180,52 @@ static CLOCK: ClockStorage = ClockStorage(UnsafeCell::new(ClockState::uninitiali
 pub struct Ra4m1Clock;
 
 impl Ra4m1Clock {
-    /// Approximate interval, in microseconds, before the 32-bit 48 MHz counter wraps.
-    /// Callers must observe the clock strictly sooner than this interval.
-    pub const COUNTER_WRAP_US: u64 = (1_u64 << 32) / CYCLES_PER_US;
+    pub const TICK_HZ: u64 = LOCO_HZ;
+    pub const ADVANCES_IN_CPU_SLEEP: bool = true;
+    pub const ADVANCES_IN_DEEP_STANDBY: bool = false;
 
-    /// Whether this provider promises progress while the core clock is stopped.
-    pub const ADVANCES_WHEN_CORE_CLOCK_STOPPED: bool = false;
-
-    /// Start the free-running DWT cycle counter after the RA4M1 clock reaches 48 MHz.
-    ///
-    /// Call [`HalClock::now_us`] at least once every 89.48 seconds while the core clock
-    /// runs. The 32-bit counter cannot reveal multiple wraps between observations.
-    /// DWT is not an always-on wall clock: reinitialize or externally reconcile elapsed
-    /// time after any mode that stops the core clock, including deep standby.
-    pub fn init(dcb: &mut DCB, dwt: &mut DWT) {
+    /// Claim AGT0 and start a LOCO-clocked free-running timebase.
+    pub fn try_init() -> Result<(), nobro_hal::LeaseError> {
+        Ra4m1Leases::acquire(LeaseId::SYSTEM_TIMER, CLOCK_OWNER)?;
         critical_section::with(|_| {
-            dcb.enable_trace();
-            dwt.set_cycle_count(0);
-            dwt.enable_cycle_counter();
-            let current = DWT::cycle_count();
             // SAFETY: the critical-section token serializes the only mutable access.
             let state = unsafe { &mut *CLOCK.0.get() };
-            *state = ClockState::started_at(current);
+            *state = ClockState::started();
         });
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            start_module(AGT0_MSTP);
+            initialize_agt(AGT0, RA4M1_CLOCK_IRQ, ELC_EVENT_AGT0_INT, u16::MAX);
+        }
+        Ok(())
+    }
+
+    #[track_caller]
+    pub fn init() {
+        if let Err(error) = Self::try_init() {
+            panic!("RA4M1 AGT0 timebase lease failed: {error:?}");
+        }
+    }
+
+    fn ticks() -> u64 {
+        critical_section::with(|_| {
+            #[cfg(target_arch = "arm")]
+            unsafe {
+                service_clock_underflow();
+            }
+            #[cfg(target_arch = "arm")]
+            let counter = unsafe { read16(AGT0 + AGT_COUNT) };
+            #[cfg(not(target_arch = "arm"))]
+            let counter = u16::MAX;
+            // SAFETY: the critical-section token serializes state and the AGT sample.
+            unsafe { (&*CLOCK.0.get()).observe(counter).unwrap_or(0) }
+        })
     }
 }
 
 impl HalClock for Ra4m1Clock {
     fn now_us() -> u64 {
-        critical_section::with(|_| {
-            // Read CYCCNT while interrupts are masked so the sample and the state update
-            // form one observation. Otherwise an interrupt-level caller could advance the
-            // extension state between the sample and update, making the older sample look
-            // like a nearly complete counter wrap.
-            let current = DWT::cycle_count();
-            // SAFETY: the critical-section token serializes the only mutable access.
-            let state = unsafe { &mut *CLOCK.0.get() };
-            state.observe(current).unwrap_or(0) / CYCLES_PER_US
-        })
+        Self::ticks().saturating_mul(1_000_000) / LOCO_HZ
     }
 }
 
@@ -157,62 +233,71 @@ impl HalClock for Ra4m1Clock {
 pub enum AlarmError {
     ZeroDelay,
     DelayTooLong,
+    Lease(nobro_hal::LeaseError),
 }
 
-fn systick_reload(delay_us: u64) -> Result<u32, AlarmError> {
+fn delay_to_ticks(delay_us: u64) -> Result<u64, AlarmError> {
     if delay_us == 0 {
         return Err(AlarmError::ZeroDelay);
     }
-    let cycles = delay_us
-        .checked_mul(CYCLES_PER_US)
+    let scaled = delay_us
+        .checked_mul(LOCO_HZ)
         .ok_or(AlarmError::DelayTooLong)?;
-    let reload = cycles.checked_sub(1).ok_or(AlarmError::ZeroDelay)?;
-    if reload > u64::from(SYST_MAX_RELOAD) {
-        return Err(AlarmError::DelayTooLong);
-    }
-    Ok(reload as u32)
+    Ok(scaled.saturating_add(999_999) / 1_000_000)
 }
 
-fn take_alarm_chunk(remaining_us: u64) -> Result<(u64, u64), AlarmError> {
-    if remaining_us == 0 {
+fn take_alarm_chunk(remaining_ticks: u64) -> Result<(u16, u64), AlarmError> {
+    if remaining_ticks == 0 {
         return Err(AlarmError::ZeroDelay);
     }
-    let chunk = remaining_us.min(Ra4m1Alarm::MAX_CHUNK_US);
-    Ok((chunk, remaining_us - chunk))
+    let ticks = remaining_ticks.min(AGT_PERIOD_TICKS);
+    Ok(((ticks - 1) as u16, remaining_ticks - ticks))
 }
 
 pub struct Ra4m1Alarm {
-    systick: SYST,
+    _lease: Ra4m1LeaseGuard,
     deadline_us: Option<u64>,
-    remaining_us: u64,
+    remaining_ticks: u64,
 }
 
+static ALARM_FIRED: AtomicBool = AtomicBool::new(false);
+
 impl Ra4m1Alarm {
-    /// Largest whole-microsecond hardware chunk representable by 24-bit SysTick.
-    pub const MAX_CHUNK_US: u64 = (SYST_MAX_RELOAD as u64 + 1) / CYCLES_PER_US;
+    pub const MAX_CHUNK_TICKS: u64 = AGT_PERIOD_TICKS;
+    pub const MAX_CHUNK_US: u64 = AGT_PERIOD_TICKS * 1_000_000 / LOCO_HZ;
 
-    /// Hardware reload ceiling exposed for admission checks and diagnostics.
-    pub const MAX_RELOAD: u32 = SYST_MAX_RELOAD;
-
-    pub fn new(mut systick: SYST) -> Self {
-        systick.disable_counter();
-        systick.disable_interrupt();
-        systick.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
-        Self {
-            systick,
+    pub fn try_new(owner: u8) -> Result<Self, AlarmError> {
+        let lease = Ra4m1Leases::acquire_guard(LeaseId::DEADLINE_TIMER, owner)
+            .map_err(AlarmError::Lease)?;
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            start_module(AGT1_MSTP);
+            stop_agt(AGT1);
+            configure_irq(RA4M1_ALARM_IRQ, ELC_EVENT_AGT1_INT);
+        }
+        Ok(Self {
+            _lease: lease,
             deadline_us: None,
-            remaining_us: 0,
+            remaining_ticks: 0,
+        })
+    }
+
+    #[track_caller]
+    pub fn new() -> Self {
+        match Self::try_new(ALARM_OWNER) {
+            Ok(alarm) => alarm,
+            Err(error) => panic!("RA4M1 AGT1 alarm initialization failed: {error:?}"),
         }
     }
 
     fn arm_next_chunk(&mut self) -> Result<(), AlarmError> {
-        let (chunk, remaining) = take_alarm_chunk(self.remaining_us)?;
-        let reload = systick_reload(chunk)?;
-        self.remaining_us = remaining;
-        self.systick.disable_counter();
-        self.systick.set_reload(reload);
-        self.systick.clear_current();
-        self.systick.enable_counter();
+        let (_reload, remaining) = take_alarm_chunk(self.remaining_ticks)?;
+        self.remaining_ticks = remaining;
+        ALARM_FIRED.store(false, Ordering::Release);
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            initialize_agt(AGT1, RA4M1_ALARM_IRQ, ELC_EVENT_AGT1_INT, _reload);
+        }
         Ok(())
     }
 }
@@ -227,17 +312,22 @@ impl HalAlarm for Ra4m1Alarm {
         let deadline = Ra4m1Clock::now_us()
             .checked_add(delay_us)
             .ok_or(AlarmError::DelayTooLong)?;
+        let ticks = delay_to_ticks(delay_us)?;
         self.deadline_us = Some(deadline);
-        self.remaining_us = delay_us;
+        self.remaining_ticks = ticks;
         self.arm_next_chunk()?;
         Ok(deadline)
     }
 
     fn cancel(&mut self) {
-        self.systick.disable_counter();
-        self.systick.clear_current();
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            stop_agt(AGT1);
+            clear_irq(RA4M1_ALARM_IRQ);
+        }
+        ALARM_FIRED.store(false, Ordering::Release);
         self.deadline_us = None;
-        self.remaining_us = 0;
+        self.remaining_ticks = 0;
     }
 
     fn deadline_us(&self) -> Option<u64> {
@@ -251,13 +341,11 @@ impl HalAlarm for Ra4m1Alarm {
         if self.deadline_us.is_some_and(|deadline| now_us >= deadline) {
             self.cancel();
             true
-        } else if self.systick.has_wrapped() {
-            if self.remaining_us == 0 {
+        } else if ALARM_FIRED.swap(false, Ordering::AcqRel) {
+            if self.remaining_ticks == 0 {
                 self.cancel();
                 true
             } else {
-                // The remaining duration was validated before the first chunk. A later
-                // chunk is at most MAX_CHUNK_US and therefore cannot fail.
                 let _ = self.arm_next_chunk();
                 false
             }
@@ -267,8 +355,125 @@ impl HalAlarm for Ra4m1Alarm {
     }
 }
 
+impl Drop for Ra4m1Alarm {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn ielsr(irq: usize) -> usize {
+    ICU_IELSR_BASE + irq * 4
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn start_module(mask: u32) {
+    let prior = read16(PRCR) & 0x0003;
+    write16(PRCR, 0xa502);
+    write32(MSTPCRD, read32(MSTPCRD) & !mask);
+    write16(PRCR, 0xa500 | prior);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn configure_irq(irq: usize, event: u32) {
+    let mask = 1u32 << irq;
+    write32(NVIC_ICER, mask);
+    write32(NVIC_ICPR, mask);
+    write32(ielsr(irq), event);
+    write8(NVIC_IPR + irq, 0xc0);
+    write32(NVIC_ISER, mask);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn clear_irq(irq: usize) {
+    write32(ielsr(irq), read32(ielsr(irq)) & !IELSR_IR);
+    write32(NVIC_ICPR, 1u32 << irq);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn stop_agt(base: usize) {
+    write8(base + AGTCR, AGT_FORCE_STOP);
+    for _ in 0..65_536 {
+        if read8(base + AGTCR) & AGT_RUNNING == 0 {
+            break;
+        }
+        core::hint::spin_loop();
+    }
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn initialize_agt(base: usize, irq: usize, event: u32, reload: u16) {
+    stop_agt(base);
+    write8(base + AGTMR2, 0);
+    write8(base + AGTMR1, AGT_LOCO_TIMER_MODE);
+    write8(base + AGTMR2, 0);
+    write8(base + AGTIOC, 0);
+    write16(base + AGT_COUNT, reload);
+    write8(base + AGTCR, 0);
+    configure_irq(irq, event);
+    write8(base + AGTCR, AGT_START);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn service_clock_underflow() {
+    if read8(AGT0 + AGTCR) & AGT_TUNDF != 0 {
+        let state = &mut *CLOCK.0.get();
+        state.underflow();
+        let value = read8(AGT0 + AGTCR) & !0xf0;
+        write8(AGT0 + AGTCR, value);
+        clear_irq(RA4M1_CLOCK_IRQ);
+    }
+}
+
+#[cfg(target_arch = "arm")]
+pub unsafe extern "C" fn ra4m1_clock_irq() {
+    critical_section::with(|_| service_clock_underflow());
+}
+
+#[cfg(target_arch = "arm")]
+pub unsafe extern "C" fn ra4m1_alarm_irq() {
+    stop_agt(AGT1);
+    let value = read8(AGT1 + AGTCR) & !0xf0;
+    write8(AGT1 + AGTCR, value);
+    clear_irq(RA4M1_ALARM_IRQ);
+    ALARM_FIRED.store(true, Ordering::Release);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn read8(address: usize) -> u8 {
+    (address as *const u8).read_volatile()
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn write8(address: usize, value: u8) {
+    (address as *mut u8).write_volatile(value);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn read16(address: usize) -> u16 {
+    (address as *const u16).read_volatile()
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn write16(address: usize, value: u16) {
+    (address as *mut u16).write_volatile(value);
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn read32(address: usize) -> u32 {
+    (address as *const u32).read_volatile()
+}
+
+#[cfg(target_arch = "arm")]
+unsafe fn write32(address: usize, value: u32) {
+    (address as *mut u32).write_volatile(value);
+}
+
 /// RA4M1 byte provider over the backend selected and exclusively owned by `nobro_usb`.
-pub struct Ra4m1Usb(MountedUsb);
+pub struct Ra4m1Usb {
+    mounted: MountedUsb,
+    _power_veto: PowerVeto,
+}
 
 impl Ra4m1Usb {
     /// Mount the port's fixed flash-resident descriptor identity.
@@ -277,7 +482,16 @@ impl Ra4m1Usb {
     /// backend cannot generate descriptors at runtime, so an input mismatch would only
     /// turn into a late target panic.
     pub fn try_mount() -> Result<Self, nobro_usb::UsbMountError> {
-        nobro_usb::try_mount(&RA4M1_USB_CONFIG).map(Self)
+        let mounted = nobro_usb::try_mount(&RA4M1_USB_CONFIG)?;
+        let power_veto = match Ra4m1Power::veto(0) {
+            Ok(veto) => veto,
+            // Reason bit zero is statically within the admitted 32-bit mask.
+            Err(_) => unreachable!(),
+        };
+        Ok(Self {
+            mounted,
+            _power_veto: power_veto,
+        })
     }
 
     /// Compatibility wrapper for firmware that deliberately treats mount failure as
@@ -292,26 +506,26 @@ impl Ra4m1Usb {
     }
 
     pub fn poll(&mut self) {
-        let _ = self.0.poll();
+        let _ = self.mounted.poll();
     }
 
     pub fn configured(&self) -> bool {
-        self.0.state() == CdcState::Configured
+        self.mounted.state() == CdcState::Configured
     }
 
     pub fn stage(&self) -> Stage {
-        self.0.stage()
+        self.mounted.stage()
     }
 
     /// Force the native controller to drop D+ while the board USB mux is restored to
     /// its upload-visible bridge route.
     pub fn disconnect_link(&mut self) {
-        self.0.disconnect_link();
+        self.mounted.disconnect_link();
     }
 
     /// Re-arm the existing controller instance after the board mux is routed to RA4M1.
     pub fn reconnect_link(&mut self) {
-        self.0.reconnect_link();
+        self.mounted.reconnect_link();
     }
 }
 
@@ -319,73 +533,69 @@ impl HalByteIo for Ra4m1Usb {
     type Error = UsbIoError;
 
     fn read_available(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error> {
-        self.0.read_available(bytes)
+        self.mounted.read_available(bytes)
     }
 
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.0.write_all(bytes)
+        self.mounted.write_all(bytes)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.0.flush_pending()
+        self.mounted.flush_pending()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{systick_reload, take_alarm_chunk, AlarmError, ClockState, Ra4m1Alarm};
+    use super::{delay_to_ticks, take_alarm_chunk, AlarmError, ClockState, AGT_PERIOD_TICKS};
 
     #[test]
-    fn clock_state_extends_normal_observations() {
-        let mut state = ClockState::started_at(100);
-        assert_eq!(state.observe(148), Some(48));
-        assert_eq!(state.observe(196), Some(96));
+    fn clock_state_extends_down_counter_observations() {
+        let state = ClockState::started();
+        assert_eq!(state.observe(u16::MAX), Some(0));
+        assert_eq!(state.observe(u16::MAX - 48), Some(48));
     }
 
     #[test]
-    fn clock_state_extends_one_counter_wrap() {
-        let mut state = ClockState::started_at(0xffff_fff0);
-        assert_eq!(state.observe(0x0000_0020), Some(48));
-        assert_eq!(state.observe(0x0000_0050), Some(96));
+    fn clock_state_extends_arbitrary_interrupt_serviced_wraps() {
+        let mut state = ClockState::started();
+        for _ in 0..3 {
+            state.underflow();
+        }
+        assert_eq!(state.observe(u16::MAX - 7), Some(3 * AGT_PERIOD_TICKS + 7));
     }
 
     #[test]
     fn uninitialized_clock_does_not_invent_elapsed_time() {
         let mut state = ClockState::uninitialized();
         assert_eq!(state.observe(123), None);
-        assert_eq!(state.last_cycles, 0);
-        assert_eq!(state.total_cycles, 0);
+        state.underflow();
+        assert_eq!(state.epochs, 0);
     }
 
     #[test]
-    fn alarm_reload_accepts_exact_hardware_boundaries() {
-        assert_eq!(systick_reload(0), Err(AlarmError::ZeroDelay));
-        assert_eq!(systick_reload(1), Ok(47));
-        assert_eq!(
-            systick_reload(Ra4m1Alarm::MAX_CHUNK_US),
-            Ok((Ra4m1Alarm::MAX_CHUNK_US * 48 - 1) as u32)
-        );
-        assert!(systick_reload(Ra4m1Alarm::MAX_CHUNK_US).unwrap() <= Ra4m1Alarm::MAX_RELOAD);
+    fn alarm_delay_rounds_up_without_arming_early() {
+        assert_eq!(delay_to_ticks(0), Err(AlarmError::ZeroDelay));
+        assert_eq!(delay_to_ticks(1), Ok(1));
+        assert_eq!(delay_to_ticks(30), Ok(1));
+        assert_eq!(delay_to_ticks(31), Ok(2));
     }
 
     #[test]
-    fn alarm_reload_rejects_first_unrepresentable_and_overflowing_delay() {
-        assert_eq!(
-            systick_reload(Ra4m1Alarm::MAX_CHUNK_US + 1),
-            Err(AlarmError::DelayTooLong)
-        );
-        assert_eq!(systick_reload(u64::MAX), Err(AlarmError::DelayTooLong));
+    fn alarm_delay_rejects_overflow() {
+        assert_eq!(delay_to_ticks(u64::MAX), Err(AlarmError::DelayTooLong));
     }
 
     #[test]
     fn long_alarm_is_partitioned_without_dropping_or_extending_time() {
-        let total = Ra4m1Alarm::MAX_CHUNK_US * 3 + 17;
+        let total = AGT_PERIOD_TICKS * 3 + 17;
         let mut remaining = total;
         let mut accumulated = 0;
         let mut chunks = 0;
         while remaining != 0 {
-            let (chunk, next) = take_alarm_chunk(remaining).unwrap();
-            assert!((1..=Ra4m1Alarm::MAX_CHUNK_US).contains(&chunk));
+            let (reload, next) = take_alarm_chunk(remaining).unwrap();
+            let chunk = u64::from(reload) + 1;
+            assert!((1..=AGT_PERIOD_TICKS).contains(&chunk));
             accumulated += chunk;
             remaining = next;
             chunks += 1;

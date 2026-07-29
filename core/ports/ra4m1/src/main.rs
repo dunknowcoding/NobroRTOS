@@ -20,7 +20,10 @@ use nobro_port_ra4m1::event_dma::{
 #[cfg(feature = "event-dma-selftest")]
 use nobro_port_ra4m1::event_dma::{run_event_dma_selftest, EventDmaSelfTestReport, Ra4m1EventDma};
 use nobro_port_ra4m1::evidence::ProviderEvidence;
-use nobro_port_ra4m1::providers::{Ra4m1Alarm, Ra4m1Clock, Ra4m1Usb};
+use nobro_port_ra4m1::providers::{
+    ra4m1_alarm_irq, ra4m1_clock_irq, Ra4m1Alarm, Ra4m1Clock, Ra4m1Usb, RA4M1_ALARM_IRQ,
+    RA4M1_CLOCK_IRQ,
+};
 use nobro_port_ra4m1::system::{
     configure_system, SystemRegisters, MEMWAIT_48MHZ, SCI_BRR, SCKDIVCR_VALUE, SCKSCR_HOCO,
 };
@@ -32,17 +35,16 @@ extern "C" {
     fn DefaultHandler();
 }
 
-#[cfg(feature = "event-dma")]
 const fn interrupt_vectors() -> [unsafe extern "C" fn(); 32] {
     let mut vectors = [DefaultHandler as unsafe extern "C" fn(); 32];
-    vectors[EVENT_DMA_TIMEOUT_IRQ] = event_dma_timeout_irq;
-    vectors[EVENT_DMA_IRQ] = event_dma_irq;
+    vectors[RA4M1_CLOCK_IRQ] = ra4m1_clock_irq;
+    vectors[RA4M1_ALARM_IRQ] = ra4m1_alarm_irq;
+    #[cfg(feature = "event-dma")]
+    {
+        vectors[EVENT_DMA_TIMEOUT_IRQ] = event_dma_timeout_irq;
+        vectors[EVENT_DMA_IRQ] = event_dma_irq;
+    }
     vectors
-}
-
-#[cfg(not(feature = "event-dma"))]
-const fn interrupt_vectors() -> [unsafe extern "C" fn(); 32] {
-    [DefaultHandler as unsafe extern "C" fn(); 32]
 }
 
 #[no_mangle]
@@ -472,9 +474,14 @@ fn main() -> ! {
     if !system_ok {
         clock_failure_signal();
     }
-    let mut core = cortex_m::Peripherals::take().unwrap();
-    Ra4m1Clock::init(&mut core.DCB, &mut core.DWT);
-    let mut alarm = Ra4m1Alarm::new(core.SYST);
+    Ra4m1Clock::init();
+    let mut alarm = Ra4m1Alarm::new();
+    // The stock UNO R4 bootloader can jump with PRIMASK set. AGT0/AGT1 own
+    // vectors 28/29 in this image, so open the interrupt gate before using the
+    // clock, deadline, event-DMA, or state-preserving CPU-sleep providers.
+    unsafe {
+        cortex_m::interrupt::enable();
+    }
     pins_init();
     SCI2.init();
     SCI1.init();
@@ -491,13 +498,6 @@ fn main() -> ! {
         armed && (2_000..20_000).contains(&elapsed),
         false,
     );
-    #[cfg(feature = "event-dma-selftest")]
-    // The stock UNO R4 bootloader can jump with PRIMASK set. The ordinary
-    // provider rejects that state; this image owns all enabled vectors and
-    // deliberately opens the interrupt gate before its physical self-test.
-    unsafe {
-        cortex_m::interrupt::enable();
-    }
     #[cfg(feature = "event-dma-selftest")]
     let event_dma_report = match Ra4m1EventDma::take() {
         Ok(mut provider) => run_event_dma_selftest(&mut provider),

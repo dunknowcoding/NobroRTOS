@@ -383,14 +383,17 @@ Cross-compile coverage is
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | one native composition implements every currently declared provider capability | nRF52840 |
-| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7), RA4M1/UNO R4 |
+| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4 |
+| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
 | **Core ports** | target startup and status path available; peripheral providers are incomplete | SAMD21 (+ an 8-bit AVR kernel-lite subset) |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
-RA4M1's native row means timebase, deadline, USB, and an opt-in GPT/ELC/DMAC
-completion future. UNO R4 and ArduinoNRF wrappers
+RA4M1's native row includes a LOCO-clocked timebase and deadline, GPT2/ELC event
+capture, bounded ADC/PWM/I2C/SPI/UART providers, USBFS, reset, CPU sleep,
+generation-safe leases, and an opt-in GPT/ELC/DMAC completion future. These are
+target-build and host-contract claims until W111 physically promotes each exact
+UNO R4 binding. UNO R4 and ArduinoNRF wrappers
 for clock/deadline/ADC/PWM/I2C/SPI/byte I/O are separate board-core compositions and do
 not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
 ArduinoNRF composition is compiled on its supported Windows toolchain with the exact

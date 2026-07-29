@@ -25,11 +25,12 @@ package: `ArduinoClock`, `ArduinoDeadline`, `ArduinoAdc`, `ArduinoPwm`, `Arduino
 its register drivers; they give applications one bounded call shape while the installed
 board package continues to own pin routing, interrupts, and peripheral setup. The UNO R4
 uses this path for ADC/PWM/I2C/SPI; those facade calls are not native `nobro-hal`
-provider claims. The separate native RA4M1 composition implements only
-timebase/deadline/USB. Its 48 MHz DWT clock must be sampled during active execution at
-least once per approximately 89-second counter wrap and is not a sleep-stable timebase.
-Its deadline provider composes long waits from approximately 349-millisecond SysTick
-chunks. A sleep-stable always-on clock is still pending.
+provider claims. The separate native RA4M1 composition supplies a 32.768 kHz
+LOCO-clocked AGT0 monotonic clock, an AGT1 chained alarm, GPT2/ELC event capture,
+bounded ADC/PWM/I2C/SPI/UART providers, USBFS, reset, ordinary CPU sleep, and
+generation-safe leases. AGT0 advances through ordinary CPU sleep; deep standby is
+rejected because it does not preserve the admitted composition. Native target builds
+and host lifecycle tests are not physical UNO R4 evidence.
 
 ### Plain-C Tier-C facade
 

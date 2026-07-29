@@ -280,7 +280,7 @@ impl<T: ArduinoWifiS3Transport> WifiStack for ArduinoWifiS3<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nobro_wireless::{MountedWifi, StackError};
+    use nobro_wireless::{MountedWifi, StackError, StackInstanceId};
 
     struct Fake {
         link: LinkState,
@@ -425,6 +425,24 @@ mod tests {
                 transport_faults: 0,
             }
         );
+    }
+
+    #[test]
+    fn exact_logical_instance_reports_stable_limits() {
+        let instance = StackInstanceId::new(12);
+        let (mut mounted, receipt) =
+            MountedWifi::mount_instance(instance, ArduinoWifiS3::new(Fake::default()))
+                .unwrap_or_else(|_| panic!("exact WiFiS3 instance must mount"));
+        assert_eq!(receipt.instance, instance);
+        assert_eq!(receipt.identity.backend_id, BACKEND_ID);
+        assert_eq!(receipt.identity.mtu, WIFI_TCP_MTU);
+        assert_eq!(receipt.identity.rx_queue_slots, CONTROL_QUEUE_SLOTS);
+        assert_eq!(receipt.identity.tx_queue_slots, CONTROL_QUEUE_SLOTS);
+        assert_eq!(receipt.identity.service_slots, 0);
+        assert_eq!(receipt.identity.characteristic_slots, 0);
+        assert_eq!(receipt.lifecycle_generation, 1);
+        assert_eq!(mounted.quiesce(), Ok(()));
+        assert_eq!(mounted.recover(), Ok(()));
     }
 
     #[test]

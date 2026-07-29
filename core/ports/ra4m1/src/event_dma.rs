@@ -88,11 +88,13 @@ mod hardware {
     #[cfg(feature = "event-dma-selftest")]
     use core::task::{RawWaker, RawWakerVTable, Waker};
 
+    use nobro_hal::LeaseId;
     use nobro_hal::{CompletionCell, CompletionError};
 
     #[cfg(feature = "event-dma-selftest")]
     use super::PCLKD_CYCLES_PER_US;
     use super::{EventDmaError, EventDmaPlan, EVENT_DMA_DEFAULT_PERIOD_US, EVENT_DMA_MAX_WORDS};
+    use crate::lease::{Ra4m1LeaseGuard, Ra4m1Leases};
 
     const PRCR: usize = 0x4001_E3FE;
     const MSTPCRA: usize = 0x4001_E01C;
@@ -457,7 +459,7 @@ mod hardware {
     }
 
     pub struct Ra4m1EventDma {
-        _sealed: (),
+        _lease: Ra4m1LeaseGuard,
     }
 
     impl Ra4m1EventDma {
@@ -465,7 +467,14 @@ mod hardware {
             TAKEN
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .map_err(|_| EventDmaError::Busy)?;
-            Ok(Self { _sealed: () })
+            let lease = match Ra4m1Leases::acquire_guard(LeaseId::PRIMARY_DMA, 0xe3) {
+                Ok(lease) => lease,
+                Err(_) => {
+                    TAKEN.store(false, Ordering::Release);
+                    return Err(EventDmaError::ResourceBusy);
+                }
+            };
+            Ok(Self { _lease: lease })
         }
 
         pub fn copy<'a>(

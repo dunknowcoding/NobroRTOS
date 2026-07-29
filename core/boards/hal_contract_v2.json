@@ -80,8 +80,23 @@
     },
     {
       "id": "provider-ra4m1-v2",
-      "kind": "constrained",
-      "required": ["timebase", "deadline", "dma_completion", "usb"]
+      "kind": "deep",
+      "required": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "reset",
+        "power",
+        "lease"
+      ]
     }
   ],
   "declarations": [
@@ -280,30 +295,48 @@
       "rust_type": "Ra4m1Providers",
       "source": "core/ports/ra4m1/src/providers.rs",
       "required": [],
-      "supported": ["timebase", "deadline", "dma_completion", "usb"],
-      "hardware-inapplicable": [],
-      "unimplemented": [
+      "supported": [
+        "timebase",
+        "deadline",
         "event",
-        "gpio",
-        "irq",
+        "dma_completion",
         "uart",
         "byte_io",
         "adc",
         "pwm",
-        "servo",
-        "pulse",
         "i2c",
         "spi",
-        "watchdog",
-        "rtc",
-        "flash",
+        "usb",
         "reset",
         "power",
-        "cache",
-        "multicore",
         "lease"
       ],
-      "trait_witnesses": ["timebase", "deadline", "dma_completion", "usb"]
+      "hardware-inapplicable": ["cache", "multicore"],
+      "unimplemented": [
+        "gpio",
+        "irq",
+        "servo",
+        "pulse",
+        "watchdog",
+        "rtc",
+        "flash"
+      ],
+      "trait_witnesses": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "reset",
+        "power",
+        "lease"
+      ]
     }
   ]
 }

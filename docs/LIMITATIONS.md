@@ -40,8 +40,8 @@ not inferred from software coefficients alone.
 
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
-| Deep | nRF52840 | One native composition with implemented time, deadline, event, PWM, I2C, SPI, USB, and lease providers | Broader deep board families and physical USB fault/recovery evidence |
-| Provider | RP2350, ESP32-C3, ESP32-S3, RA4M1 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, a configuration-priced Arduino persistent ADC-DMA composition, and one exact priced NimBLE/WiFi-coexistence workload; ESP32-S3 has required native build/USB host evidence plus one exact Arduino full-duplex ES8311 audio binding at 16 kHz mono signed-16, while its other time/deadline/I2C/SPI/PWM paths remain experimental; native RA4M1 includes timebase, deadline, USB, and an opt-in event-paced DMAC completion future | Full lease/event/fault parity, native physical recovery evidence, calibrated ADC accuracy, adaptive wireless queue/deadline/backoff/energy policy, other BLE/audio configurations, and unimplemented peripherals |
+| Deep | nRF52840, RA4M1 | Exact native profiles satisfy their declared capability sets. RA4M1 includes sleep-stable AGT time/deadline, GPT2/ELC capture, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset/CPU-sleep, leases, and opt-in event-paced DMAC completion | RA4M1 native peripheral claims remain target-build/host-contract evidence until exact physical promotion; deep standby, servo, watchdog, RTC, flash, GPIO, and generic IRQ providers are not claimed |
+| Provider | RP2350, ESP32-C3, ESP32-S3 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, a configuration-priced Arduino persistent ADC-DMA composition, and one exact priced NimBLE/WiFi-coexistence workload; ESP32-S3 has required native build/USB host evidence plus one exact Arduino full-duplex ES8311 audio binding at 16 kHz mono signed-16, while its other time/deadline/I2C/SPI/PWM paths remain experimental | Full lease/event/fault parity, native physical recovery evidence, adaptive wireless queue/deadline/backoff/energy policy, other BLE/audio configurations, and unimplemented peripherals |
 | Core | ESP32, ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; classic ESP32 has a physically verified and whole-composition-priced Arduino Bluedroid/WiFi workload, while ESP32-P4 has a configuration-priced Arduino persistent ADC-DMA composition | A separately priced classic-ESP32 WiFi baseline and BLE increment, physical ESP32-S3 BLE evidence, native ESP32-P4 providers, and portable peripheral providers for the remaining core-tier targets |
 
 A provider row is not interchangeable with deep support. In particular, event routing
@@ -52,10 +52,10 @@ The Arduino compatibility facades are separate compositions, not additions to na
 tiers. They delegate clock, deadline, ADC, generic PWM, I2C, SPI, and byte I/O to the
 selected installed board core. A hosted facade build proves source compatibility only;
 it does not establish native-provider parity or physical timing. Generic `analogWrite`
-does not establish servo-period semantics. On the native RA4M1 port, the
-48 MHz 32-bit DWT clock must be sampled during active execution within approximately 89
-seconds and may stop in low-power modes; long deadline waits are composed from bounded
-24-bit SysTick chunks. Sleep-spanning timing still needs an always-on timebase.
+does not establish servo-period semantics. On the native RA4M1 port, AGT0 advances
+from LOCO through ordinary CPU sleep and AGT1 composes long deadlines from bounded
+16-bit chunks. This does not cover standby or deep standby: the portable power provider
+clears `SLEEPDEEP` and exposes only state-preserving CPU sleep.
 
 The plain-C Tier-C task facade is currently fixed at eight tasks and eight wire
 relationships. It validates declarations through the shared Rust `AppGraph`, but the

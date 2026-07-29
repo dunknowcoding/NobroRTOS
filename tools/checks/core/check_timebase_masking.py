@@ -18,7 +18,8 @@ FILES = {
     "samd_provider": ROOT / "core/ports/samd21/src/masked_critical_section.rs",
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",
     "ra_event_dma": ROOT / "core/ports/ra4m1/src/event_dma.rs",
-    "ra_selftest": ROOT / "core/ports/ra4m1/src/main.rs",
+    "ra_power": ROOT / "core/ports/ra4m1/src/power_reset.rs",
+    "ra_startup": ROOT / "core/ports/ra4m1/src/main.rs",
     "nrf_usbd": ROOT / "core/vendor/nrf-usbd/src/usbd.rs",
     "nrf_usb_backend": ROOT / "core/crates/nobro_usb/src/nrf_usbd_backend.rs",
     "nrf_usb_manifest": ROOT / "core/crates/nobro_usb/Cargo.toml",
@@ -34,7 +35,8 @@ RAW_MASK_TOKENS = (
 RAW_MASK_ALLOWLIST = {
     ROOT / "core/apps/connectivity/usb_cdc_demo/src/main.rs",
     FILES["ra_event_dma"],
-    FILES["ra_selftest"],
+    FILES["ra_power"],
+    FILES["ra_startup"],
     ROOT / "core/ports/samd21/src/masked_critical_section.rs",
     FILES["isolation_demo"],
 }
@@ -105,8 +107,9 @@ def _raw_masking_allowlist() -> list[str]:
         BASEPRI and the provider reports its maximum masked time;
       * the RA4M1 event-DMA provider's read-only PRIMASK/FAULTMASK fail-closed
         check; and
-      * the feature-gated RA4M1 physical self-test handoff, which is the only
-        path allowed to unmask the stock bootloader's inherited PRIMASK state.
+      * the RA4M1 power provider's equivalent read-only wake-safety check; and
+      * RA4M1 startup, which owns its IRQ vectors and is the only path allowed
+        to unmask the stock bootloader's inherited PRIMASK state.
     """
     failures: list[str] = []
     for path in sorted((ROOT / "core").rglob("*.rs")):
@@ -124,11 +127,16 @@ def _raw_masking_allowlist() -> list[str]:
                     failures.append(
                         f"{path.relative_to(ROOT)}: measured PRIMASK fallback missing {token!r}"
                     )
-        elif path == FILES["ra_event_dma"]:
+        elif path in (FILES["ra_event_dma"], FILES["ra_power"]):
+            error_return = (
+                "return Err(EventDmaError::InterruptsMasked);"
+                if path == FILES["ra_event_dma"]
+                else "return Err(PowerError::InterruptsMasked);"
+            )
             required = (
                 "cortex_m::register::primask::read().is_inactive()",
                 "cortex_m::register::faultmask::read().is_inactive()",
-                "return Err(EventDmaError::InterruptsMasked);",
+                error_return,
             )
             for token in required:
                 if token not in text:
@@ -143,20 +151,21 @@ def _raw_masking_allowlist() -> list[str]:
                     failures.append(
                         f"{path.relative_to(ROOT)}: reusable RA4M1 provider must not change global masks"
                     )
-        elif path == FILES["ra_selftest"]:
+        elif path == FILES["ra_startup"]:
             required = (
-                '#[cfg(feature = "event-dma-selftest")]',
                 "stock UNO R4 bootloader can jump with PRIMASK set",
+                "RA4M1_CLOCK_IRQ",
+                "RA4M1_ALARM_IRQ",
                 "cortex_m::interrupt::enable();",
             )
             for token in required:
                 if token not in text:
                     failures.append(
-                        f"{path.relative_to(ROOT)}: RA4M1 self-test handoff exception missing {token!r}"
+                        f"{path.relative_to(ROOT)}: RA4M1 startup handoff exception missing {token!r}"
                     )
             if "cortex_m::interrupt::disable(" in text:
                 failures.append(
-                    f"{path.relative_to(ROOT)}: RA4M1 self-test must not globally disable interrupts"
+                    f"{path.relative_to(ROOT)}: RA4M1 startup must not globally disable interrupts"
                 )
         elif path == FILES["isolation_demo"]:
             required = (
@@ -277,7 +286,7 @@ def main() -> int:
         "(nRF BASEPRI leaves deadline/watchdog-feeder priorities live; "
         "nRF EasyDMA completion waits with interrupts enabled; "
         "Cortex-M0 fallback reports maximum PRIMASK time; "
-        "RA4M1 provider only observes masks and its physical self-test owns the handoff)"
+        "RA4M1 providers only observe masks and startup owns the bootloader handoff)"
     )
     return 0
 

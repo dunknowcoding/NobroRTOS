@@ -470,7 +470,22 @@
         {
           "platform": "ra4m1",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "dma_completion", "usb"]
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "i2c",
+            "spi",
+            "usb",
+            "reset",
+            "power",
+            "lease"
+          ]
         }
       ]
     },
@@ -509,7 +524,21 @@
         {
           "platform": "ra4m1",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "usb"]
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "i2c",
+            "spi",
+            "usb",
+            "reset",
+            "power",
+            "lease"
+          ]
         }
       ]
     },
@@ -900,17 +929,27 @@
     },
     "ra4m1": {
       "arch": "thumbv7em",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "native Rust provides timebase/deadline/USB plus an opt-in GPT/ELC/DMAC completion future; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; host state/contract tests and a target build do not establish physical native-USB enumeration; DWT time must be sampled during active execution within each approximately 89-second wrap, while long deadline waits are composed from bounded SysTick chunks",
+      "limitations": "native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; ordinary CPU sleep preserves the admitted clock while deep standby is rejected; host state/contract tests and target builds do not establish physical peripheral behavior or native-USB enumeration",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "event": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "dma_completion": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-event-dma-target-build"]},
-            "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]}
+            "uart": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "byte_io": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "adc": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]},
+            "reset": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "power": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]}
           }
         },
         "arduino": {

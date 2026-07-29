@@ -80,12 +80,12 @@ pub use snapshots::{
     BOARD_PROFILE_REPORT_VERSION, OPTIONAL_PIN_ABSENT,
 };
 pub use traits::{
-    CapabilityDeclarationState, CapabilityProfileKind, HalAlarm, HalBus, HalByteIo, HalClock,
-    HalCompatibility, HalDeadline, HalEventCapture, HalI2c, HalLease, HalPwmChannel,
-    HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider, HardwareCapability,
-    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness, LeaseClass,
-    LeaseId, PlatformHal, TransferMode, HARDWARE_CAPABILITY_CONTRACT_VERSION,
-    HARDWARE_CAPABILITY_COUNT,
+    CapabilityDeclarationState, CapabilityProfileKind, HalAdcChannel, HalAlarm, HalBus, HalByteIo,
+    HalClock, HalCompatibility, HalDeadline, HalEventCapture, HalI2c, HalLease, HalPower,
+    HalPwmChannel, HalReset, HalSchedulingProvider, HalServoPwm, HalSpi, HalTimebaseProvider,
+    HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
+    HardwareCapabilityWitness, IdleMode, LeaseClass, LeaseId, PlatformHal, TransferMode,
+    HARDWARE_CAPABILITY_CONTRACT_VERSION, HARDWARE_CAPABILITY_COUNT,
 };
 
 #[cfg(feature = "platform-nrf52840")]

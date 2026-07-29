@@ -2336,7 +2336,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "71d04e7c56bdb45761db51da31987cd05135ba0645ce0fe7db429bf92fd40f4d"
+        "sha256": "7f6c9ccd5feab73b18d1ce74ffeb4d8b441bfc7f889db18062403103ad12baa3"
       },
       {
         "crate": "nobro-host",
@@ -7195,7 +7195,7 @@
           }
         ],
         "path": "core/adapters/wireless/wifi/arduino-wifis3/src/lib.rs",
-        "sha256": "5564c2f606aae67ae5d1ce50b6d8292ee1e0d27e4b89504a18c3ea55514c50fa"
+        "sha256": "92e79e5bb70af51210f5fda67453e3e0767b8291c7241cfe9f3d59346358c359"
       }
     ]
   }

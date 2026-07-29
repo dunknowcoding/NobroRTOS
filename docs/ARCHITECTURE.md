@@ -613,16 +613,17 @@ adapter performs the concrete peripheral mapping. Bus providers also declare
 whether transfers are polling or DMA.
 
 Capability rows describe one firmware composition, not the union of every API that can
-compile for a board. For RA4M1, the native Rust composition implements timebase,
-deadline, and USB. The separate Arduino facade delegates clock, deadline, ADC, PWM,
-I2C, SPI, and byte I/O to the installed board core and is recorded separately in the
+compile for a board. The native RA4M1 composition implements a LOCO-clocked AGT
+timebase/deadline, GPT2/ELC event capture, bounded ADC/PWM/I2C/SPI/UART, USBFS,
+reset, ordinary CPU sleep, and generation-safe leases. The separate Arduino facade
+delegates its providers to the installed board core and is recorded separately in the
 platform matrix. Generic Arduino `analogWrite` is PWM, not a servo-period provider.
 
-The current RA4M1 clock extends a 48 MHz 32-bit DWT counter, so active firmware must
-sample it within every approximately 89-second wrap; it does not preserve elapsed time
-when DWT stops in low-power modes. The deadline provider composes arbitrary validated
-delays from approximately 349-millisecond SysTick chunks. Sleep-spanning timing still
-needs a future always-on provider before stronger claims are made.
+AGT0 extends 16-bit LOCO underflows into a 64-bit monotonic clock and continues through
+ordinary Cortex-M `WFI`. AGT1 rounds deadlines up to the next LOCO tick and chains
+long waits without exposing the raw 16-bit ceiling. The power provider clears
+`SLEEPDEEP`, rejects masked-interrupt entry and active controller vetoes, and therefore
+does not imply standby/deep-standby retention.
 
 ## Mountable stacks (HAL modularity)
 

@@ -1280,7 +1280,7 @@ def selftest() -> int:
     _expect_error(validate(wrong_scope), "not scoped to this exact claim")
 
     unrelated_gate = copy.deepcopy(good)
-    unrelated_gate["platforms"]["ra4m1"]["compositions"]["native"]["claims"]["spi"] = {
+    unrelated_gate["platforms"]["ra4m1"]["compositions"]["native"]["claims"]["gpio"] = {
         "maturity": "implemented",
         "evidence": ["ra4m1-provider-host"],
     }

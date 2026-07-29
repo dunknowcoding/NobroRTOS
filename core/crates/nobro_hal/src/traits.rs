@@ -288,6 +288,11 @@ pub enum LeaseClass {
     Pwm,
     EventRouter,
     SoftwareEvent,
+    Adc,
+    Uart,
+    Usb,
+    Dma,
+    Power,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -303,6 +308,7 @@ impl LeaseId {
 
     pub const SYSTEM_TIMER: Self = Self::new(LeaseClass::Timer, 0);
     pub const LOW_POWER_TIMER: Self = Self::new(LeaseClass::Timer, 2);
+    pub const EVENT_CAPTURE_TIMER: Self = Self::new(LeaseClass::Timer, 2);
     pub const DEADLINE_TIMER: Self = Self::new(LeaseClass::Timer, 1);
     pub const PRIMARY_I2C: Self = Self::new(LeaseClass::I2c, 0);
     pub const SECONDARY_I2C: Self = Self::new(LeaseClass::I2c, 1);
@@ -311,6 +317,11 @@ impl LeaseId {
     pub const PRIMARY_PWM: Self = Self::new(LeaseClass::Pwm, 0);
     pub const EVENT_ROUTER: Self = Self::new(LeaseClass::EventRouter, 0);
     pub const SOFTWARE_EVENT: Self = Self::new(LeaseClass::SoftwareEvent, 0);
+    pub const PRIMARY_ADC: Self = Self::new(LeaseClass::Adc, 0);
+    pub const PRIMARY_UART: Self = Self::new(LeaseClass::Uart, 0);
+    pub const USB_DEVICE: Self = Self::new(LeaseClass::Usb, 0);
+    pub const PRIMARY_DMA: Self = Self::new(LeaseClass::Dma, 0);
+    pub const SYSTEM_POWER: Self = Self::new(LeaseClass::Power, 0);
 }
 
 /// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).
@@ -407,6 +418,17 @@ pub trait HalPwmChannel {
     fn set_duty(&mut self, duty: u16) -> Result<(), Self::Error>;
 }
 
+/// Owned single-ended ADC channel.
+///
+/// Pin muxing, reference selection, and acquisition timing belong to construction.
+/// Reads are bounded and return an error instead of waiting forever for hardware.
+pub trait HalAdcChannel {
+    type Error;
+
+    fn max_sample(&self) -> u16;
+    fn read(&mut self) -> Result<u16, Self::Error>;
+}
+
 /// Bounded byte-stream transport for USB CDC or USB Serial/JTAG providers.
 pub trait HalByteIo {
     type Error;
@@ -414,6 +436,34 @@ pub trait HalByteIo {
     fn read_available(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error>;
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
     fn flush(&mut self) -> Result<(), Self::Error>;
+}
+
+/// Reset status and the fail-closed system-reset operation.
+pub trait HalReset {
+    type Cause: Copy + Eq;
+
+    fn reset_cause() -> Self::Cause;
+    fn system_reset() -> !;
+}
+
+/// Sleep state entered by a portable power provider.
+///
+/// `CpuSleep` retains the platform's admitted peripheral clocks and RAM. Deeper
+/// modes are deliberately separate capabilities because wake sources and retained
+/// state vary by exact board composition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdleMode {
+    CpuSleep,
+}
+
+/// Owned low-power entry point.
+///
+/// A provider must return only after an admitted interrupt wakes the CPU. It may
+/// reject entry when a mounted transport or active peripheral vetoes sleep.
+pub trait HalPower {
+    type Error;
+
+    fn idle(&mut self, mode: IdleMode) -> Result<(), Self::Error>;
 }
 
 /// Exclusive peripheral lease with semantics shared across platforms.
