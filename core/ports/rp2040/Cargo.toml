@@ -7,11 +7,13 @@ edition = "2021"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
+pio = "0.3"
 rp2040-boot2 = "0.3"
 rp2040-hal = { version = "0.12", features = ["critical-section-impl", "rt"] }
 usb-device = "0.3"
 usbd-serial = "0.2"
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
+nobro-kernel = { path = "../../crates/nobro_kernel" }
 
 [features]
 default = []

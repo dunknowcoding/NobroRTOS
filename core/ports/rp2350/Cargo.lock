@@ -491,6 +491,7 @@ dependencies = [
  "nobro-hal",
  "nobro-kernel",
  "panic-halt",
+ "pio",
  "rp235x-hal",
  "usb-device",
  "usbd-serial",

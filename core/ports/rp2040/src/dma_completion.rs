@@ -10,8 +10,8 @@ use core::cell::UnsafeCell;
 use core::future::Future;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
-use core::sync::atomic::{compiler_fence, Ordering};
-use core::task::{Context, Poll};
+use core::sync::atomic::{compiler_fence, AtomicU32, Ordering};
+use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 use nobro_hal::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
 use rp2040_hal as hal;
@@ -39,6 +39,8 @@ unsafe impl Sync for StaticWords {}
 static DMA_SOURCE: StaticWords = StaticWords(UnsafeCell::new([0; DMA_COPY_MAX_WORDS]));
 static DMA_DESTINATION: StaticWords = StaticWords(UnsafeCell::new([0; DMA_COPY_MAX_WORDS]));
 static DMA0_COMPLETION: CompletionCell = CompletionCell::new();
+static DMA0_IRQ_COUNT: AtomicU32 = AtomicU32::new(0);
+static SELFTEST_WAKE_COUNT: AtomicU32 = AtomicU32::new(0);
 
 type CopyTransfer = Transfer<Channel<CH0>, &'static [u32], &'static mut [u32]>;
 
@@ -145,18 +147,100 @@ impl Dma0Completion {
     }
 }
 
-/// Exercise the non-mutating construction/cancellation boundary at boot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DmaSelfTestReport {
+    pub passed: bool,
+    pub cancellation_output_untouched: bool,
+    pub words: usize,
+    pub polls: u32,
+    pub irq_wakes: u32,
+    pub task_wakes: u32,
+}
+
+/// Run a bounded, live DMA completion and cancellation check.
 ///
-/// The returned future is deliberately dropped before its first poll, so this
-/// validates staging limits and provider ownership without starting hardware.
-pub fn validate_contract(provider: &mut Dma0Completion) -> bool {
-    let source = [0x4e4f_4252];
-    let mut destination = [0u32];
-    let transfer = provider.copy(&source, &mut destination);
-    drop(transfer);
-    DmaCompletionPriority::new(provider.interrupt_priority().logical())
-        == Ok(provider.interrupt_priority())
-        && destination == [0]
+/// The first transfer is polled once and cancelled; its caller output must
+/// remain untouched. The second must complete through `DMA_IRQ_0`, wake the
+/// registered task once, and publish the exact copied pattern. The poll bound
+/// prevents a bad interrupt route from wedging USB enumeration at boot.
+pub fn run_dma_selftest(provider: &mut Dma0Completion) -> DmaSelfTestReport {
+    const WORDS: usize = DMA_COPY_MAX_WORDS;
+    const POLL_LIMIT: u32 = 1_000_000;
+
+    let mut source = [0u32; WORDS];
+    for (index, word) in source.iter_mut().enumerate() {
+        *word = 0x5245_5000 ^ index as u32;
+    }
+    let mut destination = [0xDEAD_BEEFu32; WORDS];
+    let waker = selftest_waker();
+    let mut context = Context::from_waker(&waker);
+    let priority_ok = DmaCompletionPriority::new(provider.interrupt_priority().logical())
+        == Ok(provider.interrupt_priority());
+
+    {
+        let mut cancelled = core::pin::pin!(provider.copy(&source, &mut destination));
+        let _ = Future::poll(cancelled.as_mut(), &mut context);
+    }
+    let cancellation_output_untouched = destination.iter().all(|word| *word == 0xDEAD_BEEF);
+    destination.fill(0);
+
+    let irq_before = DMA0_IRQ_COUNT.load(Ordering::Acquire);
+    let wake_before = SELFTEST_WAKE_COUNT.load(Ordering::Acquire);
+    let mut polls = 0u32;
+    let result = {
+        let mut transfer = core::pin::pin!(provider.copy(&source, &mut destination));
+        loop {
+            polls = polls.saturating_add(1);
+            match Future::poll(transfer.as_mut(), &mut context) {
+                Poll::Ready(value) => break value,
+                Poll::Pending if polls < POLL_LIMIT => core::hint::spin_loop(),
+                Poll::Pending => break Err(DmaCopyError::Busy),
+            }
+        }
+    };
+    let irq_wakes = DMA0_IRQ_COUNT
+        .load(Ordering::Acquire)
+        .wrapping_sub(irq_before);
+    let task_wakes = SELFTEST_WAKE_COUNT
+        .load(Ordering::Acquire)
+        .wrapping_sub(wake_before);
+    let passed = priority_ok
+        && cancellation_output_untouched
+        && result == Ok(WORDS)
+        && destination == source
+        && irq_wakes == 1
+        && task_wakes == 1;
+
+    DmaSelfTestReport {
+        passed,
+        cancellation_output_untouched,
+        words: WORDS,
+        polls,
+        irq_wakes,
+        task_wakes,
+    }
+}
+
+unsafe fn selftest_waker_clone(_: *const ()) -> RawWaker {
+    RawWaker::new(core::ptr::null(), &SELFTEST_WAKER_VTABLE)
+}
+
+unsafe fn selftest_waker_wake(_: *const ()) {
+    let next = SELFTEST_WAKE_COUNT.load(Ordering::Relaxed).wrapping_add(1);
+    SELFTEST_WAKE_COUNT.store(next, Ordering::Release);
+}
+
+unsafe fn selftest_waker_drop(_: *const ()) {}
+
+static SELFTEST_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(
+    selftest_waker_clone,
+    selftest_waker_wake,
+    selftest_waker_wake,
+    selftest_waker_drop,
+);
+
+fn selftest_waker() -> Waker {
+    unsafe { Waker::from_raw(RawWaker::new(core::ptr::null(), &SELFTEST_WAKER_VTABLE)) }
 }
 
 impl Drop for Dma0Completion {
@@ -316,5 +400,7 @@ unsafe extern "C" fn DMA_IRQ_0() {
     disable_channel_irq();
     clear_channel_irq();
     compiler_fence(Ordering::SeqCst);
+    let next = DMA0_IRQ_COUNT.load(Ordering::Relaxed).wrapping_add(1);
+    DMA0_IRQ_COUNT.store(next, Ordering::Release);
     DMA0_COMPLETION.complete_from_isr();
 }

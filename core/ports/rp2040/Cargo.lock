@@ -477,11 +477,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
+name = "nobro-admission"
+version = "0.3.3"
+
+[[package]]
 name = "nobro-hal"
 version = "0.3.3"
 dependencies = [
  "critical-section",
  "embedded-hal 1.0.0",
+]
+
+[[package]]
+name = "nobro-imu"
+version = "0.3.3"
+
+[[package]]
+name = "nobro-kernel"
+version = "0.3.3"
+dependencies = [
+ "critical-section",
+ "nobro-admission",
+ "nobro-imu",
+ "nobro-power",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -491,12 +510,18 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "nobro-hal",
+ "nobro-kernel",
  "panic-halt",
+ "pio",
  "rp2040-boot2",
  "rp2040-hal",
  "usb-device",
  "usbd-serial",
 ]
+
+[[package]]
+name = "nobro-power"
+version = "0.3.3"
 
 [[package]]
 name = "num_enum"
@@ -632,6 +657,9 @@ name = "portable-atomic"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d20d5497ef88037a52ff98267d066e7f11fcc5e99bbfbd58a42336193aacec3"
+dependencies = [
+ "critical-section",
+]
 
 [[package]]
 name = "precomputed-hash"
