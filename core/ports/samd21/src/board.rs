@@ -13,6 +13,7 @@ use hal::eic::{Ch7, Eic, EicPin, ExtInt, Sense};
 use hal::gpio::{Pin, PullUpInterrupt, Reset, PA07};
 use hal::pwm::Pwm1;
 use hal::rtc::{Count32Mode, Rtc};
+use hal::sercom::spi::BitOrder;
 use hal::sercom::{i2c, spi, uart, Sercom0, Sercom3, Sercom4};
 use hal::time::Hertz;
 use hal::timer::TimerCounter4;
@@ -65,6 +66,7 @@ pub const BOARD_ID: &str = "samd21-m0-mini-arduino-zero";
 pub const CPU_HZ: u32 = 48_000_000;
 pub const APP_FLASH_ORIGIN: u32 = 0x0000_2000;
 pub const APP_FLASH_BYTES: u32 = 248 * 1024;
+pub const USB_REENUMERATION_DELAY_CYCLES: u32 = CPU_HZ / 5;
 
 pub const PN532_I2C_ADDRESS: u8 = 0x24;
 pub const PN532_SPI_SERCOM: u8 = 4;
@@ -217,6 +219,36 @@ pub fn spi_master(
     spi::Config::new(pm, sercom, pads, clock.freq())
         .baud(baud)
         .spi_mode(spi::MODE_0)
+        .bit_order(BitOrder::MsbFirst)
+        .enable()
+}
+
+/// Construct the exact PN532 ICSP transport.
+///
+/// PN532's SPI host protocol shifts the command/status bytes least-significant
+/// bit first. Keeping this constructor distinct prevents another SPI device
+/// from silently inheriting that device-specific order.
+pub fn pn532_spi_master(
+    clocks: &mut GenericClockController,
+    baud: Hertz,
+    sercom: hal::pac::Sercom4,
+    pm: &hal::pac::Pm,
+    sck: impl Into<Sclk>,
+    mosi: impl Into<Mosi>,
+    miso: impl Into<Miso>,
+) -> Spi {
+    let gclk0 = clocks.gclk0();
+    let clock = clocks
+        .sercom4_core(&gclk0)
+        .expect("SERCOM4 clock must be claimed once by the SPI owner");
+    let pads = spi::Pads::default()
+        .data_in(miso.into())
+        .data_out(mosi.into())
+        .sclk(sck.into());
+    spi::Config::new(pm, sercom, pads, clock.freq())
+        .baud(baud)
+        .spi_mode(spi::MODE_0)
+        .bit_order(BitOrder::LsbFirst)
         .enable()
 }
 
@@ -245,6 +277,22 @@ pub fn usb_allocator(
     dm: impl Into<UsbDm>,
     dp: impl Into<UsbDp>,
 ) -> UsbBusAllocator<UsbBus> {
+    // A probe-issued reset can be much shorter than the host's disconnect
+    // debounce. If firmware immediately enables the internal USB pull-up,
+    // Windows may retain a stale configured CDC endpoint even though the core
+    // restarted normally. A resident bootloader may also hand control to the
+    // application with USB still attached, so delay alone is insufficient:
+    // explicitly detach and disable the controller first, then keep it
+    // detached for a bounded 200 ms before mounting. This is device-side
+    // recovery only; it neither cycles a hub nor changes a host driver.
+    pm.apbbmask().modify(|_, w| w.usb_().set_bit());
+    let device = usb.device();
+    device.ctrlb().modify(|_, w| w.detach().set_bit());
+    device.ctrla().modify(|_, w| w.enable().clear_bit());
+    while device.syncbusy().read().enable().bit_is_set() {
+        core::hint::spin_loop();
+    }
+    cortex_m::asm::delay(USB_REENUMERATION_DELAY_CYCLES);
     let gclk0 = clocks.gclk0();
     let clock = clocks
         .usb(&gclk0)
