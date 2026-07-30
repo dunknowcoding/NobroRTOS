@@ -16,6 +16,7 @@ FILES = {
     "generator": ROOT / "tools/cli/project/nobro_firmware_project.py",
     "samd_manifest": ROOT / "core/ports/samd21/Cargo.toml",
     "samd_provider": ROOT / "core/ports/samd21/src/masked_critical_section.rs",
+    "samd_power": ROOT / "core/ports/samd21/src/power_reset.rs",
     "samd_report": ROOT / "core/ports/samd21/src/main.rs",
     "ra_event_dma": ROOT / "core/ports/ra4m1/src/event_dma.rs",
     "ra_power": ROOT / "core/ports/ra4m1/src/power_reset.rs",
@@ -38,6 +39,7 @@ RAW_MASK_ALLOWLIST = {
     FILES["ra_power"],
     FILES["ra_startup"],
     ROOT / "core/ports/samd21/src/masked_critical_section.rs",
+    FILES["samd_power"],
     FILES["isolation_demo"],
 }
 
@@ -105,6 +107,7 @@ def _raw_masking_allowlist() -> list[str]:
         before Rust statics exist and re-enables at the start of `main`; and
       * the SAMD21 Cortex-M0+ measured fallback, because the architecture has no
         BASEPRI and the provider reports its maximum masked time;
+      * the SAMD21 power provider's read-only PRIMASK wake-safety check;
       * the RA4M1 event-DMA provider's read-only PRIMASK/FAULTMASK fail-closed
         check; and
       * the RA4M1 power provider's equivalent read-only wake-safety check; and
@@ -126,6 +129,24 @@ def _raw_masking_allowlist() -> list[str]:
                 if token not in text:
                     failures.append(
                         f"{path.relative_to(ROOT)}: measured PRIMASK fallback missing {token!r}"
+                    )
+        elif path == FILES["samd_power"]:
+            required = (
+                "cortex_m::register::primask::read().is_active()",
+                "return Err(PowerError::InterruptsMasked);",
+            )
+            for token in required:
+                if token not in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: SAMD21 fail-closed mask check missing {token!r}"
+                    )
+            for token in (
+                "cortex_m::interrupt::disable(",
+                "cortex_m::interrupt::enable(",
+            ):
+                if token in text:
+                    failures.append(
+                        f"{path.relative_to(ROOT)}: reusable SAMD21 provider must not change global masks"
                     )
         elif path in (FILES["ra_event_dma"], FILES["ra_power"]):
             error_return = (
@@ -286,6 +307,7 @@ def main() -> int:
         "(nRF BASEPRI leaves deadline/watchdog-feeder priorities live; "
         "nRF EasyDMA completion waits with interrupts enabled; "
         "Cortex-M0 fallback reports maximum PRIMASK time; "
+        "SAMD21 power fails closed while PRIMASK is active; "
         "RA4M1 providers only observe masks and startup owns the bootloader handoff)"
     )
     return 0
