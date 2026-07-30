@@ -9,6 +9,10 @@
   from native CDC without limiting ordinary native-session duration.
 - The RA4M1 SCI divisor now matches `SEMR.BGDM=1`, restoring exact 115200-baud
   communication with the UNO R4 onboard bridge and controller UARTs.
+- The native RA4M1 GPT PWM provider now enables group software start/stop,
+  updates protected duty state through the hardware buffer, and handles exact
+  0%/100% levels. The UNO R4 D5-to-A0 loopback physically validates native PWM
+  and ADC together; native I2C/SPI remain separate unpromoted compositions.
 
 ## 0.3.3 - 2026-07-29
 

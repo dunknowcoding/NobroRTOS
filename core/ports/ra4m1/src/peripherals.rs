@@ -107,6 +107,14 @@ pub struct Ra4m1Pwm {
     duty: u16,
 }
 
+fn buffered_pwm_compare(period_ticks: u32, duty: u16) -> u32 {
+    let counts = (u64::from(period_ticks) * u64::from(duty) / u64::from(u16::MAX))
+        .max(1)
+        .min(u64::from(period_ticks - 1)) as u32;
+    // Buffered saw-wave PWM transitions one timer clock after compare match.
+    counts - 1
+}
+
 impl Ra4m1Pwm {
     /// UNO R4 D5: P107 / GPT0 output A.
     pub fn try_d5(owner: u8, frequency_hz: u32) -> Result<Self, PeripheralError> {
@@ -126,13 +134,18 @@ impl Ra4m1Pwm {
             write32(GPT0 + GTSTP, 1);
             write32(GPT0 + GTWP, GPT_WRITE_UNLOCKED);
             write32(GPT0 + GTCR, 0);
+            // Group start/stop/clear commands are ignored until software
+            // updates are enabled in all three source-select registers.
+            write32(GPT0 + GTSSR, GPT_GROUP_SOFTWARE);
+            write32(GPT0 + GTPSR, GPT_GROUP_SOFTWARE);
+            write32(GPT0 + GTCSR, GPT_GROUP_SOFTWARE);
             write32(GPT0 + GTUDDTYC, 3);
-            write32(GPT0 + GTUDDTYC, 1);
+            write32(GPT0 + GTUDDTYC, GTUDDTYC_COUNT_UP | GTUDDTYC_FORCE_LOW_A);
             write32(GPT0 + GTIOR, GTIOR_PWM_A);
-            write32(GPT0 + GTBER, 0);
+            write32(GPT0 + GTBER, GTBER_PWM_BUFFERED);
             write32(GPT0 + GTPR, period_ticks - 1);
             write32(GPT0 + GTPBR, period_ticks - 1);
-            write32(GPT0 + GTCCRA, 0);
+            write32(GPT0 + GTCCRC, 0);
             write32(GPT0 + GTCNT, 0);
             write32(GPT0 + GTCLR, 1);
             write32(GPT0 + GTWP, GPT_WRITE_PROTECTED);
@@ -159,11 +172,22 @@ impl HalPwmChannel for Ra4m1Pwm {
 
     fn set_duty(&mut self, duty: u16) -> Result<(), Self::Error> {
         self._lease.ensure_live().map_err(PeripheralError::Lease)?;
-        let _compare = (u64::from(self.period_ticks) * u64::from(duty) / u64::from(u16::MAX))
-            .min(u64::from(self.period_ticks - 1)) as u32;
         #[cfg(target_arch = "arm")]
         unsafe {
-            write32(GPT0 + GTCCRA, _compare);
+            // RA4M1 GPT duty and force-level registers are write-protected.
+            // Keep the Renesas FSP semantics: exact endpoints use OADTY,
+            // intermediate values enter the C buffer and latch at cycle end.
+            write32(GPT0 + GTWP, GPT_WRITE_UNLOCKED);
+            let mut mode = read32(GPT0 + GTUDDTYC) & !GTUDDTYC_OADTY_MASK;
+            if duty == 0 {
+                mode |= GTUDDTYC_FORCE_LOW_A;
+            } else if duty == u16::MAX {
+                mode |= GTUDDTYC_FORCE_HIGH_A;
+            } else {
+                write32(GPT0 + GTCCRC, buffered_pwm_compare(self.period_ticks, duty));
+            }
+            write32(GPT0 + GTUDDTYC, mode);
+            write32(GPT0 + GTWP, GPT_WRITE_PROTECTED);
         }
         self.duty = duty;
         Ok(())
@@ -513,6 +537,12 @@ const GTSTP: usize = 0x08;
 #[cfg(target_arch = "arm")]
 const GTCLR: usize = 0x0c;
 #[cfg(target_arch = "arm")]
+const GTSSR: usize = 0x10;
+#[cfg(target_arch = "arm")]
+const GTPSR: usize = 0x14;
+#[cfg(target_arch = "arm")]
+const GTCSR: usize = 0x18;
+#[cfg(target_arch = "arm")]
 const GTCR: usize = 0x2c;
 #[cfg(target_arch = "arm")]
 const GTUDDTYC: usize = 0x30;
@@ -523,7 +553,7 @@ const GTBER: usize = 0x40;
 #[cfg(target_arch = "arm")]
 const GTCNT: usize = 0x48;
 #[cfg(target_arch = "arm")]
-const GTCCRA: usize = 0x4c;
+const GTCCRC: usize = 0x54;
 #[cfg(target_arch = "arm")]
 const GTPR: usize = 0x64;
 #[cfg(target_arch = "arm")]
@@ -533,7 +563,19 @@ const GPT_WRITE_UNLOCKED: u32 = 0xa500;
 #[cfg(target_arch = "arm")]
 const GPT_WRITE_PROTECTED: u32 = 0xa501;
 #[cfg(target_arch = "arm")]
-const GTIOR_PWM_A: u32 = 25 | (1 << 8);
+const GPT_GROUP_SOFTWARE: u32 = 0x8000_0000;
+#[cfg(target_arch = "arm")]
+const GTIOR_PWM_A: u32 = 9 | (1 << 8);
+#[cfg(target_arch = "arm")]
+const GTBER_PWM_BUFFERED: u32 = 0x55_0000;
+#[cfg(target_arch = "arm")]
+const GTUDDTYC_COUNT_UP: u32 = 1;
+#[cfg(target_arch = "arm")]
+const GTUDDTYC_OADTY_MASK: u32 = 3 << 16;
+#[cfg(target_arch = "arm")]
+const GTUDDTYC_FORCE_LOW_A: u32 = 2 << 16;
+#[cfg(target_arch = "arm")]
+const GTUDDTYC_FORCE_HIGH_A: u32 = 3 << 16;
 
 #[cfg(target_arch = "arm")]
 const SPI0: usize = 0x4007_2000;
@@ -854,6 +896,14 @@ mod tests {
         assert_eq!(spi_divisor(24_000_000), Ok(0));
         assert_eq!(spi_divisor(0), Err(PeripheralError::InvalidConfig));
         assert_eq!(spi_divisor(1), Err(PeripheralError::InvalidConfig));
+    }
+
+    #[test]
+    fn buffered_pwm_compare_tracks_interior_duty_and_stays_in_range() {
+        assert_eq!(buffered_pwm_compare(1_000, 1), 0);
+        assert_eq!(buffered_pwm_compare(1_000, u16::MAX / 4), 248);
+        assert_eq!(buffered_pwm_compare(1_000, u16::MAX / 2), 498);
+        assert_eq!(buffered_pwm_compare(1_000, u16::MAX - 1), 998);
     }
 
     #[test]
