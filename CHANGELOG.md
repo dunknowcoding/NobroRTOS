@@ -13,6 +13,10 @@
   updates protected duty state through the hardware buffer, and handles exact
   0%/100% levels. The UNO R4 D5-to-A0 loopback physically validates native PWM
   and ADC together; native I2C/SPI remain separate unpromoted compositions.
+- SAMD21 now has an exact Arduino Zero-compatible deep provider composition for
+  RTC/TC4 timing, EIC/EVSYS/DMAC ownership, TCC PWM, SERCOM buses, USB CDC,
+  reset, CPU sleep, and leases. Both NiusWireless PN532 bus compositions build;
+  physical promotion remains separate.
 
 ## 0.3.3 - 2026-07-29
 

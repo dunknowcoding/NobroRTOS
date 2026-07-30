@@ -1,4 +1,4 @@
-//! NobroRTOS portable core on the SAMD21 - Cortex-M0+, all drivers our own.
+//! Compact SAMD21 target-health image.
 //!
 //! Provides target startup and status over a SERCOM0 USART
 //! (D0/D1 pads on Zero-class boards) written straight from the SAMD21 datasheet:
@@ -6,13 +6,19 @@
 //! baud generator. The `NOBRO-SAMD21` report includes `port_ready` plus the
 //! measured PRIMASK maximum, bound, wrap state, and pass state.
 //!
-//! This port currently provides the portable core and serial status path; it does not
-//! claim portable peripheral-provider coverage.
+//! This small diagnostic deliberately remains independent of the 48 MHz native
+//! composition in the library. Building this package also target-checks that
+//! full RTC/TC, EIC/EVSYS/DMAC, TCC, SERCOM, USB, lease, reset, and CPU-idle
+//! provider surface; physical promotion uses a separate state-restoring image.
 #![no_std]
 #![no_main]
 
 use cortex_m_rt::entry;
 use panic_halt as _;
+// Keep the generated device vector table and the native provider library in
+// the final image even though this compact status binary drives only SERCOM0.
+use atsamd_hal::pac as _;
+use nobro_port_samd21 as _;
 
 mod masked_critical_section;
 

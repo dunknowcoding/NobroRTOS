@@ -300,6 +300,7 @@ jobs:
         run: |
           arduino-cli core update-index
           arduino-cli core install arduino:avr@1.8.8
+          arduino-cli core install arduino:samd@1.8.14
           arduino-cli core install arduino:renesas_uno@1.6.0
           arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli lib install ArduinoBLE@2.1.0
@@ -323,7 +324,6 @@ jobs:
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
-          python tools/checks/platforms/check_platform_tiers.py --assert-receipts arduino-package
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
@@ -345,6 +345,8 @@ jobs:
           python tools/checks/integrations/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
             --niuszigbee _work/ArduinoNRF-Zigbee --compile
+          python tools/checks/platforms/check_platform_tiers.py \
+            --run-gate arduino-samd21-pn532-target-build
       - name: pinned camera integration
         run: |
           git clone https://github.com/dunknowcoding/NiusCam.git _work/NiusCam
@@ -355,6 +357,7 @@ jobs:
       - name: bounded ESP32 peripheral integrations
         run: |
           python tools/checks/integrations/check_esp32_peripheral_facade.py
+          python tools/checks/platforms/check_platform_tiers.py --assert-receipts arduino-package
 
   arduino-nrf-package:
     runs-on: windows-latest

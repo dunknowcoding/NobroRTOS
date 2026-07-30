@@ -383,9 +383,9 @@ Cross-compile coverage is
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4 |
+| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21 (target-built; physical promotion pending) |
 | **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
-| **Core ports** | target startup and status path available; peripheral providers are incomplete | SAMD21 (+ an 8-bit AVR kernel-lite subset) |
+| **Core ports** | target startup and status path available; peripheral providers are incomplete | an 8-bit AVR kernel-lite subset |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
@@ -402,6 +402,13 @@ for clock/deadline/ADC/PWM/I2C/SPI/byte I/O are separate board-core compositions
 not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
 ArduinoNRF composition is compiled on its supported Windows toolchain with the exact
 `usbcdc=enabled` board selection.
+
+The SAMD21 deep composition is target-built around `atsamd-hal`: RTC/TC4
+time and deadline, EIC/EVSYS/DMAC ownership, TCC PWM, SERCOM UART/I2C/SPI,
+USB CDC, reset, CPU sleep, and generation-safe leases. Its exact Arduino
+Zero-compatible dual-PN532 bindings compile, but this row has no physical
+promotion until the native image, both buses, IRQ route, recovery, and
+byte-exact restoration pass together.
 
 The exact scheduling, resource, isolation, tooling, and per-platform boundaries are
 maintained in the public [limitations matrix](docs/LIMITATIONS.md).

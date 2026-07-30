@@ -97,6 +97,28 @@
         "power",
         "lease"
       ]
+    },
+    {
+      "id": "provider-samd21-zero-v2",
+      "kind": "deep",
+      "required": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "rtc",
+        "reset",
+        "power",
+        "lease"
+      ]
     }
   ],
   "declarations": [
@@ -333,6 +355,58 @@
         "i2c",
         "spi",
         "usb",
+        "reset",
+        "power",
+        "lease"
+      ]
+    },
+    {
+      "platform": "samd21",
+      "composition": "native",
+      "profile": "provider-samd21-zero-v2",
+      "rust_type": "Samd21Providers",
+      "source": "core/ports/samd21/src/providers.rs",
+      "required": [],
+      "supported": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "rtc",
+        "reset",
+        "power",
+        "lease"
+      ],
+      "hardware-inapplicable": ["cache", "multicore"],
+      "unimplemented": [
+        "adc",
+        "servo",
+        "pulse",
+        "watchdog",
+        "flash"
+      ],
+      "trait_witnesses": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "rtc",
         "reset",
         "power",
         "lease"

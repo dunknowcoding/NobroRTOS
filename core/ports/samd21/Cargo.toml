@@ -3,21 +3,44 @@ name = "nobro-port-samd21"
 version = "0.1.0"
 edition = "2021"
 
-# NobroRTOS portable core on the SAMD21 (Cortex-M0+) . All drivers are our own,
-# written from the SAMD21 datasheet: clock bring-up (OSC8M at /1) and a SERCOM0 USART
-# for the report line. This target does not claim portable peripheral-provider coverage.
+# NobroRTOS native SAMD21G18A composition for Arduino Zero-compatible boards.
+# atsamd-hal owns register/pin correctness; NobroRTOS owns bounded lifecycle,
+# capability evidence, leases, power vetoes, and portable provider contracts.
 
 [dependencies]
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
 critical-section = { version = "1.2", features = ["restore-state-bool"] }
+embedded-hal = "1.0"
+embedded-hal-02 = { package = "embedded-hal", version = "0.2.7", features = ["unproven"] }
+embedded-hal-nb = "1.0"
+nb = "1.1"
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
+usb-device = "0.3"
+usbd-serial = "0.2"
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+cortex-m = "0.7"
+cortex-m-rt = { version = "0.7", features = ["device"] }
 panic-halt = "0.2"
 portable-atomic = { version = "1.13", default-features = false, features = ["unsafe-assume-single-core"] }
+atsamd-hal = { version = "0.23.3", default-features = false, features = ["samd21g-rt", "usb", "dma"] }
+
+[target.'cfg(not(target_arch = "arm"))'.dependencies]
+portable-atomic = "1.13"
+
+[dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }
 
 [profile.release]
 debug = 2
 lto = true
 opt-level = "s"
 codegen-units = 1
+panic = "abort"
+
+[[bin]]
+name = "nobro-port-samd21"
+path = "src/main.rs"
+test = false
+bench = false
 
 [workspace]

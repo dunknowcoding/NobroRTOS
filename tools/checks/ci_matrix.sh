@@ -203,8 +203,11 @@ gate "ra4m1 port build" \
 gate "ra4m1 event-paced DMA provider build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate ra4m1-event-dma-target-build
 
+gate "samd21 provider conformance" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate samd21-provider-host
+
 gate "samd21 port build" \
-  "$CURRENT_BASH" -c 'cd core/ports/samd21 && CARGO_TARGET_DIR="$PWD/../../../_work/ct-samd" cargo build --locked --release'
+  python tools/checks/platforms/check_platform_tiers.py --run-gate samd21-target-build
 
 gate "Tier-C prebuilt library and link" \
   python tools/build/build_libnobro.py --build

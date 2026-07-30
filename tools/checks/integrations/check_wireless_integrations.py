@@ -113,12 +113,14 @@ def main() -> int:
                         help="compile the complete NiusWireless source tree on ArduinoNRF")
     parser.add_argument("--compile-zigbee", action="store_true",
                         help="requires the Windows-only ArduinoNRF toolchain")
+    parser.add_argument("--compile-samd21-pn532", action="store_true",
+                        help="compile exact Arduino Zero PN532 I2C and SPI/IRQ examples")
     args = parser.parse_args()
     try:
         wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.2")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.1")
         verify_inventory(wireless, zigbee)
-        if args.compile or args.compile_nrf or args.compile_zigbee:
+        if args.compile or args.compile_nrf or args.compile_zigbee or args.compile_samd21_pn532:
             cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
             if not cli:
                 raise RuntimeError("arduino-cli not found")
@@ -135,6 +137,20 @@ def main() -> int:
                     compile_sketch(cli, zigbee, "zigbee",
                                    "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled",
                                    ZIGBEE_CASE, base)
+                if args.compile_samd21_pn532:
+                    for example in ("pn532_i2c_adv", "pn532_spi_adv"):
+                        run([
+                            cli,
+                            "compile",
+                            "--fqbn",
+                            "arduino:samd:arduino_zero_native",
+                            "--library",
+                            str(PACKAGE),
+                            "--library",
+                            str(wireless),
+                            str(wireless / "examples" / example),
+                        ])
+                        print(f"  PASS arduino:samd:arduino_zero_native {example}")
     except (OSError, RuntimeError) as error:
         print(f"WIRELESS INTEGRATIONS: FAIL ({error})")
         return 1

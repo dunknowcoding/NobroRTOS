@@ -121,7 +121,7 @@
         {
           "id": "board-packages",
           "command": ["arduino-cli", "core", "list"],
-          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)"
+          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:samd\\s+1\\.8\\.14)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)"
         }
       ]
     },
@@ -556,6 +556,68 @@
         }
       ]
     },
+    "samd21-provider-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/samd21",
+      "command": ["cargo", "test", "--locked", "--lib", "--target", "{host_target}"],
+      "claim_scopes": [
+        {
+          "platform": "samd21",
+          "composition": "native",
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "pwm",
+            "i2c",
+            "spi",
+            "usb",
+            "rtc",
+            "reset",
+            "power",
+            "lease"
+          ]
+        }
+      ]
+    },
+    "samd21-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/samd21",
+      "command": ["cargo", "build", "--locked", "--release", "--target", "thumbv6m-none-eabi"],
+      "claim_scopes": [
+        {
+          "platform": "samd21",
+          "composition": "native",
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "pwm",
+            "i2c",
+            "spi",
+            "usb",
+            "rtc",
+            "reset",
+            "power",
+            "lease"
+          ]
+        }
+      ]
+    },
     "arduino-facade-contract": {
       "kind": "host-test",
       "runner": "arduino-package",
@@ -628,6 +690,28 @@
           "platform": "ra4m1",
           "composition": "arduino",
           "capabilities": ["timebase", "deadline", "adc", "pwm", "i2c", "spi", "byte_io"]
+        }
+      ]
+    },
+    "arduino-samd21-pn532-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": [
+        "python",
+        "tools/checks/integrations/check_wireless_integrations.py",
+        "--niuswireless",
+        "_work/NiusWireless",
+        "--niuszigbee",
+        "_work/ArduinoNRF-Zigbee",
+        "--compile-samd21-pn532"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "samd21",
+          "composition": "arduino",
+          "capabilities": ["i2c", "spi"]
         }
       ]
     },
@@ -978,9 +1062,39 @@
     },
     "samd21": {
       "arch": "thumbv6m",
-      "tier": "core",
+      "tier": "deep",
       "implementation_root": "core/ports/samd21",
-      "compositions": {}
+      "limitations": "exact Arduino Zero-compatible native composition is host-tested and target-built but not physically promoted; RTC/TC4, EIC/EVSYS/DMAC, TCC PWM, SERCOM UART/I2C/SPI, USB CDC, reset, CPU sleep, and generation-safe leases are implemented; deep sleep is rejected and the two PN532 paths, IRQ route, USB lifecycle, recovery, and restoration still require exact physical evidence",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]}
+          }
+        },
+        "arduino": {
+          "surface": "arduino",
+          "claims": {
+            "i2c": {"maturity": "implemented", "evidence": ["arduino-samd21-pn532-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["arduino-samd21-pn532-target-build"]}
+          }
+        }
+      }
     },
     "avr_nano": {
       "arch": "avr",
