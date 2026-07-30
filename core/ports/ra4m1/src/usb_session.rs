@@ -92,18 +92,27 @@ impl Default for UsbReportCursor {
     }
 }
 
-/// Parser for the one native-USB command accepted by the RA port.
+/// Session-scoped parser for the RA port's bounded native-USB recovery commands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeCommand {
+    EnterBootloader,
+    RestoreBridge,
+}
+
 pub struct HostCommand {
-    matched: usize,
+    boot_matched: usize,
+    bridge_matched: usize,
     connected: bool,
 }
 
 impl HostCommand {
     const ENTER_BOOTLOADER: &'static [u8] = b"NOBRO_BOOT";
+    const RESTORE_BRIDGE: &'static [u8] = b"NOBRO_BRIDGE";
 
     pub const fn new() -> Self {
         Self {
-            matched: 0,
+            boot_matched: 0,
+            bridge_matched: 0,
             connected: false,
         }
     }
@@ -111,27 +120,38 @@ impl HostCommand {
     /// Record the current CDC session. A detach always destroys a partial command.
     pub fn observe_link(&mut self, configured: bool) {
         if !configured {
-            self.matched = 0;
+            self.boot_matched = 0;
+            self.bridge_matched = 0;
         }
         self.connected = configured;
     }
 
-    pub fn push(&mut self, byte: u8) -> bool {
-        if !self.connected {
-            return false;
-        }
-        if byte == Self::ENTER_BOOTLOADER[self.matched] {
-            self.matched += 1;
-            if self.matched == Self::ENTER_BOOTLOADER.len() {
-                self.matched = 0;
+    fn push_pattern(matched: &mut usize, pattern: &[u8], byte: u8) -> bool {
+        if byte == pattern[*matched] {
+            *matched += 1;
+            if *matched == pattern.len() {
+                *matched = 0;
                 return true;
             }
         } else if byte == b'\r' || byte == b'\n' {
-            self.matched = 0;
+            *matched = 0;
         } else {
-            self.matched = usize::from(byte == Self::ENTER_BOOTLOADER[0]);
+            *matched = usize::from(byte == pattern[0]);
         }
         false
+    }
+
+    pub fn push(&mut self, byte: u8) -> Option<NativeCommand> {
+        if !self.connected {
+            return None;
+        }
+        if Self::push_pattern(&mut self.boot_matched, Self::ENTER_BOOTLOADER, byte) {
+            return Some(NativeCommand::EnterBootloader);
+        }
+        if Self::push_pattern(&mut self.bridge_matched, Self::RESTORE_BRIDGE, byte) {
+            return Some(NativeCommand::RestoreBridge);
+        }
+        None
     }
 }
 
@@ -143,7 +163,7 @@ impl Default for HostCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostCommand, UsbReportCursor};
+    use super::{HostCommand, NativeCommand, UsbReportCursor};
     use nobro_usb::{UsbBackendError, UsbIoError};
 
     #[test]
@@ -217,15 +237,38 @@ mod tests {
         let mut parser = HostCommand::new();
         parser.observe_link(true);
         for &byte in b"NOBRO_" {
-            assert!(!parser.push(byte));
+            assert_eq!(parser.push(byte), None);
         }
         parser.observe_link(false);
         parser.observe_link(true);
         for &byte in b"BOOT" {
-            assert!(!parser.push(byte));
+            assert_eq!(parser.push(byte), None);
         }
         for (index, &byte) in b"NOBRO_BOOT".iter().enumerate() {
-            assert_eq!(parser.push(byte), index + 1 == b"NOBRO_BOOT".len());
+            assert_eq!(
+                parser.push(byte),
+                (index + 1 == b"NOBRO_BOOT".len()).then_some(NativeCommand::EnterBootloader)
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_restore_is_exact_and_cannot_span_sessions() {
+        let mut parser = HostCommand::new();
+        parser.observe_link(true);
+        for &byte in b"NOBRO_BR" {
+            assert_eq!(parser.push(byte), None);
+        }
+        parser.observe_link(false);
+        parser.observe_link(true);
+        for &byte in b"IDGE" {
+            assert_eq!(parser.push(byte), None);
+        }
+        for (index, &byte) in b"NOBRO_BRIDGE".iter().enumerate() {
+            assert_eq!(
+                parser.push(byte),
+                (index + 1 == b"NOBRO_BRIDGE".len()).then_some(NativeCommand::RestoreBridge)
+            );
         }
     }
 }

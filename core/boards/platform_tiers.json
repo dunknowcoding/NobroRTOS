@@ -931,24 +931,24 @@
       "arch": "thumbv7em",
       "tier": "deep",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; ordinary CPU sleep preserves the admitted clock while deep standby is rejected; host state/contract tests and target builds do not establish physical peripheral behavior or native-USB enumeration",
+      "limitations": "native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; ordinary CPU sleep preserves the admitted clock while deep standby is rejected; exact UNO R4 evidence covers time/deadline status, SCI9 byte I/O, event-DMAC cancellation/completion/sleep-wake, USBFS enumeration and route reconnect, WiFiS3 controller recovery, and exact restoration, while native ADC/PWM/I2C/SPI remain non-physical",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
-            "event": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
-            "dma_completion": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-event-dma-target-build"]},
-            "uart": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
-            "byte_io": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-event-dma-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "adc": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "pwm": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "i2c": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "spi": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]},
             "reset": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
-            "power": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]}
           }
         },

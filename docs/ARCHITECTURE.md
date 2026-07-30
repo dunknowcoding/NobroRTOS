@@ -663,6 +663,15 @@ validates fixed descriptor requirements before a process-wide permanent claim an
 hardware access; the panic-compatible `mount()` wrapper is retained for existing callers.
 Nonfunctional placeholder stacks are not published as features.
 
+The UNO R4 composition has a separate board-route lifecycle around the generic
+RA4M1 backend. Its connector starts on the onboard ESP32-S3 upload/debug
+bridge; `NOBRO_NATIVE` selects RA4M1 USBFS after the bridge status path is
+ready. A never-configured native attempt falls back after a bounded deadline,
+while a configured session remains active. `NOBRO_BRIDGE` disconnects native
+D+, performs the stock bootloader-compatible P408 high-to-low pulse, and
+returns P408 to input. This board operation is intentionally not generalized
+into controller-only `UsbStack` recovery.
+
 `UsbConfig` is the requested identity. The nRF backend generates descriptors from it,
 the RA4M1 backend accepts only `RA4M1_USB_CONFIG`, and ESP USB-Serial-JTAG descriptors
 are fixed by the controller and ignore the request. The public `identity_policy()` and

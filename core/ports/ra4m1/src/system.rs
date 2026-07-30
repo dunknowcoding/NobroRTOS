@@ -7,7 +7,9 @@ pub const HOCO_HZ: u32 = 48_000_000;
 pub const PCLKB_DIVIDER: u32 = 2;
 pub const PCLKB_HZ: u32 = HOCO_HZ / PCLKB_DIVIDER;
 pub const SCI_BAUD: u32 = 115_200;
-pub const SCI_ASYNC_DIVISOR: u32 = 16;
+// SEMR.BGDM=1 with ABCS=0 uses 8 base-clock periods per asynchronous bit.
+// Treating this mode as divide-by-16 silently doubles the wire baud.
+pub const SCI_ASYNC_DIVISOR: u32 = 8;
 pub const HOCO_STABILIZATION_POLLS: usize = 100_000;
 
 const DIVIDE_BY_1: u32 = 0;
@@ -39,7 +41,7 @@ pub const SCI_BRR: u8 = {
 };
 pub const SCI_ACTUAL_BAUD: u32 = PCLKB_HZ / (SCI_ASYNC_DIVISOR * (SCI_BRR as u32 + 1));
 pub const SCI_BAUD_ERROR_PPM: u32 = SCI_ACTUAL_BAUD.abs_diff(SCI_BAUD) * 1_000_000 / SCI_BAUD;
-const _: () = assert!(SCI_BRR == 12 && SCI_BAUD_ERROR_PPM < 20_000);
+const _: () = assert!(SCI_BRR == 25 && SCI_BAUD_ERROR_PPM < 20_000);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SystemInitError {

@@ -27,7 +27,7 @@ use nobro_port_ra4m1::providers::{
 use nobro_port_ra4m1::system::{
     configure_system, SystemRegisters, MEMWAIT_48MHZ, SCI_BRR, SCKDIVCR_VALUE, SCKSCR_HOCO,
 };
-use nobro_port_ra4m1::usb_session::{HostCommand, UsbReportCursor};
+use nobro_port_ra4m1::usb_session::{HostCommand, NativeCommand, UsbReportCursor};
 use nobro_usb::UsbIoError;
 use panic_halt as _;
 
@@ -192,14 +192,35 @@ fn route_usb_to_ra4(enabled: bool) {
             PRCR.write_volatile(0xA502);
             VBTBKR1.write_volatile(40);
             PRCR.write_volatile(0xA500);
-        }
-        let mut value = PORT4_PCNTR1.read_volatile() | USB_MUX_BIT;
-        if enabled {
+            let mut value = PORT4_PCNTR1.read_volatile() | USB_MUX_BIT;
             value |= USB_MUX_BIT << 16;
-        } else {
-            value &= !(USB_MUX_BIT << 16);
+            PORT4_PCNTR1.write_volatile(value);
+            return;
         }
+
+        // Arduino's bootloader restores this board's USB switch with a high-to-low
+        // pulse before returning P408 to input. Merely driving it low can leave the
+        // ESP32-S3 bridge's CDC tunnel silent after a native-USB attempt.
+        let marked_native = VBTBKR1.read_volatile() == 40;
+        let mut value = PORT4_PCNTR1.read_volatile() | USB_MUX_BIT;
+        // Pulse on every bridge restoration, not only after a marker-observed
+        // native session. A debugger flash/reset can reset the backup marker
+        // while leaving the external USB switch in its prior state.
+        // Let a target-aware debugger reset detach before the pulse: P408 high
+        // temporarily removes that same composite bridge from the connector.
+        cortex_m::asm::delay(4_800_000);
+        PORT4_PCNTR1.write_volatile(value | (USB_MUX_BIT << 16));
+        // 48 MHz core, bounded minimum matching the bootloader's 2 ms delay.
+        cortex_m::asm::delay(96_000);
+        value &= !(USB_MUX_BIT << 16);
         PORT4_PCNTR1.write_volatile(value);
+        // The official restoration leaves the switch-control pin as an input.
+        PORT4_PCNTR1.write_volatile(PORT4_PCNTR1.read_volatile() & !USB_MUX_BIT);
+        if marked_native {
+            PRCR.write_volatile(0xA502);
+            VBTBKR1.write_volatile(0);
+            PRCR.write_volatile(0xA500);
+        }
     }
 }
 
@@ -244,7 +265,8 @@ const SSR_CLEAR_ERROR: u8 = 0xC7; // keep TDRE/RDRF/TEND/MPB/MPBT, clear ORER/FE
 
 impl Sci {
     /// 115200 8N1 from PCLKB=HOCO/2=24 MHz with BGDM=1, ABCS=0, CKS=0.
-    /// The rounded divisor is BRR=12 (115384 baud, about +0.16%).
+    /// With SEMR.BGDM=1 and ABCS=0, the rounded divisor is BRR=25
+    /// (115384 baud, about +0.16%).
     fn init(&self) {
         unsafe {
             let b = self.0;
@@ -386,7 +408,10 @@ const SCI2: Sci = Sci(0x4007_0040);
 const SCI1: Sci = Sci(0x4007_0020);
 const SCI9: Sci = Sci(0x4007_0120);
 
-const NATIVE_USB_FALLBACK_US: u64 = 3_000_000;
+// First-time Windows enumeration can include descriptor validation and driver binding.
+// Keep the route long enough to finish that bounded work while retaining automatic
+// bridge recovery when native CDC never reaches Configured.
+const NATIVE_USB_FALLBACK_US: u64 = 15_000_000;
 const RESET_CONFIRMATION_US: u64 = 50_000;
 
 fn try_native_reset_confirmation(usb: &mut Ra4m1Usb) {
@@ -615,9 +640,21 @@ fn main() -> ! {
                     }
                 };
                 for &byte in &usb_bytes[..count] {
-                    if host_command.push(byte) {
-                        try_native_reset_confirmation(active_usb);
-                        enter_bootloader();
+                    match host_command.push(byte) {
+                        Some(NativeCommand::EnterBootloader) => {
+                            try_native_reset_confirmation(active_usb);
+                            enter_bootloader();
+                        }
+                        Some(NativeCommand::RestoreBridge) => {
+                            active_usb.disconnect_link();
+                            route_usb_to_ra4(false);
+                            native_report.reset();
+                            host_command.observe_link(false);
+                            native_route = false;
+                            native_fallback_deadline = None;
+                            break;
+                        }
+                        None => {}
                     }
                 }
             }

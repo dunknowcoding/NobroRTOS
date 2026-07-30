@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The native RA4M1 USBFS control pipe now follows RUSB2 setup-phase and
+  status-direction semantics, handles CDC line coding after configuration,
+  uses the correct DCP buffer-status bit, and restores the UNO R4 bridge with
+  the board bootloader's mux pulse. `NOBRO_BRIDGE` provides an in-band return
+  from native CDC without limiting ordinary native-session duration.
+- The RA4M1 SCI divisor now matches `SEMR.BGDM=1`, restoring exact 115200-baud
+  communication with the UNO R4 onboard bridge and controller UARTs.
+
 ## 0.3.3 - 2026-07-29
 
 ### Changed

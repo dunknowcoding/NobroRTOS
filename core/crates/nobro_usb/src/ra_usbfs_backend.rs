@@ -78,6 +78,7 @@ const IS_VBSTS: u16 = 1 << 7;
 const IS_DVST: u16 = 1 << 12;
 const IS_CTRT: u16 = 1 << 11;
 const IS_VALID: u16 = 1 << 3;
+const CTSQ_SETUP_RECEIVED: u16 = 0x1;
 const DVSQ_MASK: u16 = 0x70;
 const DVSQ_DEFAULT: u16 = 0x10;
 const DVSQ_ADDRESSED: u16 = 0x20;
@@ -86,7 +87,6 @@ const DVSQ_SUSPENDED_1: u16 = 0x50;
 const DVSQ_SUSPENDED_2: u16 = 0x60;
 const DVSQ_SUSPENDED_3: u16 = 0x70;
 // CFIFOSEL / CFIFOCTR
-const CF_RCNT: u16 = 1 << 15;
 const CF_REW: u16 = 1 << 14;
 const CF_ISEL: u16 = 1 << 5;
 const CF_MBW_16: u16 = 1 << 10;
@@ -101,7 +101,7 @@ const PID_BUF: u16 = 1;
 const PID_NAK: u16 = 0;
 const PID_STALL: u16 = 2;
 const PID_MASK: u16 = 0x3;
-const CTR_BSTS: u16 = 1 << 7;
+const CTR_BSTS: u16 = 1 << 15;
 const CTR_PBUSY: u16 = 1 << 5;
 const CTR_SQCLR: u16 = 1 << 8;
 const CTR_ACLRM: u16 = 1 << 9;
@@ -351,6 +351,10 @@ impl RaUsbfsCdc {
         controller_ready && link_enabled && vbus_present
     }
 
+    fn is_setup_event(intsts0: u16) -> bool {
+        intsts0 & IS_CTRT != 0 && intsts0 & IS_VALID != 0 && intsts0 & CTSQ_SETUP_RECEIVED != 0
+    }
+
     fn validated_line_coding(bytes: &[u8]) -> Option<[u8; 7]> {
         bytes.try_into().ok()
     }
@@ -531,21 +535,25 @@ impl RaUsbfsCdc {
 
     // ---- control pipe (PIPE0) helpers via CFIFO ----
 
+    fn ctrl_select_fifo(&self, in_direction: bool) -> Result<(), UsbBackendError> {
+        let expected = if in_direction { CF_ISEL | CF_MBW_16 } else { 0 };
+        unsafe {
+            CFIFOSEL.write_volatile(expected);
+            for _ in 0..FIFO_SELECT_SPINS {
+                if CFIFOSEL.read_volatile() & (0xF | CF_ISEL | CF_MBW_MASK) == expected {
+                    return Ok(());
+                }
+                core::hint::spin_loop();
+            }
+        }
+        Err(UsbBackendError::ControllerTimeout)
+    }
+
     fn ctrl_write_packet(&self, data: &[u8]) -> Result<(), UsbBackendError> {
         unsafe {
-            CFIFOSEL.write_volatile(CF_ISEL | CF_MBW_16); // DCP, write direction, 16-bit FIFO
-            let mut selected = false;
-            for _ in 0..FIFO_SELECT_SPINS {
-                let sel = CFIFOSEL.read_volatile();
-                if sel & (0xF | CF_ISEL | CF_MBW_MASK) == (CF_ISEL | CF_MBW_16) {
-                    selected = true;
-                    break;
-                }
-            }
-            if !selected {
-                return Err(UsbBackendError::ControllerTimeout);
-            }
-            CFIFOCTR.write_volatile(CF_BCLR); // clear buffer
+            // RA4M1 is little-endian, so paired 16-bit writes match RUSB2's native
+            // control-FIFO layout. Only an odd trailing byte uses the byte alias.
+            self.ctrl_select_fifo(true)?;
             let mut ready = false;
             for _ in 0..FIFO_SELECT_SPINS {
                 if CFIFOCTR.read_volatile() & CF_FRDY != 0 {
@@ -576,6 +584,9 @@ impl RaUsbfsCdc {
         self.ctrl_len = len.min(data.len()).min(self.ctrl_data.len());
         self.ctrl_data[..self.ctrl_len].copy_from_slice(&data[..self.ctrl_len]);
         self.ctrl_pos = 0;
+        if self.ctrl_len == 0 {
+            return self.ctrl_prime_status(false);
+        }
         self.ctrl_continue()?;
         unsafe {
             DCPCTR.write_volatile(PID_BUF);
@@ -593,11 +604,24 @@ impl RaUsbfsCdc {
         Ok(())
     }
 
-    /// Complete the control transfer status stage.
-    fn ctrl_status_done(&self) {
+    /// Prime EP0 for a zero-length status stage. Control-read data completes with
+    /// an OUT ZLP; host-to-device requests complete with an IN ZLP.
+    fn ctrl_prime_status(&self, in_direction: bool) -> Result<(), UsbBackendError> {
+        self.ctrl_select_fifo(in_direction)?;
         unsafe {
             DCPCTR.write_volatile(CTR_CCPL | PID_BUF);
         }
+        Ok(())
+    }
+
+    fn ctrl_status_done(&self) -> Result<(), UsbBackendError> {
+        self.ctrl_prime_status(true)
+    }
+
+    fn ctrl_prepare_out_data(&self) -> Result<(), UsbBackendError> {
+        self.ctrl_select_fifo(false)?;
+        unsafe { DCPCTR.write_volatile(PID_BUF) };
+        Ok(())
     }
 
     fn ctrl_stall(&mut self) -> Result<(), UsbBackendError> {
@@ -662,37 +686,37 @@ impl RaUsbfsCdc {
                 } else {
                     Stage::Addressed
                 };
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             }
             SetupAction::SetConfiguration(0) => {
                 self.close_data_pipes()?;
                 self.stage = Stage::Addressed;
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             }
             SetupAction::SetConfiguration(1) => {
                 self.open_data_pipes()?;
                 self.stage = Stage::Configured;
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             }
             SetupAction::SetConfiguration(_) => unreachable!("validated configuration"),
             SetupAction::ReceiveLineCoding => {
                 self.pending_line_coding = true;
-                unsafe { DCPCTR.write_volatile(PID_BUF) };
+                self.ctrl_prepare_out_data()?;
             }
             SetupAction::SetControlLineState
             | SetupAction::SendBreak
-            | SetupAction::SetInterface => self.ctrl_status_done(),
+            | SetupAction::SetInterface => self.ctrl_status_done()?,
             SetupAction::ClearEndpointHalt(index) => {
                 if !self.clear_endpoint_halt(index)? {
                     return Err(UsbBackendError::InvalidState);
                 }
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             }
             SetupAction::SetEndpointHalt(index) => {
                 if !self.set_endpoint_halt(index)? {
                     return Err(UsbBackendError::InvalidState);
                 }
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             }
         }
         Ok(())
@@ -721,19 +745,8 @@ impl RaUsbfsCdc {
     }
 
     fn receive_line_coding(&mut self) -> Result<(), UsbBackendError> {
+        self.ctrl_select_fifo(false)?;
         unsafe {
-            CFIFOSEL.write_volatile(CF_RCNT); // DCP, OUT/read direction, 8-bit FIFO
-            let mut selected = false;
-            for _ in 0..FIFO_SELECT_SPINS {
-                let select = CFIFOSEL.read_volatile();
-                if select & (CF_ISEL | 0xF) == 0 {
-                    selected = true;
-                    break;
-                }
-            }
-            if !selected {
-                return Err(UsbBackendError::ControllerTimeout);
-            }
             let mut ready = false;
             for _ in 0..FIFO_SELECT_SPINS {
                 if CFIFOCTR.read_volatile() & CF_FRDY != 0 {
@@ -761,7 +774,7 @@ impl RaUsbfsCdc {
                 .flatten();
             if let Some(line_coding) = retained {
                 self.line_coding = line_coding;
-                self.ctrl_status_done();
+                self.ctrl_status_done()?;
             } else {
                 self.ctrl_stall()?;
             }
@@ -1214,22 +1227,31 @@ impl UsbStack for RaUsbfsCdc {
             if resume_event && was_suspended {
                 self.resume();
             }
-            // VALID marks a received setup packet. Do not filter by CTSQ here:
-            // Windows may issue descriptor/status requests while the controller reports
-            // a different control-transfer phase, and the request registers still hold
-            // the authoritative setup packet.
-            if (is & IS_CTRT != 0) && (is & IS_VALID != 0) {
+            // VALID alone is not sufficient: CTRT also fires for the status stage,
+            // where USBREQ/USBVAL/USBLENG no longer describe a fresh setup packet.
+            // RUSB2 marks setup phases with CTSQ bit 0; the other CTSQ bits encode
+            // read/write/no-data variants, so exact equality with 1 drops valid
+            // host-to-device requests such as SET_CONFIGURATION.
+            if is & IS_CTRT != 0 {
                 INTSTS0.write_volatile(!IS_CTRT);
-                let result = self.handle_setup();
-                if !self.latch_result(result) {
-                    return CdcState::Disconnected;
+                if Self::is_setup_event(is) {
+                    let result = self.handle_setup();
+                    if !self.latch_result(result) {
+                        return CdcState::Disconnected;
+                    }
                 }
             }
             // EP0 can hold one 64-byte packet. Continue long descriptors when the
             // previous packet leaves the control FIFO.
             if BEMPSTS.read_volatile() & 1 != 0 {
                 BEMPSTS.write_volatile(!1);
-                let result = self.ctrl_continue();
+                let result = if self.ctrl_len != 0 && self.ctrl_pos >= self.ctrl_len {
+                    self.ctrl_len = 0;
+                    self.ctrl_pos = 0;
+                    self.ctrl_prime_status(false)
+                } else {
+                    self.ctrl_continue()
+                };
                 if !self.latch_result(result) {
                     return CdcState::Disconnected;
                 }
@@ -1403,8 +1425,9 @@ const _: () = {
 mod tests {
     use super::{
         BackendFault, ControlState, RaUsbfsCdc, SetupAction, SetupPacket, Stage, UsbConfig,
-        DVSQ_SUSPENDED_0, DVSQ_SUSPENDED_1, DVSQ_SUSPENDED_2, DVSQ_SUSPENDED_3, PIPE1_BULK_OUT_CFG,
-        PIPE2_BULK_IN_CFG, PIPE3_INTERVAL, PIPECFG_SHTNAK, RA4M1_USB_CONFIG,
+        CTSQ_SETUP_RECEIVED, DVSQ_SUSPENDED_0, DVSQ_SUSPENDED_1, DVSQ_SUSPENDED_2,
+        DVSQ_SUSPENDED_3, IS_CTRT, IS_VALID, PIPE1_BULK_OUT_CFG, PIPE2_BULK_IN_CFG, PIPE3_INTERVAL,
+        PIPECFG_SHTNAK, RA4M1_USB_CONFIG,
     };
     use crate::{UsbBackendError, UsbStack};
 
@@ -1538,6 +1561,18 @@ mod tests {
         for (packet, state, expected) in cases {
             assert_eq!(RaUsbfsCdc::validate_setup(packet, state), Some(expected));
         }
+    }
+
+    #[test]
+    fn only_valid_ctsq_setup_events_consume_request_registers() {
+        assert!(RaUsbfsCdc::is_setup_event(
+            IS_CTRT | IS_VALID | CTSQ_SETUP_RECEIVED
+        ));
+        assert!(!RaUsbfsCdc::is_setup_event(IS_CTRT | IS_VALID));
+        assert!(RaUsbfsCdc::is_setup_event(IS_CTRT | IS_VALID | 3));
+        assert!(RaUsbfsCdc::is_setup_event(IS_CTRT | IS_VALID | 5));
+        assert!(!RaUsbfsCdc::is_setup_event(IS_CTRT | IS_VALID | 2));
+        assert!(!RaUsbfsCdc::is_setup_event(IS_VALID | CTSQ_SETUP_RECEIVED));
     }
 
     #[test]

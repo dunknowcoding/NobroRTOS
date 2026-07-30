@@ -391,9 +391,13 @@ Cross-compile coverage is
 
 RA4M1's native row includes a LOCO-clocked timebase and deadline, GPT2/ELC event
 capture, bounded ADC/PWM/I2C/SPI/UART providers, USBFS, reset, CPU sleep,
-generation-safe leases, and an opt-in GPT/ELC/DMAC completion future. These are
-target-build and host-contract claims until W111 physically promotes each exact
-UNO R4 binding. UNO R4 and ArduinoNRF wrappers
+generation-safe leases, and an opt-in GPT/ELC/DMAC completion future. Exact
+UNO R4 evidence now covers native time/deadline status, event-paced DMAC
+completion/cancellation/sleep-wake, USBFS enumeration and reconnect, the
+Arduino PWM-to-ADC/RC522 fixture, WiFiS3 controller recovery, and byte-exact
+firmware restoration. Native ADC/PWM/I2C/SPI remain target-build and
+host-contract claims until their register-level providers are exercised
+directly. UNO R4 and ArduinoNRF wrappers
 for clock/deadline/ADC/PWM/I2C/SPI/byte I/O are separate board-core compositions and do
 not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
 ArduinoNRF composition is compiled on its supported Windows toolchain with the exact

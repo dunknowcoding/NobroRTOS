@@ -1047,6 +1047,7 @@
       ],
       "limitations": [
         "HC-12 and HC-05/06 are explicit fail-closed upstream stubs and are not implemented support.",
+        "One exact UNO R4/NiusWireless 0.2.2 RC522 software-SPI/IRQ fixture read the resident card UID and restored the prior firmware byte-for-byte; no other NiusWireless member or board is promoted by that result.",
         "Target compilation and library implementation do not promote an exact radio, RFID, or board composition.",
         "The Nobro facade implements fail-closed health lifecycle for NiusBase members and a bounded LoRa payload data plane; protocol-specific data planes remain separate."
       ]

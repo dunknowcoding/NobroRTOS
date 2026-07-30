@@ -40,7 +40,7 @@ not inferred from software coefficients alone.
 
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
-| Deep | nRF52840, RA4M1 | Exact native profiles satisfy their declared capability sets. RA4M1 includes sleep-stable AGT time/deadline, GPT2/ELC capture, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset/CPU-sleep, leases, and opt-in event-paced DMAC completion | RA4M1 native peripheral claims remain target-build/host-contract evidence until exact physical promotion; deep standby, servo, watchdog, RTC, flash, GPIO, and generic IRQ providers are not claimed |
+| Deep | nRF52840, RA4M1 | Exact native profiles satisfy their declared capability sets. RA4M1 includes sleep-stable AGT time/deadline, GPT2/ELC capture, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset/CPU-sleep, leases, and opt-in event-paced DMAC completion | Exact UNO R4 evidence covers time/deadline status, event-DMAC cancellation/completion/sleep-wake, USBFS enumeration/reconnect, Arduino PWM-to-ADC/RC522, WiFiS3 recovery, and exact restoration. Native ADC/PWM/I2C/SPI remain non-physical; deep standby, servo, watchdog, RTC, flash, GPIO, and generic IRQ providers are not claimed |
 | Provider | RP2350, ESP32-C3, ESP32-S3 | Selected typed providers; ESP32-C3 includes timebase, fixed USB-Serial-JTAG, a configuration-priced Arduino persistent ADC-DMA composition, and one exact priced NimBLE/WiFi-coexistence workload; ESP32-S3 has required native build/USB host evidence plus one exact Arduino full-duplex ES8311 audio binding at 16 kHz mono signed-16, while its other time/deadline/I2C/SPI/PWM paths remain experimental | Full lease/event/fault parity, native physical recovery evidence, adaptive wireless queue/deadline/backoff/energy policy, other BLE/audio configurations, and unimplemented peripherals |
 | Core | ESP32, ESP32-P4, SAMD21, AVR subset | Target startup/status integration where present; classic ESP32 has a physically verified and whole-composition-priced Arduino Bluedroid/WiFi workload, while ESP32-P4 has a configuration-priced Arduino persistent ADC-DMA composition | A separately priced classic-ESP32 WiFi baseline and BLE increment, physical ESP32-S3 BLE evidence, native ESP32-P4 providers, and portable peripheral providers for the remaining core-tier targets |
 
@@ -111,6 +111,13 @@ re-enumeration apply only to the mounted application backend; they do not select
 SoftDevice/no-SoftDevice flash layout, modify bootloader descriptors, or enter recovery
 firmware. Host-visible absence alone cannot distinguish failure to execute a bootloader
 from failure to enumerate its USB identity.
+
+On UNO R4 WiFi, native RA4M1 USB temporarily owns the connector that normally
+exposes the onboard upload/debug bridge. The port retains a bounded
+never-configured fallback and accepts the session-scoped `NOBRO_BRIDGE`
+command for an explicit in-band return. It does not impose an arbitrary
+timeout on a healthy configured native session. The bridge-restoration mux
+pulse is board-specific and is not exposed as a generic `UsbStack` operation.
 
 `nobro-wireless` supplies a bounded data plane, selected concrete transports,
 portable WiFi/BLE lifecycle contracts, and an independently mounted native
