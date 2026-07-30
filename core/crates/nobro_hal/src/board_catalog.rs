@@ -313,9 +313,10 @@ pub fn profile_for_feature(feature: &str) -> Option<BoardProfileDefinition> {
 }
 
 pub fn exact_profile_for_feature(feature: &str) -> Option<ExactBoardProfileDefinition> {
-    EXACT_BOARD_PROFILES.iter().copied().find(|entry| {
-        entry.feature == feature || entry.feature_aliases.iter().any(|alias| *alias == feature)
-    })
+    EXACT_BOARD_PROFILES
+        .iter()
+        .copied()
+        .find(|entry| entry.feature == feature || entry.feature_aliases.contains(&feature))
 }
 
 fn canonical_feature(feature: &str) -> &str {

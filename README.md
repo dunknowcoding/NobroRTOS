@@ -383,8 +383,8 @@ Cross-compile coverage is
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21 (target-built; physical promotion pending) |
-| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | RP2350 (Cortex-M33), ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
+| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W (RP physical promotion pending) |
+| **Provider ports** | one or more portable `nobro_hal` provider traits implemented for the target | ESP32-C3 (RISC-V), ESP32-S3 (Xtensa LX7) |
 | **Core ports** | target startup and status path available; peripheral providers are incomplete | an 8-bit AVR kernel-lite subset |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |

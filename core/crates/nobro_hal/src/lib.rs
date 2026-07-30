@@ -12,6 +12,7 @@ pub mod completion;
 pub mod lease;
 pub mod mpu;
 pub mod platform;
+pub mod rp2;
 pub mod snapshots;
 pub mod traits;
 
@@ -74,6 +75,13 @@ pub use lease::{LeaseError, LeaseGuard, LeaseRecoveryReceipt, Resource, Resource
 pub use platform::nrf52840::NrfSchedulingSession;
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::ActivePlatform;
+pub use rp2::{
+    Rp2Adc, Rp2AdcBackend, Rp2Alarm, Rp2AlarmBackend, Rp2ByteIo, Rp2ByteIoBackend,
+    Rp2ContractError, Rp2Cyw43Backend, Rp2Cyw43Contract, Rp2DmaPlan, Rp2I2c, Rp2LeaseGuard,
+    Rp2Leases, Rp2MulticoreContract, Rp2PioPlan, Rp2Power, Rp2PowerBackend, Rp2Pwm, Rp2PwmBackend,
+    Rp2Reset, Rp2ResetBackend, Rp2Resource, Rp2RuntimeContract, Rp2Silicon, Rp2Spi, RP2040_RUNTIME,
+    RP2350_RUNTIME,
+};
 pub use snapshots::{
     BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,
     BOARD_PACKAGE_REPORT_MAGIC, BOARD_PACKAGE_REPORT_VERSION, BOARD_PROFILE_REPORT_MAGIC,

@@ -1182,11 +1182,11 @@ def selftest() -> int:
     )
 
     bad_reference = copy.deepcopy(good)
-    bad_reference["reference_platform"] = "rp2350"
+    bad_reference["reference_platform"] = "esp32c3"
     _expect_error(validate(bad_reference), "reference_platform must")
 
     false_deep = copy.deepcopy(good)
-    false_deep["platforms"]["rp2350"]["tier"] = "deep"
+    false_deep["platforms"]["esp32c3"]["tier"] = "deep"
     _expect_error(validate(false_deep), "profile kind does not match the platform tier")
 
     unknown_claim = copy.deepcopy(good)

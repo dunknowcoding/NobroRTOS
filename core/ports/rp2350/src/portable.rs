@@ -1,125 +1,173 @@
-//! Portable HAL provider contract on the RP2350.
-//!
-//! This implements the SAME portable `nobro_hal` provider traits the nRF52840
-//! deep HAL implements: a real Cortex-M33 backend, not an nRF-shaped
-//! placeholder. The foundational provider (a monotonic microsecond timebase)
-//! is implemented here against the RP2350 TIMER0 block, so kernel code that is
-//! generic over `HalClock`/`HalTimebaseProvider` runs unchanged on this chip.
-//!
-//! Scope: timebase and compatibility/identity providers are implemented. Deadline
-//! capture, servo PWM, I2C/SPI, and lease providers remain unavailable on this port.
+//! Exact RP2350/Pico 2 W binding for the shared RP-series contract.
 
-use nobro_hal::traits::{HalClock, HalCompatibility, HalTimebaseProvider, PlatformHal};
 use nobro_hal::board_catalog::EXACT_RP2350_PICO2W;
 use nobro_hal::{
-    BoardCapacity, BoardDesc, CapabilityProfileKind, HardwareCapability,
-    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness,
+    BoardCapacity, BoardDesc, CapabilityProfileKind, HalClock, HalCompatibility,
+    HalTimebaseProvider, HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
+    HardwareCapabilityWitness, PlatformHal, Rp2Cyw43Backend, Rp2PowerBackend, Rp2ResetBackend,
+    RP2350_RUNTIME,
 };
 
-/// RP2350 TIMER0 register block. Offsets from RP2350 datasheet section 12.8.
-/// The timer increments once per microsecond (the watchdog tick divides the
-/// system clock to 1 MHz during `init_clocks_and_plls`).
+#[cfg(all(feature = "cyw43-pio", feature = "cyw43-vendor"))]
+compile_error!("select exactly one Pico 2 W CYW43439 backend");
+#[cfg(not(any(feature = "cyw43-pio", feature = "cyw43-vendor")))]
+compile_error!("select exactly one Pico 2 W CYW43439 backend");
+
+#[cfg(feature = "cyw43-pio")]
+pub const CYW43439_BACKEND: Rp2Cyw43Backend = Rp2Cyw43Backend::PioSpi;
+#[cfg(feature = "cyw43-vendor")]
+pub const CYW43439_BACKEND: Rp2Cyw43Backend = Rp2Cyw43Backend::Vendor;
+
 const TIMER0_BASE: usize = 0x400b_0000;
-const TIMELR: usize = 0x0c; // low word; reading it LATCHES the high word
-const TIMEHR: usize = 0x08; // high word, valid immediately after a TIMELR read
-const TIMERAWL: usize = 0x28; // un-latched low word (liveness probe)
+const TIMEHR: usize = 0x08;
+const TIMELR: usize = 0x0c;
+const TIMERAWL: usize = 0x28;
 
 #[inline]
-fn reg(offset: usize) -> *const u32 {
+fn timer_reg(offset: usize) -> *const u32 {
     (TIMER0_BASE + offset) as *const u32
 }
 
-/// The RP2350 portable platform backend.
 pub struct Rp2350;
 
+pub struct Rp2350Power;
+
+impl Rp2PowerBackend for Rp2350Power {
+    type Error = core::convert::Infallible;
+
+    fn cpu_sleep(&mut self) -> Result<(), Self::Error> {
+        cortex_m::asm::dsb();
+        cortex_m::asm::wfi();
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rp2350ResetCause {
+    Watchdog,
+    Software,
+    PowerOnExternalOrDebugger,
+}
+
+pub struct Rp2350Reset;
+
+impl Rp2ResetBackend for Rp2350Reset {
+    type Cause = Rp2350ResetCause;
+
+    fn reset_cause() -> Self::Cause {
+        let reason = unsafe { &*rp235x_hal::pac::WATCHDOG::PTR }.reason().read();
+        if reason.timer().bit_is_set() {
+            Self::Cause::Watchdog
+        } else if reason.force().bit_is_set() {
+            Self::Cause::Software
+        } else {
+            Self::Cause::PowerOnExternalOrDebugger
+        }
+    }
+
+    fn system_reset() -> ! {
+        rp235x_hal::reset()
+    }
+}
+
 impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Rp2350 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Multicore as u8 }> for Rp2350 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Rp2350 {}
 
-/// Minimal board descriptor so `PlatformHal` has an associated `Board`.
-pub struct Rp2350Board;
+pub struct Pico2WBoard;
 
-impl BoardDesc for Rp2350Board {
+impl BoardDesc for Pico2WBoard {
     const PLATFORM_ID: &'static str = EXACT_RP2350_PICO2W.platform_id;
     const BOARD_ID: &'static str = EXACT_RP2350_PICO2W.board_id;
-    // App image runs from XIP flash after the boot2 + image-def block.
     const APP_FLASH_START: u32 = match EXACT_RP2350_PICO2W.app_flash_start {
         Some(start) => start,
         None => 0,
     };
-    // 520 KiB SRAM / 4 MiB flash: a generous share for the software budget.
     const CAPACITY: BoardCapacity = EXACT_RP2350_PICO2W.capacity;
-    // Pico 2 W routes its LED through the wireless device rather than a direct
-    // RP2350 GPIO, so the board-level pin is intentionally absent.
     const LED_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.led_pin;
     const SERVO_PWM_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.servo_pwm_pin;
-    const SERVO_CENTER_US: u32 = 1500;
+    const SERVO_CENTER_US: u32 = 1_500;
     const MVK_TRIGGER_PIN: Option<u8> = EXACT_RP2350_PICO2W.pins.mvk_trigger_pin;
 }
 
 impl HalClock for Rp2350 {
     fn now_us() -> u64 {
-        // Latched 64-bit read: reading TIMELR copies the current high word into
-        // TIMEHR, so the pair is consistent without a retry loop (datasheet
-        // section 12.8.2, "Reading the counter").
-        // SAFETY: read-only access to fixed, always-mapped timer MMIO.
         unsafe {
-            let lo = core::ptr::read_volatile(reg(TIMELR));
-            let hi = core::ptr::read_volatile(reg(TIMEHR));
-            (u64::from(hi) << 32) | u64::from(lo)
+            let low = timer_reg(TIMELR).read_volatile();
+            let high = timer_reg(TIMEHR).read_volatile();
+            (u64::from(high) << 32) | u64::from(low)
         }
     }
 }
 
 impl HalTimebaseProvider for Rp2350 {
-    /// # Safety
-    /// The RP2350 timer is started by `init_clocks_and_plls` before this
-    /// backend is used; nothing to initialize here (kept for contract parity).
     unsafe fn init_timebase() {}
 }
 
 impl HalCompatibility for Rp2350 {
     const DECLARATION: HardwareCapabilityDeclaration = {
-        let witnesses = HardwareCapabilitySet::EMPTY
-            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
-                HardwareCapability::Timebase,
-            )
+        let supported = HardwareCapabilitySet::EMPTY
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(HardwareCapability::Deadline)
+            .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
-            );
-        let supported = witnesses;
+            )
+            .witnessed::<Self, { HardwareCapability::Gpio as u8 }>(HardwareCapability::Gpio)
+            .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
+            .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
+            .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
+            .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
+            .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
+            .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
+            .witnessed::<Self, { HardwareCapability::Multicore as u8 }>(
+                HardwareCapability::Multicore,
+            )
+            .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         HardwareCapabilityDeclaration::new(
-            "provider-rp2-v2",
-            CapabilityProfileKind::Constrained,
+            "rp2-deep-v2",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             HardwareCapabilitySet::EMPTY,
             HardwareCapabilitySet::ALL.without(supported),
-            witnesses,
+            supported,
         )
     };
 }
 
 const _: [(); 1] = [(); <Rp2350 as HalCompatibility>::DECLARATION.is_valid() as usize];
-const _: [(); 1] =
-    [(); <Rp2350 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
+const _: [(); 1] = [(); <Rp2350 as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
+const _: [(); 1] = [(); (RP2350_RUNTIME.cores == 2) as usize];
 
 impl PlatformHal for Rp2350 {
     const PLATFORM_ID: &'static str = "rp2350";
-    type Board = Rp2350Board;
+    type Board = Pico2WBoard;
 }
 
-/// Live self-check of the portable timebase provider: the monotonic clock must
-/// be advancing. Returns true when a second sample is strictly greater than the
-/// first across a short busy wait, rejecting a constant-returning stub.
 pub fn verify_timebase_provider() -> bool {
-    let t0 = Rp2350::now_us();
-    // Busy-wait on the un-latched raw low word so the compiler cannot elide it.
-    // SAFETY: read-only timer MMIO.
-    let start_raw = unsafe { core::ptr::read_volatile(reg(TIMERAWL)) };
-    while unsafe { core::ptr::read_volatile(reg(TIMERAWL)) }.wrapping_sub(start_raw) < 50 {
+    let start = Rp2350::now_us();
+    let raw = unsafe { timer_reg(TIMERAWL).read_volatile() };
+    while unsafe { timer_reg(TIMERAWL).read_volatile() }.wrapping_sub(raw) < 50 {
         core::hint::spin_loop();
     }
-    let t1 = Rp2350::now_us();
-    let required = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Timebase);
-    t1 > t0 && <Rp2350 as HalCompatibility>::supports(required)
+    Rp2350::now_us() > start
 }

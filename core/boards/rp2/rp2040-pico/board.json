@@ -8,9 +8,9 @@
     "silicon": "raspberrypi:rp2040",
     "physical_board": "raspberrypi:pico",
     "boot_layout": "raspberrypi:rp2040-boot2",
-    "framework_core": null,
-    "hal_stack": null,
-    "usb_stack": null
+    "framework_core": "nobro:rp2040-hal",
+    "hal_stack": "nobro:rp2-shared",
+    "usb_stack": "nobro:rp-usb"
   },
   "description": "Official Raspberry Pi Pico with RP2040 and ROM BOOTSEL recovery",
   "boot": {
@@ -27,8 +27,14 @@
     "max_modules": 12
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The shared RP2040 runtime, PIO/DMA/USB lifecycle, and exact firmware build are not implemented yet."
+    "support": "maintained-port",
+    "cargo_target": "thumbv6m-none-eabi",
+    "runtime_manifest": "core/ports/rp2040/Cargo.toml",
+    "entry": "rp2040-hal entry plus the mandatory 256-byte BOOT2 image",
+    "interrupts": "owned by the maintained RP2040 port and selected provider sessions",
+    "dma": "shared RP2 completion/cancellation contract with RP2040-local channels and DREQ values",
+    "clock": "rp2040-hal board startup owns PLL and timer configuration",
+    "boot": "ROM BOOTSEL plus the image's protected BOOT2 stage"
   },
   "pins": { "led": 25, "servo_pwm": null, "mvk_trigger": null }
 }

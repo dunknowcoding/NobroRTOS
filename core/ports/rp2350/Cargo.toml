@@ -9,7 +9,7 @@ edition = "2021"
 # workspace: the rp235x-hal tree is independent of the thumbv7em core workspace.
 
 [dependencies]
-rp235x-hal = { version = "0.3", features = ["critical-section-impl", "rt"] }
+rp235x-hal = { version = "0.4", features = ["critical-section-impl", "rt"] }
 usb-device = "0.3"
 usbd-serial = "0.2"
 cortex-m = "0.7"
@@ -19,9 +19,11 @@ nobro-hal = { path = "../../crates/nobro_hal", default-features = false, feature
 nobro-kernel = { path = "../../crates/nobro_kernel" }
 
 [features]
-default = []
+default = ["cyw43-pio"]
 # Opt-in DMA_IRQ_0 completion future and boot-time functional self-test.
 dma-completion = []
+cyw43-pio = []
+cyw43-vendor = []
 
 [profile.release]
 debug = 2

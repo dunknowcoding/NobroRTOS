@@ -20,6 +20,7 @@ use hal::clocks::Clock;
 use hal::dma::DMAExt;
 use hal::multicore::{Multicore, Stack};
 
+use nobro_hal::{Rp2MulticoreContract, Rp2Power, Rp2ResetBackend};
 use nobro_kernel::{AsyncCore, MpmcChannel, ReactorExecutor};
 
 #[cfg(feature = "dma-completion")]
@@ -112,6 +113,8 @@ fn main() -> ! {
     )
     .unwrap();
     let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
+    let _reset_cause = <portable::Rp2350Reset as Rp2ResetBackend>::reset_cause();
+    let _power = Rp2Power::try_new(portable::Rp2350Power, 2).unwrap();
     #[cfg(feature = "dma-completion")]
     let dma_report = {
         let dma_channels = pac.DMA.split(&mut pac.RESETS);
@@ -123,12 +126,14 @@ fn main() -> ! {
     };
 
     // Bring up core1 with its own stack and reactor task.
+    let core1_lease = Rp2MulticoreContract::try_acquire(1).unwrap();
     let mut sio = hal::Sio::new(pac.SIO);
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
     let core1 = &mut mc.cores()[1];
     #[allow(static_mut_refs)]
     let stack_alloc = unsafe { CORE1_STACK.take().unwrap() };
     let _ = core1.spawn(stack_alloc, core1_task);
+    core::mem::forget(core1_lease);
 
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USB,
@@ -148,10 +153,14 @@ fn main() -> ! {
         .build();
 
     let timebase_ok = portable::verify_timebase_provider();
+    let cyw_backend_ok = matches!(
+        portable::CYW43439_BACKEND,
+        nobro_hal::Rp2Cyw43Backend::PioSpi | nobro_hal::Rp2Cyw43Backend::Vendor
+    );
     #[cfg(feature = "dma-completion")]
-    let all = timebase_ok && dma_report.passed;
+    let all = timebase_ok && cyw_backend_ok && dma_report.passed;
     #[cfg(not(feature = "dma-completion"))]
-    let all = timebase_ok;
+    let all = timebase_ok && cyw_backend_ok;
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;

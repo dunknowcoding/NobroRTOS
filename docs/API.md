@@ -1339,23 +1339,30 @@ lifetimes in the provider type.
 The nRF52840 backend maps it to PPI. Future ports can map it to another trigger
 fabric without changing app code.
 
-With Cargo feature `dma-completion`, the RP2350 port provides an experimental
-`Dma0Completion` component backed by DMA channel 0 and `DMA_IRQ_0`. Its
-equal-length word-copy future registers the waker before starting the channel,
-disables the channel interrupt before cancellation, and waits for hardware
-abort before releasing its fixed static staging.
-This is a port-local implementation of the same completion discipline rather
-than an nRF-shaped PPI emulation. The feature-off port does not link its future,
-staging, completion cell, or owned IRQ handler.
+RP2040 and RP2350 share the bounded `nobro_hal::rp2` lifecycle and ownership
+contracts while keeping their exact silicon limits and startup images separate.
+Pico 2 W selects exactly one CYW43439 logical-stack backend at compile time.
 
-The feature-on status image runs a bounded boot self-test. It first cancels a
+With Cargo feature `dma-completion`, both RP ports provide a target-built
+`Dma0Completion` component backed by DMA channel 0 and `DMA_IRQ_0`. Their
+equal-length word-copy futures register the waker before starting the channel,
+disable the channel interrupt before cancellation, and wait for hardware abort
+before releasing fixed static staging. RP2040 validates its two-bit NVIC
+priority width separately from RP2350's four-bit width. These are port-local
+implementations of the same completion discipline rather than nRF-shaped PPI
+emulation. A feature-off port does not link its future, staging, completion
+cell, or owned IRQ handler.
+
+The RP2350 feature-on status image runs a bounded boot self-test. It first cancels a
 transfer and checks that staged output was not published, then uses DMA timer 0
 to pace a test-only copy while the core waits in System-ON `WFE`. The status
 fields `dma_idle`, `dma_res_us`, `dma_total_us`, and `dma_wake_us` respectively
 report idle entries, measured WFE residence, completion time, and
 IRQ-to-ready-task latency. The ordinary `copy` API remains unpaced. These fields
 are functional and residence evidence on the observed image; they are not
-electrical-current, energy, or universal power evidence.
+electrical-current, energy, or universal power evidence. The RP2040 provider is
+target-built in W114; its corresponding physical copy/cancellation/wake receipt
+belongs to W115 and is not inferred from compilation.
 
 Portable staged providers use `StagedTransferPlan` to reject empty,
 length-mismatched, and over-capacity operations before claiming hardware.

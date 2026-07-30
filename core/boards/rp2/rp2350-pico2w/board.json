@@ -9,7 +9,7 @@
     "physical_board": "raspberrypi:pico-2-w",
     "boot_layout": "raspberrypi:rp2350-image-def",
     "framework_core": "nobro:rp235x-hal",
-    "hal_stack": "nobro:rp2350",
+    "hal_stack": "nobro:rp2-shared",
     "usb_stack": "nobro:rp-usb"
   },
   "description": "Raspberry Pi Pico 2 W (RP2350, Cortex-M33), NobroRTOS portable-core port over USB-CDC with self-DFU to BOOTSEL",

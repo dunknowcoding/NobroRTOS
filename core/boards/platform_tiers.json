@@ -310,6 +310,64 @@
         }
       ]
     },
+    "rp2-shared-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "--target",
+        "{host_target}",
+        "--locked",
+        "-p",
+        "nobro-hal",
+        "--no-default-features",
+        "--features",
+        "contract-only"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "rp2040",
+          "composition": "native",
+          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "reset", "power", "multicore", "lease"]
+        },
+        {
+          "platform": "rp2350",
+          "composition": "native",
+          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "reset", "power", "multicore", "lease"]
+        }
+      ]
+    },
+    "rp2040-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/rp2040",
+      "command": ["cargo", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "rp2040",
+          "composition": "native",
+          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "usb", "reset", "power", "multicore", "lease"]
+        }
+      ]
+    },
+    "rp2040-dma-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/rp2040",
+      "command": ["cargo", "build", "--locked", "--release", "--features", "dma-completion"],
+      "claim_scopes": [
+        {
+          "platform": "rp2040",
+          "composition": "native",
+          "capabilities": ["dma_completion"]
+        }
+      ]
+    },
     "rp2350-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
@@ -320,7 +378,7 @@
         {
           "platform": "rp2350",
           "composition": "native",
-          "capabilities": ["timebase"]
+          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "usb", "reset", "power", "multicore", "lease"]
         }
       ]
     },
@@ -335,6 +393,20 @@
           "platform": "rp2350",
           "composition": "native",
           "capabilities": ["dma_completion"]
+        }
+      ]
+    },
+    "rp2350-cyw-vendor-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/rp2350",
+      "command": ["cargo", "check", "--locked", "--release", "--no-default-features", "--features", "cyw43-vendor"],
+      "claim_scopes": [
+        {
+          "platform": "rp2350",
+          "composition": "native",
+          "capabilities": ["event", "spi", "power", "lease"]
         }
       ]
     },
@@ -886,17 +958,64 @@
         }
       }
     },
-    "rp2350": {
-      "arch": "thumbv8m",
-      "tier": "provider",
-      "implementation_root": "core/ports/rp2350",
-      "limitations": "the target build proves compilation only; physical timebase and DMA completion/cancellation behavior remain outside this public matrix",
+    "rp2040": {
+      "arch": "thumbv6m",
+      "tier": "deep",
+      "implementation_root": "core/ports/rp2040",
+      "limitations": "W114 provides the exact target-built deep contract and shared lifecycle adapters; W115 owns physical Pico PIO/DMA/bus/radio/USB promotion.",
       "compositions": {
         "native": {
           "surface": "native",
+          "board_profile": "raspberry_pi_pico_rp2040",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["rp2040-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["rp2040-dma-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["rp2040-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "multicore": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]}
+          }
+        }
+      }
+    },
+    "rp2350": {
+      "arch": "thumbv8m",
+      "tier": "deep",
+      "implementation_root": "core/ports/rp2350",
+      "limitations": "W114 provides the exact target-built deep contract, shared lifecycle adapters, and an exact-one CYW43439 backend selection; W115 owns physical Pico 2 W PIO/DMA/bus/radio/USB promotion.",
+      "compositions": {
+        "native": {
+          "surface": "native",
+          "board_profile": "rp2350_pico2w",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["rp2350-target-build"]},
-            "dma_completion": {"maturity": "experimental", "evidence": ["rp2350-dma-target-build"]}
+            "deadline": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]},
+            "dma_completion": {"maturity": "implemented", "evidence": ["rp2350-dma-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]},
+            "usb": {"maturity": "implemented", "evidence": ["rp2350-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]},
+            "multicore": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]}
           }
         }
       }

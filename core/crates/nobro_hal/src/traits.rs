@@ -280,6 +280,7 @@ pub enum TransferMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum LeaseClass {
     Timer,
     I2c,
@@ -293,6 +294,9 @@ pub enum LeaseClass {
     Usb,
     Dma,
     Power,
+    Pio,
+    Core,
+    Reset,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -322,6 +326,9 @@ impl LeaseId {
     pub const USB_DEVICE: Self = Self::new(LeaseClass::Usb, 0);
     pub const PRIMARY_DMA: Self = Self::new(LeaseClass::Dma, 0);
     pub const SYSTEM_POWER: Self = Self::new(LeaseClass::Power, 0);
+    pub const PRIMARY_PIO: Self = Self::new(LeaseClass::Pio, 0);
+    pub const SECONDARY_CORE: Self = Self::new(LeaseClass::Core, 1);
+    pub const SYSTEM_RESET: Self = Self::new(LeaseClass::Reset, 0);
 }
 
 /// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).

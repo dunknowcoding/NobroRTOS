@@ -179,11 +179,34 @@ gate "esp32s3 port build (required Xtensa toolchain)" \
 gate "esp32s3 first-party strict lint" \
   "$CURRENT_BASH" -c 'cd core/ports/esp32s3 && cargo +esp clippy --locked --release --lib --bins -- -D warnings'
 
+gate "shared RP lifecycle contracts" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate rp2-shared-host
+
+gate "rp2040 port build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate rp2040-target-build
+
+gate "rp2040 DMA completion provider build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate rp2040-dma-target-build
+
 gate "rp2350 port build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-target-build
 
 gate "rp2350 DMA completion provider build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-dma-target-build
+
+gate "rp2350 alternate CYW43439 backend build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-cyw-vendor-target-build
+
+gate "rp2350 CYW43439 exact-one negative selections" \
+  "$CURRENT_BASH" -c '
+    cd core/ports/rp2350
+    no_backend=$(cargo check --locked --release --no-default-features 2>&1) &&
+      { echo "missing CYW backend unexpectedly compiled"; exit 1; }
+    printf "%s" "$no_backend" | grep -Fq "select exactly one Pico 2 W CYW43439 backend"
+    dual_backend=$(cargo check --locked --release --no-default-features --features cyw43-pio,cyw43-vendor 2>&1) &&
+      { echo "dual CYW backends unexpectedly compiled"; exit 1; }
+    printf "%s" "$dual_backend" | grep -Fq "select exactly one Pico 2 W CYW43439 backend"
+  '
 
 gate "USB RA4M1 backend host tests" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate ra4m1-usb-host
