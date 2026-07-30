@@ -661,6 +661,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-camera-niuscam"
+version = "0.3.3"
+dependencies = [
+ "nobro-camera",
+]
+
+[[package]]
 name = "nobro-adapter-icm45686"
 version = "0.3.3"
 dependencies = [

@@ -19,6 +19,28 @@ import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CORE = os.path.join(ROOT, "core")
+
+
+def console_text(value):
+    """Keep tool diagnostics printable on non-UTF-8 Windows consoles."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return value.encode(encoding, errors="backslashreplace").decode(encoding)
+
+
+def bash_executable():
+    """Prefer an explicit PATH-provided POSIX shell over the WSL launcher."""
+    if os.name != "nt":
+        return "bash"
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        normalized = os.path.normcase(os.path.normpath(directory))
+        candidate = os.path.join(directory, "bash.exe")
+        if os.path.isfile(candidate) and (
+            "msys" in normalized or normalized.endswith(os.path.normcase(r"\git\bin"))
+        ):
+            return candidate
+    return "bash"
+
+
 def host_target():
     """Return rustc's native host triple instead of assuming one developer OS."""
     override = os.environ.get("HOST_TARGET")
@@ -42,7 +64,7 @@ def run(name, cmd, cwd=ROOT, env=None, quiet=False):
     tail = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-3:]
     if not quiet:
         for line in tail:
-            print("   ", line)
+            print("   ", console_text(line))
         print(f"   => {'PASS' if ok else 'FAIL'}", flush=True)
     return {"name": name, "ok": ok, "detail": tail}
 
@@ -222,13 +244,22 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("udi surface", [py, "tools/checks/product/check_udi.py", "--selftest"], ROOT),
     ]
     if extended:
-        specs.append(("cross-MCU matrix", ["bash", "tools/checks/ci_matrix.sh"], ROOT))
+        specs.append(
+            (
+                "cross-MCU matrix",
+                [bash_executable(), "tools/checks/ci_matrix.sh"],
+                ROOT,
+            )
+        )
     return specs
 
 
 def run_gates(quick=False, quiet=False, rust_only=False, extended=False):
     """Run every gate; return (results, all_ok). Results are dicts (name/ok/detail)."""
     env = dict(os.environ)
+    # Nested shell gates must use the same Python environment as this runner.
+    python_dir = os.path.dirname(sys.executable)
+    env["PATH"] = python_dir + os.pathsep + env.get("PATH", "")
     env["CARGO_TARGET_DIR"] = os.path.join(ROOT, "_work", "ct2")
     results = [run(name, cmd, cwd=cwd, env=env, quiet=quiet)
                for name, cmd, cwd in gate_specs(quick, rust_only=rust_only, extended=extended)]

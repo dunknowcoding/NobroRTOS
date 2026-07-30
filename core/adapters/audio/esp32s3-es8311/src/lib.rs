@@ -7,8 +7,8 @@
 #![no_std]
 
 use nobro_audio::{
-    AudioBackend, AudioError, AudioResourcePrice, AudioState, CodecConfig, ProviderWorkload,
-    SampleFormat,
+    AudioBackend, AudioBackendIdentity, AudioError, AudioResourcePrice, AudioState, CodecConfig,
+    MountableAudioBackend, ProviderWorkload, SampleFormat,
 };
 
 pub const BACKEND_ID: &str = "esp32s3-es8311-arduino";
@@ -208,6 +208,22 @@ impl<T: Esp32s3Es8311Transport> AudioBackend for Esp32s3Es8311<T> {
         self.state = AudioState::Ready;
         self.diagnostics.recoveries = self.diagnostics.recoveries.saturating_add(1);
         Ok(())
+    }
+}
+
+impl<T: Esp32s3Es8311Transport> MountableAudioBackend for Esp32s3Es8311<T> {
+    fn identity(&self) -> AudioBackendIdentity {
+        AudioBackendIdentity {
+            backend_id: BACKEND_ID,
+            max_frame_bytes: self.max_frame_bytes,
+            queue_slots: self.price.queue_slots,
+            supports_capture: true,
+            supports_playback: true,
+        }
+    }
+
+    fn admission_price(&self) -> AudioResourcePrice {
+        self.price
     }
 }
 

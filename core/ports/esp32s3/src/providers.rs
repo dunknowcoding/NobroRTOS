@@ -7,19 +7,34 @@ use esp_hal::{
     time::Duration, timer::OneShotTimer, usb_serial_jtag::UsbSerialJtag, Blocking, DriverMode,
 };
 use nobro_hal::{
-    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c,
-    HalPwmChannel, HalSpi, HardwareCapability, HardwareCapabilityDeclaration,
-    HardwareCapabilitySet, HardwareCapabilityWitness, TransferMode,
+    board_catalog::EXACT_ESP32S3_UNO, BoardCapacity, BoardDesc, CapabilityProfileKind, EspLeases,
+    EspPowerBackend, EspResetBackend, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c,
+    HalLease, HalPwmChannel, HalSpi, HardwareCapability, HardwareCapabilityDeclaration,
+    HardwareCapabilitySet, HardwareCapabilityWitness, LeaseError, LeaseId, PlatformHal,
+    TransferMode, ESP32S3_RUNTIME,
 };
 
 pub struct Esp32S3Providers;
 
 impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Esp32S3Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Esp32S3Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Esp32S3Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Esp32S3Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Esp32S3Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Cache as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Multicore as u8 }> for Esp32S3Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Esp32S3Providers {}
 
 impl HalCompatibility for Esp32S3Providers {
     const DECLARATION: HardwareCapabilityDeclaration = {
@@ -30,14 +45,31 @@ impl HalCompatibility for Esp32S3Providers {
             .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(
                 HardwareCapability::Deadline,
             )
+            .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
+            .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
+                HardwareCapability::DmaCompletion,
+            )
+            .witnessed::<Self, { HardwareCapability::Gpio as u8 }>(HardwareCapability::Gpio)
+            .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
+            .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
+            .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
             .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
-            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
+            .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
+            .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
+            .witnessed::<Self, { HardwareCapability::Cache as u8 }>(HardwareCapability::Cache)
+            .witnessed::<Self, { HardwareCapability::Multicore as u8 }>(
+                HardwareCapability::Multicore,
+            )
+            .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
         HardwareCapabilityDeclaration::new(
-            "provider-esp32s3-v2",
-            CapabilityProfileKind::Constrained,
+            "deep-esp32s3-v2",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             HardwareCapabilitySet::EMPTY,
@@ -51,6 +83,50 @@ const _: [(); 1] =
     [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
 const _: [(); 1] =
     [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
+
+pub struct Esp32S3Board;
+
+impl BoardDesc for Esp32S3Board {
+    const PLATFORM_ID: &'static str = EXACT_ESP32S3_UNO.platform_id;
+    const BOARD_ID: &'static str = EXACT_ESP32S3_UNO.board_id;
+    const APP_FLASH_START: u32 = 0;
+    const CAPACITY: BoardCapacity = EXACT_ESP32S3_UNO.capacity;
+    const LED_PIN: Option<u8> = EXACT_ESP32S3_UNO.pins.led_pin;
+    const SERVO_PWM_PIN: Option<u8> = EXACT_ESP32S3_UNO.pins.servo_pwm_pin;
+    const SERVO_CENTER_US: u32 = 1_500;
+    const MVK_TRIGGER_PIN: Option<u8> = EXACT_ESP32S3_UNO.pins.mvk_trigger_pin;
+}
+
+impl PlatformHal for Esp32S3Providers {
+    const PLATFORM_ID: &'static str = "esp32s3";
+    type Board = Esp32S3Board;
+}
+
+pub struct Esp32S3Leases;
+
+impl HalLease for Esp32S3Leases {
+    fn acquire(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError> {
+        EspLeases::acquire(ESP32S3_RUNTIME, resource.into(), owner).map(|guard| {
+            core::mem::forget(guard);
+        })
+    }
+
+    fn release(resource: impl Into<LeaseId>, owner: u8) -> Result<(), LeaseError> {
+        EspLeases::release(ESP32S3_RUNTIME, resource.into(), owner)
+    }
+
+    fn is_held(resource: impl Into<LeaseId>) -> bool {
+        EspLeases::is_held(ESP32S3_RUNTIME, resource.into())
+    }
+
+    fn owner(resource: impl Into<LeaseId>) -> Option<u8> {
+        EspLeases::owner(ESP32S3_RUNTIME, resource.into())
+    }
+
+    fn release_all_for_owner(owner: u8) -> usize {
+        EspLeases::recover_owner(ESP32S3_RUNTIME, owner)
+    }
+}
 
 pub struct Esp32S3Clock;
 
@@ -192,5 +268,34 @@ impl HalByteIo for Esp32S3Usb<'_> {
 impl fmt::Write for Esp32S3Usb<'_> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         self.write_all(value.as_bytes()).map_err(|_| fmt::Error)
+    }
+}
+
+pub struct Esp32S3PowerBackend;
+
+impl EspPowerBackend for Esp32S3PowerBackend {
+    type Error = Infallible;
+
+    fn cpu_sleep(&mut self) -> Result<(), Self::Error> {
+        // CPU-only wait preserves the admitted USB/peripheral composition.
+        unsafe { core::arch::asm!("waiti 0") };
+        Ok(())
+    }
+}
+
+pub struct Esp32S3ResetBackend;
+
+impl EspResetBackend for Esp32S3ResetBackend {
+    type Cause = Option<esp_hal::rtc_cntl::SocResetReason>;
+
+    fn reset_cause() -> Self::Cause {
+        esp_hal::reset::reset_reason()
+    }
+
+    fn system_reset() -> ! {
+        esp_hal::reset::software_reset();
+        loop {
+            core::hint::spin_loop();
+        }
     }
 }

@@ -53,6 +53,49 @@ pub enum AudioError {
     DeadlineMiss,
 }
 
+/// Stable application identity for one independently mounted audio path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioInstanceId(u16);
+
+impl AudioInstanceId {
+    pub const PRIMARY: Self = Self(0);
+
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+/// Admission-relevant limits exposed by one concrete audio backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioBackendIdentity {
+    pub backend_id: &'static str,
+    pub max_frame_bytes: usize,
+    pub queue_slots: usize,
+    pub supports_capture: bool,
+    pub supports_playback: bool,
+}
+
+impl AudioBackendIdentity {
+    pub const fn is_valid(self) -> bool {
+        !self.backend_id.is_empty()
+            && self.max_frame_bytes != 0
+            && self.queue_slots != 0
+            && (self.supports_capture || self.supports_playback)
+    }
+}
+
+/// Immutable receipt binding one logical instance to exactly one owned backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioMountReceipt {
+    pub instance: AudioInstanceId,
+    pub backend: AudioBackendIdentity,
+    pub generation: u32,
+}
+
 /// Admission-time cost for one mounted audio instance.
 ///
 /// The price dimensions mirror the board-feature registry. Vendor-managed
@@ -106,6 +149,105 @@ pub trait AudioBackend {
     fn playback(&mut self, frame: &[u8]) -> Result<(), AudioError>;
     fn quiesce(&mut self) -> Result<(), AudioError>;
     fn recover(&mut self) -> Result<(), AudioError>;
+}
+
+/// Metadata required for owned instance mounting.
+///
+/// This is separate from [`AudioBackend`] so small existing backends keep the
+/// beginner-facing data plane while production compositions opt into exact
+/// identity and admission pricing.
+pub trait MountableAudioBackend: AudioBackend {
+    fn identity(&self) -> AudioBackendIdentity;
+    fn admission_price(&self) -> AudioResourcePrice;
+}
+
+/// A configured backend owned by one logical audio instance.
+///
+/// Mount consumes the backend, so the same value cannot be mounted twice. A
+/// failed mount returns ownership for inspection, replacement, or retry.
+pub struct MountedAudio<B> {
+    backend: B,
+    receipt: AudioMountReceipt,
+}
+
+pub struct AudioMountError<B> {
+    pub backend: B,
+    pub error: AudioError,
+}
+
+impl<B: MountableAudioBackend> MountedAudio<B> {
+    pub fn mount(
+        instance: AudioInstanceId,
+        mut backend: B,
+        config: CodecConfig,
+    ) -> Result<(Self, AudioMountReceipt), AudioMountError<B>> {
+        let identity = backend.identity();
+        let price = backend.admission_price();
+        if !identity.is_valid()
+            || price.frame_bytes != identity.max_frame_bytes
+            || price.queue_slots != identity.queue_slots
+        {
+            return Err(AudioMountError {
+                backend,
+                error: AudioError::InvalidConfig,
+            });
+        }
+        if let Err(error) = backend.configure(config) {
+            return Err(AudioMountError { backend, error });
+        }
+        if backend.state() != AudioState::Ready {
+            return Err(AudioMountError {
+                backend,
+                error: AudioError::NotReady,
+            });
+        }
+        let receipt = AudioMountReceipt {
+            instance,
+            backend: identity,
+            generation: 1,
+        };
+        Ok((Self { backend, receipt }, receipt))
+    }
+
+    pub const fn receipt(&self) -> AudioMountReceipt {
+        self.receipt
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+
+    pub fn capture(&mut self, output: &mut [u8]) -> Result<usize, AudioError> {
+        if !self.receipt.backend.supports_capture {
+            return Err(AudioError::InvalidConfig);
+        }
+        self.backend.capture(output)
+    }
+
+    pub fn playback(&mut self, frame: &[u8]) -> Result<(), AudioError> {
+        if !self.receipt.backend.supports_playback {
+            return Err(AudioError::InvalidConfig);
+        }
+        self.backend.playback(frame)
+    }
+
+    pub fn quiesce(&mut self) -> Result<(), AudioError> {
+        self.backend.quiesce()
+    }
+
+    pub fn recover(&mut self) -> Result<AudioMountReceipt, AudioError> {
+        self.backend.recover()?;
+        self.receipt.generation = self.receipt.generation.saturating_add(1);
+        Ok(self.receipt)
+    }
 }
 
 /// Optional deadline-aware extension used by transports that can measure or
@@ -285,5 +427,104 @@ mod tests {
     fn unpriced_zeroes_are_not_a_complete_price() {
         let price = AudioResourcePrice::default();
         assert!(!price.is_complete_for(price.provider.runtime().workload()));
+    }
+
+    struct Mountable {
+        state: AudioState,
+        price: AudioResourcePrice,
+    }
+
+    impl AudioBackend for Mountable {
+        fn state(&self) -> AudioState {
+            self.state
+        }
+
+        fn configure(&mut self, config: CodecConfig) -> Result<(), AudioError> {
+            if !config.is_valid() {
+                return Err(AudioError::InvalidConfig);
+            }
+            self.state = AudioState::Ready;
+            Ok(())
+        }
+
+        fn capture(&mut self, output: &mut [u8]) -> Result<usize, AudioError> {
+            output.fill(7);
+            Ok(output.len())
+        }
+
+        fn playback(&mut self, _: &[u8]) -> Result<(), AudioError> {
+            Ok(())
+        }
+
+        fn quiesce(&mut self) -> Result<(), AudioError> {
+            self.state = AudioState::Suspended;
+            Ok(())
+        }
+
+        fn recover(&mut self) -> Result<(), AudioError> {
+            self.state = AudioState::Ready;
+            Ok(())
+        }
+    }
+
+    impl MountableAudioBackend for Mountable {
+        fn identity(&self) -> AudioBackendIdentity {
+            AudioBackendIdentity {
+                backend_id: "test-audio",
+                max_frame_bytes: 16,
+                queue_slots: 2,
+                supports_capture: true,
+                supports_playback: true,
+            }
+        }
+
+        fn admission_price(&self) -> AudioResourcePrice {
+            self.price
+        }
+    }
+
+    #[test]
+    fn owned_audio_mount_binds_one_instance_and_advances_recovery_generation() {
+        let backend = Mountable {
+            state: AudioState::Down,
+            price: AudioResourcePrice {
+                frame_bytes: 16,
+                queue_slots: 2,
+                ..AudioResourcePrice::default()
+            },
+        };
+        let (mut mounted, receipt) = MountedAudio::mount(
+            AudioInstanceId::new(3),
+            backend,
+            CodecConfig::new(16_000, 1, SampleFormat::Signed16),
+        )
+        .unwrap_or_else(|_| panic!("valid mount rejected"));
+        assert_eq!(receipt.instance.get(), 3);
+        assert_eq!(receipt.backend.backend_id, "test-audio");
+        assert_eq!(mounted.recover().unwrap().generation, 2);
+        let mut frame = [0; 4];
+        assert_eq!(mounted.capture(&mut frame), Ok(4));
+        assert_eq!(frame, [7; 4]);
+    }
+
+    #[test]
+    fn audio_mount_fails_closed_on_identity_price_mismatch() {
+        let backend = Mountable {
+            state: AudioState::Down,
+            price: AudioResourcePrice {
+                frame_bytes: 8,
+                queue_slots: 2,
+                ..AudioResourcePrice::default()
+            },
+        };
+        let error = MountedAudio::mount(
+            AudioInstanceId::PRIMARY,
+            backend,
+            CodecConfig::new(16_000, 1, SampleFormat::Signed16),
+        )
+        .err()
+        .unwrap_or_else(|| panic!("invalid mount accepted"));
+        assert_eq!(error.error, AudioError::InvalidConfig);
+        assert_eq!(error.backend.state(), AudioState::Down);
     }
 }

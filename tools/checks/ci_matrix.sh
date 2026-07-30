@@ -138,6 +138,9 @@ gate "exactly one nRF board composition" \
 gate "reset platform evidence receipts" \
   python tools/checks/platforms/check_platform_tiers.py --begin-receipts cross-mcu
 
+gate "shared ESP lifecycle and ownership contracts" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate esp-shared-provider-host
+
 gate "nRF52840 no-SoftDevice HAL target build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-nosd-target-build
 

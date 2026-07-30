@@ -9,8 +9,8 @@
     "physical_board": "generic:esp32s3-cam-ov5640",
     "boot_layout": "espressif:second-stage-app",
     "framework_core": "arduino:esp32",
-    "hal_stack": null,
-    "usb_stack": null
+    "hal_stack": "nobro:esp32s3-arduino",
+    "usb_stack": "espressif:usb-serial-jtag"
   },
   "description": "ESP32-S3 camera board composition with OV5640",
   "boot": {
@@ -28,7 +28,7 @@
   },
   "firmware_generation": {
     "support": "unavailable",
-    "reason": "The exact ESP32-S3 runtime and camera composition are not implemented yet."
+    "reason": "The exact OPI-PSRAM Arduino/NiusCam composition is target-built, but generic Nobro firmware generation does not yet own its framework partition and upload recipe."
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

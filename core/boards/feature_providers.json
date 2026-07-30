@@ -273,6 +273,39 @@
         "reset_receipt": "Codec and transport remount are available, but have not adopted the v2 reset receipt.",
         "fault_receipt": "Typed adapter faults have not yet been bridged to the v2 fault receipt."
       }
+    },
+    {
+      "id": "lifecycle-camera-niuscam",
+      "host_gate": "provider-lifecycle-host",
+      "coverage": {
+        "bounded_init": "verified",
+        "absent_device": "verified",
+        "ready_state": "verified",
+        "timeout": "verified",
+        "suspend_resume": "verified",
+        "detach_reconnect": "limited",
+        "bus_reset": "limited",
+        "deconfigure": "verified",
+        "quiesce": "verified",
+        "stale_session": "verified",
+        "partial_io_backpressure": "verified",
+        "structured_fault": "verified",
+        "deterministic_recovery": "verified",
+        "generation_invalidation": "verified",
+        "quiesce_release_receipt": "verified",
+        "application_static_cleanup": "verified",
+        "operation_deadline": "verified",
+        "cancellation_receipt": "limited",
+        "reset_receipt": "limited",
+        "fault_receipt": "limited"
+      },
+      "limitations": {
+        "detach_reconnect": "Software fault injection and remount are verified; a live sensor disconnect was not performed on all three exact camera boards.",
+        "bus_reset": "Recovery remounts the selected camera backend, but the facade does not expose a separate SCCB or parallel-camera bus-reset operation.",
+        "cancellation_receipt": "The bounded facade rejects expired capture requests but has not adopted the v2 cancellation receipt.",
+        "reset_receipt": "Backend remount advances the logical generation but has not adopted the v2 reset receipt.",
+        "fault_receipt": "Typed camera faults have not yet been bridged to the v2 fault receipt."
+      }
     }
   ],
   "controllers": [
@@ -330,6 +363,13 @@
       "license": "Apache-2.0"
     },
     {
+      "id": "source-niuscam",
+      "source": "https://github.com/dunknowcoding/NiusCam",
+      "revision": "b03560adf4da07e4a16b4d9e658a01d74ccb9340",
+      "version": "0.2.0",
+      "license": "Apache-2.0"
+    },
+    {
       "id": "source-esp-idf",
       "source": "https://github.com/espressif/esp-idf",
       "revision": "735507283d5b2f9fb363a1901172dbd9e847945d",
@@ -372,6 +412,15 @@
       "stack_family": "audio-pdm",
       "limitations": [
         "No board binding is promoted yet."
+      ]
+    },
+    {
+      "id": "camera_parallel",
+      "class": "peripheral",
+      "portable_contract_id": "contract-camera",
+      "stack_family": "camera-parallel",
+      "limitations": [
+        "Exact Arduino/NiusCam bindings cover OV2640, OV3660, and OV5640 boards; other sensors, pin maps, formats, and frame budgets require independent promotion."
       ]
     },
     {
@@ -494,6 +543,27 @@
       ],
       "limitations": [
         "The exact binding covers 16 kHz mono signed-16 audio, a 192-byte maximum frame, two queue slots, and 100 capture/playback transfers per second; other configurations remain unpriced."
+      ]
+    },
+    {
+      "id": "backend-camera-arduino-niuscam",
+      "capability_kind": "camera_parallel",
+      "stack_family": "camera-parallel",
+      "adapter_component_id": "adapter-camera-niuscam",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build",
+        "physical"
+      ],
+      "provenance_id": "source-niuscam",
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "NiusCam 0.2.0 owns the exact sensor and vendor camera transport; Nobro adds allocation-free logical-instance ownership, bounded frames, deadlines, backpressure, quiesce, and recovery generations."
       ]
     },
     {
@@ -1540,6 +1610,126 @@
         "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.2",
         "fixed": "conservative maximum of pinned Windows/Linux same-target isolated link deltas, active retained-heap delta after repeated recovery, and pinned source ownership",
         "runtime": "conservative maximum from three physical runs at 100 transfers per second"
+      }
+    },
+    {
+      "id": "binding-camera-esp32-ov2640",
+      "backend_id": "backend-camera-arduino-niuscam",
+      "capability_kind": "camera_parallel",
+      "platform": "esp32",
+      "composition": "arduino",
+      "instance": "camera0",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "provider-lifecycle-host",
+        "camera-arduino-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-camera-niuscam",
+      "physical_evidence": [
+        "The exact AI-Thinker ESP32-CAM OV2640 composition passed bounded capture, injected fault, recovery, resumed capture, and byte-exact full-flash restoration."
+      ],
+      "physical_limitations": [
+        "A live camera disconnect and a complete configuration resource price were not measured."
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "Exact only for the AI-Thinker OV2640 board profile and its fixed NiusCam pin map."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-camera-disabled",
+        "forbidden_symbols": [
+          "NiusCamAdapter",
+          "esp_camera_init",
+          "esp_camera_fb_get"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "camera_parallel",
+        "status_field": "esp32_camera0",
+        "evidence_gate": "camera-arduino-target-build"
+      }
+    },
+    {
+      "id": "binding-camera-esp32s3-ov3660",
+      "backend_id": "backend-camera-arduino-niuscam",
+      "capability_kind": "camera_parallel",
+      "platform": "esp32s3",
+      "composition": "arduino",
+      "instance": "camera0",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "provider-lifecycle-host",
+        "camera-arduino-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-camera-niuscam",
+      "physical_evidence": [
+        "The exact XIAO ESP32S3 Sense OV3660 composition passed bounded JPEG capture, injected fault, recovery, resumed capture, PSRAM verification, and exact restoration."
+      ],
+      "physical_limitations": [
+        "A live camera disconnect and a complete configuration resource price were not measured."
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "Exact only for the XIAO ESP32S3 Sense OV3660 profile with OPI PSRAM enabled."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-camera-disabled",
+        "forbidden_symbols": [
+          "NiusCamAdapter",
+          "esp_camera_init",
+          "esp_camera_fb_get"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "camera_parallel",
+        "status_field": "esp32s3_camera0",
+        "evidence_gate": "camera-arduino-target-build"
+      }
+    },
+    {
+      "id": "binding-camera-esp32s3-ov5640",
+      "backend_id": "backend-camera-arduino-niuscam",
+      "capability_kind": "camera_parallel",
+      "platform": "esp32s3",
+      "composition": "arduino",
+      "instance": "camera1",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "provider-lifecycle-host",
+        "camera-arduino-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-camera-niuscam",
+      "physical_evidence": [
+        "The exact ESP32-S3-CAM OV5640 composition passed bounded JPEG capture, injected fault, recovery, resumed capture, and byte-exact full-flash restoration."
+      ],
+      "physical_limitations": [
+        "A live camera disconnect and a complete configuration resource price were not measured."
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "Exact only for the fixed ESP32-S3 OV5640 profile with OPI PSRAM and 16 MiB flash selected."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-camera-disabled",
+        "forbidden_symbols": [
+          "NiusCamAdapter",
+          "esp_camera_init",
+          "esp_camera_fb_get"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "camera_parallel",
+        "status_field": "esp32s3_camera1",
+        "evidence_gate": "camera-arduino-target-build"
       }
     }
   ]

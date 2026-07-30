@@ -287,7 +287,12 @@ def selftest() -> int:
         raise RuntimeError(f"missing classification negative did not fail: {capability}")
 
     broken = copy.deepcopy(contract)
-    broken["declarations"][0]["profile"] = "provider-esp32c3-v2"
+    selected_profile = broken["declarations"][0]["profile"]
+    next(
+        profile
+        for profile in broken["profiles"]
+        if profile["id"] == selected_profile
+    )["kind"] = "constrained"
     if not any("profile kind" in item for item in validate(broken, matrix)):
         raise RuntimeError("false-deep negative did not fail")
 

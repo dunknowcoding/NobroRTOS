@@ -723,8 +723,10 @@ dependencies = [
 name = "nobro-port-esp32c3"
 version = "0.1.0"
 dependencies = [
+ "embedded-hal 1.0.0",
  "esp-hal",
  "esp-println",
+ "nb 1.1.0",
  "nobro-hal",
  "nobro-usb",
 ]

@@ -9,6 +9,7 @@
 pub mod board_catalog;
 pub mod board_desc;
 pub mod completion;
+pub mod esp;
 pub mod lease;
 pub mod mpu;
 pub mod platform;
@@ -70,6 +71,14 @@ pub use board_desc::{
     BusLayout, ServoProfile,
 };
 pub use completion::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
+pub use esp::{
+    EspAdc, EspAdcBackend, EspAlarm, EspAlarmBackend, EspByteIo, EspByteIoBackend,
+    EspCacheContract, EspContractError, EspDmaBackend, EspDmaCompletion, EspDmaPlan,
+    EspEventBackend, EspEventCapture, EspGpio, EspGpioBackend, EspI2c, EspIrq, EspIrqBackend,
+    EspLeaseGuard, EspLeases, EspMulticoreContract, EspPower, EspPowerBackend, EspProviderError,
+    EspPulse, EspPulseBackend, EspPwm, EspPwmBackend, EspReset, EspResetBackend,
+    EspRuntimeContract, EspSilicon, EspSpi, ESP32C3_RUNTIME, ESP32S3_RUNTIME,
+};
 pub use lease::{LeaseError, LeaseGuard, LeaseRecoveryReceipt, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::nrf52840::NrfSchedulingSession;

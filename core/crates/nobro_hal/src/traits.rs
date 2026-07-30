@@ -283,6 +283,8 @@ pub enum TransferMode {
 #[repr(u8)]
 pub enum LeaseClass {
     Timer,
+    Gpio,
+    Irq,
     I2c,
     Spi,
     Radio,
@@ -295,8 +297,10 @@ pub enum LeaseClass {
     Dma,
     Power,
     Pio,
+    Pulse,
     Core,
     Reset,
+    Cache,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -319,6 +323,9 @@ impl LeaseId {
     pub const PRIMARY_SPI: Self = Self::new(LeaseClass::Spi, 0);
     pub const PRIMARY_RADIO: Self = Self::new(LeaseClass::Radio, 0);
     pub const PRIMARY_PWM: Self = Self::new(LeaseClass::Pwm, 0);
+    pub const PRIMARY_PULSE: Self = Self::new(LeaseClass::Pulse, 0);
+    pub const PRIMARY_GPIO: Self = Self::new(LeaseClass::Gpio, 0);
+    pub const PRIMARY_IRQ: Self = Self::new(LeaseClass::Irq, 0);
     pub const EVENT_ROUTER: Self = Self::new(LeaseClass::EventRouter, 0);
     pub const SOFTWARE_EVENT: Self = Self::new(LeaseClass::SoftwareEvent, 0);
     pub const PRIMARY_ADC: Self = Self::new(LeaseClass::Adc, 0);
@@ -329,6 +336,7 @@ impl LeaseId {
     pub const PRIMARY_PIO: Self = Self::new(LeaseClass::Pio, 0);
     pub const SECONDARY_CORE: Self = Self::new(LeaseClass::Core, 1);
     pub const SYSTEM_RESET: Self = Self::new(LeaseClass::Reset, 0);
+    pub const SYSTEM_CACHE: Self = Self::new(LeaseClass::Cache, 0);
 }
 
 /// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).

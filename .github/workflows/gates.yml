@@ -353,7 +353,8 @@ jobs:
           git -C _work/NiusCam checkout --detach b03560adf4da07e4a16b4d9e658a01d74ccb9340
           test "$(git -C _work/NiusCam rev-parse HEAD)" = \
             "b03560adf4da07e4a16b4d9e658a01d74ccb9340"
-          python tools/checks/integrations/check_camera_integrations.py --library _work/NiusCam --compile
+          python tools/checks/platforms/check_platform_tiers.py \
+            --run-gate camera-arduino-target-build
       - name: bounded ESP32 peripheral integrations
         run: |
           python tools/checks/integrations/check_esp32_peripheral_facade.py

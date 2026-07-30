@@ -8,7 +8,7 @@
     "boards": "one platform-family category, then data-only board profile"
   },
   "adapter_categories": [
-    "ai", "audio", "bus", "imu", "power", "protocol", "sensors", "servo",
+    "ai", "audio", "bus", "camera", "imu", "power", "protocol", "sensors", "servo",
     "virtual", "wireless"
   ],
   "app_categories": [

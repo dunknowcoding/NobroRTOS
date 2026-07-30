@@ -19,6 +19,7 @@ PACKAGES = (
     "nobro-adapter-wireless-wifi-arduino-wifis3",
     "nobro-adapter-sensors-esp32-adc-continuous",
     "nobro-adapter-audio-esp32s3-es8311",
+    "nobro-adapter-camera-niuscam",
 )
 
 
@@ -39,7 +40,7 @@ def main() -> int:
     run(cargo, cwd=CORE)
     print(
         "PROVIDER LIFECYCLE: PASS "
-        "(generation/cleanup receipts plus facade, BLE, WiFi, persistent ADC, and audio backends)"
+        "(generation/cleanup receipts plus facade, BLE, WiFi, persistent ADC, audio, and camera backends)"
     )
     return 0
 

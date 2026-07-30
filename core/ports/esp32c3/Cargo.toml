@@ -8,8 +8,10 @@ edition = "2021"
 # the esp-hal dependency tree is independent of the thumbv7em core workspace.
 
 [dependencies]
+embedded-hal = "1.0"
 esp-hal = { version = "=0.23.1", features = ["esp32c3"] }
 esp-println = { version = "=0.13.0", default-features = false, features = ["esp32c3", "jtag-serial", "critical-section"] }
+nb = "1"
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 # The mountable USB framework's C3 backend (fixed-function USB-Serial-JTAG data path);
 # exercised on real hardware by src/bin/usb_sj_demo.rs.

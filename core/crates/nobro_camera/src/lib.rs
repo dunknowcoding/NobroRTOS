@@ -21,6 +21,45 @@ pub enum CameraState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CameraInstanceId(u16);
+
+impl CameraInstanceId {
+    pub const PRIMARY: Self = Self(0);
+
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CameraBackendIdentity {
+    pub backend_id: &'static str,
+    pub sensor_id: &'static str,
+    pub max_frame_bytes: u32,
+    pub max_in_flight: u8,
+}
+
+impl CameraBackendIdentity {
+    pub const fn is_valid(self) -> bool {
+        !self.backend_id.is_empty()
+            && !self.sensor_id.is_empty()
+            && self.max_frame_bytes != 0
+            && self.max_in_flight != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CameraMountReceipt {
+    pub instance: CameraInstanceId,
+    pub backend: CameraBackendIdentity,
+    pub generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameMetadata {
     pub width: u16,
     pub height: u16,
@@ -44,6 +83,13 @@ pub trait CameraBackend {
     fn state(&self) -> CameraState;
     fn capture(&mut self) -> Option<Self::Frame<'_>>;
     fn recover(&mut self) -> bool;
+}
+
+/// Lifecycle needed to mount a camera as one owned logical stack instance.
+pub trait MountableCameraBackend: CameraBackend {
+    fn identity(&self) -> CameraBackendIdentity;
+    fn mount_camera(&mut self) -> bool;
+    fn quiesce(&mut self) -> bool;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,6 +145,7 @@ pub struct CameraDiagnostics {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CameraError {
+    InvalidConfig,
     NotReady,
     DeadlineElapsed,
     WindowExhausted,
@@ -238,8 +285,106 @@ impl<B: CameraBackend> CameraPipeline<B> {
         &self.backend
     }
 
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+
     fn reject(&mut self) {
         self.diagnostics.frames_dropped = self.diagnostics.frames_dropped.saturating_add(1);
+    }
+}
+
+pub struct CameraMountError<B> {
+    pub backend: B,
+    pub error: CameraError,
+}
+
+/// One camera backend consumed by one logical instance.
+pub struct MountedCamera<B> {
+    pipeline: CameraPipeline<B>,
+    receipt: CameraMountReceipt,
+}
+
+impl<B: MountableCameraBackend> MountedCamera<B> {
+    pub fn mount(
+        instance: CameraInstanceId,
+        mut backend: B,
+        budget: StreamBudget,
+    ) -> Result<(Self, CameraMountReceipt), CameraMountError<B>> {
+        let identity = backend.identity();
+        if !identity.is_valid()
+            || budget.max_frames_per_window == 0
+            || budget.max_bytes_per_window < identity.max_frame_bytes
+            || budget.max_in_flight == 0
+            || budget.max_in_flight > identity.max_in_flight
+        {
+            return Err(CameraMountError {
+                backend,
+                error: CameraError::InvalidConfig,
+            });
+        }
+        if !backend.mount_camera() || backend.state() != CameraState::Ready {
+            return Err(CameraMountError {
+                backend,
+                error: CameraError::NotReady,
+            });
+        }
+        let receipt = CameraMountReceipt {
+            instance,
+            backend: identity,
+            generation: 1,
+        };
+        Ok((
+            Self {
+                pipeline: CameraPipeline::new(backend, budget),
+                receipt,
+            },
+            receipt,
+        ))
+    }
+
+    pub const fn receipt(&self) -> CameraMountReceipt {
+        self.receipt
+    }
+
+    pub fn capture_at(
+        &mut self,
+        now_us: u64,
+        contract: CaptureContract,
+    ) -> Result<AdmittedFrame<'_, B::Frame<'_>>, CameraError> {
+        self.pipeline.capture_at(now_us, contract)
+    }
+
+    pub fn reset_window(&mut self) {
+        self.pipeline.reset_window();
+    }
+
+    pub fn quiesce(&mut self) -> Result<(), CameraError> {
+        self.pipeline
+            .backend_mut()
+            .quiesce()
+            .then_some(())
+            .ok_or(CameraError::CaptureFailed)
+    }
+
+    pub fn recover(&mut self) -> Result<CameraMountReceipt, CameraError> {
+        if !self.pipeline.recover() {
+            return Err(CameraError::CaptureFailed);
+        }
+        self.receipt.generation = self.receipt.generation.saturating_add(1);
+        Ok(self.receipt)
+    }
+
+    pub fn backend(&self) -> &B {
+        self.pipeline.backend()
+    }
+
+    pub fn into_backend(self) -> B {
+        self.pipeline.into_backend()
     }
 }
 
@@ -408,6 +553,27 @@ mod tests {
         }
     }
 
+    impl MountableCameraBackend for Camera {
+        fn identity(&self) -> CameraBackendIdentity {
+            CameraBackendIdentity {
+                backend_id: "test-camera",
+                sensor_id: "ov-test",
+                max_frame_bytes: 16,
+                max_in_flight: 1,
+            }
+        }
+
+        fn mount_camera(&mut self) -> bool {
+            self.state = CameraState::Ready;
+            true
+        }
+
+        fn quiesce(&mut self) -> bool {
+            self.state = CameraState::Suspended;
+            true
+        }
+    }
+
     #[test]
     fn accounts_deadline_memory_and_backpressure() {
         let mut pipeline = CameraPipeline::new(
@@ -458,6 +624,43 @@ mod tests {
         );
         assert!(pipeline.recover());
         assert!(pipeline.capture_at(1, CaptureContract::by(2, 16)).is_ok());
+    }
+
+    #[test]
+    fn owned_camera_mount_binds_backend_and_recovery_generation() {
+        let backend = Camera {
+            state: CameraState::Down,
+            fail: false,
+        };
+        let (mut mounted, receipt) = MountedCamera::mount(
+            CameraInstanceId::new(2),
+            backend,
+            StreamBudget::new(2, 32, 1),
+        )
+        .unwrap_or_else(|_| panic!("valid camera mount rejected"));
+        assert_eq!(receipt.instance.get(), 2);
+        assert_eq!(receipt.backend.backend_id, "test-camera");
+        assert!(mounted.capture_at(1, CaptureContract::by(10, 16)).is_ok());
+        mounted.quiesce().unwrap();
+        assert_eq!(mounted.backend().state(), CameraState::Suspended);
+        assert_eq!(mounted.recover().unwrap().generation, 2);
+    }
+
+    #[test]
+    fn camera_mount_rejects_budget_smaller_than_backend_contract() {
+        let backend = Camera {
+            state: CameraState::Down,
+            fail: false,
+        };
+        let error = MountedCamera::mount(
+            CameraInstanceId::PRIMARY,
+            backend,
+            StreamBudget::new(1, 8, 1),
+        )
+        .err()
+        .unwrap_or_else(|| panic!("invalid camera mount accepted"));
+        assert_eq!(error.error, CameraError::InvalidConfig);
+        assert_eq!(error.backend.state(), CameraState::Down);
     }
 
     #[test]

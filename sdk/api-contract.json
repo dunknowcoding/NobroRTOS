@@ -282,12 +282,12 @@
     },
     {
       "source": "packages/arduino/src/NobroNiusCam.h",
-      "source_sha256": "995f3d7a225e6a5482f0656e4ed117131738f6dd854c9fb035bac2d0fc281bce",
+      "source_sha256": "8e960eb72ffa382f40f67bec9fd694473086c063539007f0f3168ada332e47dc",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroNiusCam.h",
-          "sha256": "995f3d7a225e6a5482f0656e4ed117131738f6dd854c9fb035bac2d0fc281bce"
+          "sha256": "8e960eb72ffa382f40f67bec9fd694473086c063539007f0f3168ada332e47dc"
         }
       ]
     },
@@ -1211,6 +1211,34 @@
           },
           {
             "kind": "struct",
+            "name": "AudioInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "PRIMARY"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioBackendIdentity"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioMountReceipt"
+          },
+          {
+            "kind": "struct",
             "name": "AudioResourcePrice"
           },
           {
@@ -1228,6 +1256,54 @@
           {
             "kind": "trait",
             "name": "AudioBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "MountableAudioBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedAudio"
+          },
+          {
+            "kind": "struct",
+            "name": "AudioMountError"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "fn",
+            "name": "capture"
+          },
+          {
+            "kind": "fn",
+            "name": "playback"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
           },
           {
             "kind": "trait",
@@ -1267,7 +1343,7 @@
           }
         ],
         "path": "core/crates/nobro_audio/src/lib.rs",
-        "sha256": "15a4c3cce4ce0f3709bddcee0724a920913a9809b4642f4bb76520771219ba14"
+        "sha256": "4ba516c668d721bcb406e4bf5663c96a627f50475b5d91d990449e9548f30823"
       },
       {
         "crate": "nobro-camera",
@@ -1282,6 +1358,34 @@
           },
           {
             "kind": "struct",
+            "name": "CameraInstanceId"
+          },
+          {
+            "kind": "const",
+            "name": "PRIMARY"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "CameraBackendIdentity"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "CameraMountReceipt"
+          },
+          {
+            "kind": "struct",
             "name": "FrameMetadata"
           },
           {
@@ -1291,6 +1395,10 @@
           {
             "kind": "trait",
             "name": "CameraBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "MountableCameraBackend"
           },
           {
             "kind": "struct",
@@ -1354,6 +1462,54 @@
           },
           {
             "kind": "fn",
+            "name": "backend_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "struct",
+            "name": "CameraMountError"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedCamera"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "capture_at"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_window"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
+          },
+          {
+            "kind": "fn",
+            "name": "into_backend"
+          },
+          {
+            "kind": "fn",
             "name": "sampled_mean"
           },
           {
@@ -1390,7 +1546,7 @@
           }
         ],
         "path": "core/crates/nobro_camera/src/lib.rs",
-        "sha256": "1ce819d88e4fb513e8d3db97626cd793de4757eaaa95ab666b54c334ef2fd834"
+        "sha256": "be26225769edfa3664c0b24c4a6a38fb07e6d4b901fedc4ebdae33cdb92ae29a"
       },
       {
         "crate": "nobro-classic",
@@ -2336,7 +2492,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "4b11486c04665b20807f7cdeb7b9611d735460bcf7ad12da0fddf29bb95c2a75"
+        "sha256": "2f886b9b794f23d3dd52fd087caeab1867944ded3a59529dc17f6f74850efb6c"
       },
       {
         "crate": "nobro-host",
@@ -6412,7 +6568,7 @@
           }
         ],
         "path": "core/adapters/audio/esp32s3-es8311/src/lib.rs",
-        "sha256": "b77d45413e7016b58c2950bbe3a5b9ce878560d068ef614702e65c7d13549ddb"
+        "sha256": "eba6a68e5e0b7580b43d02edfe3fb3ca4bb2f0551cb4dfc3bb4cd445d1e0e47a"
       },
       {
         "crate": "nobro-eh-i2c",
@@ -6455,6 +6611,37 @@
         ],
         "path": "core/adapters/bus/embedded-hal-spi/src/lib.rs",
         "sha256": "ae0a3791528fe2159548bcf5f354dfe2d155d73a53f5a66f1deb67e0120957b5"
+      },
+      {
+        "crate": "nobro-adapter-camera-niuscam",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "trait",
+            "name": "NiusCamTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "NiusCamBackend"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "transport_mut"
+          }
+        ],
+        "path": "core/adapters/camera/niuscam/src/lib.rs",
+        "sha256": "bf7bed50c5d8256b982afc3ac69f7e073844209cde87e53d20755e14e9e12f7b"
       },
       {
         "crate": "nobro-adapter-icm45686",

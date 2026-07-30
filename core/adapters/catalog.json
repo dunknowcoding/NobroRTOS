@@ -260,6 +260,26 @@
       ]
     },
     {
+      "id": "adapter-camera-niuscam",
+      "primary_domain": "camera",
+      "name": "niuscam",
+      "kind": "adapter",
+      "path": "core/adapters/camera/niuscam",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:esp32",
+        "arduino:esp32s3"
+      ],
+      "limitations": [
+        "NiusCam owns sensor and vendor camera transport details; Nobro owns the logical instance, bounded capture, lifecycle, deadline, and backpressure contract."
+      ]
+    },
+    {
       "id": "adapter-imu-icm45686",
       "primary_domain": "imu",
       "name": "icm45686",
@@ -1132,6 +1152,7 @@
         "contract-camera"
       ],
       "component_ids": [
+        "adapter-camera-niuscam",
         "library-niuscam"
       ]
     },

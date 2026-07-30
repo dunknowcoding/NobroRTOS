@@ -420,7 +420,91 @@
         {
           "platform": "esp32c3",
           "composition": "native",
-          "capabilities": ["timebase", "usb"]
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "usb",
+            "reset",
+            "power",
+            "cache",
+            "lease"
+          ]
+        }
+      ]
+    },
+    "esp-shared-provider-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--target",
+        "{host_target}",
+        "-p",
+        "nobro-hal",
+        "--no-default-features",
+        "--features",
+        "contract-only"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32c3",
+          "composition": "native",
+          "capabilities": [
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "reset",
+            "power",
+            "cache",
+            "lease"
+          ]
+        },
+        {
+          "platform": "esp32s3",
+          "composition": "native",
+          "capabilities": [
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
         }
       ]
     },
@@ -493,6 +577,31 @@
         }
       ]
     },
+    "camera-arduino-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": [
+        "python",
+        "tools/checks/integrations/check_camera_integrations.py",
+        "--library",
+        "_work/NiusCam",
+        "--compile"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32",
+          "composition": "arduino",
+          "capabilities": ["camera_parallel"]
+        },
+        {
+          "platform": "esp32s3",
+          "composition": "arduino",
+          "capabilities": ["camera_parallel"]
+        }
+      ]
+    },
     "esp32s3-target-build": {
       "kind": "target-build",
       "runner": "cross-mcu",
@@ -503,7 +612,27 @@
         {
           "platform": "esp32s3",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "pwm", "i2c", "spi", "usb"]
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "usb",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
         }
       ]
     },
@@ -729,7 +858,7 @@
         {
           "platform": "esp32",
           "composition": "arduino",
-          "capabilities": ["ble_link"]
+          "capabilities": ["ble_link", "camera_parallel"]
         },
         {
           "platform": "esp32c3",
@@ -744,7 +873,7 @@
         {
           "platform": "esp32s3",
           "composition": "arduino",
-          "capabilities": ["adc_dma", "audio_i2s", "ble_link"]
+          "capabilities": ["adc_dma", "audio_i2s", "ble_link", "camera_parallel"]
         }
       ]
     },
@@ -1029,6 +1158,11 @@
         "arduino": {
           "surface": "arduino",
           "claims": {
+            "camera_parallel": {
+              "maturity": "implemented",
+              "evidence": ["provider-lifecycle-host", "camera-arduino-target-build"],
+              "limitations": "Exact only for the AI-Thinker ESP32-CAM OV2640 composition; resource price and live sensor disconnect remain unmeasured."
+            },
             "ble_link": {
               "maturity": "implemented",
               "evidence": ["provider-lifecycle-host", "arduino-esp-ble-target-build"],
@@ -1040,14 +1174,30 @@
     },
     "esp32c3": {
       "arch": "riscv32imc",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/esp32c3",
-      "limitations": "timebase evidence is target compilation only; USB Serial/JTAG has host state-machine coverage and a target build, while physical recovery remains pending",
+      "limitations": "The native deep composition has exact C3 silicon bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Peripheral electrical behavior and recovery remain experimental until W117 physical promotion; the single-core C3 declares multicore hardware-inapplicable.",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["esp32c3-target-build"]},
+            "deadline": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "event": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "gpio": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "irq": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "uart": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "byte_io": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "adc": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "pulse": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "reset": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "power": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "cache": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["esp-shared-provider-host", "esp32c3-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["esp32c3-usb-host", "esp32c3-target-build"]}
           }
         },
@@ -1093,18 +1243,31 @@
     },
     "esp32s3": {
       "arch": "xtensa",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/esp32s3",
-      "limitations": "Native Xtensa and USB claims remain build/host-test scoped. The separate Arduino composition has exact, configuration-specific persistent ADC and full-duplex audio bindings; it does not promote native providers, other ADC shapes, codecs, or rates.",
+      "limitations": "The native deep composition has exact sparse-GPIO and directional-RMT bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Peripheral electrical behavior, second-core execution, and recovery remain experimental until W117 physical promotion. Arduino audio/camera/wireless compositions remain independently mounted and priced.",
       "compositions": {
         "native": {
           "surface": "native",
           "claims": {
             "timebase": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
-            "deadline": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
-            "pwm": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
-            "i2c": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
-            "spi": {"maturity": "experimental", "evidence": ["esp32s3-target-build"]},
+            "deadline": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "event": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "gpio": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "irq": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "uart": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "byte_io": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "adc": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "pulse": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "reset": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "power": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "cache": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "multicore": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["esp-shared-provider-host", "esp32s3-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["esp32s3-usb-host", "esp32s3-target-build"]}
           }
         },
@@ -1120,6 +1283,11 @@
               "maturity": "experimental",
               "evidence": ["provider-lifecycle-host", "esp32s3-arduino-audio-target-build"],
               "limitations": "Exact only for 16 kHz mono signed-16 full-duplex ES8311 audio with 192-byte frames, two queue slots, and 100 transfers per second."
+            },
+            "camera_parallel": {
+              "maturity": "implemented",
+              "evidence": ["provider-lifecycle-host", "camera-arduino-target-build"],
+              "limitations": "Exact XIAO OV3660 and ESP32-S3-CAM OV5640 profiles are independently mounted and physically restored; resource prices and live sensor disconnect remain unmeasured."
             },
             "ble_link": {
               "maturity": "implemented",

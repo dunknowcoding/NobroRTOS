@@ -43,7 +43,7 @@ fn main() -> ! {
     loop {
         let _ = writeln!(
             usb,
-            "NOBRO-S3 arch=xtensa-lx7 providers=3 timebase={} time_us={} alarm_us={} deadline_ok={} usb=1 all_pass={}",
+            "NOBRO-S3 arch=xtensa-lx7 contract_providers=19 exercised=3 timebase={} time_us={} alarm_us={} deadline_ok={} usb=1 all_pass={}",
             u32::from(providers_ok),
             Esp32S3Clock::now_us(),
             alarm_elapsed,

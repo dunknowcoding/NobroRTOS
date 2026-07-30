@@ -1182,11 +1182,11 @@ def selftest() -> int:
     )
 
     bad_reference = copy.deepcopy(good)
-    bad_reference["reference_platform"] = "esp32c3"
+    bad_reference["reference_platform"] = "esp32"
     _expect_error(validate(bad_reference), "reference_platform must")
 
     false_deep = copy.deepcopy(good)
-    false_deep["platforms"]["esp32c3"]["tier"] = "deep"
+    false_deep["platforms"]["esp32c3"]["tier"] = "provider"
     _expect_error(validate(false_deep), "profile kind does not match the platform tier")
 
     unknown_claim = copy.deepcopy(good)
@@ -1581,6 +1581,17 @@ def selftest() -> int:
                 )
                 == 0,
                 "Arduino ESP32-S3 audio gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "camera-arduino-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino camera gate success",
             )
             _expect(
                 _quiet_call(

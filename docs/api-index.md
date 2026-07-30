@@ -30,6 +30,12 @@ Bounded ESP32-S3 + ES8311 bridge.
 `embedded-hal` 1.0 `SpiDevice` adapter over the NobroRTOS SPIM0 bus.
 - **struct**: `NobroSpiError`, `NobroSpiDevice`
 
+## `nobro-adapter-camera-niuscam`
+Allocation-free ownership bridge for NiusCam-class transports.
+- **trait**: `NiusCamTransport`
+- **struct**: `NiusCamBackend`
+- **fn**: `transport_mut`
+
 ## `nobro-adapter-icm45686`
 ICM-45686 sensor adapter, generic over `embedded-hal` I2C.
 - **struct**: `Icm45686`
@@ -125,17 +131,17 @@ AI deployment + cloud-API management for NobroRTOS.
 
 ## `nobro-audio`
 Allocation-free audio contracts with explicit format, lifecycle, and backpressure.
-- **trait**: `AudioBackend`, `TimedAudioBackend`
-- **struct**: `CodecConfig`, `AudioResourcePrice`, `AudioRing`
+- **trait**: `AudioBackend`, `MountableAudioBackend`, `TimedAudioBackend`
+- **struct**: `CodecConfig`, `AudioInstanceId`, `AudioBackendIdentity`, `AudioMountReceipt`, `AudioResourcePrice`, `MountedAudio`, `AudioMountError`, `AudioRing`
 - **enum**: `SampleFormat`, `AudioState`, `AudioError`
-- **fn**: `push`, `pop_into`
+- **fn**: `mount`, `backend`, `backend_mut`, `into_backend`, `capture`, `playback`, `quiesce`, `recover`, `push`, `pop_into`
 
 ## `nobro-camera`
 Allocation-free camera contracts with explicit deadline and memory admission.
-- **trait**: `CameraFrame`, `CameraBackend`
-- **struct**: `FrameMetadata`, `CaptureContract`, `StreamBudget`, `CameraDiagnostics`, `AdmittedFrame`, `CameraPipeline`, `WorkflowBudget`, `WorkflowUsage`, `WorkflowAccountant`
+- **trait**: `CameraFrame`, `CameraBackend`, `MountableCameraBackend`
+- **struct**: `CameraInstanceId`, `CameraBackendIdentity`, `CameraMountReceipt`, `FrameMetadata`, `CaptureContract`, `StreamBudget`, `CameraDiagnostics`, `AdmittedFrame`, `CameraPipeline`, `CameraMountError`, `MountedCamera`, `WorkflowBudget`, `WorkflowUsage`, `WorkflowAccountant`
 - **enum**: `PixelFormat`, `CameraState`, `CameraError`, `WorkflowError`
-- **fn**: `capture_at`, `reset_window`, `recover`, `backend`, `sampled_mean`, `admit`, `reset_window`
+- **fn**: `capture_at`, `reset_window`, `recover`, `backend`, `backend_mut`, `into_backend`, `mount`, `capture_at`, `reset_window`, `quiesce`, `recover`, `backend`, `into_backend`, `sampled_mean`, `admit`, `reset_window`
 
 ## `nobro-classic`
 Familiar fixed-capacity RTOS primitives for small applications.

@@ -20,6 +20,7 @@ CORE = os.path.join(ROOT, "core")
 HOST_PACKAGES = (
     "nobro-adapter-audio-esp32s3-es8311",
     "nobro-adapter-bmp280",
+    "nobro-adapter-camera-niuscam",
     "nobro-adapter-icm45686",
     "nobro-adapter-ina3221",
     "nobro-adapter-motion-ai",
