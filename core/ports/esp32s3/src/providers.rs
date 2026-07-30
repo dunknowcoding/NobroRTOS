@@ -4,7 +4,8 @@ use core::{convert::Infallible, fmt};
 
 use embedded_hal::{i2c::I2c, pwm::SetDutyCycle, spi::SpiBus};
 use esp_hal::{
-    time::Duration, timer::OneShotTimer, usb_serial_jtag::UsbSerialJtag, Blocking, DriverMode,
+    cpu_control::CpuControl, time::Duration, timer::OneShotTimer, usb_serial_jtag::UsbSerialJtag,
+    Blocking, Cpu, DriverMode,
 };
 use nobro_hal::{
     board_catalog::EXACT_ESP32S3_UNO, BoardCapacity, BoardDesc, CapabilityProfileKind, EspLeases,
@@ -39,12 +40,8 @@ impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Esp32S3P
 impl HalCompatibility for Esp32S3Providers {
     const DECLARATION: HardwareCapabilityDeclaration = {
         let witnesses = HardwareCapabilitySet::EMPTY
-            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(
-                HardwareCapability::Timebase,
-            )
-            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(
-                HardwareCapability::Deadline,
-            )
+            .witnessed::<Self, { HardwareCapability::Timebase as u8 }>(HardwareCapability::Timebase)
+            .witnessed::<Self, { HardwareCapability::Deadline as u8 }>(HardwareCapability::Deadline)
             .witnessed::<Self, { HardwareCapability::Event as u8 }>(HardwareCapability::Event)
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
@@ -79,8 +76,7 @@ impl HalCompatibility for Esp32S3Providers {
     };
 }
 
-const _: [(); 1] =
-    [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
+const _: [(); 1] = [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_valid() as usize];
 const _: [(); 1] =
     [(); <Esp32S3Providers as HalCompatibility>::DECLARATION.is_exact_profile() as usize];
 
@@ -134,6 +130,34 @@ impl HalClock for Esp32S3Clock {
     fn now_us() -> u64 {
         esp_hal::time::now().ticks()
     }
+}
+
+/// Quiesce an APP core state left active by a debugger/reset path.
+///
+/// `esp-hal` treats an enabled APP-core clock gate as proof that core 1 is
+/// already owned. A debugger reset can leave that bit set even though no Rust
+/// closure is installed, making an otherwise clean application cold start
+/// fail with `CoreAlreadyRunning`. Call this immediately before the
+/// application's first `CpuControl::start_app_core`; it does nothing on a
+/// normal reset.
+pub fn prepare_app_core_start(cpu_control: &mut CpuControl<'_>) -> bool {
+    let system = unsafe { &*esp_hal::peripherals::SYSTEM::PTR };
+    let control = system.core_1_control_0();
+    if control.read().control_core_1_clkgate_en().bit_is_clear() {
+        return false;
+    }
+
+    // The caller has not started core 1 yet, so parking APP CPU cannot stall
+    // the executing PRO CPU. Hold APP CPU stalled and in reset before removing
+    // its stale clock. `start_app_core` then owns the complete clock/reset/
+    // unpark sequence and cannot inherit a debugger-created half-started state.
+    unsafe {
+        cpu_control.park_core(Cpu::AppCpu);
+    }
+    control.modify(|_, w| w.control_core_1_runstall().set_bit());
+    control.modify(|_, w| w.control_core_1_reseting().set_bit());
+    control.modify(|_, w| w.control_core_1_clkgate_en().clear_bit());
+    true
 }
 
 pub struct Esp32S3Alarm<'d, Dm> {

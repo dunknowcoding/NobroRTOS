@@ -358,8 +358,8 @@
     {
       "id": "source-niusaudio",
       "source": "https://github.com/dunknowcoding/NiusAudio",
-      "revision": "ec21d000474fc3378a08eee1d71c16015796583d",
-      "version": "0.3.2",
+      "revision": "c81851ef0771f1de4b721ea0d1cd6e9daa34838a",
+      "version": "0.3.3",
       "license": "Apache-2.0"
     },
     {
@@ -1546,7 +1546,7 @@
         "operations_per_second": 100
       },
       "measured_fixed_price": {
-        "flash_bytes": 87769,
+        "flash_bytes": 87993,
         "static_ram_bytes": 2508,
         "retained_heap_bytes": 16164,
         "stack_bytes": 0,
@@ -1607,7 +1607,7 @@
         "evidence_gate": "esp32s3-arduino-audio-target-build"
       },
       "price_basis": {
-        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.2",
+        "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 and NiusAudio 0.3.3",
         "fixed": "conservative maximum of pinned Windows/Linux same-target isolated link deltas, active retained-heap delta after repeated recovery, and pinned source ownership",
         "runtime": "conservative maximum from three physical runs at 100 transfers per second"
       }

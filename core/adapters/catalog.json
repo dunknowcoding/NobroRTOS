@@ -135,8 +135,8 @@
     {
       "id": "source-niusaudio",
       "source": "https://github.com/dunknowcoding/NiusAudio",
-      "revision": "ec21d000474fc3378a08eee1d71c16015796583d",
-      "version": "0.3.2",
+      "revision": "c81851ef0771f1de4b721ea0d1cd6e9daa34838a",
+      "version": "0.3.3",
       "license": "Apache-2.0",
       "pinned": true,
       "clean": true

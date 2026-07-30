@@ -307,9 +307,9 @@ jobs:
       - name: prepare pinned audio member
         run: |
           git clone https://github.com/dunknowcoding/NiusAudio.git _work/NiusAudio
-          git -C _work/NiusAudio checkout --detach ec21d000474fc3378a08eee1d71c16015796583d
+          git -C _work/NiusAudio checkout --detach c81851ef0771f1de4b721ea0d1cd6e9daa34838a
           test "$(git -C _work/NiusAudio rev-parse HEAD)" = \
-            "ec21d000474fc3378a08eee1d71c16015796583d"
+            "c81851ef0771f1de4b721ea0d1cd6e9daa34838a"
       - name: compile public package examples (AVR, UNO R4, ESP32-S3)
         timeout-minutes: 35
         env:
