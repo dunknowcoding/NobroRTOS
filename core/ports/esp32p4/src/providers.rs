@@ -179,38 +179,42 @@ impl<Dm: DriverMode> HalAlarm for Esp32P4Alarm<'_, Dm> {
     }
 }
 
-pub struct Esp32P4Usb<'d>(UsbSerialJtag<'d, Blocking>);
+/// Bounded access to the controller-owned USB Serial/JTAG CDC endpoint.
+///
+/// Keep this provider separate from the external CH343 UART bridge. In particular,
+/// it must not call `esp_hal::UsbSerialJtag::flush_tx`: that API waits for a host IN
+/// transaction and can therefore stop the complete application when the four-pin USB
+/// cable is absent or the host has not configured CDC. `nobro_usb` polls at most once
+/// per operation and reports backpressure/disconnection to the caller instead.
+pub struct Esp32P4Usb<'d> {
+    // The HAL token performs the chip clock/reset initialization and retains exclusive
+    // ownership. Data-plane operations intentionally use only the bounded stack below.
+    _controller: UsbSerialJtag<'d, Blocking>,
+    stack: nobro_usb::MountedUsb,
+}
 
 impl<'d> Esp32P4Usb<'d> {
-    pub fn new(usb: UsbSerialJtag<'d, Blocking>) -> Self {
-        Self(usb)
+    pub fn new(controller: UsbSerialJtag<'d, Blocking>, stack: nobro_usb::MountedUsb) -> Self {
+        Self {
+            _controller: controller,
+            stack,
+        }
     }
 }
 
 impl HalByteIo for Esp32P4Usb<'_> {
-    type Error = Infallible;
+    type Error = nobro_usb::UsbIoError;
 
     fn read_available(&mut self, bytes: &mut [u8]) -> Result<usize, Self::Error> {
-        let mut count = 0;
-        while count < bytes.len() {
-            match self.0.read_byte() {
-                Ok(byte) => {
-                    bytes[count] = byte;
-                    count += 1;
-                }
-                Err(nb::Error::WouldBlock) => break,
-                Err(nb::Error::Other(error)) => return Err(error),
-            }
-        }
-        Ok(count)
+        self.stack.read_available(bytes)
     }
 
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.0.write(bytes)
+        self.stack.write_all(bytes)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.0.flush_tx()
+        self.stack.flush_pending()
     }
 }
 

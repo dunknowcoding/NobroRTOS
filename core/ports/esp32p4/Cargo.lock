@@ -609,7 +609,6 @@ dependencies = [
 [[package]]
 name = "esp-sync"
 version = "0.2.1"
-source = "git+https://github.com/esp-rs/esp-hal?rev=8cbe014242843d5b4a9ce14d018f20f16e2ebf18#8cbe014242843d5b4a9ce14d018f20f16e2ebf18"
 dependencies = [
  "document-features",
  "embassy-sync 0.6.2",
@@ -938,6 +937,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "esp-bootloader-esp-idf",
  "esp-hal",
+ "esp-sync",
  "nb 1.1.0",
  "nobro-hal",
  "nobro-usb",

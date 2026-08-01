@@ -13,8 +13,16 @@ nb = "1"
 riscv = "0.16.1"
 esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "8cbe014242843d5b4a9ce14d018f20f16e2ebf18", features = ["esp32p4", "unstable"] }
 esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "8cbe014242843d5b4a9ce14d018f20f16e2ebf18", features = ["esp32p4"] }
+esp-sync = { path = "../../vendor/esp-sync", features = ["esp32p4"] }
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
 nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-usb-serial-jtag-esp32p4"] }
+
+[features]
+default = []
+esp32p4-v3 = ["esp-sync/esp32p4-zcmp-workaround"]
+
+[patch."https://github.com/esp-rs/esp-hal"]
+esp-sync = { path = "../../vendor/esp-sync" }
 
 [profile.release]
 debug = 2

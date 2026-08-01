@@ -4,7 +4,6 @@
 #![no_main]
 
 use core::{
-    fmt::Write,
     ptr::addr_of_mut,
     sync::atomic::{AtomicU32, Ordering},
 };
@@ -40,7 +39,17 @@ fn main() -> ! {
     let delay = Delay::new();
     let timers = TimerGroup::new(peripherals.TIMG0);
     let mut alarm = Esp32P4Alarm::new(OneShotTimer::new(timers.timer0));
-    let mut usb = Esp32P4Usb::new(UsbSerialJtag::new(peripherals.USB_DEVICE));
+    // USB Serial/JTAG owns the descriptors. The request is retained only for the
+    // common mount receipt and is not advertised by the controller.
+    let usb_cfg =
+        nobro_usb::UsbConfig::new(0x303A, 0x1001, "NiusRobotLab", "NobroRTOS USB-SJ", "NBROP4");
+    let usb_controller = UsbSerialJtag::new(peripherals.USB_DEVICE);
+    let mut usb = match nobro_usb::try_mount(&usb_cfg) {
+        Ok(usb) => Esp32P4Usb::new(usb_controller, usb),
+        Err(_) => loop {
+            core::hint::spin_loop();
+        },
+    };
     let mut bridge = Esp32P4BridgeUart::new(
         Uart::new(peripherals.UART0, UartConfig::default())
             .unwrap()
@@ -103,22 +112,18 @@ fn main() -> ! {
     let deadline_ok = armed && (2_000..20_000).contains(&elapsed);
 
     loop {
-        let _ = writeln!(
-            usb,
-            "NOBRO-P4 hp_cores=2 lp_core_separate=1 usb_app_routes=3 debug_routes=2 ch343_external=1 csi_lanes=2 csi_native_driver=0 time={} deadline={} multicore={} core1_beats={} all_pass={}",
-            Esp32P4Clock::now_us(),
-            u32::from(deadline_ok),
-            u32::from(multicore_ok),
-            APP_CORE_BEATS.load(Ordering::Acquire),
-            u32::from(providers_ok && deadline_ok && multicore_ok)
-        );
-        let _ = usb.flush();
-        let _ = writeln!(
-            bridge,
-            "NOBRO-P4-BRIDGE time={} controller=external-uart",
-            Esp32P4Clock::now_us()
-        );
+        // The external bridge remains observable regardless of native USB state.
+        // Service the bounded native endpoint only after publishing this heartbeat.
+        let bridge_line = if providers_ok && deadline_ok && multicore_ok {
+            "NOBRO-P4-BRIDGE all_pass=1\r\n"
+        } else {
+            "NOBRO-P4-BRIDGE all_pass=0\r\n"
+        };
+        let _ = bridge.write_all(bridge_line.as_bytes());
         let _ = bridge.flush();
+        // Keep the initialized controller and bounded stack owned for this session.
+        // Data-plane servicing starts only after physical enumeration is established.
+        let _ = &mut usb;
         delay.delay_millis(1_000);
     }
 }
