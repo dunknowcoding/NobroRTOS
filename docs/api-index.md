@@ -107,14 +107,14 @@ Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO.
 - **enum**: `RadioCommsError`
 - **fn**: `acquire`, `release`
 
+## `nobro-adapter-wireless-wifi-arduino-esp`
+- **fn**: `valid_credentials`
+
 ## `nobro-adapter-wireless-wifi-arduino-esp8266`
 Pollable lifecycle model for the Arduino-ESP8266 station adapter.
 - **struct**: `Diagnostics`, `AsyncWifiLifecycle`
 - **enum**: `LifecycleState`, `PollObservation`, `LifecycleError`
 - **fn**: `mount`, `begin_join`, `poll`, `leave`, `quiesce`, `recover`
-
-## `nobro-adapter-wireless-wifi-arduino-esp`
-- **fn**: `valid_credentials`
 
 ## `nobro-adapter-wireless-wifi-arduino-wifis3`
 Bounded bridge for the Arduino UNO R4 WiFiS3 stack.
