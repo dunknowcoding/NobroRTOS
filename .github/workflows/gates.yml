@@ -34,7 +34,9 @@ jobs:
           python tools/checks/release/check_public_docs.py
           python tools/checks/core/check_report_trust_boundary.py
       - name: board profiles
-        run: python tools/checks/platforms/check_board_profiles.py
+        run: |
+          python tools/checks/platforms/check_board_profiles.py
+          python tools/checks/platforms/check_kernel_lite_candidates.py
       - name: scalable core layout
         run: python tools/checks/core/check_core_layout.py
       - name: adapter catalog
@@ -86,6 +88,7 @@ jobs:
           python -O tools/checks/platforms/check_platform_tiers.py --selftest
           python -O sdk/cli/nobro.py adapter --selftest
           python -O tools/checks/platforms/check_board_features.py --selftest
+          python -O tools/checks/platforms/check_kernel_lite_candidates.py
           python -O sdk/cli/nobro.py firmware --selftest
           python -O sdk/cli/nobro.py shrink --selftest
           python -O tools/checks/product/check_udi.py --selftest
@@ -325,6 +328,7 @@ jobs:
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-esp-wifi-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp8266-arduino-target-build
+          python tools/checks/platforms/check_platform_tiers.py --run-gate avr-nano-arduino-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
       - name: pinned NiusIMU integration

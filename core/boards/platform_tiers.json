@@ -1163,6 +1163,23 @@
         }
       ]
     },
+    "avr-nano-arduino-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/checks/integrations/check_avr_nano_constrained.py"],
+      "claim_scopes": [
+        {
+          "platform": "atmega328p",
+          "composition": "arduino",
+          "capabilities": [
+            "timebase", "deadline", "gpio", "irq", "uart", "byte_io",
+            "adc", "pwm", "i2c", "spi", "reset", "power"
+          ]
+        }
+      ]
+    },
     "arduino-nrf52840-compile": {
       "kind": "target-build",
       "runner": "arduino-nrf-package",
@@ -1644,11 +1661,31 @@
         }
       }
     },
-    "avr_nano": {
+    "atmega328p": {
       "arch": "avr",
-      "tier": "core",
+      "tier": "constrained",
       "implementation_root": "core/ports/avr_nano",
-      "compositions": {}
+      "limitations": "The exact Nano V3 composition is cooperative and single-core. Native USB, multicore, memory isolation, and DMA are hardware-inapplicable. SRAM is 2 KiB; the admitted application envelope is four tasks/four wires with a 1 KiB application budget. PWM is timer-shared, ADC is 10-bit, I2C is bounded by the 32-byte Wire buffer, and idle sleep depends on enabled interrupt wake sources. Reset is application re-entry only because watchdog hardware reset is unsafe with the exact old bootloader.",
+      "compositions": {
+        "arduino": {
+          "surface": "arduino",
+          "board_profile": "arduino_nano_v3_atmega328p",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]}
+          }
+        }
+      }
     }
   }
 }

@@ -16,6 +16,28 @@
 
 namespace nobro {
 
+namespace detail {
+#if defined(ARDUINO_ARCH_AVR)
+enum : uint32_t {
+    APP_DEFAULT_FLASH_LIMIT = 16ul * 1024ul,
+    APP_DEFAULT_RAM_LIMIT = 1024ul,
+    APP_BASE_FLASH = 2ul * 1024ul,
+    APP_BASE_RAM = 128ul,
+    APP_TASK_FLASH = 384ul,
+    APP_TASK_RAM = 64ul,
+};
+#else
+enum : uint32_t {
+    APP_DEFAULT_FLASH_LIMIT = 128ul * 1024ul,
+    APP_DEFAULT_RAM_LIMIT = 32ul * 1024ul,
+    APP_BASE_FLASH = 12ul * 1024ul,
+    APP_BASE_RAM = 3ul * 1024ul,
+    APP_TASK_FLASH = 1024ul,
+    APP_TASK_RAM = 256ul,
+};
+#endif
+} // namespace detail
+
 inline uint32_t hz(uint32_t rate) {
     return rate == 0 ? 0 : 1000000ul / rate;
 }
@@ -53,13 +75,14 @@ enum AppError : uint8_t {
 template <uint8_t MaxTasks = 8, uint8_t MaxChannels = 8>
 class NobroApp {
 public:
-    NobroApp(uint32_t flash_limit = 128ul * 1024ul,
-             uint32_t ram_limit = 32ul * 1024ul)
+    NobroApp(uint32_t flash_limit = detail::APP_DEFAULT_FLASH_LIMIT,
+             uint32_t ram_limit = detail::APP_DEFAULT_RAM_LIMIT)
         : task_count_(0), channel_count_(0), flash_limit_(flash_limit),
-          ram_limit_(ram_limit), flash_used_(12ul * 1024ul),
-          ram_used_(3ul * 1024ul),
+          ram_limit_(ram_limit), flash_used_(detail::APP_BASE_FLASH),
+          ram_used_(detail::APP_BASE_RAM),
           error_(flash_limit == 0 || ram_limit == 0 ||
-                         flash_limit < 12ul * 1024ul || ram_limit < 3ul * 1024ul
+                         flash_limit < detail::APP_BASE_FLASH ||
+                         ram_limit < detail::APP_BASE_RAM
                      ? APP_RESOURCE_BUDGET
                      : APP_OK) {}
 
@@ -200,8 +223,8 @@ private:
             fail(APP_TASK_CAPACITY);
             return invalid();
         }
-        const uint32_t flash = 1024;
-        const uint32_t ram = 256;
+        const uint32_t flash = detail::APP_TASK_FLASH;
+        const uint32_t ram = detail::APP_TASK_RAM;
         uint32_t next_flash = 0;
         uint32_t next_ram = 0;
         if (!checked_add(flash_used_, flash, next_flash) ||

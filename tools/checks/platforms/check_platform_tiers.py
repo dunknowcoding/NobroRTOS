@@ -1182,7 +1182,7 @@ def selftest() -> int:
     )
 
     bad_reference = copy.deepcopy(good)
-    bad_reference["reference_platform"] = "avr_nano"
+    bad_reference["reference_platform"] = "atmega328p"
     _expect_error(validate(bad_reference), "reference_platform must")
 
     false_deep = copy.deepcopy(good)
@@ -1582,6 +1582,17 @@ def selftest() -> int:
                 )
                 == 0,
                 "Arduino ESP8266 gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "avr-nano-arduino-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino AVR Nano constrained gate success",
             )
             _expect(
                 _quiet_call(

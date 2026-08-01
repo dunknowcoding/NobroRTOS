@@ -27,8 +27,14 @@
     "max_modules": 4
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The constrained AVR runtime and Arduino-core composition are not implemented yet."
+    "support": "arduino-composition",
+    "fqbn": "arduino:avr:nano:cpu=atmega328old",
+    "header": "packages/arduino/src/NobroAvrNano.h",
+    "entry": "Arduino setup/loop cooperative composition",
+    "interrupts": "INT0/INT1 through D2/D3; timer and peripheral vectors remain board-core owned",
+    "dma": "hardware-inapplicable on ATmega328P",
+    "clock": "wrapping-safe 32-bit micros with half-range deadlines",
+    "boot": "Optiboot-compatible 2 KiB boot section; application upload through the external USB-UART bridge; the provider exposes an application restart because watchdog reset is unsafe with the old bootloader"
   },
   "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
 }

@@ -384,9 +384,10 @@ Cross-compile coverage is
 | Tier | What it means | Targets today |
 | --- | --- | --- |
 | **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
-| **Constrained composition** | exact board-specific subset with hardware-inapplicable capabilities called out | WeMos D1 Mini / ESP8266 (Arduino-first) |
-| **Core ports** | target startup and status path available; peripheral providers are incomplete | an 8-bit AVR kernel-lite subset |
+| **Constrained composition** | exact board-specific subset with hardware-inapplicable capabilities called out | WeMos D1 Mini / ESP8266 and Nano V3 / ATmega328P (Arduino-first) |
+| **Core ports** | target startup and status path available; peripheral providers are incomplete | none currently promoted beyond a constrained composition |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
+| **Kernel-lite candidates** | exact C compiler/image, ISA-object, or RTL-simulation feasibility with zero HAL/board claims | 8051, STM8, PIC16/24/32, MSP430, STM32C0, CH32V003, TI C2000 DSP, FPGA/soft-core boundaries |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
 RA4M1's native row includes a LOCO-clocked timebase and deadline, GPT2/ELC event

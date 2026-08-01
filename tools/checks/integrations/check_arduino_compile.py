@@ -12,6 +12,7 @@ EXAMPLES = os.path.join(ROOT, "packages", "arduino", "examples")
 LIBRARY = os.path.join(ROOT, "packages", "arduino")
 EXPECTED_EXAMPLES = (
     "AdaptiveWireless",
+    "AvrNanoConstrained",
     "BeginnerApp",
     "Esp8266Constrained",
     "ProviderApp",
@@ -19,6 +20,9 @@ EXPECTED_EXAMPLES = (
     "RobotIoTApp",
 )
 EXAMPLE_ARCH_PREFIX = {
+    # This example is the exact ATmega328P/Nano constrained composition. Its
+    # positive and cross-architecture negative builds are owned separately.
+    "AvrNanoConstrained": "arduino:avr:",
     # This example intentionally fails closed outside Arduino-ESP8266. Its
     # exact D1 Mini positive and cross-architecture negative builds are owned
     # by check_esp8266_constrained.py.

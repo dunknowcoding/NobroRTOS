@@ -37,6 +37,15 @@ port name that manifest instead of pretending a generic image is safe.
 generated output and reconciles every implemented `BoardPackage` against it.
 Do not edit `generated_board_profiles.rs` directly.
 
+`candidate_families.json` is a separate, fail-closed intake list for families that
+do not yet have a supported board profile. An entry records the maintained upstream
+core/toolchain route and requires an exact device and compiler/core version before a
+compile contract can be recorded. It grants no capability claim. Candidate C/RTL
+witnesses live under `core/candidates/kernel_lite`; image, object, simulation, board,
+and physical states remain distinct. The 8051 entry is limited to C/Arduino ABI or
+kernel-lite feasibility until a maintained Rust target, atomic model, and runtime are
+demonstrated.
+
 An application crate selects exactly one board via its `feature` (for example,
 `board-promicro-nosd`). A board profile is a validated compatibility contract; full
 peripheral support lands when the matching HAL platform backend is added.

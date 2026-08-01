@@ -29,6 +29,9 @@ Current contents:
   pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
 - `src/NobroEsp8266.h` and `src/NobroArduinoEsp8266WiFi.h` with an exact,
   constrained D1 Mini profile and pollable ESP8266 Wi-Fi lifecycle.
+- `src/NobroAvrNano.h` with the exact Nano V3 / ATmega328P four-task,
+  four-wire constrained profile and bounded clock, peripheral, idle, and reset
+  providers.
 - `src/NobroArduinoEspBLE.h` with one bounded BLE peripheral facade over the
   board package's Bluedroid (ESP32) or NimBLE (ESP32-C3/S3) host.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
@@ -286,6 +289,30 @@ the board core's software waveform scheduler, deep-sleep wake needs the
 board-level GPIO16-to-RST connection, and the process-wide Wi-Fi/lwIP stack
 owns heap and callbacks. Define `NOBRO_ESP8266_WIFI_DISABLED` before the Wi-Fi
 header to keep its facade and vendor symbols out of a composition.
+
+## AVR Nano constrained composition
+
+Install Arduino AVR Boards, select **Arduino Nano**, and select the processor/bootloader
+variant that matches the physical board. The exact old-bootloader compile contract is:
+
+```cpp
+#include <NobroAvrNano.h>
+
+nobro::AvrNanoApp app;
+```
+
+The ATmega328P profile admits at most four tasks and four wires, with a 16 KiB
+application-flash and 1 KiB static-RAM envelope. It exposes wrapping-safe clock and
+deadline handling, D2/D3 external interrupts, timer-backed PWM, 10-bit ADC, bounded
+Wire/SPI/UART operations, interrupt-woken idle sleep, and application restart. The
+old Nano bootloader can loop if entered by watchdog reset, so this profile deliberately
+does not claim a watchdog hardware reset. Native USB, DMA, multicore, and memory
+isolation are hardware-inapplicable. The external
+USB-UART bridge and selected Arduino bootloader remain board-owned.
+
+`AvrNanoConstrained` is the full compile-gated example. It deliberately instantiates
+every admitted provider, so applications can remove unused objects and their linked
+code instead of inheriting a monolithic peripheral layer.
 
 ## Arduino-ESP32 BLE peripheral
 

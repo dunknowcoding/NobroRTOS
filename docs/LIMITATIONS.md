@@ -41,7 +41,8 @@ not inferred from software coefficients alone.
 | Tier | Platforms | Included | Missing |
 | --- | --- | --- | --- |
 | Deep | nRF52840, RA4M1, SAMD21, RP2040, RP2350, ESP32, ESP32-C3, ESP32-P4, ESP32-S3 | Every native composition satisfies its exact target-build profile. The profiles preserve silicon-specific GPIO, interrupt, DMA, power, cache, multicore, USB, bus, and lease limits instead of implying one uniform peripheral set. | Physical evidence remains composition-scoped. Classic ESP32 and ESP32-P4 native promotion is pending; RA4M1 native I2C/SPI and several optional providers remain non-physical or unimplemented. Classic ESP32 has no native USB, P4 has no radio, and the pinned P4 Rust HAL has no native CSI capture data plane. |
-| Core | AVR Nano subset | Target startup/status and a kernel-lite path are available while the constrained peripheral contract remains incomplete. | Native USB and hardware isolation are inapplicable; exact capacity and physical lifecycle remain pending. |
+| Constrained | Nano V3 / ATmega328P Arduino composition | Exact four-task/four-wire profile with bounded clock/deadline, GPIO, D2/D3 IRQ, timer PWM, 10-bit ADC, Wire, SPI, UART, idle, and application-restart providers. | Native USB, DMA, multicore, and isolation are hardware-inapplicable. Reset is application re-entry only: watchdog hardware reset can loop in the exact old bootloader. |
+| Candidate-only | 8051, STM8, PIC, MSP430, STM32C0, CH32V003, C2000 DSP, and FPGA/soft-core witnesses | Exact compiler images/objects or RTL simulation prove only that the bounded kernel-lite arithmetic/state shape is representable. | No board HAL, peripheral, interrupt, timing, power, isolation, debug, synthesis/timing-closure, or physical-support claim follows from these artifacts. |
 
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs

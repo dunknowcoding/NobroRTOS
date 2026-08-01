@@ -259,6 +259,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroAvrNano.h",
+      "source_sha256": "677f197a27834d4da0d87ff5ee572e819a37b9683ac28d39185793a07a643c84",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroAvrNano.h",
+          "sha256": "677f197a27834d4da0d87ff5ee572e819a37b9683ac28d39185793a07a643c84"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroEsp32Peripherals.h",
       "source_sha256": "50f491d7b3f56972dec10adacdc27a08ca54082b2f3f58d4331689922741f93f",
       "targets": [
@@ -337,12 +348,12 @@
     },
     {
       "source": "packages/arduino/src/NobroRTOS.h",
-      "source_sha256": "eb68765f9a8ca76a0faac8081c156136f9d82c45cfa510c1c0d7f8edee7aa01d",
+      "source_sha256": "6110581abde14f3bc5f2aba90ffea95d94b117bddf88d10b1f77bb1a6f143fe3",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroRTOS.h",
-          "sha256": "eb68765f9a8ca76a0faac8081c156136f9d82c45cfa510c1c0d7f8edee7aa01d"
+          "sha256": "6110581abde14f3bc5f2aba90ffea95d94b117bddf88d10b1f77bb1a6f143fe3"
         }
       ]
     }

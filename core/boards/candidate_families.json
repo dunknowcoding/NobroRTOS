@@ -1,0 +1,248 @@
+{
+  "schema": "nobro-candidate-families-v1",
+  "policy": "Candidate entries prove an upstream intake route only. They are not board profiles, support tiers, promoted bindings, or firmware claims.",
+  "families": [
+    {
+      "id": "avr-dx",
+      "architecture": "avr8",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "DxCore",
+        "url": "https://github.com/SpenceKonde/DxCore",
+        "framework": "Arduino",
+        "toolchain": "avr-gcc"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "not-run",
+        "status": "not-installed-not-run"
+      },
+      "debug_contract": "UPDI identity and recovery must be proven for the selected board",
+      "claims": []
+    },
+    {
+      "id": "attiny-modern",
+      "architecture": "avr8",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "megaTinyCore",
+        "url": "https://github.com/SpenceKonde/megaTinyCore",
+        "framework": "Arduino",
+        "toolchain": "avr-gcc"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "not-run",
+        "status": "not-installed-not-run"
+      },
+      "debug_contract": "UPDI identity and recovery must be proven for the selected board",
+      "claims": []
+    },
+    {
+      "id": "ch32v003",
+      "architecture": "qingke-rv32ec",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "ch32fun",
+        "url": "https://github.com/cnlohr/ch32fun",
+        "framework": "minimal C SDK",
+        "toolchain": "riscv-none-elf-gcc"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "xPack GNU RISC-V Embedded GCC 15.2.0",
+        "exact_device": "CH32V003F4P6 ISA object contract",
+        "status": "exact-object-contract-available"
+      },
+      "debug_contract": "single-wire debug identity, halt/resume, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "stm32c0",
+      "architecture": "armv6m",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "Arduino_Core_STM32",
+        "url": "https://github.com/stm32duino/Arduino_Core_STM32",
+        "framework": "Arduino",
+        "toolchain": "arm-none-eabi-gcc"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "arm-none-eabi-gcc 13.4.0",
+        "exact_device": "STM32C011F6 generic startup/link contract",
+        "status": "exact-image-contract-available"
+      },
+      "debug_contract": "SWD probe identity, boot layout, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "mcs51",
+      "architecture": "8051",
+      "state": "feasibility-only",
+      "upstream": {
+        "name": "SDCC",
+        "url": "https://sourceforge.net/projects/sdcc/",
+        "framework": "freestanding C kernel-lite only",
+        "toolchain": "sdcc 4.5.0; IAR 8051 10.20 optional cross-check"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "SDCC 4.5.0 #15242; IAR 8051 V10.20.1.5333 secondary",
+        "exact_device": "AT89S52-compatible classic 8051 memory model",
+        "status": "no-maintained-rust-target-admitted",
+        "kernel_lite_status": "exact-compile-contract-available"
+      },
+      "debug_contract": "device-specific debug/programmer path must be selected before implementation",
+      "allowed_scope": "C/Arduino ABI or kernel-lite feasibility; never a Rust/full-kernel or board-support claim without a maintained target and atomic/runtime proof",
+      "claims": []
+    },
+    {
+      "id": "stm8s103f3",
+      "architecture": "stm8",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "SDCC STM8",
+        "url": "https://sourceforge.net/projects/sdcc/",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "sdcc 4.5.0"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "SDCC 4.5.0 #15242",
+        "exact_device": "STM8S103F3",
+        "status": "exact-compile-contract-available"
+      },
+      "debug_contract": "SWIM probe identity, option bytes, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "pic16f18855",
+      "architecture": "pic14-enhanced",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "MPLAB XC8",
+        "url": "https://www.microchip.com/en-us/tools-resources/develop/mplab-xc-compilers/xc8",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "xc8 3.00"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "MPLAB XC8 V3.00",
+        "exact_device": "PIC16F18855",
+        "status": "exact-compile-contract-available"
+      },
+      "debug_contract": "ICSP/debugger identity, configuration words, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "pic24fj64ga002",
+      "architecture": "pic24",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "MPLAB XC16",
+        "url": "https://www.microchip.com/en-us/tools-resources/develop/mplab-xc-compilers/xc16",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "xc16 2.10"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "XC16 Microchip v2.10",
+        "exact_device": "PIC24FJ64GA002",
+        "status": "exact-compile-contract-available"
+      },
+      "debug_contract": "ICSP/debugger identity, configuration words, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "pic32mx270f256b",
+      "architecture": "mips32-m4k",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "MPLAB XC32 plus PIC32MX DFP",
+        "url": "https://packs.download.microchip.com/",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "xc32 6.00; PIC32MX_DFP 1.7.380"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "Microchip XC32 Compiler v6.00; PIC32MX_DFP 1.7.380",
+        "exact_device": "PIC32MX270F256B",
+        "status": "exact-compile-contract-available"
+      },
+      "debug_contract": "EJTAG probe identity, configuration words, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "msp430g2553",
+      "architecture": "msp430",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "TI MSP430 GCC",
+        "url": "https://www.ti.com/tool/MSP430-GCC-OPENSOURCE",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "msp430-gcc 9.3.1.11"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "msp430-gcc 9.3.1.11",
+        "exact_device": "MSP430G2553",
+        "status": "exact-compile-contract-available"
+      },
+      "debug_contract": "Spy-Bi-Wire/JTAG probe identity, information-memory policy, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "c2000-f280049c",
+      "architecture": "c28x-dsp",
+      "state": "candidate-not-supported",
+      "upstream": {
+        "name": "TI C2000 C/C++ Compiler",
+        "url": "https://www.ti.com/tool/C2000-CGT",
+        "framework": "freestanding C kernel-lite",
+        "toolchain": "ti-cgt-c2000 25.11.1.LTS"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "TI C2000 compiler 25.11.1",
+        "exact_device": "TMS320F280049C",
+        "status": "exact-object-contract-available",
+        "storage_unit_bits": 16
+      },
+      "debug_contract": "C28x JTAG probe identity, dual-zone security state, flash backup, and recovery must be proven",
+      "claims": []
+    },
+    {
+      "id": "fpga-bounded-dispatch",
+      "architecture": "synthesizable-rtl",
+      "state": "feasibility-only",
+      "upstream": {
+        "name": "Icarus Verilog and Verilator",
+        "url": "https://github.com/steveicarus/iverilog",
+        "framework": "bounded RTL scheduling primitive",
+        "toolchain": "iverilog 13.0; verilator 5.x"
+      },
+      "compile_contract": {
+        "exact_device_required": true,
+        "exact_core_version_required": true,
+        "toolchain_revision": "Icarus Verilog 13.0",
+        "exact_device": "generic four-task RTL simulation only",
+        "status": "simulation-contract-available"
+      },
+      "debug_contract": "an exact FPGA board, synthesis flow, timing constraints, bitstream, and JTAG identity are required before support",
+      "allowed_scope": "RTL simulation and separately compiled soft-core ABI feasibility only; never an FPGA-board support claim",
+      "claims": []
+    }
+  ]
+}

@@ -59,6 +59,12 @@ The base facade is dependency-free. For Arduino board-core providers, define
 External integration facades such as NiusIMU remain optional and require their
 corresponding library in `lib_deps`.
 
+Classic Nano V3 / ATmega328P projects may include `NobroAvrNano.h` for the exact
+four-task/four-wire constrained profile. The header is guarded to ATmega328P and
+exposes only the board's bounded clock, deadline, GPIO, D2/D3 IRQ, timer PWM,
+10-bit ADC, Wire, SPI, UART, idle-sleep, and application-restart capabilities. Native
+USB, DMA, multicore, and isolation are not claimed.
+
 ESP32 Arduino projects may include `NobroEsp32Peripherals.h` directly. Use
 `Esp32ContinuousAdc` for the compact board-core path or
 `Esp32PersistentContinuousAdc<Pins, Conversions>` for fixed DMA-aligned object

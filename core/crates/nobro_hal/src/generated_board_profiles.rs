@@ -21,7 +21,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: Some(2048),
         capacity: BoardCapacity::new(16384, 1024, 2, 4),
         pins: BoardPins::optional(Some(13), None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/esp32/esp-wroom32-30pin/board.json",
