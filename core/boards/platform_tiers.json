@@ -31,14 +31,20 @@
   "facade_offers": [
     "timebase",
     "deadline",
+    "gpio",
+    "irq",
+    "uart",
     "adc",
     "pwm",
     "i2c",
     "spi",
-    "byte_io"
+    "byte_io",
+    "reset",
+    "power"
   ],
   "tiers": {
     "deep": "each declared native composition satisfies its versioned deep profile with exact compiled witnesses",
+    "constrained": "an exact board composition exposes an honest bounded subset and names hardware-inapplicable capabilities",
     "provider": "one or more portable provider traits implemented for the target",
     "core": "target startup and status path available; portable peripheral providers are incomplete",
     "absent": "no maintained target integration"
@@ -121,7 +127,7 @@
         {
           "id": "board-packages",
           "command": ["arduino-cli", "core", "list"],
-          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:samd\\s+1\\.8\\.14)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)"
+          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:samd\\s+1\\.8\\.14)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)(?=.*esp8266:esp8266\\s+3\\.1\\.2)"
         }
       ]
     },
@@ -1123,6 +1129,40 @@
         }
       ]
     },
+    "esp8266-lifecycle-host": {
+      "kind": "host-test",
+      "runner": "rust-matrix",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo", "test", "--locked", "--target", "{host_target}",
+        "-p", "nobro-adapter-wireless-wifi-arduino-esp8266"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp8266",
+          "composition": "arduino",
+          "capabilities": ["wifi_link"]
+        }
+      ]
+    },
+    "esp8266-arduino-target-build": {
+      "kind": "target-build",
+      "runner": "arduino-package",
+      "required": true,
+      "cwd": ".",
+      "command": ["python", "tools/checks/integrations/check_esp8266_constrained.py"],
+      "claim_scopes": [
+        {
+          "platform": "esp8266",
+          "composition": "arduino",
+          "capabilities": [
+            "timebase", "deadline", "gpio", "irq", "uart", "byte_io",
+            "adc", "pwm", "i2c", "spi", "wifi_link", "reset", "power"
+          ]
+        }
+      ]
+    },
     "arduino-nrf52840-compile": {
       "kind": "target-build",
       "runner": "arduino-nrf-package",
@@ -1573,6 +1613,33 @@
           "claims": {
             "i2c": {"maturity": "implemented", "evidence": ["arduino-samd21-pn532-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["arduino-samd21-pn532-target-build"]}
+          }
+        }
+      }
+    },
+    "esp8266": {
+      "arch": "xtensa-lx106",
+      "tier": "constrained",
+      "implementation_root": "packages/arduino/src",
+      "limitations": "The exact D1 Mini composition is Arduino-first and single-core. Native USB, multicore, and memory isolation are hardware-inapplicable. No bounded DMA ownership provider is admitted. GPIO6-11 remain flash-owned, GPIO16 has no normal external IRQ, PWM is software-scheduled, ADC is A0-only, deep sleep is reset-style with external wake wiring, and the vendor WiFi/lwIP stack owns process-wide heap and callbacks.",
+      "compositions": {
+        "arduino": {
+          "surface": "arduino",
+          "board_profile": "wemos_d1_mini_esp8266",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "deadline": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "i2c": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "spi": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "wifi_link": {"maturity": "experimental", "evidence": ["esp8266-lifecycle-host", "esp8266-arduino-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["esp8266-arduino-target-build"]}
           }
         }
       }

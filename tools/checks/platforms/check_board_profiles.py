@@ -17,6 +17,7 @@ LAYOUT_FLASH_START = {
     "Rp2350ImageDef": 0x10000000,
     "Rp2040Boot2": 0x10000000,
     "AvrOptiboot2K": 0,
+    "Esp8266Arduino4M2M": 0,
 }
 PLATFORM_RAM = {
     "nrf52840": (0x2000_0000, 0x2004_0000),
@@ -26,6 +27,7 @@ PLATFORM_RAM = {
     "rp2350": (0x2000_0000, 0x2008_2000),
     "rp2040": (0x2000_0000, 0x2004_2000),
     "atmega328p": (0x100, 0x900),
+    "esp8266": (0x3FFE_8000, 0x3FFF_C000),
     "ra4m1": (0x2000_0000, 0x2000_8000),
     "samd21": (0x2000_0000, 0x2000_8000),
     "stm32f4": (0x2000_0000, 0x2002_0000),
@@ -193,8 +195,10 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
     if support == "unavailable":
         if not isinstance(generation.get("reason"), str) or not generation["reason"]:
             errors.append("unavailable firmware_generation needs a reason")
-    elif support in {"application-image", "maintained-port"}:
+    elif support in {"application-image", "maintained-port", "arduino-composition"}:
         for field in ("cargo_target", "entry", "interrupts", "dma", "clock", "boot"):
+            if support == "arduino-composition" and field == "cargo_target":
+                continue
             if not isinstance(generation.get(field), str) or not generation[field]:
                 errors.append(f"{support} generation missing {field}")
         if not numeric_boot:
@@ -211,10 +215,17 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
                 isinstance(flag, str) for flag in flags
             ):
                 errors.append("generation rustflags must be a string list")
-        else:
+        elif support == "maintained-port":
             manifest = generation.get("runtime_manifest")
             if not isinstance(manifest, str) or not (REPO / manifest).is_file():
                 errors.append("maintained-port runtime_manifest does not exist")
+        else:
+            fqbn = generation.get("fqbn")
+            header = generation.get("header")
+            if not isinstance(fqbn, str) or not fqbn:
+                errors.append("arduino-composition generation missing fqbn")
+            if not isinstance(header, str) or not (REPO / header).is_file():
+                errors.append("arduino-composition generation header does not exist")
     else:
         errors.append(f"unknown firmware_generation support {support!r}")
     return data, errors

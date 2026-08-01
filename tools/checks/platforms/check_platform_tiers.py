@@ -1360,6 +1360,7 @@ def selftest() -> int:
         "nrf52840-hal-host",
         "nrf52840-usb-host",
         "provider-lifecycle-host",
+        "esp8266-lifecycle-host",
     ]
     _expect(validate_receipts(good, "rust-matrix", rust_receipts) == [], "complete receipts")
     _expect_error(validate_receipts(good, "rust-matrix", []), "missing required")
@@ -1457,6 +1458,17 @@ def selftest() -> int:
                 )
                 == 0,
                 "provider lifecycle gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "esp8266-lifecycle-host",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "ESP8266 lifecycle gate success",
             )
             first_command = run.call_args_list[0].args[0]
             _expect(isinstance(first_command, list), "gate command must execute as an argv list")
@@ -1559,6 +1571,17 @@ def selftest() -> int:
                 )
                 == 0,
                 "Arduino ESP BLE gate success",
+            )
+            _expect(
+                _quiet_call(
+                    execute_gate,
+                    good,
+                    "esp8266-arduino-target-build",
+                    receipt_root,
+                    source_root,
+                )
+                == 0,
+                "Arduino ESP8266 gate success",
             )
             _expect(
                 _quiet_call(

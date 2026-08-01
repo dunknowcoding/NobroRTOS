@@ -384,6 +384,7 @@ Cross-compile coverage is
 | Tier | What it means | Targets today |
 | --- | --- | --- |
 | **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
+| **Constrained composition** | exact board-specific subset with hardware-inapplicable capabilities called out | WeMos D1 Mini / ESP8266 (Arduino-first) |
 | **Core ports** | target startup and status path available; peripheral providers are incomplete | an 8-bit AVR kernel-lite subset |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
@@ -436,7 +437,7 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Hardware bring-up | Present | nRF52840 IMU, scheduler, event capture, PWM, and USB-CDC paths are implemented |
 | Module authoring (Rust / C / C++) | Present | Author module logic over the `extern "C"` C ABI (`nobro_app.h` / `.hpp`); the kernel admits and drives it |
 | embedded-hal compatibility | Present | `embedded_hal::i2c::I2c` adapter - unmodified embedded-hal drivers run on NobroRTOS |
-| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are host-priced; ESP32-C3 NimBLE has a separately priced WiFi-coexistence increment, while classic ESP32 Bluedroid and ESP32-S3 NimBLE have exact whole WiFi+BLE composition prices. Standalone classic/S3 wifi0 prices, their BLE-only increments, and UNO R4 controller runtime remain open |
+| Board connectivity adapters | In progress | Exact UNO R4 WiFiS3 and Arduino-ESP32 C3 station workloads are host-priced; ESP32-C3 NimBLE has a separately priced WiFi-coexistence increment, while classic ESP32 Bluedroid and ESP32-S3 NimBLE have exact whole WiFi+BLE composition prices. ESP8266 has a separate target-built and physically exercised D1 Mini composition. Standalone classic/S3 wifi0 prices, their BLE-only increments, and UNO R4 controller runtime remain open |
 | Optional application services | Present | Feature-selected transactional filesystem, USB-host, display, and fixed-line shell contracts remain outside `nobro-nano` |
 | C/C++/Python interfaces | Present | Module authoring in C/C++/Rust; report/AI/ROS C & C++ views; Python builders, decoders, validators, board bridge |
 

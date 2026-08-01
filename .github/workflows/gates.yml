@@ -124,6 +124,7 @@ jobs:
           python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-hal-host
           python tools/checks/platforms/check_platform_tiers.py --run-gate nrf52840-usb-host
           python tools/checks/platforms/check_platform_tiers.py --run-gate provider-lifecycle-host
+          python tools/checks/platforms/check_platform_tiers.py --run-gate esp8266-lifecycle-host
           python tools/checks/platforms/check_platform_tiers.py --assert-receipts rust-matrix
 
   supply-chain-and-coverage:
@@ -303,6 +304,7 @@ jobs:
           arduino-cli core install arduino:samd@1.8.14
           arduino-cli core install arduino:renesas_uno@1.6.0
           arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp8266:esp8266@3.1.2 --additional-urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
           arduino-cli lib install ArduinoBLE@2.1.0
       - name: prepare pinned audio member
         run: |
@@ -310,10 +312,10 @@ jobs:
           git -C _work/NiusAudio checkout --detach c81851ef0771f1de4b721ea0d1cd6e9daa34838a
           test "$(git -C _work/NiusAudio rev-parse HEAD)" = \
             "c81851ef0771f1de4b721ea0d1cd6e9daa34838a"
-      - name: compile public package examples (AVR, UNO R4, ESP32-S3)
+      - name: compile public package examples (AVR, UNO R4, ESP32-S3, ESP8266)
         timeout-minutes: 35
         env:
-          NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3
+          NOBRO_ARDUINO_FQBNS: arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3,esp8266:esp8266:d1_mini
         run: |
           python tools/checks/platforms/check_platform_tiers.py --begin-receipts arduino-package
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-facade-contract
@@ -322,6 +324,7 @@ jobs:
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-ble-unor4-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-esp-wifi-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate arduino-esp-ble-target-build
+          python tools/checks/platforms/check_platform_tiers.py --run-gate esp8266-arduino-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
       - name: pinned NiusIMU integration

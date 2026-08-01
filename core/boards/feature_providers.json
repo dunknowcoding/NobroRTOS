@@ -342,6 +342,13 @@
       "license": "LGPL-2.1-or-later"
     },
     {
+      "id": "source-arduino-esp8266",
+      "source": "https://github.com/esp8266/Arduino",
+      "revision": "210897ef83305496947c4e73c937bab52a33cb48",
+      "version": "3.1.2",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
       "id": "source-arduino-renesas",
       "source": "https://github.com/arduino/ArduinoCore-renesas",
       "revision": "424e86eff92d37f72123c2b641dd8bbf06a38b47",
@@ -702,6 +709,21 @@
         "The facade covers synchronous scan, association, leave, quiesce, and recovery with caller-owned scan storage and runtime-only credentials; the exact UNO R4 binding also passed DNS and caller-owned TCP traffic.",
         "WiFiS3 internally uses dynamic strings and blocking modem calls. One exact RA4M1 workload is priced; the controller artifact has exact flash/static RAM and minimum persistent task/stack evidence, while controller runtime, BLE coexistence, other firmware versions, and other workloads remain separate."
       ]
+    },
+    {
+      "id": "backend-wifi-arduino-esp8266",
+      "capability_kind": "wifi_link",
+      "stack_family": "wifi",
+      "adapter_component_id": "adapter-wireless-wifi-arduino-esp8266",
+      "deployment": "firmware",
+      "maturity": "compile-only",
+      "evidence": ["target-build"],
+      "provenance_id": "source-arduino-esp8266",
+      "supported_targets": ["esp8266:esp8266:d1_mini"],
+      "limitations": [
+        "The facade exposes pollable association and scanning over a process-wide, heap-managed Arduino-ESP8266/lwIP stack.",
+        "Exact physical association, TCP, lifecycle, and restoration evidence is pending."
+      ]
     }
   ],
   "bindings": [
@@ -1032,6 +1054,42 @@
         "toolchain": "Arduino-ESP32 3.3.10 with ESP-IDF 5.5.4 at 240 MHz",
         "fixed": "whole measured ESP32-S3 WiFi-plus-NimBLE composition; stack reservation is the pinned sum for the six observed WiFi, TCP/IP, event, NimBLE-host, and controller workers, and no BLE-only increment is inferred without an exact wifi0 baseline",
         "runtime": "conservative maxima across two independent 24-cycle state-restoring campaigns. Configuration words are CPU MHz, cycles, warmup cycles, offers per cycle, offer period us, queue slots, payload bytes, batch window us, deadline us, expiry us, message retry attempts and backoff bounds, lifecycle retry attempts and backoff bounds, credential timeout ms, join timeout us, I/O timeout ms, GATT writes, reads, notifications, scan capacity, and task sample capacity. The admitted observation is the slower campaign; latency is the larger HTTP or Windows-central GATT p99/maximum."
+      }
+    },
+    {
+      "id": "binding-wifi-arduino-esp8266",
+      "backend_id": "backend-wifi-arduino-esp8266",
+      "capability_kind": "wifi_link",
+      "platform": "esp8266",
+      "composition": "arduino",
+      "instance": "wifi0",
+      "maturity": "compile-only",
+      "evidence_gates": ["esp8266-lifecycle-host", "esp8266-arduino-target-build"],
+      "lifecycle_profile_id": null,
+      "physical_evidence": [],
+      "physical_limitations": [
+        "The connected D1 Mini has not yet run this composition's association, TCP, lifecycle, and exact-restoration campaign."
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "The vendor radio/lwIP heap, callbacks, and exact workload cost remain unmeasured."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp8266-wifi-disabled",
+        "forbidden_symbols": [
+          "ArduinoEsp8266WiFiStack",
+          "ArduinoEsp8266Network",
+          "ESP8266WiFiClass",
+          "wifi_station_connect"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "wifi_link",
+        "status_field": "esp8266_wifi0",
+        "evidence_gate": "esp8266-arduino-target-build"
       }
     },
     {

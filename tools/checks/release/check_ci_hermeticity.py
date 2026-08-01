@@ -81,7 +81,7 @@ def check(workflow: str, matrix: str) -> list[str]:
         "portable coverage",
         "Miri portable safety boundary",
         "full reproducible cross-MCU matrix",
-        "compile public package examples (AVR, UNO R4, ESP32-S3)",
+        "compile public package examples (AVR, UNO R4, ESP32-S3, ESP8266)",
         "compile public package examples (ArduinoNRF)",
     ):
         start = workflow.find(f"- name: {step}")

@@ -36,6 +36,7 @@ HOST_PACKAGES = (
     "nobro-adapter-wireless-ble-arduino-ble",
     "nobro-adapter-wireless-ble-arduino-esp",
     "nobro-adapter-wireless-wifi-arduino-esp",
+    "nobro-adapter-wireless-wifi-arduino-esp8266",
     "nobro-adapter-wireless-wifi-arduino-wifis3",
     "nobro-admission",
     "nobro-ai",

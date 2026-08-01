@@ -27,10 +27,12 @@ Current contents:
   caller-owned events, provider disconnect, and explicit lifecycle.
 - `src/NobroArduinoEspWiFi.h` with the same opt-in station lifecycle over the
   pinned Arduino-ESP32 board package on ESP32, ESP32-C3, and ESP32-S3.
+- `src/NobroEsp8266.h` and `src/NobroArduinoEsp8266WiFi.h` with an exact,
+  constrained D1 Mini profile and pollable ESP8266 Wi-Fi lifecycle.
 - `src/NobroArduinoEspBLE.h` with one bounded BLE peripheral facade over the
   board package's Bluedroid (ESP32) or NimBLE (ESP32-C3/S3) host.
 - beginner, provider, complex robot/IoT, and report-reader examples compile-gated across AVR,
-  UNO R4/RA4M1, ESP32-S3, and ArduinoNRF in the repository toolchain.
+  UNO R4/RA4M1, ESP32-S3, ESP8266, and ArduinoNRF in the repository toolchain.
 
 ## Install and select a board environment
 
@@ -254,6 +256,36 @@ for four HTTP transactions/s; other workloads, ESP32-family targets, and
 WiFi/BLE coexistence are not inferred from it.
 Define `NOBRO_ESP_WIFI_DISABLED` before the include to remove the facade and
 vendor WiFi symbols from that composition.
+
+## ESP8266 constrained composition
+
+Install Arduino-ESP8266 3.1.2, select **LOLIN(WEMOS) D1 R2 & mini**, and include
+only the surfaces the sketch needs:
+
+```cpp
+#include <NobroEsp8266.h>
+#include <NobroArduinoEsp8266WiFi.h>
+
+nobro::Esp8266Deadline deadline;
+nobro::ArduinoEsp8266WiFiStack wifi;
+nobro::ArduinoEsp8266Network network;
+```
+
+`NobroEsp8266.h` provides the exact D1 Mini GPIO/IRQ, software PWM, A0 ADC,
+I2C, SPI, UART, cooperative idle, explicit reset-style deep sleep, and restart
+surface. It rejects flash GPIO6-11 and ordinary GPIO16 interrupts rather than
+silently accepting an invalid route. `beginJoin()` and `beginScan()` return
+without waiting for radio completion; call `poll()` or `pollScan()` from the
+normal loop. D8/GPIO15 is the default SPI chip-select and a boot strap, so an
+attached device must preserve its required boot level. Credentials are borrowed
+and persistence is disabled.
+
+This is deliberately a constrained composition. ESP8266 has one application
+core and no native USB or module isolation; no bounded DMA provider is admitted. PWM uses
+the board core's software waveform scheduler, deep-sleep wake needs the
+board-level GPIO16-to-RST connection, and the process-wide Wi-Fi/lwIP stack
+owns heap and callbacks. Define `NOBRO_ESP8266_WIFI_DISABLED` before the Wi-Fi
+header to keep its facade and vendor symbols out of a composition.
 
 ## Arduino-ESP32 BLE peripheral
 

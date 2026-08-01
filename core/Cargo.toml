@@ -39,6 +39,7 @@ members = [
     "adapters/wireless/ble/arduino-esp",
     "adapters/wireless/wifi/arduino-esp",
     "adapters/wireless/wifi/arduino-wifis3",
+    "adapters/wireless/wifi/arduino-esp8266",
     "adapters/power/ina3221",
     "adapters/sensors/bmp280",
     "adapters/imu/icm45686",

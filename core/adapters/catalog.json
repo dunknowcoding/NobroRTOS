@@ -61,6 +61,15 @@
       "clean": true
     },
     {
+      "id": "source-arduino-esp8266",
+      "source": "https://github.com/esp8266/Arduino",
+      "revision": "210897ef83305496947c4e73c937bab52a33cb48",
+      "version": "3.1.2",
+      "license": "LGPL-2.1-or-later",
+      "pinned": true,
+      "clean": true
+    },
+    {
       "id": "source-arduino-nrf-crypto",
       "source": "https://github.com/dunknowcoding/ArduinoNRF-Crypto",
       "revision": "6dcfc8636329de005218cde4896e9ac3e474aca2",
@@ -582,6 +591,21 @@
       ]
     },
     {
+      "id": "adapter-wireless-wifi-arduino-esp8266",
+      "primary_domain": "wireless",
+      "name": "arduino-esp8266",
+      "kind": "adapter",
+      "path": "core/adapters/wireless/wifi/arduino-esp8266",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["host-test", "target-build"],
+      "supported_targets": ["esp8266:esp8266:d1_mini"],
+      "limitations": [
+        "Physical association, TCP, lifecycle, and exact restoration are required before promotion.",
+        "The Arduino-ESP8266 radio and lwIP stack are process-wide and heap-managed."
+      ]
+    },
+    {
       "id": "contract-ai",
       "primary_domain": "ai",
       "name": "nobro-ai",
@@ -845,6 +869,21 @@
       ],
       "limitations": [
         "The vendor stack is synchronous and heap-using. One exact UNO R4/WiFiS3 0.6.0 HTTP workload is host-priced; the controller artifact has exact flash/static RAM and minimum task/stack evidence, while controller runtime, BLE coexistence, other firmware versions, and other workloads remain separate."
+      ]
+    },
+    {
+      "id": "library-arduino-esp8266-wifi",
+      "primary_domain": "wireless",
+      "name": "Arduino-ESP8266 WiFi",
+      "kind": "library",
+      "provenance_id": "source-arduino-esp8266",
+      "facade": "packages/arduino/src/NobroArduinoEsp8266WiFi.h",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": ["target-build"],
+      "supported_targets": ["esp8266:esp8266:d1_mini"],
+      "limitations": [
+        "The vendor stack owns process-wide radio, TCP/IP callbacks, and heap resources; exact physical promotion is pending."
       ]
     },
     {
@@ -1255,10 +1294,12 @@
         "adapter-wireless-ble-arduino-esp",
         "adapter-wireless-radio-comms",
         "adapter-wireless-wifi-arduino-esp",
+        "adapter-wireless-wifi-arduino-esp8266",
         "adapter-wireless-wifi-arduino-wifis3",
         "library-arduino-ble",
         "library-arduino-esp-ble",
         "library-arduino-esp-wifi",
+        "library-arduino-esp8266-wifi",
         "library-arduino-wifis3",
         "library-niusthread",
         "library-niuswireless",

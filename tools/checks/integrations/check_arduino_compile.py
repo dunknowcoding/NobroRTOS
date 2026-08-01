@@ -13,12 +13,20 @@ LIBRARY = os.path.join(ROOT, "packages", "arduino")
 EXPECTED_EXAMPLES = (
     "AdaptiveWireless",
     "BeginnerApp",
+    "Esp8266Constrained",
     "ProviderApp",
     "ReportReader",
     "RobotIoTApp",
 )
+EXAMPLE_ARCH_PREFIX = {
+    # This example intentionally fails closed outside Arduino-ESP8266. Its
+    # exact D1 Mini positive and cross-architecture negative builds are owned
+    # by check_esp8266_constrained.py.
+    "Esp8266Constrained": "esp8266:",
+}
 DEFAULT_FQBNS = (
     "arduino:avr:uno,arduino:renesas_uno:unor4wifi,esp32:esp32:esp32s3,"
+    "esp8266:esp8266:d1_mini,"
     "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
 )
 
@@ -97,14 +105,20 @@ def main():
               "(NOBRO_ARDUINO_COMPILE_ATTEMPTS must be an integer from 1 to 5)")
         return 1
     failures = []
+    executed = 0
     for fqbn in FQBNS:
         for example in examples:
+            prefix = EXAMPLE_ARCH_PREFIX.get(example)
+            if prefix is not None and not fqbn.startswith(prefix):
+                continue
+            executed += 1
             diagnostics = []
             for attempt in range(1, attempts + 1):
                 result = subprocess.run(
                     [cli, "compile", "--fqbn", fqbn, "--library", LIBRARY,
                      os.path.join(EXAMPLES, example)],
                     cwd=ROOT, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace",
                 )
                 if result.returncode == 0:
                     break
@@ -124,7 +138,7 @@ def main():
             print("\n".join(lines))
         print("ARDUINO COMPILE: FAIL")
         return 1
-    print(f"ARDUINO COMPILE: PASS ({len(FQBNS)} architectures x {len(examples)} examples)")
+    print(f"ARDUINO COMPILE: PASS ({executed} selected architecture/example builds)")
     return 0
 
 

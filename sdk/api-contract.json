@@ -193,6 +193,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroArduinoEsp8266WiFi.h",
+      "source_sha256": "02cd473364d44e48680e9167efce421974b5e9c396b72b1e315d2c227d2ffb6f",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroArduinoEsp8266WiFi.h",
+          "sha256": "02cd473364d44e48680e9167efce421974b5e9c396b72b1e315d2c227d2ffb6f"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroArduinoEspBLE.h",
       "source_sha256": "619cf57f23a79681c097ddc0a71f39a4674d6ac6a78c4344802edd56d5829a26",
       "targets": [
@@ -255,6 +266,17 @@
           "generated_banner": false,
           "path": "packages/platformio/include/NobroEsp32Peripherals.h",
           "sha256": "50f491d7b3f56972dec10adacdc27a08ca54082b2f3f58d4331689922741f93f"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroEsp8266.h",
+      "source_sha256": "7a1284ae9a41b5fcdf5a40a8563662d8e7d3530da6cdd19f17667ec87f2d56b2",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroEsp8266.h",
+          "sha256": "7a1284ae9a41b5fcdf5a40a8563662d8e7d3530da6cdd19f17667ec87f2d56b2"
         }
       ]
     },
@@ -7332,6 +7354,69 @@
         ],
         "path": "core/adapters/wireless/wifi/arduino-esp/src/lib.rs",
         "sha256": "263d86d960446b168ee93a7026c9ffbca3d7a46eba68cb392c54f378b7819217"
+      },
+      {
+        "crate": "nobro-adapter-wireless-wifi-arduino-esp8266",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "LifecycleState"
+          },
+          {
+            "kind": "enum",
+            "name": "PollObservation"
+          },
+          {
+            "kind": "enum",
+            "name": "LifecycleError"
+          },
+          {
+            "kind": "struct",
+            "name": "Diagnostics"
+          },
+          {
+            "kind": "struct",
+            "name": "AsyncWifiLifecycle"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "begin_join"
+          },
+          {
+            "kind": "fn",
+            "name": "poll"
+          },
+          {
+            "kind": "fn",
+            "name": "leave"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          }
+        ],
+        "path": "core/adapters/wireless/wifi/arduino-esp8266/src/lib.rs",
+        "sha256": "c7efaee64c9a7dc3b926c296a1bfa5b4ea78df811cccd4cdab83c80fc78dec91"
       },
       {
         "crate": "nobro-adapter-wireless-wifi-arduino-wifis3",

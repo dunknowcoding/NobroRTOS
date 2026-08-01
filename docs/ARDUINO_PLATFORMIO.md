@@ -79,6 +79,14 @@ a complete fixed/runtime resource price. ESP-IDF heap/task ownership remains
 vendor managed; other workloads, boards, and WiFi/BLE coexistence need their
 own prices.
 
+WeMos D1 Mini sketches use the separate `NobroEsp8266.h` and
+`NobroArduinoEsp8266WiFi.h` surfaces with Arduino-ESP8266 3.1.2. This exact
+composition exposes pollable scan/association, fixed logical TCP/UDP slots,
+software PWM, A0 ADC, and the board's external USB-UART upload route. It does
+not inherit Arduino-ESP32 claims: native USB, multicore, and memory isolation
+are hardware-inapplicable, while no bounded DMA ownership provider is admitted
+and vendor Wi-Fi/lwIP heap and callbacks remain visible limitations.
+
 The same installed package supplies its official `BLE` library through
 `NobroArduinoEspBLE.h`; no separate NimBLE dependency is required. The
 3.3.10 board configuration selects Bluedroid on classic ESP32 and NimBLE on
