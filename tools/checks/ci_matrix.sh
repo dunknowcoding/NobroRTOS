@@ -173,6 +173,21 @@ gate "nRF52840 application static budgets" \
 gate "esp32c3 port and USB demo build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate esp32c3-target-build
 
+gate "classic esp32 port build (required Xtensa toolchain)" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate esp32-target-build
+
+gate "classic esp32 first-party strict lint" \
+  "$CURRENT_BASH" -c 'cd core/ports/esp32 && cargo +esp clippy --locked --release --lib --bins -- -D warnings'
+
+gate "esp32p4 port build" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate esp32p4-target-build
+
+gate "esp32p4 first-party strict lint" \
+  "$CURRENT_BASH" -c 'cd core/ports/esp32p4 && cargo +1.97.0 clippy --locked --release --lib --bins -- -D warnings'
+
+gate "esp32p4 USB Serial/JTAG state machine" \
+  python tools/checks/platforms/check_platform_tiers.py --run-gate esp32p4-usb-host
+
 gate "esp32s3 port build (required Xtensa toolchain)" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate esp32s3-target-build
 

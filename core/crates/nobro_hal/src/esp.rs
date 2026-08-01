@@ -1,10 +1,12 @@
-//! Shared ESP32-C3/ESP32-S3 ownership and provider contracts.
+//! Shared ESP ownership and provider contracts.
 //!
 //! Register and pin construction remains in each exact port or Arduino
 //! composition. This module owns the cross-family invariants: silicon-specific
 //! limits, generation-safe leases, bounded provider wrappers, DMA cancellation,
 //! event timestamps, CPU-idle/reset delegation, cache ownership, and optional
-//! second-core ownership.
+//! second-core ownership. It deliberately preserves differences such as the
+//! classic ESP32's split peripheral DMA engines and the ESP32-P4's separate
+//! high-performance and low-power processors.
 
 use core::{
     marker::PhantomData,
@@ -20,62 +22,393 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EspSilicon {
+    Esp32,
     Esp32C3,
+    Esp32P4,
     Esp32S3,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EspDmaKind {
+    /// Classic ESP32 peripheral-owned SPI/I2S DMA engines.
+    SplitPdma,
+    /// A single general DMA engine whose channels can be routed to peripherals.
+    Gdma,
+    /// ESP32-P4's separate AHB-GDMA, AXI-GDMA, and video-DMA engines.
+    AhbAxiVdma,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EspDmaDomain {
+    Unified,
+    Spi,
+    I2s,
+    Ahb,
+    Axi,
+    Video,
+}
+
+/// A route visible on an ESP board is not necessarily an application-owned USB
+/// controller. In particular, a USB-to-UART bridge remains outside the MCU,
+/// ROM and application CDC share one USB Serial/JTAG controller at different
+/// lifecycle phases, and the pad JTAG route has no application data plane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EspIoRoute {
+    ExternalUsbUartBridge,
+    RomUsbSerialJtagCdc,
+    ApplicationUsbSerialJtag,
+    ApplicationFullSpeedOtg,
+    ApplicationHighSpeedOtg,
+    BuiltInUsbSerialJtagDebug,
+    PadJtag,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EspIoController {
+    ExternalUsbUartBridge,
+    UsbSerialJtag,
+    FullSpeedOtg,
+    HighSpeedOtg,
+    PadJtag,
+}
+
+impl EspIoRoute {
+    pub const fn controller(self) -> EspIoController {
+        match self {
+            Self::ExternalUsbUartBridge => EspIoController::ExternalUsbUartBridge,
+            Self::RomUsbSerialJtagCdc
+            | Self::ApplicationUsbSerialJtag
+            | Self::BuiltInUsbSerialJtagDebug => EspIoController::UsbSerialJtag,
+            Self::ApplicationFullSpeedOtg => EspIoController::FullSpeedOtg,
+            Self::ApplicationHighSpeedOtg => EspIoController::HighSpeedOtg,
+            Self::PadJtag => EspIoController::PadJtag,
+        }
+    }
+
+    /// Returns the application lease only for an MCU USB data plane. ROM,
+    /// external-bridge, and debug-only routes must never be mounted as an
+    /// application USB instance.
+    pub const fn application_usb_lease(self) -> Option<LeaseId> {
+        match self {
+            Self::ApplicationUsbSerialJtag => Some(LeaseId::new(LeaseClass::Usb, 0)),
+            Self::ApplicationFullSpeedOtg => Some(LeaseId::new(LeaseClass::Usb, 1)),
+            Self::ApplicationHighSpeedOtg => Some(LeaseId::new(LeaseClass::Usb, 2)),
+            Self::ExternalUsbUartBridge
+            | Self::RomUsbSerialJtagCdc
+            | Self::BuiltInUsbSerialJtagDebug
+            | Self::PadJtag => None,
+        }
+    }
+
+    pub const fn is_debug_route(self) -> bool {
+        matches!(self, Self::BuiltInUsbSerialJtagDebug | Self::PadJtag)
+    }
+}
+
+pub const ESP32_BOARD_IO_ROUTES: [EspIoRoute; 1] = [EspIoRoute::ExternalUsbUartBridge];
+
+pub const ESP32P4_PICO_IO_ROUTES: [EspIoRoute; 7] = [
+    EspIoRoute::ExternalUsbUartBridge,
+    EspIoRoute::RomUsbSerialJtagCdc,
+    EspIoRoute::ApplicationUsbSerialJtag,
+    EspIoRoute::ApplicationFullSpeedOtg,
+    EspIoRoute::ApplicationHighSpeedOtg,
+    EspIoRoute::BuiltInUsbSerialJtagDebug,
+    EspIoRoute::PadJtag,
+];
+
+/// Exact camera/media inventory for the ESP32-P4-Pico composition.
+///
+/// This records silicon and board wiring separately from driver maturity. The
+/// currently pinned native Rust HAL does not expose the P4 CSI camera data
+/// plane, so `native_csi_driver` is deliberately false and no camera hardware
+/// capability witness is emitted by the native port.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EspP4MediaContract {
+    pub mipi_csi_controllers: u8,
+    pub mipi_csi_data_lanes: u8,
+    pub isp: bool,
+    pub jpeg_codec: bool,
+    pub h264_encoder: bool,
+    pub board_camera_connector: bool,
+    pub native_csi_driver: bool,
+}
+
+pub const ESP32P4_PICO_MEDIA: EspP4MediaContract = EspP4MediaContract {
+    mipi_csi_controllers: 1,
+    mipi_csi_data_lanes: 2,
+    isp: true,
+    jpeg_codec: true,
+    h264_encoder: true,
+    board_camera_connector: true,
+    native_csi_driver: false,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EspP4CsiPlan {
+    pub controller: u8,
+    pub data_lanes: u8,
+    pub width: u16,
+    pub height: u16,
+    pub queue_items: u8,
+}
+
+impl EspP4CsiPlan {
+    /// The exact board is advertised for Full-HD capture. Higher modes are not
+    /// admitted until an exact sensor, clock, memory, and driver composition is
+    /// measured.
+    pub const MAX_WIDTH: u16 = 1_920;
+    pub const MAX_HEIGHT: u16 = 1_080;
+    pub const MAX_QUEUE_ITEMS: u8 = 4;
+
+    pub const fn new(
+        media: EspP4MediaContract,
+        controller: u8,
+        data_lanes: u8,
+        width: u16,
+        height: u16,
+        queue_items: u8,
+    ) -> Result<Self, EspContractError> {
+        if controller >= media.mipi_csi_controllers
+            || data_lanes == 0
+            || data_lanes > media.mipi_csi_data_lanes
+            || width == 0
+            || width > Self::MAX_WIDTH
+            || height == 0
+            || height > Self::MAX_HEIGHT
+            || queue_items == 0
+            || queue_items > Self::MAX_QUEUE_ITEMS
+        {
+            return Err(EspContractError::InvalidConfig);
+        }
+        Ok(Self {
+            controller,
+            data_lanes,
+            width,
+            height,
+            queue_items,
+        })
+    }
+}
+
+static P4_CSI_HELD: AtomicBool = AtomicBool::new(false);
+static P4_CSI_OWNER: AtomicU8 = AtomicU8::new(0);
+static P4_CSI_GENERATION: AtomicU32 = AtomicU32::new(1);
+
+/// Ownership-only CSI session for the exact P4 media composition.
+///
+/// This prevents two future camera backends from claiming CSI0 concurrently
+/// and provides recovery-generation semantics today, without pretending the
+/// pinned native Rust HAL already supplies a CSI capture data plane.
+pub struct EspP4CsiSession {
+    plan: EspP4CsiPlan,
+    owner: u8,
+    generation: u32,
+    live: bool,
+}
+
+impl EspP4CsiSession {
+    pub fn try_acquire(plan: EspP4CsiPlan, owner: u8) -> Result<Self, LeaseError> {
+        critical_section::with(|_| {
+            if P4_CSI_HELD.load(Ordering::Acquire) {
+                return Err(LeaseError::AlreadyHeld);
+            }
+            let generation = P4_CSI_GENERATION.load(Ordering::Acquire);
+            if generation == u32::MAX {
+                return Err(LeaseError::GenerationExhausted);
+            }
+            P4_CSI_OWNER.store(owner, Ordering::Release);
+            P4_CSI_HELD.store(true, Ordering::Release);
+            Ok(Self {
+                plan,
+                owner,
+                generation,
+                live: true,
+            })
+        })
+    }
+
+    pub const fn plan(&self) -> EspP4CsiPlan {
+        self.plan
+    }
+
+    pub const fn generation(&self) -> u32 {
+        self.generation
+    }
+
+    pub fn ensure_live(&self) -> Result<(), LeaseError> {
+        (self.live
+            && P4_CSI_HELD.load(Ordering::Acquire)
+            && P4_CSI_OWNER.load(Ordering::Acquire) == self.owner
+            && P4_CSI_GENERATION.load(Ordering::Acquire) == self.generation)
+            .then_some(())
+            .ok_or(LeaseError::NotHeld)
+    }
+
+    pub fn recover_owner(owner: u8) -> bool {
+        critical_section::with(|_| {
+            if !P4_CSI_HELD.load(Ordering::Acquire) || P4_CSI_OWNER.load(Ordering::Acquire) != owner
+            {
+                return false;
+            }
+            P4_CSI_HELD.store(false, Ordering::Release);
+            P4_CSI_OWNER.store(0, Ordering::Release);
+            P4_CSI_GENERATION.store(
+                P4_CSI_GENERATION.load(Ordering::Acquire).saturating_add(1),
+                Ordering::Release,
+            );
+            true
+        })
+    }
+
+    fn release_exact(&mut self) {
+        if !self.live {
+            return;
+        }
+        critical_section::with(|_| {
+            if P4_CSI_HELD.load(Ordering::Acquire)
+                && P4_CSI_OWNER.load(Ordering::Acquire) == self.owner
+                && P4_CSI_GENERATION.load(Ordering::Acquire) == self.generation
+            {
+                P4_CSI_HELD.store(false, Ordering::Release);
+                P4_CSI_OWNER.store(0, Ordering::Release);
+                P4_CSI_GENERATION.store(
+                    P4_CSI_GENERATION.load(Ordering::Acquire).saturating_add(1),
+                    Ordering::Release,
+                );
+            }
+        });
+        self.live = false;
+    }
+}
+
+impl Drop for EspP4CsiSession {
+    fn drop(&mut self) {
+        self.release_exact();
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EspRuntimeContract {
     pub silicon: EspSilicon,
+    /// Symmetric application-capable CPUs. A low-power coprocessor is not
+    /// counted here and cannot satisfy a `LeaseClass::Core` request.
     pub cores: u8,
+    pub lp_cores: u8,
     pub gpio_count: u8,
+    pub timer_count: u8,
     pub irq_routes: u8,
     pub uart_count: u8,
     pub i2c_count: u8,
     pub spi_count: u8,
     pub adc_units: u8,
-    pub gdma_channels: u8,
+    pub dma_kind: EspDmaKind,
+    pub dma_channels: u8,
     pub ledc_channels: u8,
     pub rmt_tx_channels: u8,
     pub rmt_rx_channels: u8,
+    pub rmt_bidirectional: bool,
+    pub radio: bool,
     pub usb_serial_jtag: bool,
-    pub usb_otg: bool,
+    pub usb_otg_count: u8,
     pub cache: bool,
 }
+
+pub const ESP32_RUNTIME: EspRuntimeContract = EspRuntimeContract {
+    silicon: EspSilicon::Esp32,
+    cores: 2,
+    lp_cores: 1,
+    gpio_count: 34,
+    timer_count: 4,
+    irq_routes: 32,
+    uart_count: 3,
+    i2c_count: 2,
+    spi_count: 2,
+    adc_units: 2,
+    dma_kind: EspDmaKind::SplitPdma,
+    dma_channels: 4,
+    // LEDC exposes eight channel numbers in each of two speed domains. The
+    // speed domain is a backend configuration, not another interchangeable
+    // channel number, so the generic lease space remains 0..8.
+    ledc_channels: 8,
+    // All eight classic RMT channels can be configured in either direction.
+    rmt_tx_channels: 8,
+    rmt_rx_channels: 8,
+    rmt_bidirectional: true,
+    radio: true,
+    usb_serial_jtag: false,
+    usb_otg_count: 0,
+    cache: true,
+};
 
 pub const ESP32C3_RUNTIME: EspRuntimeContract = EspRuntimeContract {
     silicon: EspSilicon::Esp32C3,
     cores: 1,
+    lp_cores: 0,
     gpio_count: 22,
+    timer_count: 2,
     irq_routes: 31,
     uart_count: 2,
     i2c_count: 1,
     spi_count: 1,
     adc_units: 2,
-    gdma_channels: 3,
+    dma_kind: EspDmaKind::Gdma,
+    dma_channels: 3,
     ledc_channels: 6,
     rmt_tx_channels: 2,
     rmt_rx_channels: 2,
+    rmt_bidirectional: false,
+    radio: true,
     usb_serial_jtag: true,
-    usb_otg: false,
+    usb_otg_count: 0,
+    cache: true,
+};
+
+pub const ESP32P4_RUNTIME: EspRuntimeContract = EspRuntimeContract {
+    silicon: EspSilicon::Esp32P4,
+    cores: 2,
+    // The LP RISC-V core has a distinct image/runtime and is intentionally not
+    // advertised as a third symmetric application CPU.
+    lp_cores: 1,
+    gpio_count: 55,
+    timer_count: 4,
+    irq_routes: 48,
+    uart_count: 5,
+    i2c_count: 2,
+    spi_count: 2,
+    adc_units: 2,
+    dma_kind: EspDmaKind::AhbAxiVdma,
+    dma_channels: 10,
+    ledc_channels: 8,
+    rmt_tx_channels: 4,
+    rmt_rx_channels: 4,
+    rmt_bidirectional: false,
+    radio: false,
+    usb_serial_jtag: true,
+    usb_otg_count: 2,
     cache: true,
 };
 
 pub const ESP32S3_RUNTIME: EspRuntimeContract = EspRuntimeContract {
     silicon: EspSilicon::Esp32S3,
     cores: 2,
+    lp_cores: 1,
     gpio_count: 45,
+    timer_count: 4,
     irq_routes: 32,
     uart_count: 3,
     i2c_count: 2,
     spi_count: 2,
     adc_units: 2,
-    gdma_channels: 5,
+    dma_kind: EspDmaKind::Gdma,
+    dma_channels: 5,
     ledc_channels: 8,
     rmt_tx_channels: 4,
     rmt_rx_channels: 4,
+    rmt_bidirectional: false,
+    radio: true,
     usb_serial_jtag: true,
-    usb_otg: true,
+    usb_otg_count: 1,
     cache: true,
 };
 
@@ -84,29 +417,78 @@ impl EspRuntimeContract {
     /// as a dense range. ESP32-S3 has no GPIO22..GPIO25.
     pub const fn supports_gpio(self, instance: u8) -> bool {
         match self.silicon {
+            EspSilicon::Esp32 => {
+                instance < 20
+                    || (instance >= 21 && instance < 24)
+                    || (instance >= 25 && instance < 28)
+                    || (instance >= 32 && instance < 40)
+            }
             EspSilicon::Esp32C3 => instance < 22,
+            EspSilicon::Esp32P4 => instance < 55,
             EspSilicon::Esp32S3 => instance < 22 || (instance >= 26 && instance < 49),
         }
     }
 
+    pub const fn supports_gpio_output(self, instance: u8) -> bool {
+        if !self.supports_gpio(instance) {
+            return false;
+        }
+        match self.silicon {
+            EspSilicon::Esp32 => instance < 34,
+            EspSilicon::Esp32C3 | EspSilicon::Esp32P4 | EspSilicon::Esp32S3 => true,
+        }
+    }
+
+    pub const fn dma_domain(self, channel: u8) -> Option<EspDmaDomain> {
+        if channel >= self.dma_channels {
+            return None;
+        }
+        match self.dma_kind {
+            EspDmaKind::Gdma => Some(EspDmaDomain::Unified),
+            EspDmaKind::SplitPdma => {
+                if channel < 2 {
+                    Some(EspDmaDomain::Spi)
+                } else {
+                    Some(EspDmaDomain::I2s)
+                }
+            }
+            EspDmaKind::AhbAxiVdma => {
+                if channel < 3 {
+                    Some(EspDmaDomain::Ahb)
+                } else if channel < 6 {
+                    Some(EspDmaDomain::Axi)
+                } else {
+                    Some(EspDmaDomain::Video)
+                }
+            }
+        }
+    }
+
     pub const fn rmt_channels(self) -> u8 {
-        self.rmt_tx_channels + self.rmt_rx_channels
+        if self.rmt_bidirectional {
+            self.rmt_tx_channels
+        } else {
+            self.rmt_tx_channels + self.rmt_rx_channels
+        }
     }
 
     pub const fn supports(self, resource: LeaseId) -> bool {
         match resource.class {
-            LeaseClass::Timer => resource.instance < 2,
+            LeaseClass::Timer => resource.instance < self.timer_count,
             LeaseClass::Gpio => self.supports_gpio(resource.instance),
             LeaseClass::Irq => resource.instance < self.irq_routes,
             LeaseClass::I2c => resource.instance < self.i2c_count,
             LeaseClass::Spi => resource.instance < self.spi_count,
-            LeaseClass::Radio => resource.instance == 0,
+            LeaseClass::Radio => self.radio && resource.instance == 0,
             LeaseClass::Pwm => resource.instance < self.ledc_channels,
             LeaseClass::EventRouter | LeaseClass::SoftwareEvent => resource.instance == 0,
             LeaseClass::Adc => resource.instance < self.adc_units,
             LeaseClass::Uart => resource.instance < self.uart_count,
-            LeaseClass::Usb => resource.instance == 0 || (resource.instance == 1 && self.usb_otg),
-            LeaseClass::Dma => resource.instance < self.gdma_channels,
+            LeaseClass::Usb => {
+                (resource.instance == 0 && self.usb_serial_jtag)
+                    || (resource.instance > 0 && resource.instance <= self.usb_otg_count)
+            }
+            LeaseClass::Dma => resource.instance < self.dma_channels,
             LeaseClass::Power | LeaseClass::Reset | LeaseClass::Cache => resource.instance == 0,
             LeaseClass::Pulse => resource.instance < self.rmt_channels(),
             LeaseClass::Core => resource.instance == 1 && self.cores > 1,
@@ -138,7 +520,7 @@ impl EspDmaPlan {
         channel: u8,
         bytes: u16,
     ) -> Result<Self, EspContractError> {
-        if channel >= runtime.gdma_channels {
+        if channel >= runtime.dma_channels {
             return Err(EspContractError::InvalidChannel);
         }
         if bytes == 0 {
@@ -155,29 +537,29 @@ impl EspDmaPlan {
     }
 }
 
-// Covers the largest supported C3/S3 composition without heap allocation.
-const LEASE_SLOTS: usize = 128;
+// Covers the largest supported ESP32-P4 composition without heap allocation.
+const LEASE_SLOTS: usize = 160;
 
 const fn lease_slot(id: LeaseId) -> Option<usize> {
     match id.class {
-        LeaseClass::Timer if id.instance < 2 => Some(id.instance as usize),
-        LeaseClass::Gpio if id.instance < 49 => Some(2 + id.instance as usize),
-        LeaseClass::Irq if id.instance < 32 => Some(51 + id.instance as usize),
-        LeaseClass::I2c if id.instance < 2 => Some(83 + id.instance as usize),
-        LeaseClass::Spi if id.instance < 2 => Some(85 + id.instance as usize),
-        LeaseClass::Radio if id.instance == 0 => Some(87),
-        LeaseClass::Pwm if id.instance < 8 => Some(88 + id.instance as usize),
-        LeaseClass::EventRouter if id.instance == 0 => Some(96),
-        LeaseClass::SoftwareEvent if id.instance == 0 => Some(97),
-        LeaseClass::Adc if id.instance < 2 => Some(98 + id.instance as usize),
-        LeaseClass::Uart if id.instance < 3 => Some(100 + id.instance as usize),
-        LeaseClass::Usb if id.instance < 2 => Some(103 + id.instance as usize),
-        LeaseClass::Dma if id.instance < 5 => Some(105 + id.instance as usize),
-        LeaseClass::Power if id.instance == 0 => Some(110),
-        LeaseClass::Pulse if id.instance < 8 => Some(111 + id.instance as usize),
-        LeaseClass::Core if id.instance == 1 => Some(119),
-        LeaseClass::Reset if id.instance == 0 => Some(120),
-        LeaseClass::Cache if id.instance == 0 => Some(121),
+        LeaseClass::Timer if id.instance < 4 => Some(id.instance as usize),
+        LeaseClass::Gpio if id.instance < 55 => Some(4 + id.instance as usize),
+        LeaseClass::Irq if id.instance < 48 => Some(59 + id.instance as usize),
+        LeaseClass::I2c if id.instance < 2 => Some(107 + id.instance as usize),
+        LeaseClass::Spi if id.instance < 2 => Some(109 + id.instance as usize),
+        LeaseClass::Radio if id.instance == 0 => Some(111),
+        LeaseClass::Pwm if id.instance < 8 => Some(112 + id.instance as usize),
+        LeaseClass::EventRouter if id.instance == 0 => Some(120),
+        LeaseClass::SoftwareEvent if id.instance == 0 => Some(121),
+        LeaseClass::Adc if id.instance < 2 => Some(122 + id.instance as usize),
+        LeaseClass::Uart if id.instance < 5 => Some(124 + id.instance as usize),
+        LeaseClass::Usb if id.instance < 3 => Some(129 + id.instance as usize),
+        LeaseClass::Dma if id.instance < 10 => Some(132 + id.instance as usize),
+        LeaseClass::Power if id.instance == 0 => Some(142),
+        LeaseClass::Pulse if id.instance < 8 => Some(143 + id.instance as usize),
+        LeaseClass::Core if id.instance == 1 => Some(151),
+        LeaseClass::Reset if id.instance == 0 => Some(152),
+        LeaseClass::Cache if id.instance == 0 => Some(153),
         _ => None,
     }
 }
@@ -313,24 +695,24 @@ impl EspLeases {
 
 fn lease_id_for_slot(index: usize) -> Option<LeaseId> {
     match index {
-        0..=1 => Some(LeaseId::new(LeaseClass::Timer, index as u8)),
-        2..=50 => Some(LeaseId::new(LeaseClass::Gpio, (index - 2) as u8)),
-        51..=82 => Some(LeaseId::new(LeaseClass::Irq, (index - 51) as u8)),
-        83..=84 => Some(LeaseId::new(LeaseClass::I2c, (index - 83) as u8)),
-        85..=86 => Some(LeaseId::new(LeaseClass::Spi, (index - 85) as u8)),
-        87 => Some(LeaseId::PRIMARY_RADIO),
-        88..=95 => Some(LeaseId::new(LeaseClass::Pwm, (index - 88) as u8)),
-        96 => Some(LeaseId::EVENT_ROUTER),
-        97 => Some(LeaseId::SOFTWARE_EVENT),
-        98..=99 => Some(LeaseId::new(LeaseClass::Adc, (index - 98) as u8)),
-        100..=102 => Some(LeaseId::new(LeaseClass::Uart, (index - 100) as u8)),
-        103..=104 => Some(LeaseId::new(LeaseClass::Usb, (index - 103) as u8)),
-        105..=109 => Some(LeaseId::new(LeaseClass::Dma, (index - 105) as u8)),
-        110 => Some(LeaseId::SYSTEM_POWER),
-        111..=118 => Some(LeaseId::new(LeaseClass::Pulse, (index - 111) as u8)),
-        119 => Some(LeaseId::SECONDARY_CORE),
-        120 => Some(LeaseId::SYSTEM_RESET),
-        121 => Some(LeaseId::SYSTEM_CACHE),
+        0..=3 => Some(LeaseId::new(LeaseClass::Timer, index as u8)),
+        4..=58 => Some(LeaseId::new(LeaseClass::Gpio, (index - 4) as u8)),
+        59..=106 => Some(LeaseId::new(LeaseClass::Irq, (index - 59) as u8)),
+        107..=108 => Some(LeaseId::new(LeaseClass::I2c, (index - 107) as u8)),
+        109..=110 => Some(LeaseId::new(LeaseClass::Spi, (index - 109) as u8)),
+        111 => Some(LeaseId::PRIMARY_RADIO),
+        112..=119 => Some(LeaseId::new(LeaseClass::Pwm, (index - 112) as u8)),
+        120 => Some(LeaseId::EVENT_ROUTER),
+        121 => Some(LeaseId::SOFTWARE_EVENT),
+        122..=123 => Some(LeaseId::new(LeaseClass::Adc, (index - 122) as u8)),
+        124..=128 => Some(LeaseId::new(LeaseClass::Uart, (index - 124) as u8)),
+        129..=131 => Some(LeaseId::new(LeaseClass::Usb, (index - 129) as u8)),
+        132..=141 => Some(LeaseId::new(LeaseClass::Dma, (index - 132) as u8)),
+        142 => Some(LeaseId::SYSTEM_POWER),
+        143..=150 => Some(LeaseId::new(LeaseClass::Pulse, (index - 143) as u8)),
+        151 => Some(LeaseId::SECONDARY_CORE),
+        152 => Some(LeaseId::SYSTEM_RESET),
+        153 => Some(LeaseId::SYSTEM_CACHE),
         _ => None,
     }
 }
@@ -1342,19 +1724,45 @@ mod tests {
 
     #[test]
     fn silicon_limits_are_distinct_and_exact() {
+        assert_eq!(ESP32_RUNTIME.cores, 2);
         assert_eq!(ESP32C3_RUNTIME.cores, 1);
+        assert_eq!(ESP32P4_RUNTIME.cores, 2);
         assert_eq!(ESP32S3_RUNTIME.cores, 2);
-        assert_eq!(ESP32C3_RUNTIME.gdma_channels, 3);
-        assert_eq!(ESP32S3_RUNTIME.gdma_channels, 5);
+        assert_eq!(ESP32_RUNTIME.lp_cores, 1);
+        assert_eq!(ESP32P4_RUNTIME.lp_cores, 1);
+        assert_eq!(ESP32P4_RUNTIME.irq_routes, 48);
+        assert_eq!(ESP32P4_RUNTIME.uart_count, 5);
+        assert_eq!(ESP32C3_RUNTIME.dma_channels, 3);
+        assert_eq!(ESP32_RUNTIME.dma_channels, 4);
+        assert_eq!(ESP32P4_RUNTIME.dma_channels, 10);
+        assert_eq!(ESP32S3_RUNTIME.dma_channels, 5);
+        assert_eq!(ESP32_RUNTIME.dma_kind, EspDmaKind::SplitPdma);
+        assert_eq!(ESP32P4_RUNTIME.dma_kind, EspDmaKind::AhbAxiVdma);
+        assert_eq!(ESP32_RUNTIME.dma_domain(0), Some(EspDmaDomain::Spi));
+        assert_eq!(ESP32_RUNTIME.dma_domain(2), Some(EspDmaDomain::I2s));
+        assert_eq!(ESP32P4_RUNTIME.dma_domain(2), Some(EspDmaDomain::Ahb));
+        assert_eq!(ESP32P4_RUNTIME.dma_domain(3), Some(EspDmaDomain::Axi));
+        assert_eq!(ESP32P4_RUNTIME.dma_domain(6), Some(EspDmaDomain::Video));
         assert_eq!(ESP32C3_RUNTIME.ledc_channels, 6);
+        assert_eq!(ESP32P4_RUNTIME.ledc_channels, 8);
         assert_eq!(ESP32S3_RUNTIME.ledc_channels, 8);
+        assert!(ESP32_RUNTIME.rmt_bidirectional);
+        assert_eq!(ESP32_RUNTIME.rmt_channels(), 8);
         assert_eq!(ESP32C3_RUNTIME.rmt_tx_channels, 2);
         assert_eq!(ESP32C3_RUNTIME.rmt_rx_channels, 2);
+        assert_eq!(ESP32P4_RUNTIME.rmt_tx_channels, 4);
+        assert_eq!(ESP32P4_RUNTIME.rmt_rx_channels, 4);
         assert_eq!(ESP32S3_RUNTIME.rmt_tx_channels, 4);
         assert_eq!(ESP32S3_RUNTIME.rmt_rx_channels, 4);
-        assert!(!ESP32C3_RUNTIME.usb_otg);
-        assert!(ESP32S3_RUNTIME.usb_otg);
+        assert_eq!(ESP32C3_RUNTIME.usb_otg_count, 0);
+        assert_eq!(ESP32P4_RUNTIME.usb_otg_count, 2);
+        assert_eq!(ESP32S3_RUNTIME.usb_otg_count, 1);
         assert_eq!(ESP32S3_RUNTIME.gpio_count, 45);
+        assert!(!ESP32_RUNTIME.supports_gpio(20));
+        assert!(ESP32_RUNTIME.supports_gpio(39));
+        assert!(!ESP32_RUNTIME.supports_gpio_output(34));
+        assert!(ESP32_RUNTIME.supports_gpio_output(33));
+        assert!(ESP32P4_RUNTIME.supports_gpio_output(54));
         assert!(!ESP32S3_RUNTIME.supports_gpio(22));
         assert!(ESP32S3_RUNTIME.supports_gpio(48));
     }
@@ -1367,11 +1775,114 @@ mod tests {
         assert!(ESP32S3_RUNTIME.supports(LeaseId::SECONDARY_CORE));
         assert!(!ESP32C3_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 1)));
         assert!(ESP32S3_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 1)));
+        assert!(!ESP32_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 0)));
+        assert!(ESP32P4_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 0)));
+        assert!(ESP32P4_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 2)));
+        assert!(!ESP32P4_RUNTIME.supports(LeaseId::new(LeaseClass::Usb, 3)));
+        assert!(!ESP32P4_RUNTIME.supports(LeaseId::PRIMARY_RADIO));
+    }
+
+    #[test]
+    fn board_io_routes_keep_transport_and_debug_identities_distinct() {
+        assert_eq!(ESP32_BOARD_IO_ROUTES, [EspIoRoute::ExternalUsbUartBridge]);
+        assert_eq!(
+            EspIoRoute::ExternalUsbUartBridge.application_usb_lease(),
+            None
+        );
+        assert_eq!(
+            EspIoRoute::RomUsbSerialJtagCdc.application_usb_lease(),
+            None
+        );
+        assert_eq!(
+            EspIoRoute::BuiltInUsbSerialJtagDebug.application_usb_lease(),
+            None
+        );
+        assert_eq!(EspIoRoute::PadJtag.application_usb_lease(), None);
+        assert_eq!(
+            EspIoRoute::ApplicationUsbSerialJtag.application_usb_lease(),
+            Some(LeaseId::new(LeaseClass::Usb, 0))
+        );
+        assert_eq!(
+            EspIoRoute::ApplicationFullSpeedOtg.application_usb_lease(),
+            Some(LeaseId::new(LeaseClass::Usb, 1))
+        );
+        assert_eq!(
+            EspIoRoute::ApplicationHighSpeedOtg.application_usb_lease(),
+            Some(LeaseId::new(LeaseClass::Usb, 2))
+        );
+        assert_eq!(
+            EspIoRoute::RomUsbSerialJtagCdc.controller(),
+            EspIoController::UsbSerialJtag
+        );
+        assert_eq!(
+            EspIoRoute::ApplicationUsbSerialJtag.controller(),
+            EspIoController::UsbSerialJtag
+        );
+        assert_eq!(
+            EspIoRoute::BuiltInUsbSerialJtagDebug.controller(),
+            EspIoController::UsbSerialJtag
+        );
+        assert_ne!(
+            EspIoRoute::BuiltInUsbSerialJtagDebug.controller(),
+            EspIoRoute::PadJtag.controller()
+        );
+    }
+
+    #[test]
+    fn p4_csi_plan_is_bounded_without_claiming_a_native_driver() {
+        assert_eq!(ESP32P4_PICO_MEDIA.mipi_csi_controllers, 1);
+        assert_eq!(ESP32P4_PICO_MEDIA.mipi_csi_data_lanes, 2);
+        assert!(ESP32P4_PICO_MEDIA.isp);
+        assert!(ESP32P4_PICO_MEDIA.jpeg_codec);
+        assert!(ESP32P4_PICO_MEDIA.h264_encoder);
+        assert!(ESP32P4_PICO_MEDIA.board_camera_connector);
+        assert!(!ESP32P4_PICO_MEDIA.native_csi_driver);
+        assert_eq!(
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 1_920, 1_080, 2),
+            Ok(EspP4CsiPlan {
+                controller: 0,
+                data_lanes: 2,
+                width: 1_920,
+                height: 1_080,
+                queue_items: 2,
+            })
+        );
+        for invalid in [
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 1, 2, 640, 480, 1),
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 3, 640, 480, 1),
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 1_921, 480, 1),
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 640, 1_081, 1),
+            EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 640, 480, 5),
+        ] {
+            assert_eq!(invalid, Err(EspContractError::InvalidConfig));
+        }
+    }
+
+    #[test]
+    fn p4_csi_ownership_recovery_cannot_revive_a_stale_session() {
+        let owner = 222;
+        EspP4CsiSession::recover_owner(owner);
+        let plan = EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 640, 480, 2).unwrap();
+        let stale = EspP4CsiSession::try_acquire(plan, owner).unwrap();
+        let stale_generation = stale.generation();
+        assert_eq!(
+            EspP4CsiSession::try_acquire(plan, owner + 1).err(),
+            Some(LeaseError::AlreadyHeld)
+        );
+        assert!(EspP4CsiSession::recover_owner(owner));
+        assert_eq!(stale.ensure_live(), Err(LeaseError::NotHeld));
+
+        let replacement = EspP4CsiSession::try_acquire(plan, owner).unwrap();
+        assert_ne!(replacement.generation(), stale_generation);
+        drop(stale);
+        assert_eq!(replacement.ensure_live(), Ok(()));
+        assert!(EspP4CsiSession::recover_owner(owner));
+        assert_eq!(replacement.ensure_live(), Err(LeaseError::NotHeld));
     }
 
     #[test]
     fn lease_recovery_invalidates_stale_generation() {
-        let owner = 217;
+        let owner = 223;
         EspLeases::recover_owner(ESP32S3_RUNTIME, owner);
         let guard = EspLeases::acquire(ESP32S3_RUNTIME, LeaseId::PRIMARY_DMA, owner).unwrap();
         assert_eq!(
@@ -1384,7 +1895,7 @@ mod tests {
 
     #[test]
     fn dma_completion_and_cancellation_are_bounded() {
-        let owner = 218;
+        let owner = 224;
         EspLeases::recover_owner(ESP32C3_RUNTIME, owner);
         let plan = EspDmaPlan::new(ESP32C3_RUNTIME, 0, 64).unwrap();
         let mut dma =
@@ -1398,7 +1909,7 @@ mod tests {
 
     #[test]
     fn event_and_multicore_ownership_are_independent() {
-        let owner = 219;
+        let owner = 225;
         EspLeases::recover_owner(ESP32S3_RUNTIME, owner);
         let mut event =
             EspEventCapture::<_, Clock>::try_new(Event, ESP32S3_RUNTIME, owner).unwrap();
@@ -1414,7 +1925,7 @@ mod tests {
 
     #[test]
     fn shared_data_providers_enforce_bounds_and_live_leases() {
-        let owner = 220;
+        let owner = 226;
         EspLeases::recover_owner(ESP32S3_RUNTIME, owner);
 
         let mut gpio = EspGpio::try_new(Gpio::default(), ESP32S3_RUNTIME, 48, owner).unwrap();
@@ -1472,7 +1983,7 @@ mod tests {
 
     #[test]
     fn lifecycle_power_reset_and_cache_contracts_are_owned() {
-        let owner = 221;
+        let owner = 227;
         EspLeases::recover_owner(ESP32S3_RUNTIME, owner);
         let mut alarm =
             EspAlarm::<_, Clock>::try_new(AlarmBackend::default(), ESP32S3_RUNTIME, owner).unwrap();

@@ -87,6 +87,30 @@
       ]
     },
     {
+      "id": "deep-esp32-v2",
+      "kind": "deep",
+      "required": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "pulse",
+        "i2c",
+        "spi",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
+        "lease"
+      ]
+    },
+    {
       "id": "deep-esp32c3-v2",
       "kind": "deep",
       "required": [
@@ -107,6 +131,30 @@
         "reset",
         "power",
         "cache",
+        "lease"
+      ]
+    },
+    {
+      "id": "deep-esp32p4-v2",
+      "kind": "deep",
+      "required": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
         "lease"
       ]
     },
@@ -380,6 +428,61 @@
       ]
     },
     {
+      "platform": "esp32",
+      "composition": "native",
+      "profile": "deep-esp32-v2",
+      "rust_type": "Esp32Providers",
+      "source": "core/ports/esp32/src/providers.rs",
+      "required": [],
+      "supported": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "pulse",
+        "i2c",
+        "spi",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
+        "lease"
+      ],
+      "hardware-inapplicable": ["usb"],
+      "unimplemented": [
+        "servo",
+        "watchdog",
+        "rtc",
+        "flash"
+      ],
+      "trait_witnesses": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "pulse",
+        "i2c",
+        "spi",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
+        "lease"
+      ]
+    },
+    {
       "platform": "esp32c3",
       "composition": "native",
       "profile": "deep-esp32c3-v2",
@@ -431,6 +534,62 @@
         "reset",
         "power",
         "cache",
+        "lease"
+      ]
+    },
+    {
+      "platform": "esp32p4",
+      "composition": "native",
+      "profile": "deep-esp32p4-v2",
+      "rust_type": "Esp32P4Providers",
+      "source": "core/ports/esp32p4/src/providers.rs",
+      "required": [],
+      "supported": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
+        "lease"
+      ],
+      "hardware-inapplicable": [],
+      "unimplemented": [
+        "servo",
+        "pulse",
+        "watchdog",
+        "rtc",
+        "flash"
+      ],
+      "trait_witnesses": [
+        "timebase",
+        "deadline",
+        "event",
+        "dma_completion",
+        "gpio",
+        "irq",
+        "uart",
+        "byte_io",
+        "adc",
+        "pwm",
+        "i2c",
+        "spi",
+        "usb",
+        "reset",
+        "power",
+        "cache",
+        "multicore",
         "lease"
       ]
     },

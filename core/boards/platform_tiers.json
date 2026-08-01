@@ -462,6 +462,29 @@
       ],
       "claim_scopes": [
         {
+          "platform": "esp32",
+          "composition": "native",
+          "capabilities": [
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
+        },
+        {
           "platform": "esp32c3",
           "composition": "native",
           "capabilities": [
@@ -484,9 +507,64 @@
           ]
         },
         {
+          "platform": "esp32p4",
+          "composition": "native",
+          "capabilities": [
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "i2c",
+            "spi",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
+        },
+        {
           "platform": "esp32s3",
           "composition": "native",
           "capabilities": [
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "pulse",
+            "i2c",
+            "spi",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
+        }
+      ]
+    },
+    "esp32-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/esp32",
+      "command": ["cargo", "+esp", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "esp32",
+          "composition": "native",
+          "capabilities": [
+            "timebase",
             "deadline",
             "event",
             "dma_completion",
@@ -528,6 +606,64 @@
       "claim_scopes": [
         {
           "platform": "esp32c3",
+          "composition": "native",
+          "capabilities": ["usb"]
+        }
+      ]
+    },
+    "esp32p4-target-build": {
+      "kind": "target-build",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core/ports/esp32p4",
+      "command": ["cargo", "+1.97.0", "build", "--locked", "--release"],
+      "claim_scopes": [
+        {
+          "platform": "esp32p4",
+          "composition": "native",
+          "capabilities": [
+            "timebase",
+            "deadline",
+            "event",
+            "dma_completion",
+            "gpio",
+            "irq",
+            "uart",
+            "byte_io",
+            "adc",
+            "pwm",
+            "i2c",
+            "spi",
+            "usb",
+            "reset",
+            "power",
+            "cache",
+            "multicore",
+            "lease"
+          ]
+        }
+      ]
+    },
+    "esp32p4-usb-host": {
+      "kind": "host-test",
+      "runner": "cross-mcu",
+      "required": true,
+      "cwd": "core",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "nobro-usb",
+        "--no-default-features",
+        "--features",
+        "backend-usb-serial-jtag-esp32p4",
+        "--target",
+        "{host_target}",
+        "--locked"
+      ],
+      "claim_scopes": [
+        {
+          "platform": "esp32p4",
           "composition": "native",
           "capabilities": ["usb"]
         }
@@ -858,7 +994,7 @@
         {
           "platform": "esp32",
           "composition": "arduino",
-          "capabilities": ["ble_link", "camera_parallel"]
+          "capabilities": ["ble_link", "camera_parallel", "wifi_link"]
         },
         {
           "platform": "esp32c3",
@@ -951,6 +1087,11 @@
       "cwd": ".",
       "command": ["python", "tools/checks/integrations/check_arduino_esp_wifi.py"],
       "claim_scopes": [
+        {
+          "platform": "esp32",
+          "composition": "arduino",
+          "capabilities": ["wifi_link"]
+        },
         {
           "platform": "esp32c3",
           "composition": "arduino",
@@ -1151,10 +1292,34 @@
     },
     "esp32": {
       "arch": "xtensa",
-      "tier": "core",
-      "implementation_root": "packages/arduino",
-      "limitations": "The Arduino Bluedroid composition has exact physical GATT/lifecycle/WiFi-coexistence evidence and a whole-composition resource price. A BLE-only increment, separately priced classic-ESP32 wifi0 binding, and native Rust provider tier remain open.",
+      "tier": "deep",
+      "implementation_root": "core/ports/esp32",
+      "limitations": "The native composition preserves sparse and input-only GPIOs, split SPI/I2S PDMA domains, dual-core ownership, and the external UART bridge without claiming native USB. Radio lifecycle remains independently selected through the Arduino Bluedroid composition.",
       "compositions": {
+        "native": {
+          "surface": "native",
+          "board_profile": "esp_wroom32_30pin",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["esp32-target-build"]},
+            "deadline": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "event": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "gpio": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "irq": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "uart": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "byte_io": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "adc": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "pulse": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "reset": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "power": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "cache": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "multicore": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["esp-shared-provider-host", "esp32-target-build"]}
+          }
+        },
         "arduino": {
           "surface": "arduino",
           "claims": {
@@ -1167,6 +1332,11 @@
               "maturity": "implemented",
               "evidence": ["provider-lifecycle-host", "arduino-esp-ble-target-build"],
               "limitations": "The pinned Arduino-ESP32 3.3.10 package selects Bluedroid. Two independent eight-cycle state-restoring campaigns cover GATT read/write/notify, recovery, and concurrent WiFi DNS/TCP traffic; the published price covers that whole composition rather than an unevidenced BLE-only increment."
+            },
+            "wifi_link": {
+              "maturity": "implemented",
+              "evidence": ["provider-lifecycle-host", "arduino-esp-wifi-target-build"],
+              "limitations": "The pinned Arduino-ESP32 3.3.10 facade and two state-restoring campaigns cover association, DNS, TCP, lifecycle, and Bluedroid coexistence. The campaign priced the whole combined composition, so a separate wifi0 increment remains explicitly unmeasured."
             }
           }
         }
@@ -1225,10 +1395,34 @@
     },
     "esp32p4": {
       "arch": "riscv32imafc",
-      "tier": "core",
-      "implementation_root": "packages/arduino",
-      "limitations": "Only the configuration-specific Arduino persistent ADC-DMA composition is claimed; no native Rust provider tier is inferred.",
+      "tier": "deep",
+      "implementation_root": "core/ports/esp32p4",
+      "limitations": "The exact P4-Pico native composition separates two symmetric HP application cores from the LP-core image, preserves AHB-GDMA/AXI-GDMA/VDMA domains, and distinguishes integrated USB Serial/JTAG plus FS/HS OTG from the external CH343 UART bridge. Native pulse and CSI data-plane providers remain unclaimed until their constructors and lifecycle are target-evidenced.",
       "compositions": {
+        "native": {
+          "surface": "native",
+          "board_profile": "esp32p4_pico",
+          "claims": {
+            "timebase": {"maturity": "implemented", "evidence": ["esp32p4-target-build"]},
+            "deadline": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "event": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "dma_completion": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "gpio": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "irq": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "uart": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "byte_io": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "adc": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "pwm": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "i2c": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "spi": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "usb": {"maturity": "experimental", "evidence": ["esp32p4-usb-host", "esp32p4-target-build"]},
+            "reset": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "power": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "cache": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "multicore": {"maturity": "experimental", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["esp-shared-provider-host", "esp32p4-target-build"]}
+          }
+        },
         "arduino": {
           "surface": "arduino",
           "claims": {

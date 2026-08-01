@@ -35,6 +35,7 @@ use portable_atomic::{AtomicBool, Ordering};
 #[cfg(not(any(
     feature = "backend-nrf-usbd",
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3",
     feature = "backend-ra-usbfs"
 )))]
@@ -45,6 +46,7 @@ compile_error!("exactly one USB backend feature must be enabled");
         feature = "backend-nrf-usbd",
         any(
             feature = "backend-usb-serial-jtag-esp32c3",
+            feature = "backend-usb-serial-jtag-esp32p4",
             feature = "backend-usb-serial-jtag-esp32s3",
             feature = "backend-ra-usbfs"
         )
@@ -53,11 +55,19 @@ compile_error!("exactly one USB backend feature must be enabled");
         feature = "backend-ra-usbfs",
         any(
             feature = "backend-usb-serial-jtag-esp32c3",
+            feature = "backend-usb-serial-jtag-esp32p4",
             feature = "backend-usb-serial-jtag-esp32s3"
         )
     ),
     all(
         feature = "backend-usb-serial-jtag-esp32c3",
+        any(
+            feature = "backend-usb-serial-jtag-esp32p4",
+            feature = "backend-usb-serial-jtag-esp32s3"
+        )
+    ),
+    all(
+        feature = "backend-usb-serial-jtag-esp32p4",
         feature = "backend-usb-serial-jtag-esp32s3"
     )
 ))]
@@ -295,6 +305,7 @@ pub const fn identity_policy() -> UsbIdentityPolicy {
 /// Descriptor-identity policy of the one backend selected for this build.
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3"
 ))]
 pub const fn identity_policy() -> UsbIdentityPolicy {
@@ -370,6 +381,7 @@ pub const fn capabilities() -> UsbCapabilities {
     }
     #[cfg(any(
         feature = "backend-usb-serial-jtag-esp32c3",
+        feature = "backend-usb-serial-jtag-esp32p4",
         feature = "backend-usb-serial-jtag-esp32s3"
     ))]
     {
@@ -493,11 +505,13 @@ pub use nrf_usbd_backend::{nrf_dma_timing, NrfDmaTiming};
 
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3"
 ))]
 mod usb_serial_jtag_backend;
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3"
 ))]
 use usb_serial_jtag_backend::UsbSerialJtagCdc;
@@ -515,6 +529,7 @@ pub use ra_usbfs_backend::RA4M1_USB_CONFIG;
 type ActiveBackend = NrfUsbdCdc;
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3"
 ))]
 type ActiveBackend = UsbSerialJtagCdc;
@@ -837,6 +852,7 @@ fn mount_backend(cfg: &UsbConfig) -> ActiveBackend {
 
 #[cfg(any(
     feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32p4",
     feature = "backend-usb-serial-jtag-esp32s3"
 ))]
 fn mount_backend(cfg: &UsbConfig) -> ActiveBackend {
@@ -1005,6 +1021,7 @@ mod tests {
 
         #[cfg(any(
             feature = "backend-usb-serial-jtag-esp32c3",
+            feature = "backend-usb-serial-jtag-esp32p4",
             feature = "backend-usb-serial-jtag-esp32s3"
         ))]
         {

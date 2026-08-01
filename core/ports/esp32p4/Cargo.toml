@@ -1,0 +1,25 @@
+[package]
+name = "nobro-port-esp32p4"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+
+# ESP32-P4 support is pinned to one reviewed upstream esp-hal revision because
+# the released esp-hal 1.1 line does not yet expose the P4 feature.
+
+[dependencies]
+embedded-hal = "1.0"
+nb = "1"
+riscv = "0.16.1"
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "8cbe014242843d5b4a9ce14d018f20f16e2ebf18", features = ["esp32p4", "unstable"] }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "8cbe014242843d5b4a9ce14d018f20f16e2ebf18", features = ["esp32p4"] }
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
+nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-usb-serial-jtag-esp32p4"] }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[workspace]

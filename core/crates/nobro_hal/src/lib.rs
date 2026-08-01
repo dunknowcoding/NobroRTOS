@@ -73,11 +73,13 @@ pub use board_desc::{
 pub use completion::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
 pub use esp::{
     EspAdc, EspAdcBackend, EspAlarm, EspAlarmBackend, EspByteIo, EspByteIoBackend,
-    EspCacheContract, EspContractError, EspDmaBackend, EspDmaCompletion, EspDmaPlan,
-    EspEventBackend, EspEventCapture, EspGpio, EspGpioBackend, EspI2c, EspIrq, EspIrqBackend,
-    EspLeaseGuard, EspLeases, EspMulticoreContract, EspPower, EspPowerBackend, EspProviderError,
+    EspCacheContract, EspContractError, EspDmaBackend, EspDmaCompletion, EspDmaDomain, EspDmaKind,
+    EspDmaPlan, EspEventBackend, EspEventCapture, EspGpio, EspGpioBackend, EspI2c, EspIoController,
+    EspIoRoute, EspIrq, EspIrqBackend, EspLeaseGuard, EspLeases, EspMulticoreContract,
+    EspP4CsiPlan, EspP4CsiSession, EspP4MediaContract, EspPower, EspPowerBackend, EspProviderError,
     EspPulse, EspPulseBackend, EspPwm, EspPwmBackend, EspReset, EspResetBackend,
-    EspRuntimeContract, EspSilicon, EspSpi, ESP32C3_RUNTIME, ESP32S3_RUNTIME,
+    EspRuntimeContract, EspSilicon, EspSpi, ESP32C3_RUNTIME, ESP32P4_PICO_IO_ROUTES,
+    ESP32P4_PICO_MEDIA, ESP32P4_RUNTIME, ESP32S3_RUNTIME, ESP32_BOARD_IO_ROUTES, ESP32_RUNTIME,
 };
 pub use lease::{LeaseError, LeaseGuard, LeaseRecoveryReceipt, Resource, ResourceLease};
 #[cfg(feature = "platform-nrf52840")]

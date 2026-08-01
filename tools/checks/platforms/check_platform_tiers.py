@@ -1182,7 +1182,7 @@ def selftest() -> int:
     )
 
     bad_reference = copy.deepcopy(good)
-    bad_reference["reference_platform"] = "esp32"
+    bad_reference["reference_platform"] = "avr_nano"
     _expect_error(validate(bad_reference), "reference_platform must")
 
     false_deep = copy.deepcopy(good)

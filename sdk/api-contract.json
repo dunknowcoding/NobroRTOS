@@ -2492,7 +2492,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "2f886b9b794f23d3dd52fd087caeab1867944ded3a59529dc17f6f74850efb6c"
+        "sha256": "c3f16eaf8a321448e34da4c338b88d6215da56c16315bb7d41b853a74169a1ca"
       },
       {
         "crate": "nobro-host",
@@ -5720,7 +5720,7 @@
           }
         ],
         "path": "core/crates/nobro_usb/src/lib.rs",
-        "sha256": "e9f7708f797cab19cc6a49db0af8f451758691008f36ced2338ca97bde12c02a"
+        "sha256": "94b4fa3067d30c3339249e642d6183c1093676adc5d9860ac4cd4504ccc38df9"
       },
       {
         "crate": "nobro-wireless",

@@ -2,23 +2,23 @@
   "schema": "nobro-board-profile-v2",
   "board_id": "esp_wroom32_30pin",
   "platform_id": "esp32",
-  "feature": "board-esp-wroom32-30pin",
+  "feature": "port-esp32",
   "feature_aliases": [],
   "composition": {
     "silicon": "espressif:esp32",
     "physical_board": "generic:esp-wroom32-30pin",
-    "boot_layout": "espressif:second-stage-app",
-    "framework_core": "arduino:esp32",
-    "hal_stack": null,
-    "usb_stack": null
+    "boot_layout": "espressif:second-stage-app-0x10000",
+    "framework_core": "nobro:esp-hal",
+    "hal_stack": "nobro:esp32",
+    "usb_stack": "external:uart-bridge"
   },
   "description": "ESP-WROOM-32 30-pin development board with external USB-to-UART bridge",
   "boot": {
-    "layout": "Esp32FrameworkOwned",
-    "app_flash_start": null,
-    "app_flash_len_bytes": null,
-    "ram_start": null,
-    "ram_len_bytes": null
+    "layout": "Esp32IdfApp",
+    "app_flash_start": "0x10000",
+    "app_flash_len_bytes": 4128768,
+    "ram_start": "0x3FFB0000",
+    "ram_len_bytes": 180224
   },
   "capacity": {
     "flash_budget_bytes": 131072,
@@ -27,8 +27,14 @@
     "max_modules": 12
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The exact classic ESP32 runtime, partition, and dual-core composition are not implemented yet."
+    "support": "maintained-port",
+    "cargo_target": "xtensa-esp32-none-elf",
+    "runtime_manifest": "core/ports/esp32/Cargo.toml",
+    "entry": "esp-hal Xtensa runtime entry",
+    "interrupts": "owned by the maintained classic ESP32 port and selected esp-hal providers",
+    "dma": "split SPI and I2S PDMA domains remain distinct",
+    "clock": "esp-hal startup owns clock selection and timer calibration",
+    "boot": "ESP image metadata and the 0x10000 application offset are port-owned"
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

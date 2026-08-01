@@ -31,6 +31,7 @@ nrf-timing-diagnostics = ["backend-nrf-usbd"]
 # address on each chip, so callers must select the exact map instead of an ambiguous
 # family-wide feature.
 backend-usb-serial-jtag-esp32c3 = []
+backend-usb-serial-jtag-esp32p4 = []
 backend-usb-serial-jtag-esp32s3 = []
 # RA4M1 (Arduino UNO R4) USBFS: our own raw-register CDC-ACM device stack (pipe-based
 # enumeration + bulk data), ported from the RA manual / cross-checked vs TinyUSB rusb2.

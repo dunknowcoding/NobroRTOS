@@ -1,7 +1,7 @@
-//! ESP32-C3/S3 fixed-function USB-Serial-JTAG backend.
+//! ESP32-C3/P4/S3 fixed-function USB-Serial-JTAG backend.
 //!
 //! The peripheral owns its descriptors and enumeration state machine. NobroRTOS owns
-//! only the bounded EP1 byte path and link observation. C3 and S3 deliberately use
+//! only the bounded EP1 byte path and link observation. C3, P4, and S3 deliberately use
 //! separate Cargo features because their register blocks have different base addresses.
 //! A fresh SOF proves a live USB bus; a zero-length IN probe followed by a later EP1 IN
 //! token or OUT packet proves that the fixed-function data endpoint is usable. The
@@ -13,6 +13,8 @@ use crate::{backend_id, config_fingerprint, CdcState, UsbAdvertisedIdentity, Usb
 
 #[cfg(feature = "backend-usb-serial-jtag-esp32c3")]
 const BASE: usize = 0x6004_3000;
+#[cfg(feature = "backend-usb-serial-jtag-esp32p4")]
+const BASE: usize = 0x500d_2000;
 #[cfg(feature = "backend-usb-serial-jtag-esp32s3")]
 const BASE: usize = 0x6003_8000;
 
@@ -33,9 +35,15 @@ const CLEAR_ON_POLL_INTS: u32 = SERIAL_IN_EMPTY_INT | TOKEN_REC_IN_EP1_INT;
 const CONFIGURATION_EVIDENCE_INTS: u32 = TOKEN_REC_IN_EP1_INT | OUT_RECV_PKT_INT;
 const OUT_FIFO_DISCARD_LIMIT: usize = 64;
 
-// ESP32-C3/S3 SYSTIMER unit 0 is a 16 MHz monotonic counter after ROM/platform
-// initialization. Both chips place this register block at the same address.
+// SYSTIMER unit 0 is a 16 MHz monotonic counter after ROM/platform
+// initialization. C3/S3 share one base; P4 uses its HP-peripheral map.
+#[cfg(any(
+    feature = "backend-usb-serial-jtag-esp32c3",
+    feature = "backend-usb-serial-jtag-esp32s3"
+))]
 const SYSTIMER_BASE: usize = 0x6002_3000;
+#[cfg(feature = "backend-usb-serial-jtag-esp32p4")]
+const SYSTIMER_BASE: usize = 0x500e_2000;
 const SYSTIMER_UNIT0_OP: *mut u32 = (SYSTIMER_BASE + 0x04) as *mut u32;
 const SYSTIMER_UNIT0_VALUE_LO: *const u32 = (SYSTIMER_BASE + 0x44) as *const u32;
 const SYSTIMER_VALUE_VALID: u32 = 1 << 29;
@@ -594,8 +602,19 @@ mod tests {
     #[test]
     fn chip_feature_selects_the_expected_register_map() {
         #[cfg(feature = "backend-usb-serial-jtag-esp32c3")]
-        assert_eq!(super::BASE, 0x6004_3000);
+        {
+            assert_eq!(super::SYSTIMER_BASE, 0x6002_3000);
+            assert_eq!(super::BASE, 0x6004_3000);
+        }
+        #[cfg(feature = "backend-usb-serial-jtag-esp32p4")]
+        {
+            assert_eq!(super::SYSTIMER_BASE, 0x500e_2000);
+            assert_eq!(super::BASE, 0x500d_2000);
+        }
         #[cfg(feature = "backend-usb-serial-jtag-esp32s3")]
-        assert_eq!(super::BASE, 0x6003_8000);
+        {
+            assert_eq!(super::SYSTIMER_BASE, 0x6002_3000);
+            assert_eq!(super::BASE, 0x6003_8000);
+        }
     }
 }

@@ -1,0 +1,22 @@
+[package]
+name = "nobro-port-esp32"
+version = "0.1.0"
+edition = "2021"
+
+# Native NobroRTOS provider composition for the classic dual-core ESP32.
+# This is a standalone workspace because the Xtensa target uses espup's
+# dedicated Rust toolchain.
+
+[dependencies]
+embedded-hal = "1.0"
+esp-hal = { version = "=0.23.1", features = ["esp32"] }
+nb = "1"
+nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"
+codegen-units = 1
+
+[workspace]

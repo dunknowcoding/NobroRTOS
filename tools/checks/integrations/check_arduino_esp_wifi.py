@@ -32,7 +32,8 @@ COMPONENT_ID = "adapter-wireless-wifi-arduino-esp"
 LIBRARY_ID = "library-arduino-esp-wifi"
 GATE_ID = "arduino-esp-wifi-target-build"
 LIFECYCLE_GATE_ID = "provider-lifecycle-host"
-BINDING_ID = "binding-wifi-arduino-esp-esp32c3"
+CLASSIC_BINDING_ID = "binding-wifi-arduino-esp-esp32"
+C3_BINDING_ID = "binding-wifi-arduino-esp-esp32c3"
 SOURCE_ID = "source-arduino-esp32"
 SOURCE_PIN = "0d1440d1be38ab530d274fe87ee88565fe167392"
 SIZE = re.compile(
@@ -307,7 +308,52 @@ def verify_metadata() -> None:
     ):
         raise RuntimeError("Arduino-ESP32 WiFi backend evidence is stale")
 
-    binding = record(features["bindings"], BINDING_ID, "binding")
+    classic_binding = record(
+        features["bindings"], CLASSIC_BINDING_ID, "binding"
+    )
+    if (
+        classic_binding.get("backend_id") != BACKEND_ID
+        or classic_binding.get("capability_kind") != "wifi_link"
+        or classic_binding.get("platform") != "esp32"
+        or classic_binding.get("composition") != "arduino"
+        or classic_binding.get("instance") != "wifi0"
+        or classic_binding.get("maturity") != "implemented"
+        or classic_binding.get("evidence_gates")
+        != [LIFECYCLE_GATE_ID, GATE_ID]
+        or classic_binding.get("lifecycle_profile_id")
+        != "lifecycle-wifi-arduino-esp"
+        or not classic_binding.get("physical_evidence")
+        or not classic_binding.get("physical_limitations")
+        or classic_binding.get("price_state") != "unmeasured"
+        or not classic_binding.get("limitations")
+        or any(
+            key in classic_binding
+            for key in (
+                "workload",
+                "measured_fixed_price",
+                "fixed_price_provenance",
+                "measured_runtime_price",
+                "runtime_price_provenance",
+                "coexistence",
+                "price_basis",
+            )
+        )
+        or classic_binding.get("report_wiring")
+        != {
+            "provider_id": "wifi_link",
+            "status_field": "esp32_wifi0",
+            "evidence_gate": GATE_ID,
+        }
+        or set(
+            classic_binding.get("disabled_symbol_gate", {}).get(
+                "forbidden_symbols", []
+            )
+        )
+        != set(FORBIDDEN_DISABLED)
+    ):
+        raise RuntimeError("classic ESP32 WiFi binding is stale or falsely priced")
+
+    binding = record(features["bindings"], C3_BINDING_ID, "binding")
     if (
         binding.get("backend_id") != BACKEND_ID
         or binding.get("platform") != "esp32c3"
@@ -358,25 +404,39 @@ def verify_metadata() -> None:
         raise RuntimeError("Arduino-ESP32 WiFi catalog relationship is stale")
 
     gate = tiers.get("evidence_gates", {}).get(GATE_ID)
-    claim = (
-        tiers.get("platforms", {})
-        .get("esp32c3", {})
-        .get("compositions", {})
-        .get("arduino", {})
-        .get("claims", {})
-        .get("wifi_link")
-    )
-    if (
-        not isinstance(claim, dict)
-        or claim.get("maturity") != "implemented"
-        or claim.get("evidence") != [LIFECYCLE_GATE_ID, GATE_ID]
-        or not claim.get("limitations")
-    ):
-        raise RuntimeError("ESP32-C3 WiFi tier claim is stale")
+    for platform in ("esp32", "esp32c3"):
+        claim = (
+            tiers.get("platforms", {})
+            .get(platform, {})
+            .get("compositions", {})
+            .get("arduino", {})
+            .get("claims", {})
+            .get("wifi_link")
+        )
+        if (
+            not isinstance(claim, dict)
+            or claim.get("maturity") != "implemented"
+            or claim.get("evidence") != [LIFECYCLE_GATE_ID, GATE_ID]
+            or not claim.get("limitations")
+        ):
+            raise RuntimeError(f"{platform} WiFi tier claim is stale")
     if (
         not isinstance(gate, dict)
         or gate.get("command") != ["python", "tools/checks/integrations/check_arduino_esp_wifi.py"]
         or gate.get("runner") != "arduino-package"
+        or gate.get("claim_scopes")
+        != [
+            {
+                "platform": "esp32",
+                "composition": "arduino",
+                "capabilities": ["wifi_link"],
+            },
+            {
+                "platform": "esp32c3",
+                "composition": "arduino",
+                "capabilities": ["wifi_link"],
+            },
+        ]
     ):
         raise RuntimeError("Arduino-ESP32 WiFi receipt gate is stale")
 
@@ -484,7 +544,8 @@ def main() -> int:
         return 1
     print(
         "ARDUINO ESP WIFI: PASS "
-        "(pinned 3.3.10 family target-build; exact C3 binding priced)"
+        "(pinned 3.3.10 family target-build; classic binding explicit; "
+        "exact C3 binding priced)"
     )
     return 0
 

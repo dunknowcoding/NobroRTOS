@@ -1035,6 +1035,49 @@
       }
     },
     {
+      "id": "binding-wifi-arduino-esp-esp32",
+      "backend_id": "backend-wifi-arduino-esp",
+      "capability_kind": "wifi_link",
+      "platform": "esp32",
+      "composition": "arduino",
+      "instance": "wifi0",
+      "maturity": "implemented",
+      "evidence_gates": [
+        "provider-lifecycle-host",
+        "arduino-esp-wifi-target-build"
+      ],
+      "lifecycle_profile_id": "lifecycle-wifi-arduino-esp",
+      "physical_evidence": [
+        "Two independent eight-cycle classic ESP32 campaigns cover association, DNS, TCP, leave, quiesce, recovery, concurrent Bluedroid GATT traffic, and exact restoration."
+      ],
+      "physical_limitations": [
+        "A separate radio-controller reset and RF power-interruption campaign were not run."
+      ],
+      "price_state": "unmeasured",
+      "limitations": [
+        "The exact physical campaign measured the whole WiFi-plus-Bluedroid composition; no separate wifi0 resource increment is inferred from that combined result."
+      ],
+      "disabled_symbol_gate": {
+        "baseline": "same-target-nobro-app",
+        "feature": "nobro-esp-wifi-disabled",
+        "forbidden_symbols": [
+          "ArduinoEspWiFiStack",
+          "ArduinoEspNativeNetwork",
+          "ArduinoNativeNetwork",
+          "WiFiClass",
+          "WiFiGenericClass",
+          "esp_wifi_init"
+        ],
+        "max_flash_delta_bytes": 0,
+        "max_ram_delta_bytes": 0
+      },
+      "report_wiring": {
+        "provider_id": "wifi_link",
+        "status_field": "esp32_wifi0",
+        "evidence_gate": "arduino-esp-wifi-target-build"
+      }
+    },
+    {
       "id": "binding-wifi-arduino-esp-esp32c3",
       "backend_id": "backend-wifi-arduino-esp",
       "capability_kind": "wifi_link",

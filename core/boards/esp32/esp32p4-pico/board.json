@@ -2,23 +2,23 @@
   "schema": "nobro-board-profile-v2",
   "board_id": "esp32p4_pico",
   "platform_id": "esp32p4",
-  "feature": "board-esp32p4-pico",
+  "feature": "port-esp32p4",
   "feature_aliases": [],
   "composition": {
     "silicon": "espressif:esp32-p4",
     "physical_board": "waveshare:esp32-p4-pico",
-    "boot_layout": "espressif:second-stage-app",
-    "framework_core": "espressif:esp-idf",
-    "hal_stack": null,
-    "usb_stack": null
+    "boot_layout": "espressif:second-stage-app-0x10000",
+    "framework_core": "nobro:esp-hal",
+    "hal_stack": "nobro:esp32p4",
+    "usb_stack": "espressif:usb-serial-jtag-fs-hs-otg"
   },
-  "description": "ESP32-P4-Pico composition; partition and usable RAM are framework-owned until the native port lands",
+  "description": "Waveshare ESP32-P4-Pico native composition with two HP cores, a separate LP core, 32 MB flash, and 32 MB PSRAM",
   "boot": {
-    "layout": "Esp32FrameworkOwned",
-    "app_flash_start": null,
-    "app_flash_len_bytes": null,
-    "ram_start": null,
-    "ram_len_bytes": null
+    "layout": "Esp32IdfApp",
+    "app_flash_start": "0x10000",
+    "app_flash_len_bytes": 4128768,
+    "ram_start": "0x4FF40000",
+    "ram_len_bytes": 450560
   },
   "capacity": {
     "flash_budget_bytes": 262144,
@@ -27,8 +27,14 @@
     "max_modules": 24
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The exact ESP32-P4 image, multicore/cache lifecycle, and USB stack selection are not implemented yet."
+    "support": "maintained-port",
+    "cargo_target": "riscv32imafc-unknown-none-elf",
+    "runtime_manifest": "core/ports/esp32p4/Cargo.toml",
+    "entry": "esp-hal RISC-V runtime entry",
+    "interrupts": "48 HP CLIC routes are bounded by the maintained P4 port",
+    "dma": "AHB-GDMA, AXI-GDMA, and VDMA domains remain distinct",
+    "clock": "esp-hal startup owns HP clocks, timer calibration, and cache split",
+    "boot": "ESP image metadata and the 0x10000 application offset are port-owned"
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

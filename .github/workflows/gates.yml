@@ -229,14 +229,14 @@ jobs:
         timeout-minutes: 10
         run: |
           rustup toolchain install 1.97.0 --profile minimal \
-            --target thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf \
+            --target thumbv6m-none-eabi,thumbv7m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf,riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf,riscv32imafc-unknown-none-elf \
             --component clippy,rust-src,llvm-tools-preview
           rustup default 1.97.0
           rustc -vV | grep -F "commit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3"
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.9"
-      - name: install ESP32-S3 Xtensa Rust toolchain
+      - name: install classic ESP32 and ESP32-S3 Xtensa Rust toolchain
         shell: bash
         timeout-minutes: 15
         run: |
@@ -249,7 +249,7 @@ jobs:
             | sha256sum --check --strict
           unzip -o "$espup_zip" -d "$HOME/.cargo/bin"
           chmod +x "$HOME/.cargo/bin/espup"
-          "$HOME/.cargo/bin/espup" install -l debug --targets esp32s3 \
+          "$HOME/.cargo/bin/espup" install -l debug --targets esp32,esp32s3 \
             --toolchain-version 1.95.0.0
           source "$HOME/export-esp.sh"
           echo "$PATH" >> "$GITHUB_PATH"
