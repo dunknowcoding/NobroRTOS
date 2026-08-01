@@ -28,7 +28,7 @@
   },
   "firmware_generation": {
     "support": "unavailable",
-    "reason": "The classic ESP32 runtime and camera composition are not implemented yet."
+    "reason": "The maintained native classic ESP32 port does not yet own this board's OV2640 pin map or camera data plane; the verified Arduino/NiusCam composition remains separate."
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }
