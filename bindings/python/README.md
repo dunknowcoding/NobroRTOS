@@ -35,9 +35,12 @@ python sdk/cli/nobro.py firmware app.json --build
 
 The callable is deliberately omitted from JSON: it is a host-only pytest hook,
 not on-device Python. The firmware CLI validates data and never evaluates the
-authoring script. The generated image is native Rust admitted by the existing
-firmware path. Wire capacity is retained as graph metadata; it is not yet a
-Python payload channel.
+authoring script. Exact application-image profiles generate native Rust; exact
+Arduino-composition profiles generate a sketch; maintained-port profiles emit a
+plan and reject `--build` until they own declaration linking. `NobroApp` accepts
+the same 16 maintained exact profiles and derives their gated board budgets.
+Wire capacity is retained as graph metadata; it is not yet a Python payload
+channel.
 
 Initial priorities:
 

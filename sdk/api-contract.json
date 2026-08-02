@@ -1061,7 +1061,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/app.py",
-          "sha256": "07d059287261952df178edf9a5ee5d00d9d84b4168606f9809d66abbd8b4c3c3"
+          "sha256": "e45662a084f1148a2c7cc30ab3bc11e89ee230b73c144366c7ded19a90543d90"
         },
         {
           "path": "bindings/python/nobro_rtos/cli.py",

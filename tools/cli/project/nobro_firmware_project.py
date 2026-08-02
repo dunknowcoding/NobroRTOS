@@ -17,7 +17,11 @@ configuration, not generated Rust boilerplate::
 Memory estimates are inferred by role. Execution budgets are never inferred: omit
 ``budget`` to leave the task unmeasured and outside deadline admission, or provide an
 explicit measured bound. The original declaration remains the auditable source used
-to regenerate firmware.
+to regenerate firmware. Standalone-image and Arduino-composition routes build the
+declared application. Maintained-port routes emit an integration plan and reject
+``--build`` until that startup owns declaration linking. A compatible logical stack
+can be selected explicitly, for example ``backend wifi_link
+backend-wifi-arduino-esp8266`` on ``wemos-d1-mini``.
 """
 import argparse
 import json
@@ -47,8 +51,12 @@ LINE = re.compile(
     r"(?:\s+blocking\s+([1-9][0-9]*)(us|ms|s))?"
     r"(?:\s+memory\s+([1-9][0-9]*)/([1-9][0-9]*))?$"
 )
+BACKEND = re.compile(
+    r"^backend\s+([a-z][a-z0-9_]*)\s+([a-z][a-z0-9-]*)$"
+)
 WAKE = re.compile(r"^wake\s+([1-9][0-9]*)(us|ms|s)$")
 BOARD_ROOT = ROOT / "core" / "boards"
+PROVIDER_REGISTRY = BOARD_ROOT / "feature_providers.json"
 MAX_WRAP_SAFE_INTERVAL_US = 0x7FFF_FFFF
 ROLE = {
     "periodic": ("driver", 1024, 256),
@@ -87,6 +95,45 @@ def board_profile(name: str, *, require_generation: bool = True) -> dict:
     return profile
 
 
+def select_backends(profile: dict, requests: list[tuple[str, str]]) -> list[dict]:
+    """Resolve explicit logical-stack selections against the public registry."""
+
+    registry = json.loads(PROVIDER_REGISTRY.read_text(encoding="utf-8"))
+    known = {item["id"] for item in registry.get("backends", [])}
+    framework = str(profile["composition"].get("framework_core", ""))
+    composition = "arduino" if "arduino" in framework else "native"
+    selected = []
+    seen = set()
+    for capability, backend_id in requests:
+        if capability in seen:
+            raise ValueError(f"backend for {capability!r} is selected more than once")
+        if backend_id not in known:
+            raise ValueError(f"unknown backend {backend_id!r}")
+        matches = [
+            binding for binding in registry.get("bindings", [])
+            if binding.get("backend_id") == backend_id
+            and binding.get("capability_kind") == capability
+            and binding.get("platform") == profile["platform_id"]
+            and binding.get("composition") == composition
+            and binding.get("maturity") not in {"absent", "stub"}
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"backend {backend_id!r} is unavailable for capability {capability!r} "
+                f"on {profile['_name']!r} ({composition})"
+            )
+        binding = matches[0]
+        selected.append({
+            "capability": capability,
+            "backend_id": backend_id,
+            "binding_id": binding["id"],
+            "instance": binding.get("instance"),
+            "maturity": binding["maturity"],
+        })
+        seen.add(capability)
+    return selected
+
+
 def parse_duration(value: str, unit: str) -> int:
     scale = {"us": 1, "ms": 1000, "s": 1_000_000}[unit]
     result = int(value) * scale
@@ -109,7 +156,7 @@ def parse(text: str) -> dict:
     if not records[1][1].startswith("board "):
         raise ValueError("line 2 must be: board <profile>")
     board = records[1][1][6:].strip()
-    profile = board_profile(board)
+    profile = board_profile(board, require_generation=False)
     wake_latency_us = 0
     task_records = records[2:]
     if task_records and task_records[0][1].startswith("wake "):
@@ -118,6 +165,16 @@ def parse(text: str) -> dict:
         if not match:
             raise ValueError(f"line {number}: expected 'wake <duration>'")
         wake_latency_us = parse_duration(*match.groups())
+        task_records = task_records[1:]
+    backend_requests = []
+    while task_records and task_records[0][1].startswith("backend "):
+        number, line = task_records[0]
+        match = BACKEND.fullmatch(line)
+        if not match:
+            raise ValueError(
+                f"line {number}: expected 'backend <capability_kind> <backend-id>'"
+            )
+        backend_requests.append(match.groups())
         task_records = task_records[1:]
     if not task_records:
         raise ValueError("at least one periodic, control, or service task is required")
@@ -187,6 +244,7 @@ def parse(text: str) -> dict:
                    "phase_us": 0, "deadline_us": 20_000,
                    "period_us": 20_000, "budget_us": 0}] + tasks,
         "channels": channels,
+        "backends": select_backends(profile, backend_requests),
     }
     return {"app": app, "board": board, "workload": workload,
             "user_lines": len(records)}
@@ -340,9 +398,11 @@ def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
             app = record.get("app")
             if not isinstance(app, str) or not NAME.fullmatch(app):
                 raise ValueError("canonical workload needs an `app` name")
-            project_model.startup_order(record)
+            project_model.startup_order(
+                record, allow_empty_features_without_catalog=True
+            )
             board = record.get("target")
-            board_profile(board)
+            board_profile(board, require_generation=False)
             return {
                 "app": app,
                 "board": board,
@@ -354,12 +414,210 @@ def load_source(source: pathlib.Path) -> tuple[dict, str, str]:
     return parse(text), "compact-text", "app.nobro"
 
 
+def copy_canonical_inputs(
+    source: pathlib.Path,
+    project: pathlib.Path,
+    spec: dict,
+    source_format: str,
+    source_name: str,
+) -> None:
+    project.mkdir(parents=True, exist_ok=True)
+    if source_format == "python-json":
+        canonical = NobroApp.read_json(source).to_dict()
+        (project / source_name).write_text(
+            json.dumps(canonical, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+    elif source_format == "compact-text":
+        (project / source_name).write_text(
+            source.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
+        )
+    (project / "workload.json").write_text(
+        json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
+def arduino_sketch(spec: dict, profile: dict) -> str:
+    tasks = spec["workload"]["tasks"][1:]
+    channels = spec["workload"]["channels"]
+    names = {task["name"]: f"task_{index}" for index, task in enumerate(tasks)}
+    lines = [
+        "// Generated from the adjacent canonical declaration; regenerate instead of editing.",
+        "#include <NobroRTOS.h>",
+        "",
+        f"nobro::NobroApp<{len(tasks)}, {max(1, len(channels))}> app(",
+        f"    {int(profile['capacity']['flash_budget_bytes'])}ul,",
+        f"    {int(profile['capacity']['ram_budget_bytes'])}ul);",
+        "",
+        "void setup() {",
+        "  Serial.begin(115200);",
+    ]
+    roles = {"control": "nobro::CONTROL", "periodic": "nobro::PERIODIC", "service": "nobro::SERVICE"}
+    for task in tasks:
+        variable = names[task["name"]]
+        lines.append(
+            f'  nobro::TaskId {variable} = app.task("{task["name"]}", '
+            f'{int(task["period_us"])}ul, {roles[task["role"]]});'
+        )
+        if int(task.get("budget_us", 0)):
+            lines.append(f"  app.budget({variable}, {int(task['budget_us'])}ul);")
+        lines.append(
+            f"  app.memory({variable}, {int(task['flash'])}ul, {int(task['ram'])}ul);"
+        )
+    for source, destination in channels:
+        lines.append(f"  app.wire({names[source]}, {names[destination]});")
+    lines.extend([
+        '  Serial.println(app.admit() ? "NobroRTOS app ready" : app.errorText());',
+        "}",
+        "",
+        "void loop() {}",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def route_metadata(spec: dict, profile: dict, source_format: str) -> dict:
+    generation = profile["firmware_generation"]
+    support = generation["support"]
+    capacity = profile["capacity"]
+    metadata = {
+        "schema": "nobro-firmware-project-v2",
+        "app": spec["app"],
+        "board": spec["board"],
+        "board_id": profile["board_id"],
+        "route": support,
+        "source_format": source_format,
+        "user_lines": spec["user_lines"],
+        "task_count": len(spec["workload"]["tasks"]) - 1,
+        "selected_backends": spec["workload"].get("backends", []),
+        "budget": {
+            "flash_bytes": int(capacity["flash_budget_bytes"]),
+            "ram_bytes": int(capacity["ram_budget_bytes"]),
+            "sample_pool_slots": int(capacity["sample_pool_slots"]),
+            "max_modules": int(capacity["max_modules"]),
+        },
+        "image_layout": profile["boot"],
+        "generation_contract": {
+            key: generation[key]
+            for key in ("entry", "interrupts", "dma", "clock", "boot")
+            if key in generation
+        },
+    }
+    if support == "arduino-composition":
+        metadata.update({
+            "fqbn": generation["fqbn"],
+            "required_header": generation["header"],
+            "build_command": [
+                "arduino-cli", "compile", "--fqbn", generation["fqbn"],
+                "--library", "<NOBRO_RTOS>/packages/arduino", ".",
+            ],
+        })
+    elif support == "maintained-port":
+        metadata.update({
+            "cargo_target": generation["cargo_target"],
+            "runtime_manifest": generation["runtime_manifest"],
+            "build_available": False,
+            "diagnostic": (
+                "The maintained startup port can be built independently, but this declaration "
+                "is not linked into that image. Select a board-owned application-image or "
+                "Arduino-composition route for generated application firmware."
+            ),
+        })
+    return metadata
+
+
+def deployment_guide(profile: dict, metadata: dict) -> str:
+    composition = profile["composition"]
+    route = metadata["route"]
+    if route == "application-image":
+        action = (
+            "Build with `nobro firmware <source> --build`. Flash the resulting image "
+            "with the board's documented bootloader/debug method; image addresses must "
+            "match `image_layout` in `generation.json`."
+        )
+    elif route == "arduino-composition":
+        action = (
+            f"Build with Arduino CLI using `{metadata['fqbn']}` or select the equivalent "
+            "board in Arduino IDE. Upload/recovery stays owned by that board core and "
+            "bootloader; do not substitute another board's erase or reset recipe."
+        )
+    else:
+        action = (
+            f"The maintained startup lives at `{metadata['runtime_manifest']}`. This "
+            "project is an audited integration plan, not an application binary; `--build` "
+            "fails until that port owns declaration linking."
+        )
+    usb = composition.get("usb_stack") or "no MCU-owned USB stack declared"
+    return (
+        f"# Deploy {metadata['app']} on {metadata['board']}\n\n"
+        f"{action}\n\n"
+        f"- Boot layout: `{profile['boot']['layout']}`\n"
+        f"- Framework/core: `{composition.get('framework_core') or 'none'}`\n"
+        f"- USB/serial ownership: `{usb}`\n"
+        "- Recovery rule: use only the exact board/core procedure and preserve any "
+        "bootloader or radio-reserved region. Host port names are intentionally not "
+        "embedded in generated projects.\n"
+        "- Budgets and selected backends are printed in `generation.json`; omitted "
+        "backends remain detached.\n"
+    )
+
+
+def generate_routed_project(
+    source: pathlib.Path,
+    out_dir: pathlib.Path,
+    spec: dict,
+    source_format: str,
+    source_name: str,
+    profile: dict,
+) -> dict:
+    support = profile["firmware_generation"]["support"]
+    if support == "unavailable":
+        raise ValueError(
+            f"board profile {spec['board']!r} has no generated firmware route: "
+            f"{profile['firmware_generation']['reason']}"
+        )
+    project = (out_dir / spec["app"]).resolve()
+    copy_canonical_inputs(source, project, spec, source_format, source_name)
+    metadata = route_metadata(spec, profile, source_format)
+    if support == "arduino-composition":
+        (project / f"{spec['app']}.ino").write_text(
+            arduino_sketch(spec, profile), encoding="utf-8", newline="\n"
+        )
+    (project / "generation.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    (project / "DEPLOY.md").write_text(
+        deployment_guide(profile, metadata), encoding="utf-8", newline="\n"
+    )
+    return {"project": project, **metadata}
+
+
 def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
     spec, source_format, source_name = load_source(source)
     spec["workload"].setdefault("schema", "nobro-workload-v1")
     spec["workload"].setdefault("target", spec["board"])
     spec["workload"].setdefault("features", {})
-    project_model.startup_order(spec["workload"])
+    project_model.startup_order(
+        spec["workload"], allow_empty_features_without_catalog=True
+    )
+    profile = board_profile(spec["board"], require_generation=False)
+    requested = spec["workload"].get("backends", [])
+    if not isinstance(requested, list) or any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("capability"), str)
+        or not isinstance(item.get("backend_id"), str)
+        for item in requested
+    ):
+        raise ValueError(
+            "backends must be a list of {capability, backend_id} selections"
+        )
+    spec["workload"]["backends"] = select_backends(
+        profile,
+        [(item["capability"], item["backend_id"]) for item in requested],
+    )
+    if profile["firmware_generation"]["support"] != "application-image":
+        return generate_routed_project(
+            source, out_dir, spec, source_format, source_name, profile
+        )
     project = (out_dir / spec["app"]).resolve()
     (project / "src").mkdir(parents=True, exist_ok=True)
     (project / ".cargo").mkdir(parents=True, exist_ok=True)
@@ -367,22 +625,7 @@ def generate(source: pathlib.Path, out_dir: pathlib.Path) -> dict:
     # version is not evidence for the new project graph. Remove it here and let
     # build() perform one explicit resolution before enforcing --locked.
     (project / "Cargo.lock").unlink(missing_ok=True)
-    if source_format == "python-json":
-        canonical = NobroApp.read_json(source).to_dict()
-        (project / source_name).write_text(
-            json.dumps(canonical, indent=2) + "\n",
-            encoding="utf-8",
-            newline="\n",
-        )
-    elif source_format == "compact-text":
-        (project / source_name).write_text(
-            source.read_text(encoding="utf-8"),
-            encoding="utf-8",
-            newline="\n",
-        )
-    (project / "workload.json").write_text(
-        json.dumps(spec["workload"], indent=2) + "\n", encoding="utf-8", newline="\n")
-    profile = board_profile(spec["board"])
+    copy_canonical_inputs(source, project, spec, source_format, source_name)
     generation = profile["firmware_generation"]
     kernel = ROOT / "core" / "crates" / "nobro_kernel"
     admission = ROOT / "core" / "crates" / "nobro_admission"
@@ -446,10 +689,19 @@ codegen-units = 1
         rust_build(spec, source_name), encoding="utf-8", newline="\n"
     )
     (project / "src" / "main.rs").write_text(rust_main(spec), encoding="utf-8", newline="\n")
-    metadata = {"schema": "nobro-firmware-project-v1", "app": spec["app"],
+    metadata = {"schema": "nobro-firmware-project-v2", "app": spec["app"],
                 "board": spec["board"], "board_id": profile["board_id"],
+                "route": "application-image",
                 "cargo_target": cargo_target,
                 "memory_profile": generation["memory_profile"],
+                "budget": {
+                    "flash_bytes": int(profile["capacity"]["flash_budget_bytes"]),
+                    "ram_bytes": int(profile["capacity"]["ram_budget_bytes"]),
+                    "sample_pool_slots": int(profile["capacity"]["sample_pool_slots"]),
+                    "max_modules": int(profile["capacity"]["max_modules"]),
+                },
+                "image_layout": profile["boot"],
+                "selected_backends": spec["workload"].get("backends", []),
                 "generation_contract": {
                     key: generation[key]
                     for key in ("entry", "interrupts", "dma", "clock", "boot")
@@ -461,10 +713,37 @@ codegen-units = 1
                     spec["workload"])]}
     (project / "generation.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (project / "DEPLOY.md").write_text(
+        deployment_guide(profile, metadata), encoding="utf-8", newline="\n"
+    )
     return {"project": project, **metadata}
 
 
 def build(project: pathlib.Path) -> subprocess.CompletedProcess:
+    metadata = json.loads((project / "generation.json").read_text(encoding="utf-8"))
+    route = metadata.get("route", "application-image")
+    if route == "maintained-port":
+        return subprocess.CompletedProcess(
+            args=["nobro", "firmware", "--build"],
+            returncode=2,
+            stdout="",
+            stderr=f"FIRMWARE BUILD: unavailable ({metadata['diagnostic']})\n",
+        )
+    if route == "arduino-composition":
+        build_path = project / ".nobro-build"
+        shutil.rmtree(build_path, ignore_errors=True)
+        return subprocess.run(
+            [
+                "arduino-cli", "compile", "--fqbn", metadata["fqbn"],
+                "--library", str(ROOT / "packages" / "arduino"),
+                "--build-path", str(build_path), str(project),
+            ],
+            cwd=project,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+        )
     manifest = project / "Cargo.toml"
     lockfile = project / "Cargo.lock"
     if not lockfile.is_file():
@@ -474,11 +753,12 @@ def build(project: pathlib.Path) -> subprocess.CompletedProcess:
             ["cargo", "generate-lockfile", "--manifest-path", str(manifest)],
             cwd=project,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
         )
         if resolved.returncode:
             return resolved
-    metadata = json.loads((project / "generation.json").read_text(encoding="utf-8"))
     return subprocess.run(
         [
             "cargo", "build", "--locked", "--release", "--target",
@@ -486,6 +766,8 @@ def build(project: pathlib.Path) -> subprocess.CompletedProcess:
         ],
         cwd=project,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
     )
 
@@ -609,6 +891,50 @@ service camera every 40ms
                 python_portable_source, pathlib.Path(tmp) / "python-portable"
             )
             assert python_portable_result["cargo_target"] == target
+        arduino_source = pathlib.Path(tmp) / "nano.nobro"
+        arduino_source.write_text(
+            sample.replace("nrf52840-s140", "nano-v3-atmega328p").replace(
+                "app rover", "app nano_rover"
+            ),
+            encoding="utf-8",
+        )
+        arduino_result = generate(arduino_source, pathlib.Path(tmp) / "arduino")
+        assert arduino_result["route"] == "arduino-composition"
+        assert arduino_result["fqbn"] == "arduino:avr:nano:cpu=atmega328old"
+        assert arduino_result["budget"]["ram_bytes"] == 1024
+        assert (arduino_result["project"] / "nano_rover.ino").is_file()
+        assert "app.wire(task_1, task_0)" in (
+            arduino_result["project"] / "nano_rover.ino"
+        ).read_text(encoding="utf-8")
+
+        backend_source = pathlib.Path(tmp) / "esp8266.nobro"
+        backend_source.write_text(
+            sample.replace("nrf52840-s140", "wemos-d1-mini")
+            .replace("app rover", "app wifi_rover")
+            .replace(
+                "control motor every 5ms",
+                "backend wifi_link backend-wifi-arduino-esp8266\n"
+                "control motor every 5ms",
+            ),
+            encoding="utf-8",
+        )
+        backend_result = generate(backend_source, pathlib.Path(tmp) / "backend")
+        assert backend_result["selected_backends"][0]["binding_id"] == (
+            "binding-wifi-arduino-esp8266"
+        )
+
+        port_source = pathlib.Path(tmp) / "c3.nobro"
+        port_source.write_text(
+            sample.replace("nrf52840-s140", "esp32c3-supermini").replace(
+                "app rover", "app c3_rover"
+            ),
+            encoding="utf-8",
+        )
+        port_result = generate(port_source, pathlib.Path(tmp) / "port")
+        assert port_result["route"] == "maintained-port"
+        assert port_result["build_available"] is False
+        assert not (port_result["project"] / "Cargo.toml").exists()
+        assert build(port_result["project"]).returncode == 2
     for invalid in (sample.replace("motor every", "motor motor every"),
                     sample.replace("-> motor", "-> missing"),
                     sample.replace("nrf52840-s140", "unknown"),
@@ -619,6 +945,32 @@ service camera every 40ms
             raise AssertionError("invalid declaration accepted")
         except ValueError:
             pass
+    for invalid_backend in (
+        sample.replace("board nrf52840-s140", (
+            "board nano-v3-atmega328p\n"
+            "backend wifi_link backend-wifi-arduino-esp8266"
+        )),
+        sample.replace("board nrf52840-s140", (
+            "board wemos-d1-mini\n"
+            "backend wifi_link backend-wifi-arduino-esp8266\n"
+            "backend wifi_link backend-wifi-arduino-esp8266"
+        )),
+    ):
+        try:
+            parse(invalid_backend)
+            raise AssertionError("invalid backend selection accepted")
+        except ValueError:
+            pass
+    with tempfile.TemporaryDirectory() as tmp:
+        unavailable = pathlib.Path(tmp) / "unavailable.nobro"
+        unavailable.write_text(
+            sample.replace("nrf52840-s140", "cortexm-generic"), encoding="utf-8"
+        )
+        try:
+            generate(unavailable, pathlib.Path(tmp) / "out")
+            raise AssertionError("unavailable board route accepted")
+        except ValueError as error:
+            assert "no generated firmware route" in str(error)
     print("NOBRO FIRMWARE PROJECT SELFTEST: PASS (parse/generate/profiles/validation)")
     return 0
 
@@ -629,9 +981,19 @@ def main() -> int:
     parser.add_argument("source", nargs="?", type=pathlib.Path)
     parser.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
     parser.add_argument("--build", action="store_true")
+    parser.add_argument("--explain", action="store_true",
+                        help="print the expanded route, budgets, layout, and backends")
+    parser.add_argument("--list-boards", action="store_true",
+                        help="list exact profiles and their generation routes")
     args = parser.parse_args()
     if args.selftest:
         return selftest()
+    if args.list_boards:
+        for name, profile in sorted(load_board_profiles().items()):
+            generation = profile["firmware_generation"]
+            detail = generation.get("reason", generation.get("entry", ""))
+            print(f"{name}: {generation['support']} - {detail}")
+        return 0
     if not args.source:
         parser.error("source is required")
     try:
@@ -640,6 +1002,9 @@ def main() -> int:
         print(f"FIRMWARE PROJECT: FAIL ({error})")
         return 1
     print(f"FIRMWARE PROJECT: generated {result['project']} from {result['user_lines']} user lines")
+    if args.explain:
+        explained = {key: value for key, value in result.items() if key != "project"}
+        print(json.dumps(explained, indent=2))
     if args.build:
         completed = build(result["project"])
         print(f"FIRMWARE BUILD: {'PASS' if completed.returncode == 0 else 'FAIL'}")

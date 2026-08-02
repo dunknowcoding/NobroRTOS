@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Build board-owned standalone firmware contracts for every promoted Cortex-M layout."""
+"""Gate every public one-declaration firmware route and its fail-closed edges."""
 
 import importlib.util
+import argparse
+import json
 import pathlib
 import tempfile
 
@@ -21,11 +23,33 @@ def load_generator():
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--arduino-builds", action="store_true",
+        help="also compile every exact Arduino route (requires pinned board cores)",
+    )
+    args = parser.parse_args()
     generator = load_generator()
-    boards = ("nrf52840-nosd", "nrf52840-s140", "uno-r4-wifi", "samd21-uf2")
+    profiles = generator.load_board_profiles()
+    image_boards = sorted(
+        name for name, profile in profiles.items()
+        if profile["firmware_generation"]["support"] == "application-image"
+    )
+    arduino_boards = sorted(
+        name for name, profile in profiles.items()
+        if profile["firmware_generation"]["support"] == "arduino-composition"
+    )
+    port_boards = sorted(
+        name for name, profile in profiles.items()
+        if profile["firmware_generation"]["support"] == "maintained-port"
+    )
+    unavailable_boards = sorted(
+        name for name, profile in profiles.items()
+        if profile["firmware_generation"]["support"] == "unavailable"
+    )
     with tempfile.TemporaryDirectory(prefix="nobro-firmware-") as raw:
         temporary = pathlib.Path(raw)
-        for board in boards:
+        for board in image_boards:
             source = temporary / f"{board}.nobro"
             source.write_text(
                 "\n".join(
@@ -50,7 +74,82 @@ def main() -> int:
                 f"[ OK ] {board}: {result['cargo_target']} "
                 f"({result['generation_contract']['entry']})"
             )
-    print(f"PORTABLE FIRMWARE GENERATION: PASS ({len(boards)}/{len(boards)} target builds)")
+        for board in arduino_boards:
+            source = temporary / f"{board}.nobro"
+            backend = (
+                "backend wifi_link backend-wifi-arduino-esp8266\n"
+                if board == "wemos-d1-mini" else ""
+            )
+            source.write_text(
+                "\n".join((
+                    f"app gate_{board.replace('-', '_')}",
+                    f"board {board}",
+                    backend.rstrip(),
+                    "control control every 5ms budget 200us memory 1024/256",
+                    "periodic sensor every 10ms -> control budget 300us memory 1024/256",
+                    "",
+                )).replace(f"board {board}\n\n", f"board {board}\n"),
+                encoding="utf-8",
+            )
+            result = generator.generate(source, temporary / "projects")
+            metadata = json.loads(
+                (result["project"] / "generation.json").read_text(encoding="utf-8")
+            )
+            if metadata["route"] != "arduino-composition" or not metadata["fqbn"]:
+                print(f"[FAIL] {board}: incomplete Arduino route")
+                return 1
+            if args.arduino_builds:
+                completed = generator.build(result["project"])
+                if completed.returncode:
+                    print(f"[FAIL] {board}")
+                    print("\n".join((completed.stdout + completed.stderr).splitlines()[-20:]))
+                    return 1
+            state = "target built" if args.arduino_builds else "route generated"
+            print(f"[ OK ] {board}: {metadata['fqbn']} (Arduino {state})")
+
+        for board in port_boards:
+            source = temporary / f"plan-{board}.nobro"
+            source.write_text(
+                "\n".join((
+                    f"app plan_{board.replace('-', '_')}",
+                    f"board {board}",
+                    "control control every 5ms budget 200us",
+                    "",
+                )),
+                encoding="utf-8",
+            )
+            result = generator.generate(source, temporary / "projects")
+            if result["route"] != "maintained-port" or result["build_available"]:
+                print(f"[FAIL] {board}: maintained-port route is not fail closed")
+                return 1
+            if generator.build(result["project"]).returncode == 0:
+                print(f"[FAIL] {board}: plan-only route reported an application build")
+                return 1
+            print(f"[ OK ] {board}: maintained startup plan (application build unavailable)")
+
+        for board in unavailable_boards:
+            source = temporary / f"unavailable-{board}.nobro"
+            source.write_text(
+                f"app unavailable_{board.replace('-', '_')}\nboard {board}\n"
+                "control control every 5ms budget 200us\n",
+                encoding="utf-8",
+            )
+            try:
+                generator.generate(source, temporary / "projects")
+            except ValueError as error:
+                if "no generated firmware route" not in str(error):
+                    print(f"[FAIL] {board}: unclear unavailable diagnostic: {error}")
+                    return 1
+            else:
+                print(f"[FAIL] {board}: unavailable route generated an image")
+                return 1
+
+    routed = len(image_boards) + len(arduino_boards) + len(port_boards)
+    print(
+        "PORTABLE FIRMWARE GENERATION: PASS "
+        f"({len(image_boards)} images, {len(arduino_boards)} Arduino routes, "
+        f"{len(port_boards)} maintained plans; {routed} maintained profiles)"
+    )
     return 0
 
 

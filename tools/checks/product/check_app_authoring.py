@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "bindings" / "python"))
 sys.path.insert(0, str(ROOT / "tools" / "cli" / "project"))
 
 from nobro_rtos import AppDeclarationError, HZ, NobroApp  # noqa: E402
+from nobro_rtos import app as python_app  # noqa: E402
 import nobro_app  # noqa: E402
 
 
@@ -45,6 +46,21 @@ def main() -> int:
     require(contract["defaults"]["role"] == "periodic", "default role drift")
     require(contract["defaults"]["wire_capacity"] == 1, "wire default drift")
     require(contract["limits"]["wire_capacity_max"] == 64, "wire limit drift")
+
+    expected_boards = {}
+    for path in sorted((ROOT / "core" / "boards").glob("*/*/board.json")):
+        profile = json.loads(path.read_text(encoding="utf-8"))
+        if profile["firmware_generation"]["support"] == "unavailable":
+            continue
+        expected_boards[path.parent.name] = (
+            profile["platform_id"],
+            int(profile["capacity"]["flash_budget_bytes"]),
+            int(profile["capacity"]["ram_budget_bytes"]),
+        )
+    require(
+        python_app._BOARDS == expected_boards,
+        "Python exact-board authoring catalog or budgets drifted",
+    )
 
     app = (
         NobroApp("parity")

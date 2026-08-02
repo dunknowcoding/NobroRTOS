@@ -97,19 +97,20 @@ The project command prints the derived contract and marginal costs, compiles the
 graph scaffold, simulates it, and decodes the resulting report. Flashing remains a
 separate, explicit step so a generated host scaffold is never mistaken for a device image.
 
-For production nRF firmware, the one-file path uses the same small declaration to emit
-both the admission workload and a `no_std` firmware graph:
+For device firmware, the one-file path uses the same small declaration to emit an
+admission workload and the exact board-owned route:
 
 ```text
 app rover
 board nrf52840-s140
-control motor every 5ms
-periodic imu every 10ms -> motor
-service camera every 40ms
+control motor every 5ms budget 200us
+periodic imu every 10ms -> motor budget 300us
+service camera every 40ms budget 500us
 ```
 
 ```bash
 python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --build
+python sdk/cli/nobro.py firmware --list-boards
 python sdk/cli/nobro.py project explain _work/projects/rover/workload.json
 ```
 
@@ -143,6 +144,11 @@ Generated project workloads also have one optional-feature switchboard:
 target-scoped flash/RAM reserve, latency class, and evidence from
 `sdk/feature-catalog.json`; users do not duplicate prices or generated defines.
 Unavailable and unpriced combinations fail closed rather than appearing free.
+Compact declarations may select a registered logical stack explicitly, for example
+`backend wifi_link backend-wifi-arduino-esp8266`. The generator rejects unknown,
+duplicate, wrong-platform, and wrong-composition selections. With `--explain`, it
+prints the expanded backend binding, board budgets, image layout, and ownership
+contract.
 The same canonical workload builds native firmware directly:
 
 ```bash

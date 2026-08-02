@@ -27,8 +27,14 @@
     "max_modules": 12
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The maintained native classic ESP32 port does not yet own this board's OV2640 pin map or camera data plane; the verified Arduino/NiusCam composition remains separate."
+    "support": "arduino-composition",
+    "fqbn": "esp32:esp32:esp32cam",
+    "header": "packages/arduino/src/NobroRTOS.h",
+    "entry": "Arduino setup/loop composition; camera provider remains explicit",
+    "interrupts": "Arduino-ESP32 core and explicitly selected providers own vectors",
+    "dma": "camera DMA remains owned by the selected camera provider",
+    "clock": "Arduino-ESP32 framework clock and wrapping-safe application time",
+    "boot": "Arduino-ESP32 AI Thinker ESP32-CAM partition and serial upload recipe"
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

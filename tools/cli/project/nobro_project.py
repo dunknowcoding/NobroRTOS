@@ -408,14 +408,23 @@ def build_project(project: pathlib.Path) -> dict:
     }
 
 
-def startup_order(workload: dict) -> list[str]:
+def startup_order(
+    workload: dict, *, allow_empty_features_without_catalog: bool = False
+) -> list[str]:
     schema = workload.get("schema", "nobro-workload-v1")
     if schema != "nobro-workload-v1":
         raise WorkloadDiagnostic(
             "workload-schema",
             f"`{schema}` is unsupported; use `nobro-workload-v1`.",
         )
-    selected_features(workload)
+    if allow_empty_features_without_catalog and not workload.get("features", {}):
+        configured = workload.get("features", {})
+        if not isinstance(configured, dict):
+            raise WorkloadDiagnostic(
+                "feature-shape", "Use `features: {\"capacity-report\": true}`."
+            )
+    else:
+        selected_features(workload)
     tasks = workload.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         raise WorkloadDiagnostic("shape", "Add `tasks: [...]` with at least `kernel`.")

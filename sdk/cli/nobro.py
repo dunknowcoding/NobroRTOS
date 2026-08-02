@@ -12,7 +12,7 @@
 | package  | build the Arduino zip / prebuilt UF2 / Tier C | tools/release/, tools/build/ |
 | contract | inspect / decode host contracts               | tools/cli/learning/ |
 | project  | create/explain/build/run/report/shrink apps   | tools/cli/project/ |
-| firmware | build nRF firmware from app.nobro or Python app JSON | tools/cli/project/ |
+| firmware | generate exact native/Arduino firmware routes from one declaration | tools/cli/project/ |
 | adapter  | scaffold and register a bounded adapter              | tools/cli/project/ |
 | admit    | analyze workload admission and shedding              | tools/cli/analysis/ |
 | shrink   | propose identity-bound capacity reductions           | tools/cli/analysis/ |

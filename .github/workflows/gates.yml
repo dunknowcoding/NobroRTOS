@@ -348,6 +348,9 @@ jobs:
       - name: compile admitted market-board targets
         timeout-minutes: 15
         run: python tools/checks/platforms/check_market_board_intake.py --compile
+      - name: compile every one-declaration Arduino route
+        timeout-minutes: 20
+        run: python tools/checks/platforms/check_firmware_generation.py --arduino-builds
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU

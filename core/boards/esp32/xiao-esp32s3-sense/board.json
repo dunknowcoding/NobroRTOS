@@ -27,8 +27,14 @@
     "max_modules": 16
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The exact OPI-PSRAM Arduino/NiusCam composition is target-built, but generic Nobro firmware generation does not yet own its framework partition and upload recipe."
+    "support": "arduino-composition",
+    "fqbn": "esp32:esp32:XIAO_ESP32S3:PSRAM=opi",
+    "header": "packages/arduino/src/NobroRTOS.h",
+    "entry": "Arduino setup/loop composition; camera provider remains explicit",
+    "interrupts": "Arduino-ESP32 core and explicitly selected providers own vectors",
+    "dma": "camera DMA remains owned by the selected camera provider",
+    "clock": "Arduino-ESP32 framework clock and wrapping-safe application time",
+    "boot": "Arduino-ESP32 XIAO ESP32S3 OPI-PSRAM image and native USB upload recipe"
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

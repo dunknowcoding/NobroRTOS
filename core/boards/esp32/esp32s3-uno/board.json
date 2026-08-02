@@ -27,8 +27,14 @@
     "max_modules": 16
   },
   "firmware_generation": {
-    "support": "unavailable",
-    "reason": "The exact Arduino package composition is target-built, but generic Nobro firmware generation does not yet own its framework partition and upload recipe."
+    "support": "arduino-composition",
+    "fqbn": "esp32:esp32:esp32s3",
+    "header": "packages/arduino/src/NobroRTOS.h",
+    "entry": "Arduino setup/loop composition; peripheral providers remain explicit",
+    "interrupts": "Arduino-ESP32 core and explicitly selected providers own vectors",
+    "dma": "audio and peripheral DMA remain owned by their selected providers",
+    "clock": "Arduino-ESP32 framework clock and wrapping-safe application time",
+    "boot": "Arduino-ESP32 generic ESP32-S3 image and native USB upload recipe"
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

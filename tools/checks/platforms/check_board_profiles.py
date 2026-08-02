@@ -201,7 +201,11 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
                 continue
             if not isinstance(generation.get(field), str) or not generation[field]:
                 errors.append(f"{support} generation missing {field}")
-        if not numeric_boot:
+        framework_owned = (
+            support == "arduino-composition"
+            and boot.get("layout") == "Esp32FrameworkOwned"
+        )
+        if not numeric_boot and not framework_owned:
             errors.append(f"{support} generation requires concrete boot memory")
         if support == "application-image":
             for field in ("linker_script", "memory_profile", "rustflags", "hal_feature"):

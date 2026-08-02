@@ -29,9 +29,11 @@ claim.
 Each `board.json` also carries the boot memory layout, capacity budgets, and
 selected critical pins.
 Profiles usable by `nobro firmware` also carry a board-owned `firmware_generation`
-contract: target triple, entry model, linker source, rust flags, and explicit
-interrupt/DMA/clock/boot ownership. Profiles whose startup must remain in a maintained
-port name that manifest instead of pretending a generic image is safe.
+contract. Standalone images name their target, linker, flags, and ownership; Arduino
+compositions name their exact FQBN and header; maintained ports name their manifest.
+The generator emits `generation.json` and `DEPLOY.md` for all maintained routes, builds
+only routes that really link the declaration, and rejects unavailable profiles instead
+of pretending a generic image is safe.
 `tools/build/generate_board_catalog.py` generates the typed Rust
 `EXACT_BOARD_PROFILES` catalog from these files. The profile gate rejects stale
 generated output and reconciles every implemented `BoardPackage` against it.

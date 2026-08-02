@@ -65,7 +65,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: None,
         capacity: BoardCapacity::new(131072, 49152, 8, 12),
         pins: BoardPins::optional(None, None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/esp32/esp32c3-supermini/board.json",
@@ -131,7 +131,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: None,
         capacity: BoardCapacity::new(131072, 65536, 8, 16),
         pins: BoardPins::optional(None, None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/esp32/esp32s3-uno/board.json",
@@ -153,7 +153,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: None,
         capacity: BoardCapacity::new(131072, 65536, 8, 16),
         pins: BoardPins::optional(None, None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/esp32/xiao-esp32s3-sense/board.json",
@@ -175,7 +175,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: None,
         capacity: BoardCapacity::new(131072, 65536, 8, 16),
         pins: BoardPins::optional(None, None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/esp8266/wemos-d1-mini/board.json",
@@ -351,7 +351,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         ram_len_bytes: Some(32768),
         capacity: BoardCapacity::new(49152, 12288, 4, 8),
         pins: BoardPins::optional(Some(13), None, None),
-        firmware_support: "unavailable",
+        firmware_support: "arduino-composition",
     },
     ExactBoardProfileDefinition {
         source: "core/boards/samd/samd21-uf2/board.json",
