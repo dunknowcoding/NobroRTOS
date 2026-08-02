@@ -39,7 +39,7 @@ struct SliceTimingReport {
     offender_spins: u32,
     recovery_resumes: u32,
     current_record: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 #[no_mangle]
@@ -57,7 +57,7 @@ static mut NOBRO_NRF_SLICE_TIMING_REPORT: SliceTimingReport = SliceTimingReport 
     offender_spins: 0,
     recovery_resumes: 0,
     current_record: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 #[repr(align(8))]
@@ -127,7 +127,7 @@ extern "C" fn recovery(_: usize) -> ! {
             && recovery_resumes == 1
             && current == core::ptr::addr_of!(RECOVERY_CONTEXT) as u32,
     );
-    let checksum = MAGIC
+    let diagnostic_checksum = MAGIC
         ^ VERSION
         ^ 1
         ^ pass
@@ -155,7 +155,7 @@ extern "C" fn recovery(_: usize) -> ! {
                 offender_spins: spins,
                 recovery_resumes,
                 current_record: current,
-                checksum,
+                diagnostic_checksum,
             },
         );
     }

@@ -42,9 +42,13 @@ OLD_IDENTIFIERS = (
 )
 
 
-def tracked_files() -> tuple[pathlib.Path, ...]:
+def candidate_files() -> tuple[pathlib.Path, ...]:
+    """Include new public source before its first commit, but never ignored work."""
     raw = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
     ).stdout
     return tuple(
         ROOT / item.decode("utf-8")
@@ -95,7 +99,7 @@ def rust_report_errors(path: pathlib.Path, text: str) -> list[str]:
 
 def audit() -> list[str]:
     errors: list[str] = []
-    tracked = tracked_files()
+    tracked = candidate_files()
     rust_files = [
         path
         for path in tracked

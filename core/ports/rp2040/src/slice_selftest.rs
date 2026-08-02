@@ -39,7 +39,7 @@ pub struct SliceSelftestReport {
     offender_spins: u32,
     recovery_resumes: u32,
     current_record: u32,
-    checksum: u32,
+    diagnostic_checksum: u32,
 }
 
 #[no_mangle]
@@ -56,7 +56,7 @@ pub static mut NOBRO_RP2040_SLICE_REPORT: SliceSelftestReport = SliceSelftestRep
     offender_spins: 0,
     recovery_resumes: 0,
     current_record: 0,
-    checksum: 0,
+    diagnostic_checksum: 0,
 };
 
 #[repr(align(8))]
@@ -125,7 +125,7 @@ extern "C" fn recovery(_: usize) -> ! {
             && resumes == 1
             && current == core::ptr::addr_of!(RECOVERY_CONTEXT) as u32,
     );
-    let checksum =
+    let diagnostic_checksum =
         MAGIC ^ VERSION ^ 1 ^ pass ^ alarms ^ errors ^ first ^ second ^ spins ^ resumes ^ current;
     unsafe {
         core::ptr::write_volatile(
@@ -142,7 +142,7 @@ extern "C" fn recovery(_: usize) -> ! {
                 offender_spins: spins,
                 recovery_resumes: resumes,
                 current_record: current,
-                checksum,
+                diagnostic_checksum,
             },
         );
     }
