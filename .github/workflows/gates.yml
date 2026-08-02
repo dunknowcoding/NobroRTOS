@@ -318,9 +318,9 @@ jobs:
       - name: prepare and compile pinned display member
         run: |
           git clone https://github.com/dunknowcoding/NiusDisplay.git _work/NiusDisplay
-          git -C _work/NiusDisplay checkout --detach a9d005719d81456038fbad9d4b01a75272a8b77a
+          git -C _work/NiusDisplay checkout --detach 9cf953f115e93a2efed0e152d0b359cc873cb333
           test "$(git -C _work/NiusDisplay rev-parse HEAD)" = \
-            "a9d005719d81456038fbad9d4b01a75272a8b77a"
+            "9cf953f115e93a2efed0e152d0b359cc873cb333"
           arduino-cli compile --library packages/arduino --library _work/NiusDisplay \
             -b arduino:avr:uno packages/arduino/examples/NiusDisplayBounded
       - name: compile public package examples (AVR, UNO R4, ESP32-S3, ESP8266)

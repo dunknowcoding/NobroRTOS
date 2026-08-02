@@ -178,7 +178,7 @@
     {
       "id": "source-niusdisplay",
       "source": "https://github.com/dunknowcoding/NiusDisplay",
-      "revision": "a9d005719d81456038fbad9d4b01a75272a8b77a",
+      "revision": "9cf953f115e93a2efed0e152d0b359cc873cb333",
       "version": "0.2.0",
       "license": "Apache-2.0",
       "pinned": true,
