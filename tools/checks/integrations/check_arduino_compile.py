@@ -15,10 +15,18 @@ EXPECTED_EXAMPLES = (
     "AvrNanoConstrained",
     "BeginnerApp",
     "Esp8266Constrained",
+    "NiusDisplayBounded",
     "ProviderApp",
     "ReportReader",
     "RobotIoTApp",
 )
+# Examples that require an independently pinned ecosystem member are compiled
+# by their own exact-revision CI step. Keep them in the public inventory while
+# avoiding an accidental dependency on whatever happens to be installed in a
+# runner's global Arduino library directory.
+EXTERNALLY_PINNED_EXAMPLES = {
+    "NiusDisplayBounded",
+}
 EXAMPLE_ARCH_PREFIX = {
     # This example is the exact ATmega328P/Nano constrained composition. Its
     # positive and cross-architecture negative builds are owned separately.
@@ -112,6 +120,8 @@ def main():
     executed = 0
     for fqbn in FQBNS:
         for example in examples:
+            if example in EXTERNALLY_PINNED_EXAMPLES:
+                continue
             prefix = EXAMPLE_ARCH_PREFIX.get(example)
             if prefix is not None and not fqbn.startswith(prefix):
                 continue

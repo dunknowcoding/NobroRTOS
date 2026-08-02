@@ -2643,7 +2643,7 @@
           }
         ],
         "path": "core/crates/nobro_display/src/lib.rs",
-        "sha256": "bcbab00792a0c1ad91c9f8347ab440d6fb80ecd0a8a88a670ada9b67e2eed69a"
+        "sha256": "94e6926436c18b4158e10ff34ea73bd017c69980eb187e1f1b02999f4bab7ed7"
       },
       {
         "crate": "nobro-hal",
@@ -6842,7 +6842,7 @@
           }
         ],
         "path": "core/adapters/display/nius-display/src/lib.rs",
-        "sha256": "538b7be020d3416c78a4d9f4114d41557ee1b9ced53f6e9be3468c2e18214885"
+        "sha256": "79a0517d2988cd7dca5d8f7502ccdff8cca1111bffb8587c05fed9eea2c8dcd5"
       },
       {
         "crate": "nobro-adapter-icm45686",
