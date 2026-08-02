@@ -42,7 +42,7 @@ def fail(message: str) -> None:
 
 def validate() -> None:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    if registry.get("schema") != "nobro-candidate-families-v1":
+    if registry.get("schema") != "nobro-candidate-families-v2":
         fail("candidate schema drift")
     entries = registry.get("families", [])
     families = {entry.get("id"): entry for entry in entries}

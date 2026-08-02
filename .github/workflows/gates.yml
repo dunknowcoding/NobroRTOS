@@ -345,6 +345,9 @@ jobs:
           python tools/checks/platforms/check_platform_tiers.py --run-gate avr-nano-arduino-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32-arduino-peripheral-target-build
           python tools/checks/platforms/check_platform_tiers.py --run-gate esp32s3-arduino-audio-target-build
+      - name: compile admitted market-board targets
+        timeout-minutes: 15
+        run: python tools/checks/platforms/check_market_board_intake.py --compile
       - name: pinned NiusIMU integration
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU

@@ -405,6 +405,12 @@ Cross-compile coverage is
 | **Kernel-lite candidates** | exact C compiler/image, ISA-object, or RTL-simulation feasibility with zero HAL/board claims | 8051, STM8, PIC16/24/32, MSP430, STM32C0, CH32V003, TI C2000 DSP, FPGA/soft-core boundaries |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
 
+The separate market-intake registry records exact low-, mid-, and high-end boards
+as `discovered`, `cataloged`, or `target-compiled`. A target-compiled candidate is
+still not supported: it has no inherited HAL, boot/recovery, peripheral, or physical
+claim. ESP32-C6-DevKitM-1 and ESP32-H2-DevKitM-1 currently pass the pinned public
+Arduino target-build gate; the remaining selected candidates are data-only intake.
+
 RA4M1's native row includes a LOCO-clocked timebase and deadline, GPT2/ELC event
 capture, bounded ADC/PWM/I2C/SPI/UART providers, USBFS, reset, CPU sleep,
 generation-safe leases, and an opt-in GPT/ELC/DMAC completion future. Exact

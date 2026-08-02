@@ -136,7 +136,7 @@ def validate_metadata() -> None:
 
 def validate_candidates() -> None:
     registry = json.loads(CANDIDATES.read_text(encoding="utf-8"))
-    if registry.get("schema") != "nobro-candidate-families-v1":
+    if registry.get("schema") != "nobro-candidate-families-v2":
         raise RuntimeError("candidate-family schema drift")
     families = {entry.get("id"): entry for entry in registry.get("families", [])}
     required = {"avr-dx", "attiny-modern", "ch32v003", "stm32c0", "mcs51"}

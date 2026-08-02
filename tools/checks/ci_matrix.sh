@@ -254,6 +254,7 @@ gate "Tier-C prebuilt library and link" \
   python tools/build/build_libnobro.py --build
 
 gate "board profiles" python tools/checks/platforms/check_board_profiles.py
+gate "market board intake" python tools/checks/platforms/check_market_board_intake.py --selftest
 gate "board-owned portable firmware generation" \
   python tools/checks/platforms/check_firmware_generation.py
 gate "sdk manifest" python tools/checks/release/check_sdk_manifest.py

@@ -45,6 +45,13 @@ not inferred from software coefficients alone.
 | Constrained | Nano V3 / ATmega328P and WeMos D1 Mini / ESP8266 Arduino compositions | Exact bounded Arduino-first providers cover their published clock, deadline, GPIO, interrupt, PWM, ADC, bus, UART, power/reset, and ESP8266 Wi-Fi subsets. | Some present capabilities remain board-core-owned or lack complete lifecycle contracts. Hardware-absent USB, DMA, multicore, or isolation features are not counted as gaps. Nano reset remains application re-entry because watchdog reset can loop in the exact old bootloader. |
 | Candidate-only | 8051, STM8, PIC, MSP430, STM32C0, CH32V003, C2000 DSP, and FPGA/soft-core witnesses | Exact compiler images/objects or RTL simulation prove only that the bounded kernel-lite arithmetic/state shape is representable. | No board HAL, peripheral, interrupt, timing, power, isolation, debug, synthesis/timing-closure, or physical-support claim follows from these artifacts. |
 
+The exact market-board intake is intentionally weaker than every row above.
+`discovered` records a primary board source, `cataloged` additionally records an
+upstream and recovery route, and `target-compiled` passes one pinned build. None of
+those states implies a board profile, HAL provider, boot/recovery proof, or physical
+support. The current compiled intake is limited to ESP32-C6-DevKitM-1 and
+ESP32-H2-DevKitM-1 on Arduino-ESP32 3.3.10.
+
 A provider row is not interchangeable with deep support. In particular, event routing
 and PWM construction differ between MCU families, and a generic bus adapter still needs
 a concrete board application to exercise the selected pins and peripheral instance.
