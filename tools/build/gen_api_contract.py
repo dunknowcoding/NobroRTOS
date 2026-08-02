@@ -41,6 +41,12 @@ def relative(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def path_sort_key(path: Path) -> str:
+    """Use one path order on case-sensitive and case-insensitive hosts."""
+
+    return relative(path).casefold()
+
+
 def canonical_text_bytes(path: Path) -> bytes:
     """Return repository-text bytes independent of checkout line endings."""
 
@@ -118,9 +124,13 @@ def python_exports(path: Path) -> list[str]:
 
 def rust_records() -> list[dict[str, object]]:
     libs = sorted(
-        (ROOT / "core" / "crates").glob("*/src/lib.rs")
-    ) + sorted((ROOT / "core" / "adapters").glob("*/*/src/lib.rs"))
-    libs += sorted((ROOT / "core" / "adapters").glob("*/*/*/src/lib.rs"))
+        (ROOT / "core" / "crates").glob("*/src/lib.rs"), key=path_sort_key
+    ) + sorted(
+        (ROOT / "core" / "adapters").glob("*/*/src/lib.rs"), key=path_sort_key
+    )
+    libs += sorted(
+        (ROOT / "core" / "adapters").glob("*/*/*/src/lib.rs"), key=path_sort_key
+    )
     records = []
     for lib in libs:
         text = lib.read_text(encoding="utf-8")
@@ -140,7 +150,9 @@ def rust_records() -> list[dict[str, object]]:
 
 def mirror_records() -> list[dict[str, object]]:
     groups: list[tuple[Path, list[Path]]] = []
-    for source in sorted((ROOT / "bindings" / "c" / "include").glob("*.h")):
+    for source in sorted(
+        (ROOT / "bindings" / "c" / "include").glob("*.h"), key=path_sort_key
+    ):
         targets = [
             ROOT / "sdk" / "include" / source.name,
             ROOT / "packages" / "arduino" / "src" / source.name,
@@ -150,7 +162,9 @@ def mirror_records() -> list[dict[str, object]]:
         if missing:
             raise ValueError(f"missing public mirrors for {relative(source)}: {missing}")
         groups.append((source, targets))
-    for source in sorted((ROOT / "packages" / "arduino" / "src").glob("*.h")):
+    for source in sorted(
+        (ROOT / "packages" / "arduino" / "src").glob("*.h"), key=path_sort_key
+    ):
         if not source.name.startswith("Nobro"):
             continue
         target = ROOT / "packages" / "platformio" / "include" / source.name
@@ -187,10 +201,14 @@ def mirror_records() -> list[dict[str, object]]:
 
 
 def build_manifest() -> dict[str, object]:
-    c_headers = sorted((ROOT / "bindings" / "c" / "include").glob("*.h"))
-    cpp_headers = sorted((ROOT / "bindings" / "cpp" / "include").glob("*.hpp"))
+    c_headers = sorted(
+        (ROOT / "bindings" / "c" / "include").glob("*.h"), key=path_sort_key
+    )
+    cpp_headers = sorted(
+        (ROOT / "bindings" / "cpp" / "include").glob("*.hpp"), key=path_sort_key
+    )
     python_init = ROOT / "bindings" / "python" / "nobro_rtos" / "__init__.py"
-    python_modules = sorted(python_init.parent.glob("*.py"))
+    python_modules = sorted(python_init.parent.glob("*.py"), key=path_sort_key)
     return {
         "schema": "nobro-cross-language-api-v1",
         "generator": "tools/build/gen_api_contract.py",
