@@ -41,6 +41,31 @@
     },
     "implicit_promotion": false
   },
+  "member_intake": {
+    "schema": "nobro-member-intake-v1",
+    "required_component_ids": [
+      "library-difinders",
+      "library-ina-series-sensor",
+      "library-niusaudio",
+      "library-niuscam",
+      "library-niuscrypto",
+      "library-niusimu",
+      "library-niusthread",
+      "library-niuswireless",
+      "library-niuszigbee",
+      "library-roboservo"
+    ],
+    "adapter_strategies": [
+      "existing-adapters",
+      "generated-on-demand",
+      "shared-facade"
+    ],
+    "gate_states": [
+      "passed",
+      "pending"
+    ],
+    "device_inventory_policy": "data-only"
+  },
   "provenance": [
     {
       "id": "source-arduino-ble",
@@ -606,6 +631,24 @@
       ]
     },
     {
+      "id": "contract-actuator",
+      "primary_domain": "actuator",
+      "name": "nobro-actuator",
+      "kind": "contract",
+      "path": "core/crates/nobro_actuator",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test"
+      ],
+      "supported_targets": [
+        "portable"
+      ],
+      "limitations": [
+        "Electrical drive stages, feedback loops, and safety interlocks remain backend-specific."
+      ]
+    },
+    {
       "id": "contract-ai",
       "primary_domain": "ai",
       "name": "nobro-ai",
@@ -675,6 +718,24 @@
       ],
       "limitations": [
         "Hardware protected-key behavior requires a separate backend."
+      ]
+    },
+    {
+      "id": "contract-display",
+      "primary_domain": "display",
+      "name": "nobro-display",
+      "kind": "contract",
+      "path": "core/crates/nobro_display",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test"
+      ],
+      "supported_targets": [
+        "portable"
+      ],
+      "limitations": [
+        "Panel timing, render buffers, buses, and touch input remain provider-specific."
       ]
     },
     {
@@ -892,6 +953,26 @@
       "name": "DiFinders",
       "kind": "library",
       "provenance_id": "source-difinders",
+      "intake": {
+        "adapter_strategy": "generated-on-demand",
+        "adapter_ids": [],
+        "capability_families": [
+          "environment",
+          "ranging"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        },
+        "scaffold": {
+          "name": "difinders",
+          "backends": [
+            "arduino-shim"
+          ]
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -910,6 +991,23 @@
       "name": "INA Series Sensor",
       "kind": "library",
       "provenance_id": "source-ina-series-sensor",
+      "intake": {
+        "adapter_strategy": "existing-adapters",
+        "adapter_ids": [
+          "adapter-power-ina3221"
+        ],
+        "capability_families": [
+          "current",
+          "power",
+          "voltage"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -929,6 +1027,23 @@
       "kind": "library",
       "provenance_id": "source-niusaudio",
       "facade": "packages/arduino/src/NobroNiusAudio.h",
+      "intake": {
+        "adapter_strategy": "existing-adapters",
+        "adapter_ids": [
+          "adapter-audio-esp32s3-es8311"
+        ],
+        "capability_families": [
+          "capture",
+          "codec",
+          "playback"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "passed",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "implemented",
       "evidence": [
@@ -948,6 +1063,23 @@
       "kind": "library",
       "provenance_id": "source-niuscam",
       "facade": "packages/arduino/src/NobroNiusCam.h",
+      "intake": {
+        "adapter_strategy": "existing-adapters",
+        "adapter_ids": [
+          "adapter-camera-niuscam"
+        ],
+        "capability_families": [
+          "capture",
+          "frame-buffer",
+          "sensor-control"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "passed",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "implemented",
       "evidence": [
@@ -967,6 +1099,26 @@
       "name": "NiusCrypto",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-crypto",
+      "intake": {
+        "adapter_strategy": "generated-on-demand",
+        "adapter_ids": [],
+        "capability_families": [
+          "key-storage",
+          "protected-operation"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        },
+        "scaffold": {
+          "name": "niuscrypto",
+          "backends": [
+            "arduino-shim"
+          ]
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -987,6 +1139,24 @@
       "provenance_id": "source-arduino-nrf-imu",
       "facade": "packages/arduino/src/NobroNiusIMU.h",
       "surface": "nimu::IMUSensor",
+      "intake": {
+        "adapter_strategy": "shared-facade",
+        "adapter_ids": [
+          "adapter-imu-icm45686",
+          "adapter-imu-mpu9250"
+        ],
+        "capability_families": [
+          "barometer",
+          "imu",
+          "magnetometer"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "passed",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "implemented",
       "evidence": [
@@ -1075,6 +1245,26 @@
       "name": "NiusThread",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-thread",
+      "intake": {
+        "adapter_strategy": "generated-on-demand",
+        "adapter_ids": [],
+        "capability_families": [
+          "mesh",
+          "thread"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        },
+        "scaffold": {
+          "name": "niusthread",
+          "backends": [
+            "arduino-shim"
+          ]
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -1094,6 +1284,24 @@
       "kind": "library",
       "provenance_id": "source-niuswireless",
       "facade": "packages/arduino/src/NobroNiusWireless.h",
+      "intake": {
+        "adapter_strategy": "shared-facade",
+        "adapter_ids": [
+          "adapter-wireless-radio-comms"
+        ],
+        "capability_families": [
+          "mesh",
+          "nfc-rfid",
+          "radio",
+          "wifi"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "passed",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "implemented",
       "evidence": [
@@ -1117,6 +1325,26 @@
       "name": "NiusZigbee",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-zigbee",
+      "intake": {
+        "adapter_strategy": "generated-on-demand",
+        "adapter_ids": [],
+        "capability_families": [
+          "mesh",
+          "zigbee"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        },
+        "scaffold": {
+          "name": "niuszigbee",
+          "backends": [
+            "arduino-shim"
+          ]
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -1135,6 +1363,21 @@
       "name": "RoboServo",
       "kind": "library",
       "provenance_id": "source-roboservo",
+      "intake": {
+        "adapter_strategy": "existing-adapters",
+        "adapter_ids": [
+          "adapter-servo-roboservo"
+        ],
+        "capability_families": [
+          "position-servo"
+        ],
+        "device_inventory": "data-only",
+        "gates": {
+          "target_compile": "passed",
+          "provider_behavior": "pending",
+          "exact_hardware": "feature-provider-binding"
+        }
+      },
       "deployment": "firmware",
       "maturity": "compile-only",
       "evidence": [
@@ -1149,6 +1392,17 @@
     }
   ],
   "domains": [
+    {
+      "id": "actuator",
+      "ecosystem": "nobro-actuator",
+      "aliases": [
+        "motor"
+      ],
+      "contract_ids": [
+        "contract-actuator"
+      ],
+      "component_ids": []
+    },
     {
       "id": "ai",
       "ecosystem": "nobro-ai",
@@ -1207,6 +1461,15 @@
       ]
     },
     {
+      "id": "display",
+      "ecosystem": "nobro-display",
+      "aliases": [],
+      "contract_ids": [
+        "contract-display"
+      ],
+      "component_ids": []
+    },
+    {
       "id": "imu",
       "ecosystem": "nobro-imu",
       "aliases": [],
@@ -1242,6 +1505,13 @@
       ]
     },
     {
+      "id": "provisioning",
+      "ecosystem": "nobro-provisioning",
+      "aliases": [],
+      "contract_ids": [],
+      "component_ids": []
+    },
+    {
       "id": "sensors",
       "ecosystem": "nobro-sensors",
       "aliases": [
@@ -1260,9 +1530,7 @@
     {
       "id": "servo",
       "ecosystem": "nobro-servo",
-      "aliases": [
-        "actuator"
-      ],
+      "aliases": [],
       "contract_ids": [
         "contract-servo"
       ],
@@ -1317,6 +1585,41 @@
       "limitations": [
         "No firmware source may be imported from a host product.",
         "No versioned Nobro telemetry, report, or policy-artifact interface is published."
+      ]
+    },
+    {
+      "id": "candidate-niusburner",
+      "name": "NiusBurner",
+      "desired_domain": "provisioning",
+      "source": "https://github.com/dunknowcoding/NiusBurner",
+      "status": "blocked",
+      "limitations": [
+        "Current source is under development and has no public immutable revision.",
+        "Its build/programming boundary must remain distinct from NiusMultiDebuggers and must not publish machine-local toolchain paths.",
+        "No exact target has passed backup, program, verify, and restoration through this product."
+      ]
+    },
+    {
+      "id": "candidate-niusdisplay",
+      "name": "NiusDisplay",
+      "desired_domain": "display",
+      "source": "https://github.com/dunknowcoding/NiusDisplay",
+      "status": "blocked",
+      "limitations": [
+        "Current source is under development and has no public immutable revision.",
+        "Existing evidence is compile, simulation, or host behavior only; no exact display hardware is verified."
+      ]
+    },
+    {
+      "id": "candidate-niusdispvis",
+      "name": "NiusDispVis",
+      "desired_domain": "display",
+      "source": "https://github.com/dunknowcoding/NiusDispVis",
+      "status": "blocked",
+      "limitations": [
+        "Current source is under development and has no public immutable revision.",
+        "Its host-model interface to NiusDisplay is not yet a versioned Nobro display receipt contract.",
+        "Simulation evidence must remain distinct from exact display hardware evidence."
       ]
     }
   ],

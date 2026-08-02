@@ -4,6 +4,7 @@
 Usage:
     python sdk/cli/nobro.py adapter new <domain> <name>
         [--backend native|embedded-hal|c-module|arduino-shim]
+    python sdk/cli/nobro.py adapter from-member <library-component-id>
 """
 
 from __future__ import annotations
@@ -132,6 +133,7 @@ def scaffold(
     name: str,
     backends: tuple[str, ...],
     capability_kind: str | None = None,
+    member_component_id: str | None = None,
 ) -> pathlib.Path:
     if not NAME.fullmatch(domain) or not NAME.fullmatch(name):
         raise ScaffoldError("domain and name must be lowercase kebab-case identifiers")
@@ -157,6 +159,37 @@ def scaffold(
     )
     if domain_record is None:
         raise ScaffoldError(f"unknown adapter domain: {domain}")
+
+    member = None
+    if member_component_id is not None:
+        member = next(
+            (
+                component
+                for component in catalog["components"]
+                if component.get("id") == member_component_id
+            ),
+            None,
+        )
+        if member is None or member.get("kind") != "library":
+            raise ScaffoldError(f"unknown library member: {member_component_id}")
+        intake = member.get("intake")
+        if (
+            not isinstance(intake, dict)
+            or intake.get("adapter_strategy") != "generated-on-demand"
+            or intake.get("adapter_ids") != []
+        ):
+            raise ScaffoldError(
+                f"member is not eligible for one on-demand adapter: {member_component_id}"
+            )
+        specification = intake.get("scaffold")
+        if not isinstance(specification, dict):
+            raise ScaffoldError(f"member has no scaffold specification: {member_component_id}")
+        if (
+            member.get("primary_domain") != domain
+            or specification.get("name") != name
+            or tuple(specification.get("backends", [])) != backends
+        ):
+            raise ScaffoldError("member scaffold arguments differ from the catalog")
 
     component_id = f"adapter-{domain}-{name}"
     if any(component["id"] == component_id for component in catalog["components"]):
@@ -185,6 +218,12 @@ def scaffold(
         "supported_targets": [],
         "limitations": ["Generated scaffold; no target support is claimed."],
     }
+    if member_component_id is not None:
+        component["member_component_id"] = member_component_id
+        intake = member["intake"]
+        intake["adapter_strategy"] = "existing-adapters"
+        intake["adapter_ids"] = [component_id]
+        intake.pop("scaffold", None)
     catalog["components"].append(component)
     catalog["components"].sort(key=lambda item: item["id"].casefold())
     domain_record["component_ids"].append(component_id)
@@ -269,6 +308,29 @@ def scaffold(
     return destination
 
 
+def scaffold_from_member(root: pathlib.Path, component_id: str) -> pathlib.Path:
+    catalog = json.loads(
+        (root / "core" / "adapters" / "catalog.json").read_text(encoding="utf-8")
+    )
+    member = next(
+        (item for item in catalog.get("components", []) if item.get("id") == component_id),
+        None,
+    )
+    if member is None or member.get("kind") != "library":
+        raise ScaffoldError(f"unknown library member: {component_id}")
+    intake = member.get("intake")
+    specification = intake.get("scaffold") if isinstance(intake, dict) else None
+    if not isinstance(specification, dict):
+        raise ScaffoldError(f"member has no on-demand scaffold: {component_id}")
+    return scaffold(
+        root,
+        str(member["primary_domain"]),
+        str(specification["name"]),
+        tuple(specification["backends"]),
+        member_component_id=component_id,
+    )
+
+
 def selftest() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="nobro-adapter-") as temporary:
@@ -299,6 +361,32 @@ def selftest() -> int:
                     "evidence": ["host-test"],
                     "supported_targets": ["portable"],
                     "limitations": [],
+                }, {
+                    "id": "library-demo",
+                    "primary_domain": "sensors",
+                    "name": "Demo",
+                    "kind": "library",
+                    "provenance_id": "source-demo",
+                    "deployment": "firmware",
+                    "maturity": "compile-only",
+                    "evidence": ["target-build"],
+                    "supported_targets": ["upstream:arduino"],
+                    "limitations": [],
+                    "intake": {
+                        "adapter_strategy": "generated-on-demand",
+                        "adapter_ids": [],
+                        "capability_families": ["environment"],
+                        "device_inventory": "data-only",
+                        "gates": {
+                            "target_compile": "passed",
+                            "provider_behavior": "pending",
+                            "exact_hardware": "feature-provider-binding",
+                        },
+                        "scaffold": {
+                            "name": "demo-member",
+                            "backends": ["arduino-shim"],
+                        },
+                    },
                 }],
                 "domains": [{
                     "id": "sensors",
@@ -366,6 +454,30 @@ def selftest() -> int:
                 pass
             else:
                 raise AssertionError("duplicate scaffold did not fail closed")
+            member_destination = scaffold_from_member(root, "library-demo")
+            assert member_destination.name == "demo-member"
+            member_catalog = json.loads(
+                (adapters / "catalog.json").read_text(encoding="utf-8")
+            )
+            member = next(
+                item for item in member_catalog["components"]
+                if item["id"] == "library-demo"
+            )
+            assert member["intake"]["adapter_strategy"] == "existing-adapters"
+            assert member["intake"]["adapter_ids"] == [
+                "adapter-sensors-demo-member"
+            ]
+            generated = next(
+                item for item in member_catalog["components"]
+                if item["id"] == "adapter-sensors-demo-member"
+            )
+            assert generated["member_component_id"] == "library-demo"
+            try:
+                scaffold_from_member(root, "library-demo")
+            except ScaffoldError:
+                pass
+            else:
+                raise AssertionError("second member scaffold did not fail closed")
     except (AssertionError, OSError, ScaffoldError, ValueError) as error:
         print(f"ADAPTER SCAFFOLD SELFTEST: FAIL ({error})")
         return 1
@@ -386,6 +498,10 @@ def main() -> int:
         choices=BACKENDS,
         help="backend module to include; repeat as needed (default: all)",
     )
+    member = subparsers.add_parser(
+        "from-member", help="create the one catalog-approved generic member adapter"
+    )
+    member.add_argument("component_id")
     new.add_argument(
         "--capability-kind",
         help="also register this adapter as a stub backend for a board-feature kind",
@@ -393,17 +509,20 @@ def main() -> int:
     args = parser.parse_args()
     if args.selftest:
         return selftest()
-    if args.command != "new":
+    if args.command not in {"new", "from-member"}:
         parser.print_help()
         return 2
     try:
-        destination = scaffold(
-            ROOT,
-            args.domain,
-            args.name,
-            tuple(args.backend or BACKENDS),
-            args.capability_kind,
-        )
+        if args.command == "from-member":
+            destination = scaffold_from_member(ROOT, args.component_id)
+        else:
+            destination = scaffold(
+                ROOT,
+                args.domain,
+                args.name,
+                tuple(args.backend or BACKENDS),
+                args.capability_kind,
+            )
     except (OSError, ScaffoldError, ValueError) as error:
         print(f"nobro adapter: {error}", file=sys.stderr)
         return 2

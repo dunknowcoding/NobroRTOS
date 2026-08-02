@@ -12,7 +12,13 @@ POLICY = CORE / "layout.json"
 
 
 def directories(path: pathlib.Path) -> set[str]:
-    return {item.name for item in path.iterdir() if item.is_dir() and not item.name.startswith("_") and item.name != "target"}
+    if not path.is_dir():
+        return set()
+    return {
+        item.name
+        for item in path.iterdir()
+        if item.is_dir() and not item.name.startswith("_") and item.name != "target"
+    }
 
 
 def validate() -> list[str]:
@@ -27,6 +33,10 @@ def validate() -> list[str]:
     ):
         expected = set(policy[key])
         actual = directories(CORE / collection)
+        # Adapter policy also names contract-only domains. They need no empty
+        # source directory until an implementation is admitted.
+        if collection == "adapters" and actual.issubset(expected):
+            continue
         if actual != expected:
             errors.append(f"{collection}: categories {sorted(actual)} != policy {sorted(expected)}")
     packages: list[pathlib.Path] = []

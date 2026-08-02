@@ -45,6 +45,28 @@ COMPONENT_STAGE_MAP = {
     "compile-only": "compiled",
     "implemented": "implemented",
 }
+REQUIRED_MEMBER_INTAKE = [
+    "library-difinders",
+    "library-ina-series-sensor",
+    "library-niusaudio",
+    "library-niuscam",
+    "library-niuscrypto",
+    "library-niusimu",
+    "library-niusthread",
+    "library-niuswireless",
+    "library-niuszigbee",
+    "library-roboservo",
+]
+MEMBER_STRATEGIES = [
+    "existing-adapters",
+    "generated-on-demand",
+    "shared-facade",
+]
+SCAFFOLD_BACKENDS = {"native", "embedded-hal", "c-module", "arduino-shim"}
+PRIVATE_CATALOG_PATTERNS = {
+    "host-absolute-path": re.compile(r"(?i)\b[A-Z]:[\\/]"),
+    "local-com-port": re.compile(r"(?i)\bCOM[0-9]+\b"),
+}
 
 
 def _sorted_unique_strings(value: object, *, allow_empty: bool = True) -> bool:
@@ -93,6 +115,125 @@ def _primary_domain_errors(
     return errors
 
 
+def _member_intake_errors(
+    model: object, components: dict[str, dict[str, object]]
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(model, dict):
+        return ["member_intake must be an object"]
+    if model.get("schema") != "nobro-member-intake-v1":
+        errors.append("member_intake has an unknown schema")
+    if model.get("required_component_ids") != REQUIRED_MEMBER_INTAKE:
+        errors.append("member_intake required components must remain complete and sorted")
+    if model.get("adapter_strategies") != MEMBER_STRATEGIES:
+        errors.append("member_intake adapter strategies must remain canonical")
+    if model.get("gate_states") != ["passed", "pending"]:
+        errors.append("member_intake gate states must remain canonical")
+    if model.get("device_inventory_policy") != "data-only":
+        errors.append("member_intake device inventory must remain data-only")
+
+    required = set(REQUIRED_MEMBER_INTAKE)
+    for component_id, component in components.items():
+        intake = component.get("intake")
+        if component_id not in required:
+            if intake is not None:
+                errors.append(f"{component_id}: unexpected member intake record")
+            continue
+        if component.get("kind") != "library" or not isinstance(intake, dict):
+            errors.append(f"{component_id}: required library intake is missing")
+            continue
+        strategy = intake.get("adapter_strategy")
+        if strategy not in MEMBER_STRATEGIES:
+            errors.append(f"{component_id}: invalid adapter strategy")
+        adapter_ids = intake.get("adapter_ids")
+        if not _sorted_unique_strings(adapter_ids):
+            errors.append(f"{component_id}: invalid intake adapter_ids")
+            adapter_ids = []
+        for adapter_id in adapter_ids:
+            adapter = components.get(adapter_id)
+            if adapter is None or adapter.get("kind") != "adapter":
+                errors.append(f"{component_id}: unknown adapter {adapter_id}")
+            elif adapter.get("primary_domain") != component.get("primary_domain"):
+                errors.append(f"{component_id}: adapter {adapter_id} crosses primary domains")
+        if strategy == "existing-adapters" and not adapter_ids:
+            errors.append(f"{component_id}: existing-adapters requires adapter_ids")
+        if strategy == "shared-facade" and not component.get("facade"):
+            errors.append(f"{component_id}: shared-facade requires a facade")
+        if not _sorted_unique_strings(
+            intake.get("capability_families"), allow_empty=False
+        ):
+            errors.append(f"{component_id}: invalid capability_families")
+        if intake.get("device_inventory") != "data-only":
+            errors.append(f"{component_id}: device inventory must remain data-only")
+        gates = intake.get("gates")
+        if not isinstance(gates, dict) or set(gates) != {
+            "target_compile", "provider_behavior", "exact_hardware"
+        }:
+            errors.append(f"{component_id}: intake gates are incomplete")
+        else:
+            if gates.get("target_compile") != "passed":
+                errors.append(f"{component_id}: target compile gate must pass")
+            elif "target-build" not in component.get("evidence", []):
+                errors.append(f"{component_id}: target compile lacks target-build evidence")
+            expected_behavior = (
+                "passed" if component.get("maturity") == "implemented" else "pending"
+            )
+            if gates.get("provider_behavior") != expected_behavior:
+                errors.append(
+                    f"{component_id}: provider behavior gate must be {expected_behavior}"
+                )
+            elif expected_behavior == "passed" and not any(
+                "host-test" in components[adapter_id].get("evidence", [])
+                for adapter_id in adapter_ids
+                if adapter_id in components
+            ):
+                errors.append(
+                    f"{component_id}: provider behavior lacks an adapter host test"
+                )
+            if gates.get("exact_hardware") != "feature-provider-binding":
+                errors.append(f"{component_id}: exact hardware gate must remain external")
+            if "physical" in component.get("evidence", []):
+                errors.append(
+                    f"{component_id}: exact hardware belongs only to feature-provider bindings"
+                )
+        scaffold = intake.get("scaffold")
+        if strategy == "generated-on-demand":
+            if adapter_ids:
+                errors.append(f"{component_id}: generated-on-demand starts without adapters")
+            if not isinstance(scaffold, dict):
+                errors.append(f"{component_id}: generated-on-demand needs a scaffold")
+            else:
+                if not IDENTIFIER.fullmatch(str(scaffold.get("name", ""))):
+                    errors.append(f"{component_id}: invalid scaffold name")
+                backends = scaffold.get("backends")
+                if (
+                    not _sorted_unique_strings(backends, allow_empty=False)
+                    or not set(backends).issubset(SCAFFOLD_BACKENDS)
+                ):
+                    errors.append(f"{component_id}: invalid scaffold backends")
+        elif scaffold is not None:
+            errors.append(f"{component_id}: only on-demand members may define a scaffold")
+    for component_id, component in components.items():
+        member_id = component.get("member_component_id")
+        if member_id is None:
+            continue
+        if component.get("kind") != "adapter" or member_id not in required:
+            errors.append(f"{component_id}: invalid member_component_id")
+            continue
+        intake = components[member_id].get("intake", {})
+        if component_id not in intake.get("adapter_ids", []):
+            errors.append(f"{component_id}: member relationship is not reciprocal")
+    return errors
+
+
+def _privacy_errors(text: str) -> list[str]:
+    return [
+        f"catalog contains {label}"
+        for label, pattern in PRIVATE_CATALOG_PATTERNS.items()
+        if pattern.search(text)
+    ]
+
+
 def _policy_selftest() -> list[str]:
     errors: list[str] = []
     good_model = {
@@ -137,12 +278,61 @@ def _policy_selftest() -> list[str]:
     )
     if not any("missing or unknown" in error for error in domain_errors):
         errors.append("primary-domain self-test accepted a missing owner")
+    intake_model = {
+        "schema": "nobro-member-intake-v1",
+        "required_component_ids": list(REQUIRED_MEMBER_INTAKE),
+        "adapter_strategies": list(MEMBER_STRATEGIES),
+        "gate_states": ["passed", "pending"],
+        "device_inventory_policy": "data-only",
+    }
+    intake_components = {
+        component_id: {
+            "kind": "library",
+            "primary_domain": "sensors",
+            "maturity": "compile-only",
+            "evidence": ["target-build"],
+            "intake": {
+                "adapter_strategy": "generated-on-demand",
+                "adapter_ids": [],
+                "capability_families": ["demo"],
+                "device_inventory": "data-only",
+                "gates": {
+                    "target_compile": "passed",
+                    "provider_behavior": "pending",
+                    "exact_hardware": "feature-provider-binding",
+                },
+                "scaffold": {"name": component_id[len("library-"):],
+                             "backends": ["arduino-shim"]},
+            },
+        }
+        for component_id in REQUIRED_MEMBER_INTAKE
+    }
+    if _member_intake_errors(intake_model, intake_components):
+        errors.append("member-intake self-test rejected the canonical model")
+    bad_intake = json.loads(json.dumps(intake_components))
+    bad_intake[REQUIRED_MEMBER_INTAKE[0]]["intake"]["gates"][
+        "provider_behavior"
+    ] = "passed"
+    if not any(
+        "provider behavior" in error
+        for error in _member_intake_errors(intake_model, bad_intake)
+    ):
+        errors.append("member-intake self-test accepted behavior without implementation")
+    private_fixture = "".join(
+        chr(value)
+        for value in (67, 58, 92, 111, 119, 110, 101, 114, 32,
+                      67, 79, 77, 57, 57, 57)
+    )
+    if not _privacy_errors(private_fixture):
+        errors.append("privacy self-test accepted host path and COM endpoint")
     return errors
 
 
 def validate() -> list[str]:
     errors = _policy_selftest()
-    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    catalog_text = CATALOG.read_text(encoding="utf-8")
+    errors.extend(_privacy_errors(catalog_text))
+    catalog = json.loads(catalog_text)
     layout = json.loads(LAYOUT.read_text(encoding="utf-8"))
     allowed_categories = set(layout["adapter_categories"])
 
@@ -239,6 +429,8 @@ def validate() -> list[str]:
                 errors.append(f"duplicate adapter path: {path_value}")
             adapter_paths[path_value] = component_id
 
+    errors.extend(_member_intake_errors(catalog.get("member_intake"), components))
+
     unused_provenance = set(provenance) - provenance_users
     if unused_provenance:
         errors.append(f"unused provenance records: {sorted(unused_provenance)}")
@@ -297,10 +489,11 @@ def validate() -> list[str]:
     if "boards" in domains:
         errors.append("boards are profiles/tiers, never an ecosystem domain")
     if "motor" in domains:
-        errors.append("motor has no admitted contract/member and must remain absent")
+        errors.append("motor is an actuator alias and must not own a domain")
     expected_aliases = {
+        "actuator": ["motor"],
         "sensors": ["environment"],
-        "servo": ["actuator"],
+        "servo": [],
     }
     for domain_id, expected in expected_aliases.items():
         if domains.get(domain_id, {}).get("aliases") != expected:

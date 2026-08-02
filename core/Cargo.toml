@@ -23,6 +23,8 @@ members = [
     "crates/nobro_power",
     "crates/nobro_sensor",
     "crates/nobro_servo",
+    "crates/nobro_actuator",
+    "crates/nobro_display",
     "crates/nobro_sal",
     "crates/nobro_hal",
     "crates/nobro_kernel",

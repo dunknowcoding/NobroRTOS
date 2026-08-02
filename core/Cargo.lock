@@ -647,6 +647,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-actuator"
+version = "0.3.3"
+
+[[package]]
 name = "nobro-adapter-audio-esp32s3-es8311"
 version = "0.3.3"
 dependencies = [
@@ -856,6 +860,10 @@ dependencies = [
 
 [[package]]
 name = "nobro-device"
+version = "0.3.3"
+
+[[package]]
+name = "nobro-display"
 version = "0.3.3"
 
 [[package]]

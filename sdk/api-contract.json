@@ -946,6 +946,65 @@
     },
     "rust": [
       {
+        "crate": "nobro-actuator",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "ActuatorState"
+          },
+          {
+            "kind": "enum",
+            "name": "ActuatorError"
+          },
+          {
+            "kind": "enum",
+            "name": "Direction"
+          },
+          {
+            "kind": "struct",
+            "name": "MotorCommand"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "StepperCommand"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "BinaryCommand"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "enum",
+            "name": "ActuatorCommand"
+          },
+          {
+            "kind": "struct",
+            "name": "ActuatorLimits"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "ActuatorBackend"
+          }
+        ],
+        "path": "core/crates/nobro_actuator/src/lib.rs",
+        "sha256": "5a3265e61f7e99fc4deb3c9eaa55e3296cb2f9e94521cbdf1a5854356261ab1d"
+      },
+      {
         "crate": "nobro-admission",
         "exports": [
           {
@@ -2515,6 +2574,41 @@
         ],
         "path": "core/crates/nobro_device/src/lib.rs",
         "sha256": "45f14518f08deba998ad05394bf1f02e5d29678f37ba94f725e5856d1788b1dd"
+      },
+      {
+        "crate": "nobro-display",
+        "exports": [
+          {
+            "kind": "enum",
+            "name": "PixelFormat"
+          },
+          {
+            "kind": "enum",
+            "name": "DisplayState"
+          },
+          {
+            "kind": "enum",
+            "name": "DisplayError"
+          },
+          {
+            "kind": "struct",
+            "name": "DisplayLimits"
+          },
+          {
+            "kind": "struct",
+            "name": "Region"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "trait",
+            "name": "DisplayBackend"
+          }
+        ],
+        "path": "core/crates/nobro_display/src/lib.rs",
+        "sha256": "439ce9b3b14874b40c62818efa861227c9a115ce04096eb2d06349a454d27cb6"
       },
       {
         "crate": "nobro-hal",

@@ -123,6 +123,12 @@ Bounded bridge for the Arduino UNO R4 WiFiS3 stack.
 - **enum**: `TransportError`
 - **fn**: `into_inner`
 
+## `nobro-actuator`
+Bounded non-servo actuator contracts.
+- **trait**: `ActuatorBackend`
+- **struct**: `MotorCommand`, `StepperCommand`, `BinaryCommand`, `ActuatorLimits`
+- **enum**: `ActuatorState`, `ActuatorError`, `Direction`, `ActuatorCommand`
+
 ## `nobro-admission`
 Allocation-free admission shared by firmware build scripts and the kernel.
 - **struct**: `AdmissionProfile`, `TaskContract`, `IsrOperations`, `InterruptContract`, `InterruptProfile`, `AdmissionError`, `AdmittedTask`, `AdmittedWorkload`
@@ -177,6 +183,12 @@ Extensible device-module framework for NobroRTOS.
 - **struct**: `ProviderResourcePrice`, `ProviderWorkload`, `ProviderRuntimePrice`, `ProviderAdmissionPrice`, `ServoProfile`, `MotorProfile`, `SensorDescriptor`, `SensorRegistry`, `StepperProfile`, `LedStripProfile`, `RelayProfile`, `DisplayProfile`, `GpsProfile`, `RangerProfile`, `BoardModule`, `BoardRegistry`
 - **enum**: `ResourceDimension`, `WorkloadPacing`, `ActuatorKind`, `SensorKind`, `Bus`, `ColorOrder`
 - **fn**: `angle_to_pulse`, `speed_to_pulse`, `throttle_to_pulse`, `arm_pulse`, `identify`, `register`, `len`, `is_empty`, `find_kind`, `identify_at`, `angle_to_steps`, `rpm_to_sps`, `frame_bytes`, `drive_level`, `framebuffer_bytes`, `nmea_checksum`, `echo_us_to_mm`, `register`, `find`, `len`, `is_empty`
+
+## `nobro-display`
+Bounded display-provider contracts.
+- **trait**: `DisplayBackend`
+- **struct**: `DisplayLimits`, `Region`
+- **enum**: `PixelFormat`, `DisplayState`, `DisplayError`
 
 ## `nobro-hal`
 NobroRTOS hardware abstraction with portable traits and platform backends.
