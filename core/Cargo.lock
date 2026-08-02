@@ -533,6 +533,8 @@ dependencies = [
  "defmt-rtt",
  "nobro-hal",
  "nobro-kernel",
+ "nobro-power",
+ "nrf52840-pac",
  "panic-halt",
 ]
 
@@ -899,6 +901,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "nobro-power",
  "nrf52840-pac",
+ "portable-atomic",
 ]
 
 [[package]]

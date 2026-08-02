@@ -6,6 +6,25 @@ use crate::{Criticality, ModuleId};
 const READY_NONE: u8 = u8::MAX;
 const CRITICALITY_LEVELS: usize = 5;
 
+/// Deterministic ordering among ready tasks in the same safety criticality.
+///
+/// The criticality bitmap always decides the safety class first. This policy
+/// only breaks ties inside that class and therefore cannot let lower-class
+/// work overtake higher-class work.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum IntraClassOrder {
+    /// Oldest ready transition first. This is the nano-compatible default.
+    #[default]
+    Fifo = 0,
+    /// Shorter declared relative deadline first; registration order breaks ties.
+    ShorterDeadlineFirst = 1,
+    /// Shorter declared period first; registration order breaks ties.
+    ShorterPeriodFirst = 2,
+    /// Stable task-table registration order.
+    RegistrationOrder = 3,
+}
+
 pub trait Task {
     fn poll(&mut self, now_us: u64) -> Poll;
 }
@@ -112,7 +131,10 @@ pub enum TaskTableError {
     UnknownTask(ModuleId),
 }
 
-pub struct TaskTable<const N: usize> {
+/// Bounded task table. `READY_WORDS=1` is the nano/default layout; larger
+/// values are an explicit scalable-dispatch opt in. Link indices reserve
+/// `u8::MAX` as their sentinel, so the architectural maximum is 255 slots.
+pub struct TaskTable<const N: usize, const READY_WORDS: usize = 1> {
     slots: [Option<TaskSlot>; N],
     len: u8,
     /// Intrusive list ordered by next release, then fixed priority. The head is
@@ -122,13 +144,14 @@ pub struct TaskTable<const N: usize> {
     /// Ready membership is one bit per task slot. Dispatch first scans the
     /// five-level criticality bitmap, then consumes that level's FIFO head.
     /// The FIFO is required so a fast peer cannot starve an older release.
-    ready_members: u32,
+    ready_members: [u32; READY_WORDS],
     /// Ready members whose phase-anchored periodic release was consumed.
     /// A bit absent here was woken by an external event and must not advance
     /// the task's periodic schedule when that event-driven poll completes.
-    periodic_ready_members: u32,
+    periodic_ready_members: [u32; READY_WORDS],
     /// Non-empty criticality queues; the highest set bit wins in O(1).
     ready_criticalities: u8,
+    intra_class_order: IntraClassOrder,
     ready_head: [u8; CRITICALITY_LEVELS],
     ready_tail: [u8; CRITICALITY_LEVELS],
     ready_next: [u8; N],
@@ -173,6 +196,13 @@ pub struct DeadlineReleaseArm {
     pub ready_mask: u32,
 }
 
+/// Exact earliest release group for an opt-in multiword task table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineReleaseArmWords<const WORDS: usize> {
+    pub deadline_us: u64,
+    pub ready_words: [u32; WORDS],
+}
+
 /// Result of transferring ISR-marked task bits into the executor ready queues.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct IsrReleaseReceipt {
@@ -180,20 +210,82 @@ pub struct IsrReleaseReceipt {
     pub rejected: u32,
 }
 
-impl<const N: usize> TaskTable<N> {
+impl<const N: usize, const READY_WORDS: usize> TaskTable<N, READY_WORDS> {
     pub const fn new() -> Self {
+        Self::new_with_order(IntraClassOrder::Fifo)
+    }
+
+    pub const fn new_with_order(intra_class_order: IntraClassOrder) -> Self {
         Self {
             slots: [None; N],
             len: 0,
             release_head: READY_NONE,
             release_next: [READY_NONE; N],
-            ready_members: 0,
-            periodic_ready_members: 0,
+            ready_members: [0; READY_WORDS],
+            periodic_ready_members: [0; READY_WORDS],
             ready_criticalities: 0,
+            intra_class_order,
             ready_head: [READY_NONE; CRITICALITY_LEVELS],
             ready_tail: [READY_NONE; CRITICALITY_LEVELS],
             ready_next: [READY_NONE; N],
         }
+    }
+
+    const fn word_and_bit(index: usize) -> (usize, u32) {
+        (
+            index / u32::BITS as usize,
+            1u32 << (index % u32::BITS as usize),
+        )
+    }
+
+    fn contains(words: &[u32; READY_WORDS], index: usize) -> bool {
+        let (word, bit) = Self::word_and_bit(index);
+        words.get(word).is_some_and(|value| value & bit != 0)
+    }
+
+    fn insert(words: &mut [u32; READY_WORDS], index: usize) {
+        let (word, bit) = Self::word_and_bit(index);
+        if let Some(value) = words.get_mut(word) {
+            *value |= bit;
+        }
+    }
+
+    fn remove(words: &mut [u32; READY_WORDS], index: usize) {
+        let (word, bit) = Self::word_and_bit(index);
+        if let Some(value) = words.get_mut(word) {
+            *value &= !bit;
+        }
+    }
+
+    fn any(words: &[u32; READY_WORDS]) -> bool {
+        words.iter().any(|word| *word != 0)
+    }
+
+    fn count(words: &[u32; READY_WORDS]) -> u32 {
+        words
+            .iter()
+            .fold(0u32, |total, word| total.saturating_add(word.count_ones()))
+    }
+
+    fn for_each_set(mut words: [u32; READY_WORDS], mut visit: impl FnMut(usize)) {
+        for (word_index, word) in words.iter_mut().enumerate() {
+            while *word != 0 {
+                let bit = word.trailing_zeros() as usize;
+                *word &= *word - 1;
+                visit(word_index * u32::BITS as usize + bit);
+            }
+        }
+    }
+
+    /// Number of ready-mask words retained by this exact table layout.
+    pub const fn ready_word_count(&self) -> usize {
+        READY_WORDS
+    }
+
+    /// Copy the complete bounded ready membership for diagnostics or a
+    /// multiword ISR handoff owned by an exact large-profile port.
+    pub const fn ready_words(&self) -> [u32; READY_WORDS] {
+        self.ready_members
     }
 
     /// Initialize caller-owned storage without capacity-sized array copies.
@@ -201,7 +293,7 @@ impl<const N: usize> TaskTable<N> {
     /// # Safety
     ///
     /// `destination` must be valid, aligned, writable storage for one
-    /// uninitialized `TaskTable<N>`.
+    /// uninitialized `TaskTable<N, READY_WORDS>`.
     pub(crate) unsafe fn init_in_place(destination: *mut Self) {
         let slots = core::ptr::addr_of_mut!((*destination).slots).cast::<Option<TaskSlot>>();
         let release_next = core::ptr::addr_of_mut!((*destination).release_next).cast::<u8>();
@@ -213,15 +305,20 @@ impl<const N: usize> TaskTable<N> {
         }
         core::ptr::addr_of_mut!((*destination).len).write(0);
         core::ptr::addr_of_mut!((*destination).release_head).write(READY_NONE);
-        core::ptr::addr_of_mut!((*destination).ready_members).write(0);
-        core::ptr::addr_of_mut!((*destination).periodic_ready_members).write(0);
+        core::ptr::addr_of_mut!((*destination).ready_members).write([0; READY_WORDS]);
+        core::ptr::addr_of_mut!((*destination).periodic_ready_members).write([0; READY_WORDS]);
         core::ptr::addr_of_mut!((*destination).ready_criticalities).write(0);
+        core::ptr::addr_of_mut!((*destination).intra_class_order).write(IntraClassOrder::Fifo);
         core::ptr::addr_of_mut!((*destination).ready_head).write([READY_NONE; CRITICALITY_LEVELS]);
         core::ptr::addr_of_mut!((*destination).ready_tail).write([READY_NONE; CRITICALITY_LEVELS]);
     }
 
     pub fn add(&mut self, meta: TaskMeta, now_us: u64) -> Result<(), TaskTableError> {
-        if N > u32::BITS as usize || usize::from(self.len) >= u32::BITS as usize {
+        if READY_WORDS == 0
+            || N > READY_WORDS.saturating_mul(u32::BITS as usize)
+            || N > usize::from(READY_NONE)
+            || usize::from(self.len) >= N
+        {
             return Err(TaskTableError::ReadyMaskCapacity);
         }
         if meta.period_us == 0 || meta.period_us > nobro_admission::MAX_WRAP_SAFE_INTERVAL_US {
@@ -264,7 +361,7 @@ impl<const N: usize> TaskTable<N> {
     }
 
     pub(crate) fn rebase_unstarted_epoch(&mut self, now_us: u64) -> bool {
-        if self.ready_members != 0
+        if Self::any(&self.ready_members)
             || self
                 .slots
                 .iter()
@@ -380,7 +477,7 @@ impl<const N: usize> TaskTable<N> {
                 break;
             }
 
-            let mut group_members = 0u32;
+            let mut group_members = [0u32; READY_WORDS];
             while let Some(group_root) = self.release_root() {
                 let Some(group_due) = self
                     .slots
@@ -396,24 +493,27 @@ impl<const N: usize> TaskTable<N> {
                 let Some(task_index) = self.pop_release_root() else {
                     break;
                 };
-                group_members |= 1u32 << task_index;
-                let bit = 1u32 << task_index;
-                if self.ready_members & bit == 0 {
+                Self::insert(&mut group_members, task_index);
+                if !Self::contains(&self.ready_members, task_index) {
                     self.enqueue_ready(task_index);
                 }
                 released = released.saturating_add(1);
             }
-            self.ready_members |= group_members;
-            self.periodic_ready_members |= group_members;
-            let group_width = group_members.count_ones().min(u32::from(u8::MAX)) as u8;
-            let mut members = group_members;
-            while members != 0 {
-                let task_index = members.trailing_zeros() as usize;
-                members &= members - 1;
+            for ((ready, periodic), group) in self
+                .ready_members
+                .iter_mut()
+                .zip(self.periodic_ready_members.iter_mut())
+                .zip(group_members)
+            {
+                *ready |= group;
+                *periodic |= group;
+            }
+            let group_width = Self::count(&group_members).min(u32::from(u8::MAX)) as u8;
+            Self::for_each_set(group_members, |task_index| {
                 if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
                     slot.stats.release_group_width = group_width;
                 }
-            }
+            });
         }
         released
     }
@@ -421,120 +521,105 @@ impl<const N: usize> TaskTable<N> {
     /// Describe the exact earliest release group to arm in a compare provider.
     /// Heap pruning visits only members of that group and its immediate frontier.
     pub fn next_release_arm(&self) -> Option<DeadlineReleaseArm> {
+        let arm = self.next_release_arm_words()?;
+        Some(DeadlineReleaseArm {
+            deadline_us: arm.deadline_us,
+            ready_mask: arm.ready_words.first().copied().unwrap_or(0),
+        })
+    }
+
+    /// Describe the complete earliest release group for a scalable profile.
+    pub fn next_release_arm_words(&self) -> Option<DeadlineReleaseArmWords<READY_WORDS>> {
         let root = self.release_root()?;
         let deadline_us = self.slots.get(root)?.as_ref()?.stats.next_due_us;
-        let mut ready_mask = 0u32;
+        let mut ready_words = [0u32; READY_WORDS];
         let mut cursor = self.release_head;
         while cursor != READY_NONE {
             let index = usize::from(cursor);
             if self.slots.get(index)?.as_ref()?.stats.next_due_us != deadline_us {
                 break;
             }
-            ready_mask |= 1u32 << index;
+            Self::insert(&mut ready_words, index);
             cursor = self.release_next[index];
         }
-        Some(DeadlineReleaseArm {
+        Some(DeadlineReleaseArmWords {
             deadline_us,
-            ready_mask,
+            ready_words,
         })
     }
 
     /// Accept ready bits produced by the bounded compare ISR. Early, stale, or
     /// duplicate bits are rejected and never detach a future release.
     pub fn accept_isr_releases(&mut self, ready_mask: u32, now_us: u64) -> IsrReleaseReceipt {
-        if ready_mask == 0 {
-            return IsrReleaseReceipt::default();
+        let mut ready_words = [0u32; READY_WORDS];
+        if let Some(first) = ready_words.first_mut() {
+            *first = ready_mask;
         }
-        if ready_mask & (ready_mask - 1) == 0 {
-            let task_index = ready_mask.trailing_zeros() as usize;
-            if task_index >= usize::from(self.len) {
-                return IsrReleaseReceipt {
-                    accepted: 0,
-                    rejected: 1,
-                };
-            }
-            if self.release_root() != Some(task_index) {
-                return IsrReleaseReceipt {
-                    accepted: 0,
-                    rejected: 1,
-                };
-            }
-            let bit = 1u32 << task_index;
-            let Some(due) = self
-                .slots
-                .get(task_index)
-                .and_then(Option::as_ref)
-                .map(|slot| slot.stats.next_due_us)
-            else {
-                return IsrReleaseReceipt {
-                    accepted: 0,
-                    rejected: 1,
-                };
+        self.accept_isr_release_words(ready_words, now_us)
+    }
+
+    /// Multiword counterpart used by explicitly admitted large-profile ports.
+    /// A provider must publish the complete earliest release group; missing,
+    /// early, stale, duplicate, or out-of-range bits fail closed.
+    pub fn accept_isr_release_words(
+        &mut self,
+        mut candidates: [u32; READY_WORDS],
+        now_us: u64,
+    ) -> IsrReleaseReceipt {
+        let mut receipt = IsrReleaseReceipt::default();
+        for (word_index, word) in candidates.iter_mut().enumerate() {
+            let first_slot = word_index * u32::BITS as usize;
+            let valid = usize::from(self.len)
+                .saturating_sub(first_slot)
+                .min(u32::BITS as usize);
+            let valid_mask = match valid {
+                0 => 0,
+                32 => u32::MAX,
+                bits => (1u32 << bits) - 1,
             };
-            if due > now_us {
-                return IsrReleaseReceipt {
-                    accepted: 0,
-                    rejected: 1,
-                };
-            }
-            let _ = self.pop_release_root();
-            if self.ready_members & bit == 0 {
-                self.enqueue_ready(task_index);
-            }
-            self.ready_members |= bit;
-            self.periodic_ready_members |= bit;
-            if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
-                slot.stats.release_group_width = 1;
-            }
-            return IsrReleaseReceipt {
-                accepted: 1,
-                rejected: 0,
-            };
+            receipt.rejected = receipt
+                .rejected
+                .saturating_add((*word & !valid_mask).count_ones());
+            *word &= valid_mask;
+        }
+        if receipt.rejected != 0 {
+            return receipt;
+        }
+        let Some(expected) = self.next_release_arm_words() else {
+            receipt.rejected = receipt.rejected.saturating_add(Self::count(&candidates));
+            return receipt;
+        };
+        if expected.deadline_us > now_us || expected.ready_words != candidates {
+            receipt.rejected = receipt.rejected.saturating_add(Self::count(&candidates));
+            return receipt;
         }
 
-        let valid_mask = if self.len == u32::BITS as u8 {
-            u32::MAX
-        } else {
-            (1u32 << self.len) - 1
-        };
-        let mut receipt = IsrReleaseReceipt {
-            rejected: (ready_mask & !valid_mask).count_ones(),
-            ..IsrReleaseReceipt::default()
-        };
-        let mut candidates = ready_mask & valid_mask;
-        let mut accepted_members = 0u32;
+        let accepted_members = expected.ready_words;
         while let Some(task_index) = self.release_root() {
-            let bit = 1u32 << task_index;
-            let Some(due) = self
-                .slots
-                .get(task_index)
-                .and_then(Option::as_ref)
-                .map(|slot| slot.stats.next_due_us)
-            else {
-                break;
-            };
-            if due > now_us || candidates & bit == 0 {
+            if !Self::contains(&accepted_members, task_index) {
                 break;
             }
             let _ = self.pop_release_root();
-            if self.ready_members & bit == 0 {
+            if !Self::contains(&self.ready_members, task_index) {
                 self.enqueue_ready(task_index);
             }
-            accepted_members |= bit;
-            candidates &= !bit;
             receipt.accepted = receipt.accepted.saturating_add(1);
         }
-        receipt.rejected = receipt.rejected.saturating_add(candidates.count_ones());
-        self.ready_members |= accepted_members;
-        self.periodic_ready_members |= accepted_members;
+        for ((ready, periodic), accepted) in self
+            .ready_members
+            .iter_mut()
+            .zip(self.periodic_ready_members.iter_mut())
+            .zip(accepted_members)
+        {
+            *ready |= accepted;
+            *periodic |= accepted;
+        }
         let width = receipt.accepted.min(u32::from(u8::MAX)) as u8;
-        while accepted_members != 0 {
-            let task_index = accepted_members.trailing_zeros() as usize;
-            accepted_members &= accepted_members - 1;
+        Self::for_each_set(accepted_members, |task_index| {
             if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
                 slot.stats.release_group_width = width;
             }
-        }
+        });
         receipt
     }
 
@@ -548,14 +633,62 @@ impl<const N: usize> TaskTable<N> {
             return;
         };
         self.ready_next[task_index] = READY_NONE;
-        let tail = self.ready_tail[criticality];
-        if tail == READY_NONE {
+        let head = self.ready_head[criticality];
+        if head == READY_NONE {
             self.ready_head[criticality] = task_index as u8;
-        } else {
-            self.ready_next[usize::from(tail)] = task_index as u8;
+            self.ready_tail[criticality] = task_index as u8;
+            self.ready_criticalities |= 1u8 << criticality;
+            return;
         }
-        self.ready_tail[criticality] = task_index as u8;
+        if self.intra_class_precedes(task_index, usize::from(head)) {
+            self.ready_next[task_index] = head;
+            self.ready_head[criticality] = task_index as u8;
+            self.ready_criticalities |= 1u8 << criticality;
+            return;
+        }
+        let mut cursor = usize::from(head);
+        loop {
+            let next = self.ready_next[cursor];
+            if next == READY_NONE {
+                self.ready_next[cursor] = task_index as u8;
+                self.ready_tail[criticality] = task_index as u8;
+                break;
+            }
+            if self.intra_class_precedes(task_index, usize::from(next)) {
+                self.ready_next[task_index] = next;
+                self.ready_next[cursor] = task_index as u8;
+                break;
+            }
+            cursor = usize::from(next);
+        }
         self.ready_criticalities |= 1u8 << criticality;
+    }
+
+    fn intra_class_precedes(&self, left: usize, right: usize) -> bool {
+        let left_index = left;
+        let right_index = right;
+        let Some(left) = self.slots.get(left_index).and_then(Option::as_ref) else {
+            return false;
+        };
+        let Some(right) = self.slots.get(right_index).and_then(Option::as_ref) else {
+            return true;
+        };
+        match self.intra_class_order {
+            IntraClassOrder::Fifo => false,
+            IntraClassOrder::ShorterDeadlineFirst => {
+                left.meta.deadline_us < right.meta.deadline_us
+                    || (left.meta.deadline_us == right.meta.deadline_us && left_index < right_index)
+            }
+            IntraClassOrder::ShorterPeriodFirst => {
+                left.meta.period_us < right.meta.period_us
+                    || (left.meta.period_us == right.meta.period_us && left_index < right_index)
+            }
+            IntraClassOrder::RegistrationOrder => left_index < right_index,
+        }
+    }
+
+    pub const fn intra_class_order(&self) -> IntraClassOrder {
+        self.intra_class_order
     }
 
     /// Wake a registered task from a bounded external event without consuming
@@ -569,12 +702,11 @@ impl<const N: usize> TaskTable<N> {
         else {
             return Err(TaskTableError::UnknownTask(module));
         };
-        let bit = 1u32 << task_index;
-        if self.ready_members & bit != 0 {
+        if Self::contains(&self.ready_members, task_index) {
             return Ok(false);
         }
         self.enqueue_ready(task_index);
-        self.ready_members |= bit;
+        Self::insert(&mut self.ready_members, task_index);
         if let Some(slot) = self.slots.get_mut(task_index).and_then(Option::as_mut) {
             slot.stats.release_group_width = 1;
         }
@@ -582,7 +714,7 @@ impl<const N: usize> TaskTable<N> {
     }
 
     fn ready_selection(&self) -> Option<DueSelection> {
-        if self.ready_members == 0 {
+        if !Self::any(&self.ready_members) {
             return None;
         }
         let criticality = (u8::BITS - 1 - self.ready_criticalities.leading_zeros()) as usize;
@@ -601,7 +733,7 @@ impl<const N: usize> TaskTable<N> {
     pub(crate) fn select_due(&mut self, now_us: u64) -> Option<DueSelection> {
         self.mark_due_releases(now_us);
         let mut selected = self.ready_selection()?;
-        if self.periodic_ready_members & (1u32 << selected.index) == 0 {
+        if !Self::contains(&self.periodic_ready_members, selected.index) {
             selected.release_us = now_us;
         }
         Some(selected)
@@ -626,7 +758,7 @@ impl<const N: usize> TaskTable<N> {
                 self.ready_tail[criticality] = READY_NONE;
                 self.ready_criticalities &= !(1u8 << criticality);
             }
-        } else if self.ready_members & (1u32 << index) != 0 {
+        } else if Self::contains(&self.ready_members, index) {
             // Compatibility fallback for direct `record_poll(index, ..)` calls.
             // The executor always consumes the queue head and never scans here.
             let mut previous = head;
@@ -644,9 +776,9 @@ impl<const N: usize> TaskTable<N> {
             }
         }
         self.ready_next[index] = READY_NONE;
-        self.ready_members &= !(1u32 << index);
-        let periodic = self.periodic_ready_members & (1u32 << index) != 0;
-        self.periodic_ready_members &= !(1u32 << index);
+        Self::remove(&mut self.ready_members, index);
+        let periodic = Self::contains(&self.periodic_ready_members, index);
+        Self::remove(&mut self.periodic_ready_members, index);
         periodic
     }
 
@@ -659,7 +791,7 @@ impl<const N: usize> TaskTable<N> {
 
     /// O(1) readiness check used by idle decisions.
     pub fn has_due(&self, now_us: u64) -> bool {
-        self.ready_members != 0
+        Self::any(&self.ready_members)
             || self.release_root().is_some_and(|index| {
                 self.slots
                     .get(index)
@@ -704,7 +836,7 @@ impl<const N: usize> TaskTable<N> {
     pub(crate) fn due_sweep(&mut self, now_us: u64) -> DueSweep {
         let released = self.mark_due_releases(now_us);
         let selected = self.ready_selection().map(|mut selection| {
-            if self.periodic_ready_members & (1u32 << selection.index) == 0 {
+            if !Self::contains(&self.periodic_ready_members, selection.index) {
                 selection.release_us = now_us;
             }
             selection
@@ -718,7 +850,7 @@ impl<const N: usize> TaskTable<N> {
         DueSweep {
             selected,
             inspected_slots: released,
-            due_tasks: self.ready_members.count_ones(),
+            due_tasks: Self::count(&self.ready_members),
             simultaneous_width,
             peer_inspected_slots: 0,
             next_release_us: self.release_root().and_then(|index| {
@@ -841,18 +973,18 @@ impl<const N: usize> TaskTable<N> {
         false
     }
 
-    fn collapse_bit(mask: u32, removed: usize) -> u32 {
-        let low_mask = if removed == 0 {
-            0
-        } else {
-            (1u32 << removed) - 1
-        };
-        let high = if removed + 1 >= u32::BITS as usize {
-            0
-        } else {
-            mask >> (removed + 1)
-        };
-        (mask & low_mask) | (high << removed)
+    fn collapse_words(mut words: [u32; READY_WORDS], removed: usize) -> [u32; READY_WORDS] {
+        for index in removed..N.saturating_sub(1) {
+            if Self::contains(&words, index + 1) {
+                Self::insert(&mut words, index);
+            } else {
+                Self::remove(&mut words, index);
+            }
+        }
+        if N != 0 {
+            Self::remove(&mut words, N - 1);
+        }
+        words
     }
 
     fn collapse_index(index: u8, removed: usize) -> u8 {
@@ -878,14 +1010,13 @@ impl<const N: usize> TaskTable<N> {
         else {
             return Err(TaskTableError::UnknownTask(module));
         };
-        let bit = 1u32 << index;
         let Some(slot) = self.slots[index] else {
             return Err(TaskTableError::UnknownTask(module));
         };
         let state = TaskTransferState {
             slot,
-            ready: self.ready_members & bit != 0,
-            periodic_ready: self.periodic_ready_members & bit != 0,
+            ready: Self::contains(&self.ready_members, index),
+            periodic_ready: Self::contains(&self.periodic_ready_members, index),
             release_linked: self.release_contains(index),
         };
 
@@ -919,8 +1050,8 @@ impl<const N: usize> TaskTable<N> {
         for link in self.ready_next.iter_mut().take(usize::from(self.len)) {
             *link = Self::collapse_index(*link, index);
         }
-        self.ready_members = Self::collapse_bit(self.ready_members, index);
-        self.periodic_ready_members = Self::collapse_bit(self.periodic_ready_members, index);
+        self.ready_members = Self::collapse_words(self.ready_members, index);
+        self.periodic_ready_members = Self::collapse_words(self.periodic_ready_members, index);
         Ok(state)
     }
 
@@ -939,9 +1070,9 @@ impl<const N: usize> TaskTable<N> {
         }
         if state.ready {
             self.enqueue_ready(index);
-            self.ready_members |= 1u32 << index;
+            Self::insert(&mut self.ready_members, index);
             if state.periodic_ready {
-                self.periodic_ready_members |= 1u32 << index;
+                Self::insert(&mut self.periodic_ready_members, index);
             }
         }
         Ok(())
@@ -1007,7 +1138,7 @@ impl<const N: usize> TaskTable<N> {
     pub fn next_due_us(&self) -> Option<u64> {
         self.ready_selection()
             .map(|selection| {
-                if self.periodic_ready_members & (1u32 << selection.index) == 0 {
+                if !Self::contains(&self.periodic_ready_members, selection.index) {
                     0
                 } else {
                     selection.release_us
@@ -1024,7 +1155,7 @@ impl<const N: usize> TaskTable<N> {
     }
 }
 
-impl<const N: usize> Default for TaskTable<N> {
+impl<const N: usize, const READY_WORDS: usize> Default for TaskTable<N, READY_WORDS> {
     fn default() -> Self {
         Self::new()
     }
@@ -1112,6 +1243,7 @@ mod tests {
             expected.periodic_ready_members
         );
         assert_eq!(actual.ready_criticalities, expected.ready_criticalities);
+        assert_eq!(actual.intra_class_order, expected.intra_class_order);
         assert_eq!(actual.ready_head, expected.ready_head);
         assert_eq!(actual.ready_tail, expected.ready_tail);
         assert_eq!(actual.ready_next, expected.ready_next);
@@ -1233,6 +1365,51 @@ mod tests {
         assert_eq!(second.release_us, 0);
     }
 
+    #[test]
+    fn explicit_intra_class_policy_never_overrides_safety_criticality() {
+        let mut table = TaskTable::<3>::new_with_order(IntraClassOrder::ShorterDeadlineFirst);
+        table
+            .add(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 1_000, 1)
+                    .with_deadline_us(900),
+                0,
+            )
+            .unwrap();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Radio, Criticality::Driver, 1_000, 1).with_deadline_us(100),
+                0,
+            )
+            .unwrap();
+        table
+            .add(
+                TaskMeta::new(ModuleId::Actuator, Criticality::System, 1_000, 1)
+                    .with_deadline_us(1_000),
+                0,
+            )
+            .unwrap();
+
+        assert_eq!(
+            table.intra_class_order(),
+            IntraClassOrder::ShorterDeadlineFirst
+        );
+        let first = table.select_due(0).unwrap();
+        assert_eq!(
+            table.meta_at(first.index).unwrap().module,
+            ModuleId::Actuator
+        );
+        table.record_poll(first.index, 0, 1, Poll::Pending).unwrap();
+
+        let second = table.select_due(0).unwrap();
+        assert_eq!(table.meta_at(second.index).unwrap().module, ModuleId::Radio);
+        table
+            .record_poll(second.index, 0, 1, Poll::Pending)
+            .unwrap();
+
+        let third = table.select_due(0).unwrap();
+        assert_eq!(table.meta_at(third.index).unwrap().module, ModuleId::Sensor);
+    }
+
     fn assert_single_release_work_is_capacity_independent<const N: usize>() {
         let mut table = TaskTable::<N>::new();
         for index in 0..N {
@@ -1294,6 +1471,59 @@ mod tests {
     }
 
     #[test]
+    fn opt_in_multiword_profile_crosses_32_and_64_task_boundaries() {
+        let mut thirty_three = TaskTable::<33, 2>::new();
+        for index in 0..33u8 {
+            thirty_three
+                .add(
+                    TaskMeta::new(ModuleId::App(index), Criticality::User, 100, 1),
+                    0,
+                )
+                .unwrap();
+        }
+        let receipt = thirty_three.accept_isr_release_words([u32::MAX, 1], 0);
+        assert_eq!(receipt.accepted, 33);
+        assert_eq!(receipt.rejected, 0);
+        assert_eq!(thirty_three.ready_words(), [u32::MAX, 1]);
+
+        let mut sixty_four = TaskTable::<64, 2>::new();
+        for index in 0..64u8 {
+            sixty_four
+                .add(
+                    TaskMeta::new(ModuleId::App(index), Criticality::User, 100, 1),
+                    0,
+                )
+                .unwrap();
+        }
+        let receipt = sixty_four.accept_isr_release_words([u32::MAX; 2], 0);
+        assert_eq!(receipt.accepted, 64);
+        assert_eq!(receipt.rejected, 0);
+        assert_eq!(sixty_four.ready_words(), [u32::MAX; 2]);
+
+        // FIFO is the explicit nano-compatible within-class policy: all 64
+        // simultaneous releases retain registration order across the word
+        // boundary instead of making bit position an accidental priority.
+        for expected in 0..64usize {
+            let selected = sixty_four.select_due(0).unwrap();
+            assert_eq!(selected.index, expected);
+            let periodic = sixty_four.take_selected(selected.index);
+            sixty_four
+                .record_selected_poll(selected.index, 0, 1, Poll::Pending, periodic)
+                .unwrap();
+        }
+        assert_eq!(sixty_four.ready_words(), [0; 2]);
+
+        let mut too_narrow = TaskTable::<65, 2>::new();
+        assert_eq!(
+            too_narrow.add(
+                TaskMeta::new(ModuleId::App(0), Criticality::User, 100, 1),
+                0,
+            ),
+            Err(TaskTableError::ReadyMaskCapacity)
+        );
+    }
+
+    #[test]
     fn compare_isr_handoff_accepts_exact_group_and_rejects_early_bits() {
         let mut table = TaskTable::<2>::new();
         table
@@ -1331,6 +1561,54 @@ mod tests {
             ModuleId::Actuator
         );
         assert_eq!(table.selected_group_width(selected.index), 2);
+    }
+
+    #[test]
+    fn compare_isr_handoff_rejects_a_partial_simultaneous_group_atomically() {
+        let mut table = TaskTable::<33, 2>::new();
+        for index in 0..33u8 {
+            table
+                .add(
+                    TaskMeta::new(ModuleId::App(index), Criticality::User, 100, 1),
+                    0,
+                )
+                .unwrap();
+        }
+        let arm = table.next_release_arm_words().unwrap();
+        assert_eq!(arm.ready_words, [u32::MAX, 1]);
+        assert_eq!(
+            table.accept_isr_release_words([u32::MAX, 0], 0),
+            IsrReleaseReceipt {
+                accepted: 0,
+                rejected: 32,
+            }
+        );
+        assert_eq!(table.ready_words(), [0; 2]);
+        assert_eq!(table.next_release_arm_words(), Some(arm));
+    }
+
+    #[test]
+    fn compare_isr_handoff_rejects_out_of_range_bits_atomically() {
+        let mut table = TaskTable::<33, 2>::new();
+        for index in 0..33u8 {
+            table
+                .add(
+                    TaskMeta::new(ModuleId::App(index), Criticality::User, 100, 1),
+                    0,
+                )
+                .unwrap();
+        }
+        let arm = table.next_release_arm_words().unwrap();
+        assert_eq!(arm.ready_words, [u32::MAX, 1]);
+        assert_eq!(
+            table.accept_isr_release_words([u32::MAX, 3], 0),
+            IsrReleaseReceipt {
+                accepted: 0,
+                rejected: 1,
+            }
+        );
+        assert_eq!(table.ready_words(), [0; 2]);
+        assert_eq!(table.next_release_arm_words(), Some(arm));
     }
 
     #[test]
@@ -1563,11 +1841,11 @@ mod tests {
         }
         assert_eq!(source.mark_due_releases(0), 32);
         let moved = source.detach_for_transfer(ModuleId::App(31)).unwrap();
-        assert_eq!(source.ready_members.count_ones(), 31);
+        assert_eq!(TaskTable::<32>::count(&source.ready_members), 31);
 
         let mut destination = TaskTable::<32>::new();
         destination.attach_transferred(moved).unwrap();
-        assert_eq!(destination.ready_members, 1);
+        assert_eq!(destination.ready_members, [1]);
         assert_eq!(destination.meta_at(0).unwrap().module, ModuleId::App(31));
     }
 

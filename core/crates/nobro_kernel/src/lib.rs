@@ -7,9 +7,10 @@ extern crate std;
 
 pub use nobro_admission::InterruptProfile;
 pub use nobro_power::{
-    attach_participant, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode, PowerParticipant,
-    PowerPlatform, PowerPlatformChain, PowerTransition, PowerVetoMask, PowerVetoReason,
-    SystemOffWake, SystemOffWakeError, WakeStyle,
+    attach_participant, DeadlineTimingAdmission, DeadlineTimingError, DeadlineTimingProfile,
+    DeadlineTimingRequest, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode,
+    PowerParticipant, PowerPlatform, PowerPlatformChain, PowerTransition, PowerVetoMask,
+    PowerVetoReason, SystemOffWake, SystemOffWakeError, WakeStyle,
 };
 
 pub mod admission;
@@ -106,8 +107,8 @@ pub use degrade::{DegradeDecision, DegradeError, DegradePlanner, DegradeReason};
 pub use error::{Action, FaultContext, FaultSource, HealthFault, KernelError};
 pub use event_log::{EventKind, EventLog, EventPayload, EventRecord, EventSeverity};
 pub use executor::{
-    DeadlineReleaseArm, I2cPollTask, IsrReleaseReceipt, Poll, StatsTask, Task, TaskMeta, TaskSlot,
-    TaskStats, TaskTable, TaskTableError,
+    DeadlineReleaseArm, DeadlineReleaseArmWords, I2cPollTask, IntraClassOrder, IsrReleaseReceipt,
+    Poll, StatsTask, Task, TaskMeta, TaskSlot, TaskStats, TaskTable, TaskTableError,
 };
 pub use foreign_host::{
     validate_foreign_read, validate_foreign_read_write, ForeignBufferError, ForeignHostCall,

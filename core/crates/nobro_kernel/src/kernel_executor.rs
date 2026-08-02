@@ -35,16 +35,17 @@ use core::{
 #[cfg(test)]
 use core::cell::Cell;
 use nobro_power::{
-    ExecutorPower, PowerHookError, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode,
-    PowerPlatform, PowerTransition, SystemOffWake,
+    DeadlineTimingAdmission, DeadlineTimingError, DeadlineTimingRequest, ExecutorPower,
+    PowerHookError, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode, PowerPlatform,
+    PowerTransition, SystemOffWake,
 };
 use portable_atomic::{AtomicU32, AtomicU8, Ordering};
 
 use crate::{
-    module_code, AdmissionPlan, ExecutorInstrumentation, FaultThresholds, KernelError, ModuleCtx,
-    ModuleId, ModuleRunState, MulticoreTaskExecutor, Poll, Runtime, RuntimeError, StackFault,
-    StackGuardTable, StartupNode, SystemManifest, SystemProfile, TaskMeta, TaskTable,
-    TaskTableError,
+    module_code, AdmissionPlan, ExecutorInstrumentation, FaultThresholds, IntraClassOrder,
+    KernelError, ModuleCtx, ModuleId, ModuleRunState, MulticoreTaskExecutor, Poll, Runtime,
+    RuntimeError, StackFault, StackGuardTable, StartupNode, SystemManifest, SystemProfile,
+    TaskMeta, TaskTable, TaskTableError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +74,18 @@ pub enum ExecError {
     Runtime(RuntimeError),
     Power(PowerHookError),
     PowerLedgerFull,
+    DeadlineProviderUnavailable,
+    DeadlineTiming(DeadlineTimingError),
+    DeadlineCadence {
+        module: ModuleId,
+        period_us: u32,
+        admitted_period_us: u32,
+    },
+    DeadlineResolution {
+        module: ModuleId,
+        value_us: u32,
+        resolution_us: u32,
+    },
     /// Scheduler membership and task-slot state disagreed.
     TaskStateCorrupt,
 }
@@ -106,6 +119,12 @@ impl From<RuntimeError> for ExecError {
 impl From<PowerHookError> for ExecError {
     fn from(error: PowerHookError) -> Self {
         Self::Power(error)
+    }
+}
+
+impl From<DeadlineTimingError> for ExecError {
+    fn from(error: DeadlineTimingError) -> Self {
+        Self::DeadlineTiming(error)
     }
 }
 
@@ -256,13 +275,15 @@ pub struct KernelExecutor<
     const KV: usize,
     const HEALTH: usize,
     const LOG: usize,
+    const READY_WORDS: usize = 1,
 > {
     runtime: Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
-    tasks: TaskTable<TASKS>,
+    tasks: TaskTable<TASKS, READY_WORDS>,
     containment: ContainmentPolicy,
     sentinel: ExecutionSentinel,
     power: ExecutorPower<TASKS>,
     wake_latency_us: u32,
+    deadline_timing: Option<DeadlineTimingAdmission>,
     sealed: bool,
 }
 
@@ -826,6 +847,7 @@ impl<
         checkpoint(ExecutorInitStage::Power)?;
 
         core::ptr::addr_of_mut!((*destination).wake_latency_us).write(profile.wake_latency_us);
+        core::ptr::addr_of_mut!((*destination).deadline_timing).write(None);
         core::ptr::addr_of_mut!((*destination).sealed).write(false);
         guard.mark(ExecutorInitStage::Sealed);
         checkpoint(ExecutorInitStage::Sealed)?;
@@ -858,20 +880,33 @@ impl<
         const KV: usize,
         const HEALTH: usize,
         const LOG: usize,
-    > KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+        const READY_WORDS: usize,
+    > KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG, READY_WORDS>
 {
     /// Take ownership of the runtime: from here on, execution has one driver.
     pub fn new(
         runtime: Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
         containment: ContainmentPolicy,
     ) -> Self {
+        Self::new_with_intra_class_order(runtime, containment, IntraClassOrder::Fifo)
+    }
+
+    /// Construct an executor with an explicit deterministic ordering policy
+    /// inside each safety-criticality class. This does not change the
+    /// criticality-first selection rule.
+    pub fn new_with_intra_class_order(
+        runtime: Runtime<STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>,
+        containment: ContainmentPolicy,
+        intra_class_order: IntraClassOrder,
+    ) -> Self {
         Self {
             runtime,
-            tasks: TaskTable::new(),
+            tasks: TaskTable::new_with_order(intra_class_order),
             containment,
             sentinel: ExecutionSentinel::new(),
             power: ExecutorPower::new(1_000_000, 1_000_000, 1_000),
             wake_latency_us: 0,
+            deadline_timing: None,
             sealed: false,
         }
     }
@@ -901,6 +936,7 @@ impl<
     pub fn seal(&mut self) -> Result<(), ExecError> {
         let metas = self.tasks.metas();
         for meta in metas.iter().flatten() {
+            self.validate_deadline_task(*meta)?;
             let response_us = response_time(*meta, &metas, self.wake_latency_us)?;
             if response_us > u64::from(meta.deadline_us) {
                 return Err(ExecError::Unschedulable {
@@ -927,6 +963,68 @@ impl<
         self.wake_latency_us
     }
 
+    /// Admit this executor against the exact provider that will program its
+    /// high-resolution compare. The receipt is revalidated on every cycle;
+    /// clock/prescaler/ISR generation changes fail closed.
+    pub fn admit_deadline_provider(
+        &mut self,
+        platform: &impl PowerPlatform,
+        request: DeadlineTimingRequest,
+    ) -> Result<DeadlineTimingAdmission, ExecError> {
+        if self.sealed {
+            return Err(ExecError::Sealed);
+        }
+        let profile = platform
+            .deadline_timing_profile()
+            .ok_or(ExecError::DeadlineProviderUnavailable)?;
+        let admission = profile.admit(request)?;
+        // Price the complete qualified deadline path conservatively in the
+        // same response-time term used by ordinary wake-latency admission.
+        self.wake_latency_us = self.wake_latency_us.max(admission.total_overhead_us);
+        self.deadline_timing = Some(admission);
+        Ok(admission)
+    }
+
+    pub const fn deadline_timing_admission(&self) -> Option<DeadlineTimingAdmission> {
+        self.deadline_timing
+    }
+
+    fn revalidate_deadline_provider(&self, platform: &impl PowerPlatform) -> Result<(), ExecError> {
+        let Some(admission) = self.deadline_timing else {
+            return Ok(());
+        };
+        let profile = platform
+            .deadline_timing_profile()
+            .ok_or(ExecError::DeadlineProviderUnavailable)?;
+        profile.revalidate(admission)?;
+        Ok(())
+    }
+
+    fn validate_deadline_task(&self, meta: TaskMeta) -> Result<(), ExecError> {
+        let Some(admission) = self.deadline_timing else {
+            return Ok(());
+        };
+        if meta.period_us < admission.requested_period_us {
+            return Err(ExecError::DeadlineCadence {
+                module: meta.module,
+                period_us: meta.period_us,
+                admitted_period_us: admission.requested_period_us,
+            });
+        }
+        if admission.require_exact_resolution {
+            for value_us in [meta.period_us, meta.phase_us] {
+                if value_us % admission.resolution_us != 0 {
+                    return Err(ExecError::DeadlineResolution {
+                        module: meta.module,
+                        value_us,
+                        resolution_us: admission.resolution_us,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub const fn sentinel(&self) -> &ExecutionSentinel {
         &self.sentinel
     }
@@ -935,7 +1033,7 @@ impl<
         &self.runtime
     }
 
-    pub const fn tasks(&self) -> &TaskTable<TASKS> {
+    pub const fn tasks(&self) -> &TaskTable<TASKS, READY_WORDS> {
         &self.tasks
     }
 
@@ -946,6 +1044,17 @@ impl<
         now_us: u64,
     ) -> crate::IsrReleaseReceipt {
         self.tasks.accept_isr_releases(ready_mask, now_us)
+    }
+
+    /// Accept a complete multiword release publication for an explicitly
+    /// admitted large-profile port. The nano/default executor retains its
+    /// one-word method and storage layout.
+    pub fn accept_isr_release_words(
+        &mut self,
+        ready_words: [u32; READY_WORDS],
+        now_us: u64,
+    ) -> crate::IsrReleaseReceipt {
+        self.tasks.accept_isr_release_words(ready_words, now_us)
     }
 
     pub const fn power(&self) -> &ExecutorPower<TASKS> {
@@ -994,6 +1103,7 @@ impl<
             .get(module)
             .ok_or(ExecError::Task(TaskTableError::UnknownTask(module)))?;
         destination.runtime.ensure_module_enabled(module)?;
+        destination.validate_deadline_task(source.meta)?;
         let prospective = destination.tasks.metas_with_transferred(source.meta)?;
         for meta in prospective.iter().flatten() {
             let response_us = response_time(*meta, &prospective, destination.wake_latency_us)?;
@@ -1308,6 +1418,7 @@ impl<
         if !self.sealed {
             return Err(ExecError::NotSealed);
         }
+        self.revalidate_deadline_provider(power_platform)?;
         let now_us = clock();
         let mut outcome = CycleOutcome::default();
         let isr = self.accept_isr_releases(power_platform.take_deadline_releases(now_us), now_us);
@@ -1771,6 +1882,7 @@ impl<
                 }
             }
         }
+        self.revalidate_deadline_provider(power_platform)?;
         outcome.record_power(self.apply_idle(
             power_now_us,
             work_pending,
@@ -1854,11 +1966,18 @@ impl<
         deadline_us: Option<u64>,
         platform: &mut impl PowerPlatform,
     ) -> Result<PowerTransition, PowerHookError> {
-        let ready_mask = self
-            .tasks
-            .next_release_arm()
-            .filter(|arm| Some(arm.deadline_us) == deadline_us)
-            .map_or(0, |arm| arm.ready_mask);
+        let ready_mask = if READY_WORDS == 1 {
+            self.tasks
+                .next_release_arm()
+                .filter(|arm| Some(arm.deadline_us) == deadline_us)
+                .map_or(0, |arm| arm.ready_mask)
+        } else {
+            // The portable PowerPlatform handoff is intentionally one word.
+            // Large profiles still receive the precise compare wake, then the
+            // ordered task table releases the complete group in thread mode.
+            // Exact ports may call `accept_isr_release_words` before the cycle.
+            0
+        };
         self.power
             .apply_idle_release(now_us, work_pending, deadline_us, ready_mask, platform)
     }
@@ -1873,8 +1992,9 @@ impl<
         const KV: usize,
         const HEALTH: usize,
         const LOG: usize,
+        const READY_WORDS: usize,
     > MulticoreTaskExecutor
-    for KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG>
+    for KernelExecutor<TASKS, STARTUP, QUOTAS, MAILBOX, ALARMS, KV, HEALTH, LOG, READY_WORDS>
 {
     type Error = ExecError;
 
@@ -1951,6 +2071,7 @@ mod tests {
         pending_ready: u32,
         mode: Option<PowerMode>,
         suspended: Option<u16>,
+        timing: Option<nobro_power::DeadlineTimingProfile>,
     }
 
     impl PowerPlatform for PowerHooks {
@@ -1972,6 +2093,9 @@ mod tests {
         }
         fn observed_wake_latency_us(&self) -> u32 {
             7
+        }
+        fn deadline_timing_profile(&self) -> Option<nobro_power::DeadlineTimingProfile> {
+            self.timing
         }
         fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
             self.mode = Some(mode);
@@ -2403,6 +2527,102 @@ mod tests {
                 period_us: 1_000,
             })
         ));
+    }
+
+    #[test]
+    fn deadline_provider_generation_is_revalidated_before_every_cycle() {
+        let profile = nobro_power::DeadlineTimingProfile {
+            provider_id: 9,
+            generation: 1,
+            minimum_period_us: 2,
+            resolution_us: 1,
+            programming_overhead_us: 1,
+            interrupt_overhead_us: 2,
+            wake_latency_us: 7,
+        };
+        let mut hooks = PowerHooks {
+            timing: Some(profile),
+            ..PowerHooks::default()
+        };
+        let mut executor = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        executor
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 100, 10),
+                0,
+            )
+            .unwrap();
+        let admission = executor
+            .admit_deadline_provider(&hooks, DeadlineTimingRequest::exact(100, 10))
+            .unwrap();
+        assert_eq!(admission.programmed_period_us, 100);
+        assert_eq!(executor.wake_latency_us(), 10);
+        executor.seal().unwrap();
+
+        hooks.timing = Some(nobro_power::DeadlineTimingProfile {
+            generation: 2,
+            ..profile
+        });
+        assert_eq!(
+            executor.run_cycle(|| 0, &mut hooks, |_| Ok(Poll::Pending)),
+            Err(ExecError::DeadlineTiming(
+                DeadlineTimingError::ProviderChanged
+            ))
+        );
+    }
+
+    #[test]
+    fn deadline_provider_admission_covers_each_task_cadence_and_exact_grid() {
+        let profile = nobro_power::DeadlineTimingProfile {
+            provider_id: 9,
+            generation: 1,
+            minimum_period_us: 4,
+            resolution_us: 2,
+            programming_overhead_us: 1,
+            interrupt_overhead_us: 1,
+            wake_latency_us: 1,
+        };
+        let hooks = PowerHooks {
+            timing: Some(profile),
+            ..PowerHooks::default()
+        };
+
+        let mut too_fast = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        too_fast
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 8, 1),
+                0,
+            )
+            .unwrap();
+        too_fast
+            .admit_deadline_provider(&hooks, DeadlineTimingRequest::exact(10, 3))
+            .unwrap();
+        assert_eq!(
+            too_fast.seal(),
+            Err(ExecError::DeadlineCadence {
+                module: ModuleId::Sensor,
+                period_us: 8,
+                admitted_period_us: 10,
+            })
+        );
+
+        let mut off_grid = TestExecutor::new(runtime(), ContainmentPolicy::Cooperative);
+        off_grid
+            .add_task(
+                TaskMeta::new(ModuleId::Sensor, Criticality::Driver, 12, 1).with_phase_us(3),
+                0,
+            )
+            .unwrap();
+        off_grid
+            .admit_deadline_provider(&hooks, DeadlineTimingRequest::exact(10, 3))
+            .unwrap();
+        assert_eq!(
+            off_grid.seal(),
+            Err(ExecError::DeadlineResolution {
+                module: ModuleId::Sensor,
+                value_us: 3,
+                resolution_us: 2,
+            })
+        );
     }
 
     #[test]

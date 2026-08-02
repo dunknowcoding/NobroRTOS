@@ -20,12 +20,6 @@ pub mod traits;
 #[cfg(all(feature = "board-promicro-nosd", feature = "board-promicro-s140"))]
 compile_error!("nobro-hal: enable exactly one board-* feature");
 
-#[cfg(all(feature = "cortex-m-slice", feature = "board-promicro-s140"))]
-compile_error!(
-    "nobro-hal: cortex-m-slice cannot be combined with board-promicro-s140; \
-     the current port programs PendSV through CMSIS and has no SoftDevice NVIC integration"
-);
-
 #[cfg(all(
     feature = "platform-nrf52840",
     not(any(feature = "board-promicro-nosd", feature = "board-promicro-s140"))
@@ -36,8 +30,14 @@ compile_error!("nobro-hal: enable one board-* feature");
 pub mod board;
 #[cfg(feature = "platform-nrf52840")]
 pub mod bus;
-#[cfg(feature = "cortex-m-slice")]
+// `board-promicro-s140` selects the resident S140 flash/IRQ layout. ArduinoNRF
+// leaves that SoftDevice dormant unless an application explicitly enables it,
+// so direct PendSV/NVIC ownership is valid for the default composition. An
+// active SoftDevice needs a separately admitted integration and is not claimed.
+#[cfg(all(feature = "cortex-m-slice", target_has_atomic = "32"))]
 pub mod context_switch;
+#[cfg(all(feature = "cortex-m0-slice", not(target_has_atomic = "32")))]
+pub mod context_switch_m0;
 #[cfg(feature = "platform-nrf52840")]
 pub mod deadline_timer;
 #[cfg(feature = "platform-nrf52840-rt")]
@@ -111,8 +111,10 @@ pub use traits::{
 pub use board::{Board, ACTIVE_BOARD_PACKAGE, I2C_SCL_PIN, I2C_SDA_PIN};
 #[cfg(feature = "platform-nrf52840")]
 pub use bus::{BusError, TwimBus, TWIM0_BASE, TWIM1_BASE};
-#[cfg(feature = "cortex-m-slice")]
+#[cfg(all(feature = "cortex-m-slice", target_has_atomic = "32"))]
 pub use context_switch::{ContextRecord, ContextSwitchError, CortexMSliceSwitch};
+#[cfg(all(feature = "cortex-m0-slice", not(target_has_atomic = "32")))]
+pub use context_switch_m0::{CortexM0ContextRecord, CortexM0SliceSwitch, CortexM0SwitchError};
 #[cfg(feature = "platform-nrf52840")]
 pub use deadline_timer::DeadlineTimer;
 #[cfg(feature = "platform-nrf52840-rt")]

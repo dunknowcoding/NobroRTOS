@@ -9,6 +9,7 @@ critical-section = "1.2"
 embedded-hal = "1.0"
 nobro-power = { path = "../nobro_power", optional = true }
 nrf52840-pac = { version = "0.12", optional = true }
+portable-atomic = { version = "1", default-features = false, optional = true }
 
 [features]
 default = ["platform-nrf52840", "board-promicro-nosd"]
@@ -27,6 +28,13 @@ nrf-twim-async = ["platform-nrf52840"]
 # Optional Cortex-M4F PSP/PendSV port. It is never enabled by a portable board
 # profile and therefore has zero default cost on every target.
 cortex-m-slice = ["platform-nrf52840"]
+# Opt-in Cortex-M0/M0+ PSP/PendSV mechanism for exact ports such as RP2040.
+# It is privileged-only (no MPU claim) and has no default cost.
+cortex-m0-slice = [
+    "dep:cortex-m",
+    "dep:portable-atomic",
+    "portable-atomic/critical-section",
+]
 contract-only = []
 
 # Board packages are mutually exclusive and depend on platform-nrf52840.

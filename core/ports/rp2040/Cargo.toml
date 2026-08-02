@@ -2,6 +2,16 @@
 name = "nobro-port-rp2040"
 version = "0.1.0"
 edition = "2021"
+autobins = false
+
+[[bin]]
+name = "nobro-port-rp2040"
+path = "src/main.rs"
+
+[[bin]]
+name = "nobro-rp2040-slice-selftest"
+path = "src/slice_selftest.rs"
+required-features = ["slice-selftest"]
 
 [dependencies]
 cortex-m = "0.7"
@@ -20,6 +30,9 @@ default = []
 # Opt-in DMA_IRQ_0 completion provider. W115 adds its physical copy,
 # cancellation, timeout, and wake-latency evidence.
 dma-completion = []
+# Cortex-M0+ TIMER alarm plus PendSV forced-suspension proof. The regular
+# RP2040 firmware does not retain the extra stacks or switch mechanism.
+slice-selftest = ["nobro-hal/cortex-m0-slice"]
 
 [profile.release]
 debug = 2

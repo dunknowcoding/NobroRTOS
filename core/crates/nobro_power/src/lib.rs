@@ -365,6 +365,229 @@ pub struct PowerHookError {
     pub code: u16,
 }
 
+/// Qualified timing limits for one exact hardware deadline provider.
+/// Generation changes whenever clocking, prescaling, or ISR routing changes,
+/// so an admission receipt cannot survive a provider reconfiguration race.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineTimingProfile {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub minimum_period_us: u32,
+    pub resolution_us: u32,
+    pub programming_overhead_us: u32,
+    pub interrupt_overhead_us: u32,
+    pub wake_latency_us: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineTimingRequest {
+    pub period_us: u32,
+    pub overhead_slack_us: u32,
+    pub require_exact_resolution: bool,
+}
+
+impl DeadlineTimingRequest {
+    pub const fn exact(period_us: u32, overhead_slack_us: u32) -> Self {
+        Self {
+            period_us,
+            overhead_slack_us,
+            require_exact_resolution: true,
+        }
+    }
+
+    /// Permit an earlier representable compare, never a later one.
+    pub const fn early(period_us: u32, overhead_slack_us: u32) -> Self {
+        Self {
+            period_us,
+            overhead_slack_us,
+            require_exact_resolution: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeadlineTimingAdmission {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub minimum_period_us: u32,
+    pub requested_period_us: u32,
+    pub programmed_period_us: u32,
+    pub resolution_us: u32,
+    pub total_overhead_us: u32,
+    pub require_exact_resolution: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineTimingError {
+    InvalidProfile,
+    InvalidRequest,
+    PeriodTooShort {
+        requested_us: u32,
+        minimum_us: u32,
+    },
+    ResolutionMismatch {
+        requested_us: u32,
+        resolution_us: u32,
+    },
+    OverheadExceedsSlack {
+        overhead_us: u32,
+        slack_us: u32,
+    },
+    ProviderChanged,
+}
+
+impl DeadlineTimingProfile {
+    pub const fn is_valid(self) -> bool {
+        self.provider_id != 0
+            && self.generation != 0
+            && self.minimum_period_us != 0
+            && self.resolution_us != 0
+    }
+
+    pub fn admit(
+        self,
+        request: DeadlineTimingRequest,
+    ) -> Result<DeadlineTimingAdmission, DeadlineTimingError> {
+        if !self.is_valid() {
+            return Err(DeadlineTimingError::InvalidProfile);
+        }
+        if request.period_us == 0 || request.overhead_slack_us >= request.period_us {
+            return Err(DeadlineTimingError::InvalidRequest);
+        }
+        if request.period_us < self.minimum_period_us {
+            return Err(DeadlineTimingError::PeriodTooShort {
+                requested_us: request.period_us,
+                minimum_us: self.minimum_period_us,
+            });
+        }
+        let remainder = request.period_us % self.resolution_us;
+        if request.require_exact_resolution && remainder != 0 {
+            return Err(DeadlineTimingError::ResolutionMismatch {
+                requested_us: request.period_us,
+                resolution_us: self.resolution_us,
+            });
+        }
+        let programmed_period_us = request.period_us - remainder;
+        if programmed_period_us < self.minimum_period_us {
+            return Err(DeadlineTimingError::PeriodTooShort {
+                requested_us: programmed_period_us,
+                minimum_us: self.minimum_period_us,
+            });
+        }
+        let total_overhead_us = self
+            .programming_overhead_us
+            .checked_add(self.interrupt_overhead_us)
+            .and_then(|value| value.checked_add(self.wake_latency_us))
+            .ok_or(DeadlineTimingError::InvalidProfile)?;
+        if total_overhead_us > request.overhead_slack_us {
+            return Err(DeadlineTimingError::OverheadExceedsSlack {
+                overhead_us: total_overhead_us,
+                slack_us: request.overhead_slack_us,
+            });
+        }
+        Ok(DeadlineTimingAdmission {
+            provider_id: self.provider_id,
+            generation: self.generation,
+            minimum_period_us: self.minimum_period_us,
+            requested_period_us: request.period_us,
+            programmed_period_us,
+            resolution_us: self.resolution_us,
+            total_overhead_us,
+            require_exact_resolution: request.require_exact_resolution,
+        })
+    }
+
+    pub fn revalidate(self, admission: DeadlineTimingAdmission) -> Result<(), DeadlineTimingError> {
+        let Some(total_overhead_us) = self
+            .programming_overhead_us
+            .checked_add(self.interrupt_overhead_us)
+            .and_then(|value| value.checked_add(self.wake_latency_us))
+        else {
+            return Err(DeadlineTimingError::InvalidProfile);
+        };
+        if !self.is_valid()
+            || self.provider_id != admission.provider_id
+            || self.generation != admission.generation
+            || self.minimum_period_us != admission.minimum_period_us
+            || self.resolution_us != admission.resolution_us
+            || total_overhead_us != admission.total_overhead_us
+        {
+            Err(DeadlineTimingError::ProviderChanged)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod deadline_timing_tests {
+    use super::*;
+
+    const PROFILE: DeadlineTimingProfile = DeadlineTimingProfile {
+        provider_id: 7,
+        generation: 3,
+        minimum_period_us: 4,
+        resolution_us: 2,
+        programming_overhead_us: 1,
+        interrupt_overhead_us: 2,
+        wake_latency_us: 3,
+    };
+
+    #[test]
+    fn exact_and_early_resolution_are_distinct_and_fail_closed() {
+        let exact = PROFILE.admit(DeadlineTimingRequest::exact(10, 6)).unwrap();
+        assert_eq!(exact.programmed_period_us, 10);
+        assert_eq!(exact.total_overhead_us, 6);
+        assert!(exact.require_exact_resolution);
+        assert_eq!(
+            PROFILE.admit(DeadlineTimingRequest::exact(9, 6)),
+            Err(DeadlineTimingError::ResolutionMismatch {
+                requested_us: 9,
+                resolution_us: 2,
+            })
+        );
+        let early = PROFILE.admit(DeadlineTimingRequest::early(9, 6)).unwrap();
+        assert_eq!(early.programmed_period_us, 8);
+        assert!(!early.require_exact_resolution);
+        assert_eq!(
+            PROFILE.admit(DeadlineTimingRequest::exact(2, 1)),
+            Err(DeadlineTimingError::PeriodTooShort {
+                requested_us: 2,
+                minimum_us: 4,
+            })
+        );
+        assert_eq!(
+            PROFILE.admit(DeadlineTimingRequest::exact(10, 5)),
+            Err(DeadlineTimingError::OverheadExceedsSlack {
+                overhead_us: 6,
+                slack_us: 5,
+            })
+        );
+    }
+
+    #[test]
+    fn provider_reconfiguration_invalidates_the_old_admission() {
+        let admission = PROFILE.admit(DeadlineTimingRequest::exact(10, 6)).unwrap();
+        assert_eq!(PROFILE.revalidate(admission), Ok(()));
+        assert_eq!(
+            DeadlineTimingProfile {
+                generation: PROFILE.generation + 1,
+                ..PROFILE
+            }
+            .revalidate(admission),
+            Err(DeadlineTimingError::ProviderChanged)
+        );
+        assert_eq!(
+            DeadlineTimingProfile {
+                wake_latency_us: PROFILE.wake_latency_us + 1,
+                ..PROFILE
+            }
+            .revalidate(admission),
+            Err(DeadlineTimingError::ProviderChanged)
+        );
+    }
+}
+
 /// Fallible board power operations owned by the authoritative executor.
 pub trait PowerPlatform {
     fn program_wake(&mut self, deadline_us: Option<u64>) -> Result<(), PowerHookError>;
@@ -388,6 +611,12 @@ pub trait PowerPlatform {
     /// zero means no provider measurement is available.
     fn observed_wake_latency_us(&self) -> u32 {
         0
+    }
+    /// Return a qualified deadline profile only after this exact clock/compare/
+    /// ISR/wake route has a conservative overhead bound. `None` keeps legacy
+    /// wake behavior but cannot satisfy enforced high-resolution admission.
+    fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
+        None
     }
     /// Constrain a policy choice to modes this backend actually implements.
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
@@ -509,6 +738,10 @@ impl<P: PowerPlatform, R: PowerParticipant> PowerPlatform for PowerPlatformChain
 
     fn observed_wake_latency_us(&self) -> u32 {
         self.platform.observed_wake_latency_us()
+    }
+
+    fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
+        self.platform.deadline_timing_profile()
     }
 
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {

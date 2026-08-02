@@ -24,7 +24,11 @@ const VERSION: u32 = 1;
 const CFSR: u32 = 0xE000_ED28;
 const MMFAR: u32 = 0xE000_ED34;
 const VTOR: u32 = 0xE000_ED08;
-const APP_BASE: u32 = 0x1000;
+const APP_BASE: u32 = if cfg!(feature = "board-promicro-s140") {
+    0x26000
+} else {
+    0x1000
+};
 
 #[repr(C)]
 struct Report {

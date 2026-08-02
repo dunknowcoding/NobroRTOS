@@ -2862,7 +2862,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "cc60ca32a2c0f09eeeb0b8af54260fac7fcf2ac56364c190c7897fef390a2937"
+        "sha256": "51613d9f8d67de76b620edcb8fd361df9ae431fff45dbd5194de86e1694394e5"
       },
       {
         "crate": "nobro-host",
@@ -3859,7 +3859,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "922e38b2e7c3d2e48c782aa2cdb2a314e2772a3bef1b85049abe2a3c72c63ceb"
+        "sha256": "2af201695ea1e7f93043db186cfe2a3be19565f3fbc24d4bc9ccd9946079abbe"
       },
       {
         "crate": "nobro-ml",
@@ -4722,6 +4722,42 @@
             "name": "PowerHookError"
           },
           {
+            "kind": "struct",
+            "name": "DeadlineTimingProfile"
+          },
+          {
+            "kind": "struct",
+            "name": "DeadlineTimingRequest"
+          },
+          {
+            "kind": "fn",
+            "name": "exact"
+          },
+          {
+            "kind": "fn",
+            "name": "early"
+          },
+          {
+            "kind": "struct",
+            "name": "DeadlineTimingAdmission"
+          },
+          {
+            "kind": "enum",
+            "name": "DeadlineTimingError"
+          },
+          {
+            "kind": "fn",
+            "name": "is_valid"
+          },
+          {
+            "kind": "fn",
+            "name": "admit"
+          },
+          {
+            "kind": "fn",
+            "name": "revalidate"
+          },
+          {
             "kind": "trait",
             "name": "PowerPlatform"
           },
@@ -4859,7 +4895,7 @@
           }
         ],
         "path": "core/crates/nobro_power/src/lib.rs",
-        "sha256": "01f0b30bbb963676f00cdaa0d7b3e76cfa5c091cf304c6bf6bc71a30fa6a6a07"
+        "sha256": "54c75ca97bebfa05f3a442f0e8248db7d374c57dbf40576f9b809999d0aac63c"
       },
       {
         "crate": "nobro-sal",

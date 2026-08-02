@@ -2,7 +2,7 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 use cortex_m::peripheral::NVIC;
-use nobro_power::{PowerHookError, PowerMode, PowerPlatform};
+use nobro_power::{DeadlineTimingProfile, PowerHookError, PowerMode, PowerPlatform};
 use nrf52840_pac::TIMER0;
 
 const COMPARE: usize = 3;
@@ -14,16 +14,20 @@ const TIMER0_PRIORITY_RAW: u8 = 0;
 static ARMED_READY: AtomicU32 = AtomicU32::new(0);
 static PENDING_READY: AtomicU32 = AtomicU32::new(0);
 static ARMED_DEADLINE: AtomicU32 = AtomicU32::new(0);
+static ARMED_DEADLINE_VALID: AtomicU32 = AtomicU32::new(0);
 static PENDING_DEADLINE: AtomicU32 = AtomicU32::new(0);
+static PENDING_DEADLINE_VALID: AtomicU32 = AtomicU32::new(0);
 
 pub struct NrfTimerPower {
     residency_us: u64,
     entries: u32,
     wake_at: Option<u32>,
     wake_latency_max_us: u32,
+    deadline_timing: Option<DeadlineTimingProfile>,
 }
 
 impl NrfTimerPower {
+    pub const DEADLINE_PROVIDER_ID: u16 = 0x4e54;
     /// # Safety
     /// The caller must exclusively own TIMER0 and its interrupt.
     pub unsafe fn init() -> Self {
@@ -37,7 +41,9 @@ impl NrfTimerPower {
         ARMED_READY.store(0, Ordering::Release);
         PENDING_READY.store(0, Ordering::Release);
         ARMED_DEADLINE.store(0, Ordering::Release);
+        ARMED_DEADLINE_VALID.store(0, Ordering::Release);
         PENDING_DEADLINE.store(0, Ordering::Release);
+        PENDING_DEADLINE_VALID.store(0, Ordering::Release);
         (*timer).tasks_start.write(|w| w.bits(1));
         // SEVONPEND closes the check-to-sleep race without PRIMASK: if the
         // compare becomes pending immediately before WFE, the event register
@@ -54,7 +60,33 @@ impl NrfTimerPower {
             entries: 0,
             wake_at: None,
             wake_latency_max_us: 0,
+            deadline_timing: None,
         }
+    }
+
+    /// Install an exact, externally qualified timing bound. Qualification is
+    /// deliberately separate from register initialization: builds cannot
+    /// inherit a high-resolution claim merely by selecting this peripheral.
+    pub fn qualify_deadline_timing(
+        &mut self,
+        profile: DeadlineTimingProfile,
+    ) -> Result<(), PowerHookError> {
+        if !profile.is_valid()
+            || profile.provider_id != Self::DEADLINE_PROVIDER_ID
+            || profile.minimum_period_us < 2
+            || profile.resolution_us != 1
+        {
+            return Err(PowerHookError {
+                source: Self::DEADLINE_PROVIDER_ID,
+                code: 1,
+            });
+        }
+        self.deadline_timing = Some(profile);
+        Ok(())
+    }
+
+    pub fn clear_deadline_timing_qualification(&mut self) {
+        self.deadline_timing = None;
     }
 
     pub fn now_us() -> u64 {
@@ -78,7 +110,10 @@ impl NrfTimerPower {
             (*TIMER0::ptr()).events_compare[COMPARE].reset();
         }
         PENDING_READY.fetch_or(ARMED_READY.swap(0, Ordering::AcqRel), Ordering::AcqRel);
-        PENDING_DEADLINE.store(ARMED_DEADLINE.swap(0, Ordering::AcqRel), Ordering::Release);
+        if ARMED_DEADLINE_VALID.swap(0, Ordering::AcqRel) != 0 {
+            PENDING_DEADLINE.store(ARMED_DEADLINE.load(Ordering::Acquire), Ordering::Release);
+            PENDING_DEADLINE_VALID.store(1, Ordering::Release);
+        }
     }
 }
 
@@ -92,6 +127,7 @@ impl PowerPlatform for NrfTimerPower {
             }
             ARMED_READY.store(0, Ordering::Release);
             ARMED_DEADLINE.store(0, Ordering::Release);
+            ARMED_DEADLINE_VALID.store(0, Ordering::Release);
             self.wake_at = None;
             return Ok(());
         };
@@ -109,6 +145,7 @@ impl PowerPlatform for NrfTimerPower {
             (*timer).intenset.write(|w| w.compare3().set_bit());
             self.wake_at = Some(compare);
             ARMED_DEADLINE.store(compare, Ordering::Release);
+            ARMED_DEADLINE_VALID.store(1, Ordering::Release);
         }
         Ok(())
     }
@@ -128,17 +165,30 @@ impl PowerPlatform for NrfTimerPower {
 
     fn take_deadline_releases(&mut self, now_us: u64) -> u32 {
         let ready = PENDING_READY.swap(0, Ordering::AcqRel);
-        let deadline = PENDING_DEADLINE.swap(0, Ordering::AcqRel);
-        if deadline != 0 {
+        let deadline_valid = PENDING_DEADLINE_VALID.swap(0, Ordering::AcqRel) != 0;
+        let deadline = PENDING_DEADLINE.load(Ordering::Acquire);
+        if deadline_valid {
             self.wake_latency_max_us = self
                 .wake_latency_max_us
                 .max((now_us as u32).wrapping_sub(deadline));
+            if self
+                .deadline_timing
+                .is_some_and(|profile| self.wake_latency_max_us > profile.wake_latency_us)
+            {
+                // A measured bound violation withdraws qualification instead
+                // of letting later admissions reuse evidence that is false.
+                self.deadline_timing = None;
+            }
         }
         ready
     }
 
     fn observed_wake_latency_us(&self) -> u32 {
         self.wake_latency_max_us
+    }
+
+    fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
+        self.deadline_timing
     }
 
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
@@ -166,7 +216,7 @@ impl PowerPlatform for NrfTimerPower {
             .wake_at
             .is_some_and(|wake| wake.wrapping_sub(now) < 0x8000_0000 && wake != now)
             && PENDING_READY.load(Ordering::Acquire) == 0
-            && PENDING_DEADLINE.load(Ordering::Acquire) == 0
+            && PENDING_DEADLINE_VALID.load(Ordering::Acquire) == 0
         {
             slept = true;
             cortex_m::asm::dsb();
@@ -180,6 +230,7 @@ impl PowerPlatform for NrfTimerPower {
         // on a later interrupt. A fired compare already moved these bits.
         ARMED_READY.store(0, Ordering::Release);
         ARMED_DEADLINE.store(0, Ordering::Release);
+        ARMED_DEADLINE_VALID.store(0, Ordering::Release);
         self.wake_at = None;
         if slept {
             self.residency_us = self
