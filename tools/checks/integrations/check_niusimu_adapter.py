@@ -4,6 +4,7 @@
 import argparse
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -255,12 +256,28 @@ def verify_checkout(library: pathlib.Path) -> None:
         raise RuntimeError("NiusIMU board/module inventory differs from the adapter catalog")
 
 
+def verify_native_lease_ownership() -> None:
+    """Reject the former caller-plus-adapter double acquisition of TWIM0."""
+    offenders = []
+    acquire = re.compile(r"Hal::acquire\s*\(\s*Resource::Twim0")
+    for source in sorted((ROOT / "core" / "apps").rglob("*.rs")):
+        text = source.read_text(encoding="utf-8")
+        if "Mpu9250Imu::probe_and_init" in text and acquire.search(text):
+            offenders.append(source.relative_to(ROOT).as_posix())
+    if offenders:
+        raise RuntimeError(
+            "native MPU9250 compositions must let probe_and_init own TWIM0: "
+            + ", ".join(offenders)
+        )
+
+
 def selftest() -> int:
     compiler = shutil.which("g++") or shutil.which("g++.exe")
     if not compiler:
         print("NIUSIMU ADAPTER SELFTEST: FAIL (g++ not found)")
         return 1
     try:
+        verify_native_lease_ownership()
         with tempfile.TemporaryDirectory(prefix="nobro-niusimu-host-") as temp:
             base = pathlib.Path(temp)
             (base / "NiusIMU.h").write_text(FAKE_NIUSIMU, encoding="utf-8")
@@ -274,7 +291,7 @@ def selftest() -> int:
     except (OSError, RuntimeError) as error:
         print(f"NIUSIMU ADAPTER SELFTEST: FAIL ({error})")
         return 1
-    print("NIUSIMU ADAPTER SELFTEST: PASS (common path + fail-closed optional capability hooks)")
+    print("NIUSIMU ADAPTER SELFTEST: PASS (owned native lease + common path + fail-closed optional capability hooks)")
     return 0
 
 

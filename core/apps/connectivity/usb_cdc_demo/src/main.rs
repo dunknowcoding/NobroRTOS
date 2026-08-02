@@ -12,16 +12,21 @@ use panic_halt as _;
 use nobro_adapter_mpu9250_imu::Mpu9250Imu;
 #[cfg(feature = "board-nicenano-s140")]
 use nobro_hal::traits::HalClock;
+#[cfg(feature = "i2c-recovery-diagnostics")]
+use nobro_hal::ResourceLease;
 use nobro_hal::{
     lease::Resource,
     traits::{HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
+#[cfg(feature = "i2c-recovery-diagnostics")]
+use nobro_imu::ImuBackend;
+use nobro_imu::{ImuCompositeBackend, ImuPressureBackend};
 use nobro_kernel::{pool::SamplePool, CompactImuPayload};
 use nobro_sal::SensorSal;
 #[cfg(feature = "usb-timing-diagnostics")]
 use nobro_usb::nrf_dma_timing;
-use nobro_usb::{CdcState, MountedUsb, UsbConfig, UsbStack};
+use nobro_usb::{CdcState, MountedUsb, UsbConfig, UsbIoError, UsbStack};
 
 const OWNER_TWIM: u8 = 3;
 
@@ -121,12 +126,30 @@ fn install_device_serial(words: [u32; 2]) -> &'static str {
 
 #[inline(never)]
 fn write_line(usb: &mut MountedUsb, line: &[u8]) -> bool {
-    for packet in line.chunks(nobro_usb::CDC_PACKET_SIZE) {
-        if usb.write_all(packet).is_err() {
-            return false;
+    // At full speed the host services bulk IN on millisecond frames. A bounded
+    // cycle delay prevents exhausting the retry counter before one frame can
+    // elapse on a fast MCU; the worst case remains below the report period.
+    const SERVICE_LIMIT: u32 = 2_000;
+    const SERVICE_DELAY_CYCLES: u32 = 640;
+    let mut cursor = 0usize;
+    let mut service_polls = 0u32;
+    while cursor < line.len() && service_polls < SERVICE_LIMIT {
+        let end = line
+            .len()
+            .min(cursor.saturating_add(nobro_usb::CDC_PACKET_SIZE));
+        match usb.write_all(&line[cursor..end]) {
+            Ok(()) => cursor = end,
+            Err(UsbIoError::ShortWrite { accepted, .. }) if accepted > 0 => {
+                cursor = cursor.saturating_add(accepted).min(end);
+            }
+            Err(UsbIoError::Backpressure) => {}
+            Err(_) => return false,
         }
+        let _ = usb.poll();
+        cortex_m::asm::delay(SERVICE_DELAY_CYCLES);
+        service_polls = service_polls.saturating_add(1);
     }
-    true
+    cursor == line.len()
 }
 
 #[inline(never)]
@@ -149,21 +172,13 @@ fn read_dfu_command(usb: &mut MountedUsb, dfu_command_pos: &mut u8) -> bool {
 }
 
 #[inline(never)]
-fn write_human_report(
-    usb: &mut MountedUsb,
-    who: u32,
-    addr: u32,
-    i2c_ok: u32,
-    reads: u32,
-    errors: u32,
-    accel_mg: u32,
-    temp_centi_c: u32,
-    gyro_mag_mdps: u32,
-    pass: bool,
-) -> bool {
-    let mut buf = [0u8; 128];
+fn write_human_report(usb: &mut MountedUsb, who: u32, composite_healthy: bool, pass: bool) -> bool {
+    // Keep the human twin intentionally terse. The complete bounded record is
+    // emitted immediately afterwards by `write_machine_report`; duplicating
+    // every field here needlessly prices a second large stack buffer.
+    let mut buf = [0u8; 32];
     let mut n = 0usize;
-    push(&mut buf, &mut n, b"NobroRTOS IMU who=0x");
+    push(&mut buf, &mut n, b"Nobro IMU ");
     let hi = (who >> 4) & 0xF;
     let lo = who & 0xF;
     let hexd = |d: u32| {
@@ -178,21 +193,9 @@ fn write_human_report(
         buf[n + 1] = hexd(lo);
         n += 2;
     }
-    push(&mut buf, &mut n, b" addr=");
-    push_u32(&mut buf, &mut n, addr);
-    push(&mut buf, &mut n, b" i2c=");
-    push_u32(&mut buf, &mut n, i2c_ok);
-    push(&mut buf, &mut n, b" reads=");
-    push_u32(&mut buf, &mut n, reads);
-    push(&mut buf, &mut n, b" err=");
-    push_u32(&mut buf, &mut n, errors);
-    push(&mut buf, &mut n, b" accel=");
-    push_u32(&mut buf, &mut n, accel_mg);
-    push(&mut buf, &mut n, b"mg temp=");
-    push_u32(&mut buf, &mut n, temp_centi_c);
-    push(&mut buf, &mut n, b" gyro=");
-    push_u32(&mut buf, &mut n, gyro_mag_mdps);
-    push(&mut buf, &mut n, b"mdps ");
+    push(&mut buf, &mut n, b" c=");
+    push_u32(&mut buf, &mut n, u32::from(composite_healthy));
+    push(&mut buf, &mut n, b" ");
     push(&mut buf, &mut n, if pass { b"PASS\r\n" } else { b"..\r\n" });
     write_line(usb, &buf[..n])
 }
@@ -201,21 +204,29 @@ fn write_human_report(
 fn write_machine_report(
     usb: &mut MountedUsb,
     who: u32,
-    reads: u32,
-    errors: u32,
-    accel_mg: u32,
+    bmp280_present: bool,
+    pressure_pa: u32,
+    composite_healthy: bool,
+    lease_fail_closed: bool,
+    recovery_passed: bool,
     pass: bool,
 ) -> bool {
-    let mut mline = [0u8; 96];
+    // The retained-suffix writer below safely spans endpoint packets; size the
+    // formatted record independently so a valid line is never source-truncated.
+    let mut mline = [0u8; 80];
     let mut m = 0usize;
     push(&mut mline, &mut m, b"NOBRO-CDC who=");
     push_u32(&mut mline, &mut m, who);
-    push(&mut mline, &mut m, b" reads=");
-    push_u32(&mut mline, &mut m, reads);
-    push(&mut mline, &mut m, b" errors=");
-    push_u32(&mut mline, &mut m, errors);
-    push(&mut mline, &mut m, b" accel_mg=");
-    push_u32(&mut mline, &mut m, accel_mg);
+    push(&mut mline, &mut m, b" bmp=");
+    push_u32(&mut mline, &mut m, u32::from(bmp280_present));
+    push(&mut mline, &mut m, b" pa=");
+    push_u32(&mut mline, &mut m, pressure_pa);
+    push(&mut mline, &mut m, b" c=");
+    push_u32(&mut mline, &mut m, u32::from(composite_healthy));
+    push(&mut mline, &mut m, b" lf=");
+    push_u32(&mut mline, &mut m, u32::from(lease_fail_closed));
+    push(&mut mline, &mut m, b" recovered=");
+    push_u32(&mut mline, &mut m, u32::from(recovery_passed));
     push(&mut mline, &mut m, b" all_pass=");
     push_u32(&mut mline, &mut m, u32::from(pass));
     push(&mut mline, &mut m, b"\r\n");
@@ -331,18 +342,22 @@ fn main() -> ! {
     // the controller and dropping a bootloader-owned pull-up first.
     let _ = usb.poll();
 
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     let imu = Mpu9250Imu::probe_and_init(OWNER_TWIM);
-    let (who, addr, i2c_ok) = match &imu {
-        Ok(d) => (u32::from(d.who_am_i()), u32::from(d.addr()), 1u32),
-        Err(_) => (0, 0, 0),
+    let (who, i2c_ok) = match &imu {
+        Ok(d) => (u32::from(d.who_am_i()), 1u32),
+        Err(_) => (0, 0),
     };
     let mut imu = imu.ok();
 
     let mut reads: u32 = 0;
-    let mut errors: u32 = 0;
     let mut accel_mg: u32 = 0;
     let mut spin: u32 = 0;
+    #[cfg(feature = "i2c-recovery-diagnostics")]
+    let mut recovery_exercised = false;
+    #[cfg(feature = "i2c-recovery-diagnostics")]
+    let mut lease_fail_closed = false;
+    #[cfg(feature = "i2c-recovery-diagnostics")]
+    let mut recovery_passed = false;
 
     let mut blink: u32 = 0;
     #[cfg(feature = "board-nicenano-s140")]
@@ -463,34 +478,61 @@ fn main() -> ! {
                         SamplePool::release(sample.handle);
                     }
                     Ok(None) => {}
-                    Err(_) => errors += 1,
+                    Err(_) => {}
+                }
+                #[cfg(feature = "i2c-recovery-diagnostics")]
+                if !recovery_exercised && reads >= 20 {
+                    let receipt = ResourceLease::recover_owner(OWNER_TWIM);
+                    lease_fail_closed =
+                        receipt.released_count() == 1 && ImuBackend::sample(d).is_err();
+                    recovery_passed = ImuBackend::recover(d).is_ok();
+                    recovery_exercised = true;
                 }
             }
         }
 
         if spin % 600_000 == 0 {
-            let pass = i2c_ok == 1 && reads >= 10 && (800..1200).contains(&accel_mg);
-            let temp_centi_c = imu.as_ref().map(|d| d.last_temp_centi_c()).unwrap_or(0);
-            let gyro_mag_mdps = imu.as_ref().map(|d| d.last_gyro_mag_mdps()).unwrap_or(0);
-            if !write_human_report(
-                &mut usb,
-                who,
-                addr,
-                i2c_ok,
-                reads,
-                errors,
-                accel_mg,
-                temp_centi_c,
-                gyro_mag_mdps,
-                pass,
-            ) {
+            let (bmp280_present, pressure_pa, composite_healthy) = match imu.as_mut() {
+                Some(device) => {
+                    let present = device.bmp280_present();
+                    let pressure = ImuPressureBackend::pressure_sample(device)
+                        .map(|sample| sample.pressure_pa)
+                        .unwrap_or(0);
+                    let composite = ImuCompositeBackend::composite_status(device)
+                        .map(|status| status.present_mask == status.healthy_mask)
+                        .unwrap_or(false);
+                    (present, pressure, composite)
+                }
+                None => (false, 0, false),
+            };
+            let companion_ok =
+                !bmp280_present || ((30_000..=110_000).contains(&pressure_pa) && composite_healthy);
+            #[cfg(feature = "i2c-recovery-diagnostics")]
+            let recovery_ok = lease_fail_closed && recovery_passed;
+            #[cfg(not(feature = "i2c-recovery-diagnostics"))]
+            let (lease_fail_closed, recovery_passed, recovery_ok) = (false, false, true);
+            let pass = i2c_ok == 1
+                && reads >= 10
+                && (800..1200).contains(&accel_mg)
+                && companion_ok
+                && recovery_ok;
+            if !write_human_report(&mut usb, who, composite_healthy, pass) {
                 defmt::warn!("USB telemetry backpressure");
             }
 
             // Machine-decodable twin of the line above, in the standard
             // `NOBRO-<NAME> key=value` shape the host tools and the web-flasher
             // report console parse (nobro_rtos.node / parseStatusLine).
-            if !write_machine_report(&mut usb, who, reads, errors, accel_mg, pass) {
+            if !write_machine_report(
+                &mut usb,
+                who,
+                bmp280_present,
+                pressure_pa,
+                composite_healthy,
+                lease_fail_closed,
+                recovery_passed,
+                pass,
+            ) {
                 defmt::warn!("USB model-report backpressure");
             }
             #[cfg(feature = "usb-timing-diagnostics")]

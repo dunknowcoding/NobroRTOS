@@ -32,6 +32,8 @@ const TWI_ADDRESS: u32 = 0x588;
 
 const TWI_ENABLE_DISABLED: u32 = 0;
 const TWI_ENABLE_ENABLED: u32 = 5;
+const TWI_FREQUENCY_100K: u32 = 0x0198_0000;
+const TWI_FREQUENCY_250K: u32 = 0x0400_0000;
 const TWI_FREQUENCY_400K: u32 = 0x0640_0000;
 const TIMEOUT_SPINS: u32 = 200_000;
 
@@ -136,17 +138,43 @@ fn recover_bus(sda: u8, scl: u8) {
 
 pub struct Twim0;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TwimFrequency {
+    Khz100,
+    Khz250,
+    #[default]
+    Khz400,
+}
+
+impl TwimFrequency {
+    const fn register(self) -> u32 {
+        match self {
+            Self::Khz100 => TWI_FREQUENCY_100K,
+            Self::Khz250 => TWI_FREQUENCY_250K,
+            Self::Khz400 => TWI_FREQUENCY_400K,
+        }
+    }
+}
+
 impl Twim0 {
     /// # Safety
     /// Caller must own the Twim0 lease; `sda`/`scl` must be the board's wired I2C
     /// pins. Runs the 9-pulse bus recovery (drives SCL as GPIO) before enabling TWI.
     pub unsafe fn init(sda: u8, scl: u8) {
+        unsafe { Self::init_with_frequency(sda, scl, TwimFrequency::default()) };
+    }
+
+    /// Initialize the owned bus at an explicit standard-mode/fast-mode clock.
+    ///
+    /// # Safety
+    /// The caller must own TWIM0 and pass the exact board pins.
+    pub unsafe fn init_with_frequency(sda: u8, scl: u8, frequency: TwimFrequency) {
         recover_bus(sda, scl);
         let base = TWI0_BASE;
         *reg(base, TWI_ENABLE) = TWI_ENABLE_DISABLED;
         *reg(base, TWI_PSELSDA) = u32::from(sda);
         *reg(base, TWI_PSELSCL) = u32::from(scl);
-        *reg(base, TWI_FREQUENCY) = TWI_FREQUENCY_400K;
+        *reg(base, TWI_FREQUENCY) = frequency.register();
         *reg(base, TWI_ENABLE) = TWI_ENABLE_ENABLED;
         configure_open_drain(u32::from(sda), false);
         configure_open_drain(u32::from(scl), false);
@@ -682,5 +710,13 @@ mod tests {
         assert_eq!(gpio(47), (GPIO_PORT0_BASE + GPIO_PORT_STRIDE, 15));
         assert_eq!(GPIO_OUTCLR, 0x50c);
         assert_eq!(GPIO_IN, 0x510);
+    }
+
+    #[test]
+    fn standard_frequency_selection_is_explicit() {
+        assert_eq!(TwimFrequency::Khz100.register(), 0x0198_0000);
+        assert_eq!(TwimFrequency::Khz250.register(), 0x0400_0000);
+        assert_eq!(TwimFrequency::Khz400.register(), 0x0640_0000);
+        assert_eq!(TwimFrequency::default(), TwimFrequency::Khz400);
     }
 }

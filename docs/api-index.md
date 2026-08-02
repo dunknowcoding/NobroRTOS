@@ -24,7 +24,7 @@ Bounded ESP32-S3 + ES8311 bridge.
 ## `nobro-eh-i2c`
 `embedded-hal` 1.0 I2C adapter over the NobroRTOS TWIM bus.
 - **struct**: `NobroI2cError`, `NobroI2c`
-- **fn**: `new`, `scan_device_count`, `recover`
+- **fn**: `new`, `new_with_frequency`, `scan_device_count`, `recover`
 
 ## `nobro-eh-spi`
 `embedded-hal` 1.0 `SpiDevice` adapter over the NobroRTOS SPIM0 bus.

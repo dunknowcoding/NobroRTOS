@@ -21,6 +21,7 @@ required-features = ["board-promicro-s140"]
 [dependencies]
 nobro-adapter-mpu9250-imu = { path = "../../../adapters/imu/mpu9250-imu", default-features = false }
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
+nobro-imu = { path = "../../../crates/nobro_imu" }
 nobro-kernel = { path = "../../../crates/nobro_kernel" }
 nobro-sal = { path = "../../../crates/nobro_sal" }
 cortex-m = "0.7"
@@ -36,12 +37,15 @@ default = ["board-promicro-nosd"]
 board-promicro-nosd = [
     "nobro-hal/board-promicro-nosd",
     "nobro-adapter-mpu9250-imu/board-promicro-nosd",
+    "nobro-adapter-mpu9250-imu/bmp280-companion",
 ]
 board-nicenano-s140 = [
     "nobro-hal/board-nicenano-s140",
     "nobro-adapter-mpu9250-imu/board-nicenano-s140",
+    "nobro-adapter-mpu9250-imu/bmp280-companion",
 ]
 board-promicro-s140 = ["board-nicenano-s140"]
 # Optional on-device timing report for USB/EasyDMA validation. It is excluded
 # from normal product images and their static budgets.
 usb-timing-diagnostics = ["nobro-usb/nrf-timing-diagnostics"]
+i2c-recovery-diagnostics = []

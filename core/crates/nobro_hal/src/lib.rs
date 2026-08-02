@@ -135,7 +135,7 @@ pub use spim_hw::Spim0;
 #[cfg(feature = "platform-nrf52840")]
 pub use timer::MicroTimer;
 #[cfg(feature = "platform-nrf52840")]
-pub use twim_hw::Twim0;
+pub use twim_hw::{Twim0, TwimFrequency};
 #[cfg(feature = "nrf-twim-async")]
 pub use twim_hw::{TwimTransfer, TWIM_XFER_MAX};
 

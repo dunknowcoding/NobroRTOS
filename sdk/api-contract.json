@@ -2770,7 +2770,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "c3f16eaf8a321448e34da4c338b88d6215da56c16315bb7d41b853a74169a1ca"
+        "sha256": "cc60ca32a2c0f09eeeb0b8af54260fac7fcf2ac56364c190c7897fef390a2937"
       },
       {
         "crate": "nobro-host",
@@ -7005,6 +7005,10 @@
           },
           {
             "kind": "fn",
+            "name": "new_with_frequency"
+          },
+          {
+            "kind": "fn",
             "name": "scan_device_count"
           },
           {
@@ -7013,7 +7017,7 @@
           }
         ],
         "path": "core/adapters/bus/embedded-hal-i2c/src/lib.rs",
-        "sha256": "23fb78a8a83788e7a1cf3c7dacb5c8247159434480e0221d139b26f4fcfdb601"
+        "sha256": "90bb0f4d6b16b456d874c225152ebe3922a54fa7b52ed1a8debb40fe6e037dcd"
       },
       {
         "crate": "nobro-eh-spi",
@@ -7256,7 +7260,7 @@
           }
         ],
         "path": "core/adapters/imu/mpu9250-imu/src/lib.rs",
-        "sha256": "b615deffed028f1aa5fd921c33b3ac4e5dcf08f3cc1d22f27d1bc7936a04d624"
+        "sha256": "290c80beedab0d810309feb1fbfe0e5c1bcc4db381fcc0d590f03d339d6e8361"
       },
       {
         "crate": "nobro-adapter-ina3221",

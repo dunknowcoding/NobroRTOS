@@ -1402,6 +1402,7 @@ dependencies = [
  "defmt-rtt",
  "nobro-adapter-mpu9250-imu",
  "nobro-hal",
+ "nobro-imu",
  "nobro-kernel",
  "nobro-sal",
  "nobro-usb",

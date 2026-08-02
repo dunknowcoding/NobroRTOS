@@ -74,7 +74,6 @@ fn main() -> ! {
     unsafe {
         Hal::init_timebase();
     }
-    Hal::acquire(Resource::Twim0, OWNER_TWIM).unwrap_or_else(|_| defmt::panic!("I2C lease"));
     let mut imu = match Mpu9250Imu::probe_and_init(OWNER_TWIM) {
         Ok(d) => d,
         Err(_) => idle(),

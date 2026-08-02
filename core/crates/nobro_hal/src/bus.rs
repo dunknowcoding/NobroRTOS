@@ -3,7 +3,7 @@
 use crate::lease::{LeaseError, LeaseGuard, Resource, ResourceLease};
 #[cfg(feature = "nrf-twim-async")]
 use crate::priority_ceiling::CompletionInterruptPriority;
-use crate::twim_hw::Twim0;
+use crate::twim_hw::{Twim0, TwimFrequency};
 
 pub const TWIM0_BASE: u32 = 0x4000_3000;
 pub const TWIM1_BASE: u32 = 0x4000_4000;
@@ -60,8 +60,17 @@ impl TwimBus {
     }
 
     pub fn init_pins(&self, sda: u8, scl: u8) -> Result<(), BusError> {
+        self.init_pins_with_frequency(sda, scl, TwimFrequency::default())
+    }
+
+    pub fn init_pins_with_frequency(
+        &self,
+        sda: u8,
+        scl: u8,
+        frequency: TwimFrequency,
+    ) -> Result<(), BusError> {
         self.ensure_sync_ready()?;
-        unsafe { Self::init_pins_unchecked(sda, scl) }
+        unsafe { Twim0::init_with_frequency(sda, scl, frequency) }
         Ok(())
     }
 

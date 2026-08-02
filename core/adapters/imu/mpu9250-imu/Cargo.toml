@@ -15,7 +15,10 @@ cortex-m = { version = "0.7", optional = true }
 libm = "0.2"
 
 [features]
-default = ["board-promicro-nosd"]
+default = ["board-promicro-nosd", "bmp280-companion"]
+## Optional GY-91 pressure companion. MPU-only compositions do not pay for
+## BMP280 calibration, compensation, or initialization code.
+bmp280-companion = []
 nrf52840 = ["dep:cortex-m", "dep:nobro-hal", "dep:nobro-eh-i2c"]
 board-promicro-nosd = [
     "nrf52840",
