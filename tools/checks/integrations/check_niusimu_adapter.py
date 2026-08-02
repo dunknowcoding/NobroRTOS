@@ -97,6 +97,37 @@ public:
 
 SELFTEST_SOURCE = r'''#include <assert.h>
 #include "NobroNiusIMU.h"
+struct OptionalState { int fifo_reads = 0; };
+bool fifo_status(void *, nobro_imu_fifo_status_t *out) {
+  *out = {}; out->available = 2; out->capacity = 8; return true;
+}
+bool fifo_read(void *context, nobro_imu_sample_t *out, size_t capacity,
+               size_t *written, uint64_t) {
+  if (!out || capacity < 2) return false;
+  static_cast<OptionalState *>(context)->fifo_reads++;
+  out[0] = {}; out[1] = {}; *written = 2; return true;
+}
+bool interrupt_status(void *, nobro_imu_interrupt_status_t *out) {
+  *out = {}; out->data_ready = true; out->timestamp_us = 88; return true;
+}
+bool fusion(void *, nobro_imu_quaternion_q30_t *out) {
+  *out = {}; out->w = 1 << 30; return true;
+}
+bool aux_read(void *, uint8_t, uint8_t, uint8_t *out, size_t capacity,
+              size_t *written, uint64_t) {
+  if (!out || !capacity) return false;
+  out[0] = 0x5a;
+  *written = 1;
+  return true;
+}
+bool aux_write(void *, uint8_t, uint8_t, const uint8_t *, size_t size,
+               size_t *written, uint64_t) { *written = size; return true; }
+bool pressure(void *, nobro_imu_pressure_sample_t *out) {
+  *out = {}; out->pressure_pa = 101325; return true;
+}
+bool composite(void *, nobro_imu_composite_status_t *out) {
+  *out = {}; out->present_mask = 3; out->healthy_mask = 3; return true;
+}
 class Mock : public nimu::IMUSensor {
 public:
   bool ready = true;
@@ -118,27 +149,68 @@ public:
 };
 int main() {
   Mock sensor;
+  OptionalState optional_state;
+  nobro_imu_optional_hooks_t hooks = {};
+  hooks.context = &optional_state;
+  hooks.capabilities = NOBRO_IMU_CAP_FIFO | NOBRO_IMU_CAP_INTERRUPT |
+      NOBRO_IMU_CAP_FUSION | NOBRO_IMU_CAP_AUX_BUS |
+      NOBRO_IMU_CAP_PRESSURE | NOBRO_IMU_CAP_COMPOSITE;
+  hooks.fifo_status = fifo_status; hooks.fifo_read = fifo_read;
+  hooks.interrupt_status = interrupt_status; hooks.fusion = fusion;
+  hooks.aux_read = aux_read; hooks.aux_write = aux_write;
+  hooks.pressure = pressure; hooks.composite = composite;
   sensor.value.accel.x = 0.3f; sensor.value.accel.y = 0.4f;
   sensor.value.gyro.z = 1.5f; sensor.value.mag.x = 2.25f;
   sensor.value.temperature = 21.5f; sensor.value.timestamp = 1234;
   SPIClass spi;
-  nobro::NiusImuAdapter adapter(sensor, NOBRO_IMU_MPU9250, 7);
-  assert(adapter.beginSPI(spi, 7));
+  nobro::NiusImuAdapter adapter(sensor, NOBRO_IMU_MPU9250, 7, hooks);
   nobro_imu_sample_t sample = {};
+  assert(!adapter.sample(sample) && !adapter.ready());
+  assert(adapter.beginSPI(spi, 7));
+  assert(adapter.ready());
   assert(adapter.sample(sample));
   assert(sample.accel_mg[0] == 300 && sample.accel_mag_mg == 500);
   assert(sample.gyro_mdps[2] == 1500 && sample.mag_milli_ut[0] == 2250);
   assert(sample.temperature_centi_c == 2150 && sample.timestamp_us == 1234);
   assert(adapter.recover() && sensor.spi_begins == 2 && sensor.default_begins == 0);
+  assert(adapter.capabilities() == hooks.capabilities);
+  nobro_imu_fifo_status_t fifo = {};
+  nobro_imu_sample_t fifo_samples[2] = {};
+  size_t written = 0;
+  assert(adapter.fifoStatus(fifo) && fifo.available == 2);
+  assert(adapter.readFifo(fifo_samples, 2, written) && written == 2);
+  nobro_imu_interrupt_status_t irq = {};
+  nobro_imu_quaternion_q30_t quaternion = {};
+  nobro_imu_pressure_sample_t pressure_sample = {};
+  nobro_imu_composite_status_t composite_status = {};
+  uint8_t aux_byte = 0;
+  assert(adapter.interruptStatus(irq) && irq.data_ready);
+  assert(adapter.fusion(quaternion) && quaternion.w == (1 << 30));
+  assert(adapter.auxRead(0x1e, 0, &aux_byte, 1, written) && aux_byte == 0x5a);
+  assert(adapter.auxWrite(0x1e, 0, &aux_byte, 1, written) && written == 1);
+  assert(adapter.pressure(pressure_sample) && pressure_sample.pressure_pa == 101325);
+  assert(adapter.compositeStatus(composite_status) && composite_status.healthy_mask == 3);
+  adapter.release();
+  assert(!adapter.ready() && !adapter.fifoStatus(fifo));
+  assert(adapter.recover() && adapter.ready());
+  nobro_imu_optional_hooks_t incomplete = {};
+  incomplete.capabilities = NOBRO_IMU_CAP_FIFO;
+  incomplete.fifo_status = fifo_status;
+  nobro::NiusImuAdapter fail_closed(sensor, NOBRO_IMU_MPU9250, 7, incomplete);
+  assert(fail_closed.capabilities() == 0 && !fail_closed.fifoStatus(fifo));
+  Mock adopted_sensor;
+  nobro::NiusImuAdapter adopted(adopted_sensor, NOBRO_IMU_MPU6050, 0x68);
+  assert(adopted.adoptReady() && !adopted.adoptReady());
+  assert(adopted.sample(sample));
   nobro_imu_calibration_t bad = {};
   assert(!adapter.setCalibration(bad));
   sensor.update_ok = false;
   assert(!adapter.sample(sample));
   nobro_imu_diagnostics_t diagnostics = adapter.diagnostics();
-  assert(diagnostics.samples == 1 && diagnostics.read_errors == 1);
+  assert(diagnostics.samples == 1 && diagnostics.read_errors == 2);
   assert(diagnostics.last_event == NOBRO_IMU_EVENT_READ_ERROR);
   sensor.ready = false;
-  assert(!adapter.recover() && sensor.spi_begins == 3);
+  assert(!adapter.recover() && sensor.spi_begins == 4);
   assert(adapter.diagnostics().last_event == NOBRO_IMU_EVENT_RECOVERY_EXHAUSTED);
 }
 '''
@@ -202,7 +274,7 @@ def selftest() -> int:
     except (OSError, RuntimeError) as error:
         print(f"NIUSIMU ADAPTER SELFTEST: FAIL ({error})")
         return 1
-    print("NIUSIMU ADAPTER SELFTEST: PASS (units, SPI recovery, diagnostics, calibration reject)")
+    print("NIUSIMU ADAPTER SELFTEST: PASS (common path + fail-closed optional capability hooks)")
     return 0
 
 

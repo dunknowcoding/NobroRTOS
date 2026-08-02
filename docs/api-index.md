@@ -208,8 +208,8 @@ Host-side contract constants shared by scripts, tools, and documentation.
 
 ## `nobro-imu`
 Canonical, allocation-free IMU domain contracts for NobroRTOS.
-- **trait**: `ImuBackend`
-- **struct**: `ImuHealthReport`, `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`
+- **trait**: `ImuCapabilityBackend`, `ImuFifoBackend`, `ImuInterruptBackend`, `ImuFusionBackend`, `ImuAuxBusBackend`, `ImuPressureBackend`, `ImuCompositeBackend`, `ImuBackend`
+- **struct**: `ImuHealthReport`, `ImuSample`, `ImuCalibration`, `ImuFamily`, `ImuIdentity`, `ImuDiagnostics`, `ImuCapabilities`, `ImuFifoStatus`, `ImuInterruptStatus`, `ImuQuaternionQ30`, `ImuPressureSample`, `ImuCompositeStatus`
 - **enum**: `ImuEvent`
 - **fn**: `finalize_diagnostic`, `diagnostic_checksum_matches`, `magnitude3`
 
@@ -237,9 +237,9 @@ Neural-network building blocks from scratch, scoped for MCUs (inference side).
 
 ## `nobro-power`
 No-heap power management policy: pick a sleep mode from activity + a deadline,
-- **trait**: `PowerPlatform`, `PowerParticipant`
-- **struct**: `PowerVetoMask`, `PowerLease`, `PowerLeaseTable`, `SystemOffWake`, `PowerTransition`, `PowerHookError`, `PowerPlatformChain`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
-- **enum**: `PowerMode`, `PowerVetoReason`, `PowerLeaseKind`, `PowerLeaseError`, `WakeStyle`, `SystemOffWakeError`
+- **trait**: `PowerMonitorBackend`, `PowerPlatform`, `PowerParticipant`
+- **struct**: `PowerChannelSample`, `PowerVetoMask`, `PowerLease`, `PowerLeaseTable`, `SystemOffWake`, `PowerTransition`, `PowerHookError`, `PowerPlatformChain`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
+- **enum**: `PowerMode`, `PowerMonitorState`, `PowerMonitorError`, `PowerVetoReason`, `PowerLeaseKind`, `PowerLeaseError`, `WakeStyle`, `SystemOffWakeError`
 - **fn**: `acquire`, `release`, `owner`, `attach_participant`, `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `task_power_uw`, `account_task`, `acquire_lease`, `release_lease`, `set_system_off_wake`, `apply_idle`, `apply_idle_release`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
 
 ## `nobro-sal`
@@ -257,9 +257,9 @@ Security + data-integrity primitives.
 
 ## `nobro-sensor`
 No-heap sensor utilities, transport-agnostic.
-- **trait**: `AdcDmaBackend`
-- **struct**: `SensorHealth`, `Calibration`, `Decimator`, `AdcDmaConfig`, `AdcSample`
-- **enum**: `AdcDmaState`, `AdcDmaError`
+- **trait**: `RangingBackend`, `PresenceBackend`, `AdcDmaBackend`
+- **struct**: `RangingSample`, `PresenceSample`, `SensorHealth`, `Calibration`, `Decimator`, `AdcDmaConfig`, `AdcSample`
+- **enum**: `SensorProviderState`, `SensorProviderError`, `SensorTransport`, `SensorSampleStatus`, `AdcDmaState`, `AdcDmaError`
 - **fn**: `update`, `is_stuck`, `out_of_range`, `observe`, `finalize`, `apply`, `bias`, `tick`, `tmr_vote`
 
 ## `nobro-services`

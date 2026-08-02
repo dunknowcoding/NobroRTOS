@@ -88,22 +88,43 @@
     },
     {
       "source": "bindings/c/include/nobro_imu.h",
-      "source_sha256": "7e336e7d69adb22ff41c0f45788c55d38b1847aeccb34734b813c19cbb408255",
+      "source_sha256": "10b819b171013535db203c0f053779b6911875d2613879d7d4fd651bba5ba6eb",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_imu.h",
-          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
+          "sha256": "17bb42ca4734deb30784523e89768199444cba9989ecfc2d6ad21c2e95279d8f"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_imu.h",
-          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
+          "sha256": "17bb42ca4734deb30784523e89768199444cba9989ecfc2d6ad21c2e95279d8f"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_imu.h",
-          "sha256": "372519603195e49f0050296e258ca124a7cd5fab0dde581794702aea9cadef7b"
+          "sha256": "17bb42ca4734deb30784523e89768199444cba9989ecfc2d6ad21c2e95279d8f"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_power_monitor.h",
+      "source_sha256": "8098be5282f458a2a2cd9f989ec24b4f9669ca4c6e32d8148feb209b2f423c40",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_power_monitor.h",
+          "sha256": "85eaac0d78f6f8db41864981177a017f4b195bc1ed79bea7a11e395f101c3b7d"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_power_monitor.h",
+          "sha256": "85eaac0d78f6f8db41864981177a017f4b195bc1ed79bea7a11e395f101c3b7d"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_power_monitor.h",
+          "sha256": "85eaac0d78f6f8db41864981177a017f4b195bc1ed79bea7a11e395f101c3b7d"
         }
       ]
     },
@@ -146,6 +167,27 @@
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_rtos.h",
           "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
+        }
+      ]
+    },
+    {
+      "source": "bindings/c/include/nobro_sensor_provider.h",
+      "source_sha256": "f09a47241b419a90bea89b4e18b58b4421c6a917f8e49915c9d891ebab1eddb5",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_sensor_provider.h",
+          "sha256": "5f1bc0fae9c39a698f6910eaf6b3c99805801d9bf99f284e7795bc5639b3c9f0"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_sensor_provider.h",
+          "sha256": "5f1bc0fae9c39a698f6910eaf6b3c99805801d9bf99f284e7795bc5639b3c9f0"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_sensor_provider.h",
+          "sha256": "5f1bc0fae9c39a698f6910eaf6b3c99805801d9bf99f284e7795bc5639b3c9f0"
         }
       ]
     },
@@ -270,6 +312,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroDiFinders.h",
+      "source_sha256": "e8fde7fcaf59cbfc85645de254ca3a1c6b052ea78bd15e145430338f51a62169",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroDiFinders.h",
+          "sha256": "e8fde7fcaf59cbfc85645de254ca3a1c6b052ea78bd15e145430338f51a62169"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroEsp32Peripherals.h",
       "source_sha256": "50f491d7b3f56972dec10adacdc27a08ca54082b2f3f58d4331689922741f93f",
       "targets": [
@@ -288,6 +341,17 @@
           "generated_banner": false,
           "path": "packages/platformio/include/NobroEsp8266.h",
           "sha256": "7a1284ae9a41b5fcdf5a40a8563662d8e7d3530da6cdd19f17667ec87f2d56b2"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroInaSeries.h",
+      "source_sha256": "17c662d4de27362fc091f5de45ea51b0a2488da973ffc0c6b6dd8ce11701d04a",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroInaSeries.h",
+          "sha256": "17c662d4de27362fc091f5de45ea51b0a2488da973ffc0c6b6dd8ce11701d04a"
         }
       ]
     },
@@ -337,12 +401,12 @@
     },
     {
       "source": "packages/arduino/src/NobroNiusIMU.h",
-      "source_sha256": "3ac36e2e9c4eb1be4f9b71e0ccfb7f7d4b0aed88aede4417648ced360c75b67b",
+      "source_sha256": "c5a485179196e695c21d8f397fa15440364628721de02693a13b1229f400a149",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroNiusIMU.h",
-          "sha256": "3ac36e2e9c4eb1be4f9b71e0ccfb7f7d4b0aed88aede4417648ced360c75b67b"
+          "sha256": "c5a485179196e695c21d8f397fa15440364628721de02693a13b1229f400a149"
         }
       ]
     },
@@ -454,22 +518,58 @@
         "sha256": "9bbb3a80c49c167f5805aca37311cccf5d9c9626954a0f88085e317a454445f5"
       },
       {
-        "declarations": [],
+        "declarations": [
+          "typedef bool (*nobro_imu_aux_read_fn)(void *, uint8_t, uint8_t, uint8_t *, size_t, size_t *, uint64_t);",
+          "typedef bool (*nobro_imu_aux_write_fn)(void *, uint8_t, uint8_t, const uint8_t *, size_t, size_t *, uint64_t);",
+          "typedef bool (*nobro_imu_composite_fn)(void *, nobro_imu_composite_status_t *);",
+          "typedef bool (*nobro_imu_fifo_read_fn)(void *, nobro_imu_sample_t *, size_t, size_t *, uint64_t);",
+          "typedef bool (*nobro_imu_fifo_status_fn)(void *, nobro_imu_fifo_status_t *);",
+          "typedef bool (*nobro_imu_fusion_fn)(void *, nobro_imu_quaternion_q30_t *);",
+          "typedef bool (*nobro_imu_interrupt_fn)(void *, nobro_imu_interrupt_status_t *);",
+          "typedef bool (*nobro_imu_pressure_fn)(void *, nobro_imu_pressure_sample_t *);"
+        ],
         "macros": [
           "NOBRO_IMU_API_VERSION",
           "NOBRO_IMU_CALIBRATION_MAGIC",
+          "NOBRO_IMU_CAP_AUX_BUS",
+          "NOBRO_IMU_CAP_COMPOSITE",
+          "NOBRO_IMU_CAP_FIFO",
+          "NOBRO_IMU_CAP_FUSION",
+          "NOBRO_IMU_CAP_INTERRUPT",
+          "NOBRO_IMU_CAP_PRESSURE",
           "NOBRO_IMU_H"
         ],
         "named_types": [
           "nobro_imu_calibration_t",
+          "nobro_imu_capability_mask_t",
+          "nobro_imu_composite_status_t",
           "nobro_imu_diagnostics_t",
           "nobro_imu_event_t",
           "nobro_imu_family_t",
+          "nobro_imu_fifo_status_t",
           "nobro_imu_identity_t",
+          "nobro_imu_interrupt_status_t",
+          "nobro_imu_optional_hooks_t",
+          "nobro_imu_pressure_sample_t",
+          "nobro_imu_quaternion_q30_t",
           "nobro_imu_sample_t"
         ],
         "path": "bindings/c/include/nobro_imu.h",
-        "sha256": "7e336e7d69adb22ff41c0f45788c55d38b1847aeccb34734b813c19cbb408255"
+        "sha256": "10b819b171013535db203c0f053779b6911875d2613879d7d4fd651bba5ba6eb"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_POWER_MONITOR_API_VERSION",
+          "NOBRO_POWER_MONITOR_H"
+        ],
+        "named_types": [
+          "nobro_power_channel_sample_t",
+          "nobro_power_monitor_result_t",
+          "nobro_power_monitor_state_t"
+        ],
+        "path": "bindings/c/include/nobro_power_monitor.h",
+        "sha256": "8098be5282f458a2a2cd9f989ec24b4f9669ca4c6e32d8148feb209b2f423c40"
       },
       {
         "declarations": [],
@@ -659,6 +759,22 @@
         ],
         "path": "bindings/c/include/nobro_rtos.h",
         "sha256": "dcc87c95a73c8727e57e74b2376b4ff0af3eee78bf4e5a916713d32a36f43ef8"
+      },
+      {
+        "declarations": [],
+        "macros": [
+          "NOBRO_SENSOR_PROVIDER_API_VERSION",
+          "NOBRO_SENSOR_PROVIDER_H"
+        ],
+        "named_types": [
+          "nobro_presence_sample_t",
+          "nobro_ranging_sample_t",
+          "nobro_sensor_provider_state_t",
+          "nobro_sensor_sample_status_t",
+          "nobro_sensor_transport_t"
+        ],
+        "path": "bindings/c/include/nobro_sensor_provider.h",
+        "sha256": "f09a47241b419a90bea89b4e18b58b4421c6a917f8e49915c9d891ebab1eddb5"
       },
       {
         "declarations": [
@@ -3499,6 +3615,98 @@
             "name": "ImuDiagnostics"
           },
           {
+            "kind": "struct",
+            "name": "ImuCapabilities"
+          },
+          {
+            "kind": "const",
+            "name": "FIFO"
+          },
+          {
+            "kind": "const",
+            "name": "INTERRUPT"
+          },
+          {
+            "kind": "const",
+            "name": "FUSION"
+          },
+          {
+            "kind": "const",
+            "name": "AUX_BUS"
+          },
+          {
+            "kind": "const",
+            "name": "PRESSURE"
+          },
+          {
+            "kind": "const",
+            "name": "COMPOSITE"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuFifoStatus"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuInterruptStatus"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuQuaternionQ30"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuPressureSample"
+          },
+          {
+            "kind": "struct",
+            "name": "ImuCompositeStatus"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuCapabilityBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuFifoBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuInterruptBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuFusionBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuAuxBusBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuPressureBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "ImuCompositeBackend"
+          },
+          {
             "kind": "trait",
             "name": "ImuBackend"
           },
@@ -3508,7 +3716,7 @@
           }
         ],
         "path": "core/crates/nobro_imu/src/lib.rs",
-        "sha256": "fd0cc9aa2d4b5ec36c2a2d42062e8e5c6a0ae53e28699cb6485bfd61d57f16c5"
+        "sha256": "38aef8e7b71d6c2d27529cab4dacbb2651ad2a76d2d143506d1bb5e49aa79610"
       },
       {
         "crate": "nobro-kernel",
@@ -4274,6 +4482,22 @@
             "name": "PowerMode"
           },
           {
+            "kind": "enum",
+            "name": "PowerMonitorState"
+          },
+          {
+            "kind": "enum",
+            "name": "PowerMonitorError"
+          },
+          {
+            "kind": "struct",
+            "name": "PowerChannelSample"
+          },
+          {
+            "kind": "trait",
+            "name": "PowerMonitorBackend"
+          },
+          {
             "kind": "const",
             "name": "fn"
           },
@@ -4515,7 +4739,7 @@
           }
         ],
         "path": "core/crates/nobro_power/src/lib.rs",
-        "sha256": "187d07b8f5aedc2f25d1d3a437db5684d4408829683036c192b217ea95986ae9"
+        "sha256": "01f0b30bbb963676f00cdaa0d7b3e76cfa5c091cf304c6bf6bc71a30fa6a6a07"
       },
       {
         "crate": "nobro-sal",
@@ -5275,6 +5499,38 @@
         "crate": "nobro-sensor",
         "exports": [
           {
+            "kind": "enum",
+            "name": "SensorProviderState"
+          },
+          {
+            "kind": "enum",
+            "name": "SensorProviderError"
+          },
+          {
+            "kind": "enum",
+            "name": "SensorTransport"
+          },
+          {
+            "kind": "enum",
+            "name": "SensorSampleStatus"
+          },
+          {
+            "kind": "struct",
+            "name": "RangingSample"
+          },
+          {
+            "kind": "struct",
+            "name": "PresenceSample"
+          },
+          {
+            "kind": "trait",
+            "name": "RangingBackend"
+          },
+          {
+            "kind": "trait",
+            "name": "PresenceBackend"
+          },
+          {
             "kind": "struct",
             "name": "SensorHealth"
           },
@@ -5360,7 +5616,7 @@
           }
         ],
         "path": "core/crates/nobro_sensor/src/lib.rs",
-        "sha256": "f66679cbf8450ce70dea2b118a5935150cc235f0295301b71419e96ab4a039de"
+        "sha256": "ff5107c6d0a9f48f02e7452301f270df66047f3816c579830f5b49c55f9e26c2"
       },
       {
         "crate": "nobro-services",

@@ -56,8 +56,10 @@ void loop() {}
 The base facade is dependency-free. For Arduino board-core providers, define
 `NOBRO_ARDUINO_ENABLE_PROVIDERS` before including `NobroRTOS.h`; add
 `NOBRO_ARDUINO_ENABLE_I2C` and/or `NOBRO_ARDUINO_ENABLE_SPI` only when needed.
-External integration facades such as NiusIMU remain optional and require their
-corresponding library in `lib_deps`.
+External integration facades such as NiusIMU, INA Series Sensor, and DiFinders
+remain optional and require their corresponding library in `lib_deps`. Their
+common bounded surfaces live in `NobroNiusIMU.h`, `NobroInaSeries.h`, and
+`NobroDiFinders.h`; exact physical promotion remains board/module specific.
 
 Classic Nano V3 / ATmega328P projects may include `NobroAvrNano.h` for the exact
 four-task/four-wire constrained profile. The header is guarded to ATmega328P and

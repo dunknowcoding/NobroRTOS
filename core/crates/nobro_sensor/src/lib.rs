@@ -4,6 +4,94 @@
 //! - [`Decimator`] sample-rate decimation / downsampling
 #![cfg_attr(not(test), no_std)]
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SensorProviderState {
+    Down,
+    Ready,
+    Suspended,
+    Faulted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SensorProviderError {
+    InvalidConfig,
+    NotReady,
+    Backpressured,
+    Timeout,
+    OutOfRange,
+    Transport,
+    DeadlineMiss,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SensorTransport {
+    Unknown = 0,
+    GpioPulse = 1,
+    GpioDigital = 2,
+    Analog = 3,
+    Uart = 4,
+    I2c = 5,
+    Rs485 = 6,
+    Spi = 7,
+    Can = 8,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SensorSampleStatus {
+    Valid = 0,
+    Timeout = 1,
+    OutOfRange = 2,
+    #[default]
+    NotReady = 3,
+    Disabled = 4,
+    TransportError = 5,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RangingSample {
+    pub distance_mm: u32,
+    pub signal_permille: u16,
+    pub raw: u32,
+    pub sequence: u32,
+    pub timestamp_us: u64,
+    pub status: SensorSampleStatus,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PresenceSample {
+    pub detected: bool,
+    pub strength_permille: u16,
+    pub rose: bool,
+    pub fell: bool,
+    pub sequence: u32,
+    pub timestamp_us: u64,
+    pub status: SensorSampleStatus,
+}
+
+pub trait RangingBackend {
+    type Error;
+
+    fn state(&self) -> SensorProviderState;
+    fn transport(&self) -> SensorTransport;
+    fn sample(&mut self, deadline_us: u64) -> Result<RangingSample, Self::Error>;
+    fn quiesce(&mut self) -> Result<(), Self::Error>;
+    fn recover(&mut self) -> Result<(), Self::Error>;
+    fn release(&mut self) -> Result<(), Self::Error>;
+}
+
+pub trait PresenceBackend {
+    type Error;
+
+    fn state(&self) -> SensorProviderState;
+    fn transport(&self) -> SensorTransport;
+    fn sample(&mut self, deadline_us: u64) -> Result<PresenceSample, Self::Error>;
+    fn quiesce(&mut self) -> Result<(), Self::Error>;
+    fn recover(&mut self) -> Result<(), Self::Error>;
+    fn release(&mut self) -> Result<(), Self::Error>;
+}
+
 /// Detects sensor faults: a stuck value, a stale stream, or out-of-range readings.
 pub struct SensorHealth {
     last: i32,
@@ -189,6 +277,24 @@ mod tests {
         assert!(!h.out_of_range(1000));
         h.update(1001);
         assert!(!h.is_stuck(4)); // changed -> not stuck
+    }
+
+    #[test]
+    fn ranging_and_presence_contracts_preserve_transport_and_status() {
+        let range = RangingSample {
+            distance_mm: 420,
+            signal_permille: 900,
+            raw: 42,
+            sequence: 1,
+            timestamp_us: 10,
+            status: SensorSampleStatus::Valid,
+        };
+        assert_eq!(range.distance_mm, 420);
+        assert_eq!(SensorTransport::Rs485 as u8, 6);
+        assert_eq!(
+            PresenceSample::default().status,
+            SensorSampleStatus::NotReady
+        );
     }
 
     #[test]

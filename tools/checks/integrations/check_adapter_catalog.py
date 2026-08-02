@@ -182,10 +182,13 @@ def _member_intake_errors(
                 errors.append(
                     f"{component_id}: provider behavior gate must be {expected_behavior}"
                 )
-            elif expected_behavior == "passed" and not any(
-                "host-test" in components[adapter_id].get("evidence", [])
-                for adapter_id in adapter_ids
-                if adapter_id in components
+            elif expected_behavior == "passed" and not (
+                "host-test" in component.get("evidence", [])
+                or any(
+                    "host-test" in components[adapter_id].get("evidence", [])
+                    for adapter_id in adapter_ids
+                    if adapter_id in components
+                )
             ):
                 errors.append(
                     f"{component_id}: provider behavior lacks an adapter host test"

@@ -12,10 +12,12 @@ class NiusImuAdapter {
 public:
     explicit NiusImuAdapter(nimu::IMUSensor &sensor,
                             nobro_imu_family_t family = NOBRO_IMU_UNKNOWN,
-                            uint8_t address = 0)
+                            uint8_t address = 0,
+                            nobro_imu_optional_hooks_t hooks =
+                                nobro_imu_optional_hooks_t{})
         : sensor_(sensor), family_(family), address_(address), wire_(nullptr),
           spi_(nullptr), transport_(DEFAULT_TRANSPORT), diagnostics_{},
-          suspended_(false) {}
+          hooks_(hooks), ready_(false), suspended_(false) {}
 
     bool begin() {
         transport_ = DEFAULT_TRANSPORT;
@@ -40,8 +42,20 @@ public:
         return finishBegin(sensor_.beginSPI(spi, chip_select));
     }
 
+    // Explicitly adopt a sensor initialized by a composite board wrapper.
+    // Recovery falls back to that sensor's normal begin() path.
+    bool adoptReady() {
+        if (ready_) return false;
+        transport_ = DEFAULT_TRANSPORT;
+        wire_ = nullptr;
+        spi_ = nullptr;
+        ready_ = true;
+        suspended_ = false;
+        return true;
+    }
+
     bool sample(nobro_imu_sample_t &out) {
-        if (suspended_ || !sensor_.update()) {
+        if (!ready_ || suspended_ || !sensor_.update()) {
             diagnostics_.read_errors = increment(diagnostics_.read_errors);
             if (diagnostics_.consecutive_errors != UINT16_MAX)
                 diagnostics_.consecutive_errors++;
@@ -79,9 +93,11 @@ public:
         else
             ready = sensor_.begin();
         if (!ready) {
+            ready_ = false;
             diagnostics_.last_event = NOBRO_IMU_EVENT_RECOVERY_EXHAUSTED;
             return false;
         }
+        ready_ = true;
         suspended_ = false;
         diagnostics_.recoveries = increment(diagnostics_.recoveries);
         diagnostics_.consecutive_errors = 0;
@@ -93,10 +109,86 @@ public:
     // audio quiesce() facades): a suspended adapter fails every sample() closed
     // until recover() re-inits the sensor. This makes the provider's recovery
     // lifecycle testable without a physical sensor disconnect, on any bus/arch.
-    void suspend() { suspended_ = true; }
+    void suspend() {
+        if (ready_) suspended_ = true;
+    }
+    void release() {
+        ready_ = false;
+        suspended_ = false;
+    }
+    bool ready() const { return ready_ && !suspended_; }
     bool suspended() const { return suspended_; }
 
     nobro_imu_diagnostics_t diagnostics() const { return diagnostics_; }
+
+    nobro_imu_capability_mask_t capabilities() const {
+        nobro_imu_capability_mask_t result = 0;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_FIFO) && hooks_.fifo_status &&
+            hooks_.fifo_read)
+            result |= NOBRO_IMU_CAP_FIFO;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_INTERRUPT) &&
+            hooks_.interrupt_status)
+            result |= NOBRO_IMU_CAP_INTERRUPT;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_FUSION) && hooks_.fusion)
+            result |= NOBRO_IMU_CAP_FUSION;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_AUX_BUS) && hooks_.aux_read &&
+            hooks_.aux_write)
+            result |= NOBRO_IMU_CAP_AUX_BUS;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_PRESSURE) && hooks_.pressure)
+            result |= NOBRO_IMU_CAP_PRESSURE;
+        if ((hooks_.capabilities & NOBRO_IMU_CAP_COMPOSITE) && hooks_.composite)
+            result |= NOBRO_IMU_CAP_COMPOSITE;
+        return result;
+    }
+
+    bool fifoStatus(nobro_imu_fifo_status_t &out) {
+        return has(NOBRO_IMU_CAP_FIFO) && hooks_.fifo_status &&
+               hooks_.fifo_status(hooks_.context, &out);
+    }
+
+    bool readFifo(nobro_imu_sample_t *out, size_t capacity, size_t &written,
+                  uint64_t deadline_us = 0) {
+        written = 0;
+        return has(NOBRO_IMU_CAP_FIFO) && hooks_.fifo_read && out && capacity &&
+               hooks_.fifo_read(hooks_.context, out, capacity, &written,
+                                deadline_us) && written <= capacity;
+    }
+
+    bool interruptStatus(nobro_imu_interrupt_status_t &out) {
+        return has(NOBRO_IMU_CAP_INTERRUPT) && hooks_.interrupt_status &&
+               hooks_.interrupt_status(hooks_.context, &out);
+    }
+
+    bool fusion(nobro_imu_quaternion_q30_t &out) {
+        return has(NOBRO_IMU_CAP_FUSION) && hooks_.fusion &&
+               hooks_.fusion(hooks_.context, &out);
+    }
+
+    bool auxRead(uint8_t address, uint8_t reg, uint8_t *out, size_t capacity,
+                 size_t &written, uint64_t deadline_us = 0) {
+        written = 0;
+        return has(NOBRO_IMU_CAP_AUX_BUS) && hooks_.aux_read && out && capacity &&
+               hooks_.aux_read(hooks_.context, address, reg, out, capacity,
+                               &written, deadline_us) && written <= capacity;
+    }
+
+    bool auxWrite(uint8_t address, uint8_t reg, const uint8_t *data, size_t size,
+                  size_t &written, uint64_t deadline_us = 0) {
+        written = 0;
+        return has(NOBRO_IMU_CAP_AUX_BUS) && hooks_.aux_write && data && size &&
+               hooks_.aux_write(hooks_.context, address, reg, data, size,
+                                &written, deadline_us) && written <= size;
+    }
+
+    bool pressure(nobro_imu_pressure_sample_t &out) {
+        return has(NOBRO_IMU_CAP_PRESSURE) && hooks_.pressure &&
+               hooks_.pressure(hooks_.context, &out);
+    }
+
+    bool compositeStatus(nobro_imu_composite_status_t &out) {
+        return has(NOBRO_IMU_CAP_COMPOSITE) && hooks_.composite &&
+               hooks_.composite(hooks_.context, &out);
+    }
 
     nobro_imu_calibration_t calibration() const {
         const nimu::IMUCalibration source = sensor_.getCalibration();
@@ -127,7 +219,12 @@ public:
     }
 
 private:
+    bool has(nobro_imu_capability_mask_t capability) const {
+        return ready() && (capabilities() & capability) == capability;
+    }
     bool finishBegin(bool ready) {
+        ready_ = ready;
+        suspended_ = false;
         if (!ready) {
             diagnostics_.read_errors = increment(diagnostics_.read_errors);
             if (diagnostics_.consecutive_errors != UINT16_MAX)
@@ -174,6 +271,8 @@ private:
     enum Transport : uint8_t { DEFAULT_TRANSPORT, I2C_TRANSPORT, SPI_TRANSPORT };
     Transport transport_;
     nobro_imu_diagnostics_t diagnostics_;
+    nobro_imu_optional_hooks_t hooks_;
+    bool ready_;
     bool suspended_;
 };
 

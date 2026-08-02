@@ -347,6 +347,20 @@ jobs:
             "0fb18445c99bf4a28693f409187942d72325adb5"
           python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
           python tools/checks/integrations/check_niusimu_adapter.py --selftest
+      - name: pinned sensor member integrations
+        run: |
+          git clone https://github.com/dunknowcoding/INA_series_sensor.git _work/INA_series_sensor
+          git -C _work/INA_series_sensor checkout --detach c806fb8d1ad75c85f86413aee5a1306eff191918
+          test "$(git -C _work/INA_series_sensor rev-parse HEAD)" = \
+            "c806fb8d1ad75c85f86413aee5a1306eff191918"
+          git clone https://github.com/dunknowcoding/DiFinders.git _work/DiFinders
+          git -C _work/DiFinders checkout --detach 1ccffa5cf8f34c7ab933f85c7956021a4692256e
+          test "$(git -C _work/DiFinders rev-parse HEAD)" = \
+            "1ccffa5cf8f34c7ab933f85c7956021a4692256e"
+          python tools/checks/integrations/check_sensor_member_integrations.py \
+            --ina _work/INA_series_sensor --difinders _work/DiFinders \
+            --fqbn arduino:avr:uno --fqbn arduino:samd:mkrzero \
+            --fqbn arduino:renesas_uno:unor4wifi --fqbn esp32:esp32:esp32c3
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
@@ -432,6 +446,22 @@ jobs:
             throw "NiusIMU checkout drift"
           }
           python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+      - name: compile pinned sensor member integrations (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/INA_series_sensor.git _work/INA_series_sensor
+          git -C _work/INA_series_sensor checkout --detach c806fb8d1ad75c85f86413aee5a1306eff191918
+          if ((git -C _work/INA_series_sensor rev-parse HEAD) -ne "c806fb8d1ad75c85f86413aee5a1306eff191918") {
+            throw "INA Series Sensor checkout drift"
+          }
+          git clone https://github.com/dunknowcoding/DiFinders.git _work/DiFinders
+          git -C _work/DiFinders checkout --detach 1ccffa5cf8f34c7ab933f85c7956021a4692256e
+          if ((git -C _work/DiFinders rev-parse HEAD) -ne "1ccffa5cf8f34c7ab933f85c7956021a4692256e") {
+            throw "DiFinders checkout drift"
+          }
+          python tools/checks/integrations/check_sensor_member_integrations.py `
+            --ina _work/INA_series_sensor --difinders _work/DiFinders `
+            --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
       - name: compile pinned NiusZigbee integration (ArduinoNRF)
         shell: pwsh
         run: |

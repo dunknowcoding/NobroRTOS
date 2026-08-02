@@ -19,6 +19,12 @@ Current contents:
 - `src/NobroNiusDisplay.h` with a fixed-capacity, caller-owned RGB565 queue,
   versioned frame receipts, deadline handling, cancellation, and lifecycle over
   the pinned NiusDisplay library.
+- `src/NobroNiusIMU.h` with common allocation-free sampling plus fail-closed
+  optional FIFO, interrupt, fusion, auxiliary-bus, pressure, and composite hooks.
+- `src/NobroInaSeries.h` with explicit I2C/SPI single-channel bridges and a
+  bounded three-channel INA3221 binding.
+- `src/NobroDiFinders.h` with explicit-transport ranging and presence lifecycles
+  over the pinned DiFinders library.
 - `src/NobroEsp32Peripherals.h` with bounded continuous ADC/DMA frames, LEDC
   duty output, and RMT pulse symbols. Each provider is optional and keeps
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
@@ -150,6 +156,20 @@ reports completion, deadline miss, or transport failure. NiusDisplay keeps the
 controller/module database and bus implementation; NobroRTOS does not generate
 one source adapter per panel model. This interface is implemented and
 target-built, but no physical display composition is promoted yet.
+
+## IMU, power-monitor, and ranging composition
+
+Install the pinned member library and include only the facade you need.
+`NobroNiusIMU.h` keeps the common `nimu::IMUSensor` path small; optional
+capabilities are advertised only when every required callback is present.
+`NobroInaSeries.h` supports the common INA I2C bridge, the INA229 SPI shape,
+and exact three-channel INA3221 sampling with fixed units and no retained heap.
+`NobroDiFinders.h` maps common range/proximity/motion readings into bounded
+records while keeping I2C, UART, CAN, and RS485 selection explicit.
+
+All three facades expose lifecycle and deadline failure instead of silently
+retrying forever. A target build proves compatibility, not a physical sensor;
+exact board, bus, module, and interrupt compositions are promoted separately.
 
 ## ESP32 continuous ADC, LEDC, and RMT
 

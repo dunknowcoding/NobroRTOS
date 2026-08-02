@@ -10,6 +10,57 @@ pub enum PowerMode {
     Off,      // deepest sleep until external wake
 }
 
+/// Lifecycle for a bounded electrical telemetry provider. This is separate
+/// from CPU sleep policy even though both belong to the power domain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerMonitorState {
+    Down,
+    Ready,
+    Suspended,
+    Faulted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerMonitorError {
+    InvalidConfig,
+    InvalidChannel,
+    NotReady,
+    Timeout,
+    Transport,
+    DeadlineMiss,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PowerChannelSample {
+    pub channel: u8,
+    pub bus_uv: i64,
+    pub shunt_uv: i64,
+    pub current_ua: i64,
+    pub power_uw: i64,
+    pub sequence: u32,
+    pub timestamp_us: u64,
+}
+
+pub trait PowerMonitorBackend {
+    type Error;
+
+    fn state(&self) -> PowerMonitorState;
+    fn channel_count(&self) -> u8;
+    fn sample_channel(
+        &mut self,
+        channel: u8,
+        deadline_us: u64,
+    ) -> Result<PowerChannelSample, Self::Error>;
+    fn sample_all(
+        &mut self,
+        output: &mut [PowerChannelSample],
+        deadline_us: u64,
+    ) -> Result<usize, Self::Error>;
+    fn quiesce(&mut self) -> Result<(), Self::Error>;
+    fn recover(&mut self) -> Result<(), Self::Error>;
+    fn release(&mut self) -> Result<(), Self::Error>;
+}
+
 impl PowerMode {
     pub const fn depth(self) -> u8 {
         match self {

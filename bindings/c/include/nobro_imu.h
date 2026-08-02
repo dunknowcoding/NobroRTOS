@@ -2,6 +2,7 @@
 #define NOBRO_IMU_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -61,6 +62,74 @@ typedef struct nobro_imu_diagnostics {
     uint8_t recovery_attempts;
     nobro_imu_event_t last_event;
 } nobro_imu_diagnostics_t;
+
+typedef uint16_t nobro_imu_capability_mask_t;
+#define NOBRO_IMU_CAP_FIFO ((nobro_imu_capability_mask_t)(1u << 0))
+#define NOBRO_IMU_CAP_INTERRUPT ((nobro_imu_capability_mask_t)(1u << 1))
+#define NOBRO_IMU_CAP_FUSION ((nobro_imu_capability_mask_t)(1u << 2))
+#define NOBRO_IMU_CAP_AUX_BUS ((nobro_imu_capability_mask_t)(1u << 3))
+#define NOBRO_IMU_CAP_PRESSURE ((nobro_imu_capability_mask_t)(1u << 4))
+#define NOBRO_IMU_CAP_COMPOSITE ((nobro_imu_capability_mask_t)(1u << 5))
+
+typedef struct nobro_imu_fifo_status {
+    uint16_t available;
+    uint16_t capacity;
+    uint16_t watermark;
+    bool overflowed;
+} nobro_imu_fifo_status_t;
+
+typedef struct nobro_imu_interrupt_status {
+    bool data_ready;
+    bool fifo_watermark;
+    bool fifo_overflow;
+    bool motion;
+    uint64_t timestamp_us;
+} nobro_imu_interrupt_status_t;
+
+typedef struct nobro_imu_quaternion_q30 {
+    int32_t w, x, y, z;
+    uint32_t accuracy_millirad;
+    uint64_t timestamp_us;
+} nobro_imu_quaternion_q30_t;
+
+typedef struct nobro_imu_pressure_sample {
+    uint32_t pressure_pa;
+    int32_t temperature_centi_c;
+    int32_t altitude_mm;
+    uint64_t timestamp_us;
+} nobro_imu_pressure_sample_t;
+
+typedef struct nobro_imu_composite_status {
+    uint16_t present_mask;
+    uint16_t healthy_mask;
+    uint32_t generation;
+} nobro_imu_composite_status_t;
+
+typedef bool (*nobro_imu_fifo_status_fn)(void *, nobro_imu_fifo_status_t *);
+typedef bool (*nobro_imu_fifo_read_fn)(void *, nobro_imu_sample_t *, size_t,
+                                      size_t *, uint64_t);
+typedef bool (*nobro_imu_interrupt_fn)(void *, nobro_imu_interrupt_status_t *);
+typedef bool (*nobro_imu_fusion_fn)(void *, nobro_imu_quaternion_q30_t *);
+typedef bool (*nobro_imu_aux_read_fn)(void *, uint8_t, uint8_t, uint8_t *,
+                                     size_t, size_t *, uint64_t);
+typedef bool (*nobro_imu_aux_write_fn)(void *, uint8_t, uint8_t,
+                                      const uint8_t *, size_t, size_t *,
+                                      uint64_t);
+typedef bool (*nobro_imu_pressure_fn)(void *, nobro_imu_pressure_sample_t *);
+typedef bool (*nobro_imu_composite_fn)(void *, nobro_imu_composite_status_t *);
+
+typedef struct nobro_imu_optional_hooks {
+    void *context;
+    nobro_imu_capability_mask_t capabilities;
+    nobro_imu_fifo_status_fn fifo_status;
+    nobro_imu_fifo_read_fn fifo_read;
+    nobro_imu_interrupt_fn interrupt_status;
+    nobro_imu_fusion_fn fusion;
+    nobro_imu_aux_read_fn aux_read;
+    nobro_imu_aux_write_fn aux_write;
+    nobro_imu_pressure_fn pressure;
+    nobro_imu_composite_fn composite;
+} nobro_imu_optional_hooks_t;
 
 #ifdef __cplusplus
 }

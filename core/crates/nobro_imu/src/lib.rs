@@ -172,6 +172,127 @@ pub struct ImuDiagnostics {
     pub last_event: ImuEvent,
 }
 
+/// Optional capabilities are orthogonal to the common [`ImuBackend`] sample
+/// path. A provider advertises only the traits it actually implements; a
+/// sensor without an auxiliary bus or fusion engine pays no storage cost for
+/// those features.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuCapabilities(u16);
+
+impl ImuCapabilities {
+    pub const FIFO: Self = Self(1 << 0);
+    pub const INTERRUPT: Self = Self(1 << 1);
+    pub const FUSION: Self = Self(1 << 2);
+    pub const AUX_BUS: Self = Self(1 << 3);
+    pub const PRESSURE: Self = Self(1 << 4);
+    pub const COMPOSITE: Self = Self(1 << 5);
+
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    pub const fn bits(self) -> u16 {
+        self.0
+    }
+
+    pub const fn contains(self, capability: Self) -> bool {
+        self.0 & capability.0 == capability.0
+    }
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuFifoStatus {
+    pub available: u16,
+    pub capacity: u16,
+    pub watermark: u16,
+    pub overflowed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuInterruptStatus {
+    pub data_ready: bool,
+    pub fifo_watermark: bool,
+    pub fifo_overflow: bool,
+    pub motion: bool,
+    pub timestamp_us: u64,
+}
+
+/// Unit quaternion in signed Q1.30 representation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuQuaternionQ30 {
+    pub w: i32,
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub accuracy_millirad: u32,
+    pub timestamp_us: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuPressureSample {
+    pub pressure_pa: u32,
+    pub temperature_centi_c: i32,
+    pub altitude_mm: i32,
+    pub timestamp_us: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImuCompositeStatus {
+    pub present_mask: u16,
+    pub healthy_mask: u16,
+    pub generation: u32,
+}
+
+pub trait ImuCapabilityBackend {
+    fn capabilities(&self) -> ImuCapabilities;
+}
+
+pub trait ImuFifoBackend: ImuBackend {
+    fn fifo_status(&mut self) -> Result<ImuFifoStatus, Self::Error>;
+    fn read_fifo(
+        &mut self,
+        output: &mut [ImuSample],
+        deadline_us: u64,
+    ) -> Result<usize, Self::Error>;
+}
+
+pub trait ImuInterruptBackend: ImuBackend {
+    fn take_interrupt(&mut self) -> Result<ImuInterruptStatus, Self::Error>;
+}
+
+pub trait ImuFusionBackend: ImuBackend {
+    fn fusion_sample(&mut self) -> Result<ImuQuaternionQ30, Self::Error>;
+}
+
+pub trait ImuAuxBusBackend: ImuBackend {
+    fn aux_read(
+        &mut self,
+        address: u8,
+        register: u8,
+        output: &mut [u8],
+        deadline_us: u64,
+    ) -> Result<usize, Self::Error>;
+    fn aux_write(
+        &mut self,
+        address: u8,
+        register: u8,
+        payload: &[u8],
+        deadline_us: u64,
+    ) -> Result<usize, Self::Error>;
+}
+
+pub trait ImuPressureBackend: ImuBackend {
+    fn pressure_sample(&mut self) -> Result<ImuPressureSample, Self::Error>;
+}
+
+pub trait ImuCompositeBackend: ImuBackend {
+    fn composite_status(&mut self) -> Result<ImuCompositeStatus, Self::Error>;
+}
+
 pub trait ImuBackend {
     type Error;
 
@@ -221,6 +342,12 @@ mod tests {
         assert!(ImuCalibration::default().valid());
         assert_eq!(magnitude3([300, 400, 0]), 500);
         assert_ne!(ImuFamily::MPU6050, ImuFamily::MPU9250);
+        let capabilities = ImuCapabilities::FIFO
+            .union(ImuCapabilities::INTERRUPT)
+            .union(ImuCapabilities::AUX_BUS);
+        assert!(capabilities.contains(ImuCapabilities::FIFO));
+        assert!(capabilities.contains(ImuCapabilities::AUX_BUS));
+        assert!(!capabilities.contains(ImuCapabilities::FUSION));
     }
 
     #[test]

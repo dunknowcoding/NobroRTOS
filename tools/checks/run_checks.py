@@ -221,6 +221,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("ESP32 peripheral facade contracts",
          [py, "tools/checks/integrations/check_esp32_peripheral_facade.py"], ROOT),
         ("NiusIMU adapter contracts", [py, "tools/checks/integrations/check_niusimu_adapter.py", "--selftest"], ROOT),
+        ("sensor member facades", [py, "tools/checks/integrations/check_sensor_member_facades.py"], ROOT),
         ("web flasher", [py, "tools/checks/product/check_web_flasher.py"], ROOT),
         ("block editor", [py, "tools/checks/product/check_block_editor.py"], ROOT),
         ("tutorials", [py, "sdk/cli/nobro.py", "tutorials"], ROOT),

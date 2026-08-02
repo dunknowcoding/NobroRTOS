@@ -142,8 +142,8 @@
     {
       "id": "source-difinders",
       "source": "https://github.com/dunknowcoding/DiFinders",
-      "revision": "2fedc4012f0eb4737bbb4c6fa3c3a91194f9f987",
-      "version": "0.1.1",
+      "revision": "1ccffa5cf8f34c7ab933f85c7956021a4692256e",
+      "version": "0.1.2",
       "license": "MIT",
       "pinned": true,
       "clean": true
@@ -981,8 +981,9 @@
       "name": "DiFinders",
       "kind": "library",
       "provenance_id": "source-difinders",
+      "facade": "packages/arduino/src/NobroDiFinders.h",
       "intake": {
-        "adapter_strategy": "generated-on-demand",
+        "adapter_strategy": "shared-facade",
         "adapter_ids": [],
         "capability_families": [
           "environment",
@@ -991,26 +992,26 @@
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
-        },
-        "scaffold": {
-          "name": "difinders",
-          "backends": [
-            "arduino-shim"
-          ]
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
-        "upstream:arduino"
+        "arduino:avr",
+        "arduino:esp32",
+        "arduino:nrf52",
+        "arduino:renesas",
+        "arduino:samd"
       ],
       "limitations": [
-        "Nobro target scope is not promoted until a pinned integration gate exists."
+        "Target compilation is not physical promotion; no connected ranging fixture is currently available.",
+        "The bounded facade covers common ranging and presence readings over explicit transports; model-specific advanced controls remain owned by DiFinders."
       ]
     },
     {
@@ -1019,6 +1020,7 @@
       "name": "INA Series Sensor",
       "kind": "library",
       "provenance_id": "source-ina-series-sensor",
+      "facade": "packages/arduino/src/NobroInaSeries.h",
       "intake": {
         "adapter_strategy": "existing-adapters",
         "adapter_ids": [
@@ -1032,20 +1034,26 @@
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
-        "upstream:arduino"
+        "arduino:avr",
+        "arduino:esp32",
+        "arduino:nrf52",
+        "arduino:renesas",
+        "arduino:samd"
       ],
       "limitations": [
-        "Nobro target scope is not promoted until a pinned integration gate exists."
+        "Target compilation and facade behavior do not promote an exact physical board/module binding.",
+        "The common facade covers single-channel I2C/SPI bridges and the exact three-channel INA3221 shape; device-specific alerts and configuration remain library APIs."
       ]
     },
     {
