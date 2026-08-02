@@ -196,8 +196,8 @@
     {
       "id": "source-niuswireless",
       "source": "https://github.com/dunknowcoding/NiusWireless",
-      "revision": "97e2883a0df4ba50c1b0e248e9c72869cc44240b",
-      "version": "0.2.2",
+      "revision": "f87bbddb5fcc8dbfcffe013e5bb801868863db36",
+      "version": "0.4.0",
       "license": "MIT",
       "pinned": true,
       "clean": true
@@ -1366,15 +1366,18 @@
         "target-build"
       ],
       "supported_targets": [
+        "arduino:avr",
         "arduino:esp32s3",
         "arduino:nrf52",
-        "arduino:renesas"
+        "arduino:renesas",
+        "arduino:rp2350",
+        "arduino:samd"
       ],
       "limitations": [
-        "HC-12 and HC-05/06 are explicit fail-closed upstream stubs and are not implemented support.",
-        "One exact UNO R4/NiusWireless 0.2.2 RC522 software-SPI/IRQ fixture read the resident card UID and restored the prior firmware byte-for-byte; no other NiusWireless member or board is promoted by that result.",
+        "Exact restored fixtures cover UNO R4 RC522 software-SPI/IRQ, SAMD21 dual PN532, and RP2040/RP2350 nRF24; W124 physically reran RP2040 atomic receive and byte-exact restoration.",
+        "HC-12 and HC-05/06 have bounded caller-owned UART implementations and representative target builds, but no attached module supplies physical promotion evidence.",
         "Target compilation and library implementation do not promote an exact radio, RFID, or board composition.",
-        "The Nobro facade implements fail-closed health lifecycle for NiusBase members and a bounded LoRa payload data plane; protocol-specific data planes remain separate."
+        "The Nobro facade implements fail-closed lifecycle plus bounded LoRa, nRF24, RFID UID, and serial-link data planes; LoRa and serial-radio hardware remain unpromoted."
       ]
     },
     {

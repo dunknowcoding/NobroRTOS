@@ -744,6 +744,339 @@ impl<S: AdaptiveStorage<BYTES>, const BYTES: usize> AdaptiveQueue<S, BYTES> {
     }
 }
 
+/// Bytes prepended to a sequenced data-plane frame: session id then sequence number,
+/// both little-endian. A session id changes after a sender restart, so delayed packets
+/// from an earlier application instance cannot be mistaken for current work.
+pub const SEQUENCED_HEADER_BYTES: usize = 8;
+
+/// Encode one session-scoped packet without allocation.
+pub fn encode_sequenced(
+    session: u32,
+    sequence: u32,
+    payload: &[u8],
+    destination: &mut [u8],
+) -> Option<usize> {
+    let len = SEQUENCED_HEADER_BYTES.checked_add(payload.len())?;
+    if destination.len() < len {
+        return None;
+    }
+    destination[..4].copy_from_slice(&session.to_le_bytes());
+    destination[4..8].copy_from_slice(&sequence.to_le_bytes());
+    destination[8..len].copy_from_slice(payload);
+    Some(len)
+}
+
+/// Decode one frame produced by [`encode_sequenced`].
+pub fn decode_sequenced(frame: &[u8]) -> Option<(u32, u32, &[u8])> {
+    let session = u32::from_le_bytes(frame.get(..4)?.try_into().ok()?);
+    let sequence = u32::from_le_bytes(frame.get(4..8)?.try_into().ok()?);
+    Some((session, sequence, frame.get(8..)?))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IngressError {
+    InvalidCapacity,
+    PayloadTooLarge,
+    DestinationTooSmall,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IngressEvent {
+    Empty,
+    Delivered {
+        sequence: u32,
+        bytes: u16,
+        reordered: bool,
+        lost_before: u32,
+    },
+    Buffered {
+        sequence: u32,
+    },
+    Backpressure {
+        sequence: u32,
+    },
+    Duplicate {
+        sequence: u32,
+    },
+    Expired {
+        sequence: u32,
+        lost_before: u32,
+    },
+    WrongSession {
+        expected: u32,
+        observed: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct IngressDiagnostics {
+    pub observed_packets: u32,
+    pub delivered_packets: u32,
+    pub delivered_bytes: u64,
+    pub buffered_packets: u32,
+    pub reordered_packets: u32,
+    pub duplicate_packets: u32,
+    pub backpressure_rejections: u32,
+    pub inferred_lost_packets: u32,
+    pub window_evictions: u32,
+    pub expired_packets: u32,
+    pub session_rejections: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct IngressSlot<const BYTES: usize> {
+    occupied: bool,
+    sequence: u32,
+    expires_at_us: u64,
+    len: u16,
+    bytes: [u8; BYTES],
+}
+
+impl<const BYTES: usize> IngressSlot<BYTES> {
+    const fn empty() -> Self {
+        Self {
+            occupied: false,
+            sequence: 0,
+            expires_at_us: 0,
+            len: 0,
+            bytes: [0; BYTES],
+        }
+    }
+}
+
+/// Fixed-storage receive sequencer for variable-delay packet links.
+///
+/// In-order packets are copied directly to caller storage. Future packets inside the
+/// bounded window are retained until the gap arrives. A packet beyond the window makes
+/// the missing range explicit and advances the receiver; stale/session-mismatched packets
+/// fail closed. Sequence ordering is wrap-aware for distances below half the `u32` space.
+pub struct SequencedReceiver<const SLOTS: usize, const BYTES: usize> {
+    session: u32,
+    next_sequence: u32,
+    slots: [IngressSlot<BYTES>; SLOTS],
+    diagnostics: IngressDiagnostics,
+}
+
+impl<const SLOTS: usize, const BYTES: usize> SequencedReceiver<SLOTS, BYTES> {
+    pub fn new(session: u32, initial_sequence: u32) -> Result<Self, IngressError> {
+        if SLOTS == 0 || BYTES == 0 || BYTES > usize::from(u16::MAX) {
+            return Err(IngressError::InvalidCapacity);
+        }
+        Ok(Self {
+            session,
+            next_sequence: initial_sequence,
+            slots: [IngressSlot::empty(); SLOTS],
+            diagnostics: IngressDiagnostics::default(),
+        })
+    }
+
+    pub const fn session(&self) -> u32 {
+        self.session
+    }
+
+    pub const fn next_sequence(&self) -> u32 {
+        self.next_sequence
+    }
+
+    pub const fn diagnostics(&self) -> IngressDiagnostics {
+        self.diagnostics
+    }
+
+    /// Start an explicitly admitted sender session and discard only the old session's
+    /// buffered packets. Applications decide when a peer restart is trustworthy.
+    pub fn reset_session(&mut self, session: u32, initial_sequence: u32) {
+        self.session = session;
+        self.next_sequence = initial_sequence;
+        self.clear_slots();
+    }
+
+    pub fn ingest(
+        &mut self,
+        now_us: u64,
+        session: u32,
+        sequence: u32,
+        expires_at_us: u64,
+        payload: &[u8],
+        destination: &mut [u8],
+    ) -> Result<IngressEvent, IngressError> {
+        if payload.len() > BYTES || payload.len() > usize::from(u16::MAX) {
+            return Err(IngressError::PayloadTooLarge);
+        }
+        self.diagnostics.observed_packets = self.diagnostics.observed_packets.saturating_add(1);
+        if session != self.session {
+            self.diagnostics.session_rejections =
+                self.diagnostics.session_rejections.saturating_add(1);
+            return Ok(IngressEvent::WrongSession {
+                expected: self.session,
+                observed: session,
+            });
+        }
+        if now_us > expires_at_us {
+            self.diagnostics.expired_packets = self.diagnostics.expired_packets.saturating_add(1);
+            if sequence == self.next_sequence {
+                self.next_sequence = self.next_sequence.wrapping_add(1);
+            }
+            return Ok(IngressEvent::Expired {
+                sequence,
+                lost_before: 0,
+            });
+        }
+
+        let distance = sequence.wrapping_sub(self.next_sequence);
+        if distance == 0 {
+            if destination.len() < payload.len() {
+                return Err(IngressError::DestinationTooSmall);
+            }
+            destination[..payload.len()].copy_from_slice(payload);
+            self.next_sequence = self.next_sequence.wrapping_add(1);
+            return Ok(self.delivered(sequence, payload.len(), false, 0));
+        }
+        if distance >= (1u32 << 31) {
+            self.diagnostics.duplicate_packets =
+                self.diagnostics.duplicate_packets.saturating_add(1);
+            return Ok(IngressEvent::Duplicate { sequence });
+        }
+        if distance > SLOTS as u32 {
+            if destination.len() < payload.len() {
+                return Err(IngressError::DestinationTooSmall);
+            }
+            let buffered_before = self
+                .slots
+                .iter()
+                .filter(|slot| {
+                    if !slot.occupied {
+                        return false;
+                    }
+                    let buffered_distance = slot.sequence.wrapping_sub(self.next_sequence);
+                    buffered_distance < distance
+                })
+                .count() as u32;
+            let lost = distance.saturating_sub(buffered_before);
+            self.diagnostics.inferred_lost_packets =
+                self.diagnostics.inferred_lost_packets.saturating_add(lost);
+            self.diagnostics.window_evictions = self
+                .diagnostics
+                .window_evictions
+                .saturating_add(buffered_before);
+            self.clear_slots();
+            self.next_sequence = sequence.wrapping_add(1);
+            destination[..payload.len()].copy_from_slice(payload);
+            return Ok(self.delivered(sequence, payload.len(), false, lost));
+        }
+        if self
+            .slots
+            .iter()
+            .any(|slot| slot.occupied && slot.sequence == sequence)
+        {
+            self.diagnostics.duplicate_packets =
+                self.diagnostics.duplicate_packets.saturating_add(1);
+            return Ok(IngressEvent::Duplicate { sequence });
+        }
+        let Some(slot) = self.slots.iter_mut().find(|slot| !slot.occupied) else {
+            self.diagnostics.backpressure_rejections =
+                self.diagnostics.backpressure_rejections.saturating_add(1);
+            return Ok(IngressEvent::Backpressure { sequence });
+        };
+        slot.bytes[..payload.len()].copy_from_slice(payload);
+        slot.len = payload.len() as u16;
+        slot.sequence = sequence;
+        slot.expires_at_us = expires_at_us;
+        slot.occupied = true;
+        self.diagnostics.buffered_packets = self.diagnostics.buffered_packets.saturating_add(1);
+        Ok(IngressEvent::Buffered { sequence })
+    }
+
+    /// Deliver one now-contiguous buffered packet. If the nearest buffered packet has
+    /// expired while a gap remains, the missing range is accounted as loss and that
+    /// expired packet is retired, allowing later work to progress on the next call.
+    pub fn drain(
+        &mut self,
+        now_us: u64,
+        destination: &mut [u8],
+    ) -> Result<IngressEvent, IngressError> {
+        let mut lost_before = 0;
+        let mut index = self.slot_for(self.next_sequence);
+        if index.is_none() {
+            if let Some((candidate, distance)) = self.nearest_expired(now_us) {
+                lost_before = distance;
+                self.diagnostics.inferred_lost_packets = self
+                    .diagnostics
+                    .inferred_lost_packets
+                    .saturating_add(distance);
+                self.next_sequence = self.slots[candidate].sequence;
+                index = Some(candidate);
+            }
+        }
+        let Some(index) = index else {
+            return Ok(IngressEvent::Empty);
+        };
+        let slot = self.slots[index];
+        if now_us > slot.expires_at_us {
+            self.slots[index] = IngressSlot::empty();
+            self.next_sequence = self.next_sequence.wrapping_add(1);
+            self.diagnostics.expired_packets = self.diagnostics.expired_packets.saturating_add(1);
+            return Ok(IngressEvent::Expired {
+                sequence: slot.sequence,
+                lost_before,
+            });
+        }
+        let len = usize::from(slot.len);
+        if destination.len() < len {
+            return Err(IngressError::DestinationTooSmall);
+        }
+        destination[..len].copy_from_slice(&slot.bytes[..len]);
+        self.slots[index] = IngressSlot::empty();
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        Ok(self.delivered(slot.sequence, len, true, lost_before))
+    }
+
+    fn delivered(
+        &mut self,
+        sequence: u32,
+        bytes: usize,
+        reordered: bool,
+        lost_before: u32,
+    ) -> IngressEvent {
+        self.diagnostics.delivered_packets = self.diagnostics.delivered_packets.saturating_add(1);
+        self.diagnostics.delivered_bytes = self
+            .diagnostics
+            .delivered_bytes
+            .saturating_add(bytes as u64);
+        if reordered {
+            self.diagnostics.reordered_packets =
+                self.diagnostics.reordered_packets.saturating_add(1);
+        }
+        IngressEvent::Delivered {
+            sequence,
+            bytes: bytes as u16,
+            reordered,
+            lost_before,
+        }
+    }
+
+    fn slot_for(&self, sequence: u32) -> Option<usize> {
+        self.slots
+            .iter()
+            .position(|slot| slot.occupied && slot.sequence == sequence)
+    }
+
+    fn nearest_expired(&self, now_us: u64) -> Option<(usize, u32)> {
+        self.slots
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.occupied && now_us > slot.expires_at_us)
+            .filter_map(|(index, slot)| {
+                let distance = slot.sequence.wrapping_sub(self.next_sequence);
+                (distance < (1u32 << 31)).then_some((index, distance))
+            })
+            .min_by_key(|(_, distance)| *distance)
+    }
+
+    fn clear_slots(&mut self) {
+        self.slots.fill(IngressSlot::empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1194,5 +1527,135 @@ mod tests {
             Err(QueueError::Full)
         );
         assert_eq!(queue.reserved_storage_bytes(), reserved);
+    }
+
+    #[test]
+    fn sequenced_wire_format_is_bounded_and_round_trips() {
+        let mut frame = [0u8; 16];
+        let len = encode_sequenced(0x1122_3344, 7, b"radio", &mut frame).unwrap();
+        assert_eq!(len, 13);
+        assert_eq!(
+            decode_sequenced(&frame[..len]),
+            Some((0x1122_3344, 7, b"radio".as_slice()))
+        );
+        assert!(encode_sequenced(1, 2, b"123456789", &mut frame).is_none());
+        assert!(decode_sequenced(&frame[..7]).is_none());
+    }
+
+    #[test]
+    fn sequenced_receiver_orders_rejects_duplicates_and_sessions() {
+        let mut receiver = SequencedReceiver::<3, 8>::new(11, 0).unwrap();
+        let mut out = [0u8; 8];
+
+        assert_eq!(
+            receiver.ingest(0, 11, 0, 100, b"zero", &mut out),
+            Ok(IngressEvent::Delivered {
+                sequence: 0,
+                bytes: 4,
+                reordered: false,
+                lost_before: 0,
+            })
+        );
+        assert_eq!(&out[..4], b"zero");
+        assert_eq!(
+            receiver.ingest(1, 11, 2, 100, b"two", &mut out),
+            Ok(IngressEvent::Buffered { sequence: 2 })
+        );
+        assert_eq!(
+            receiver.ingest(2, 11, 2, 100, b"two", &mut out),
+            Ok(IngressEvent::Duplicate { sequence: 2 })
+        );
+        assert_eq!(
+            receiver.ingest(3, 10, 1, 100, b"old", &mut out),
+            Ok(IngressEvent::WrongSession {
+                expected: 11,
+                observed: 10,
+            })
+        );
+        assert_eq!(
+            receiver.ingest(4, 11, 1, 100, b"one", &mut out),
+            Ok(IngressEvent::Delivered {
+                sequence: 1,
+                bytes: 3,
+                reordered: false,
+                lost_before: 0,
+            })
+        );
+        assert_eq!(
+            receiver.drain(4, &mut out),
+            Ok(IngressEvent::Delivered {
+                sequence: 2,
+                bytes: 3,
+                reordered: true,
+                lost_before: 0,
+            })
+        );
+        assert_eq!(&out[..3], b"two");
+        let diagnostics = receiver.diagnostics();
+        assert_eq!(diagnostics.observed_packets, 5);
+        assert_eq!(diagnostics.delivered_packets, 3);
+        assert_eq!(diagnostics.buffered_packets, 1);
+        assert_eq!(diagnostics.reordered_packets, 1);
+        assert_eq!(diagnostics.duplicate_packets, 1);
+        assert_eq!(diagnostics.session_rejections, 1);
+    }
+
+    #[test]
+    fn future_packet_admission_does_not_require_a_delivery_buffer() {
+        let mut receiver = SequencedReceiver::<2, 8>::new(7, 0).unwrap();
+        assert_eq!(
+            receiver.ingest(0, 7, 1, 100, b"future", &mut []),
+            Ok(IngressEvent::Buffered { sequence: 1 })
+        );
+        assert_eq!(
+            receiver.ingest(0, 7, 0, 100, b"now", &mut []),
+            Err(IngressError::DestinationTooSmall)
+        );
+        let mut output = [0; 8];
+        assert!(matches!(
+            receiver.ingest(0, 7, 0, 100, b"now", &mut output),
+            Ok(IngressEvent::Delivered { sequence: 0, .. })
+        ));
+        assert!(matches!(
+            receiver.drain(0, &mut output),
+            Ok(IngressEvent::Delivered {
+                sequence: 1,
+                reordered: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn sequenced_receiver_accounts_window_loss_and_expired_gaps() {
+        let mut receiver = SequencedReceiver::<2, 8>::new(9, 5).unwrap();
+        let mut out = [0u8; 8];
+
+        assert_eq!(
+            receiver.ingest(0, 9, 8, 100, b"far", &mut out),
+            Ok(IngressEvent::Delivered {
+                sequence: 8,
+                bytes: 3,
+                reordered: false,
+                lost_before: 3,
+            })
+        );
+        assert_eq!(receiver.next_sequence(), 9);
+
+        receiver.reset_session(10, 20);
+        assert_eq!(
+            receiver.ingest(0, 10, 21, 10, b"late", &mut out),
+            Ok(IngressEvent::Buffered { sequence: 21 })
+        );
+        assert_eq!(
+            receiver.drain(11, &mut out),
+            Ok(IngressEvent::Expired {
+                sequence: 21,
+                lost_before: 1,
+            })
+        );
+        let diagnostics = receiver.diagnostics();
+        assert_eq!(diagnostics.inferred_lost_packets, 4);
+        assert_eq!(diagnostics.expired_packets, 1);
     }
 }

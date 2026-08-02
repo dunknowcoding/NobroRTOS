@@ -266,6 +266,40 @@ int main() {
   assert(invalid.serviceBatch(0, capture_send, &capture) == 0);
   assert(invalid.diagnostics().radio_wake_batches == 0);
 
+  nobro::SequencedWirelessReceiver<3, 8> receiver(42);
+  uint8_t received[8] = {0};
+  const uint8_t rx_zero[] = {7, 7};
+  assert(receiver.ingest(0, 42, 0, 100, rx_zero, sizeof(rx_zero),
+                         received, sizeof(received)).kind ==
+         NOBRO_WIRELESS_INGRESS_DELIVERED);
+  assert(receiver.ingest(1, 42, 2, 100, high, sizeof(high),
+                         received, sizeof(received)).kind ==
+         NOBRO_WIRELESS_INGRESS_BUFFERED);
+  assert(receiver.ingest(2, 42, 2, 100, high, sizeof(high),
+                         received, sizeof(received)).kind ==
+         NOBRO_WIRELESS_INGRESS_DUPLICATE);
+  assert(receiver.ingest(3, 41, 1, 100, low, sizeof(low),
+                         received, sizeof(received)).kind ==
+         NOBRO_WIRELESS_INGRESS_WRONG_SESSION);
+  assert(receiver.ingest(4, 42, 1, 100, low, sizeof(low),
+                         received, sizeof(received)).kind ==
+         NOBRO_WIRELESS_INGRESS_DELIVERED);
+  nobro_wireless_ingress_event_t reordered =
+      receiver.drain(4, received, sizeof(received));
+  assert(reordered.kind == NOBRO_WIRELESS_INGRESS_DELIVERED &&
+         reordered.reordered && reordered.sequence == 2);
+  assert(receiver.diagnostics().duplicate_packets == 1 &&
+         receiver.diagnostics().session_rejections == 1 &&
+         receiver.diagnostics().reordered_packets == 1);
+
+  nobro::SequencedWirelessReceiver<2, 8> buffered_without_delivery(7);
+  assert(buffered_without_delivery.ingest(
+             0, 7, 1, 100, high, sizeof(high), NULL, 0).kind ==
+         NOBRO_WIRELESS_INGRESS_BUFFERED);
+  assert(buffered_without_delivery.ingest(
+             0, 7, 0, 100, high, sizeof(high), NULL, 0).kind ==
+         NOBRO_WIRELESS_INGRESS_INVALID);
+
   nobro::WirelessRecovery recovery =
       nobro::WirelessRecovery::exponential(3, 10, 40);
   assert(recovery.valid() && recovery.ready(0));
@@ -355,6 +389,19 @@ int main(void) {
   assert(!nobro_wireless_recovery_failed(
       &recovery, &invalid_retry, 0u));
   assert(recovery.failed_attempts == 0u);
+  const uint8_t payload[] = {1u, 2u, 3u};
+  uint8_t frame[16] = {0u};
+  size_t frame_len = nobro_wireless_encode_sequenced(
+      0x11223344u, 7u, payload, sizeof(payload), frame, sizeof(frame));
+  assert(frame_len == 11u);
+  uint32_t session = 0u;
+  uint32_t sequence = 0u;
+  const uint8_t *decoded = NULL;
+  size_t decoded_len = 0u;
+  assert(nobro_wireless_decode_sequenced(
+      frame, frame_len, &session, &sequence, &decoded, &decoded_len));
+  assert(session == 0x11223344u && sequence == 7u && decoded_len == 3u);
+  assert(decoded[0] == 1u && decoded[2] == 3u);
   return 0;
 }
 '''
@@ -483,18 +530,73 @@ public:
 class NiusLoRaBase : public NiusBase {
 public:
   bool ready = true;
-  bool reset_ready = true;
+  bool standby_ready = true;
   int begin_packet_calls = 0;
   int parse_packet_calls = 0;
 
   bool begin() override { return ready; }
   bool isReady() override { return ready; }
-  void reset() override { ready = reset_ready; }
+  void reset() override {}
   uint8_t beginPacket() { ++begin_packet_calls; return NIUS_LORA_OK; }
   size_t write(uint8_t) { return 1; }
   uint8_t endPacket(bool = false) { return NIUS_LORA_OK; }
   uint8_t parsePacket() { ++parse_packet_calls; return 0; }
   uint8_t readBuf(uint8_t *, uint8_t) { return 0; }
+  uint8_t sleep() { return NIUS_LORA_OK; }
+  uint8_t standby() { ready = standby_ready; return standby_ready ? NIUS_LORA_OK : 1; }
+};
+
+class NiusNRF24L01 : public NiusBase {
+public:
+  bool ready = true;
+  bool powered = true;
+  bool begin() override { return ready; }
+  bool isReady() override { return ready; }
+  void reset() override {}
+  bool writeRadio(const uint8_t *, uint8_t) { return ready && powered; }
+  bool available() { return false; }
+  bool readRadio(uint8_t *, uint8_t, uint8_t &received) { received = 0; return false; }
+  void startListening() {}
+  void stopListening() {}
+  bool powerDown() { powered = false; return true; }
+  bool powerUp() { powered = true; return ready; }
+};
+
+class NiusRC522 : public NiusBase {
+public:
+  bool ready = true;
+  bool begin() override { return ready; }
+  bool isReady() override { return ready; }
+  void reset() override {}
+  bool cardPresent() { return false; }
+  bool cardPresentWake() { return false; }
+  bool getUIDBytes(uint8_t *, uint8_t &) { return false; }
+  void halt() {}
+  void antennaOn() {}
+  void antennaOff() {}
+};
+
+class NiusPN532 : public NiusBase {
+public:
+  bool ready = true;
+  bool begin() override { return ready; }
+  bool isReady() override { return ready; }
+  void reset() override {}
+  bool cardPresent() { return false; }
+  bool cardPresentWake() { return false; }
+  bool getUIDBytes(uint8_t *, uint8_t &) { return false; }
+  void halt() {}
+  bool setRFField(uint8_t, uint8_t) { return ready; }
+};
+
+class FakeSerialRadio : public NiusBase {
+public:
+  bool ready = true;
+  bool begin() override { return ready; }
+  bool isReady() override { return ready; }
+  void reset() override {}
+  size_t write(const uint8_t *, size_t length) { return ready ? length : 0; }
+  size_t read(uint8_t *, size_t, uint32_t) { return 0; }
 };
 '''
 
@@ -508,15 +610,15 @@ int main() {
   nobro::NiusLoRaAdapter adapter(radio);
   assert(adapter.begin() && adapter.ready());
 
-  adapter.quiesce();
-  radio.reset_ready = false;
+  assert(adapter.quiesce());
+  radio.standby_ready = false;
   assert(!adapter.recover());
   assert(adapter.quiesced() && !adapter.ready());
   assert(!adapter.send(payload, sizeof(payload)));
   assert(adapter.receive(payload, sizeof(payload)) == 0);
   assert(radio.begin_packet_calls == 0 && radio.parse_packet_calls == 0);
 
-  radio.reset_ready = true;
+  radio.standby_ready = true;
   assert(adapter.recover());
   assert(!adapter.quiesced() && adapter.ready());
   assert(adapter.send(payload, sizeof(payload)));
@@ -529,6 +631,30 @@ int main() {
   assert(!absent_adapter.send(payload, sizeof(payload)));
   assert(absent_adapter.receive(payload, sizeof(payload)) == 0);
   assert(absent.begin_packet_calls == 0 && absent.parse_packet_calls == 0);
+
+  NiusNRF24L01 nrf24;
+  nobro::NiusNrf24Adapter nrf_adapter(nrf24);
+  assert(nrf_adapter.begin() && nrf_adapter.send(payload, sizeof(payload)));
+  nrf_adapter.listen();
+  assert(nrf_adapter.quiesce() && !nrf_adapter.send(payload, sizeof(payload)));
+  assert(nrf_adapter.recover() && nrf_adapter.ready());
+
+  NiusRC522 rc522;
+  nobro::NiusRc522Adapter rc522_adapter(rc522);
+  assert(rc522_adapter.begin());
+  rc522_adapter.quiesce();
+  assert(rc522_adapter.recover());
+
+  NiusPN532 pn532;
+  nobro::NiusPn532Adapter pn532_adapter(pn532);
+  assert(pn532_adapter.begin() && pn532_adapter.quiesce());
+  assert(pn532_adapter.recover());
+
+  FakeSerialRadio serial;
+  nobro::NiusSerialLinkAdapter<FakeSerialRadio> serial_adapter(serial);
+  assert(serial_adapter.begin());
+  assert(serial_adapter.send(payload, sizeof(payload)));
+  assert(serial_adapter.receive(payload, sizeof(payload)) == 0);
 }
 '''
 

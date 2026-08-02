@@ -193,33 +193,33 @@
     },
     {
       "source": "bindings/c/include/nobro_wireless.h",
-      "source_sha256": "d1d76aecd0a40f808e213d89c8718ae028b7fbf9b7bae0191fd604a2c01f9d4f",
+      "source_sha256": "38cf19bd26d6de1008dde35344eeb1f52d71e52af7d26a12e78c0e79ea5c5304",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_wireless.h",
-          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
+          "sha256": "d5dc08abd3978d55467a939158757c7d0dc56ab2e79aa1b02f540fbbaf9afdeb"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_wireless.h",
-          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
+          "sha256": "d5dc08abd3978d55467a939158757c7d0dc56ab2e79aa1b02f540fbbaf9afdeb"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_wireless.h",
-          "sha256": "4c595c69f63881ccd97716b51a5b5a552093dc41c80d646a27d191b507cb125d"
+          "sha256": "d5dc08abd3978d55467a939158757c7d0dc56ab2e79aa1b02f540fbbaf9afdeb"
         }
       ]
     },
     {
       "source": "packages/arduino/src/NobroAdaptiveWireless.h",
-      "source_sha256": "c86db23c63874f4111dc1d739831dc1d0f09cd26a6d1631afdbf355fcbcd5dfd",
+      "source_sha256": "087160a927d4309812832fbe2db37b8a6eea4e5d0b62f654f7c10c965d033ebf",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroAdaptiveWireless.h",
-          "sha256": "c86db23c63874f4111dc1d739831dc1d0f09cd26a6d1631afdbf355fcbcd5dfd"
+          "sha256": "087160a927d4309812832fbe2db37b8a6eea4e5d0b62f654f7c10c965d033ebf"
         }
       ]
     },
@@ -412,12 +412,12 @@
     },
     {
       "source": "packages/arduino/src/NobroNiusWireless.h",
-      "source_sha256": "c44b6c5757536c5531cc1d32344b26e794488fb58716f83c906e4ebc0f3c559b",
+      "source_sha256": "844266b1b956a0d165606e8f6bf5bb14cdf61ce7ac1df30bf5e40b059fbe9e11",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroNiusWireless.h",
-          "sha256": "c44b6c5757536c5531cc1d32344b26e794488fb58716f83c906e4ebc0f3c559b"
+          "sha256": "844266b1b956a0d165606e8f6bf5bb14cdf61ce7ac1df30bf5e40b059fbe9e11"
         }
       ]
     },
@@ -778,11 +778,23 @@
       },
       {
         "declarations": [
+          "*sequence = (uint32_t)frame[4] | ((uint32_t)frame[5] << 8) | ((uint32_t)frame[6] << 16) | ((uint32_t)frame[7] << 24);",
           "++shift) { if (delay >= policy->max_backoff_us || delay > UINT64_MAX / 2u) { delay = policy->max_backoff_us;",
+          "destination[1] = (uint8_t)(session >> 8);",
+          "destination[2] = (uint8_t)(session >> 16);",
+          "destination[3] = (uint8_t)(session >> 24);",
+          "destination[4] = (uint8_t)sequence;",
+          "destination[5] = (uint8_t)(sequence >> 8);",
+          "destination[6] = (uint8_t)(sequence >> 16);",
+          "destination[7] = (uint8_t)(sequence >> 24);",
           "static inline nobro_wireless_adaptive_policy_t nobro_wireless_responsive_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot) { nobro_wireless_adaptive_policy_t policy = { NOBRO_WIRELESS_STORAGE_FIXED, queue_slots, payload_bytes_per_slot, {3u, 1000u, 100000u}, 0u, 1u };",
+          "static inline size_t nobro_wireless_encode_sequenced( uint32_t session, uint32_t sequence, const uint8_t *payload, size_t payload_len, uint8_t *destination, size_t capacity) { if (destination == NULL || capacity < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || payload_len > capacity - NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || (payload == NULL && payload_len != 0u)) { return 0u;",
+          "} *session = (uint32_t)frame[0] | ((uint32_t)frame[1] << 8) | ((uint32_t)frame[2] << 16) | ((uint32_t)frame[3] << 24);",
+          "} destination[0] = (uint8_t)session;",
           "} if (delay > policy->max_backoff_us) { delay = policy->max_backoff_us;",
           "} if (state->failed_attempts != UINT8_MAX) { state->failed_attempts++;",
           "} if (state->failed_attempts >= policy->max_attempts) { return false;",
+          "} static inline bool nobro_wireless_decode_sequenced( const uint8_t *frame, size_t frame_len, uint32_t *session, uint32_t *sequence, const uint8_t **payload, size_t *payload_len) { if (frame == NULL || frame_len < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || session == NULL || sequence == NULL || payload == NULL || payload_len == NULL) { return false;",
           "} static inline bool nobro_wireless_message_valid( const nobro_wireless_message_contract_t *contract) { return contract != NULL && contract->offered_at_us <= contract->deadline_us && contract->deadline_us <= contract->expires_at_us;",
           "} static inline bool nobro_wireless_policy_valid( const nobro_wireless_adaptive_policy_t *policy) { return policy != NULL && policy->storage_mode <= NOBRO_WIRELESS_STORAGE_HEAP && policy->queue_slots != 0u && policy->payload_bytes_per_slot != 0u && nobro_wireless_retry_policy_valid(&policy->retry) && policy->max_batch_messages != 0u;",
           "} static inline bool nobro_wireless_recovery_failed( nobro_wireless_recovery_state_t *state, const nobro_wireless_retry_policy_t *policy, uint64_t now_us) { if (state == NULL || !nobro_wireless_retry_policy_valid(policy)) { return false;",
@@ -796,7 +808,8 @@
         "macros": [
           "NOBRO_BLE_GATT_VALUE_MAX",
           "NOBRO_WIRELESS_API_VERSION",
-          "NOBRO_WIRELESS_H"
+          "NOBRO_WIRELESS_H",
+          "NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES"
         ],
         "named_types": [
           "nobro_ble_event_kind_t",
@@ -820,6 +833,9 @@
           "nobro_wireless_adaptive_diagnostics_t",
           "nobro_wireless_adaptive_policy_t",
           "nobro_wireless_diagnostics_t",
+          "nobro_wireless_ingress_diagnostics_t",
+          "nobro_wireless_ingress_event_kind_t",
+          "nobro_wireless_ingress_event_t",
           "nobro_wireless_message_contract_t",
           "nobro_wireless_pacing_t",
           "nobro_wireless_protocol_t",
@@ -830,7 +846,7 @@
           "nobro_wireless_storage_mode_t"
         ],
         "path": "bindings/c/include/nobro_wireless.h",
-        "sha256": "d1d76aecd0a40f808e213d89c8718ae028b7fbf9b7bae0191fd604a2c01f9d4f"
+        "sha256": "38cf19bd26d6de1008dde35344eeb1f52d71e52af7d26a12e78c0e79ea5c5304"
       }
     ],
     "cpp": [

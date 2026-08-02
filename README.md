@@ -50,6 +50,9 @@ The ecosystem uses domain contracts plus pinned member libraries rather than
 per-device source sprawl. NiusDisplay 0.2.0 is an implemented `nobro-display`
 member through a bounded, no-heap provider and Arduino facade; its compile and
 simulation evidence is not represented as physical-panel support.
+NiusWireless 0.4.0 is an implemented `nobro-wireless` member: its common facade
+mounts bounded nRF24, RFID UID, LoRa, and serial-radio data planes while exact
+hardware promotion remains composition-specific.
 
 The project starts with nRF52840-class boards and a deliberately compact kernel
 surface: manifests, quotas, capability grants, static sample pools, health

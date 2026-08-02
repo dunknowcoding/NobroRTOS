@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define NOBRO_WIRELESS_API_VERSION 0x0104u
+#define NOBRO_WIRELESS_API_VERSION 0x0105u
 
 typedef enum nobro_wireless_protocol {
     NOBRO_WIRELESS_UNKNOWN = 0,
@@ -98,6 +98,90 @@ typedef struct nobro_wireless_adaptive_diagnostics {
     uint64_t latency_sum_us;
     uint64_t latency_max_us;
 } nobro_wireless_adaptive_diagnostics_t;
+
+/* Receive-side ordering is session-scoped. The sender changes session_id after
+ * restart; sequence numbers are compared with wrapping u32 arithmetic. */
+typedef struct nobro_wireless_ingress_diagnostics {
+    uint32_t observed_packets;
+    uint32_t delivered_packets;
+    uint64_t delivered_bytes;
+    uint32_t buffered_packets;
+    uint32_t reordered_packets;
+    uint32_t duplicate_packets;
+    uint32_t backpressure_rejections;
+    uint32_t inferred_lost_packets;
+    uint32_t window_evictions;
+    uint32_t expired_packets;
+    uint32_t session_rejections;
+} nobro_wireless_ingress_diagnostics_t;
+
+typedef enum nobro_wireless_ingress_event_kind {
+    NOBRO_WIRELESS_INGRESS_EMPTY = 0,
+    NOBRO_WIRELESS_INGRESS_DELIVERED = 1,
+    NOBRO_WIRELESS_INGRESS_BUFFERED = 2,
+    NOBRO_WIRELESS_INGRESS_DUPLICATE = 3,
+    NOBRO_WIRELESS_INGRESS_EXPIRED = 4,
+    NOBRO_WIRELESS_INGRESS_WRONG_SESSION = 5,
+    NOBRO_WIRELESS_INGRESS_BACKPRESSURE = 6,
+    NOBRO_WIRELESS_INGRESS_INVALID = 7
+} nobro_wireless_ingress_event_kind_t;
+
+typedef struct nobro_wireless_ingress_event {
+    nobro_wireless_ingress_event_kind_t kind;
+    uint32_t sequence;
+    uint16_t bytes;
+    uint32_t lost_before;
+    bool reordered;
+} nobro_wireless_ingress_event_t;
+
+#define NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES 8u
+
+/* Encode/decode the portable little-endian session + sequence header. */
+static inline size_t nobro_wireless_encode_sequenced(
+    uint32_t session,
+    uint32_t sequence,
+    const uint8_t *payload,
+    size_t payload_len,
+    uint8_t *destination,
+    size_t capacity) {
+    if (destination == NULL || capacity < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES ||
+        payload_len > capacity - NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES ||
+        (payload == NULL && payload_len != 0u)) {
+        return 0u;
+    }
+    destination[0] = (uint8_t)session;
+    destination[1] = (uint8_t)(session >> 8);
+    destination[2] = (uint8_t)(session >> 16);
+    destination[3] = (uint8_t)(session >> 24);
+    destination[4] = (uint8_t)sequence;
+    destination[5] = (uint8_t)(sequence >> 8);
+    destination[6] = (uint8_t)(sequence >> 16);
+    destination[7] = (uint8_t)(sequence >> 24);
+    for (size_t i = 0; i < payload_len; ++i) {
+        destination[NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES + i] = payload[i];
+    }
+    return NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES + payload_len;
+}
+
+static inline bool nobro_wireless_decode_sequenced(
+    const uint8_t *frame,
+    size_t frame_len,
+    uint32_t *session,
+    uint32_t *sequence,
+    const uint8_t **payload,
+    size_t *payload_len) {
+    if (frame == NULL || frame_len < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES ||
+        session == NULL || sequence == NULL || payload == NULL || payload_len == NULL) {
+        return false;
+    }
+    *session = (uint32_t)frame[0] | ((uint32_t)frame[1] << 8) |
+        ((uint32_t)frame[2] << 16) | ((uint32_t)frame[3] << 24);
+    *sequence = (uint32_t)frame[4] | ((uint32_t)frame[5] << 8) |
+        ((uint32_t)frame[6] << 16) | ((uint32_t)frame[7] << 24);
+    *payload = frame + NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES;
+    *payload_len = frame_len - NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES;
+    return true;
+}
 
 /* Result returned by a concrete C/C++ transport callback. Link/window
  * deferrals do not spend the backend retry budget. */

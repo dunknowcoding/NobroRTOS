@@ -10,10 +10,10 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "packages" / "arduino"
-WIRELESS_PIN = "97e2883a0df4ba50c1b0e248e9c72869cc44240b"
+WIRELESS_PIN = "f87bbddb5fcc8dbfcffe013e5bb801868863db36"
 ZIGBEE_PIN = "39a3203d0528323dba80585abfa2304edc4d6e70"
 MODULES = {"HC06", "HC12", "LoRa", "NRF24L01", "PN532", "RC522"}
-STUBS = {"HC06", "HC12"}
+STUBS = set()
 
 CASES = {
     "rc522": ("arduino:renesas_uno:unor4wifi", r'''#include <NiusWireless.h>
@@ -30,6 +30,20 @@ nobro::NiusLoRaAdapter wireless(device);
 void setup() { uint8_t data[2] = {1, 2}; if (false) { wireless.begin(); wireless.send(data, 2); wireless.receive(data, 2); wireless.quiesce(); wireless.quiesced(); wireless.recover(); } }
 void loop() {}
 '''),
+    "hc12": ("arduino:renesas_uno:unor4wifi", r'''#include <NiusWireless.h>
+#include <NobroNiusWireless.h>
+NiusHC12 device(Serial1, 4);
+nobro::NiusSerialLinkAdapter<NiusHC12> wireless(device);
+void setup() { uint8_t byte = 0; if (false) { wireless.begin(); wireless.send(&byte, 1); wireless.receive(&byte, 1, 10); wireless.quiesce(); wireless.recover(); } }
+void loop() {}
+'''),
+    "hc06": ("arduino:renesas_uno:unor4wifi", r'''#include <NiusWireless.h>
+#include <NobroNiusWireless.h>
+NiusHC06 device(Serial1);
+nobro::NiusSerialLinkAdapter<NiusHC06> wireless(device);
+void setup() { uint8_t byte = 0; if (false) { wireless.begin(); wireless.send(&byte, 1); wireless.receive(&byte, 1, 10); wireless.quiesce(); wireless.recover(); } }
+void loop() {}
+'''),
 }
 
 ZIGBEE_CASE = r'''#include <CC2530Radio.h>
@@ -40,7 +54,9 @@ void loop() {}
 
 NRF24_CASE = r'''#include <NiusWireless.h>
 NiusNRF24L01 radio(9, 10);
-void setup() { if (false) radio.begin(); }
+#include <NobroNiusWireless.h>
+nobro::NiusNrf24Adapter wireless(radio);
+void setup() { uint8_t data[32]; if (false) { wireless.begin(); wireless.listen(); wireless.send(data, 1); wireless.receive(data, sizeof(data)); wireless.quiesce(); wireless.recover(); } }
 void loop() {}
 '''
 
@@ -76,8 +92,8 @@ def verify_inventory(wireless: pathlib.Path, zigbee: pathlib.Path) -> None:
     }
     for label in ("HC-12 long-range serial", "HC-06 / HC-05 Bluetooth"):
         row = public_rows.get(label, "")
-        if "Stub (fail-closed API surface)" not in row or "| Full |" in row:
-            raise RuntimeError(f"{label} public support status must remain an explicit stub")
+        if "| Implemented |" not in row or "Stub" in row:
+            raise RuntimeError(f"{label} public support status must match implemented source")
     for module in STUBS:
         sources = list((wireless / "src" / "modules" / module).glob("*.cpp"))
         if not sources or not any("Status: STUB" in source.read_text(encoding="utf-8", errors="replace")
@@ -117,7 +133,7 @@ def main() -> int:
                         help="compile exact Arduino Zero PN532 I2C and SPI/IRQ examples")
     args = parser.parse_args()
     try:
-        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.2.2")
+        wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.4.0")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.1")
         verify_inventory(wireless, zigbee)
         if args.compile or args.compile_nrf or args.compile_zigbee or args.compile_samd21_pn532:
@@ -154,8 +170,8 @@ def main() -> int:
     except (OSError, RuntimeError) as error:
         print(f"WIRELESS INTEGRATIONS: FAIL ({error})")
         return 1
-    print("WIRELESS INTEGRATIONS: PASS (RC522 + LoRa + NRF24L01 + PN532 implemented; "
-          "HC06 + HC12 stubs explicit; "
+    print("WIRELESS INTEGRATIONS: PASS (RC522 + LoRa + NRF24L01 + PN532 + "
+          "HC06 + HC12 implemented; "
           "NiusZigbee CC2530 surface pinned)")
     return 0
 

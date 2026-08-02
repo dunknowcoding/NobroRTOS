@@ -489,6 +489,215 @@ private:
     }
 };
 
+/* Fixed-storage receive-side ordering for links that may delay, duplicate, drop,
+ * or reorder packets. The session id prevents delayed traffic from a previous
+ * sender boot from entering the current stream. No work is performed in an ISR. */
+template <size_t SLOTS, size_t BYTES>
+class SequencedWirelessReceiver {
+public:
+    static_assert(SLOTS > 0, "sequenced receiver requires at least one slot");
+    static_assert(BYTES > 0, "sequenced receiver requires nonzero payload capacity");
+
+    SequencedWirelessReceiver(uint32_t session, uint32_t initial_sequence = 0)
+        : session_(session), next_sequence_(initial_sequence) {
+        clearSlots();
+        memset(&diagnostics_, 0, sizeof(diagnostics_));
+    }
+
+    uint32_t session() const { return session_; }
+    uint32_t nextSequence() const { return next_sequence_; }
+    const nobro_wireless_ingress_diagnostics_t &diagnostics() const {
+        return diagnostics_;
+    }
+
+    void resetSession(uint32_t session, uint32_t initial_sequence = 0) {
+        session_ = session;
+        next_sequence_ = initial_sequence;
+        clearSlots();
+    }
+
+    nobro_wireless_ingress_event_t ingest(
+        uint64_t now_us,
+        uint32_t session,
+        uint32_t sequence,
+        uint64_t expires_at_us,
+        const uint8_t *payload,
+        size_t length,
+        uint8_t *destination,
+        size_t capacity) {
+        if (length > BYTES || length > UINT16_MAX ||
+            (payload == NULL && length != 0)) {
+            return event(NOBRO_WIRELESS_INGRESS_INVALID, sequence, 0, 0, false);
+        }
+        increment(diagnostics_.observed_packets);
+        if (session != session_) {
+            increment(diagnostics_.session_rejections);
+            return event(NOBRO_WIRELESS_INGRESS_WRONG_SESSION, sequence, 0, 0, false);
+        }
+        if (now_us > expires_at_us) {
+            increment(diagnostics_.expired_packets);
+            if (sequence == next_sequence_) ++next_sequence_;
+            return event(NOBRO_WIRELESS_INGRESS_EXPIRED, sequence, 0, 0, false);
+        }
+
+        const uint32_t distance = sequence - next_sequence_;
+        if (distance == 0) {
+            if (capacity < length || (destination == NULL && length != 0)) {
+                return event(NOBRO_WIRELESS_INGRESS_INVALID, sequence, 0, 0, false);
+            }
+            if (length != 0) memcpy(destination, payload, length);
+            ++next_sequence_;
+            return delivered(sequence, length, false, 0);
+        }
+        if (distance >= UINT32_C(0x80000000)) {
+            increment(diagnostics_.duplicate_packets);
+            return event(NOBRO_WIRELESS_INGRESS_DUPLICATE, sequence, 0, 0, false);
+        }
+        if (distance > SLOTS) {
+            if (capacity < length || (destination == NULL && length != 0)) {
+                return event(NOBRO_WIRELESS_INGRESS_INVALID, sequence, 0, 0, false);
+            }
+            uint32_t buffered_before = 0;
+            for (size_t i = 0; i < SLOTS; ++i) {
+                if (slots_[i].occupied && (slots_[i].sequence - next_sequence_) < distance) {
+                    ++buffered_before;
+                }
+            }
+            const uint32_t lost = distance - buffered_before;
+            add(diagnostics_.inferred_lost_packets, lost);
+            add(diagnostics_.window_evictions, buffered_before);
+            clearSlots();
+            next_sequence_ = sequence + 1;
+            if (length != 0) memcpy(destination, payload, length);
+            return delivered(sequence, length, false, lost);
+        }
+        for (size_t i = 0; i < SLOTS; ++i) {
+            if (slots_[i].occupied && slots_[i].sequence == sequence) {
+                increment(diagnostics_.duplicate_packets);
+                return event(NOBRO_WIRELESS_INGRESS_DUPLICATE, sequence, 0, 0, false);
+            }
+        }
+        for (size_t i = 0; i < SLOTS; ++i) {
+            if (!slots_[i].occupied) {
+                if (length != 0) memcpy(slots_[i].payload, payload, length);
+                slots_[i].sequence = sequence;
+                slots_[i].expires_at_us = expires_at_us;
+                slots_[i].length = static_cast<uint16_t>(length);
+                slots_[i].occupied = true;
+                increment(diagnostics_.buffered_packets);
+                return event(NOBRO_WIRELESS_INGRESS_BUFFERED, sequence, 0, 0, false);
+            }
+        }
+        increment(diagnostics_.backpressure_rejections);
+        return event(NOBRO_WIRELESS_INGRESS_BACKPRESSURE, sequence, 0, 0, false);
+    }
+
+    nobro_wireless_ingress_event_t drain(
+        uint64_t now_us, uint8_t *destination, size_t capacity) {
+        uint32_t lost_before = 0;
+        size_t index = find(next_sequence_);
+        if (index == SLOTS) {
+            uint32_t nearest = UINT32_MAX;
+            for (size_t i = 0; i < SLOTS; ++i) {
+                if (!slots_[i].occupied || now_us <= slots_[i].expires_at_us) continue;
+                const uint32_t distance = slots_[i].sequence - next_sequence_;
+                if (distance < UINT32_C(0x80000000) && distance < nearest) {
+                    nearest = distance;
+                    index = i;
+                }
+            }
+            if (index != SLOTS) {
+                lost_before = nearest;
+                add(diagnostics_.inferred_lost_packets, nearest);
+                next_sequence_ = slots_[index].sequence;
+            }
+        }
+        if (index == SLOTS) {
+            return event(NOBRO_WIRELESS_INGRESS_EMPTY, 0, 0, 0, false);
+        }
+        Slot &slot = slots_[index];
+        const uint32_t sequence = slot.sequence;
+        if (now_us > slot.expires_at_us) {
+            slot = emptySlot();
+            ++next_sequence_;
+            increment(diagnostics_.expired_packets);
+            return event(
+                NOBRO_WIRELESS_INGRESS_EXPIRED, sequence, 0, lost_before, false);
+        }
+        if (capacity < slot.length || (destination == NULL && slot.length != 0)) {
+            return event(NOBRO_WIRELESS_INGRESS_INVALID, sequence, 0, 0, false);
+        }
+        if (slot.length != 0) memcpy(destination, slot.payload, slot.length);
+        const size_t length = slot.length;
+        slot = emptySlot();
+        ++next_sequence_;
+        return delivered(sequence, length, true, lost_before);
+    }
+
+private:
+    struct Slot {
+        uint8_t payload[BYTES];
+        uint64_t expires_at_us;
+        uint32_t sequence;
+        uint16_t length;
+        bool occupied;
+    };
+
+    Slot slots_[SLOTS];
+    uint32_t session_;
+    uint32_t next_sequence_;
+    nobro_wireless_ingress_diagnostics_t diagnostics_;
+
+    static Slot emptySlot() {
+        Slot slot;
+        memset(&slot, 0, sizeof(slot));
+        return slot;
+    }
+
+    void clearSlots() { memset(slots_, 0, sizeof(slots_)); }
+
+    size_t find(uint32_t sequence) const {
+        for (size_t i = 0; i < SLOTS; ++i) {
+            if (slots_[i].occupied && slots_[i].sequence == sequence) return i;
+        }
+        return SLOTS;
+    }
+
+    static void increment(uint32_t &value) {
+        if (value != UINT32_MAX) ++value;
+    }
+
+    static void add(uint32_t &value, uint32_t amount) {
+        value = UINT32_MAX - value < amount ? UINT32_MAX : value + amount;
+    }
+
+    static nobro_wireless_ingress_event_t event(
+        nobro_wireless_ingress_event_kind_t kind,
+        uint32_t sequence,
+        uint16_t bytes,
+        uint32_t lost_before,
+        bool reordered) {
+        nobro_wireless_ingress_event_t result = {
+            kind, sequence, bytes, lost_before, reordered
+        };
+        return result;
+    }
+
+    nobro_wireless_ingress_event_t delivered(
+        uint32_t sequence, size_t length, bool reordered, uint32_t lost_before) {
+        increment(diagnostics_.delivered_packets);
+        diagnostics_.delivered_bytes = UINT64_MAX - diagnostics_.delivered_bytes < length
+            ? UINT64_MAX : diagnostics_.delivered_bytes + length;
+        if (reordered) increment(diagnostics_.reordered_packets);
+        return event(
+            NOBRO_WIRELESS_INGRESS_DELIVERED,
+            sequence,
+            static_cast<uint16_t>(length),
+            lost_before,
+            reordered);
+    }
+};
+
 /* Attempts to bring the physical link up (e.g. WiFi association). Returns true
  * when the link is now up. Called by ManagedWirelessLink::poll() only when the
  * recovery backoff says an attempt is due, so it is never busy-retried. */
