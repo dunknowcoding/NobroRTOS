@@ -62,10 +62,50 @@ CONNECTED_BOARD_IDS = {
 ID = re.compile(r"^[a-z0-9][a-z0-9_.:-]*$")
 ROOT = Path(__file__).resolve().parents[3] / "core" / "boards"
 REPO = ROOT.parents[1]
+MEMORY_REGION = re.compile(
+    r"^\s*(FLASH|RAM)(?:\s*\([^)]*\))?\s*:\s*"
+    r"ORIGIN\s*=\s*([^,\s]+)\s*,\s*LENGTH\s*=\s*([^\s}]+)",
+    re.MULTILINE,
+)
 
 
 def as_int(value: object) -> int:
     return int(value, 0) if isinstance(value, str) else int(value)
+
+
+def memory_value(value: object) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    text = str(value).strip()
+    scale = 1024 if text.upper().endswith("K") else 1
+    if scale != 1:
+        text = text[:-1]
+    return int(text, 0) * scale
+
+
+def linker_layout_errors(profile: dict, linker_text: str) -> list[str]:
+    regions = {
+        name: (memory_value(origin), memory_value(length))
+        for name, origin, length in MEMORY_REGION.findall(linker_text)
+    }
+    if set(regions) != {"FLASH", "RAM"}:
+        return ["application-image linker must declare exactly FLASH and RAM"]
+    boot = profile["boot"]
+    expected = {
+        "FLASH": (
+            memory_value(boot["app_flash_start"]),
+            memory_value(boot["app_flash_len_bytes"]),
+        ),
+        "RAM": (
+            memory_value(boot["ram_start"]),
+            memory_value(boot["ram_len_bytes"]),
+        ),
+    }
+    return [
+        f"{name} linker region {regions[name]} != board boot region {expected[name]}"
+        for name in ("FLASH", "RAM")
+        if regions[name] != expected[name]
+    ]
 
 
 def check_profile(path: Path) -> tuple[dict, list[str]]:
@@ -214,6 +254,12 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
             linker = generation.get("linker_script")
             if isinstance(linker, str) and not (REPO / linker).is_file():
                 errors.append(f"generation linker_script does not exist: {linker}")
+            elif isinstance(linker, str):
+                errors.extend(
+                    linker_layout_errors(
+                        data, (REPO / linker).read_text(encoding="utf-8")
+                    )
+                )
             flags = generation.get("rustflags")
             if not isinstance(flags, list) or not all(
                 isinstance(flag, str) for flag in flags
@@ -287,6 +333,31 @@ def main() -> int:
     if missing_connected:
         failures += 1
         print("[FAIL] connected board profiles missing: " + ", ".join(missing_connected))
+
+    application_path = next(
+        path for path in paths
+        if json.loads(path.read_text(encoding="utf-8"))["firmware_generation"]["support"]
+        == "application-image"
+    )
+    application = json.loads(application_path.read_text(encoding="utf-8"))
+    linker_text = (
+        REPO / application["firmware_generation"]["linker_script"]
+    ).read_text(encoding="utf-8")
+    mismatched = json.loads(json.dumps(application))
+    mismatched["boot"]["app_flash_start"] = hex(
+        as_int(mismatched["boot"]["app_flash_start"]) + 0x1000
+    )
+    if linker_layout_errors(application, linker_text):
+        failures += 1
+        print("[FAIL] canonical linker/boot self-test rejected its exact layout")
+    elif not any(
+        "FLASH linker region" in error
+        for error in linker_layout_errors(mismatched, linker_text)
+    ):
+        failures += 1
+        print("[FAIL] linker/boot mismatch negative was accepted")
+    else:
+        print("[ OK ] linker/boot mismatch negative rejects a shifted application origin")
 
     generated = subprocess.run(
         [sys.executable, str(REPO / "tools/build/generate_board_catalog.py"), "--check"],

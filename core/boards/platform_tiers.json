@@ -127,7 +127,7 @@
         {
           "id": "board-packages",
           "command": ["arduino-cli", "core", "list"],
-          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:samd\\s+1\\.8\\.14)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)(?=.*esp8266:esp8266\\s+3\\.1\\.2)"
+          "expected": "(?s)(?=.*arduino:avr\\s+1\\.8\\.8)(?=.*arduino:samd\\s+1\\.8\\.14)(?=.*arduino:renesas_uno\\s+1\\.6\\.0)(?=.*esp32:esp32\\s+3\\.3\\.10)(?=.*esp8266:esp8266\\s+3\\.1\\.2)(?=.*rp2040:rp2040\\s+5\\.7\\.0)"
         }
       ]
     },

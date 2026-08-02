@@ -60,6 +60,12 @@ void setup() { uint8_t data[32]; if (false) { wireless.begin(); wireless.listen(
 void loop() {}
 '''
 
+PORTABLE_SMOKE_CASE = r'''#include <NiusWireless.h>
+#include <NobroNiusWireless.h>
+void setup() {}
+void loop() {}
+'''
+
 
 def run(command, cwd=ROOT):
     completed = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
@@ -131,12 +137,15 @@ def main() -> int:
                         help="requires the Windows-only ArduinoNRF toolchain")
     parser.add_argument("--compile-samd21-pn532", action="store_true",
                         help="compile exact Arduino Zero PN532 I2C and SPI/IRQ examples")
+    parser.add_argument("--smoke-fqbn", action="append", default=[],
+                        help="compile the complete library/facade on an exact target")
     args = parser.parse_args()
     try:
         wireless = verify_checkout(args.niuswireless, WIRELESS_PIN, "NiusWireless", "0.4.0")
         zigbee = verify_checkout(args.niuszigbee, ZIGBEE_PIN, "NiusZigbee", "1.0.1")
         verify_inventory(wireless, zigbee)
-        if args.compile or args.compile_nrf or args.compile_zigbee or args.compile_samd21_pn532:
+        if (args.compile or args.compile_nrf or args.compile_zigbee
+                or args.compile_samd21_pn532 or args.smoke_fqbn):
             cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
             if not cli:
                 raise RuntimeError("arduino-cli not found")
@@ -167,6 +176,11 @@ def main() -> int:
                             str(wireless / "examples" / example),
                         ])
                         print(f"  PASS arduino:samd:arduino_zero_native {example}")
+                for index, fqbn in enumerate(args.smoke_fqbn):
+                    compile_sketch(
+                        cli, wireless, f"portable_smoke_{index}", fqbn,
+                        PORTABLE_SMOKE_CASE, base,
+                    )
     except (OSError, RuntimeError) as error:
         print(f"WIRELESS INTEGRATIONS: FAIL ({error})")
         return 1

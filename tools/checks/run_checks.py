@@ -192,6 +192,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("static budget analyzer", [py, "sdk/cli/nobro.py", "budget", "--selftest"], ROOT),
         ("flash tool fail-closed parser", [py, "sdk/cli/nobro.py", "flash", "--selftest"], ROOT),
         ("board profiles", [py, "tools/checks/platforms/check_board_profiles.py"], ROOT),
+        ("complete compile campaign", [py, "tools/checks/platforms/check_compile_campaign.py"], ROOT),
         ("kernel-lite candidates", [py, "tools/checks/platforms/check_kernel_lite_candidates.py"], ROOT),
         ("market board intake", [py, "tools/checks/platforms/check_market_board_intake.py", "--selftest"], ROOT),
         ("core layout", [py, "tools/checks/core/check_core_layout.py"], ROOT),

@@ -36,6 +36,7 @@ jobs:
       - name: board profiles
         run: |
           python tools/checks/platforms/check_board_profiles.py
+          python tools/checks/platforms/check_compile_campaign.py
           python tools/checks/platforms/check_kernel_lite_candidates.py
       - name: scalable core layout
         run: python tools/checks/core/check_core_layout.py
@@ -95,6 +96,7 @@ jobs:
           python -O sdk/cli/nobro.py adapter --selftest
           python -O tools/checks/platforms/check_board_features.py --selftest
           python -O tools/checks/platforms/check_kernel_lite_candidates.py
+          python -O tools/checks/platforms/check_compile_campaign.py
           python -O sdk/cli/nobro.py firmware --selftest
           python -O sdk/cli/nobro.py shrink --selftest
           python -O tools/checks/product/check_udi.py --selftest
@@ -284,7 +286,7 @@ jobs:
 
   arduino-package:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: install pinned Arduino CLI
@@ -306,7 +308,7 @@ jobs:
         with:
           python-version: "3.11.9"
       - name: install representative cores
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: |
           arduino-cli core update-index
           arduino-cli core install arduino:avr@1.8.8
@@ -314,6 +316,7 @@ jobs:
           arduino-cli core install arduino:renesas_uno@1.6.0
           arduino-cli core install esp32:esp32@3.3.10 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core install esp8266:esp8266@3.1.2 --additional-urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+          arduino-cli core install rp2040:rp2040@5.7.0 --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
           arduino-cli lib install ArduinoBLE@2.1.0
       - name: prepare pinned audio member
         run: |
@@ -327,6 +330,7 @@ jobs:
           git -C _work/NiusDisplay checkout --detach 9cf953f115e93a2efed0e152d0b359cc873cb333
           test "$(git -C _work/NiusDisplay rev-parse HEAD)" = \
             "9cf953f115e93a2efed0e152d0b359cc873cb333"
+          (cd _work/NiusDisplay/tools && python compile_matrix.py --group tests)
           arduino-cli compile --library packages/arduino --library _work/NiusDisplay \
             -b arduino:avr:uno packages/arduino/examples/NiusDisplayBounded
       - name: compile public package examples (AVR, UNO R4, ESP32-S3, ESP8266)
@@ -352,12 +356,18 @@ jobs:
         timeout-minutes: 20
         run: python tools/checks/platforms/check_firmware_generation.py --arduino-builds
       - name: pinned NiusIMU integration
+        timeout-minutes: 20
         run: |
           git clone https://github.com/dunknowcoding/ArduinoNRF-IMU.git _work/ArduinoNRF-IMU
           git -C _work/ArduinoNRF-IMU checkout --detach 0fb18445c99bf4a28693f409187942d72325adb5
           test "$(git -C _work/ArduinoNRF-IMU rev-parse HEAD)" = \
             "0fb18445c99bf4a28693f409187942d72325adb5"
-          python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --inventory-only
+          python tools/checks/integrations/check_niusimu_adapter.py \
+            --library _work/ArduinoNRF-IMU \
+            --smoke-fqbn arduino:avr:nano:cpu=atmega328old \
+            --smoke-fqbn arduino:samd:arduino_zero_native \
+            --smoke-fqbn arduino:renesas_uno:unor4wifi \
+            --smoke-fqbn esp32:esp32:esp32s3
           python tools/checks/integrations/check_niusimu_adapter.py --selftest
       - name: pinned sensor member integrations
         run: |
@@ -373,6 +383,23 @@ jobs:
             --ina _work/INA_series_sensor --difinders _work/DiFinders \
             --fqbn arduino:avr:uno --fqbn arduino:samd:mkrzero \
             --fqbn arduino:renesas_uno:unor4wifi --fqbn esp32:esp32:esp32c3
+      - name: pinned RoboServo target matrix
+        timeout-minutes: 15
+        run: |
+          git clone https://github.com/dunknowcoding/RoboServo.git _work/RoboServo
+          git -C _work/RoboServo checkout --detach 38fa23cde947766f9c3da7ac650fffb67b1f5668
+          test "$(git -C _work/RoboServo rev-parse HEAD)" = \
+            "38fa23cde947766f9c3da7ac650fffb67b1f5668"
+          for fqbn in \
+            arduino:avr:uno \
+            rp2040:rp2040:rpipico \
+            arduino:renesas_uno:unor4wifi \
+            esp32:esp32:esp32s3 \
+            esp8266:esp8266:d1_mini
+          do
+            arduino-cli compile --library packages/arduino --library _work/RoboServo \
+              -b "$fqbn" packages/arduino/examples/RoboServoBounded
+          done
       - name: pinned wireless integrations
         run: |
           git clone https://github.com/dunknowcoding/NiusWireless.git _work/NiusWireless
@@ -385,7 +412,12 @@ jobs:
             "39a3203d0528323dba80585abfa2304edc4d6e70"
           python tools/checks/integrations/check_wireless_integrations.py \
             --niuswireless _work/NiusWireless \
-            --niuszigbee _work/ArduinoNRF-Zigbee --compile
+            --niuszigbee _work/ArduinoNRF-Zigbee --compile \
+            --smoke-fqbn arduino:avr:nano:cpu=atmega328old \
+            --smoke-fqbn arduino:samd:arduino_zero_native \
+            --smoke-fqbn arduino:renesas_uno:unor4wifi \
+            --smoke-fqbn esp32:esp32:esp32s3 \
+            --smoke-fqbn rp2040:rp2040:rpipico2w
           python tools/checks/platforms/check_platform_tiers.py \
             --run-gate arduino-samd21-pn532-target-build
       - name: pinned camera integration

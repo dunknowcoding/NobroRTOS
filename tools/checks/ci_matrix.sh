@@ -49,6 +49,10 @@ gate "wireless adaptive alloc feature tests" \
   "$CURRENT_BASH" -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
     -p nobro-wireless --features alloc'
 
+gate "wireless no-heap feature tests" \
+  "$CURRENT_BASH" -c 'cd core && cargo test --locked --target "$HOST_TARGET" \
+    -p nobro-wireless --no-default-features'
+
 gate "capacity-report feature target build" \
   "$CURRENT_BASH" -c 'cd core && cargo check --locked --target thumbv7em-none-eabihf \
     -p nobro-kernel --features capacity-report'
@@ -254,6 +258,7 @@ gate "Tier-C prebuilt library and link" \
   python tools/build/build_libnobro.py --build
 
 gate "board profiles" python tools/checks/platforms/check_board_profiles.py
+gate "complete compile campaign" python tools/checks/platforms/check_compile_campaign.py
 gate "market board intake" python tools/checks/platforms/check_market_board_intake.py --selftest
 gate "board-owned portable firmware generation" \
   python tools/checks/platforms/check_firmware_generation.py

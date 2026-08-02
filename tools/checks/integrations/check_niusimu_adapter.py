@@ -302,6 +302,10 @@ def main() -> int:
                         help="verify the pinned upstream checkout without compiling a board target")
     parser.add_argument("--library", type=pathlib.Path)
     parser.add_argument("--fqbn", action="append")
+    parser.add_argument(
+        "--smoke-fqbn", action="append", default=[],
+        help="compile one representative path for each exact family target",
+    )
     args = parser.parse_args()
     if args.selftest:
         return selftest()
@@ -315,8 +319,8 @@ def main() -> int:
             return 1
         print(f"NIUSIMU INVENTORY: PASS (37 sensor drivers + 25 board modules; pin {PIN[:12]})")
         return 0
-    if args.library is None or not args.fqbn:
-        parser.error("--library and at least one --fqbn are required unless --selftest is used")
+    if args.library is None or not (args.fqbn or args.smoke_fqbn):
+        parser.error("--library and at least one --fqbn/--smoke-fqbn are required unless --selftest is used")
     cli = shutil.which("arduino-cli") or shutil.which("arduino-cli.exe")
     if not cli:
         print("NIUSIMU ADAPTER: FAIL (arduino-cli not found)")
@@ -326,7 +330,7 @@ def main() -> int:
         verify_checkout(library)
         with tempfile.TemporaryDirectory(prefix="nobro-niusimu-") as temp:
             base = pathlib.Path(temp)
-            for fqbn in args.fqbn:
+            for fqbn in args.fqbn or []:
                 for case, source in CASES.items():
                     sketch = base / case
                     sketch.mkdir(exist_ok=True)
@@ -335,10 +339,23 @@ def main() -> int:
                                str(PACKAGE), "--library", str(library), str(sketch)]
                     output(command, ROOT)
                     print(f"  PASS {fqbn} {case}")
+            case = "mpu6050_i2c"
+            source = CASES[case]
+            for index, fqbn in enumerate(args.smoke_fqbn):
+                sketch = base / f"{case}_smoke_{index}"
+                sketch.mkdir()
+                (sketch / f"{sketch.name}.ino").write_text(source, encoding="utf-8")
+                command = [cli, "compile", "--fqbn", fqbn, "--library",
+                           str(PACKAGE), "--library", str(library), str(sketch)]
+                output(command, ROOT)
+                print(f"  PASS {fqbn} {case} representative")
     except (OSError, RuntimeError) as error:
         print(f"NIUSIMU ADAPTER: FAIL ({error})")
         return 1
-    print(f"NIUSIMU ADAPTER: PASS ({len(args.fqbn)} architectures x {len(CASES)} representative paths; 37 sensor drivers + 25 board modules; pin {PIN[:12]})")
+    full_targets = len(args.fqbn or [])
+    print(f"NIUSIMU ADAPTER: PASS ({full_targets} full target(s) x {len(CASES)} paths + "
+          f"{len(args.smoke_fqbn)} family smoke target(s); 37 sensor drivers + "
+          f"25 board modules; pin {PIN[:12]})")
     return 0
 
 

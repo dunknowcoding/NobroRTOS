@@ -1366,8 +1366,8 @@
         "arduino:esp32s3",
         "arduino:nrf52",
         "arduino:renesas",
-        "arduino:rp2350",
-        "arduino:samd"
+        "arduino:samd",
+        "rp2040:rp2040:rpipico2w"
       ],
       "limitations": [
         "Exact restored fixtures cover UNO R4 RC522 software-SPI/IRQ, SAMD21 dual PN532, and RP2040/RP2350 nRF24; W124 physically reran RP2040 atomic receive and byte-exact restoration.",
@@ -1441,11 +1441,11 @@
       ],
       "supported_targets": [
         "arduino:avr:uno",
-        "arduino:mbed_rp2040:pico",
         "arduino:renesas_uno:unor4wifi",
         "arduinonrf:nrf52:promicro_nrf52840",
         "esp32:esp32:esp32s3",
-        "esp8266:esp8266:d1_mini"
+        "esp8266:esp8266:d1_mini",
+        "rp2040:rp2040:rpipico"
       ],
       "limitations": [
         "No servo is attached to the maintained hardware inventory, so compile and behavior evidence do not establish physical actuation.",
