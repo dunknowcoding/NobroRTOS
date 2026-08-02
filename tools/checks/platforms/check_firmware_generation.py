@@ -64,15 +64,17 @@ def main() -> int:
                 encoding="utf-8",
             )
             result = generator.generate(source, temporary / "projects")
-            completed = generator.build(result["project"])
-            if completed.returncode:
-                tail = (completed.stdout + completed.stderr).splitlines()[-20:]
-                print(f"[FAIL] {board}")
-                print("\n".join(tail))
-                return 1
+            if not args.arduino_builds:
+                completed = generator.build(result["project"])
+                if completed.returncode:
+                    tail = (completed.stdout + completed.stderr).splitlines()[-20:]
+                    print(f"[FAIL] {board}")
+                    print("\n".join(tail))
+                    return 1
+            state = "route generated" if args.arduino_builds else "target built"
             print(
                 f"[ OK ] {board}: {result['cargo_target']} "
-                f"({result['generation_contract']['entry']})"
+                f"({state}; {result['generation_contract']['entry']})"
             )
         for board in arduino_boards:
             source = temporary / f"{board}.nobro"
