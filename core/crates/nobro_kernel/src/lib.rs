@@ -44,6 +44,7 @@ pub mod module_ctx;
 pub mod module_runtime;
 pub mod multicore;
 pub mod multicore_runtime;
+pub mod multicore_supervisor;
 pub mod nano;
 pub mod objects;
 pub mod pool;
@@ -155,8 +156,13 @@ pub use module_runtime::{
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
 pub use multicore_runtime::{
-    CoreExecutorState, MulticoreError, MulticoreExecutorLifecycle, MulticoreTaskExecutor,
-    MulticoreTransferError,
+    CoreExecutorState, CoreGeneration, CoreOwnership, CoreRole, MulticoreError,
+    MulticoreExecutorLifecycle, MulticoreTaskExecutor, MulticoreTransferError,
+};
+pub use multicore_supervisor::{
+    MulticoreCoherency, MulticoreControlAction, MulticoreControlCommand, MulticoreControlExecutor,
+    MulticoreControlOutcome, MulticoreControlQueue, MulticoreControlReceipt,
+    MulticorePeripheralOwnership, MulticoreProcessError, MulticoreQueueError,
 };
 pub use nano::{
     GuardedNanoKernel, KernelLayer, NanoDependencies, NanoDispatcher, NanoError, NanoGovernance,

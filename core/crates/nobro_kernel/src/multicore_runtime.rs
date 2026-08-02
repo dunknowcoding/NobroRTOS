@@ -45,6 +45,35 @@ pub enum CoreExecutorState {
     Faulted,
 }
 
+/// Hardware/runtime role of one core. The primary bootstrap remains pinned to
+/// core 0; application work may still run there when the exact port declares
+/// that core application-capable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CoreRole {
+    PrimaryBootstrap,
+    Application,
+}
+
+/// Monotonic incarnation of one core executor. Zero means that the executor has
+/// never started. Generations saturate rather than wrapping into an ABA match.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CoreGeneration(u32);
+
+impl CoreGeneration {
+    pub const NEVER_STARTED: Self = Self(0);
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CoreOwnership {
+    pub core: u8,
+    pub generation: CoreGeneration,
+    pub module: ModuleId,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MulticoreError {
     /// Core index is outside `0..CORES`.
@@ -61,6 +90,13 @@ pub enum MulticoreError {
     ModuleNotOnCore { core: u8, module: ModuleId },
     /// A start callback reported failure; startup rolled back to fully down.
     StartFailed { core: u8 },
+    /// The hardware-required primary bootstrap cannot be placed or migrated.
+    BootstrapPinned { module: ModuleId, core: u8 },
+    /// The exact port does not permit application execution on this core.
+    CoreNotApplicationCapable { core: u8 },
+    /// A core has exhausted its monotonic incarnation counter; accepting a
+    /// wrapped generation would make stale commands valid again.
+    GenerationExhausted { core: u8 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,6 +129,8 @@ pub struct MulticoreExecutorLifecycle<const CORES: usize, const SLOTS: usize> {
     states: [CoreExecutorState; CORES],
     owned: [[Option<Owned>; SLOTS]; CORES],
     core_util: [u32; CORES],
+    generations: [CoreGeneration; CORES],
+    application_capable: [bool; CORES],
 }
 
 impl<const CORES: usize, const SLOTS: usize> Default for MulticoreExecutorLifecycle<CORES, SLOTS> {
@@ -107,6 +145,17 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
             states: [CoreExecutorState::Down; CORES],
             owned: [[None; SLOTS]; CORES],
             core_util: [0; CORES],
+            generations: [CoreGeneration::NEVER_STARTED; CORES],
+            application_capable: [true; CORES],
+        }
+    }
+
+    fn next_generation(&self, core: usize) -> Result<CoreGeneration, MulticoreError> {
+        let current = self.generations[core].0;
+        if current == u32::MAX {
+            Err(MulticoreError::GenerationExhausted { core: core as u8 })
+        } else {
+            Ok(CoreGeneration(current + 1))
         }
     }
 
@@ -134,6 +183,12 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
                 core,
                 state: self.states[index],
             });
+        }
+        if module == ModuleId::Kernel && index != 0 {
+            return Err(MulticoreError::BootstrapPinned { module, core });
+        }
+        if module != ModuleId::Kernel && !self.application_capable[index] {
+            return Err(MulticoreError::CoreNotApplicationCapable { core });
         }
         if self.find_any(module).is_some() {
             return Err(MulticoreError::DuplicateModule { module });
@@ -176,10 +231,12 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
                     state,
                 });
             }
+            self.next_generation(core)?;
         }
         let mut core = 0usize;
         while core < CORES {
             if start(core as u8) {
+                self.generations[core] = self.next_generation(core)?;
                 self.states[core] = CoreExecutorState::Up;
                 core += 1;
             } else {
@@ -266,6 +323,12 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
                 state: self.states[to_index],
             });
         }
+        if module == ModuleId::Kernel && from_index != to_index {
+            return Err(MulticoreError::BootstrapPinned { module, core: to });
+        }
+        if from_index != to_index && !self.application_capable[to_index] {
+            return Err(MulticoreError::CoreNotApplicationCapable { core: to });
+        }
         let Some(slot_index) = self.find_on(from_index, module) else {
             return Err(MulticoreError::ModuleNotOnCore { core: from, module });
         };
@@ -342,7 +405,9 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
                 state: self.states[index],
             });
         }
+        let next_generation = self.next_generation(index)?;
         if restart(core) {
+            self.generations[index] = next_generation;
             self.states[index] = CoreExecutorState::Up;
             Ok(())
         } else {
@@ -352,6 +417,51 @@ impl<const CORES: usize, const SLOTS: usize> MulticoreExecutorLifecycle<CORES, S
 
     pub fn state(&self, core: u8) -> Option<CoreExecutorState> {
         self.states.get(core as usize).copied()
+    }
+
+    /// Configure whether the exact port permits ordinary application execution
+    /// on this core. The primary bootstrap role remains core 0 regardless.
+    pub fn set_application_capable(
+        &mut self,
+        core: u8,
+        capable: bool,
+    ) -> Result<(), MulticoreError> {
+        let index = self.check_core(core)?;
+        if self.states[index] != CoreExecutorState::Down {
+            return Err(MulticoreError::WrongCoreState {
+                core,
+                state: self.states[index],
+            });
+        }
+        self.application_capable[index] = capable;
+        Ok(())
+    }
+
+    pub fn core_role(&self, core: u8) -> Option<CoreRole> {
+        self.states.get(core as usize).map(|_| {
+            if core == 0 {
+                CoreRole::PrimaryBootstrap
+            } else {
+                CoreRole::Application
+            }
+        })
+    }
+
+    pub fn application_capable(&self, core: u8) -> Option<bool> {
+        self.application_capable.get(core as usize).copied()
+    }
+
+    pub fn generation(&self, core: u8) -> Option<CoreGeneration> {
+        self.generations.get(core as usize).copied()
+    }
+
+    pub fn ownership(&self, module: ModuleId) -> Option<CoreOwnership> {
+        let (core, _) = self.find_any(module)?;
+        Some(CoreOwnership {
+            core: core as u8,
+            generation: self.generations[core],
+            module,
+        })
     }
 
     pub fn all_up(&self) -> bool {
@@ -430,6 +540,65 @@ mod tests {
             rt.place(2, m(9), 100),
             Err(MulticoreError::UnknownCore { core: 2 })
         );
+    }
+
+    #[test]
+    fn bootstrap_is_pinned_while_applications_may_use_either_capable_core() {
+        let mut rt = MulticoreExecutorLifecycle::<2, 3>::new();
+        assert_eq!(rt.core_role(0), Some(CoreRole::PrimaryBootstrap));
+        assert_eq!(rt.core_role(1), Some(CoreRole::Application));
+        rt.place(0, ModuleId::Kernel, 500).unwrap();
+        rt.place(0, m(1), 1_000).unwrap();
+        rt.place(1, m(2), 1_000).unwrap();
+        assert_eq!(
+            rt.place(1, ModuleId::Kernel, 500),
+            Err(MulticoreError::BootstrapPinned {
+                module: ModuleId::Kernel,
+                core: 1,
+            })
+        );
+        rt.start_all(|_| true, |_| {}).unwrap();
+        assert_eq!(
+            rt.transfer(ModuleId::Kernel, 0, 1),
+            Err(MulticoreError::BootstrapPinned {
+                module: ModuleId::Kernel,
+                core: 1,
+            })
+        );
+        assert!(rt.owns(0, ModuleId::Kernel));
+        assert!(rt.owns(0, m(1)) && rt.owns(1, m(2)));
+    }
+
+    #[test]
+    fn exact_port_can_reserve_a_core_from_application_placement() {
+        let mut rt = MulticoreExecutorLifecycle::<2, 2>::new();
+        rt.set_application_capable(1, false).unwrap();
+        assert_eq!(
+            rt.place(1, m(1), 100),
+            Err(MulticoreError::CoreNotApplicationCapable { core: 1 })
+        );
+        rt.place(0, m(1), 100).unwrap();
+        rt.start_all(|_| true, |_| {}).unwrap();
+        assert_eq!(
+            rt.set_application_capable(1, true),
+            Err(MulticoreError::WrongCoreState {
+                core: 1,
+                state: CoreExecutorState::Up,
+            })
+        );
+    }
+
+    #[test]
+    fn core_generation_advances_on_start_and_recovery_without_wrap() {
+        let mut rt = MulticoreExecutorLifecycle::<2, 1>::new();
+        assert_eq!(rt.generation(0), Some(CoreGeneration::NEVER_STARTED));
+        rt.start_all(|_| true, |_| {}).unwrap();
+        assert_eq!(rt.generation(0).unwrap().get(), 1);
+        let owner = rt.ownership(m(1));
+        assert_eq!(owner, None);
+        rt.fault(0).unwrap();
+        rt.recover(0, |_| true).unwrap();
+        assert_eq!(rt.generation(0).unwrap().get(), 2);
     }
 
     #[test]
