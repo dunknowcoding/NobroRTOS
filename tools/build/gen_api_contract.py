@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import difflib
 import hashlib
 import json
 from pathlib import Path
@@ -228,6 +229,16 @@ def main() -> int:
         )
         if current != rendered:
             print("API CONTRACT: FAIL (run python tools/build/gen_api_contract.py)")
+            for line in list(
+                difflib.unified_diff(
+                    current.splitlines(),
+                    rendered.splitlines(),
+                    fromfile="sdk/api-contract.json",
+                    tofile="generated",
+                    lineterm="",
+                )
+            )[:160]:
+                print(line)
             return 1
         manifest = json.loads(rendered)
         surface_count = sum(
