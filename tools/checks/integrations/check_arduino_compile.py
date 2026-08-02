@@ -15,9 +15,13 @@ EXPECTED_EXAMPLES = (
     "AvrNanoConstrained",
     "BeginnerApp",
     "Esp8266Constrained",
+    "NiusCryptoBounded",
     "NiusDisplayBounded",
+    "NiusThreadBounded",
+    "NiusZigbeeBounded",
     "ProviderApp",
     "ReportReader",
+    "RoboServoBounded",
     "RobotIoTApp",
 )
 # Examples that require an independently pinned ecosystem member are compiled
@@ -25,7 +29,11 @@ EXPECTED_EXAMPLES = (
 # avoiding an accidental dependency on whatever happens to be installed in a
 # runner's global Arduino library directory.
 EXTERNALLY_PINNED_EXAMPLES = {
+    "NiusCryptoBounded",
     "NiusDisplayBounded",
+    "NiusThreadBounded",
+    "NiusZigbeeBounded",
+    "RoboServoBounded",
 }
 EXAMPLE_ARCH_PREFIX = {
     # This example is the exact ATmega328P/Nano constrained composition. Its

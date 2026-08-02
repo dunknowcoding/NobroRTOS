@@ -149,7 +149,9 @@ fn scalar_dense_int8(input: &[i8], weights: &[i8], bias: &[i32], out: &mut [i32]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DenseI8BackendId {
     Scalar,
+    NobroNative,
     CmsisNn,
+    Vendor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -246,8 +248,39 @@ impl QuantizedDenseI8Backend for ScalarQuantizedDenseI8 {
     }
 }
 
-pub type CmsisNnDenseI8Fn =
+pub type QuantizedDenseI8Fn =
     fn(&[i8], &[i8], &[i32], DenseI8Quantization, &mut [i8]) -> Result<(), DenseI8BackendError>;
+pub type CmsisNnDenseI8Fn = QuantizedDenseI8Fn;
+
+/// Nobro-owned DSP/SIMD connector. The target implementation stays outside
+/// this portable crate and is admitted only after equivalent-result tests.
+pub struct NobroNativeQuantizedDenseI8 {
+    run: QuantizedDenseI8Fn,
+}
+
+impl NobroNativeQuantizedDenseI8 {
+    pub const fn new(run: QuantizedDenseI8Fn) -> Self {
+        Self { run }
+    }
+}
+
+impl QuantizedDenseI8Backend for NobroNativeQuantizedDenseI8 {
+    fn id(&self) -> DenseI8BackendId {
+        DenseI8BackendId::NobroNative
+    }
+
+    fn run(
+        &mut self,
+        input: &[i8],
+        weights: &[i8],
+        bias: &[i32],
+        quantization: DenseI8Quantization,
+        out: &mut [i8],
+    ) -> Result<(), DenseI8BackendError> {
+        validate_quantized_dense_i8(input, weights, bias, quantization, out)?;
+        (self.run)(input, weights, bias, quantization, out)
+    }
+}
 
 /// Board-owned CMSIS-NN connector without a machine-specific path dependency.
 ///
@@ -281,9 +314,40 @@ impl QuantizedDenseI8Backend for CmsisNnQuantizedDenseI8 {
     }
 }
 
+/// Connector for a board/vendor accelerator such as an ESP-DSP or silicon
+/// inference primitive. Unsupported operations fall back through the same
+/// explicit receipt as every other optional backend.
+pub struct VendorQuantizedDenseI8 {
+    run: QuantizedDenseI8Fn,
+}
+
+impl VendorQuantizedDenseI8 {
+    pub const fn new(run: QuantizedDenseI8Fn) -> Self {
+        Self { run }
+    }
+}
+
+impl QuantizedDenseI8Backend for VendorQuantizedDenseI8 {
+    fn id(&self) -> DenseI8BackendId {
+        DenseI8BackendId::Vendor
+    }
+
+    fn run(
+        &mut self,
+        input: &[i8],
+        weights: &[i8],
+        bias: &[i32],
+        quantization: DenseI8Quantization,
+        out: &mut [i8],
+    ) -> Result<(), DenseI8BackendError> {
+        validate_quantized_dense_i8(input, weights, bias, quantization, out)?;
+        (self.run)(input, weights, bias, quantization, out)
+    }
+}
+
 /// Run one equivalent quantized operator. Fallback occurs only for an explicit
 /// unsupported result; malformed shapes and provider failures remain visible.
-pub fn quantized_dense_i8_with_fallback<B: QuantizedDenseI8Backend>(
+pub fn quantized_dense_i8_with_fallback<B: QuantizedDenseI8Backend + ?Sized>(
     backend: &mut B,
     input: &[i8],
     weights: &[i8],
@@ -857,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn cmsis_connector_preserves_results_and_provider_failures() {
+    fn optional_accelerator_connectors_preserve_results_and_provider_failures() {
         fn equivalent(
             input: &[i8],
             weights: &[i8],
@@ -868,19 +932,36 @@ mod tests {
             scalar_quantized_dense_i8(input, weights, bias, quantization, out);
             Ok(())
         }
-        let mut backend = CmsisNnQuantizedDenseI8::new(equivalent);
-        let mut output = [0_i8; 1];
-        let receipt = quantized_dense_i8_with_fallback(
-            &mut backend,
-            &[2, 3],
-            &[4, 5],
-            &[6],
-            DenseI8Quantization::IDENTITY,
-            &mut output,
-        )
-        .unwrap();
-        assert_eq!(output, [29]);
-        assert_eq!(receipt.executed, DenseI8BackendId::CmsisNn);
+        let mut native = NobroNativeQuantizedDenseI8::new(equivalent);
+        let mut cmsis = CmsisNnQuantizedDenseI8::new(equivalent);
+        let mut vendor = VendorQuantizedDenseI8::new(equivalent);
+        for (backend, expected) in [
+            (
+                &mut native as &mut dyn QuantizedDenseI8Backend,
+                DenseI8BackendId::NobroNative,
+            ),
+            (
+                &mut cmsis as &mut dyn QuantizedDenseI8Backend,
+                DenseI8BackendId::CmsisNn,
+            ),
+            (
+                &mut vendor as &mut dyn QuantizedDenseI8Backend,
+                DenseI8BackendId::Vendor,
+            ),
+        ] {
+            let mut output = [0_i8; 1];
+            let receipt = quantized_dense_i8_with_fallback(
+                backend,
+                &[2, 3],
+                &[4, 5],
+                &[6],
+                DenseI8Quantization::IDENTITY,
+                &mut output,
+            )
+            .unwrap();
+            assert_eq!(output, [29]);
+            assert_eq!(receipt.executed, expected);
+        }
 
         fn failure(
             _: &[i8],

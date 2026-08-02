@@ -969,6 +969,7 @@ dependencies = [
 name = "nobro-services"
 version = "0.3.3"
 dependencies = [
+ "nobro-display",
  "nobro-storage",
 ]
 

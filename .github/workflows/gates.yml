@@ -58,6 +58,12 @@ jobs:
           python tools/checks/release/check_distribution_artifacts.py
           python tools/checks/integrations/check_arduino_facade.py
           python tools/checks/integrations/check_audio_facade.py
+          python tools/checks/integrations/check_camera_facade.py
+          python tools/checks/integrations/check_crypto_facade.py
+          python tools/checks/integrations/check_display_facade.py
+          python tools/checks/integrations/check_servo_facade.py
+          python tools/checks/integrations/check_thread_facade.py
+          python tools/checks/integrations/check_zigbee_facade.py
       - name: web flasher + block editor + tutorials
         run: |
           python tools/checks/product/check_web_flasher.py
@@ -446,6 +452,39 @@ jobs:
             throw "NiusIMU checkout drift"
           }
           python tools/checks/integrations/check_niusimu_adapter.py --library _work/ArduinoNRF-IMU --fqbn "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled"
+      - name: compile pinned NiusCrypto integration (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/ArduinoNRF-Crypto.git _work/ArduinoNRF-Crypto
+          git -C _work/ArduinoNRF-Crypto checkout --detach 6dcfc8636329de005218cde4896e9ac3e474aca2
+          if ((git -C _work/ArduinoNRF-Crypto rev-parse HEAD) -ne "6dcfc8636329de005218cde4896e9ac3e474aca2") {
+            throw "NiusCrypto checkout drift"
+          }
+          arduino-cli compile --library packages/arduino --library _work/ArduinoNRF-Crypto `
+            -b "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled" `
+            packages/arduino/examples/NiusCryptoBounded
+      - name: compile pinned NiusThread integration (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/ArduinoNRF-Thread.git _work/ArduinoNRF-Thread
+          git -C _work/ArduinoNRF-Thread checkout --detach ef80a7e053234a4d5cb78eee2ef95ec492f00e84
+          if ((git -C _work/ArduinoNRF-Thread rev-parse HEAD) -ne "ef80a7e053234a4d5cb78eee2ef95ec492f00e84") {
+            throw "NiusThread checkout drift"
+          }
+          arduino-cli compile --library packages/arduino --library _work/ArduinoNRF-Thread `
+            -b "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled" `
+            packages/arduino/examples/NiusThreadBounded
+      - name: compile pinned RoboServo integration (ArduinoNRF)
+        shell: pwsh
+        run: |
+          git clone https://github.com/dunknowcoding/RoboServo.git _work/RoboServo
+          git -C _work/RoboServo checkout --detach 38fa23cde947766f9c3da7ac650fffb67b1f5668
+          if ((git -C _work/RoboServo rev-parse HEAD) -ne "38fa23cde947766f9c3da7ac650fffb67b1f5668") {
+            throw "RoboServo checkout drift"
+          }
+          arduino-cli compile --library packages/arduino --library _work/RoboServo `
+            -b "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled" `
+            packages/arduino/examples/RoboServoBounded
       - name: compile pinned sensor member integrations (ArduinoNRF)
         shell: pwsh
         run: |
@@ -476,3 +515,6 @@ jobs:
             throw "NiusZigbee checkout drift"
           }
           python tools/checks/integrations/check_wireless_integrations.py --niuswireless _work/NiusWireless --niuszigbee _work/ArduinoNRF-Zigbee --compile-nrf --compile-zigbee
+          arduino-cli compile --library packages/arduino --library _work/ArduinoNRF-Zigbee `
+            -b "arduinonrf:nrf52:promicro_nrf52840:usbcdc=enabled" `
+            packages/arduino/examples/NiusZigbeeBounded

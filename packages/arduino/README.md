@@ -19,6 +19,14 @@ Current contents:
 - `src/NobroNiusDisplay.h` with a fixed-capacity, caller-owned RGB565 queue,
   versioned frame receipts, deadline handling, cancellation, and lifecycle over
   the pinned NiusDisplay library.
+- `src/NobroNiusCam.h` with unique camera-instance ownership, bounded capture
+  windows/in-flight frames, deadline rejection, quiescence, and recovery.
+- `src/NobroRoboServo.h` with bounded pulse/angle commands, receipts, and a
+  fail-closed lifecycle over caller-owned RoboServo objects.
+- `src/NobroNiusCrypto.h` with bounded random, SHA-256, and AES-GCM operations
+  over caller-owned NiusCrypto engines.
+- `src/NobroNiusThread.h` and `src/NobroNiusZigbee.h` with bounded mesh/CoAP or
+  CC2530 raw/APS operations, polling deadlines, diagnostics, and recovery.
 - `src/NobroNiusIMU.h` with common allocation-free sampling plus fail-closed
   optional FIFO, interrupt, fusion, auxiliary-bus, pressure, and composite hooks.
 - `src/NobroInaSeries.h` with explicit I2C/SPI single-channel bridges and a
@@ -156,6 +164,16 @@ reports completion, deadline miss, or transport failure. NiusDisplay keeps the
 controller/module database and bus implementation; NobroRTOS does not generate
 one source adapter per panel model. This interface is implemented and
 target-built, but no physical display composition is promoted yet.
+
+## Actuator, crypto, and mesh members
+
+Install only the member used by the sketch, then include its explicit facade:
+`NobroRoboServo.h`, `NobroNiusCrypto.h`, `NobroNiusThread.h`, or
+`NobroNiusZigbee.h`. The `RoboServoBounded`, `NiusCryptoBounded`,
+`NiusThreadBounded`, and `NiusZigbeeBounded` examples show the smallest
+composition. These facades preserve caller ownership and reject invalid
+capacity, deadline, lifecycle, or provider states; they do not turn a target
+compile into a physical-device claim.
 
 ## IMU, power-monitor, and ranging composition
 

@@ -53,6 +53,9 @@ simulation evidence is not represented as physical-panel support.
 NiusWireless 0.4.0 is an implemented `nobro-wireless` member: its common facade
 mounts bounded nRF24, RFID UID, LoRa, and serial-radio data planes while exact
 hardware promotion remains composition-specific.
+NiusAudio, NiusCam, NiusCrypto, NiusThread, NiusZigbee, and RoboServo likewise
+mount behind bounded domain facades; target builds and host behavior tests are
+kept distinct from exact physical-composition evidence.
 
 The project starts with nRF52840-class boards and a deliberately compact kernel
 surface: manifests, quotas, capability grants, static sample pools, health

@@ -228,9 +228,11 @@ nobro-services = { path = "core/crates/nobro_services", features = ["filesystem"
 ```
 
 The filesystem has compile-time file/name/data capacities and caller-owned
-scratch storage. USB host and display mount with stable capability receipts;
-the shell parser uses fixed line and argument arrays. None of these services is
-linked by the nano core unless the application explicitly selects it.
+scratch storage. USB host uses a stable capability receipt. Selecting the
+`display` feature exposes the same canonical types as `nobro-display`; it does
+not add a competing mount or lifecycle. The shell parser uses fixed line and
+argument arrays. None of these services is linked by the nano core unless the
+application explicitly selects it.
 
 ### Diagnostics
 

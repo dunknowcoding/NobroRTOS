@@ -231,7 +231,7 @@ No-heap networking primitives for multi-board NobroRTOS meshes.
 ## `nobro-nn`
 Neural-network building blocks from scratch, scoped for MCUs (inference side).
 - **trait**: `QuantizedDenseI8Backend`
-- **struct**: `DenseI8Receipt`, `DenseI8Quantization`, `ScalarQuantizedDenseI8`, `CmsisNnQuantizedDenseI8`, `LstmState`
+- **struct**: `DenseI8Receipt`, `DenseI8Quantization`, `ScalarQuantizedDenseI8`, `NobroNativeQuantizedDenseI8`, `CmsisNnQuantizedDenseI8`, `VendorQuantizedDenseI8`, `LstmState`
 - **enum**: `DenseI8BackendId`, `DenseI8BackendError`, `DenseI8Fallback`
 - **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantized_dense_i8_with_fallback`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
 
@@ -264,16 +264,17 @@ No-heap sensor utilities, transport-agnostic.
 
 ## `nobro-services`
 Optional, allocation-free application services.
-- **trait**: `UsbHostBackend`, `DisplayBackend`
-- **struct**: `ServiceInstanceId`, `UsbHostCapabilities`, `UsbDevice`, `UsbHostMountReceipt`, `UsbTransferReceipt`, `UsbHostMountError`, `MountedUsbHost`, `DisplayCapabilities`, `DisplayMountReceipt`, `PresentReceipt`, `MountedDisplay`, `ParsedCommand`, `BoundedShell`
-- **enum**: `ServiceState`, `ServiceError`, `PixelFormat`, `DisplayBufferModel`
-- **fn**: `valid`, `into_backend`, `mount`, `enumerate`, `transfer`, `quiesce`, `recover`, `into_backend`, `frame_bytes`, `valid`, `mount`, `present`, `quiesce`, `recover`, `into_backend`, `arg`, `line`, `parse`
+- **trait**: `UsbHostBackend`
+- **struct**: `ServiceInstanceId`, `UsbHostCapabilities`, `UsbDevice`, `UsbHostMountReceipt`, `UsbTransferReceipt`, `UsbHostMountError`, `MountedUsbHost`, `ParsedCommand`, `BoundedShell`
+- **enum**: `ServiceState`, `ServiceError`
+- **fn**: `valid`, `into_backend`, `mount`, `enumerate`, `transfer`, `quiesce`, `recover`, `into_backend`, `arg`, `line`, `parse`
 
 ## `nobro-servo`
 Allocation-free servo command contract.
-- **trait**: `ServoBackend`, `PwmEngineBackend`, `PulseEngineBackend`
-- **struct**: `ServoCommand`, `ServoBounds`, `PwmConfig`, `PulseSymbol`
-- **enum**: `PulseState`, `PulseError`
+- **trait**: `ServoBackend`, `ManagedServoBackend`, `PwmEngineBackend`, `PulseEngineBackend`
+- **struct**: `ServoCommand`, `ServoBounds`, `ServoReceipt`, `MountedServo`, `PwmConfig`, `PulseSymbol`
+- **enum**: `ServoState`, `ServoError`, `PulseState`, `PulseError`
+- **fn**: `mount`, `command_at`, `quiesce`, `recover`, `release`, `backend`
 
 ## `nobro-storage`
 Power-fail-safe, wear-leveled key-value flash store.

@@ -206,7 +206,7 @@
       "id": "source-roboservo",
       "source": "https://github.com/dunknowcoding/RoboServo",
       "revision": "38fa23cde947766f9c3da7ac650fffb67b1f5668",
-      "version": "0.5.1",
+      "version": "0.5.0",
       "license": "MIT",
       "pinned": true,
       "clean": true
@@ -1157,36 +1157,34 @@
       "name": "NiusCrypto",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-crypto",
+      "facade": "packages/arduino/src/NobroNiusCrypto.h",
       "intake": {
-        "adapter_strategy": "generated-on-demand",
+        "adapter_strategy": "shared-facade",
         "adapter_ids": [],
         "capability_families": [
-          "key-storage",
-          "protected-operation"
+          "aes-gcm",
+          "hash",
+          "random"
         ],
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
-        },
-        "scaffold": {
-          "name": "niuscrypto",
-          "backends": [
-            "arduino-shim"
-          ]
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
         "arduino:nrf52"
       ],
       "limitations": [
-        "Not yet mounted behind the Nobro protected-key backend contract."
+        "CC310 acceleration remains conditional on the exact vendored archive and runtime backend; the OnChip fallback is not represented as CC310 evidence.",
+        "Protected key storage and module isolation are not provided by this facade."
       ]
     },
     {
@@ -1303,36 +1301,34 @@
       "name": "NiusThread",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-thread",
+      "facade": "packages/arduino/src/NobroNiusThread.h",
       "intake": {
-        "adapter_strategy": "generated-on-demand",
+        "adapter_strategy": "shared-facade",
         "adapter_ids": [],
         "capability_families": [
+          "coap",
           "mesh",
           "thread"
         ],
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
-        },
-        "scaffold": {
-          "name": "niusthread",
-          "backends": [
-            "arduino-shim"
-          ]
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
         "arduino:nrf52"
       ],
       "limitations": [
-        "OpenThread lifecycle and resource ownership are not yet mounted behind the Nobro wireless contract."
+        "No exact two-node Thread session is recorded, so target compilation and facade behavior do not establish physical mesh promotion.",
+        "The OpenThread stack owns substantial internal state and the native RADIO; that vendor-stack cost and exclusivity remain part of admission."
       ]
     },
     {
@@ -1386,8 +1382,9 @@
       "name": "NiusZigbee",
       "kind": "library",
       "provenance_id": "source-arduino-nrf-zigbee",
+      "facade": "packages/arduino/src/NobroNiusZigbee.h",
       "intake": {
-        "adapter_strategy": "generated-on-demand",
+        "adapter_strategy": "shared-facade",
         "adapter_ids": [],
         "capability_families": [
           "mesh",
@@ -1396,26 +1393,22 @@
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
-        },
-        "scaffold": {
-          "name": "niuszigbee",
-          "backends": [
-            "arduino-shim"
-          ]
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
         "arduino:nrf52"
       ],
       "limitations": [
-        "External CC2530 lifecycle remains composition-specific."
+        "The facade bounds raw and APS transmission, polling deadlines, diagnostics, quiescence, and recovery over the external CC2530 lifecycle.",
+        "This facade does not represent the host-side NWK/APS/ZCL helpers as an independently certified Zigbee PRO stack; exact physical promotion remains composition-specific."
       ]
     },
     {
@@ -1424,6 +1417,7 @@
       "name": "RoboServo",
       "kind": "library",
       "provenance_id": "source-roboservo",
+      "facade": "packages/arduino/src/NobroRoboServo.h",
       "intake": {
         "adapter_strategy": "existing-adapters",
         "adapter_ids": [
@@ -1435,20 +1429,27 @@
         "device_inventory": "data-only",
         "gates": {
           "target_compile": "passed",
-          "provider_behavior": "pending",
+          "provider_behavior": "passed",
           "exact_hardware": "feature-provider-binding"
         }
       },
       "deployment": "firmware",
-      "maturity": "compile-only",
+      "maturity": "implemented",
       "evidence": [
+        "host-test",
         "target-build"
       ],
       "supported_targets": [
-        "upstream:arduino"
+        "arduino:avr:uno",
+        "arduino:mbed_rp2040:pico",
+        "arduino:renesas_uno:unor4wifi",
+        "arduinonrf:nrf52:promicro_nrf52840",
+        "esp32:esp32:esp32s3",
+        "esp8266:esp8266:d1_mini"
       ],
       "limitations": [
-        "The upstream library matrix is not a Nobro target-support claim."
+        "No servo is attached to the maintained hardware inventory, so compile and behavior evidence do not establish physical actuation.",
+        "The pinned upstream library does not support SAMD21."
       ]
     }
   ],

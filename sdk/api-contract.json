@@ -389,6 +389,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroNiusCrypto.h",
+      "source_sha256": "5dc7812c83604d9a88569b5663406f85f4a7021179a55bcfb80b9abe10eae050",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusCrypto.h",
+          "sha256": "5dc7812c83604d9a88569b5663406f85f4a7021179a55bcfb80b9abe10eae050"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroNiusDisplay.h",
       "source_sha256": "5703ea03cf69c5c6e3225747255329d6b6c1e14f234eff4d0c730fa74d5da609",
       "targets": [
@@ -411,6 +422,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroNiusThread.h",
+      "source_sha256": "2ac8ccae016f7cf0cd837194291d8c45bf71af3cd5b8bbc5cead51bb7044e74c",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusThread.h",
+          "sha256": "2ac8ccae016f7cf0cd837194291d8c45bf71af3cd5b8bbc5cead51bb7044e74c"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroNiusWireless.h",
       "source_sha256": "844266b1b956a0d165606e8f6bf5bb14cdf61ce7ac1df30bf5e40b059fbe9e11",
       "targets": [
@@ -418,6 +440,28 @@
           "generated_banner": false,
           "path": "packages/platformio/include/NobroNiusWireless.h",
           "sha256": "844266b1b956a0d165606e8f6bf5bb14cdf61ce7ac1df30bf5e40b059fbe9e11"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroNiusZigbee.h",
+      "source_sha256": "3aa6d622b0d8a241eec5827df3f623ef62e7680231a994dd4344ac667c5855ff",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusZigbee.h",
+          "sha256": "3aa6d622b0d8a241eec5827df3f623ef62e7680231a994dd4344ac667c5855ff"
+        }
+      ]
+    },
+    {
+      "source": "packages/arduino/src/NobroRoboServo.h",
+      "source_sha256": "ba63da53682f6f2c23ae0214c7cb68f20fe1f0a9467eb658694cd1b21718da04",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroRoboServo.h",
+          "sha256": "ba63da53682f6f2c23ae0214c7cb68f20fe1f0a9467eb658694cd1b21718da04"
         }
       ]
     },
@@ -4428,11 +4472,31 @@
           },
           {
             "kind": "type",
+            "name": "QuantizedDenseI8Fn"
+          },
+          {
+            "kind": "type",
             "name": "CmsisNnDenseI8Fn"
           },
           {
             "kind": "struct",
+            "name": "NobroNativeQuantizedDenseI8"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
             "name": "CmsisNnQuantizedDenseI8"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "struct",
+            "name": "VendorQuantizedDenseI8"
           },
           {
             "kind": "const",
@@ -4488,7 +4552,7 @@
           }
         ],
         "path": "core/crates/nobro_nn/src/lib.rs",
-        "sha256": "856ebcf0a76a29eb7d897990874efc69adf44afab1361774404eb559be185b3c"
+        "sha256": "132bc87ab15ab53886975ed9ecfd85bb82ba85c9901f1951137998b27523d51f"
       },
       {
         "crate": "nobro-power",
@@ -5722,62 +5786,6 @@
             "name": "into_backend"
           },
           {
-            "kind": "enum",
-            "name": "PixelFormat"
-          },
-          {
-            "kind": "enum",
-            "name": "DisplayBufferModel"
-          },
-          {
-            "kind": "struct",
-            "name": "DisplayCapabilities"
-          },
-          {
-            "kind": "fn",
-            "name": "frame_bytes"
-          },
-          {
-            "kind": "fn",
-            "name": "valid"
-          },
-          {
-            "kind": "struct",
-            "name": "DisplayMountReceipt"
-          },
-          {
-            "kind": "struct",
-            "name": "PresentReceipt"
-          },
-          {
-            "kind": "trait",
-            "name": "DisplayBackend"
-          },
-          {
-            "kind": "struct",
-            "name": "MountedDisplay"
-          },
-          {
-            "kind": "fn",
-            "name": "mount"
-          },
-          {
-            "kind": "fn",
-            "name": "present"
-          },
-          {
-            "kind": "fn",
-            "name": "quiesce"
-          },
-          {
-            "kind": "fn",
-            "name": "recover"
-          },
-          {
-            "kind": "fn",
-            "name": "into_backend"
-          },
-          {
             "kind": "struct",
             "name": "ParsedCommand"
           },
@@ -5807,7 +5815,7 @@
           }
         ],
         "path": "core/crates/nobro_services/src/lib.rs",
-        "sha256": "cfb91fc3d163cc66ce66714cc6c9844efc39a10f5d307b94acd9e2758b2ffcde"
+        "sha256": "2bbd482f80b3b042ef9e9631d5b334b7728964e7e5eea9317c25b8c7317467f4"
       },
       {
         "crate": "nobro-servo",
@@ -5829,8 +5837,56 @@
             "name": "fn"
           },
           {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
             "kind": "trait",
             "name": "ServoBackend"
+          },
+          {
+            "kind": "enum",
+            "name": "ServoState"
+          },
+          {
+            "kind": "enum",
+            "name": "ServoError"
+          },
+          {
+            "kind": "struct",
+            "name": "ServoReceipt"
+          },
+          {
+            "kind": "trait",
+            "name": "ManagedServoBackend"
+          },
+          {
+            "kind": "struct",
+            "name": "MountedServo"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          },
+          {
+            "kind": "fn",
+            "name": "command_at"
+          },
+          {
+            "kind": "fn",
+            "name": "quiesce"
+          },
+          {
+            "kind": "fn",
+            "name": "recover"
+          },
+          {
+            "kind": "fn",
+            "name": "release"
+          },
+          {
+            "kind": "fn",
+            "name": "backend"
           },
           {
             "kind": "enum",
@@ -5870,7 +5926,7 @@
           }
         ],
         "path": "core/crates/nobro_servo/src/lib.rs",
-        "sha256": "6f0d00e8221416e5e65da294e7161f7e8f8f54fc320d65c58dbb00de69d2598e"
+        "sha256": "2926b6976e39e5ff0b818c91f7b11cf847b7445ffde4f3fb7c59c180d432da0b"
       },
       {
         "crate": "nobro-storage",

@@ -204,12 +204,14 @@ nobro_nn::conv2d_valid(
 For quantized models, `dense_int8` and `conv2d_valid_i8` accumulate into i32.
 The caller can then fuse activation, argmax, or requantization according to the
 model contract. `ScalarQuantizedDenseI8` adds a fallible, CMSIS-NN-compatible
-requantized dense operator. A board package may attach its own CMSIS-NN build
-through `CmsisNnQuantizedDenseI8`; no vendor path or binary is embedded in the
-portable crate. `quantized_dense_i8_with_fallback` falls back to the scalar
+requantized dense operator. A board package can attach a measured Nobro-owned
+kernel through `NobroNativeQuantizedDenseI8`, CMSIS-NN through
+`CmsisNnQuantizedDenseI8`, or a silicon/vendor primitive through
+`VendorQuantizedDenseI8`; no target binary is embedded in the portable crate.
+`quantized_dense_i8_with_fallback` falls back to the deterministic scalar
 operator only when the provider explicitly reports `Unsupported`, and its
-receipt records the requested and executed backends. Invalid inputs and provider
-failures remain errors.
+receipt records the requested and executed backends. Equivalent-result tests
+cover every connector shape. Invalid inputs and provider failures remain errors.
 
 `DeploymentRamReceipt` in `nobro-device` validates total RAM as six explicit,
 disjoint dimensions: ELF static sections, task stacks, provider stacks,
@@ -387,6 +389,16 @@ frames/bytes per window, and in-flight limit. Storage, AI, and transport share t
 same diagnostics without owning the sensor driver. The matching C ABI is
 `nobro_camera.h`; Arduino users mount NiusCam through `NobroNiusCam.h`.
 
+### Arduino ecosystem member facades
+
+The Arduino and PlatformIO packages expose opt-in bounded facades for current
+member libraries: `NobroNiusAudio.h`, `NobroNiusCam.h`,
+`NobroNiusDisplay.h`, `NobroNiusCrypto.h`, `NobroNiusThread.h`,
+`NobroNiusZigbee.h`, and `NobroRoboServo.h`. Each keeps caller ownership,
+capacity/deadline rejection, diagnostics, quiescence, and recovery visible.
+Library implementation, target compilation, and exact hardware promotion are
+separate evidence states.
+
 ### Security API
 
 `nobro-secure` keeps the secure-boot decision separate from the unsafe,
@@ -459,8 +471,9 @@ persisted.save(&table, &mut image)?;
 
 `nobro-services` has no default features and is not a dependency of
 `nobro-nano`. Applications can select `filesystem`, `usb-host`, `display`, or
-`shell` independently. USB host and display use fallible owned mounts with
-stable capability receipts; shell parsing uses fixed line and argument arrays.
+`shell` independently. USB host uses a fallible owned mount. The `display`
+feature re-exports the canonical bounded `nobro-display` contract instead of
+defining a second lifecycle; shell parsing uses fixed line and argument arrays.
 
 ### Kernel API
 

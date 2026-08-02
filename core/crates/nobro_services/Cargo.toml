@@ -7,8 +7,9 @@ edition.workspace = true
 default = []
 filesystem = ["dep:nobro-storage"]
 usb-host = []
-display = []
+display = ["dep:nobro-display"]
 shell = []
 
 [dependencies]
 nobro-storage = { path = "../nobro_storage", optional = true }
+nobro-display = { path = "../nobro_display", optional = true }
