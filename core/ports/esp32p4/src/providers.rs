@@ -63,13 +63,16 @@ impl HalCompatibility for Esp32P4Providers {
                 HardwareCapability::Multicore,
             )
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
+        let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Servo);
         HardwareCapabilityDeclaration::new(
-            "deep-esp32p4-v2",
-            CapabilityProfileKind::Deep,
+            "esp32p4-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             witnesses,
             witnesses,
-            HardwareCapabilitySet::EMPTY,
-            HardwareCapabilitySet::ALL.without(witnesses),
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(witnesses)
+                .without(inapplicable),
             witnesses,
         )
     };

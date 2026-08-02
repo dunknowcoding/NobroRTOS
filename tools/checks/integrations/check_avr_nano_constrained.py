@@ -113,6 +113,16 @@ def validate_metadata() -> None:
     }
     if claims != required:
         raise RuntimeError(f"Nano claim set drift: {sorted(claims)}")
+    if set(platform.get("parity_gaps", [])) != {
+        "event", "irq", "pulse", "watchdog", "flash", "reset", "lease",
+    }:
+        raise RuntimeError("Nano full-board parity gap ledger drift")
+    if set(platform.get("hardware_inapplicable", [])) != {
+        "dma_completion", "usb", "rtc", "cache", "multicore",
+    }:
+        raise RuntimeError("Nano hardware-inapplicable ledger drift")
+    if platform.get("external_optional") != ["servo"]:
+        raise RuntimeError("Nano external-module ledger drift")
     limitations = platform.get("limitations", "").lower()
     for excluded in ("native usb", "multicore", "memory isolation", "dma"):
         if excluded not in limitations:

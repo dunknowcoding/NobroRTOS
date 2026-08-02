@@ -43,9 +43,9 @@
     "power"
   ],
   "tiers": {
-    "deep": "each declared native composition satisfies its versioned deep profile with exact compiled witnesses",
-    "constrained": "an exact board composition exposes an honest bounded subset and names hardware-inapplicable capabilities",
-    "provider": "one or more portable provider traits implemented for the target",
+    "deep": "one exact composition covers every board-present capability with compiled ownership and lifecycle witnesses; hardware-inapplicable capabilities are explicit and applicable gaps are empty",
+    "constrained": "an Arduino-first exact composition exposes an honest bounded subset while at least one board-present capability remains upstream-owned or lifecycle-incomplete",
+    "provider": "one or more native portable provider traits are implemented, but the exact board still has applicable capability gaps",
     "core": "target startup and status path available; portable peripheral providers are incomplete",
     "absent": "no maintained target integration"
   },
@@ -1206,8 +1206,9 @@
   "platforms": {
     "nrf52840": {
       "arch": "thumbv7em",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/crates/nobro_hal/src/platform/nrf52840",
+      "limitations": "Both exact native boot layouts retain their verified timer/event/DMA/servo/bus/USB/lease providers. GPIO, general IRQ, UART/byte I/O, ADC, general PWM/pulse, watchdog, RTC, application flash, reset, and power lifecycle providers remain applicable gaps, so neither composition is deep HAL.",
       "compositions": {
         "native-nosd": {
           "surface": "native",
@@ -1287,9 +1288,9 @@
     },
     "rp2040": {
       "arch": "thumbv6m",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/rp2040",
-      "limitations": "W114 provides the exact target-built deep contract and shared lifecycle adapters; W115 owns physical Pico PIO/DMA/bus/radio/USB promotion.",
+      "limitations": "W114 provides the exact target-built native provider contract and shared lifecycle adapters; watchdog, RTC, flash, cache, and a first-class pulse provider remain applicable gaps. W115 physical Pico PIO/DMA/bus/radio/USB evidence remains valid but does not establish full-board parity.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1318,9 +1319,9 @@
     },
     "rp2350": {
       "arch": "thumbv8m",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/rp2350",
-      "limitations": "W114 provides the exact target-built deep contract, shared lifecycle adapters, and an exact-one CYW43439 backend selection; W115 owns physical Pico 2 W PIO/DMA/bus/radio/USB promotion.",
+      "limitations": "W114 provides the exact target-built native provider contract, shared lifecycle adapters, and exact-one CYW43439 backend selection; watchdog, retained-time/RTC, flash, cache, and a first-class pulse provider remain applicable gaps. W115 physical Pico 2 W PIO/DMA/bus/radio/USB evidence remains valid but does not establish full-board parity.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1349,9 +1350,9 @@
     },
     "esp32": {
       "arch": "xtensa",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/esp32",
-      "limitations": "The native composition preserves sparse and input-only GPIOs, split SPI/I2S PDMA domains, dual-core ownership, and the external UART bridge without claiming native USB. Radio lifecycle remains independently selected through the Arduino Bluedroid composition.",
+      "limitations": "The native composition preserves sparse and input-only GPIOs, split SPI/I2S PDMA domains, dual-core ownership, and the external UART bridge without claiming native USB. Watchdog, retained-time/RTC, and application flash remain applicable gaps. Radio lifecycle remains independently selected through the Arduino Bluedroid composition.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1401,9 +1402,9 @@
     },
     "esp32c3": {
       "arch": "riscv32imc",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/esp32c3",
-      "limitations": "The native deep composition has exact C3 silicon bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Peripheral electrical behavior and recovery remain experimental until W117 physical promotion; the single-core C3 declares multicore hardware-inapplicable.",
+      "limitations": "The native provider composition has exact C3 silicon bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Watchdog, retained-time/RTC, and flash remain applicable gaps; the single-core C3 declares multicore hardware-inapplicable.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1452,9 +1453,9 @@
     },
     "esp32p4": {
       "arch": "riscv32imafc",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/esp32p4",
-      "limitations": "The exact P4-Pico native composition separates two symmetric HP application cores from the LP-core image, preserves AHB-GDMA/AXI-GDMA/VDMA domains, and distinguishes integrated USB Serial/JTAG plus FS/HS OTG from the external CH343 UART bridge. Native pulse and CSI data-plane providers remain unclaimed until their constructors and lifecycle are target-evidenced.",
+      "limitations": "The exact P4-Pico native composition separates two symmetric HP application cores from the LP-core image, preserves AHB-GDMA/AXI-GDMA/VDMA domains, and distinguishes integrated USB Serial/JTAG plus FS/HS OTG from the external CH343 UART bridge. Native pulse, watchdog, retained-time/RTC, and application flash remain applicable gaps; the optional CSI data plane remains separately unclaimed.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1494,9 +1495,9 @@
     },
     "esp32s3": {
       "arch": "xtensa",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/esp32s3",
-      "limitations": "The native deep composition has exact sparse-GPIO and directional-RMT bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Peripheral electrical behavior, second-core execution, and recovery remain experimental until W117 physical promotion. Arduino audio/camera/wireless compositions remain independently mounted and priced.",
+      "limitations": "The native provider composition has exact sparse-GPIO and directional-RMT bounds, target-compiled providers, host lifecycle/ownership tests, and USB Serial/JTAG state-machine coverage. Watchdog, retained-time/RTC, and flash remain applicable gaps. Arduino audio/camera/wireless compositions remain independently mounted and priced.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1551,9 +1552,9 @@
     },
     "ra4m1": {
       "arch": "thumbv7em",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases; the DMA provider owns GPT0/GPT1, DMAC0, DELSR0, and ICU/NVIC slots 30-31 while active; ordinary CPU sleep preserves the admitted clock while deep standby is rejected; exact UNO R4 evidence covers time/deadline status, SCI9 byte I/O, event-DMAC cancellation/completion/sleep-wake, USBFS enumeration and route reconnect, WiFiS3 controller recovery, and exact restoration, while native ADC/PWM/I2C/SPI remain non-physical",
+      "limitations": "Native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases. General GPIO/IRQ, pulse capture, watchdog, RTC, and application flash remain applicable gaps; current physical evidence for the implemented subset remains valid.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1600,9 +1601,9 @@
     },
     "samd21": {
       "arch": "thumbv6m",
-      "tier": "deep",
+      "tier": "provider",
       "implementation_root": "core/ports/samd21",
-      "limitations": "exact Arduino Zero-compatible native composition is host-tested and target-built but not physically promoted; RTC/TC4, EIC/EVSYS/DMAC, TCC PWM, SERCOM UART/I2C/SPI, USB CDC, reset, CPU sleep, and generation-safe leases are implemented; deep sleep is rejected and the two PN532 paths, IRQ route, USB lifecycle, recovery, and restoration still require exact physical evidence",
+      "limitations": "The exact Arduino Zero-compatible native composition is host-tested and target-built; RTC/TC4, EIC/EVSYS/DMAC, TCC PWM, SERCOM UART/I2C/SPI, USB CDC, reset, CPU sleep, and generation-safe leases are implemented. ADC, pulse capture, watchdog, and application flash remain applicable gaps, so the row is a native provider rather than deep HAL.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1638,6 +1639,20 @@
       "arch": "xtensa-lx106",
       "tier": "constrained",
       "implementation_root": "packages/arduino/src",
+      "parity_gaps": [
+        "event",
+        "dma_completion",
+        "pulse",
+        "watchdog",
+        "rtc",
+        "flash",
+        "reset",
+        "power",
+        "cache",
+        "lease"
+      ],
+      "hardware_inapplicable": ["usb", "multicore"],
+      "external_optional": ["servo"],
       "limitations": "The exact D1 Mini composition is Arduino-first and single-core. Native USB, multicore, and memory isolation are hardware-inapplicable. No bounded DMA ownership provider is admitted. GPIO6-11 remain flash-owned, GPIO16 has no normal external IRQ, PWM is software-scheduled, ADC is A0-only, deep sleep is reset-style with external wake wiring, and the vendor WiFi/lwIP stack owns process-wide heap and callbacks.",
       "compositions": {
         "arduino": {
@@ -1665,6 +1680,23 @@
       "arch": "avr",
       "tier": "constrained",
       "implementation_root": "core/ports/avr_nano",
+      "parity_gaps": [
+        "event",
+        "irq",
+        "pulse",
+        "watchdog",
+        "flash",
+        "reset",
+        "lease"
+      ],
+      "hardware_inapplicable": [
+        "dma_completion",
+        "usb",
+        "rtc",
+        "cache",
+        "multicore"
+      ],
+      "external_optional": ["servo"],
       "limitations": "The exact Nano V3 composition is cooperative and single-core. Native USB, multicore, memory isolation, and DMA are hardware-inapplicable. SRAM is 2 KiB; the admitted application envelope is four tasks/four wires with a 1 KiB application budget. PWM is timer-shared, ADC is 10-bit, I2C is bounded by the 32-byte Wire buffer, and idle sleep depends on enabled interrupt wake sources. Reset is application re-entry only because watchdog hardware reset is unsafe with the exact old bootloader.",
       "compositions": {
         "arduino": {

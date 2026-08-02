@@ -17,7 +17,7 @@
   <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/GitHub-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
   <img alt="Language" src="https://img.shields.io/badge/core-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white">
   <img alt="Target" src="https://img.shields.io/badge/MCU-nRF52840-2563eb?style=for-the-badge">
-  <img alt="Support tiers" src="https://img.shields.io/badge/HAL-board--relative%20deep%20%2B%20constrained-475569?style=for-the-badge">
+  <img alt="Support tiers" src="https://img.shields.io/badge/HAL-truthful%20provider%20tiers-475569?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0f766e?style=for-the-badge">
 </p>
 <p align="center">
@@ -166,7 +166,7 @@ application or generated binary is smaller than another RTOS.
 
 | You are a&hellip; | NobroRTOS gives you |
 | --- | --- |
-| **Beginner / maker** | A host-only quick gate, an Arduino-style `setup()/loop()` in C++, and one-command hardware grading on the configured deep-HAL profile |
+| **Beginner / maker** | A host-only quick gate, an Arduino-style `setup()/loop()` in C++, and one-command hardware grading on the configured exact-board profile |
 | **Embedded engineer** | `no_std`, no heap by default, static capacity, deadline contracts, declared capability grants, and the `embedded-hal` driver ecosystem. Budget-critical work (control loops, motors) stays on the fixed no-heap path; only an explicitly selected adaptive queue may reserve a bounded heap once, and no mode allocates while sending or servicing |
 | **Robotics / AI builder** | Bounded on-device inference + ROS-style bridge contracts kept off the hard-realtime path |
 | **Researcher** | A small, inspectable control plane (manifest &rarr; admission &rarr; runtime &rarr; recovery) behind a stable host ABI you can measure |
@@ -334,7 +334,8 @@ Near-term engineering focus:
 - reduce contract boilerplate for common periodic and event-driven apps without
   weakening admission or hiding resource cost
 - make async composition a first-class bounded authoring option
-- extend deep runtime/HAL evidence beyond the primary nRF52840 target
+- close applicable board-feature gaps and re-promote exact compositions only
+  after their complete deep-HAL gate passes
 - keep security, persistence, recovery, and power behavior tied to executable gates
 
 ## Repository Layout
@@ -365,8 +366,10 @@ folders use the `nobro_*` project prefix.
 
 ## Hardware Support Boundary
 
-Each deep-HAL target has its own exact profile; a deep tier does not imply that
-every optional peripheral is implemented or physically promoted. Fixed `NOBRO_*` reports expose explicit
+Every target has an exact capability profile. A deep tier is now reserved for a
+composition with no applicable board-feature gaps; attachable external modules do
+not block it, while present MCU peripherals cannot be silently omitted. Physical
+promotion remains separate. Fixed `NOBRO_*` reports expose explicit
 completion and diagnostic-checksum fields. These unkeyed checks detect accidental
 copy/read corruption only; they do not authenticate a report. Users can deploy a
 prepared image with `nobro flash` and inspect serial reports where the application
@@ -394,9 +397,10 @@ Cross-compile coverage is
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | one native composition implements every capability the exact board actually has, with complete ownership and lifecycle coverage; absent silicon features are not applicable and do not block this tier | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
+| **Deep HAL** | one exact composition implements every capability the board actually exposes, with complete ownership and lifecycle coverage; absent silicon features and attachable external modules do not block this tier | none currently; the completeness audit intentionally withdrew the earlier subset-based promotions |
+| **Native provider** | target-built native providers exist, but at least one applicable board capability remains incomplete | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
 | **Constrained composition** | at least one capability present on the board is still delegated to an upstream runtime or lacks the complete ownership/lifecycle contract | WeMos D1 Mini / ESP8266 and Nano V3 / ATmega328P (Arduino-first) |
-| **Core ports** | target startup and status path available; peripheral providers are incomplete | none currently promoted beyond a constrained composition |
+| **Core ports** | target startup and status path available; portable peripheral providers are incomplete | none currently listed separately from provider/constrained rows |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Kernel-lite candidates** | exact C compiler/image, ISA-object, or RTL-simulation feasibility with zero HAL/board claims | 8051, STM8, PIC16/24/32, MSP430, STM32C0, CH32V003, TI C2000 DSP, FPGA/soft-core boundaries |
 | **Board profiles** | `board.json` data validated by tooling; a planning artifact, not a port | STM32F4, Teensy 4, and friends |
@@ -415,11 +419,12 @@ not inflate native tiers; generic Arduino PWM is not claimed as servo PWM. The
 ArduinoNRF composition is compiled on its supported Windows toolchain with the exact
 `usbcdc=enabled` board selection.
 
-The SAMD21 deep composition is built around `atsamd-hal`: RTC/TC4
+The SAMD21 native provider composition is built around `atsamd-hal`: RTC/TC4
 time and deadline, EIC/EVSYS/DMAC ownership, TCC PWM, SERCOM UART/I2C/SPI,
 USB CDC, reset, CPU sleep, and generation-safe leases. Its exact Arduino
 Zero-compatible native image, dual-PN532 buses, IRQ/event-DMA route, USB
-recovery, and byte-exact restoration have scoped physical evidence.
+recovery, and byte-exact restoration have scoped physical evidence. ADC,
+pulse capture, watchdog, and application flash remain explicit parity gaps.
 
 The exact scheduling, resource, isolation, tooling, and per-platform boundaries are
 maintained in the public [limitations matrix](docs/LIMITATIONS.md).

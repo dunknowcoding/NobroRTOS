@@ -106,10 +106,12 @@ impl HalCompatibility for Esp32C3 {
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb);
         let supported = witnesses;
-        let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Multicore);
+        let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Servo)
+            .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "deep-esp32c3-v2",
-            CapabilityProfileKind::Deep,
+            "esp32c3-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
             inapplicable,

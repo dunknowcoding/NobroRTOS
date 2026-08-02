@@ -64,13 +64,16 @@ impl HalCompatibility for Esp32S3Providers {
             )
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
+        let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Servo);
         HardwareCapabilityDeclaration::new(
-            "deep-esp32s3-v2",
-            CapabilityProfileKind::Deep,
+            "esp32s3-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
-            HardwareCapabilitySet::EMPTY,
-            HardwareCapabilitySet::ALL.without(supported),
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(supported)
+                .without(inapplicable),
             witnesses,
         )
     };

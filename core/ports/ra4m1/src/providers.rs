@@ -111,11 +111,12 @@ impl HalCompatibility for Ra4m1Providers {
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
         let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Servo)
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "provider-ra4m1-v2",
-            CapabilityProfileKind::Deep,
+            "ra4m1-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
             inapplicable,

@@ -201,8 +201,8 @@ def validate(
     reference = matrix.get("reference_platform")
     if reference not in platforms:
         errors.append(f"reference_platform {reference!r} is not declared")
-    elif platforms[reference].get("tier") != "deep":
-        errors.append("reference_platform must currently have the deep tier")
+    elif platforms[reference].get("tier") not in {"deep", "provider"}:
+        errors.append("reference_platform must currently expose a native provider composition")
 
     for runner_id, runner in runners.items():
         prefix = f"runners.{runner_id}"
@@ -554,6 +554,49 @@ def validate(
 
         if tier == "provider" and native_claims == 0:
             errors.append(f"{prefix}: provider tier requires at least one native claim")
+        if tier == "constrained":
+            parity_gaps = platform.get("parity_gaps")
+            inapplicable = platform.get("hardware_inapplicable")
+            external_optional = platform.get("external_optional")
+            for label, values in (
+                ("parity_gaps", parity_gaps),
+                ("hardware_inapplicable", inapplicable),
+                ("external_optional", external_optional),
+            ):
+                if (
+                    not isinstance(values, list)
+                    or _duplicates(values)
+                    or not set(values).issubset(providers)
+                ):
+                    errors.append(f"{prefix}.{label}: invalid provider capability list")
+            if isinstance(parity_gaps, list) and not parity_gaps:
+                errors.append(f"{prefix}.parity_gaps: constrained tier needs an applicable gap")
+            if all(
+                isinstance(values, list)
+                for values in (parity_gaps, inapplicable, external_optional)
+            ):
+                gap_set = set(parity_gaps)
+                inapplicable_set = set(inapplicable)
+                optional_set = set(external_optional)
+                if inapplicable_set & optional_set:
+                    errors.append(f"{prefix}: inapplicable and external-optional sets overlap")
+                if gap_set & (inapplicable_set | optional_set):
+                    errors.append(f"{prefix}: parity gaps overlap non-applicable capabilities")
+                claimed_providers = {
+                    capability
+                    for composition in compositions.values()
+                    if isinstance(composition, dict)
+                    for capability in composition.get("claims", {})
+                    if capability in providers
+                }
+                if claimed_providers & (inapplicable_set | optional_set):
+                    errors.append(f"{prefix}: claims overlap non-applicable capabilities")
+                classified = claimed_providers | gap_set | inapplicable_set | optional_set
+                if classified != providers:
+                    errors.append(
+                        f"{prefix}: constrained ledger does not classify provider vocabulary; "
+                        f"missing {sorted(providers - classified)} extra {sorted(classified - providers)}"
+                    )
         if tier == "absent" and compositions:
             errors.append(f"{prefix}: absent tier cannot publish compositions")
 
@@ -1186,8 +1229,17 @@ def selftest() -> int:
     _expect_error(validate(bad_reference), "reference_platform must")
 
     false_deep = copy.deepcopy(good)
-    false_deep["platforms"]["esp32c3"]["tier"] = "provider"
+    false_deep["platforms"]["esp32c3"]["tier"] = "deep"
     _expect_error(validate(false_deep), "profile kind does not match the platform tier")
+
+    incomplete_constrained_ledger = copy.deepcopy(good)
+    incomplete_constrained_ledger["platforms"]["esp8266"]["parity_gaps"].remove(
+        "watchdog"
+    )
+    _expect_error(
+        validate(incomplete_constrained_ledger),
+        "constrained ledger does not classify provider vocabulary",
+    )
 
     unknown_claim = copy.deepcopy(good)
     unknown_claim["platforms"]["rp2350"]["compositions"]["native"]["claims"]["magic"] = {

@@ -34,8 +34,8 @@
   ],
   "profiles": [
     {
-      "id": "deep-native-nosd-v2",
-      "kind": "deep",
+      "id": "nrf52840-native-nosd-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -49,8 +49,8 @@
       ]
     },
     {
-      "id": "deep-native-s140-v2",
-      "kind": "deep",
+      "id": "nrf52840-native-s140-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -64,8 +64,8 @@
       ]
     },
     {
-      "id": "rp2-deep-v2",
-      "kind": "deep",
+      "id": "rp2-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -87,8 +87,8 @@
       ]
     },
     {
-      "id": "deep-esp32-v2",
-      "kind": "deep",
+      "id": "esp32-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -111,8 +111,8 @@
       ]
     },
     {
-      "id": "deep-esp32c3-v2",
-      "kind": "deep",
+      "id": "esp32c3-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -135,8 +135,8 @@
       ]
     },
     {
-      "id": "deep-esp32p4-v2",
-      "kind": "deep",
+      "id": "esp32p4-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -159,8 +159,8 @@
       ]
     },
     {
-      "id": "deep-esp32s3-v2",
-      "kind": "deep",
+      "id": "esp32s3-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -184,8 +184,8 @@
       ]
     },
     {
-      "id": "provider-ra4m1-v2",
-      "kind": "deep",
+      "id": "ra4m1-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -204,8 +204,8 @@
       ]
     },
     {
-      "id": "provider-samd21-zero-v2",
-      "kind": "deep",
+      "id": "samd21-native-partial-v3",
+      "kind": "constrained",
       "required": [
         "timebase",
         "deadline",
@@ -230,7 +230,7 @@
     {
       "platform": "nrf52840",
       "composition": "native-nosd",
-      "profile": "deep-native-nosd-v2",
+      "profile": "nrf52840-native-nosd-partial-v3",
       "rust_type": "Nrf52840NoSoftDevice",
       "source": "core/crates/nobro_hal/src/platform/nrf52840/mod.rs",
       "required": [],
@@ -275,7 +275,7 @@
     {
       "platform": "nrf52840",
       "composition": "native-s140",
-      "profile": "deep-native-s140-v2",
+      "profile": "nrf52840-native-s140-partial-v3",
       "rust_type": "Nrf52840S140V6",
       "source": "core/crates/nobro_hal/src/platform/nrf52840/mod.rs",
       "required": [],
@@ -320,7 +320,7 @@
     {
       "platform": "rp2040",
       "composition": "native",
-      "profile": "rp2-deep-v2",
+      "profile": "rp2-native-partial-v3",
       "rust_type": "Rp2040",
       "source": "core/ports/rp2040/src/portable.rs",
       "required": [],
@@ -343,9 +343,8 @@
         "multicore",
         "lease"
       ],
-      "hardware-inapplicable": [],
+      "hardware-inapplicable": ["servo"],
       "unimplemented": [
-        "servo",
         "pulse",
         "watchdog",
         "rtc",
@@ -375,7 +374,7 @@
     {
       "platform": "rp2350",
       "composition": "native",
-      "profile": "rp2-deep-v2",
+      "profile": "rp2-native-partial-v3",
       "rust_type": "Rp2350",
       "source": "core/ports/rp2350/src/portable.rs",
       "required": [],
@@ -398,9 +397,8 @@
         "multicore",
         "lease"
       ],
-      "hardware-inapplicable": [],
+      "hardware-inapplicable": ["servo"],
       "unimplemented": [
-        "servo",
         "pulse",
         "watchdog",
         "rtc",
@@ -430,7 +428,7 @@
     {
       "platform": "esp32",
       "composition": "native",
-      "profile": "deep-esp32-v2",
+      "profile": "esp32-native-partial-v3",
       "rust_type": "Esp32Providers",
       "source": "core/ports/esp32/src/providers.rs",
       "required": [],
@@ -454,9 +452,8 @@
         "multicore",
         "lease"
       ],
-      "hardware-inapplicable": ["usb"],
+      "hardware-inapplicable": ["servo", "usb"],
       "unimplemented": [
-        "servo",
         "watchdog",
         "rtc",
         "flash"
@@ -485,7 +482,7 @@
     {
       "platform": "esp32c3",
       "composition": "native",
-      "profile": "deep-esp32c3-v2",
+      "profile": "esp32c3-native-partial-v3",
       "rust_type": "Esp32C3",
       "source": "core/ports/esp32c3/src/portable.rs",
       "required": [],
@@ -509,9 +506,8 @@
         "cache",
         "lease"
       ],
-      "hardware-inapplicable": ["multicore"],
+      "hardware-inapplicable": ["servo", "multicore"],
       "unimplemented": [
-        "servo",
         "watchdog",
         "rtc",
         "flash"
@@ -540,7 +536,7 @@
     {
       "platform": "esp32p4",
       "composition": "native",
-      "profile": "deep-esp32p4-v2",
+      "profile": "esp32p4-native-partial-v3",
       "rust_type": "Esp32P4Providers",
       "source": "core/ports/esp32p4/src/providers.rs",
       "required": [],
@@ -564,9 +560,8 @@
         "multicore",
         "lease"
       ],
-      "hardware-inapplicable": [],
+      "hardware-inapplicable": ["servo"],
       "unimplemented": [
-        "servo",
         "pulse",
         "watchdog",
         "rtc",
@@ -596,7 +591,7 @@
     {
       "platform": "esp32s3",
       "composition": "native",
-      "profile": "deep-esp32s3-v2",
+      "profile": "esp32s3-native-partial-v3",
       "rust_type": "Esp32S3Providers",
       "source": "core/ports/esp32s3/src/providers.rs",
       "required": [],
@@ -621,9 +616,8 @@
         "multicore",
         "lease"
       ],
-      "hardware-inapplicable": [],
+      "hardware-inapplicable": ["servo"],
       "unimplemented": [
-        "servo",
         "watchdog",
         "rtc",
         "flash"
@@ -653,7 +647,7 @@
     {
       "platform": "ra4m1",
       "composition": "native",
-      "profile": "provider-ra4m1-v2",
+      "profile": "ra4m1-native-partial-v3",
       "rust_type": "Ra4m1Providers",
       "source": "core/ports/ra4m1/src/providers.rs",
       "required": [],
@@ -673,11 +667,10 @@
         "power",
         "lease"
       ],
-      "hardware-inapplicable": ["cache", "multicore"],
+      "hardware-inapplicable": ["servo", "cache", "multicore"],
       "unimplemented": [
         "gpio",
         "irq",
-        "servo",
         "pulse",
         "watchdog",
         "rtc",
@@ -703,7 +696,7 @@
     {
       "platform": "samd21",
       "composition": "native",
-      "profile": "provider-samd21-zero-v2",
+      "profile": "samd21-native-partial-v3",
       "rust_type": "Samd21Providers",
       "source": "core/ports/samd21/src/providers.rs",
       "required": [],
@@ -725,10 +718,9 @@
         "power",
         "lease"
       ],
-      "hardware-inapplicable": ["cache", "multicore"],
+      "hardware-inapplicable": ["servo", "cache", "multicore"],
       "unimplemented": [
         "adc",
-        "servo",
         "pulse",
         "watchdog",
         "flash"

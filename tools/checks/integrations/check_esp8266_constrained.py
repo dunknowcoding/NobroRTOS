@@ -128,6 +128,15 @@ def validate_metadata() -> None:
     }
     if claims != required:
         raise RuntimeError(f"ESP8266 claim set drift: {sorted(claims)}")
+    if set(platform.get("parity_gaps", [])) != {
+        "event", "dma_completion", "pulse", "watchdog", "rtc", "flash",
+        "reset", "power", "cache", "lease",
+    }:
+        raise RuntimeError("ESP8266 full-board parity gap ledger drift")
+    if set(platform.get("hardware_inapplicable", [])) != {"usb", "multicore"}:
+        raise RuntimeError("ESP8266 hardware-inapplicable ledger drift")
+    if platform.get("external_optional") != ["servo"]:
+        raise RuntimeError("ESP8266 external-module ledger drift")
     limitations = platform.get("limitations", "").lower()
     for excluded in ("native usb", "multicore", "memory isolation", "dma"):
         if excluded not in limitations:

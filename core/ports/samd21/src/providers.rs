@@ -64,11 +64,12 @@ impl HalCompatibility for Samd21Providers {
             .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let inapplicable = HardwareCapabilitySet::EMPTY
+            .with(HardwareCapability::Servo)
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "provider-samd21-zero-v2",
-            CapabilityProfileKind::Deep,
+            "samd21-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
             inapplicable,

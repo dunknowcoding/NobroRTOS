@@ -1324,7 +1324,7 @@ nobro_hal::ResourceLease::release_all_for_owner(module_id);
 `HalI2c` exposes write, read, and repeated-start write/read operations;
 `HalSpi` exposes bounded full-duplex transfers. Each provider declares
 `TRANSFER_MODE`, so scheduling and diagnostic code can distinguish polling from
-DMA instead of assuming one platform-wide behavior. The current deep backend
+DMA instead of assuming one platform-wide behavior. The current nRF backend
 reports polling I2C and DMA SPI.
 
 With the opt-in `nrf-twim-async` feature, the nRF52840 `TwimBus` also provides

@@ -18,11 +18,14 @@ Every capability is in exactly one state for each native composition:
 - `hardware-inapplicable`: the exact hardware cannot provide it;
 - `unimplemented`: applicable in principle but not implemented.
 
-A `deep` profile is a coherent native product profile, not a promise to
-implement every capability that any MCU might expose. A `constrained` profile
-is an intentionally smaller composition. Both are versioned. A platform claim
-must equal the registry's supported set, and the supported set must equal its
-compiled witness set.
+A `deep` profile is reserved for an exact composition whose `unimplemented`
+set is empty: every capability exposed by that board is supported, while
+features absent from the hardware are `hardware-inapplicable`. An attachable
+external module such as a servo is not a board parity requirement unless the
+exact composition includes it. A `constrained` profile is an intentionally
+partial composition and keeps every applicable gap visible. Both are
+versioned. A platform claim must equal the registry's supported set, and the
+supported set must equal its compiled witness set.
 
 The vocabulary separates timebase, deadline, event, DMA completion, GPIO, IRQ,
 UART, byte I/O, ADC, PWM, servo, pulse, I2C, SPI, USB, watchdog, RTC, flash,
@@ -57,7 +60,8 @@ not yet adopted the v2 receipt even if its existing call is bounded.
 
 When adding a native composition:
 
-1. select or add a versioned profile;
+1. select or add a versioned profile; use `deep` only when no applicable
+   capability remains `unimplemented`;
 2. classify all capabilities in the HAL registry;
 3. implement `HalCompatibility` and its compile-time validity assertions;
 4. make the platform claims equal the supported set;

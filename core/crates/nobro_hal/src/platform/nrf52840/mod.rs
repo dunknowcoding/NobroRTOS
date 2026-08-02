@@ -228,8 +228,8 @@ impl HalCompatibility for Nrf52840NoSoftDevice {
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "deep-native-nosd-v2",
-            CapabilityProfileKind::Deep,
+            "nrf52840-native-nosd-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
             inapplicable,
@@ -260,8 +260,8 @@ impl HalCompatibility for Nrf52840S140V6 {
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "deep-native-s140-v2",
-            CapabilityProfileKind::Deep,
+            "nrf52840-native-s140-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
             inapplicable,

@@ -230,6 +230,11 @@ def validate(contract: dict, matrix: dict, *, root: pathlib.Path = ROOT) -> list
             errors.append(f"{prefix}: profile kind does not match the platform tier")
         if expected_kind == "deep" and required:
             errors.append(f"{prefix}: deep profile has unsatisfied requirements")
+        if expected_kind == "deep" and state_sets["unimplemented"]:
+            errors.append(
+                f"{prefix}: deep composition leaves applicable capabilities "
+                f"unimplemented {sorted(state_sets['unimplemented'])}"
+            )
 
         source_text = declaration.get("source")
         rust_type = declaration.get("rust_type")
@@ -292,9 +297,28 @@ def selftest() -> int:
         profile
         for profile in broken["profiles"]
         if profile["id"] == selected_profile
-    )["kind"] = "constrained"
+    )["kind"] = "deep"
     if not any("profile kind" in item for item in validate(broken, matrix)):
-        raise RuntimeError("false-deep negative did not fail")
+        raise RuntimeError("profile-tier mismatch negative did not fail")
+
+    broken = copy.deepcopy(contract)
+    broken_matrix = copy.deepcopy(matrix)
+    deep_scope = next(
+        declaration
+        for declaration in broken["declarations"]
+        if declaration["platform"] == "esp32"
+    )
+    next(
+        profile
+        for profile in broken["profiles"]
+        if profile["id"] == deep_scope["profile"]
+    )["kind"] = "deep"
+    broken_matrix["platforms"]["esp32"]["tier"] = "deep"
+    if not any(
+        "deep composition leaves applicable" in item
+        for item in validate(broken, broken_matrix)
+    ):
+        raise RuntimeError("incomplete deep-composition negative did not fail")
 
     broken_matrix = copy.deepcopy(matrix)
     broken_matrix["platforms"]["nrf52840"]["compositions"]["native-nosd"][

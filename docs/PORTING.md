@@ -98,9 +98,11 @@ supported only as a poll-count fallback and carries no elapsed-time claim. Keep 
 capture itself bounded; EasyDMA completion waits must remain interruptible.
 
 The public provider traits are in `nobro_hal::traits`. A provider tier means at least
-one real trait implementation exists for the target. A deep tier requires one native
-composition to satisfy a versioned deep profile with registry and compiled witnesses
-in exact agreement. See [HAL_SAL_CONTRACT.md](HAL_SAL_CONTRACT.md).
+one real trait implementation exists for the target while an applicable board feature
+is still missing. A deep tier requires one exact composition to classify every
+capability exposed by that board, leave the applicable-gap set empty, and keep the
+registry and compiled witnesses in exact agreement. See
+[HAL_SAL_CONTRACT.md](HAL_SAL_CONTRACT.md).
 
 ## Add a board-varying feature stack
 

@@ -142,13 +142,16 @@ impl HalCompatibility for Rp2350 {
                 HardwareCapability::Multicore,
             )
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
+        let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Servo);
         HardwareCapabilityDeclaration::new(
-            "rp2-deep-v2",
-            CapabilityProfileKind::Deep,
+            "rp2-native-partial-v3",
+            CapabilityProfileKind::Constrained,
             supported,
             supported,
-            HardwareCapabilitySet::EMPTY,
-            HardwareCapabilitySet::ALL.without(supported),
+            inapplicable,
+            HardwareCapabilitySet::ALL
+                .without(supported)
+                .without(inapplicable),
             supported,
         )
     };
