@@ -38,6 +38,7 @@ jobs:
           python tools/checks/platforms/check_board_profiles.py
           python tools/checks/platforms/check_compile_campaign.py
           python tools/checks/platforms/check_kernel_lite_candidates.py
+          python tools/checks/platforms/check_ai_profiles.py
       - name: scalable core layout
         run: python tools/checks/core/check_core_layout.py
       - name: adapter catalog

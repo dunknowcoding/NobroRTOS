@@ -108,6 +108,27 @@
       ]
     },
     {
+      "source": "bindings/c/include/nobro_nn_packed.h",
+      "source_sha256": "2860624c6a36fcf113eb64029a57dd33a6c606fd097ce9242878da0150906c9b",
+      "targets": [
+        {
+          "generated_banner": true,
+          "path": "sdk/include/nobro_nn_packed.h",
+          "sha256": "88873f03f9e52ff9f5df9ac75ae85e200748cf0b5c33ac67cc2a53d57164c006"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/arduino/src/nobro_nn_packed.h",
+          "sha256": "88873f03f9e52ff9f5df9ac75ae85e200748cf0b5c33ac67cc2a53d57164c006"
+        },
+        {
+          "generated_banner": true,
+          "path": "packages/platformio/include/nobro_nn_packed.h",
+          "sha256": "88873f03f9e52ff9f5df9ac75ae85e200748cf0b5c33ac67cc2a53d57164c006"
+        }
+      ]
+    },
+    {
       "source": "bindings/c/include/nobro_power_monitor.h",
       "source_sha256": "8098be5282f458a2a2cd9f989ec24b4f9669ca4c6e32d8148feb209b2f423c40",
       "targets": [
@@ -496,8 +517,7 @@
       },
       {
         "declarations": [
-          "\\ } \\ NOBRO_EXTERN_C int32_t nobro_app_poll(void) { \\ return nobro_poll();",
-          "extern \"C\" { uint64_t nobro_now_us(void);",
+          "\\ NOBRO_EXTERN_C int32_t nobro_app_poll(void);",
           "int32_t nobro_app_init(void);",
           "int32_t nobro_app_poll(void);",
           "int32_t nobro_i2c_write(uint8_t addr, const uint8_t *tx, uint32_t len);",
@@ -505,15 +525,16 @@
           "int32_t nobro_last_step_error(void);",
           "int32_t nobro_poll(void);",
           "int32_t nobro_run(void);",
+          "int32_t nobro_task(const char *name, uint32_t period_us, nobro_step_fn step);",
           "int32_t nobro_task_with(const char *name, uint32_t period_us, nobro_step_fn step, const nobro_task_options_t *options);",
           "int32_t nobro_wire(const char *from, const char *to, uint32_t capacity);",
-          "static inline const char *nobro_app_error_code(int32_t status) { switch (status) { case NOBRO_ERR_STATE: return \"NOBRO-E050\";",
+          "static inline const char *nobro_app_error_code(int32_t status);",
+          "static inline const char *nobro_app_error_text(int32_t status);",
           "typedef int32_t (*nobro_step_fn)(void);",
           "uint32_t nobro_skipped_releases(void);",
+          "uint64_t nobro_now_us(void);",
           "void nobro_publish_imu(uint8_t who, uint8_t dev_addr, int16_t ax, int16_t ay, int16_t az, int16_t gx, int16_t gy, int16_t gz, int16_t temp_raw);",
-          "} NOBRO_EXTERN_C int32_t nobro_app_init(void) { \\ return (configure_fn)();",
-          "} } int32_t nobro_task(const char *name, uint32_t period_us, nobro_step_fn step);",
-          "} } static inline const char *nobro_app_error_text(int32_t status) { switch (status) { case NOBRO_OK: return \"Application graph is ready.\";"
+          "} NOBRO_EXTERN_C int32_t nobro_app_init(void);"
         ],
         "macros": [
           "NOBRO_APP",
@@ -525,6 +546,7 @@
         ],
         "named_types": [
           "nobro_result_t",
+          "nobro_step_fn",
           "nobro_task_options_t",
           "nobro_task_role_t"
         ],
@@ -584,22 +606,56 @@
           "NOBRO_IMU_H"
         ],
         "named_types": [
+          "nobro_imu_aux_read_fn",
+          "nobro_imu_aux_write_fn",
           "nobro_imu_calibration_t",
           "nobro_imu_capability_mask_t",
+          "nobro_imu_composite_fn",
           "nobro_imu_composite_status_t",
           "nobro_imu_diagnostics_t",
           "nobro_imu_event_t",
           "nobro_imu_family_t",
+          "nobro_imu_fifo_read_fn",
+          "nobro_imu_fifo_status_fn",
           "nobro_imu_fifo_status_t",
+          "nobro_imu_fusion_fn",
           "nobro_imu_identity_t",
+          "nobro_imu_interrupt_fn",
           "nobro_imu_interrupt_status_t",
           "nobro_imu_optional_hooks_t",
+          "nobro_imu_pressure_fn",
           "nobro_imu_pressure_sample_t",
           "nobro_imu_quaternion_q30_t",
           "nobro_imu_sample_t"
         ],
         "path": "bindings/c/include/nobro_imu.h",
         "sha256": "10b819b171013535db203c0f053779b6911875d2613879d7d4fd651bba5ba6eb"
+      },
+      {
+        "declarations": [
+          "static inline int32_t nobro_nn_arshift_i32(int32_t value, uint8_t bits);",
+          "static inline int32_t nobro_nn_requantize(int32_t value, int32_t multiplier, int8_t shift);",
+          "static inline int64_t nobro_nn_arshift_i64(int64_t value, uint8_t bits);",
+          "static inline int8_t nobro_nn_sign_extend(uint8_t value, uint8_t bits);",
+          "static inline nobro_nn_packed_blob_t nobro_nn_contiguous_blob( const uint8_t *data, size_t length);",
+          "static inline nobro_nn_status_t nobro_nn_packed_dense( uint8_t format_bits, const int8_t *input, uint16_t input_len, nobro_nn_packed_blob_t weights, const int32_t *bias, uint16_t output_len, nobro_nn_packed_quantization_t quantization, int8_t *output, nobro_nn_packed_receipt_t *receipt);",
+          "static inline uint8_t nobro_nn_read_contiguous(const void *context, size_t index) NOBRO_NN_REENTRANT;",
+          "typedef uint8_t (*nobro_nn_read_u8_fn)(const void *context, size_t index) NOBRO_NN_REENTRANT;"
+        ],
+        "macros": [
+          "NOBRO_NN_PACKED_H",
+          "NOBRO_NN_REENTRANT"
+        ],
+        "named_types": [
+          "nobro_nn_packed_blob_t",
+          "nobro_nn_packed_format_t",
+          "nobro_nn_packed_quantization_t",
+          "nobro_nn_packed_receipt_t",
+          "nobro_nn_read_u8_fn",
+          "nobro_nn_status_t"
+        ],
+        "path": "bindings/c/include/nobro_nn_packed.h",
+        "sha256": "2860624c6a36fcf113eb64029a57dd33a6c606fd097ce9242878da0150906c9b"
       },
       {
         "declarations": [],
@@ -644,94 +700,51 @@
           "NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32_t), \"unexpected module runtime report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t), \"unexpected ROS bridge report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t), \"unexpected runtime report size\");",
-          "extern \"C\" { typedef char NOBRO_STATIC_ASSERT_JOIN(nobro_static_assert_, __LINE__)[(cond) ? 1 : -1] typedef enum nobro_report_status { NOBRO_REPORT_STATUS_MISSING = 1, NOBRO_REPORT_STATUS_IN_PROGRESS = 2, NOBRO_REPORT_STATUS_PASS = 3, NOBRO_REPORT_STATUS_FAIL = 4, NOBRO_REPORT_STATUS_CORRUPT = 5, } nobro_report_status_t;",
-          "if (!fits_budget) { if (stale_ready) { decision.target = NOBRO_AI_TARGET_STALE_SNAPSHOT;",
-          "if (goal_bytes > action.goal_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
-          "if (model_id != contract.model_id) { error_bits |= NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH;",
-          "if (request_bytes > service.request_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
-          "if (topic.depth == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_QUEUE_DEPTH_ZERO;",
-          "if (value_bytes > parameter.value_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
-          "static inline uint32_t nobro_report_diagnostic_checksum_words(const uint32_t *words, size_t word_count) { uint32_t diagnostic_checksum = 0u;",
-          "uint32_t local_arena_bytes = (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) ? contract.arena_bytes : 0u;",
-          "uint32_t required_ram_bytes = nobro_saturating_add_u32( nobro_saturating_add_u32( nobro_saturating_add_u32(input_bytes, limits.output_capacity_bytes), limits.scratch_bytes ), local_arena_bytes );",
-          "uint32_t stale_after_us = nobro_ai_effective_stale_after_us(policy, contract);",
-          "while (*value != '\\0') { result ^= (uint8_t)(*value);",
-          "} else if (policy.preference == NOBRO_AI_ROUTE_LOCAL_ONLY) { decision.target = NOBRO_AI_TARGET_UNAVAILABLE;",
-          "} if ((contract.backend == NOBRO_AI_BACKEND_ON_DEVICE || contract.backend == NOBRO_AI_BACKEND_HYBRID) && contract.arena_bytes == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING;",
-          "} if (action.timeout_us == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;",
-          "} if (action.timeout_us > budget_us) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;",
-          "} if (completed == 0u) { return NOBRO_REPORT_STATUS_IN_PROGRESS;",
-          "} if (contract.backend == NOBRO_AI_BACKEND_EDGE_SIDECAR && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_EDGE_SIDECAR;",
-          "} if (contract.backend == NOBRO_AI_BACKEND_HYBRID) { if ((policy.preference == NOBRO_AI_ROUTE_LOCAL_ONLY || policy.preference == NOBRO_AI_ROUTE_PREFER_LOCAL) && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
-          "} if (contract.backend == NOBRO_AI_BACKEND_ON_DEVICE && state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
-          "} if (contract.backend == NOBRO_AI_BACKEND_REMOTE_API && policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_REMOTE_API;",
-          "} if (contract.stale_after_us == 0u || policy.stale_after_us < contract.stale_after_us) { return policy.stale_after_us;",
-          "} if (diagnostic_checksum != computed_diagnostic_checksum) { return NOBRO_REPORT_STATUS_CORRUPT;",
-          "} if (feedback_capacity_bytes < action.feedback_bytes_max || result_capacity_bytes < action.result_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;",
-          "} if (has_ok_field != 0 && ok == 0u) { return NOBRO_REPORT_STATUS_FAIL;",
-          "} if (input_bytes > (uint32_t)contract.input_bytes_max) { error_bits |= NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE;",
-          "} if (limits.output_capacity_bytes < (uint32_t)contract.output_bytes_max) { error_bits |= NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL;",
-          "} if (magic != expected_magic || version != NOBRO_REPORT_VERSION) { return NOBRO_REPORT_STATUS_CORRUPT;",
-          "} if (payload_bytes > topic.max_message_bytes) { error_bits |= NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE;",
-          "} if (policy.preference != NOBRO_AI_ROUTE_LOCAL_ONLY && state.endpoint_ready != 0u && endpoint_circuit_open == 0u) { decision.target = NOBRO_AI_TARGET_REMOTE_API;",
-          "} if (required_ram_bytes > limits.available_ram_bytes) { error_bits |= NOBRO_AI_PREFLIGHT_RAM_EXCEEDED;",
-          "} if (response_capacity_bytes < service.response_bytes_max) { error_bits |= NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL;",
-          "} if (route.endpoint_circuit_open != 0u && limits.allow_endpoint_circuit_open == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN;",
-          "} if (route.target == NOBRO_AI_TARGET_DEGRADED_FALLBACK && limits.allow_degraded_fallback == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK;",
-          "} if (route.target == NOBRO_AI_TARGET_UNAVAILABLE && limits.allow_unavailable == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE;",
-          "} if (route.uses_stale_snapshot != 0u && limits.allow_stale_snapshot == 0u) { error_bits |= NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT;",
-          "} if (route.uses_stale_snapshot != 0u && limits.max_stale_us > 0u && state.last_success_age_us > limits.max_stale_us) { error_bits |= NOBRO_AI_PREFLIGHT_STALE_TOO_OLD;",
-          "} if (service.timeout_us == 0u) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_ZERO;",
-          "} if (service.timeout_us > budget_us) { error_bits |= NOBRO_ROS_PREFLIGHT_TIMEOUT_EXCEEDED;",
-          "} if (state.local_ready != 0u) { decision.target = NOBRO_AI_TARGET_ON_DEVICE;",
-          "} preflight.required_buffer_bytes = (uint32_t)parameter.value_bytes_max;",
-          "} preflight.required_buffer_bytes = nobro_ros_action_buffer_bytes(action);",
-          "} preflight.required_buffer_bytes = nobro_ros_service_buffer_bytes(service);",
-          "} preflight.required_buffer_bytes = nobro_ros_topic_buffer_bytes(topic);",
-          "} static inline int nobro_report_status_is_passing(nobro_report_status_t status) { return status == NOBRO_REPORT_STATUS_PASS;",
-          "} static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t model_id, uint32_t input_bytes, nobro_ai_invocation_limits_t limits ) { nobro_ai_route_decision_t route = nobro_ai_route_decide(policy, contract, state, limits.budget_us);",
-          "} static inline nobro_ai_route_decision_t nobro_ai_route_decide( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t budget_us ) { uint8_t failure_limit = policy.endpoint_failure_limit == 0u ? 1u : policy.endpoint_failure_limit;",
-          "} static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ADAPTER_COMPAT_REPORT_MAGIC, report->magic, report->version, report->completed, report->compatible, 1, report->diagnostic_checksum, nobro_adapter_compat_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ADMISSION_REPORT_MAGIC, report->magic, report->version, report->completed, report->admitted, 1, report->diagnostic_checksum, nobro_admission_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_AI_MODEL_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_ai_model_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_BOARD_PACKAGE_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->diagnostic_checksum, nobro_board_package_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_BOARD_PROFILE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_board_profile_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_degrade_application_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_EVENT_LOG_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_event_log_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_HEALTH_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_health_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_MANIFEST_REPORT_MAGIC, report->magic, report->version, report->completed, report->valid, 1, report->diagnostic_checksum, nobro_manifest_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_MODULE_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_module_runtime_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t diagnostic_checksum, uint32_t computed_diagnostic_checksum ) { if (magic == 0u && version == 0u && diagnostic_checksum == 0u) { return NOBRO_REPORT_STATUS_MISSING;",
-          "} static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_ROS_BRIDGE_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_ros_bridge_report_diagnostic_checksum(report) );",
-          "} static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report ) { return nobro_report_status_from_diagnostic_checksum( NOBRO_RUNTIME_REPORT_MAGIC, report->magic, report->version, report->completed, 1u, 0, report->diagnostic_checksum, nobro_runtime_report_diagnostic_checksum(report) );",
-          "} static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight( nobro_ros_action_contract_t action, uint16_t goal_bytes, uint16_t feedback_capacity_bytes, uint16_t result_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
-          "} static inline nobro_ros_bridge_preflight_t nobro_ros_parameter_preflight( nobro_ros_parameter_contract_t parameter, uint16_t value_bytes ) { uint32_t error_bits = 0u;",
-          "} static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight( nobro_ros_service_contract_t service, uint16_t request_bytes, uint16_t response_capacity_bytes, uint32_t budget_us ) { uint32_t error_bits = 0u;",
-          "} static inline nobro_ros_bridge_preflight_t nobro_ros_topic_preflight( nobro_ros_topic_contract_t topic, uint16_t payload_bytes ) { uint32_t error_bits = 0u;",
-          "} static inline uint32_t nobro_adapter_compat_report_diagnostic_checksum( const nobro_adapter_compat_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->compatible ^ report->adapter_count ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
-          "} static inline uint32_t nobro_admission_report_diagnostic_checksum( const nobro_admission_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->admitted ^ report->module_count ^ report->startup_len ^ report->flash_used_bytes ^ report->flash_limit_bytes ^ report->ram_used_bytes ^ report->ram_limit_bytes ^ report->pool_used_slots ^ report->pool_limit_slots ^ report->error_code;",
-          "} static inline uint32_t nobro_ai_effective_stale_after_us( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract ) { if (policy.stale_after_us == 0u) { return contract.stale_after_us;",
-          "} static inline uint32_t nobro_ai_model_report_diagnostic_checksum( const nobro_ai_model_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->backend ^ report->model_id ^ report->input_bytes_max ^ report->output_bytes_max ^ report->arena_bytes ^ report->timeout_us ^ report->route_preference ^ report->stale_after_us ^ report->endpoint_failure_limit;",
-          "} static inline uint32_t nobro_board_package_report_diagnostic_checksum( const nobro_board_package_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->platform_hash ^ report->board_hash ^ report->boot_layout ^ report->app_flash_start ^ report->app_flash_len_bytes ^ report->ram_start ^ report->ram_len_bytes ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->led_pin ^ report->servo_pin ^ report->mvk_trigger_pin ^ report->error_code;",
-          "} static inline uint32_t nobro_board_profile_report_diagnostic_checksum( const nobro_board_profile_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->platform_hash ^ report->board_hash ^ report->app_flash_start ^ report->flash_budget_bytes ^ report->ram_budget_bytes ^ report->sample_pool_slots ^ report->max_modules ^ report->servo_pin ^ report->servo_center_us ^ report->led_pin ^ report->mvk_trigger_pin;",
-          "} static inline uint32_t nobro_degrade_application_report_diagnostic_checksum( const nobro_degrade_application_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->requested_count ^ report->disabled_count ^ report->already_disabled_count ^ report->reason ^ report->applied_at_us_lo ^ report->applied_at_us_hi;",
-          "} static inline uint32_t nobro_event_log_report_diagnostic_checksum( const nobro_event_log_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->event_count ^ report->capacity ^ report->dropped_events ^ report->latest_seq ^ report->latest_at_us_lo ^ report->latest_at_us_hi ^ report->latest_module_tag ^ report->latest_severity ^ report->latest_kind ^ report->latest_payload_kind ^ report->latest_payload0 ^ report->latest_payload1;",
-          "} static inline uint32_t nobro_health_report_diagnostic_checksum( const nobro_health_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_tag ^ report->total_errors ^ report->consecutive_errors ^ report->last_error ^ report->last_action ^ report->event_count ^ report->dropped_events ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo ^ report->last_seen_us_hi;",
-          "} static inline uint32_t nobro_manifest_report_diagnostic_checksum(const nobro_manifest_report_t *report) { return report->magic ^ report->version ^ report->completed ^ report->valid ^ report->module_count ^ report->fingerprint ^ report->required_bits ^ report->owned_bits ^ report->flash_used_bytes ^ report->ram_used_bytes ^ report->pool_used_slots ^ report->error_code ^ report->error_module_tag ^ report->error_capability_bits;",
-          "} static inline uint32_t nobro_module_runtime_report_diagnostic_checksum( const nobro_module_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->module_count ^ report->capacity ^ report->active_count ^ report->suspended_count ^ report->faulted_count ^ report->recovering_count ^ report->disabled_count ^ report->latest_module_tag ^ report->latest_state ^ report->latest_fault_count ^ report->latest_recovery_count ^ report->latest_change_us_lo ^ report->latest_change_us_hi;",
-          "} static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t action) { return (uint32_t)action.goal_bytes_max + (uint32_t)action.feedback_bytes_max + (uint32_t)action.result_bytes_max;",
-          "} static inline uint32_t nobro_ros_bridge_report_diagnostic_checksum( const nobro_ros_bridge_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->transport ^ report->bridge_id_hash ^ report->topic_count ^ report->service_count ^ report->action_count ^ report->parameter_count ^ report->total_buffer_bytes ^ report->max_timeout_us;",
-          "} static inline uint32_t nobro_ros_service_buffer_bytes(nobro_ros_service_contract_t service) { return (uint32_t)service.request_bytes_max + (uint32_t)service.response_bytes_max;",
-          "} static inline uint32_t nobro_ros_topic_buffer_bytes(nobro_ros_topic_contract_t topic) { return (uint32_t)topic.depth * (uint32_t)topic.max_message_bytes;",
-          "} static inline uint32_t nobro_runtime_report_diagnostic_checksum( const nobro_runtime_report_t *report ) { return report->magic ^ report->version ^ report->completed ^ report->state ^ report->module_count ^ report->mailbox_len ^ report->mailbox_dropped ^ report->alarm_len ^ report->next_alarm_due_us_lo ^ report->next_alarm_due_us_hi ^ report->kv_len ^ report->kv_writes ^ report->kv_deletes ^ report->quota_flash_used_bytes ^ report->quota_ram_used_bytes ^ report->quota_pool_used_slots ^ report->event_count ^ report->dropped_events;",
-          "} static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right) { uint32_t result = left + right;",
-          "} static inline uint32_t nobro_stable_hash32_bytes(const uint8_t *bytes, size_t byte_count) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
-          "} static inline uint32_t nobro_stable_hash32_cstr(const char *value) { uint32_t result = NOBRO_FNV1A32_OFFSET;",
-          "} static inline uint8_t nobro_ai_preflight_has_error( nobro_ai_invocation_preflight_t preflight, uint32_t error ) { return (preflight.error_bits & error) != 0u ? 1u : 0u;",
-          "} static inline uint8_t nobro_ai_preflight_passing( nobro_ai_invocation_preflight_t preflight ) { return preflight.error_bits == 0u ? 1u : 0u;",
-          "} static inline uint8_t nobro_ros_preflight_has_error( nobro_ros_bridge_preflight_t preflight, uint32_t error ) { return (preflight.error_bits & error) != 0u ? 1u : 0u;",
-          "} static inline uint8_t nobro_ros_preflight_passing( nobro_ros_bridge_preflight_t preflight ) { return preflight.error_bits == 0u ? 1u : 0u;",
-          "} } if (stale_ready) { decision.target = NOBRO_AI_TARGET_STALE_SNAPSHOT;"
+          "static inline int nobro_report_status_is_passing(nobro_report_status_t status);",
+          "static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t model_id, uint32_t input_bytes, nobro_ai_invocation_limits_t limits );",
+          "static inline nobro_ai_route_decision_t nobro_ai_route_decide( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t budget_us );",
+          "static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report );",
+          "static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report );",
+          "static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report );",
+          "static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report );",
+          "static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report );",
+          "static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report );",
+          "static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report );",
+          "static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report );",
+          "static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report );",
+          "static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report );",
+          "static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t diagnostic_checksum, uint32_t computed_diagnostic_checksum );",
+          "static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report );",
+          "static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report );",
+          "static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight( nobro_ros_action_contract_t action, uint16_t goal_bytes, uint16_t feedback_capacity_bytes, uint16_t result_capacity_bytes, uint32_t budget_us );",
+          "static inline nobro_ros_bridge_preflight_t nobro_ros_parameter_preflight( nobro_ros_parameter_contract_t parameter, uint16_t value_bytes );",
+          "static inline nobro_ros_bridge_preflight_t nobro_ros_service_preflight( nobro_ros_service_contract_t service, uint16_t request_bytes, uint16_t response_capacity_bytes, uint32_t budget_us );",
+          "static inline nobro_ros_bridge_preflight_t nobro_ros_topic_preflight( nobro_ros_topic_contract_t topic, uint16_t payload_bytes );",
+          "static inline uint32_t nobro_adapter_compat_report_diagnostic_checksum( const nobro_adapter_compat_report_t *report );",
+          "static inline uint32_t nobro_admission_report_diagnostic_checksum( const nobro_admission_report_t *report );",
+          "static inline uint32_t nobro_ai_effective_stale_after_us( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract );",
+          "static inline uint32_t nobro_ai_model_report_diagnostic_checksum( const nobro_ai_model_report_t *report );",
+          "static inline uint32_t nobro_board_package_report_diagnostic_checksum( const nobro_board_package_report_t *report );",
+          "static inline uint32_t nobro_board_profile_report_diagnostic_checksum( const nobro_board_profile_report_t *report );",
+          "static inline uint32_t nobro_degrade_application_report_diagnostic_checksum( const nobro_degrade_application_report_t *report );",
+          "static inline uint32_t nobro_event_log_report_diagnostic_checksum( const nobro_event_log_report_t *report );",
+          "static inline uint32_t nobro_health_report_diagnostic_checksum( const nobro_health_report_t *report );",
+          "static inline uint32_t nobro_manifest_report_diagnostic_checksum(const nobro_manifest_report_t *report);",
+          "static inline uint32_t nobro_module_runtime_report_diagnostic_checksum( const nobro_module_runtime_report_t *report );",
+          "static inline uint32_t nobro_report_diagnostic_checksum_words(const uint32_t *words, size_t word_count);",
+          "static inline uint32_t nobro_ros_action_buffer_bytes(nobro_ros_action_contract_t action);",
+          "static inline uint32_t nobro_ros_bridge_report_diagnostic_checksum( const nobro_ros_bridge_report_t *report );",
+          "static inline uint32_t nobro_ros_service_buffer_bytes(nobro_ros_service_contract_t service);",
+          "static inline uint32_t nobro_ros_topic_buffer_bytes(nobro_ros_topic_contract_t topic);",
+          "static inline uint32_t nobro_runtime_report_diagnostic_checksum( const nobro_runtime_report_t *report );",
+          "static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right);",
+          "static inline uint32_t nobro_stable_hash32_bytes(const uint8_t *bytes, size_t byte_count);",
+          "static inline uint32_t nobro_stable_hash32_cstr(const char *value);",
+          "static inline uint8_t nobro_ai_preflight_has_error( nobro_ai_invocation_preflight_t preflight, uint32_t error );",
+          "static inline uint8_t nobro_ai_preflight_passing( nobro_ai_invocation_preflight_t preflight );",
+          "static inline uint8_t nobro_ros_preflight_has_error( nobro_ros_bridge_preflight_t preflight, uint32_t error );",
+          "static inline uint8_t nobro_ros_preflight_passing( nobro_ros_bridge_preflight_t preflight );",
+          "typedef char NOBRO_STATIC_ASSERT_JOIN(nobro_static_assert_, __LINE__)[(cond) ? 1 : -1] typedef enum nobro_report_status;"
         ],
         "macros": [
           "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
@@ -822,32 +835,18 @@
       },
       {
         "declarations": [
-          "*sequence = (uint32_t)frame[4] | ((uint32_t)frame[5] << 8) | ((uint32_t)frame[6] << 16) | ((uint32_t)frame[7] << 24);",
-          "++shift) { if (delay >= policy->max_backoff_us || delay > UINT64_MAX / 2u) { delay = policy->max_backoff_us;",
-          "destination[1] = (uint8_t)(session >> 8);",
-          "destination[2] = (uint8_t)(session >> 16);",
-          "destination[3] = (uint8_t)(session >> 24);",
-          "destination[4] = (uint8_t)sequence;",
-          "destination[5] = (uint8_t)(sequence >> 8);",
-          "destination[6] = (uint8_t)(sequence >> 16);",
-          "destination[7] = (uint8_t)(sequence >> 24);",
-          "static inline nobro_wireless_adaptive_policy_t nobro_wireless_responsive_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot) { nobro_wireless_adaptive_policy_t policy = { NOBRO_WIRELESS_STORAGE_FIXED, queue_slots, payload_bytes_per_slot, {3u, 1000u, 100000u}, 0u, 1u };",
-          "static inline size_t nobro_wireless_encode_sequenced( uint32_t session, uint32_t sequence, const uint8_t *payload, size_t payload_len, uint8_t *destination, size_t capacity) { if (destination == NULL || capacity < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || payload_len > capacity - NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || (payload == NULL && payload_len != 0u)) { return 0u;",
-          "} *session = (uint32_t)frame[0] | ((uint32_t)frame[1] << 8) | ((uint32_t)frame[2] << 16) | ((uint32_t)frame[3] << 24);",
-          "} destination[0] = (uint8_t)session;",
-          "} if (delay > policy->max_backoff_us) { delay = policy->max_backoff_us;",
-          "} if (state->failed_attempts != UINT8_MAX) { state->failed_attempts++;",
-          "} if (state->failed_attempts >= policy->max_attempts) { return false;",
-          "} static inline bool nobro_wireless_decode_sequenced( const uint8_t *frame, size_t frame_len, uint32_t *session, uint32_t *sequence, const uint8_t **payload, size_t *payload_len) { if (frame == NULL || frame_len < NOBRO_WIRELESS_SEQUENCE_HEADER_BYTES || session == NULL || sequence == NULL || payload == NULL || payload_len == NULL) { return false;",
-          "} static inline bool nobro_wireless_message_valid( const nobro_wireless_message_contract_t *contract) { return contract != NULL && contract->offered_at_us <= contract->deadline_us && contract->deadline_us <= contract->expires_at_us;",
-          "} static inline bool nobro_wireless_policy_valid( const nobro_wireless_adaptive_policy_t *policy) { return policy != NULL && policy->storage_mode <= NOBRO_WIRELESS_STORAGE_HEAP && policy->queue_slots != 0u && policy->payload_bytes_per_slot != 0u && nobro_wireless_retry_policy_valid(&policy->retry) && policy->max_batch_messages != 0u;",
-          "} static inline bool nobro_wireless_recovery_failed( nobro_wireless_recovery_state_t *state, const nobro_wireless_retry_policy_t *policy, uint64_t now_us) { if (state == NULL || !nobro_wireless_retry_policy_valid(policy)) { return false;",
-          "} static inline bool nobro_wireless_retry_policy_valid( const nobro_wireless_retry_policy_t *policy) { return policy != NULL && policy->max_attempts != 0u && policy->initial_backoff_us <= policy->max_backoff_us && (policy->max_attempts == 1u || policy->initial_backoff_us != 0u);",
-          "} static inline nobro_wireless_adaptive_policy_t nobro_wireless_low_energy_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot, uint64_t batch_window_us) { nobro_wireless_adaptive_policy_t policy = { NOBRO_WIRELESS_STORAGE_FIXED, queue_slots, payload_bytes_per_slot, {4u, 10000u, 1000000u}, batch_window_us, 8u };",
-          "} static inline nobro_wireless_message_contract_t nobro_wireless_best_effort_message( uint64_t offered_at_us, uint64_t expires_at_us) { nobro_wireless_message_contract_t contract = { offered_at_us, expires_at_us, expires_at_us, 0u, true };",
-          "} static inline nobro_wireless_message_contract_t nobro_wireless_urgent_message( uint64_t offered_at_us, uint64_t deadline_us) { nobro_wireless_message_contract_t contract = { offered_at_us, deadline_us, deadline_us, UINT8_MAX, false };",
-          "} static inline void nobro_wireless_recovery_reset( nobro_wireless_recovery_state_t *state) { if (state != NULL) { state->failed_attempts = 0u;",
-          "} } static inline bool nobro_wireless_recovery_ready( const nobro_wireless_recovery_state_t *state, uint64_t now_us) { return state != NULL && now_us >= state->next_attempt_us;"
+          "static inline bool nobro_wireless_decode_sequenced( const uint8_t *frame, size_t frame_len, uint32_t *session, uint32_t *sequence, const uint8_t **payload, size_t *payload_len);",
+          "static inline bool nobro_wireless_message_valid( const nobro_wireless_message_contract_t *contract);",
+          "static inline bool nobro_wireless_policy_valid( const nobro_wireless_adaptive_policy_t *policy);",
+          "static inline bool nobro_wireless_recovery_failed( nobro_wireless_recovery_state_t *state, const nobro_wireless_retry_policy_t *policy, uint64_t now_us);",
+          "static inline bool nobro_wireless_recovery_ready( const nobro_wireless_recovery_state_t *state, uint64_t now_us);",
+          "static inline bool nobro_wireless_retry_policy_valid( const nobro_wireless_retry_policy_t *policy);",
+          "static inline nobro_wireless_adaptive_policy_t nobro_wireless_low_energy_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot, uint64_t batch_window_us);",
+          "static inline nobro_wireless_adaptive_policy_t nobro_wireless_responsive_policy( uint16_t queue_slots, uint16_t payload_bytes_per_slot);",
+          "static inline nobro_wireless_message_contract_t nobro_wireless_best_effort_message( uint64_t offered_at_us, uint64_t expires_at_us);",
+          "static inline nobro_wireless_message_contract_t nobro_wireless_urgent_message( uint64_t offered_at_us, uint64_t deadline_us);",
+          "static inline size_t nobro_wireless_encode_sequenced( uint32_t session, uint32_t sequence, const uint8_t *payload, size_t payload_len, uint8_t *destination, size_t capacity);",
+          "static inline void nobro_wireless_recovery_reset( nobro_wireless_recovery_state_t *state);"
         ],
         "macros": [
           "NOBRO_BLE_GATT_VALUE_MAX",
@@ -993,6 +992,11 @@
         "ReportSlot",
         "ReportStatus",
         "finalize_diagnostic_report",
+        "PACKED_DENSE_LAYOUT_VERSION",
+        "PackedExportedModel",
+        "export_packed_model",
+        "quantize_packed",
+        "unpack_packed",
         "ProjectTarget",
         "ProjectTemplate",
         "ProjectMaterializationReport",
@@ -1053,7 +1057,7 @@
       "modules": [
         {
           "path": "bindings/python/nobro_rtos/__init__.py",
-          "sha256": "7ec6f22fc31068dbffdac7a0172c350f838abdccdb35e69fd28bc31d703cc6a0"
+          "sha256": "bb25f7e657cd904f3b5c60a57341ce37b6262a909911745e9a3a2ff9cfb278d5"
         },
         {
           "path": "bindings/python/nobro_rtos/__main__.py",
@@ -1089,7 +1093,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/nn_export.py",
-          "sha256": "1cf9df85251117b49293630428683ddbf6fe7c3a9617dd73d1cdcdd05740e915"
+          "sha256": "9fb32b7f0c06bc9f99fb381ed29c02b6fcaf67c3e00101df1d208be87dae270c"
         },
         {
           "path": "bindings/python/nobro_rtos/node.py",
@@ -1129,7 +1133,7 @@
         }
       ],
       "path": "bindings/python/nobro_rtos/__init__.py",
-      "sha256": "7ec6f22fc31068dbffdac7a0172c350f838abdccdb35e69fd28bc31d703cc6a0"
+      "sha256": "bb25f7e657cd904f3b5c60a57341ce37b6262a909911745e9a3a2ff9cfb278d5"
     },
     "rust": [
       {
@@ -1152,24 +1156,24 @@
             "name": "MotorCommand"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
             "name": "StepperCommand"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
             "name": "BinaryCommand"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "enum",
@@ -1180,8 +1184,8 @@
             "name": "ActuatorLimits"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "trait",
@@ -1211,12 +1215,12 @@
             "name": "AdmissionProfile"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "wake_latency_us"
           },
           {
             "kind": "struct",
@@ -1227,36 +1231,36 @@
             "name": "EMPTY"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "deadline"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "priority"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "phase"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "memory"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "bindings"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capabilities"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "object_quotas"
           },
           {
             "kind": "struct",
@@ -1283,16 +1287,16 @@
             "name": "ALL_BOUNDED"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "union"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "bits"
           },
           {
             "kind": "struct",
@@ -1303,20 +1307,20 @@
             "name": "EMPTY"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "operations"
           },
           {
             "kind": "struct",
             "name": "InterruptProfile"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "const",
@@ -1331,12 +1335,12 @@
             "name": "AdmissionErrorCode"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostic"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "panic_admission"
           },
           {
             "kind": "struct",
@@ -1355,8 +1359,8 @@
             "name": "AdmittedWorkload"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admit"
           },
           {
             "kind": "fn",
@@ -1367,8 +1371,8 @@
             "name": "admit_runtime_into"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admit_with_interrupts"
           }
         ],
         "path": "core/crates/nobro_admission/src/lib.rs",
@@ -1390,12 +1394,40 @@
             "name": "MODEL_MAGIC"
           },
           {
+            "kind": "enum",
+            "name": "PackedWeightFormat"
+          },
+          {
+            "kind": "fn",
+            "name": "bits"
+          },
+          {
+            "kind": "fn",
+            "name": "values_per_byte"
+          },
+          {
+            "kind": "fn",
+            "name": "row_bytes"
+          },
+          {
+            "kind": "struct",
+            "name": "PackedDenseManifest"
+          },
+          {
+            "kind": "const",
+            "name": "PACKED_DENSE_LAYOUT_VERSION"
+          },
+          {
             "kind": "fn",
             "name": "fnv1a"
           },
           {
             "kind": "enum",
             "name": "DeployError"
+          },
+          {
+            "kind": "fn",
+            "name": "validate"
           },
           {
             "kind": "fn",
@@ -1459,7 +1491,7 @@
           }
         ],
         "path": "core/crates/nobro_ai/src/lib.rs",
-        "sha256": "81bcf059c7ff383a7d8a9fc2b1e49d3025fd06433766a922f6dc1a4650dc3234"
+        "sha256": "297e4369c6f803f463c9ac5beeeb8c1d7774e261528eb9199fd6eed4a81d7909"
       },
       {
         "crate": "nobro-audio",
@@ -1473,12 +1505,12 @@
             "name": "CodecConfig"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "enum",
@@ -1497,20 +1529,20 @@
             "name": "PRIMARY"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "get"
           },
           {
             "kind": "struct",
             "name": "AudioBackendIdentity"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
@@ -1521,16 +1553,16 @@
             "name": "AudioResourcePrice"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "frame_storage_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "has_bounded_queue"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_complete_for"
           },
           {
             "kind": "trait",
@@ -1553,8 +1585,8 @@
             "name": "mount"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "receipt"
           },
           {
             "kind": "fn",
@@ -1593,24 +1625,24 @@
             "name": "AudioRing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capacity"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "len"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "dropped"
           },
           {
             "kind": "fn",
@@ -1644,20 +1676,20 @@
             "name": "PRIMARY"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "get"
           },
           {
             "kind": "struct",
             "name": "CameraBackendIdentity"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
@@ -1684,20 +1716,20 @@
             "name": "CaptureContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "by"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "processing_budget"
           },
           {
             "kind": "struct",
             "name": "StreamBudget"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
@@ -1716,8 +1748,8 @@
             "name": "CameraPipeline"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -1732,8 +1764,8 @@
             "name": "recover"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -1760,8 +1792,8 @@
             "name": "mount"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "receipt"
           },
           {
             "kind": "fn",
@@ -1808,16 +1840,16 @@
             "name": "WorkflowAccountant"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
             "name": "admit"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "usage"
           },
           {
             "kind": "fn",
@@ -1835,8 +1867,8 @@
             "name": "Queue"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -1875,12 +1907,12 @@
             "name": "Semaphore"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "binary"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "counting"
           },
           {
             "kind": "fn",
@@ -1899,8 +1931,8 @@
             "name": "Mutex"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -1919,8 +1951,8 @@
             "name": "SoftwareTimer"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -1943,8 +1975,8 @@
             "name": "EventFlags"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -2002,8 +2034,8 @@
             "name": "ComplementaryFilter"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -2018,8 +2050,8 @@
             "name": "DiffDrive"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -2156,8 +2188,8 @@
             "name": "save"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "generation"
           },
           {
             "kind": "fn",
@@ -2184,8 +2216,8 @@
             "name": "is_empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capacity"
           },
           {
             "kind": "fn",
@@ -2251,104 +2283,104 @@
             "name": "ALL_KNOWN"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "unknown"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "known_zero"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_known"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_complete"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "known_dimensions"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "flash_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "static_ram_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "retained_heap_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "stack_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "vendor_reserved_ram_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "worker_threads"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "interrupt_slots"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "dma_channels"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "controller_firmware_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "peripheral_channels"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_flash_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_static_ram_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_retained_heap_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_stack_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_vendor_reserved_ram_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_worker_threads"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_interrupt_slots"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_dma_channels"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_controller_firmware_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_peripheral_channels"
           },
           {
             "kind": "enum",
@@ -2359,40 +2391,40 @@
             "name": "ProviderWorkload"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "adaptive"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "configuration_fingerprint"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "operations_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "pacing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "observation_interval_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "offered_operations"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "observed_operations"
           },
           {
             "kind": "struct",
@@ -2403,92 +2435,92 @@
             "name": "ALL_KNOWN"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "unknown"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "known_zero"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "workload"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "transient_heap_peak_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "stack_high_water_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "cpu_cycles_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "cpu_cycles_per_operation"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latency_p99_cycles"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latency_max_cycles"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_complete"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "matches"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_transient_heap_peak_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_stack_high_water_bytes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_cpu_cycles_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_latency_p99_cycles"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_latency_max_cycles"
           },
           {
             "kind": "struct",
             "name": "ProviderAdmissionPrice"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "known_zero"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "fixed"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "runtime"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_complete_for"
           },
           {
             "kind": "enum",
@@ -2587,8 +2619,8 @@
             "name": "SensorRegistry"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -2723,8 +2755,8 @@
             "name": "BoardRegistry"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -2794,12 +2826,12 @@
             "name": "FrameReceipt"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_terminal"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
@@ -2810,8 +2842,8 @@
             "name": "Region"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "trait",
@@ -3036,160 +3068,160 @@
             "name": "BootLayout"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "app_start"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "cargo_feature"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "code"
           },
           {
             "kind": "struct",
             "name": "HostContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "maintenance_cdc_mi"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "user_cdc_mi"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "upload_touch_baud"
           },
           {
             "kind": "enum",
             "name": "ReportStatus"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "class_code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_pass"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_code"
           },
           {
             "kind": "enum",
             "name": "BootStage"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "symbol"
           },
           {
             "kind": "struct",
             "name": "BootDiagnostic"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_passing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "stage_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "status_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "stage_symbol"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "board_package_error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "manifest_error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "adapter_compat_error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admission_error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "module_tag_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "app_module_tag_index"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capability_bit_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capability_mask_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "runtime_state_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "event_severity_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "event_kind_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "event_payload_kind_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "module_runtime_state_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "degrade_reason_label"
           },
           {
             "kind": "trait",
@@ -3204,40 +3236,40 @@
             "name": "BootSummary"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_passing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostic_code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "first_stage_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "first_status_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "first_symbol"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "first_error_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "observed_count"
           },
           {
             "kind": "struct",
             "name": "BootReports"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -3256,8 +3288,8 @@
             "name": "BoardProfileReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3276,8 +3308,8 @@
             "name": "BoardPackageReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3296,8 +3328,8 @@
             "name": "ManifestReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3312,20 +3344,20 @@
             "name": "status"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_module_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_capability_label"
           },
           {
             "kind": "struct",
             "name": "AdapterCompatibilityReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3340,20 +3372,20 @@
             "name": "status"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_module_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error_capability_label"
           },
           {
             "kind": "struct",
             "name": "AiModelReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3372,8 +3404,8 @@
             "name": "RosBridgeReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3392,8 +3424,8 @@
             "name": "AdmissionReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3412,8 +3444,8 @@
             "name": "RuntimeReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3424,8 +3456,8 @@
             "name": "next_alarm_due_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "state_label"
           },
           {
             "kind": "fn",
@@ -3444,28 +3476,28 @@
             "name": "EventLogReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
             "name": "latest_at_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_severity_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_kind_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_payload_kind_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_module_label"
           },
           {
             "kind": "fn",
@@ -3484,20 +3516,20 @@
             "name": "ModuleRuntimeReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
             "name": "latest_change_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_state_label"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "latest_module_label"
           },
           {
             "kind": "fn",
@@ -3516,8 +3548,8 @@
             "name": "DegradeApplicationReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3528,8 +3560,8 @@
             "name": "applied_at_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "reason_label"
           },
           {
             "kind": "fn",
@@ -3552,8 +3584,8 @@
             "name": "VERSION"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3564,8 +3596,8 @@
             "name": "last_seen_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "module_label"
           },
           {
             "kind": "fn",
@@ -3611,8 +3643,8 @@
             "name": "ImuHealthReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -3631,8 +3663,8 @@
             "name": "ImuCalibration"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "valid"
           },
           {
             "kind": "struct",
@@ -3703,20 +3735,20 @@
             "name": "COMPOSITE"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "bits"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "contains"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "union"
           },
           {
             "kind": "struct",
@@ -3837,8 +3869,8 @@
             "name": "RunningStats"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -3865,8 +3897,8 @@
             "name": "Ewma"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4004,8 +4036,8 @@
             "name": "RoutingTable"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4044,8 +4076,8 @@
             "name": "Aggregator"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4060,8 +4092,8 @@
             "name": "SeenSet"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4072,8 +4104,8 @@
             "name": "PrioQueue"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4100,8 +4132,8 @@
             "name": "LinkMonitor"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4252,16 +4284,16 @@
             "name": "FleetOtaNode"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_active"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_eligible"
           },
           {
             "kind": "struct",
@@ -4280,20 +4312,20 @@
             "name": "FleetOtaWave"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
             "kind": "struct",
             "name": "FleetOtaOrchestrator"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4352,8 +4384,8 @@
             "name": "StoreForward"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4372,8 +4404,8 @@
             "name": "NetworkFormation"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4483,28 +4515,32 @@
             "name": "NobroNativeQuantizedDenseI8"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "CmsisNnQuantizedDenseI8"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "VendorQuantizedDenseI8"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
             "name": "quantized_dense_i8_with_fallback"
+          },
+          {
+            "kind": "fn",
+            "name": "cmsis_requantize"
           },
           {
             "kind": "fn",
@@ -4552,7 +4588,7 @@
           }
         ],
         "path": "core/crates/nobro_nn/src/lib.rs",
-        "sha256": "132bc87ab15ab53886975ed9ecfd85bb82ba85c9901f1951137998b27523d51f"
+        "sha256": "f632c8963381c82598de48bb1985094d0ccb1921c236a9cb528e4743da16e2c3"
       },
       {
         "crate": "nobro-power",
@@ -4578,12 +4614,12 @@
             "name": "PowerMonitorBackend"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "depth"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "shallower"
           },
           {
             "kind": "enum",
@@ -4594,24 +4630,24 @@
             "name": "PowerVetoMask"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "from_reason"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "contains"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "union"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "bits"
           },
           {
             "kind": "enum",
@@ -4630,8 +4666,8 @@
             "name": "PowerLeaseTable"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4658,24 +4694,24 @@
             "name": "SystemOffWakeError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "source"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "style"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "ram_retained"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "peripherals_retained"
           },
           {
             "kind": "struct",
@@ -4706,8 +4742,8 @@
             "name": "PowerManager"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4730,8 +4766,8 @@
             "name": "EnergyLedger"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4754,8 +4790,12 @@
             "name": "ExecutorPower"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "init_in_place"
           },
           {
             "kind": "fn",
@@ -4790,12 +4830,12 @@
             "name": "apply_idle_release"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "ledger"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "manager"
           },
           {
             "kind": "fn",
@@ -4810,8 +4850,8 @@
             "name": "DutyScheduler"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4853,32 +4893,32 @@
             "name": "AdapterDescriptor"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "from_module_spec"
           },
           {
             "kind": "enum",
             "name": "AdapterSetError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "code"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "module"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capability_bits"
           },
           {
             "kind": "struct",
             "name": "AdapterCompatibilityReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -4897,8 +4937,8 @@
             "name": "AdapterSet"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4945,16 +4985,16 @@
             "name": "is_empty"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capacity"
           },
           {
             "kind": "struct",
             "name": "AdapterPreflight"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -4969,12 +5009,12 @@
             "name": "compatibility_report"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "first_error"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "adapters"
           },
           {
             "kind": "fn",
@@ -5029,8 +5069,8 @@
             "name": "RosTopicContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5041,8 +5081,8 @@
             "name": "RosServiceContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5053,8 +5093,8 @@
             "name": "RosActionContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5065,16 +5105,16 @@
             "name": "RosParameterContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "RosBridgeContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5105,12 +5145,12 @@
             "name": "RosBridgePreflight"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "passing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "has_error"
           },
           {
             "kind": "fn",
@@ -5133,8 +5173,8 @@
             "name": "RosBridgeContractReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -5169,32 +5209,32 @@
             "name": "AiRuntimeState"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "AiRouteDecision"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "AiRoutePolicy"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
             "name": "decide"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "effective_stale_after_us"
           },
           {
             "kind": "enum",
@@ -5205,8 +5245,8 @@
             "name": "ModelRegistry"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5233,20 +5273,20 @@
             "name": "AiModelContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_stale_after_us"
           },
           {
             "kind": "struct",
             "name": "AiModelContractReport"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "zeroed"
           },
           {
             "kind": "fn",
@@ -5269,24 +5309,24 @@
             "name": "AiInferenceRequest"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_flags"
           },
           {
             "kind": "struct",
             "name": "AiInferenceResult"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_flags"
           },
           {
             "kind": "const",
@@ -5333,40 +5373,40 @@
             "name": "AiInvocationLimits"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "with_max_stale_us"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "allow_stale_snapshot"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "allow_degraded_fallback"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "allow_unavailable"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "allow_endpoint_circuit_open"
           },
           {
             "kind": "struct",
             "name": "AiInvocationPreflight"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "passing"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "has_error"
           },
           {
             "kind": "fn",
@@ -5400,8 +5440,8 @@
             "name": "KeyStore"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5420,8 +5460,8 @@
             "name": "RollbackGuard"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5468,8 +5508,8 @@
             "name": "ConfigStore"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
             "kind": "fn",
@@ -5492,8 +5532,8 @@
             "name": "OtaError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5528,8 +5568,8 @@
             "name": "BootVectorPolicy"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "cortex_m"
           },
           {
             "kind": "struct",
@@ -5544,8 +5584,8 @@
             "name": "SecureBoot"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5615,8 +5655,8 @@
             "name": "SensorHealth"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5635,8 +5675,8 @@
             "name": "Calibration"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5671,8 +5711,8 @@
             "name": "AdcDmaConfig"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "struct",
@@ -5683,8 +5723,8 @@
             "name": "AdcDmaBackend"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -5706,12 +5746,12 @@
             "name": "ServiceInstanceId"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "get"
           },
           {
             "kind": "enum",
@@ -5750,8 +5790,8 @@
             "name": "UsbHostMountError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error"
           },
           {
             "kind": "fn",
@@ -5790,12 +5830,12 @@
             "name": "ParsedCommand"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "len"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
             "kind": "fn",
@@ -5825,20 +5865,20 @@
             "name": "ServoCommand"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
             "name": "ServoBounds"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "accepts"
           },
           {
             "kind": "trait",
@@ -5901,20 +5941,20 @@
             "name": "PwmConfig"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "max_duty"
           },
           {
             "kind": "struct",
             "name": "PulseSymbol"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_valid"
           },
           {
             "kind": "trait",
@@ -5948,8 +5988,8 @@
             "name": "BlobStore"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capacity"
           },
           {
             "kind": "fn",
@@ -5964,8 +6004,8 @@
             "name": "replace"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "generation"
           },
           {
             "kind": "fn",
@@ -5980,8 +6020,8 @@
             "name": "FileSystemMountError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error"
           },
           {
             "kind": "fn",
@@ -6000,8 +6040,8 @@
             "name": "AtomicFileSystem"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "image_bytes"
           },
           {
             "kind": "fn",
@@ -6028,8 +6068,8 @@
             "name": "file_count"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "generation"
           },
           {
             "kind": "fn",
@@ -6048,8 +6088,8 @@
             "name": "put"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "active_page"
           },
           {
             "kind": "fn",
@@ -6061,7 +6101,52 @@
       },
       {
         "crate": "nobro-tierc",
-        "exports": [],
+        "exports": [
+          {
+            "kind": "fn",
+            "name": "nobro_task"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_task_with"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_wire"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_run"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_poll"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_skipped_releases"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_last_step_error"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_now_us"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_i2c_write"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_i2c_write_read"
+          },
+          {
+            "kind": "fn",
+            "name": "nobro_publish_imu"
+          }
+        ],
         "path": "core/crates/nobro_tierc/src/lib.rs",
         "sha256": "93e6caa9f28a52c430933ba852539520256aea2a4cf6bdf9359a548056a765ef"
       },
@@ -6097,8 +6182,8 @@
             "name": "UsbConfig"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "enum",
@@ -6125,16 +6210,16 @@
             "name": "UsbMountError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "identity_policy"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "identity_policy"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "identity_policy"
           },
           {
             "kind": "fn",
@@ -6153,8 +6238,8 @@
             "name": "RA_USBFS"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capabilities"
           },
           {
             "kind": "trait",
@@ -6268,8 +6353,8 @@
             "name": "Packet"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -6280,28 +6365,28 @@
             "name": "as_slice"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "len"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
             "kind": "struct",
             "name": "TxContract"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "by"
           },
           {
             "kind": "struct",
             "name": "LinkBudget"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
@@ -6316,8 +6401,8 @@
             "name": "ManagedLink"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -6336,8 +6421,8 @@
             "name": "recover"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -6360,12 +6445,12 @@
             "name": "StackInstanceId"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "get"
           },
           {
             "kind": "enum",
@@ -6392,8 +6477,8 @@
             "name": "StackMountError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error"
           },
           {
             "kind": "fn",
@@ -6408,20 +6493,20 @@
             "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "ssid"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "secret"
           },
           {
             "kind": "struct",
             "name": "WifiNetwork"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
             "kind": "fn",
@@ -6492,8 +6577,8 @@
             "name": "BleEvent"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
             "kind": "fn",
@@ -6508,8 +6593,8 @@
             "name": "BleEventQueue"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -6520,12 +6605,12 @@
             "name": "pop"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "len"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
             "kind": "trait",
@@ -6616,12 +6701,12 @@
             "name": "NetworkInstanceId"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "get"
           },
           {
             "kind": "struct",
@@ -6640,8 +6725,8 @@
             "name": "NetworkMountError"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "error"
           },
           {
             "kind": "fn",
@@ -6656,8 +6741,8 @@
             "name": "mount"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "capabilities"
           },
           {
             "kind": "fn",
@@ -6732,8 +6817,8 @@
             "name": "RfidUid"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "empty"
           },
           {
             "kind": "fn",
@@ -6744,12 +6829,12 @@
             "name": "as_slice"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "len"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "is_empty"
           },
           {
             "kind": "enum",
@@ -6760,8 +6845,8 @@
             "name": "Mfrc522"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -7013,8 +7098,8 @@
             "name": "BACKEND_ID"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "workload"
           },
           {
             "kind": "enum",
@@ -7033,24 +7118,24 @@
             "name": "Esp32s3Es8311"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "backend_id"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admission_price"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admitted_transfers_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -7101,6 +7186,10 @@
           {
             "kind": "struct",
             "name": "NobroSpiDevice"
+          },
+          {
+            "kind": "fn",
+            "name": "new"
           }
         ],
         "path": "core/adapters/bus/embedded-hal-spi/src/lib.rs",
@@ -7122,12 +7211,12 @@
             "name": "NiusCamBackend"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "transport"
           },
           {
             "kind": "fn",
@@ -7157,12 +7246,12 @@
             "name": "NiusDisplayAdapter"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "backend_id"
           },
           {
             "kind": "fn",
@@ -7259,36 +7348,36 @@
             "name": "mount"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "last_temp_centi_c"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "last_gyro_mag_mdps"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "addr"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "who_am_i"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "bmp280_present"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "owner"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "interrupt_present"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "transport_diagnostics"
           },
           {
             "kind": "fn",
@@ -7315,8 +7404,8 @@
             "name": "NrfLease"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "type",
@@ -7417,8 +7506,8 @@
             "name": "RosImuBridge"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "fn",
@@ -7503,8 +7592,8 @@
             "name": "BACKEND_ID"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "workload"
           },
           {
             "kind": "enum",
@@ -7523,20 +7612,20 @@
             "name": "Esp32AdcContinuous"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admission_price"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admitted_reads_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -7554,8 +7643,8 @@
             "name": "BACKEND_ID"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "workload"
           },
           {
             "kind": "trait",
@@ -7566,28 +7655,28 @@
             "name": "Esp32Ledc"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admission_price"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admitted_writes_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "writes"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "transport_errors"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "recoveries"
           }
         ],
         "path": "core/adapters/servo/esp32-ledc/src/lib.rs",
@@ -7601,8 +7690,8 @@
             "name": "BACKEND_ID"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "workload"
           },
           {
             "kind": "enum",
@@ -7617,20 +7706,20 @@
             "name": "Esp32Rmt"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admission_price"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "admitted_transmissions_per_second"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           }
         ],
         "path": "core/adapters/servo/esp32-rmt/src/lib.rs",
@@ -7650,6 +7739,10 @@
           {
             "kind": "fn",
             "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "attach_50hz"
           },
           {
             "kind": "fn",
@@ -7679,8 +7772,8 @@
             "name": "DEFAULT"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
             "kind": "struct",
@@ -7797,12 +7890,12 @@
             "name": "ArduinoBle"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -7832,12 +7925,12 @@
             "name": "VendorHost"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "vendor_host"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "descriptor"
           }
         ],
         "path": "core/adapters/wireless/ble/arduino-esp/src/lib.rs",
@@ -7855,8 +7948,8 @@
             "name": "WIFI_TCP_MTU"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "descriptor"
           },
           {
             "kind": "fn",
@@ -7890,16 +7983,16 @@
             "name": "AsyncWifiLifecycle"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "state"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",
@@ -7965,12 +8058,12 @@
             "name": "ArduinoWifiS3"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "new"
           },
           {
-            "kind": "const",
-            "name": "fn"
+            "kind": "fn",
+            "name": "diagnostics"
           },
           {
             "kind": "fn",

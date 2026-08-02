@@ -19,8 +19,15 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESTINATION = ROOT / "sdk" / "api-contract.json"
-RUST_PUBLIC = re.compile(
-    r"^\s*pub(?:\s*\([^)]*\))?\s+(fn|struct|enum|trait|type|const|static)\s+"
+RUST_PUBLIC_FN = re.compile(
+    r"^\s*pub(?:\s*\([^)]*\))?\s+"
+    r"(?:(?:const|async|unsafe)\s+)*(?:extern\s+\"[^\"]+\"\s+)?fn\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)",
+    re.MULTILINE,
+)
+RUST_PUBLIC_ITEM = re.compile(
+    r"^\s*pub(?:\s*\([^)]*\))?\s+"
+    r"(struct|enum|trait|type|const|static)\s+(?!fn\b)"
     r"([A-Za-z_][A-Za-z0-9_]*)",
     re.MULTILINE,
 )
@@ -29,6 +36,9 @@ CPP_NAMED = re.compile(
 )
 C_TYPEDEF = re.compile(
     r"(?:}\s*|typedef\s+[^;{}\n]+\s+)([A-Za-z_][A-Za-z0-9_]*)\s*;"
+)
+C_FUNC_PTR_TYPEDEF = re.compile(
+    r"typedef\s+[^;{}]*\(\s*\*([A-Za-z_][A-Za-z0-9_]*)\s*\)[^;]*;"
 )
 C_MACRO = re.compile(r"^\s*#define\s+(NOBRO_[A-Za-z0-9_]+)\b", re.MULTILINE)
 GENERATED_BANNER = re.compile(
@@ -74,12 +84,46 @@ def c_declarations(path: Path) -> list[str]:
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
     text = re.sub(r"//[^\n]*", " ", text)
     text = re.sub(r"^\s*#.*$", " ", text, flags=re.MULTILINE)
+    text = re.sub(r'\bextern\s+"C"\s*\{', " ", text)
     declarations = []
-    for statement in text.split(";")[:-1]:
-        normalized = " ".join(statement.split())
-        if "(" in normalized and ")" in normalized:
-            declarations.append(normalized + ";")
+    start = 0
+    index = 0
+    while index < len(text):
+        if text[index] == "{":
+            prefix = text[start:index]
+            if "(" in prefix and ")" in prefix:
+                normalized = " ".join(prefix.split())
+                declarations.append(normalized + ";")
+                depth = 1
+                index += 1
+                while index < len(text) and depth:
+                    if text[index] == "{":
+                        depth += 1
+                    elif text[index] == "}":
+                        depth -= 1
+                    index += 1
+                start = index
+                continue
+        elif text[index] == ";":
+            statement = text[start:index]
+            normalized = " ".join(statement.split())
+            if "(" in normalized and ")" in normalized:
+                declarations.append(normalized + ";")
+            start = index + 1
+        index += 1
     return sorted(set(declarations))
+
+
+def rust_exports(text: str) -> list[dict[str, str]]:
+    found = [
+        (match.start(), {"kind": "fn", "name": match.group(1)})
+        for match in RUST_PUBLIC_FN.finditer(text)
+    ]
+    found.extend(
+        (match.start(), {"kind": match.group(1), "name": match.group(2)})
+        for match in RUST_PUBLIC_ITEM.finditer(text)
+    )
+    return [record for _, record in sorted(found, key=lambda item: item[0])]
 
 
 def header_records(paths: list[Path], language: str) -> list[dict[str, object]]:
@@ -92,8 +136,11 @@ def header_records(paths: list[Path], language: str) -> list[dict[str, object]]:
         if language == "c":
             record["declarations"] = c_declarations(path)
             text = path.read_text(encoding="utf-8")
-            record["named_types"] = sorted(set(C_TYPEDEF.findall(text)))
-            record["macros"] = sorted(set(C_MACRO.findall(text)))
+            macros = set(C_MACRO.findall(text))
+            named_types = set(C_TYPEDEF.findall(text))
+            named_types.update(C_FUNC_PTR_TYPEDEF.findall(text))
+            record["named_types"] = sorted(named_types - macros)
+            record["macros"] = sorted(macros)
         else:
             record["named_types"] = sorted(
                 set(CPP_NAMED.findall(path.read_text(encoding="utf-8")))
@@ -139,10 +186,7 @@ def rust_records() -> list[dict[str, object]]:
                 "crate": cargo_name(lib),
                 "path": relative(lib),
                 "sha256": digest(lib),
-                "exports": [
-                    {"kind": kind, "name": name}
-                    for kind, name in RUST_PUBLIC.findall(text)
-                ],
+                "exports": rust_exports(text),
             }
         )
     return records

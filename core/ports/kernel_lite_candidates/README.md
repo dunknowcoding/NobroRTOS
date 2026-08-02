@@ -30,8 +30,8 @@ Run metadata-only validation everywhere:
 python tools/checks/platforms/check_kernel_lite_candidates.py
 ```
 
-`--open-source` requires SDCC, Arm GCC, Icarus Verilog, and VVP on `PATH` (or
-their `NOBRO_*` executable variables). `--local-full` additionally requires exact
-RISC-V, MSP430, Microchip XC/DFP, TI C2000, and optional IAR 8051 paths through
-the named environment variables. Toolchains and generated artifacts stay outside
-the repository.
+The current gate is deliberately metadata/source validation only; it exposes no
+`--open-source` or `--local-full` modes. Exact candidate compilation is recorded by
+the compile campaign that owns the relevant toolchain. The Q4/Q2 AI admission gate
+also accepts `--require-sdcc` for the exact 8051 C99 witness. Toolchains and generated
+artifacts stay outside the repository.

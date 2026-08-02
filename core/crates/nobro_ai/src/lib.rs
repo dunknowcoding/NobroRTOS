@@ -43,6 +43,62 @@ pub struct ModelManifest {
 
 pub const MODEL_MAGIC: u32 = 0x4E42_4D4C; // "NBML"
 
+/// Packed dense formats shared by the host exporter and `nobro_nn`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackedWeightFormat {
+    /// Signed symmetric 4-bit values in the range -7..=7.
+    Q4,
+    /// Signed symmetric 2-bit values in the range -1..=1.
+    Q2,
+}
+
+impl PackedWeightFormat {
+    pub const fn bits(self) -> u8 {
+        match self {
+            Self::Q4 => 4,
+            Self::Q2 => 2,
+        }
+    }
+
+    pub const fn values_per_byte(self) -> usize {
+        8 / self.bits() as usize
+    }
+
+    #[allow(clippy::manual_div_ceil)] // Keep older embedded compiler compatibility.
+    pub const fn row_bytes(self, columns: usize) -> usize {
+        let lanes = self.values_per_byte();
+        (columns + lanes - 1) / lanes
+    }
+}
+
+/// Stable manifest for a row-byte-aligned Q4/Q2 dense weight blob.
+///
+/// Scales use micro-units. Bias values are separate signed 32-bit accumulator
+/// values and therefore are not included in `weights_len` or `weights_crc`.
+#[derive(Clone, Copy, Debug)]
+pub struct PackedDenseManifest {
+    pub magic: u32,
+    pub name: &'static str,
+    pub version: u16,
+    pub layout_version: u16,
+    pub input_len: u16,
+    pub output_len: u16,
+    pub format: PackedWeightFormat,
+    pub input_scale_micros: u32,
+    pub weight_scale_micros: u32,
+    pub output_scale_micros: u32,
+    pub input_offset: i16,
+    pub output_offset: i16,
+    pub multiplier: i32,
+    pub shift: i8,
+    pub activation_min: i8,
+    pub activation_max: i8,
+    pub weights_crc: u32,
+    pub weights_len: u32,
+}
+
+pub const PACKED_DENSE_LAYOUT_VERSION: u16 = 1;
+
 /// FNV-1a checksum (shared with the exporter).
 pub fn fnv1a(bytes: &[u8]) -> u32 {
     let mut h: u32 = 0x811C_9DC5;
@@ -59,6 +115,46 @@ pub enum DeployError {
     EmptyShape,
     LengthMismatch,
     ChecksumMismatch,
+    BadLayoutVersion,
+    InvalidQuantization,
+}
+
+impl PackedDenseManifest {
+    /// Validate shape, exact stable packed length, scale and checksum before bind.
+    pub fn validate(&self, weights: &[u8]) -> Result<(), DeployError> {
+        if self.magic != MODEL_MAGIC {
+            return Err(DeployError::BadMagic);
+        }
+        if self.layout_version != PACKED_DENSE_LAYOUT_VERSION {
+            return Err(DeployError::BadLayoutVersion);
+        }
+        if self.input_len == 0 || self.output_len == 0 {
+            return Err(DeployError::EmptyShape);
+        }
+        if self.input_scale_micros == 0
+            || self.weight_scale_micros == 0
+            || self.output_scale_micros == 0
+            || !(-127..=128).contains(&self.input_offset)
+            || !(-127..=128).contains(&self.output_offset)
+            || self.multiplier <= 0
+            || !(-31..=30).contains(&self.shift)
+            || self.activation_min > self.activation_max
+        {
+            return Err(DeployError::InvalidQuantization);
+        }
+        let expected = self
+            .format
+            .row_bytes(usize::from(self.input_len))
+            .checked_mul(usize::from(self.output_len))
+            .ok_or(DeployError::LengthMismatch)?;
+        if weights.len() != expected || weights.len() != self.weights_len as usize {
+            return Err(DeployError::LengthMismatch);
+        }
+        if fnv1a(weights) != self.weights_crc {
+            return Err(DeployError::ChecksumMismatch);
+        }
+        Ok(())
+    }
 }
 
 impl ModelManifest {
@@ -265,6 +361,45 @@ mod tests {
         let m = manifest(&[0]);
         let v = m.dequant(100); // 100 * 0.039
         assert!((v - 3.9).abs() < 1e-4);
+    }
+
+    #[test]
+    fn packed_manifest_enforces_layout_scale_length_and_checksum() {
+        let weights = [0xf9_u8, 0x00, 0x71, 0x01];
+        let manifest = PackedDenseManifest {
+            magic: MODEL_MAGIC,
+            name: "tiny-q4",
+            version: 1,
+            layout_version: PACKED_DENSE_LAYOUT_VERSION,
+            input_len: 3,
+            output_len: 2,
+            format: PackedWeightFormat::Q4,
+            input_scale_micros: 1_000_000,
+            weight_scale_micros: 125_000,
+            output_scale_micros: 125_000,
+            input_offset: 0,
+            output_offset: 0,
+            multiplier: 1 << 30,
+            shift: 1,
+            activation_min: i8::MIN,
+            activation_max: i8::MAX,
+            weights_crc: fnv1a(&weights),
+            weights_len: weights.len() as u32,
+        };
+        assert_eq!(manifest.validate(&weights), Ok(()));
+        let mut bad = manifest;
+        bad.layout_version += 1;
+        assert_eq!(bad.validate(&weights), Err(DeployError::BadLayoutVersion));
+        bad = manifest;
+        bad.weight_scale_micros = 0;
+        assert_eq!(
+            bad.validate(&weights),
+            Err(DeployError::InvalidQuantization)
+        );
+        assert_eq!(
+            manifest.validate(&weights[..3]),
+            Err(DeployError::LengthMismatch)
+        );
     }
 
     #[test]

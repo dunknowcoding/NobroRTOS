@@ -1,0 +1,96 @@
+{
+  "schema": "nobro-ai-admission-profiles-v1",
+  "policy": {
+    "raw_measurements": "private",
+    "timing": "deployment must prove measured worst-case cycles fit its configured deadline",
+    "failure": "reject unsupported format, shape, memory reservation, or timing admission before inference",
+    "packing": "signed symmetric Q4/Q2; row-byte-aligned; low lane first; zero high padding"
+  },
+  "profiles": [
+    {
+      "mcu": "mcs51-kernel-lite",
+      "support": "feasibility-only-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 2048, "reserved_static_ram_bytes": 96, "stack_bytes": 48, "scratch_bytes": 0, "model_bytes": 512, "input_values": 16, "output_values": 4, "macs": 64, "weight_alignment": 1},
+      "model_storage": "code memory through caller-supplied byte reader",
+      "unsupported": ["Rust runtime", "dynamic shapes", "heap", "SIMD", "implicit external-memory spill", "unadmitted recurrent or convolution operators"]
+    },
+    {
+      "mcu": "atmega328p",
+      "support": "arduino-composition-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 3072, "reserved_static_ram_bytes": 384, "stack_bytes": 192, "scratch_bytes": 0, "model_bytes": 1024, "input_values": 64, "output_values": 8, "macs": 512, "weight_alignment": 1},
+      "unsupported": ["SIMD", "implicit heap", "unadmitted recurrent or convolution operators"]
+    },
+    {
+      "mcu": "samd21",
+      "support": "rust-or-arduino-composition",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 8192, "reserved_static_ram_bytes": 2048, "stack_bytes": 512, "scratch_bytes": 0, "model_bytes": 8192, "input_values": 256, "output_values": 32, "macs": 8192, "weight_alignment": 1},
+      "unsupported": ["hardware SIMD", "implicit heap", "shape mutation after admission"]
+    },
+    {
+      "mcu": "ra4m1",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 16384, "reserved_static_ram_bytes": 4096, "stack_bytes": 1024, "scratch_bytes": 0, "model_bytes": 32768, "input_values": 512, "output_values": 64, "macs": 32768, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "nrf52840",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 16384, "reserved_static_ram_bytes": 8192, "stack_bytes": 1024, "scratch_bytes": 0, "model_bytes": 49152, "input_values": 1024, "output_values": 128, "macs": 65536, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "rp2040",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 16384, "reserved_static_ram_bytes": 8192, "stack_bytes": 1024, "scratch_bytes": 0, "model_bytes": 32768, "input_values": 1024, "output_values": 128, "macs": 65536, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "cross-core mutable model ownership", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "rp2350",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 24576, "reserved_static_ram_bytes": 12288, "stack_bytes": 1536, "scratch_bytes": 0, "model_bytes": 65536, "input_values": 2048, "output_values": 256, "macs": 262144, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "cross-core mutable model ownership", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "esp8266",
+      "support": "arduino-composition-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 24576, "reserved_static_ram_bytes": 8192, "stack_bytes": 1024, "scratch_bytes": 0, "model_bytes": 32768, "input_values": 1024, "output_values": 128, "macs": 65536, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "esp32",
+      "support": "maintained-rust-or-arduino-composition",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 32768, "reserved_static_ram_bytes": 12288, "stack_bytes": 2048, "scratch_bytes": 0, "model_bytes": 65536, "input_values": 2048, "output_values": 256, "macs": 262144, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "cross-core mutable model ownership", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "esp32c3",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 32768, "reserved_static_ram_bytes": 12288, "stack_bytes": 2048, "scratch_bytes": 0, "model_bytes": 65536, "input_values": 2048, "output_values": 256, "macs": 262144, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "esp32s3",
+      "support": "arduino-composition-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 32768, "reserved_static_ram_bytes": 12288, "stack_bytes": 2048, "scratch_bytes": 0, "model_bytes": 65536, "input_values": 2048, "output_values": 256, "macs": 262144, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "cross-core mutable model ownership", "accelerator use without scalar equivalence"]
+    },
+    {
+      "mcu": "esp32p4",
+      "support": "maintained-rust-or-c99",
+      "formats": ["q4", "q2"],
+      "limits": {"reserved_flash_bytes": 49152, "reserved_static_ram_bytes": 24576, "stack_bytes": 4096, "scratch_bytes": 0, "model_bytes": 131072, "input_values": 4096, "output_values": 512, "macs": 1048576, "weight_alignment": 1},
+      "unsupported": ["implicit heap", "cross-core mutable model ownership", "accelerator use without scalar equivalence"]
+    }
+  ]
+}

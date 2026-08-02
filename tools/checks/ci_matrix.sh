@@ -259,6 +259,7 @@ gate "Tier-C prebuilt library and link" \
 
 gate "board profiles" python tools/checks/platforms/check_board_profiles.py
 gate "complete compile campaign" python tools/checks/platforms/check_compile_campaign.py
+gate "AI admission profiles" python tools/checks/platforms/check_ai_profiles.py
 gate "market board intake" python tools/checks/platforms/check_market_board_intake.py --selftest
 gate "board-owned portable firmware generation" \
   python tools/checks/platforms/check_firmware_generation.py

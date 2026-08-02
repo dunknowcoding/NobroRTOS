@@ -2,8 +2,10 @@
 //!
 //! Every block is `no_std`, heap-free, and shape-explicit: the caller owns all buffers
 //! and the scalar math is auditable, portable, and deterministic. Requantized int8
-//! dense inference may select a board-supplied CMSIS-NN backend; every call returns
-//! an honest executed-backend/fallback receipt. Training,
+//! dense inference may select a board-supplied CMSIS-NN backend. Native Q4/Q2 dense
+//! inference uses a stable row-byte-aligned layout, checked accumulation, and scalar,
+//! Nobro byte-lane, CMSIS-NN, or vendor backends. Every selectable path returns an
+//! honest executed-backend/fallback receipt. Training,
 //! word-embedding preparation, and evaluation belong on the host (bindings/python),
 //! which exports flat weight arrays these blocks execute; quantization helpers live in
 //! `nobro_ml`.
@@ -16,6 +18,10 @@
 //! kernels) that firmware executes. Quantization utilities live in `nobro_ml`;
 //! model manifests/cloud governance in `nobro_ai`.
 #![cfg_attr(not(test), no_std)]
+
+mod packed;
+
+pub use packed::*;
 
 // ------------------------------------------------------------------ scalar math
 
@@ -419,7 +425,7 @@ fn scalar_quantized_dense_i8(
     }
 }
 
-fn cmsis_requantize(value: i32, multiplier: i32, shift: i32) -> i32 {
+pub(crate) fn cmsis_requantize(value: i32, multiplier: i32, shift: i32) -> i32 {
     let left_shift = shift.max(0) as u32;
     let right_shift = (-shift).max(0) as u32;
     let shifted = value.wrapping_mul(1_i32 << left_shift);

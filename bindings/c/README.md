@@ -98,6 +98,13 @@ ROS preflight checks topic payloads, service/action response capacity, queue
 depth, parameter value size, and timeout budget before a ROS agent or transport
 is contacted.
 
+For bounded local inference, `nobro_nn_packed.h` provides heap-free Q4 and Q2
+dense execution with the same stable row-aligned layout as the Rust core and
+Python exporter. Its byte-reader callback supports Harvard/code-memory targets;
+invalid shapes, packed lengths, quantization, and accumulator overflow fail before
+an output is accepted. Q4 is a promotion candidate after workload-specific gates;
+Q2 remains experimental and requires an explicit accuracy decision.
+
 ## Authoring a module in C
 
 `include/nobro_app.h` is a second, separate ABI for writing module **logic** in C

@@ -62,3 +62,10 @@ Native capability truth is separate from board facts. The versioned vocabulary,
 deep/constrained profiles, four-state declarations, and exact compiled witnesses
 live in [`hal_contract_v2.json`](hal_contract_v2.json) and are reconciled with
 `platform_tiers.json` by the HAL contract gate.
+
+`ai_profiles.json` is the public admission envelope for Q4/Q2 inference. It records
+reserved flash/RAM/stack/scratch, model bytes, maximum dense shape/MACs, alignment,
+and unsupported operations by MCU family. These are limits, not benchmark claims:
+each deployment must privately prove its worst-case cycles fit its configured
+deadline. Raw board measurements, model inputs, and comparison data are never part
+of this public registry.

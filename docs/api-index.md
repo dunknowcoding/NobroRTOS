@@ -143,9 +143,9 @@ Allocation-free admission shared by firmware build scripts and the kernel.
 
 ## `nobro-ai`
 AI deployment + cloud-API management for NobroRTOS.
-- **struct**: `ModelManifest`, `ApiKeyRef`, `CloudPolicy`, `CloudSession`
-- **enum**: `WeightFormat`, `DeployError`, `LinkState`, `LinkEvent`
-- **fn**: `fnv1a`, `validate`, `dequant`, `new`, `state`, `key`, `backoff_ms`, `on_event`, `tick`, `take_request`, `reset_budget`
+- **struct**: `ModelManifest`, `PackedDenseManifest`, `ApiKeyRef`, `CloudPolicy`, `CloudSession`
+- **enum**: `WeightFormat`, `PackedWeightFormat`, `DeployError`, `LinkState`, `LinkEvent`
+- **fn**: `fnv1a`, `validate`, `validate`, `dequant`, `new`, `state`, `key`, `backoff_ms`, `on_event`, `tick`, `take_request`, `reset_budget`
 
 ## `nobro-audio`
 Allocation-free audio contracts with explicit format, lifecycle, and backpressure.
@@ -233,7 +233,7 @@ Neural-network building blocks from scratch, scoped for MCUs (inference side).
 - **trait**: `QuantizedDenseI8Backend`
 - **struct**: `DenseI8Receipt`, `DenseI8Quantization`, `ScalarQuantizedDenseI8`, `NobroNativeQuantizedDenseI8`, `CmsisNnQuantizedDenseI8`, `VendorQuantizedDenseI8`, `LstmState`
 - **enum**: `DenseI8BackendId`, `DenseI8BackendError`, `DenseI8Fallback`
-- **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantized_dense_i8_with_fallback`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
+- **fn**: `exp_approx`, `sqrt_approx`, `relu`, `leaky_relu`, `sigmoid`, `tanh_approx`, `softmax`, `argmax`, `dense`, `dense_int8`, `quantized_dense_i8_with_fallback`, `cmsis_requantize`, `quantize_i8`, `sgd_update`, `log_approx`, `conv1d_valid`, `conv2d_valid`, `conv2d_valid_i8`, `avg_pool2d`, `rnn_step`, `step`, `attention`
 
 ## `nobro-power`
 No-heap power management policy: pick a sleep mode from activity + a deadline,

@@ -6,9 +6,12 @@ from nobro_rtos.nn_export import (
     dequantize_int8,
     evaluate,
     export_model,
+    export_packed_model,
     fnv1a,
     quantize_int8,
+    quantize_packed,
     train_dense,
+    unpack_packed,
 )
 
 
@@ -54,6 +57,22 @@ class TrainingTests(unittest.TestCase):
         wq, bq = deq[: len(w)], deq[len(w):]
         self.assertGreaterEqual(evaluate(samples, labels, wq, bq), 0.9)
 
+    def test_q4_candidate_and_q2_experimental_paths_are_evaluated(self):
+        samples, labels = self._xor_free_dataset()
+        weights, bias = train_dense(samples, labels, in_len=2, out_len=2, epochs=150)
+        q4 = export_packed_model("sign-net", 1, weights, bias, "q4")
+        q2 = export_packed_model("sign-net", 1, weights, bias, "q2")
+        self.assertGreaterEqual(
+            evaluate(samples, labels, q4.dequantized_weights(), q4.dequantized_bias()),
+            0.95,
+        )
+        # Q2 is exercised end to end but remains experimental; each workload must
+        # establish its own accuracy threshold before admission.
+        self.assertGreaterEqual(
+            evaluate(samples, labels, q2.dequantized_weights(), q2.dequantized_bias()),
+            0.75,
+        )
+
 
 class ExportTests(unittest.TestCase):
     def test_quantize_roundtrip_error_is_bounded(self):
@@ -72,6 +91,55 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(f["output_len"], 1)
         self.assertEqual(f["weights_len"], 3)  # 2 weights + 1 bias
         self.assertEqual(f["weights_crc"], fnv1a(model.weights))
+
+    def test_q4_and_q2_layout_matches_device_golden_vectors(self):
+        values = [-7.0, -1.0, 0.0, 1.0, 7.0, 1.0]
+        q4, _, _ = quantize_packed(values, 3, "q4")
+        self.assertEqual(q4, bytes([0xF9, 0x00, 0x71, 0x01]))
+        self.assertEqual(unpack_packed(q4, 2, 3, "q4"), [-7, -1, 0, 1, 7, 1])
+
+        q2, _, _ = quantize_packed([-1.0, 0.0, 1.0, -1.0, 1.0, 0.0], 3, "q2")
+        self.assertEqual(q2, bytes([0x13, 0x07]))
+        self.assertEqual(unpack_packed(q2, 2, 3, "q2"), [-1, 0, 1, -1, 1, 0])
+
+    def test_packed_export_has_stable_manifest_and_explicit_maturity(self):
+        q4 = export_packed_model("tiny", 2, [1.0, -0.5, 0.25], [0.125], "q4")
+        fields = q4.manifest_fields()
+        self.assertEqual(fields["layout_version"], 1)
+        self.assertEqual(fields["weights_len"], 2)
+        self.assertEqual(fields["weights_crc"], fnv1a(q4.packed_weights))
+        self.assertEqual(fields["maturity"], "candidate")
+        self.assertGreater(fields["input_scale_micros"], 0)
+        self.assertGreater(fields["weight_scale_micros"], 0)
+        self.assertGreater(fields["output_scale_micros"], 0)
+        self.assertGreater(fields["multiplier"], 0)
+        q2 = export_packed_model("tiny", 2, [1.0, -0.5, 0.25], [0.125], "q2")
+        self.assertEqual(q2.maturity, "experimental")
+
+    def test_packed_quantization_rejects_invalid_or_non_finite_input(self):
+        with self.assertRaises(ValueError):
+            quantize_packed([], 1, "q4")
+        with self.assertRaises(ValueError):
+            quantize_packed([float("nan")], 1, "q2")
+        with self.assertRaises(ValueError):
+            export_packed_model("bad", 1, [1.0, 2.0], [], "q4")
+
+    def test_packed_export_runs_the_same_integer_requantization_contract(self):
+        model = export_packed_model(
+            "two-way",
+            1,
+            [1.0, -1.0, -1.0, 1.0],
+            [0.0, 0.0],
+            "q4",
+            input_len=2,
+            input_scale=0.25,
+        )
+        raw, real = model.infer([0.5, -0.5])
+        self.assertEqual(raw, [28, -28])
+        self.assertAlmostEqual(real[0], 1.0, places=4)
+        self.assertAlmostEqual(real[1], -1.0, places=4)
+        with self.assertRaises(ValueError):
+            model.infer([0.5])
 
 
 if __name__ == "__main__":

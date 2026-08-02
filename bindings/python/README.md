@@ -366,6 +366,13 @@ bridge payload, response-capacity, queue-depth, parameter-size, and timeout
 bounds before a ROS agent or transport is contacted. The report samples print
 sealed fixed reports that can be fed directly into `decode-report`. The
 sensor sample emits deterministic fixture records and injected-fault summaries.
+
+For local packed inference, `export_packed_model(...)` emits deterministic Q4 or
+Q2 row-aligned weights, complete input/weight/output scale and fixed-point
+requantization metadata, bounded i32 bias, and a checksum accepted by `nobro_ai`.
+The returned model can run the same integer reference contract on the host before
+deployment. Q4 is a promotion candidate after workload-specific accuracy and target
+admission; Q2 remains experimental and must pass an explicit per-model accuracy gate.
 The actuator sample emits deterministic servo command records with deadline and
 readback summaries.
 The recovery sample emits a deterministic health-counter timeline for notify

@@ -75,6 +75,13 @@ from .reports import (
     ReportStatus,
     finalize_diagnostic_report,
 )
+from .nn_export import (
+    PACKED_DENSE_LAYOUT_VERSION,
+    PackedExportedModel,
+    export_packed_model,
+    quantize_packed,
+    unpack_packed,
+)
 from .templates import (
     ProjectMaterializationReport,
     ProjectRepairReport,
@@ -204,6 +211,11 @@ __all__ = [
     "ReportSlot",
     "ReportStatus",
     "finalize_diagnostic_report",
+    "PACKED_DENSE_LAYOUT_VERSION",
+    "PackedExportedModel",
+    "export_packed_model",
+    "quantize_packed",
+    "unpack_packed",
     "ProjectTarget",
     "ProjectTemplate",
     "ProjectMaterializationReport",

@@ -211,7 +211,9 @@ void loop() {}
 
 
 def run(command: list[str]) -> str:
-    completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    completed = subprocess.run(
+        command, cwd=ROOT, capture_output=True, text=True, timeout=900
+    )
     if completed.returncode:
         raise RuntimeError((completed.stdout + completed.stderr).strip())
     return completed.stdout + completed.stderr
@@ -572,7 +574,13 @@ def main() -> int:
                     f"flash={baseline[0]} ram={baseline[1]}; "
                     f"enabled={enabled[:2]}"
                 )
-    except (OSError, RuntimeError, ValueError, KeyError) as error:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        subprocess.TimeoutExpired,
+    ) as error:
         print(f"ARDUINO ESP BLE: FAIL ({error})")
         return 1
     print(
