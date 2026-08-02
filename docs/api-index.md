@@ -36,6 +36,12 @@ Allocation-free ownership bridge for NiusCam-class transports.
 - **struct**: `NiusCamBackend`
 - **fn**: `transport_mut`
 
+## `nobro-adapter-display-niusdisplay`
+- **trait**: `NiusDisplayTransport`
+- **struct**: `NiusDisplayAdapter`
+- **enum**: `TransportError`
+- **fn**: `into_inner`, `mount`
+
 ## `nobro-adapter-icm45686`
 ICM-45686 sensor adapter, generic over `embedded-hal` I2C.
 - **struct**: `Icm45686`
@@ -187,8 +193,8 @@ Extensible device-module framework for NobroRTOS.
 ## `nobro-display`
 Bounded display-provider contracts.
 - **trait**: `DisplayBackend`
-- **struct**: `DisplayLimits`, `Region`
-- **enum**: `PixelFormat`, `DisplayState`, `DisplayError`
+- **struct**: `FrameReceipt`, `DisplayLimits`, `Region`
+- **enum**: `PixelFormat`, `DisplayState`, `DisplayError`, `RenderBufferOwnership`, `FrameStatus`
 
 ## `nobro-hal`
 NobroRTOS hardware abstraction with portable traits and platform backends.

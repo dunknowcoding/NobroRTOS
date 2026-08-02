@@ -325,6 +325,17 @@
       ]
     },
     {
+      "source": "packages/arduino/src/NobroNiusDisplay.h",
+      "source_sha256": "5703ea03cf69c5c6e3225747255329d6b6c1e14f234eff4d0c730fa74d5da609",
+      "targets": [
+        {
+          "generated_banner": false,
+          "path": "packages/platformio/include/NobroNiusDisplay.h",
+          "sha256": "5703ea03cf69c5c6e3225747255329d6b6c1e14f234eff4d0c730fa74d5da609"
+        }
+      ]
+    },
+    {
       "source": "packages/arduino/src/NobroNiusIMU.h",
       "source_sha256": "3ac36e2e9c4eb1be4f9b71e0ccfb7f7d4b0aed88aede4417648ced360c75b67b",
       "targets": [
@@ -2579,6 +2590,10 @@
         "crate": "nobro-display",
         "exports": [
           {
+            "kind": "const",
+            "name": "DISPLAY_RECEIPT_VERSION"
+          },
+          {
             "kind": "enum",
             "name": "PixelFormat"
           },
@@ -2589,6 +2604,26 @@
           {
             "kind": "enum",
             "name": "DisplayError"
+          },
+          {
+            "kind": "enum",
+            "name": "RenderBufferOwnership"
+          },
+          {
+            "kind": "enum",
+            "name": "FrameStatus"
+          },
+          {
+            "kind": "struct",
+            "name": "FrameReceipt"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
           },
           {
             "kind": "struct",
@@ -2608,7 +2643,7 @@
           }
         ],
         "path": "core/crates/nobro_display/src/lib.rs",
-        "sha256": "439ce9b3b14874b40c62818efa861227c9a115ce04096eb2d06349a454d27cb6"
+        "sha256": "bcbab00792a0c1ad91c9f8347ab440d6fb80ecd0a8a88a670ada9b67e2eed69a"
       },
       {
         "crate": "nobro-hal",
@@ -6769,6 +6804,45 @@
         ],
         "path": "core/adapters/camera/niuscam/src/lib.rs",
         "sha256": "bf7bed50c5d8256b982afc3ac69f7e073844209cde87e53d20755e14e9e12f7b"
+      },
+      {
+        "crate": "nobro-adapter-display-niusdisplay",
+        "exports": [
+          {
+            "kind": "const",
+            "name": "BACKEND_ID"
+          },
+          {
+            "kind": "enum",
+            "name": "TransportError"
+          },
+          {
+            "kind": "trait",
+            "name": "NiusDisplayTransport"
+          },
+          {
+            "kind": "struct",
+            "name": "NiusDisplayAdapter"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "const",
+            "name": "fn"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          },
+          {
+            "kind": "fn",
+            "name": "mount"
+          }
+        ],
+        "path": "core/adapters/display/nius-display/src/lib.rs",
+        "sha256": "538b7be020d3416c78a4d9f4114d41557ee1b9ced53f6e9be3468c2e18214885"
       },
       {
         "crate": "nobro-adapter-icm45686",

@@ -89,6 +89,7 @@ members = [
     "apps/imu/udi_imu_demo",
     "apps/kernel/async_exec_demo",
     "adapters/audio/esp32s3-es8311",
+    "adapters/display/nius-display",
     "adapters/camera/niuscam",
     "adapters/sensors/esp32-adc-continuous",
     "adapters/servo/esp32-ledc",

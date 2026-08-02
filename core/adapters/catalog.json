@@ -176,6 +176,15 @@
       "clean": true
     },
     {
+      "id": "source-niusdisplay",
+      "source": "https://github.com/dunknowcoding/NiusDisplay",
+      "revision": "a9d005719d81456038fbad9d4b01a75272a8b77a",
+      "version": "0.2.0",
+      "license": "Apache-2.0",
+      "pinned": true,
+      "clean": true
+    },
+    {
       "id": "source-niuscam",
       "source": "https://github.com/dunknowcoding/NiusCam",
       "revision": "b03560adf4da07e4a16b4d9e658a01d74ccb9340",
@@ -311,6 +320,25 @@
       ],
       "limitations": [
         "NiusCam owns sensor and vendor camera transport details; Nobro owns the logical instance, bounded capture, lifecycle, deadline, and backpressure contract."
+      ]
+    },
+    {
+      "id": "adapter-display-niusdisplay",
+      "primary_domain": "display",
+      "name": "NiusDisplay bounded provider",
+      "kind": "adapter",
+      "path": "core/adapters/display/nius-display",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "portable"
+      ],
+      "limitations": [
+        "The portable provider and Arduino facade have behavior and target-build evidence; no exact physical panel is promoted."
       ]
     },
     {
@@ -1057,6 +1085,28 @@
       ]
     },
     {
+      "id": "library-niusdisplay",
+      "primary_domain": "display",
+      "name": "NiusDisplay",
+      "kind": "library",
+      "provenance_id": "source-niusdisplay",
+      "facade": "packages/arduino/src/NobroNiusDisplay.h",
+      "deployment": "firmware",
+      "maturity": "implemented",
+      "evidence": [
+        "host-test",
+        "target-build"
+      ],
+      "supported_targets": [
+        "arduino:avr:uno",
+        "portable-c99"
+      ],
+      "limitations": [
+        "Compile and simulation evidence do not establish physical panel support.",
+        "Controller and module inventories remain data-only in NiusDisplay."
+      ]
+    },
+    {
       "id": "library-niuscam",
       "primary_domain": "camera",
       "name": "NiusCam",
@@ -1467,7 +1517,10 @@
       "contract_ids": [
         "contract-display"
       ],
-      "component_ids": []
+      "component_ids": [
+        "adapter-display-niusdisplay",
+        "library-niusdisplay"
+      ]
     },
     {
       "id": "imu",
@@ -1594,20 +1647,8 @@
       "source": "https://github.com/dunknowcoding/NiusBurner",
       "status": "blocked",
       "limitations": [
-        "Current source is under development and has no public immutable revision.",
-        "Its build/programming boundary must remain distinct from NiusMultiDebuggers and must not publish machine-local toolchain paths.",
-        "No exact target has passed backup, program, verify, and restoration through this product."
-      ]
-    },
-    {
-      "id": "candidate-niusdisplay",
-      "name": "NiusDisplay",
-      "desired_domain": "display",
-      "source": "https://github.com/dunknowcoding/NiusDisplay",
-      "status": "blocked",
-      "limitations": [
-        "Current source is under development and has no public immutable revision.",
-        "Existing evidence is compile, simulation, or host behavior only; no exact display hardware is verified."
+        "No exact target has passed backup, program, verify, and restoration through this product.",
+        "Public revision e79d0aff5e5018db5cced5f68d9576562936d45b passes host packaging/delegation gates but has no versioned release."
       ]
     },
     {
@@ -1617,8 +1658,7 @@
       "source": "https://github.com/dunknowcoding/NiusDispVis",
       "status": "blocked",
       "limitations": [
-        "Current source is under development and has no public immutable revision.",
-        "Its host-model interface to NiusDisplay is not yet a versioned Nobro display receipt contract.",
+        "Public revision c2c2f22b0275c4e182ada15da5f019552d3535ec consumes the versioned display receipt and passes its host gate but has no versioned release.",
         "Simulation evidence must remain distinct from exact display hardware evidence."
       ]
     }

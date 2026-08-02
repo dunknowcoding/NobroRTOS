@@ -672,6 +672,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-adapter-display-niusdisplay"
+version = "0.3.3"
+dependencies = [
+ "nobro-display",
+]
+
+[[package]]
 name = "nobro-adapter-icm45686"
 version = "0.3.3"
 dependencies = [

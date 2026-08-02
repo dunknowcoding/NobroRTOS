@@ -5,6 +5,8 @@
 //! or a vendor display object.
 #![cfg_attr(not(test), no_std)]
 
+pub const DISPLAY_RECEIPT_VERSION: u8 = 1;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PixelFormat {
     Mono1,
@@ -33,6 +35,56 @@ pub enum DisplayError {
     DeadlineMiss,
     Cancelled,
     Transport,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderBufferOwnership {
+    /// The call finishes consuming the payload before `submit` returns.
+    ConsumedDuringSubmit,
+    /// The provider copies the accepted bytes into provider-owned bounded storage.
+    CopiedIntoProvider,
+    /// The caller retains the bytes until the matching receipt reaches a terminal state.
+    BorrowedUntilCompletion,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameStatus {
+    Queued,
+    Complete,
+    Cancelled,
+    DeadlineMiss,
+    TransportError,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameReceipt {
+    pub version: u8,
+    pub sequence: u32,
+    pub region: Region,
+    pub format: PixelFormat,
+    pub payload_bytes: u32,
+    pub payload_checksum: u32,
+    pub submitted_us: u64,
+    pub deadline_us: u64,
+    pub completed_us: u64,
+    pub status: FrameStatus,
+}
+
+impl FrameReceipt {
+    pub const fn is_terminal(self) -> bool {
+        !matches!(self.status, FrameStatus::Queued)
+    }
+
+    pub const fn is_valid(self, limits: DisplayLimits) -> bool {
+        self.version == DISPLAY_RECEIPT_VERSION
+            && self.sequence != 0
+            && self.region.is_valid(limits)
+            && self.format as u8 == limits.format as u8
+            && self.payload_bytes != 0
+            && self.payload_bytes <= limits.max_transfer_bytes
+            && (self.deadline_us == 0 || self.submitted_us <= self.deadline_us)
+            && (!self.is_terminal() || self.completed_us != 0)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +121,7 @@ pub trait DisplayBackend {
     fn state(&self) -> DisplayState;
     fn limits(&self) -> DisplayLimits;
     fn pending(&self) -> u8;
+    fn render_buffer_ownership(&self) -> RenderBufferOwnership;
     fn submit(
         &mut self,
         region: Region,
@@ -108,5 +161,39 @@ mod tests {
             height: 1,
         }
         .is_valid(limits));
+    }
+
+    #[test]
+    fn receipt_rejects_unknown_version_and_nonterminal_completion() {
+        let limits = DisplayLimits {
+            width: 10,
+            height: 10,
+            format: PixelFormat::Rgb565,
+            max_transfer_bytes: 200,
+            max_pending: 1,
+        };
+        let mut receipt = FrameReceipt {
+            version: DISPLAY_RECEIPT_VERSION,
+            sequence: 1,
+            region: Region {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            },
+            format: PixelFormat::Rgb565,
+            payload_bytes: 200,
+            payload_checksum: 0,
+            submitted_us: 1,
+            deadline_us: 2,
+            completed_us: 2,
+            status: FrameStatus::Complete,
+        };
+        assert!(receipt.is_valid(limits));
+        receipt.version = 2;
+        assert!(!receipt.is_valid(limits));
+        receipt.version = DISPLAY_RECEIPT_VERSION;
+        receipt.completed_us = 0;
+        assert!(!receipt.is_valid(limits));
     }
 }

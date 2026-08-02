@@ -16,6 +16,9 @@ Current contents:
 - `src/NobroNiusAudio.h` with a fixed-capacity ES8311 playback/capture queue,
   deadline accounting, backpressure, lifecycle, and recovery over the pinned
   NiusAudio library.
+- `src/NobroNiusDisplay.h` with a fixed-capacity, caller-owned RGB565 queue,
+  versioned frame receipts, deadline handling, cancellation, and lifecycle over
+  the pinned NiusDisplay library.
 - `src/NobroEsp32Peripherals.h` with bounded continuous ADC/DMA frames, LEDC
   duty output, and RMT pulse symbols. Each provider is optional and keeps
   lifecycle, deadline, recovery, and vendor-resource ownership visible.
@@ -126,6 +129,27 @@ board binding rather than hidden inside the portable contract. That binding
 is limited to the shown 16 kHz mono signed-16 format, 96-sample frames, two
 queue slots, and 100 capture/playback transfers per second; another shape
 requires its own evidence and price.
+
+## NiusDisplay composition
+
+Install NiusDisplay 0.2.0, initialize the exact panel normally, then mount the
+bounded facade:
+
+```cpp
+#include <NiusDisplay.h>
+#include <NobroNiusDisplay.h>
+
+NiusTFT panel(ND_MOD_ST7789_240X240_1IN3, 10, 9, 8);
+nobro::NiusDisplayAdapter<2> display(panel);
+```
+
+The two queue slots retain only frame metadata and caller-owned RGB565 pointers;
+the caller must keep each payload unchanged until its versioned receipt becomes
+terminal or is cancelled. `pump()` processes at most one bounded region and
+reports completion, deadline miss, or transport failure. NiusDisplay keeps the
+controller/module database and bus implementation; NobroRTOS does not generate
+one source adapter per panel model. This interface is implemented and
+target-built, but no physical display composition is promoted yet.
 
 ## ESP32 continuous ADC, LEDC, and RMT
 

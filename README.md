@@ -17,7 +17,7 @@
   <a href="https://github.com/dunknowcoding/NobroRTOS"><img alt="Repository" src="https://img.shields.io/badge/GitHub-dunknowcoding%2FNobroRTOS-111827?style=for-the-badge&logo=github"></a>
   <img alt="Language" src="https://img.shields.io/badge/core-Rust-b7410e?style=for-the-badge&logo=rust&logoColor=white">
   <img alt="Target" src="https://img.shields.io/badge/MCU-nRF52840-2563eb?style=for-the-badge">
-  <img alt="Support tiers" src="https://img.shields.io/badge/HAL-1%20deep%20%C2%B7%207%20ports%20%C2%B7%206%20families-475569?style=for-the-badge">
+  <img alt="Support tiers" src="https://img.shields.io/badge/HAL-board--relative%20deep%20%2B%20constrained-475569?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0f766e?style=for-the-badge">
 </p>
 <p align="center">
@@ -45,6 +45,11 @@ a radio slot, and a recovery decision all have to coexist inside tight memory
 and timing budgets. It is not a desktop OS in miniature. It is a small,
 inspectable control plane for robotics nodes that need to grow from one board
 to many boards without turning every driver into a private universe.
+
+The ecosystem uses domain contracts plus pinned member libraries rather than
+per-device source sprawl. NiusDisplay 0.2.0 is an implemented `nobro-display`
+member through a bounded, no-heap provider and Arduino facade; its compile and
+simulation evidence is not represented as physical-panel support.
 
 The project starts with nRF52840-class boards and a deliberately compact kernel
 surface: manifests, quotas, capability grants, static sample pools, health
@@ -383,8 +388,8 @@ Cross-compile coverage is
 
 | Tier | What it means | Targets today |
 | --- | --- | --- |
-| **Deep HAL** | one native composition implements every capability required by its exact deep profile | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
-| **Constrained composition** | exact board-specific subset with hardware-inapplicable capabilities called out | WeMos D1 Mini / ESP8266 and Nano V3 / ATmega328P (Arduino-first) |
+| **Deep HAL** | one native composition implements every capability the exact board actually has, with complete ownership and lifecycle coverage; absent silicon features are not applicable and do not block this tier | nRF52840, RA4M1/UNO R4, SAMD21, RP2040/Pico, RP2350/Pico 2 W, classic ESP32, ESP32-C3, ESP32-P4, ESP32-S3 |
+| **Constrained composition** | at least one capability present on the board is still delegated to an upstream runtime or lacks the complete ownership/lifecycle contract | WeMos D1 Mini / ESP8266 and Nano V3 / ATmega328P (Arduino-first) |
 | **Core ports** | target startup and status path available; peripheral providers are incomplete | none currently promoted beyond a constrained composition |
 | **Compile targets** | portable crates cross-compile cleanly; no runtime claim | 6 MCU families (Cortex-M0+/M3/M4F/M33, RISC-V imc/imac) |
 | **Kernel-lite candidates** | exact C compiler/image, ISA-object, or RTL-simulation feasibility with zero HAL/board claims | 8051, STM8, PIC16/24/32, MSP430, STM32C0, CH32V003, TI C2000 DSP, FPGA/soft-core boundaries |

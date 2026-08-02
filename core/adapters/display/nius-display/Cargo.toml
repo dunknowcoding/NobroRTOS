@@ -1,0 +1,8 @@
+[package]
+name = "nobro-adapter-display-niusdisplay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nobro-display = { path = "../../../crates/nobro_display" }

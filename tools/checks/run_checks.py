@@ -217,6 +217,7 @@ def gate_specs(quick, rust_only=False, extended=False):
         ("Arduino-ESP32 BLE integrations",
          [py, "tools/checks/integrations/check_arduino_esp_ble.py"], ROOT),
         ("audio facade contracts", [py, "tools/checks/integrations/check_audio_facade.py"], ROOT),
+        ("display facade contracts", [py, "tools/checks/integrations/check_display_facade.py"], ROOT),
         ("ESP32 peripheral facade contracts",
          [py, "tools/checks/integrations/check_esp32_peripheral_facade.py"], ROOT),
         ("NiusIMU adapter contracts", [py, "tools/checks/integrations/check_niusimu_adapter.py", "--selftest"], ROOT),

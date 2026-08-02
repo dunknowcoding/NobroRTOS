@@ -315,6 +315,14 @@ jobs:
           git -C _work/NiusAudio checkout --detach c81851ef0771f1de4b721ea0d1cd6e9daa34838a
           test "$(git -C _work/NiusAudio rev-parse HEAD)" = \
             "c81851ef0771f1de4b721ea0d1cd6e9daa34838a"
+      - name: prepare and compile pinned display member
+        run: |
+          git clone https://github.com/dunknowcoding/NiusDisplay.git _work/NiusDisplay
+          git -C _work/NiusDisplay checkout --detach a9d005719d81456038fbad9d4b01a75272a8b77a
+          test "$(git -C _work/NiusDisplay rev-parse HEAD)" = \
+            "a9d005719d81456038fbad9d4b01a75272a8b77a"
+          arduino-cli compile --library packages/arduino --library _work/NiusDisplay \
+            -b arduino:avr:uno packages/arduino/examples/NiusDisplayBounded
       - name: compile public package examples (AVR, UNO R4, ESP32-S3, ESP8266)
         timeout-minutes: 35
         env:
