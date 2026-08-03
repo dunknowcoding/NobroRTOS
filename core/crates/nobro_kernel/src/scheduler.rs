@@ -7,6 +7,8 @@ use crate::KernelError;
 /// Default interval between deadline ticks (50 Hz servo loop).
 pub const DEADLINE_PERIOD_US: u64 = 20_000;
 pub const DEFAULT_JITTER_TOLERANCE_US: u32 = 10;
+/// Maximum stable-snapshot attempts made by [`Scheduler::stats`].
+pub const DEFAULT_STATS_READ_RETRIES: u16 = 8;
 
 static EXPECTED_NEXT_US: AtomicU32 = AtomicU32::new(0);
 static MAX_JITTER_US: AtomicU32 = AtomicU32::new(0);
@@ -34,6 +36,22 @@ pub struct SchedulerStats {
     pub max_jitter_us: u32,
     pub deadline_misses: u32,
     pub jitter_tolerance_us: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SchedulerStatsProvenance {
+    /// Both configuration and statistics generations were stable.
+    Consistent,
+    /// The retry budget was exhausted while a legal writer remained active.
+    /// The returned fields are individually atomic but may span generations.
+    BestEffortAfterContention,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SchedulerStatsRead {
+    pub stats: SchedulerStats,
+    pub provenance: SchedulerStatsProvenance,
+    pub attempts: u16,
 }
 
 pub struct Scheduler;
@@ -172,16 +190,19 @@ impl Scheduler {
         Ok(())
     }
 
-    pub fn stats() -> SchedulerStats {
-        loop {
+    /// Read statistics without an unbounded seqlock loop.
+    ///
+    /// A zero budget immediately returns an attributed best-effort snapshot.
+    /// On contention, every field remains atomically readable, but callers that
+    /// require one generation must reject `BestEffortAfterContention`.
+    pub fn stats_with_retry_budget(retry_budget: u16) -> SchedulerStatsRead {
+        for attempt in 1..=retry_budget {
             let config_before = CONFIG_SEQUENCE.load(Ordering::Acquire);
             if config_before & 1 != 0 {
-                core::hint::spin_loop();
                 continue;
             }
             let before = STATS_SEQUENCE.load(Ordering::Acquire);
             if before & 1 != 0 {
-                core::hint::spin_loop();
                 continue;
             }
             let stats = SchedulerStats {
@@ -193,9 +214,30 @@ impl Scheduler {
             let after = STATS_SEQUENCE.load(Ordering::Acquire);
             let config_after = CONFIG_SEQUENCE.load(Ordering::Acquire);
             if before == after && config_before == config_after {
-                return stats;
+                return SchedulerStatsRead {
+                    stats,
+                    provenance: SchedulerStatsProvenance::Consistent,
+                    attempts: attempt,
+                };
             }
         }
+        SchedulerStatsRead {
+            stats: SchedulerStats {
+                tick_count: Self::tick_count(),
+                max_jitter_us: Self::max_jitter_us(),
+                deadline_misses: Self::deadline_misses(),
+                jitter_tolerance_us: Self::jitter_tolerance_us(),
+            },
+            provenance: SchedulerStatsProvenance::BestEffortAfterContention,
+            attempts: retry_budget,
+        }
+    }
+
+    /// Compatibility convenience with a fixed retry budget. Call
+    /// [`stats_with_retry_budget`](Self::stats_with_retry_budget) when snapshot
+    /// provenance matters.
+    pub fn stats() -> SchedulerStats {
+        Self::stats_with_retry_budget(DEFAULT_STATS_READ_RETRIES).stats
     }
 
     /// Called from TIMER1 ISR or polled compare handler.
@@ -445,6 +487,57 @@ mod tests {
         assert_eq!(Scheduler::max_jitter_us(), 4);
         assert_eq!(Scheduler::tick_count(), 2);
         Scheduler::reconfigure_tick_period(DEADLINE_PERIOD_US as u32, |_| Ok::<_, ()>(())).unwrap();
+    }
+
+    #[test]
+    fn stats_reader_has_a_bounded_attributed_writer_contention_fallback() {
+        let _lock = lock();
+        Scheduler::reset_stats();
+        TICK_COUNT.store(7, Ordering::Release);
+        MAX_JITTER_US.store(3, Ordering::Release);
+        DEADLINE_MISSES.store(2, Ordering::Release);
+        let stable = Scheduler::stats_with_retry_budget(2);
+        assert_eq!(stable.provenance, SchedulerStatsProvenance::Consistent);
+        assert_eq!(stable.attempts, 1);
+
+        let sequence = CONFIG_SEQUENCE.load(Ordering::Acquire);
+        assert_eq!(sequence & 1, 0);
+        CONFIG_SEQUENCE.store(sequence.wrapping_add(1), Ordering::Release);
+        let contended = Scheduler::stats_with_retry_budget(3);
+        CONFIG_SEQUENCE.store(sequence.wrapping_add(2), Ordering::Release);
+        assert_eq!(
+            contended.provenance,
+            SchedulerStatsProvenance::BestEffortAfterContention
+        );
+        assert_eq!(contended.attempts, 3);
+        assert_eq!(contended.stats.tick_count, 7);
+        Scheduler::reset_stats();
+    }
+
+    #[test]
+    fn zero_retry_budget_never_spins() {
+        let _lock = lock();
+        let read = Scheduler::stats_with_retry_budget(0);
+        assert_eq!(
+            read.provenance,
+            SchedulerStatsProvenance::BestEffortAfterContention
+        );
+        assert_eq!(read.attempts, 0);
+    }
+
+    #[test]
+    fn publication_sequences_wrap_only_through_a_completed_writer() {
+        let _lock = lock();
+        CONFIG_SEQUENCE.store(u32::MAX - 1, Ordering::Release);
+        STATS_SEQUENCE.store(u32::MAX - 1, Ordering::Release);
+        Scheduler::reset_stats();
+        assert_eq!(CONFIG_SEQUENCE.load(Ordering::Acquire), 0);
+        Scheduler::on_deadline_tick(100);
+        assert_eq!(STATS_SEQUENCE.load(Ordering::Acquire), 0);
+        assert_eq!(
+            Scheduler::stats_with_retry_budget(1).provenance,
+            SchedulerStatsProvenance::Consistent
+        );
     }
 
     #[test]

@@ -3859,7 +3859,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "ffa9e9dc28cbfb1d2258b47f76f8c9c69814d831975e3eeb3627fa8ce3f45130"
+        "sha256": "0aabda5643c6a3956e9a8875b5e69b5608fa904ad3bf17d5d20d222d3a443188"
       },
       {
         "crate": "nobro-ml",

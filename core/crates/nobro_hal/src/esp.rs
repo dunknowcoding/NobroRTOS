@@ -1746,7 +1746,7 @@ mod tests {
         assert_eq!(ESP32C3_RUNTIME.ledc_channels, 6);
         assert_eq!(ESP32P4_RUNTIME.ledc_channels, 8);
         assert_eq!(ESP32S3_RUNTIME.ledc_channels, 8);
-        assert!(ESP32_RUNTIME.rmt_bidirectional);
+        const { assert!(ESP32_RUNTIME.rmt_bidirectional) };
         assert_eq!(ESP32_RUNTIME.rmt_channels(), 8);
         assert_eq!(ESP32C3_RUNTIME.rmt_tx_channels, 2);
         assert_eq!(ESP32C3_RUNTIME.rmt_rx_channels, 2);
@@ -1832,11 +1832,13 @@ mod tests {
     fn p4_csi_plan_is_bounded_without_claiming_a_native_driver() {
         assert_eq!(ESP32P4_PICO_MEDIA.mipi_csi_controllers, 1);
         assert_eq!(ESP32P4_PICO_MEDIA.mipi_csi_data_lanes, 2);
-        assert!(ESP32P4_PICO_MEDIA.isp);
-        assert!(ESP32P4_PICO_MEDIA.jpeg_codec);
-        assert!(ESP32P4_PICO_MEDIA.h264_encoder);
-        assert!(ESP32P4_PICO_MEDIA.board_camera_connector);
-        assert!(!ESP32P4_PICO_MEDIA.native_csi_driver);
+        const {
+            assert!(ESP32P4_PICO_MEDIA.isp);
+            assert!(ESP32P4_PICO_MEDIA.jpeg_codec);
+            assert!(ESP32P4_PICO_MEDIA.h264_encoder);
+            assert!(ESP32P4_PICO_MEDIA.board_camera_connector);
+            assert!(!ESP32P4_PICO_MEDIA.native_csi_driver);
+        };
         assert_eq!(
             EspP4CsiPlan::new(ESP32P4_PICO_MEDIA, 0, 2, 1_920, 1_080, 2),
             Ok(EspP4CsiPlan {
@@ -1992,7 +1994,7 @@ mod tests {
 
         let mut power = EspPower::try_new(Power, ESP32S3_RUNTIME, owner).unwrap();
         assert_eq!(power.idle(IdleMode::CpuSleep), Ok(()));
-        assert_eq!(EspReset::<Reset>::reset_cause(), false);
+        assert!(!EspReset::<Reset>::reset_cause());
 
         let cache = EspCacheContract::try_acquire(ESP32S3_RUNTIME, owner).unwrap();
         assert_eq!(cache.ensure_live(), Ok(()));

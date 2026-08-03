@@ -14,6 +14,8 @@ const XPSR_THUMB: u32 = 1 << 24;
 const CONTROL_SPSEL: u32 = 1 << 1;
 const SOFTWARE_WORDS: usize = 8;
 const HARDWARE_WORDS: usize = 8;
+const STACK_ALIGNMENT_BYTES: usize = 8;
+const INITIAL_RUNTIME_MARGIN_BYTES: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CortexM0SwitchError {
@@ -63,11 +65,13 @@ impl CortexM0ContextRecord {
         entry: extern "C" fn(usize) -> !,
         arg: usize,
     ) -> Result<(), CortexM0SwitchError> {
-        if stack.as_ptr() as usize & 7 != 0 || stack.len() & 7 != 0 {
+        if stack.as_ptr() as usize & (STACK_ALIGNMENT_BYTES - 1) != 0
+            || stack.len() & (STACK_ALIGNMENT_BYTES - 1) != 0
+        {
             return Err(CortexM0SwitchError::StackMisaligned);
         }
         let frame_bytes = (SOFTWARE_WORDS + HARDWARE_WORDS) * core::mem::size_of::<u32>();
-        if stack.len() < frame_bytes + 32 {
+        if stack.len() < frame_bytes + INITIAL_RUNTIME_MARGIN_BYTES {
             return Err(CortexM0SwitchError::StackTooSmall);
         }
         let top = stack.as_mut_ptr().add(stack.len()) as usize;

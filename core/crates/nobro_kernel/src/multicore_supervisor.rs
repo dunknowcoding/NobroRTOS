@@ -482,6 +482,27 @@ mod tests {
     }
 
     #[test]
+    fn exhausted_command_sequence_fails_closed_without_publication() {
+        let lifecycle = lifecycle();
+        let trace = core::cell::RefCell::new(Trace::default());
+        let mut fence = Fence(&trace);
+        let mut queue = MulticoreControlQueue::<1>::new();
+        queue.next_sequence = u32::MAX;
+        assert_eq!(
+            queue.enqueue(
+                &lifecycle,
+                1,
+                lifecycle.generation(1).unwrap(),
+                None,
+                MulticoreControlAction::FaultTimeout,
+                &mut fence,
+            ),
+            Err(MulticoreQueueError::SequenceExhausted)
+        );
+        assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
     fn transfer_or_recovery_invalidates_stale_commands() {
         let mut rt = lifecycle();
         let trace = core::cell::RefCell::new(Trace::default());

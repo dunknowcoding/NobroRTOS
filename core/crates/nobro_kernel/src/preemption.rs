@@ -69,9 +69,15 @@ impl Default for InterruptHandoff {
 }
 
 const FORCED_MODULE_MASK: u32 = 0x1ff;
-const FORCED_COUNT_SHIFT: u32 = 9;
-const FORCED_COUNT_MASK: u32 = 0x003f_ffff;
+const FORCED_CONFLICT_MODULE_SHIFT: u32 = 9;
+const FORCED_COUNT_SHIFT: u32 = 18;
+const FORCED_COUNT_MASK: u32 = 0x1fff;
 const FORCED_IDENTITY_CONFLICT: u32 = 1 << 31;
+
+/// Largest exact occurrence count retained by one forced-suspension handoff.
+/// Further publications remain represented by this saturated value until the
+/// privileged dispatcher drains the handoff.
+pub const FORCED_SUSPEND_MAX_OCCURRENCES: u32 = FORCED_COUNT_MASK;
 
 /// One allocation-free forced-suspension publication from PendSV to the
 /// privileged recovery dispatcher.
@@ -88,11 +94,14 @@ pub struct ForcedSuspendReceipt {
     pub module: ModuleId,
     pub occurrences: u32,
     pub identity_conflict: bool,
+    /// First different identity observed before the handoff was drained.
+    pub conflicting_module: Option<ModuleId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ForcedSuspendHandoffError {
     CorruptModuleCode(u32),
+    CorruptConflictingModuleCode(u32),
 }
 
 impl ForcedSuspendHandoff {
@@ -113,15 +122,26 @@ impl ForcedSuspendHandoff {
                     return Some(code | (1 << FORCED_COUNT_SHIFT));
                 }
                 let retained = current & FORCED_MODULE_MASK;
+                let retained_conflict =
+                    (current >> FORCED_CONFLICT_MODULE_SHIFT) & FORCED_MODULE_MASK;
                 let count = (current >> FORCED_COUNT_SHIFT) & FORCED_COUNT_MASK;
-                let next_count = count.saturating_add(1).min(FORCED_COUNT_MASK);
-                let conflict = (current & FORCED_IDENTITY_CONFLICT)
-                    | if retained == code {
-                        0
-                    } else {
-                        FORCED_IDENTITY_CONFLICT
-                    };
-                Some(retained | (next_count << FORCED_COUNT_SHIFT) | conflict)
+                let next_count = count.saturating_add(1).min(FORCED_SUSPEND_MAX_OCCURRENCES);
+                let conflict_module = if retained == code || retained_conflict != 0 {
+                    retained_conflict
+                } else {
+                    code
+                };
+                let conflict = if conflict_module == 0 {
+                    0
+                } else {
+                    FORCED_IDENTITY_CONFLICT
+                };
+                Some(
+                    retained
+                        | (conflict_module << FORCED_CONFLICT_MODULE_SHIFT)
+                        | (next_count << FORCED_COUNT_SHIFT)
+                        | conflict,
+                )
             });
     }
 
@@ -133,10 +153,19 @@ impl ForcedSuspendHandoff {
         let code = state & FORCED_MODULE_MASK;
         let module =
             module_from_code(code).ok_or(ForcedSuspendHandoffError::CorruptModuleCode(code))?;
+        let conflicting_code = (state >> FORCED_CONFLICT_MODULE_SHIFT) & FORCED_MODULE_MASK;
+        let conflicting_module = if state & FORCED_IDENTITY_CONFLICT == 0 {
+            None
+        } else {
+            Some(module_from_code(conflicting_code).ok_or(
+                ForcedSuspendHandoffError::CorruptConflictingModuleCode(conflicting_code),
+            )?)
+        };
         Ok(Some(ForcedSuspendReceipt {
             module,
             occurrences: (state >> FORCED_COUNT_SHIFT) & FORCED_COUNT_MASK,
             identity_conflict: state & FORCED_IDENTITY_CONFLICT != 0,
+            conflicting_module,
         }))
     }
 }
@@ -151,6 +180,7 @@ impl Default for ForcedSuspendHandoff {
 pub enum ForcedSuspendRouteError {
     IdentityConflict {
         first_module: ModuleId,
+        conflicting_module: Option<ModuleId>,
         occurrences: u32,
     },
     Runtime(RuntimeError),
@@ -196,6 +226,7 @@ pub fn route_forced_suspend<
     if receipt.identity_conflict {
         return Err(ForcedSuspendRouteError::IdentityConflict {
             first_module: receipt.module,
+            conflicting_module: receipt.conflicting_module,
             occurrences: receipt.occurrences,
         });
     }
@@ -381,6 +412,29 @@ struct PendingSwitch {
     forced: bool,
 }
 
+#[repr(C)]
+struct CortexMSoftwareFrame {
+    r4_r11: [u32; 8],
+}
+
+#[repr(C)]
+struct CortexMBasicExceptionFrame {
+    r0_r3_r12_lr_pc_xpsr: [u32; 8],
+}
+
+#[repr(C)]
+struct CortexMFpuHardwareExtension {
+    s0_s15_fpscr_reserved: [u32; 18],
+}
+
+#[repr(C)]
+struct CortexMFpuSoftwareFrame {
+    s16_s31: [u32; 16],
+}
+
+const SLICE_CANARY_BYTES: usize = 16;
+const SLICE_RUNTIME_MARGIN_BYTES: usize = 32;
+
 pub struct SliceController<const N: usize> {
     slots: [Option<SliceSlot>; N],
     len: usize,
@@ -390,12 +444,14 @@ pub struct SliceController<const N: usize> {
 }
 
 impl<const N: usize> SliceController<N> {
-    /// Cortex-M basic frame (32) + R4-R11 (32) + 16-byte canary + 32-byte
-    /// minimum handler/task margin. FPU tasks also reserve the 72-byte hardware
-    /// extended frame plus software-saved S16-S31 (64 bytes). These are
-    /// admission floors, not measured stack claims.
-    const BASIC_STACK_FLOOR: usize = 112;
-    const FPU_EXTRA: usize = 136;
+    /// Named architecture layouts plus explicit canary/runtime margin. These
+    /// are admission floors, not measured stack claims.
+    const BASIC_STACK_FLOOR: usize = core::mem::size_of::<CortexMSoftwareFrame>()
+        + core::mem::size_of::<CortexMBasicExceptionFrame>()
+        + SLICE_CANARY_BYTES
+        + SLICE_RUNTIME_MARGIN_BYTES;
+    const FPU_EXTRA: usize = core::mem::size_of::<CortexMFpuHardwareExtension>()
+        + core::mem::size_of::<CortexMFpuSoftwareFrame>();
 
     pub const fn new() -> Self {
         Self {
@@ -807,6 +863,7 @@ mod tests {
                 module: ModuleId::Sensor,
                 occurrences: 2,
                 identity_conflict: false,
+                conflicting_module: None,
             }))
         );
 
@@ -818,8 +875,42 @@ mod tests {
                 module: ModuleId::Sensor,
                 occurrences: 2,
                 identity_conflict: true,
+                conflicting_module: Some(ModuleId::Radio),
             }))
         );
+    }
+
+    #[test]
+    fn forced_suspend_count_saturates_without_losing_conflict_provenance() {
+        let handoff = ForcedSuspendHandoff::new();
+        let first = module_code(ModuleId::Sensor);
+        let conflicting = module_code(ModuleId::Radio);
+        handoff.state.store(
+            first
+                | (conflicting << FORCED_CONFLICT_MODULE_SHIFT)
+                | (FORCED_COUNT_MASK << FORCED_COUNT_SHIFT)
+                | FORCED_IDENTITY_CONFLICT,
+            Ordering::Release,
+        );
+        handoff.publish(ModuleId::Actuator);
+        assert_eq!(
+            handoff.drain(),
+            Ok(Some(ForcedSuspendReceipt {
+                module: ModuleId::Sensor,
+                occurrences: FORCED_COUNT_MASK,
+                identity_conflict: true,
+                conflicting_module: Some(ModuleId::Radio),
+            }))
+        );
+    }
+
+    #[test]
+    fn interrupt_overflow_count_saturates_instead_of_wrapping() {
+        let handoff = InterruptHandoff::new();
+        handoff.events.store(1, Ordering::Release);
+        handoff.overflows.store(u32::MAX, Ordering::Release);
+        handoff.publish(0, 1);
+        assert_eq!(handoff.drain().overflows, u32::MAX);
     }
 
     #[test]
@@ -918,6 +1009,7 @@ mod tests {
                 module: ModuleId::Actuator,
                 occurrences: 1,
                 identity_conflict: false,
+                conflicting_module: None,
             }))
         );
         assert_eq!(sentinel.check(249), None);
@@ -1185,6 +1277,7 @@ mod tests {
                 module: ModuleId::Sensor,
                 occurrences: 1,
                 identity_conflict: false,
+                conflicting_module: None,
             },
             101,
         )
@@ -1207,11 +1300,13 @@ mod tests {
                     module: ModuleId::Sensor,
                     occurrences: 2,
                     identity_conflict: true,
+                    conflicting_module: Some(ModuleId::Radio),
                 },
                 102,
             ),
             Err(ForcedSuspendRouteError::IdentityConflict {
                 first_module: ModuleId::Sensor,
+                conflicting_module: Some(ModuleId::Radio),
                 occurrences: 2,
             })
         );

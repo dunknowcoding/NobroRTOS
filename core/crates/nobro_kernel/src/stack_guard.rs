@@ -36,6 +36,7 @@ pub enum StackGuardError {
     Unknown(ModuleId),
     StaleScan,
     ZeroScanBudget,
+    GenerationExhausted(ModuleId),
     /// Two logical contexts claimed overlapping physical stack memory.
     AliasedRegion(ModuleId),
     /// Zero-length region or canary not smaller than the region.
@@ -160,13 +161,19 @@ impl<const N: usize> StackGuardTable<N> {
         }) {
             return Err(StackGuardError::AliasedRegion(module));
         }
-        let Some(index) = self.entries.iter().position(Option::is_none) else {
-            return Err(StackGuardError::Full);
+        let Some(index) = self
+            .entries
+            .iter()
+            .enumerate()
+            .position(|(index, entry)| entry.is_none() && self.generations[index] < u32::MAX)
+        else {
+            return Err(if self.entries.iter().any(Option::is_none) {
+                StackGuardError::GenerationExhausted(module)
+            } else {
+                StackGuardError::Full
+            });
         };
-        let mut generation = self.generations[index].wrapping_add(1);
-        if generation == 0 {
-            generation = 1;
-        }
+        let generation = self.generations[index] + 1;
         self.generations[index] = generation;
         paint(region);
         self.entries[index] = Some(GuardEntry {
@@ -580,5 +587,17 @@ mod tests {
             }
         };
         assert!(!status.canary_intact);
+    }
+
+    #[test]
+    fn exhausted_registration_generation_never_reissues_an_aba_cursor() {
+        let mut stack = [0u8; 32];
+        let mut table = StackGuardTable::<1>::new();
+        table.generations[0] = u32::MAX;
+        assert_eq!(
+            unsafe { table.register(ModuleId::Sensor, region_of(&mut stack, 4)) },
+            Err(StackGuardError::GenerationExhausted(ModuleId::Sensor))
+        );
+        assert_eq!(table.len(), 0);
     }
 }

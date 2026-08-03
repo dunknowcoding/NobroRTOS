@@ -518,6 +518,38 @@ mod tests {
         ModuleId::App(id)
     }
 
+    #[derive(Debug, Default, PartialEq, Eq)]
+    struct ModelExecutor {
+        owned: [Option<ModuleId>; 2],
+        fail_transfer: bool,
+    }
+
+    impl MulticoreTaskExecutor for ModelExecutor {
+        type Error = u8;
+
+        fn transfer_task_to(
+            &mut self,
+            destination: &mut Self,
+            module: ModuleId,
+        ) -> Result<(), Self::Error> {
+            if self.fail_transfer {
+                return Err(7);
+            }
+            let source = self
+                .owned
+                .iter()
+                .position(|entry| *entry == Some(module))
+                .ok_or(8)?;
+            let target = destination
+                .owned
+                .iter()
+                .position(Option::is_none)
+                .ok_or(9)?;
+            destination.owned[target] = self.owned[source].take();
+            Ok(())
+        }
+    }
+
     #[test]
     fn placement_admits_within_and_rejects_over_one_core() {
         let mut rt = MulticoreExecutorLifecycle::<2, 4>::new();
@@ -599,6 +631,25 @@ mod tests {
         rt.fault(0).unwrap();
         rt.recover(0, |_| true).unwrap();
         assert_eq!(rt.generation(0).unwrap().get(), 2);
+    }
+
+    #[test]
+    fn exhausted_core_generation_rejects_start_before_any_callback() {
+        let mut rt = MulticoreExecutorLifecycle::<2, 1>::new();
+        rt.generations[1] = CoreGeneration(u32::MAX);
+        let mut starts = 0;
+        assert_eq!(
+            rt.start_all(
+                |_| {
+                    starts += 1;
+                    true
+                },
+                |_| {}
+            ),
+            Err(MulticoreError::GenerationExhausted { core: 1 })
+        );
+        assert_eq!(starts, 0);
+        assert!(rt.all_down());
     }
 
     #[test]
@@ -714,6 +765,38 @@ mod tests {
                 module: m(9)
             })
         );
+    }
+
+    #[test]
+    fn executor_failure_does_not_commit_ownership_metadata() {
+        let module = m(4);
+        let mut rt = MulticoreExecutorLifecycle::<2, 2>::new();
+        rt.place(0, module, 2_500).unwrap();
+        rt.start_all(|_| true, |_| {}).unwrap();
+        let mut source = ModelExecutor {
+            owned: [Some(module), None],
+            fail_transfer: true,
+        };
+        let mut destination = ModelExecutor::default();
+
+        assert_eq!(
+            rt.transfer_executor(module, 0, 1, &mut source, &mut destination),
+            Err(MulticoreTransferError::Executor(7))
+        );
+        assert!(rt.owns(0, module));
+        assert!(!rt.owns(1, module));
+        assert_eq!(rt.core_utilization(0), Some(2_500));
+        assert_eq!(rt.core_utilization(1), Some(0));
+        assert_eq!(source.owned, [Some(module), None]);
+        assert_eq!(destination.owned, [None, None]);
+
+        source.fail_transfer = false;
+        rt.transfer_executor(module, 0, 1, &mut source, &mut destination)
+            .unwrap();
+        assert!(!rt.owns(0, module));
+        assert!(rt.owns(1, module));
+        assert_eq!(source.owned, [None, None]);
+        assert_eq!(destination.owned, [Some(module), None]);
     }
 
     #[test]

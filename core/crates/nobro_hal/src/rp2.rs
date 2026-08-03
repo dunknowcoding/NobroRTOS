@@ -1046,9 +1046,11 @@ mod tests {
     #[test]
     fn silicon_differences_are_not_flattened() {
         assert_eq!(RP2040_RUNTIME.cores, RP2350_RUNTIME.cores);
-        assert!(RP2350_RUNTIME.pio_blocks > RP2040_RUNTIME.pio_blocks);
-        assert!(RP2350_RUNTIME.dma_channels > RP2040_RUNTIME.dma_channels);
-        assert!(RP2350_RUNTIME.pwm_slices > RP2040_RUNTIME.pwm_slices);
+        const {
+            assert!(RP2350_RUNTIME.pio_blocks > RP2040_RUNTIME.pio_blocks);
+            assert!(RP2350_RUNTIME.dma_channels > RP2040_RUNTIME.dma_channels);
+            assert!(RP2350_RUNTIME.pwm_slices > RP2040_RUNTIME.pwm_slices);
+        };
     }
 
     #[test]

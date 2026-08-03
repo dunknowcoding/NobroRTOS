@@ -181,6 +181,8 @@ pub use nano::{
 pub use objects::{ObjectKind, ObjectLedger, ObjectQuotaError, ObjectUsage};
 pub use pool::{CompactImuPayload, SamplePool};
 #[cfg(feature = "preemptive")]
+pub use preemption::FORCED_SUSPEND_MAX_OCCURRENCES;
+#[cfg(feature = "preemptive")]
 pub use preemption::{
     route_forced_suspend, ForcedSuspendHandoff, ForcedSuspendHandoffError, ForcedSuspendReceipt,
     ForcedSuspendRouteError, InterruptHandoff, InterruptReceipt, SliceContext, SliceController,
@@ -241,7 +243,10 @@ pub type L3AssuredKernel = KernelExecutor<4, 4, 4, 8, 4, 8, 4, 16>;
 /// Static in-place storage for [`L3AssuredKernel`].
 pub type L3AssuredKernelCell = KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 16>;
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
-pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
+pub use scheduler::{
+    Scheduler, SchedulerStats, SchedulerStatsProvenance, SchedulerStatsRead, Timer,
+    DEADLINE_PERIOD_US, DEFAULT_STATS_READ_RETRIES,
+};
 pub use stack_guard::{
     StackFault, StackGuardError, StackGuardTable, StackRegion, StackScanCursor, StackScanProgress,
     StackScope, StackStatus, StackWatermarkSemantics, DEFAULT_CANARY_BYTES, WATERMARK_PATTERN,

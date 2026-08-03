@@ -17,6 +17,8 @@ const CONTROL_SPSEL: u32 = 1 << 1;
 const CONTROL_NPRIV: u32 = 1;
 const SOFTWARE_WORDS: usize = 8; // R4-R11
 const HARDWARE_WORDS: usize = 8; // R0-R3,R12,LR,PC,xPSR
+const STACK_ALIGNMENT_BYTES: usize = 8;
+const INITIAL_RUNTIME_MARGIN_BYTES: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextSwitchError {
@@ -107,11 +109,13 @@ impl ContextRecord {
         control: u32,
         mpu: *const ModuleMpuContext,
     ) -> Result<(), ContextSwitchError> {
-        if stack.as_ptr() as usize & 7 != 0 || stack.len() & 7 != 0 {
+        if stack.as_ptr() as usize & (STACK_ALIGNMENT_BYTES - 1) != 0
+            || stack.len() & (STACK_ALIGNMENT_BYTES - 1) != 0
+        {
             return Err(ContextSwitchError::StackMisaligned);
         }
         let frame_bytes = (SOFTWARE_WORDS + HARDWARE_WORDS) * core::mem::size_of::<u32>();
-        if stack.len() < frame_bytes + 32 {
+        if stack.len() < frame_bytes + INITIAL_RUNTIME_MARGIN_BYTES {
             return Err(ContextSwitchError::StackTooSmall);
         }
         let top = stack.as_mut_ptr().add(stack.len()) as usize;

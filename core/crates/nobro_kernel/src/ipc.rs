@@ -13,6 +13,7 @@ use crate::ModuleId;
 #[derive(Debug, PartialEq, Eq)]
 pub struct PayloadHandle<T> {
     slot: u16,
+    epoch: u16,
     generation: u32,
     marker: PhantomData<fn() -> T>,
 }
@@ -33,6 +34,10 @@ impl<T> PayloadHandle<T> {
     pub const fn generation(self) -> u32 {
         self.generation
     }
+
+    pub const fn epoch(self) -> u16 {
+        self.epoch
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +47,7 @@ pub enum PayloadPoolError {
     WrongOwner,
     SharedPayload,
     RefcountOverflow,
+    IdentityExhausted,
     Expired,
     InvalidExpiry,
 }
@@ -55,6 +61,7 @@ enum PayloadOwnership {
 
 struct PayloadSlot<T> {
     value: MaybeUninit<T>,
+    epoch: u16,
     generation: u32,
     ownership: PayloadOwnership,
     references: u16,
@@ -66,6 +73,7 @@ impl<T> PayloadSlot<T> {
     const fn empty() -> Self {
         Self {
             value: MaybeUninit::uninit(),
+            epoch: 0,
             generation: 0,
             ownership: PayloadOwnership::Vacant,
             references: 0,
@@ -76,6 +84,20 @@ impl<T> PayloadSlot<T> {
 
     const fn occupied(&self) -> bool {
         !matches!(self.ownership, PayloadOwnership::Vacant)
+    }
+
+    const fn reusable(&self) -> bool {
+        self.generation < u32::MAX || self.epoch < u16::MAX
+    }
+
+    const fn next_identity(&self) -> Option<(u16, u32)> {
+        if self.generation < u32::MAX {
+            Some((self.epoch, self.generation + 1))
+        } else if self.epoch < u16::MAX {
+            Some((self.epoch + 1, 1))
+        } else {
+            None
+        }
     }
 }
 
@@ -119,16 +141,20 @@ impl<T, const N: usize> PayloadPool<T, N> {
             .slots
             .iter_mut()
             .enumerate()
-            .find(|(_, slot)| !slot.occupied())
+            .find(|(_, slot)| !slot.occupied() && slot.reusable())
         else {
-            return Err(PayloadPoolError::Full);
+            return Err(if self.slots.iter().any(|slot| !slot.occupied()) {
+                PayloadPoolError::IdentityExhausted
+            } else {
+                PayloadPoolError::Full
+            });
         };
         let slot_index = u16::try_from(index).map_err(|_| PayloadPoolError::RefcountOverflow)?;
-        let mut generation = slot.generation.wrapping_add(1);
-        if generation == 0 {
-            generation = 1;
-        }
+        let (epoch, generation) = slot
+            .next_identity()
+            .ok_or(PayloadPoolError::IdentityExhausted)?;
         slot.value.write(value);
+        slot.epoch = epoch;
         slot.generation = generation;
         slot.ownership = PayloadOwnership::Exclusive(owner);
         slot.references = 1;
@@ -137,6 +163,7 @@ impl<T, const N: usize> PayloadPool<T, N> {
         self.len += 1;
         Ok(PayloadHandle {
             slot: slot_index,
+            epoch,
             generation,
             marker: PhantomData,
         })
@@ -269,7 +296,7 @@ impl<T, const N: usize> PayloadPool<T, N> {
             .slots
             .get(usize::from(handle.slot))
             .ok_or(PayloadPoolError::InvalidHandle)?;
-        if !slot.occupied() || slot.generation != handle.generation {
+        if !slot.occupied() || slot.epoch != handle.epoch || slot.generation != handle.generation {
             return Err(PayloadPoolError::InvalidHandle);
         }
         Ok(slot)
@@ -283,7 +310,7 @@ impl<T, const N: usize> PayloadPool<T, N> {
             .slots
             .get_mut(usize::from(handle.slot))
             .ok_or(PayloadPoolError::InvalidHandle)?;
-        if !slot.occupied() || slot.generation != handle.generation {
+        if !slot.occupied() || slot.epoch != handle.epoch || slot.generation != handle.generation {
             return Err(PayloadPoolError::InvalidHandle);
         }
         Ok(slot)
@@ -343,6 +370,7 @@ pub enum IpcPushError {
     ControlReserve,
     GlobalCapacity,
     PayloadPoolFull,
+    PayloadIdentityExhausted,
     InvalidExpiry,
     FanoutTooLarge,
 }
@@ -377,7 +405,6 @@ struct IpcEnvelope<T> {
     source: ModuleId,
     destination: ModuleId,
     priority: IpcPriority,
-    sequence: u64,
     handle: PayloadHandle<T>,
 }
 
@@ -418,10 +445,7 @@ impl<T, const Q: usize> DestinationQueue<T, Q> {
         for index in 1..self.len {
             let candidate = self.entries[index].as_ref().unwrap();
             let selected = self.entries[best].as_ref().unwrap();
-            if candidate.priority > selected.priority
-                || (candidate.priority == selected.priority
-                    && candidate.sequence < selected.sequence)
-            {
+            if candidate.priority > selected.priority {
                 best = index;
             }
         }
@@ -441,7 +465,6 @@ pub struct IpcRouter<
     queues: [DestinationQueue<T, QUEUE>; DESTINATIONS],
     queued: usize,
     control_reserve: usize,
-    sequence: u64,
     rejected_global: u32,
     rejected_reserve: u32,
     rejected_destination: u32,
@@ -467,7 +490,6 @@ impl<
             } else {
                 control_reserve
             },
-            sequence: 0,
             rejected_global: 0,
             rejected_reserve: 0,
             rejected_destination: 0,
@@ -549,6 +571,7 @@ impl<
             .allocate(source, value, expires_at_us, now_us)
             .map_err(|error| match error {
                 PayloadPoolError::Full => IpcPushError::PayloadPoolFull,
+                PayloadPoolError::IdentityExhausted => IpcPushError::PayloadIdentityExhausted,
                 _ => IpcPushError::InvalidExpiry,
             })?;
         if self
@@ -565,10 +588,8 @@ impl<
                 source,
                 destination: *destination,
                 priority,
-                sequence: self.sequence,
                 handle,
             });
-            self.sequence = self.sequence.wrapping_add(1);
         }
         self.queued = next_queued;
         Ok(IpcPublishReceipt {
@@ -712,6 +733,28 @@ mod tests {
     }
 
     #[test]
+    fn payload_identity_rollover_advances_epoch_then_fails_closed() {
+        let mut pool = PayloadPool::<u32, 1>::new();
+        let stale = pool.allocate(ModuleId::Sensor, 1, 100, 0).unwrap();
+        pool.release(stale, ModuleId::Sensor).unwrap();
+        pool.slots[0].generation = u32::MAX;
+        let fresh = pool.allocate(ModuleId::Sensor, 2, 100, 0).unwrap();
+        assert_eq!(fresh.epoch(), stale.epoch() + 1);
+        assert_eq!(fresh.generation(), 1);
+        assert_eq!(
+            pool.borrow(stale, ModuleId::Sensor, 0),
+            Err(PayloadPoolError::InvalidHandle)
+        );
+        pool.release(fresh, ModuleId::Sensor).unwrap();
+        pool.slots[0].epoch = u16::MAX;
+        pool.slots[0].generation = u32::MAX;
+        assert_eq!(
+            pool.allocate(ModuleId::Sensor, 3, 100, 0),
+            Err(PayloadPoolError::IdentityExhausted)
+        );
+    }
+
+    #[test]
     fn destination_queues_preserve_fair_capacity_priority_and_control_reserve() {
         let mut router = IpcRouter::<u32, 4, 2, 3, 4>::new(1);
         router.register_destination(ModuleId::Sensor, 2).unwrap();
@@ -782,6 +825,10 @@ mod tests {
             .receive_with(ModuleId::Sensor, 0, |_, _, value| *value)
             .unwrap();
         assert_eq!(first, Some(2));
+        let second = router
+            .receive_with(ModuleId::Sensor, 0, |_, _, value| *value)
+            .unwrap();
+        assert_eq!(second, Some(1));
         let radio = router
             .receive_with(ModuleId::Radio, 0, |_, priority, value| (priority, *value))
             .unwrap();

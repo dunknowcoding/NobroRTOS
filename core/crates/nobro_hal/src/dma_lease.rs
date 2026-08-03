@@ -68,6 +68,7 @@ pub enum DmaLeaseError<E> {
     InvalidAlignment,
     AddressOverflow,
     Overlap,
+    GenerationExhausted,
     InvalidHandle,
     WrongOwner,
     AlreadyActive,
@@ -192,14 +193,20 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         }) {
             return Err(DmaLeaseError::Overlap);
         }
-        let Some(slot) = self.entries.iter().position(Option::is_none) else {
-            return Err(DmaLeaseError::Full);
+        let Some(slot) = self
+            .entries
+            .iter()
+            .enumerate()
+            .position(|(slot, entry)| entry.is_none() && self.generations[slot] < u32::MAX)
+        else {
+            return Err(if self.entries.iter().any(Option::is_none) {
+                DmaLeaseError::GenerationExhausted
+            } else {
+                DmaLeaseError::Full
+            });
         };
         let lease_slot = u16::try_from(slot).map_err(|_| DmaLeaseError::Full)?;
-        let mut generation = self.generations[slot].wrapping_add(1);
-        if generation == 0 {
-            generation = 1;
-        }
+        let generation = self.generations[slot] + 1;
         self.generations[slot] = generation;
         self.entries[slot] = Some(DmaLeaseEntry {
             generation,
@@ -378,6 +385,8 @@ mod tests {
         completed: u8,
         cancelled: u8,
         reset: u8,
+        fail_cancel: bool,
+        fail_reset: bool,
     }
 
     impl DmaLeaseBackend for Backend {
@@ -393,11 +402,19 @@ mod tests {
         }
         fn cancel(&mut self, _: DmaBufferDescriptor) -> Result<(), Self::Error> {
             self.cancelled += 1;
-            Ok(())
+            if self.fail_cancel {
+                Err(())
+            } else {
+                Ok(())
+            }
         }
         fn reset(&mut self, _: u16, _: u16) -> Result<(), Self::Error> {
             self.reset += 1;
-            Ok(())
+            if self.fail_reset {
+                Err(())
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -481,6 +498,56 @@ mod tests {
     }
 
     #[test]
+    fn failed_cancel_is_attributed_and_successful_reset_still_reclaims() {
+        let owner = DmaOwnerId(4);
+        let mut registry = DmaLeaseRegistry::<1>::new();
+        let mut buffer = [0u8; 8];
+        let lease = acquire(&mut registry, owner, &mut buffer);
+        let mut backend = Backend {
+            fail_cancel: true,
+            ..Backend::default()
+        };
+        registry.begin(lease, owner, &mut backend).unwrap();
+        let receipt = registry
+            .recover(
+                lease,
+                owner,
+                DmaRecoveryReason::PeripheralFault,
+                &mut backend,
+            )
+            .unwrap();
+        assert!(!receipt.cancel_confirmed);
+        assert!(receipt.peripheral_reset);
+        assert_eq!((backend.cancelled, backend.reset), (1, 1));
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn failed_reset_keeps_the_lease_live_for_bounded_retry() {
+        let owner = DmaOwnerId(5);
+        let mut registry = DmaLeaseRegistry::<1>::new();
+        let mut buffer = [0u8; 8];
+        let lease = acquire(&mut registry, owner, &mut buffer);
+        let mut backend = Backend {
+            fail_reset: true,
+            ..Backend::default()
+        };
+        registry.begin(lease, owner, &mut backend).unwrap();
+        assert_eq!(
+            registry.recover(lease, owner, DmaRecoveryReason::OwnerShutdown, &mut backend,),
+            Err(DmaLeaseError::Backend(()))
+        );
+        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.descriptor::<()>(lease, owner).unwrap().len, 8);
+
+        backend.fail_reset = false;
+        registry
+            .recover(lease, owner, DmaRecoveryReason::OwnerShutdown, &mut backend)
+            .unwrap();
+        assert!(registry.is_empty());
+    }
+
+    #[test]
     fn invalid_alignment_and_overlap_fail_before_capacity_changes() {
         let mut registry = DmaLeaseRegistry::<2>::new();
         let owner = DmaOwnerId(3);
@@ -503,5 +570,24 @@ mod tests {
             Err(DmaLeaseError::InvalidAlignment)
         );
         assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn exhausted_generation_fails_closed_without_reissuing_a_stale_lease() {
+        let mut registry = DmaLeaseRegistry::<1>::new();
+        registry.generations[0] = u32::MAX;
+        let mut buffer = [0u8; 8];
+        assert_eq!(
+            unsafe {
+                registry.acquire_region(
+                    DmaOwnerId(1),
+                    buffer.as_mut_ptr() as usize,
+                    buffer.len(),
+                    request(),
+                )
+            },
+            Err(DmaLeaseError::GenerationExhausted)
+        );
+        assert!(registry.is_empty());
     }
 }

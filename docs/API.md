@@ -672,6 +672,9 @@ from privileged dispatcher context and pass the receipt to
 `route_forced_suspend`; this records a scheduler deadline fault and selects
 module-scoped recovery. Repeated events retain a bounded count, while mixed
 module identities are rejected rather than routed ambiguously. Use
+`FORCED_SUSPEND_MAX_OCCURRENCES` when sizing diagnostics that consume this
+saturating count; the first module and first conflicting module remain
+attributed even after saturation. Use
 `commit_pending_switch_at` only when the caller deliberately handles forced
 suspension attribution through another equivalent bounded path. The port
 preserves BASEPRI per PSP context.
@@ -1074,6 +1077,13 @@ nobro_kernel::Scheduler::set_jitter_tolerance_us(25);
 let stats = nobro_kernel::Scheduler::stats();
 assert_eq!(stats.jitter_tolerance_us, 25);
 ```
+
+`stats()` uses a fixed retry budget and never waits indefinitely for a writer.
+Consumers that require one coherent publication generation should instead use
+`stats_with_retry_budget()`, then accept only
+`SchedulerStatsProvenance::Consistent`; the attributed
+`BestEffortAfterContention` fallback keeps diagnostic reads bounded during a
+stalled or continuously contended writer.
 
 Use `check-scheduler-matrix` before packaging to verify the host mirror for
 on-time ticks, tolerated early/late jitter, deadline misses, wraparound, reset,
