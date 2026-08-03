@@ -65,6 +65,7 @@ pub mod runtime;
 pub mod runtime_dependency;
 pub mod sample;
 pub mod scheduler;
+pub mod scheduling_profile;
 pub mod stack_guard;
 pub mod startup;
 pub mod supervisor;
@@ -253,6 +254,10 @@ pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{
     Scheduler, SchedulerStats, SchedulerStatsProvenance, SchedulerStatsRead, Timer,
     DEADLINE_PERIOD_US, DEFAULT_STATS_READ_RETRIES,
+};
+pub use scheduling_profile::{
+    admit_scheduling, DeadlineAction, SchedulingAdmission, SchedulingAdmissionError,
+    SchedulingCapabilities, SchedulingProfile, SchedulingRequest,
 };
 pub use stack_guard::{
     StackFault, StackGuardError, StackGuardTable, StackRegion, StackScanCursor, StackScanProgress,

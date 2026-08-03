@@ -349,6 +349,7 @@ pub enum SliceError {
     AliasedStack(ModuleId),
     DeadlineOverflow(ModuleId),
     IsolationUnsupported(ModuleId),
+    Cancelled(ModuleId),
     AlreadyRunning,
     NoReadyTask,
     NoPendingSwitch,
@@ -400,7 +401,16 @@ struct SliceSlot {
     task: SliceTask,
     ready: bool,
     suspended: bool,
+    cancelled: bool,
     forced_suspends: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PostSwitchState {
+    Ready,
+    Blocked,
+    Suspended,
+    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -410,6 +420,7 @@ struct PendingSwitch {
     from: SliceContext,
     to: SliceContext,
     forced: bool,
+    from_state: PostSwitchState,
 }
 
 #[repr(C)]
@@ -534,6 +545,7 @@ impl<const N: usize> SliceController<N> {
             task,
             ready: false,
             suspended: false,
+            cancelled: false,
             forced_suspends: 0,
         });
         self.len += 1;
@@ -549,9 +561,46 @@ impl<const N: usize> SliceController<N> {
         else {
             return false;
         };
+        if slot.cancelled {
+            return false;
+        }
         slot.ready = true;
         slot.suspended = false;
         true
+    }
+
+    /// Restart a cancelled or forcibly suspended task after its owner has
+    /// rebuilt any module-local state. This is the only route that clears a
+    /// cancellation; an ordinary wake cannot resurrect cancelled work.
+    pub fn restart(&mut self, module: ModuleId) -> bool {
+        let Some(slot) = self
+            .slots
+            .iter_mut()
+            .flatten()
+            .find(|slot| slot.task.module == module)
+        else {
+            return false;
+        };
+        slot.cancelled = false;
+        slot.suspended = false;
+        slot.ready = true;
+        true
+    }
+
+    pub fn is_cancelled(&self, module: ModuleId) -> Option<bool> {
+        self.slots
+            .iter()
+            .flatten()
+            .find(|slot| slot.task.module == module)
+            .map(|slot| slot.cancelled)
+    }
+
+    pub fn is_suspended(&self, module: ModuleId) -> Option<bool> {
+        self.slots
+            .iter()
+            .flatten()
+            .find(|slot| slot.task.module == module)
+            .map(|slot| slot.suspended)
     }
 
     /// Publish a ready transition and proactively request a context switch when
@@ -573,6 +622,9 @@ impl<const N: usize> SliceController<N> {
             .position(|slot| slot.is_some_and(|slot| slot.task.module == module))
             .ok_or(SliceError::NoReadyTask)?;
         let next_slot = self.slots[next].as_mut().ok_or(SliceError::NoReadyTask)?;
+        if next_slot.cancelled {
+            return Err(SliceError::Cancelled(module));
+        }
         next_slot.ready = true;
         next_slot.suspended = false;
 
@@ -602,6 +654,7 @@ impl<const N: usize> SliceController<N> {
             from: from.task.context,
             to: to.task.context,
             forced: false,
+            from_state: PostSwitchState::Ready,
         });
         Ok(SliceDecision::Switch {
             from: from.task.context,
@@ -620,7 +673,7 @@ impl<const N: usize> SliceController<N> {
             let Some(slot) = self.slots[index] else {
                 continue;
             };
-            if !slot.ready || slot.suspended {
+            if !slot.ready || slot.suspended || slot.cancelled {
                 continue;
             }
             selected = match selected {
@@ -687,6 +740,81 @@ impl<const N: usize> SliceController<N> {
         self.force_current_after_budget_fault(port)
     }
 
+    /// Cooperatively yield the current task to the next admitted ready task.
+    /// Equal-priority tasks rotate by the controller cursor, while higher
+    /// criticality remains dominant.
+    pub fn yield_current(
+        &mut self,
+        port: &mut impl SlicePort,
+    ) -> Result<SliceDecision, SliceError> {
+        self.switch_current(port, PostSwitchState::Ready)
+    }
+
+    /// Block the current task until an explicit [`mark_ready`](Self::mark_ready)
+    /// wake. The state changes only after the architectural switch commits.
+    pub fn block_current(
+        &mut self,
+        port: &mut impl SlicePort,
+    ) -> Result<SliceDecision, SliceError> {
+        self.switch_current(port, PostSwitchState::Blocked)
+    }
+
+    /// Cancel a task without allocation or an asynchronous destructor. A
+    /// non-running task is cancelled immediately. The running task is marked
+    /// cancelled only after PendSV installs another context.
+    pub fn cancel(
+        &mut self,
+        module: ModuleId,
+        port: &mut impl SlicePort,
+    ) -> Result<SliceDecision, SliceError> {
+        let index = self
+            .slots
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.task.module == module))
+            .ok_or(SliceError::NoReadyTask)?;
+        if self.current == Some(index) {
+            return self.switch_current(port, PostSwitchState::Cancelled);
+        }
+        let slot = self.slots[index].as_mut().ok_or(SliceError::NoReadyTask)?;
+        slot.ready = false;
+        slot.suspended = false;
+        slot.cancelled = true;
+        Ok(SliceDecision::None)
+    }
+
+    fn switch_current(
+        &mut self,
+        port: &mut impl SlicePort,
+        from_state: PostSwitchState,
+    ) -> Result<SliceDecision, SliceError> {
+        if let Some(pending) = self.pending {
+            return Ok(SliceDecision::Pending {
+                from: pending.from,
+                to: pending.to,
+                forced: pending.forced,
+            });
+        }
+        let current = self.current.ok_or(SliceError::NoReadyTask)?;
+        let from = self.slots[current].ok_or(SliceError::NoReadyTask)?;
+        let next = self.choose(Some(current)).ok_or(SliceError::NoReadyTask)?;
+        let to = self.slots[next].ok_or(SliceError::NoReadyTask)?;
+        port.pend_switch(from.task.context, to.task.context, false)
+            .map_err(|_| SliceError::Port)?;
+        self.pending = Some(PendingSwitch {
+            current,
+            next,
+            from: from.task.context,
+            to: to.task.context,
+            forced: false,
+            from_state,
+        });
+        Ok(SliceDecision::Switch {
+            from: from.task.context,
+            to: to.task.context,
+            forced: false,
+        })
+    }
+
     fn force_current_after_budget_fault(
         &mut self,
         port: &mut impl SlicePort,
@@ -712,6 +840,7 @@ impl<const N: usize> SliceController<N> {
             from: from.task.context,
             to: to.task.context,
             forced: true,
+            from_state: PostSwitchState::Suspended,
         });
         Ok(SliceDecision::Switch {
             from: from.task.context,
@@ -737,15 +866,30 @@ impl<const N: usize> SliceController<N> {
         let current_slot = self.slots[pending.current]
             .as_mut()
             .expect("current slice slot");
-        if pending.forced {
-            current_slot.suspended = true;
-            current_slot.ready = false;
-            current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
-        } else {
-            // A priority preemption pauses rather than faults the previous
-            // task; it remains eligible to resume after the urgent task yields.
-            current_slot.suspended = false;
-            current_slot.ready = true;
+        match pending.from_state {
+            PostSwitchState::Ready => {
+                // A priority preemption or yield pauses rather than faults the
+                // previous task, which remains eligible to resume.
+                current_slot.suspended = false;
+                current_slot.cancelled = false;
+                current_slot.ready = true;
+            }
+            PostSwitchState::Blocked => {
+                current_slot.suspended = false;
+                current_slot.cancelled = false;
+                current_slot.ready = false;
+            }
+            PostSwitchState::Suspended => {
+                current_slot.suspended = true;
+                current_slot.cancelled = false;
+                current_slot.ready = false;
+                current_slot.forced_suspends = current_slot.forced_suspends.saturating_add(1);
+            }
+            PostSwitchState::Cancelled => {
+                current_slot.suspended = false;
+                current_slot.cancelled = true;
+                current_slot.ready = false;
+            }
         }
         self.current = Some(pending.next);
         self.cursor = (pending.next + 1) % N.max(1);
@@ -1156,6 +1300,118 @@ mod tests {
         assert_eq!(
             sentinel.check(61).map(|stuck| stuck.module_code),
             Some(module_code(ModuleId::Actuator))
+        );
+    }
+
+    #[test]
+    fn yield_block_wake_cancel_and_restart_have_distinct_bounded_states() {
+        let mut storage = [0u64; 64];
+        let base = storage.as_mut_ptr() as usize;
+        let mut controller = SliceController::<2>::new();
+        for (index, module) in [ModuleId::Sensor, ModuleId::Actuator]
+            .into_iter()
+            .enumerate()
+        {
+            controller
+                .add(SliceTask::new(
+                    module,
+                    Criticality::User,
+                    100,
+                    base + index * 256,
+                    256,
+                ))
+                .unwrap();
+            assert!(controller.mark_ready(module));
+        }
+        let sentinel = ExecutionSentinel::new();
+        assert_eq!(
+            controller.start_next_at(0, &sentinel).unwrap().module,
+            ModuleId::Sensor
+        );
+        let mut port = Port::default();
+
+        assert!(matches!(
+            controller.yield_current(&mut port),
+            Ok(SliceDecision::Switch { forced: false, .. })
+        ));
+        controller.commit_pending_switch_at(10, &sentinel).unwrap();
+        assert_eq!(controller.current, Some(1));
+
+        assert!(matches!(
+            controller.block_current(&mut port),
+            Ok(SliceDecision::Switch { forced: false, .. })
+        ));
+        controller.commit_pending_switch_at(20, &sentinel).unwrap();
+        assert_eq!(controller.current, Some(0));
+        assert_eq!(controller.is_suspended(ModuleId::Actuator), Some(false));
+        assert!(controller.mark_ready(ModuleId::Actuator));
+
+        assert_eq!(
+            controller.cancel(ModuleId::Actuator, &mut port),
+            Ok(SliceDecision::None)
+        );
+        assert_eq!(controller.is_cancelled(ModuleId::Actuator), Some(true));
+        assert!(!controller.mark_ready(ModuleId::Actuator));
+        assert!(controller.restart(ModuleId::Actuator));
+
+        assert!(matches!(
+            controller.cancel(ModuleId::Sensor, &mut port),
+            Ok(SliceDecision::Switch { forced: false, .. })
+        ));
+        assert_eq!(controller.is_cancelled(ModuleId::Sensor), Some(false));
+        controller.commit_pending_switch_at(30, &sentinel).unwrap();
+        assert_eq!(controller.is_cancelled(ModuleId::Sensor), Some(true));
+        assert!(!controller.mark_ready(ModuleId::Sensor));
+        assert!(controller.restart(ModuleId::Sensor));
+        assert_eq!(port.proactive_switches, 3);
+        assert_eq!(port.forced_switches, 0);
+    }
+
+    #[test]
+    fn failed_cancel_switch_and_deadline_wrap_leave_state_retryable() {
+        let mut storage = [0u64; 64];
+        let base = storage.as_mut_ptr() as usize;
+        let mut controller = SliceController::<2>::new();
+        controller
+            .add(SliceTask::new(
+                ModuleId::Sensor,
+                Criticality::User,
+                100,
+                base,
+                256,
+            ))
+            .unwrap();
+        controller
+            .add(SliceTask::new(
+                ModuleId::Actuator,
+                Criticality::User,
+                100,
+                base + 256,
+                256,
+            ))
+            .unwrap();
+        controller.mark_ready(ModuleId::Sensor);
+        controller.mark_ready(ModuleId::Actuator);
+        let sentinel = ExecutionSentinel::new();
+        assert_eq!(
+            controller.start_next_at(u64::MAX - 50, &sentinel),
+            Err(SliceError::DeadlineOverflow(ModuleId::Sensor))
+        );
+        controller.start_next_at(0, &sentinel).unwrap();
+
+        let mut failing = Port {
+            fail: true,
+            ..Port::default()
+        };
+        assert_eq!(
+            controller.cancel(ModuleId::Sensor, &mut failing),
+            Err(SliceError::Port)
+        );
+        assert_eq!(controller.is_cancelled(ModuleId::Sensor), Some(false));
+        assert_eq!(controller.current, Some(0));
+        assert_eq!(
+            sentinel.check(101).unwrap().module_code,
+            module_code(ModuleId::Sensor)
         );
     }
 

@@ -12,7 +12,11 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use cortex_m::peripheral::NVIC;
+use fugit::ExtU32;
 use nobro_hal::{CortexM0ContextRecord, CortexM0SliceSwitch};
+use nobro_kernel::{
+    admit_scheduling, SchedulingCapabilities, SchedulingProfile, SchedulingRequest,
+};
 use panic_halt as _;
 use rp2040_hal as hal;
 
@@ -21,7 +25,7 @@ use rp2040_hal as hal;
 pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 const MAGIC: u32 = 0x4e53_4c30; // "NSL0"
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const ALARM_DELAY_US: u32 = 1_000;
 const TIMER_PRIORITY_RAW: u8 = 1 << 6;
 const PENDSV_LOGICAL_PRIORITY: u8 = 3;
@@ -39,6 +43,7 @@ pub struct SliceSelftestReport {
     offender_spins: u32,
     recovery_resumes: u32,
     current_record: u32,
+    profile_admitted: u32,
     diagnostic_checksum: u32,
 }
 
@@ -56,6 +61,7 @@ pub static mut NOBRO_RP2040_SLICE_REPORT: SliceSelftestReport = SliceSelftestRep
     offender_spins: 0,
     recovery_resumes: 0,
     current_record: 0,
+    profile_admitted: 0,
     diagnostic_checksum: 0,
 };
 
@@ -73,6 +79,7 @@ static SWITCH_ERRORS: AtomicU32 = AtomicU32::new(0);
 static FIRST_LATENESS_US: AtomicU32 = AtomicU32::new(0);
 static SECOND_LATENESS_US: AtomicU32 = AtomicU32::new(0);
 static OFFENDER_SPINS: AtomicU32 = AtomicU32::new(0);
+static PROFILE_ADMITTED: AtomicU32 = AtomicU32::new(0);
 
 fn timer() -> &'static hal::pac::timer::RegisterBlock {
     unsafe { &*hal::pac::TIMER::ptr() }
@@ -115,6 +122,7 @@ extern "C" fn recovery(_: usize) -> ! {
     let errors = SWITCH_ERRORS.load(Ordering::Acquire);
     let spins = OFFENDER_SPINS.load(Ordering::Acquire);
     let current = CortexM0SliceSwitch::current_record_address();
+    let profile_admitted = PROFILE_ADMITTED.load(Ordering::Acquire);
     let resumes = u32::from(PHASE.load(Ordering::Acquire) == 4);
     let first = FIRST_LATENESS_US.load(Ordering::Acquire);
     let second = SECOND_LATENESS_US.load(Ordering::Acquire);
@@ -123,10 +131,28 @@ extern "C" fn recovery(_: usize) -> ! {
             && errors == 0
             && spins != 0
             && resumes == 1
+            && profile_admitted == 1
             && current == core::ptr::addr_of!(RECOVERY_CONTEXT) as u32,
     );
-    let diagnostic_checksum =
-        MAGIC ^ VERSION ^ 1 ^ pass ^ alarms ^ errors ^ first ^ second ^ spins ^ resumes ^ current;
+    let diagnostic_checksum = MAGIC
+        ^ VERSION
+        ^ 1
+        ^ pass
+        ^ alarms
+        ^ errors
+        ^ first
+        ^ second
+        ^ spins
+        ^ resumes
+        ^ current
+        ^ profile_admitted;
+    // The architectural switch completed and the report no longer needs the
+    // independent fallback. Disable it before parking this diagnostic image.
+    unsafe {
+        (*hal::pac::WATCHDOG::ptr())
+            .ctrl()
+            .write(|writer| writer.enable().clear_bit());
+    }
     unsafe {
         core::ptr::write_volatile(
             core::ptr::addr_of_mut!(NOBRO_RP2040_SLICE_REPORT),
@@ -142,6 +168,7 @@ extern "C" fn recovery(_: usize) -> ! {
                 offender_spins: spins,
                 recovery_resumes: resumes,
                 current_record: current,
+                profile_admitted,
                 diagnostic_checksum,
             },
         );
@@ -188,6 +215,21 @@ fn main() -> ! {
         &mut watchdog,
     )
     .unwrap();
+    let scheduling = SchedulingRequest::cooperative()
+        .profile(SchedulingProfile::ForcedPreemption)
+        .priorities(4)
+        .force_suspend(ALARM_DELAY_US, 50, 10_000);
+    let capabilities = SchedulingCapabilities::cooperative(0x5250_4d30, 1, 4)
+        .deadline_observation(1, 50)
+        .async_priority()
+        .forced_preemption(10, 10_000, false);
+    PROFILE_ADMITTED.store(
+        u32::from(admit_scheduling(scheduling, capabilities).is_ok()),
+        Ordering::Release,
+    );
+    // If PendSV cannot complete, this independent peripheral resets the target
+    // within the admitted containment bound. Recovery disables it after proof.
+    watchdog.start(10_000.micros());
 
     unsafe {
         OFFENDER_CONTEXT

@@ -15,15 +15,25 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use defmt_rtt as _;
 use nobro_hal::{ContextRecord, CortexMSliceSwitch, NrfTimerPower, PriorityCeiling};
+use nobro_kernel::{
+    admit_scheduling, SchedulingCapabilities, SchedulingProfile, SchedulingRequest,
+};
 use nobro_power::{DeadlineTimingProfile, DeadlineTimingRequest, PowerMode, PowerPlatform};
 use nrf52840_pac::{Interrupt, TIMER1};
 use panic_halt as _;
 
 const MAGIC: u32 = 0x4e53_4c34; // "NSL4"
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const DEADLINE_DELAY_US: u32 = 1_000;
 const SLICE_DELAY_US: u32 = 1_000;
 const TIMER1_PRIORITY_RAW: u8 = 5 << 5;
+const WDT: u32 = 0x4001_0000;
+// Ten seconds still bounds a failed containment handoff, while leaving enough
+// time for a hardware debugger to establish control before HALT pauses WDT.
+// A sub-second reload can expire inside a target-side flash-verify helper and
+// turn a valid recovery into a misleading debugger failure.
+const WDT_CRV: u32 = 327_679;
+const WDT_RELOAD: u32 = 0x6E52_4635;
 
 #[repr(C)]
 struct SliceTimingReport {
@@ -39,6 +49,7 @@ struct SliceTimingReport {
     offender_spins: u32,
     recovery_resumes: u32,
     current_record: u32,
+    profile_admitted: u32,
     diagnostic_checksum: u32,
 }
 
@@ -57,6 +68,7 @@ static mut NOBRO_NRF_SLICE_TIMING_REPORT: SliceTimingReport = SliceTimingReport 
     offender_spins: 0,
     recovery_resumes: 0,
     current_record: 0,
+    profile_admitted: 0,
     diagnostic_checksum: 0,
 };
 
@@ -75,6 +87,11 @@ static OFFENDER_SPINS: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_RELEASES: AtomicU32 = AtomicU32::new(0);
 static DEADLINE_LATENESS: AtomicU32 = AtomicU32::new(0);
 static ADMITTED_OVERHEAD: AtomicU32 = AtomicU32::new(0);
+static PROFILE_ADMITTED: AtomicU32 = AtomicU32::new(0);
+
+unsafe fn wr(address: u32, value: u32) {
+    core::ptr::write_volatile(address as *mut u32, value);
+}
 
 fn timer1_now_us() -> u32 {
     unsafe {
@@ -117,6 +134,7 @@ extern "C" fn recovery(_: usize) -> ! {
     let spins = OFFENDER_SPINS.load(Ordering::Acquire);
     let recovery_resumes = u32::from(PHASE.load(Ordering::Acquire) == 4);
     let current = CortexMSliceSwitch::current_record_address();
+    let profile_admitted = PROFILE_ADMITTED.load(Ordering::Acquire);
     let pass = u32::from(
         deadline_releases == 1
             && deadline_lateness <= 50
@@ -125,6 +143,7 @@ extern "C" fn recovery(_: usize) -> ! {
             && switch_errors == 0
             && spins != 0
             && recovery_resumes == 1
+            && profile_admitted == 1
             && current == core::ptr::addr_of!(RECOVERY_CONTEXT) as u32,
     );
     let diagnostic_checksum = MAGIC
@@ -138,7 +157,8 @@ extern "C" fn recovery(_: usize) -> ! {
         ^ switch_errors
         ^ spins
         ^ recovery_resumes
-        ^ current;
+        ^ current
+        ^ profile_admitted;
     unsafe {
         core::ptr::write_volatile(
             core::ptr::addr_of_mut!(NOBRO_NRF_SLICE_TIMING_REPORT),
@@ -155,12 +175,16 @@ extern "C" fn recovery(_: usize) -> ! {
                 offender_spins: spins,
                 recovery_resumes,
                 current_record: current,
+                profile_admitted,
                 diagnostic_checksum,
             },
         );
     }
     loop {
-        cortex_m::asm::wfe();
+        // Feed only from the recovery context. A PendSV/context failure leaves
+        // the offender unable to feed and the independent WDT resets the SoC.
+        unsafe { wr(WDT + 0x600, WDT_RELOAD) };
+        core::hint::spin_loop();
     }
 }
 
@@ -204,6 +228,25 @@ fn main() -> ! {
     DEADLINE_RELEASES.store(releases, Ordering::Release);
     DEADLINE_LATENESS.store(now.wrapping_sub(deadline) as u32, Ordering::Release);
     ADMITTED_OVERHEAD.store(admission.total_overhead_us, Ordering::Release);
+
+    let scheduling = SchedulingRequest::cooperative()
+        .profile(SchedulingProfile::ForcedPreemption)
+        .priorities(8)
+        .force_suspend(SLICE_DELAY_US, 50, 500_000);
+    let capabilities = SchedulingCapabilities::cooperative(0x4e52_4634, 1, 8)
+        .deadline_observation(1, 54)
+        .async_priority()
+        .forced_preemption(10, 500_000, true);
+    PROFILE_ADMITTED.store(
+        u32::from(admit_scheduling(scheduling, capabilities).is_ok()),
+        Ordering::Release,
+    );
+    unsafe {
+        wr(WDT + 0x504, WDT_CRV);
+        wr(WDT + 0x508, 1);
+        wr(WDT + 0x50C, 1);
+        wr(WDT, 1);
+    }
 
     unsafe {
         let timer = TIMER1::ptr();

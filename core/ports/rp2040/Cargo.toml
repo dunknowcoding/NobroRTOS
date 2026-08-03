@@ -17,6 +17,7 @@ required-features = ["slice-selftest"]
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
+fugit = "0.3"
 panic-halt = "0.2"
 pio = "0.3"
 rp2040-boot2 = "0.3"
