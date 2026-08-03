@@ -637,9 +637,6 @@ mod tests {
             IsolationArchitecture, IsolationCapabilities, IsolationEpoch, IsolationPlan,
             IsolationRegion,
         };
-        extern crate std;
-        use std::boxed::Box;
-
         static EPOCH: IsolationEpoch = IsolationEpoch::new();
         let mut plan = IsolationPlan::<4>::new(41, 41);
         plan.add(IsolationRegion::code(0, 1024 * 1024)).unwrap();
@@ -649,12 +646,21 @@ mod tests {
             .unwrap();
         let capabilities = IsolationCapabilities::pmsa(1, 1, IsolationArchitecture::PmsaV7M, 8);
         let receipt = EPOCH.admit(&plan, capabilities).unwrap();
-        let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; 32]));
+        let mut buffer = [0u8; 32];
         let mut registry = DmaLeaseRegistry::<1>::new();
-        let lease = registry
-            .acquire_isolated_static(receipt, buffer, request())
-            .unwrap();
         let owner = DmaOwnerId(receipt.lease_owner());
+        // SAFETY: the stack buffer outlives the lease and recovery retires the
+        // registry entry before the buffer leaves this test scope.
+        let lease = unsafe {
+            registry.acquire_region_with_isolation(
+                owner,
+                buffer.as_mut_ptr() as usize,
+                buffer.len(),
+                request(),
+                Some(receipt),
+            )
+        }
+        .unwrap();
         let mut backend = Backend::default();
         EPOCH.activate(receipt).unwrap();
         registry.begin(lease, owner, &mut backend).unwrap();
