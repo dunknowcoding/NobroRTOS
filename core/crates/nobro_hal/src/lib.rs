@@ -9,6 +9,7 @@
 pub mod board_catalog;
 pub mod board_desc;
 pub mod completion;
+pub mod dma_lease;
 pub mod esp;
 pub mod lease;
 pub mod mpu;
@@ -71,6 +72,11 @@ pub use board_desc::{
     BusLayout, ServoProfile,
 };
 pub use completion::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
+pub use dma_lease::{
+    DmaBufferDescriptor, DmaCoherency, DmaCompletionReceipt, DmaDirection, DmaLease,
+    DmaLeaseBackend, DmaLeaseError, DmaLeaseRegistry, DmaLeaseRequest, DmaOwnerId,
+    DmaRecoveryReason, DmaRecoveryReceipt,
+};
 pub use esp::{
     EspAdc, EspAdcBackend, EspAlarm, EspAlarmBackend, EspByteIo, EspByteIoBackend,
     EspCacheContract, EspContractError, EspDmaBackend, EspDmaCompletion, EspDmaDomain, EspDmaKind,

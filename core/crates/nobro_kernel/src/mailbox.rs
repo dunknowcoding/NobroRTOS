@@ -43,10 +43,33 @@ pub enum MailboxError {
     Full,
 }
 
+/// Attributed admission failure for callers that need to distinguish global
+/// saturation from the normal-message limit reserved for recovery traffic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MailboxPushError {
+    GlobalCapacity,
+    ControlReserve,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MailboxWork {
     pub inspected: usize,
     pub shifted: usize,
+}
+
+/// Public, opt-in mailbox telemetry. The feature retains no message contents
+/// and has no cost when `capacity-report` is disabled.
+#[cfg(feature = "capacity-report")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MailboxTelemetrySnapshot {
+    pub len: usize,
+    pub capacity: usize,
+    pub control_len: usize,
+    pub control_reserve: usize,
+    pub dropped: u32,
+    pub observed_peak: u32,
+    pub admission_failures: u32,
+    pub saturated: bool,
 }
 
 pub struct Mailbox<const N: usize> {
@@ -200,12 +223,24 @@ impl<const N: usize> Mailbox<N> {
     }
 
     pub fn push(&mut self, message: Message) -> Result<(), MailboxError> {
+        self.push_attributed(message)
+            .map_err(|_| MailboxError::Full)
+    }
+
+    pub fn push_attributed(&mut self, message: Message) -> Result<(), MailboxPushError> {
         let control = Self::is_control(message);
-        if self.len == N || (!control && self.len >= N.saturating_sub(self.control_reserve)) {
+        let error = if self.len == N {
+            Some(MailboxPushError::GlobalCapacity)
+        } else if !control && self.len >= N.saturating_sub(self.control_reserve) {
+            Some(MailboxPushError::ControlReserve)
+        } else {
+            None
+        };
+        if let Some(error) = error {
             self.dropped = self.dropped.saturating_add(1);
             #[cfg(feature = "capacity-report")]
             self.capacity_metrics.record_failure();
-            return Err(MailboxError::Full);
+            return Err(error);
         }
 
         if control {
@@ -314,6 +349,21 @@ impl<const N: usize> Mailbox<N> {
 
     pub const fn control_len(&self) -> usize {
         self.control_len
+    }
+
+    #[cfg(feature = "capacity-report")]
+    pub const fn telemetry(&self) -> MailboxTelemetrySnapshot {
+        let capacity = self.capacity_metrics.snapshot();
+        MailboxTelemetrySnapshot {
+            len: self.len,
+            capacity: N,
+            control_len: self.control_len,
+            control_reserve: self.control_reserve,
+            dropped: self.dropped,
+            observed_peak: capacity.observed_peak,
+            admission_failures: capacity.failures,
+            saturated: capacity.saturated,
+        }
     }
 
     #[cfg(feature = "capacity-report")]
@@ -494,6 +544,58 @@ mod tests {
         assert_eq!(mailbox.control_len(), 1);
         assert_eq!(mailbox.pop(), Some(recovery));
         assert_eq!(mailbox.pop().map(|message| message.arg0), Some(0));
+    }
+
+    #[test]
+    fn attributed_push_separates_reserve_from_global_capacity() {
+        let mut mailbox = Mailbox::<2>::with_control_reserve(1);
+        mailbox
+            .push_attributed(msg(ModuleId::Sensor, ModuleId::Radio, 1))
+            .unwrap();
+        assert_eq!(
+            mailbox.push_attributed(msg(ModuleId::Sensor, ModuleId::Radio, 2)),
+            Err(MailboxPushError::ControlReserve)
+        );
+        mailbox
+            .push_attributed(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Radio,
+                MessageKind::Recovery,
+                3,
+                0,
+            ))
+            .unwrap();
+        assert_eq!(
+            mailbox.push_attributed(Message::new(
+                ModuleId::Kernel,
+                ModuleId::Radio,
+                MessageKind::Shutdown,
+                4,
+                0,
+            )),
+            Err(MailboxPushError::GlobalCapacity)
+        );
+    }
+
+    #[cfg(feature = "capacity-report")]
+    #[test]
+    fn opt_in_telemetry_is_public_content_free_and_attributed() {
+        let mut mailbox = Mailbox::<2>::with_control_reserve(1);
+        mailbox.start_capacity_session(1);
+        mailbox
+            .push_attributed(msg(ModuleId::Sensor, ModuleId::Radio, 1))
+            .unwrap();
+        assert_eq!(
+            mailbox.push_attributed(msg(ModuleId::Sensor, ModuleId::Radio, 2)),
+            Err(MailboxPushError::ControlReserve)
+        );
+        let telemetry = mailbox.telemetry();
+        assert_eq!(telemetry.len, 1);
+        assert_eq!(telemetry.capacity, 2);
+        assert_eq!(telemetry.control_reserve, 1);
+        assert_eq!(telemetry.observed_peak, 1);
+        assert_eq!(telemetry.admission_failures, 1);
+        assert_eq!(telemetry.dropped, 1);
     }
 
     #[test]

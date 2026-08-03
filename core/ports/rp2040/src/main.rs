@@ -309,6 +309,30 @@ fn main() -> ! {
                 put_u32(&mut report, &mut pos, dma_report.irq_wakes);
                 put_bytes(&mut report, &mut pos, b" dma_wake=");
                 put_u32(&mut report, &mut pos, dma_report.task_wakes);
+                put_bytes(&mut report, &mut pos, b" dma_owner_fault=");
+                put_u32(
+                    &mut report,
+                    &mut pos,
+                    u32::from(dma_report.ownership_fault_rejected),
+                );
+                put_bytes(&mut report, &mut pos, b" dma_stale=");
+                put_u32(
+                    &mut report,
+                    &mut pos,
+                    u32::from(dma_report.stale_generation_rejected),
+                );
+                put_bytes(&mut report, &mut pos, b" dma_partial=");
+                put_u32(
+                    &mut report,
+                    &mut pos,
+                    u32::from(dma_report.partial_completion),
+                );
+                put_bytes(&mut report, &mut pos, b" dma_recover=");
+                put_u32(
+                    &mut report,
+                    &mut pos,
+                    u32::from(dma_report.timeout_recovered),
+                );
             }
             put_bytes(&mut report, &mut pos, b" cores=2 core1_processed=");
             put_u32(

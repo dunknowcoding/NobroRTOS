@@ -2862,7 +2862,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "51613d9f8d67de76b620edcb8fd361df9ae431fff45dbd5194de86e1694394e5"
+        "sha256": "8d5df4b24c82715b1ac23cd086a7037f1ae5b9e983d3d7544833443aeb6d5a6d"
       },
       {
         "crate": "nobro-host",
@@ -3859,7 +3859,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "2af201695ea1e7f93043db186cfe2a3be19565f3fbc24d4bc9ccd9946079abbe"
+        "sha256": "ffa9e9dc28cbfb1d2258b47f76f8c9c69814d831975e3eeb3627fa8ce3f45130"
       },
       {
         "crate": "nobro-ml",

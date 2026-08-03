@@ -33,6 +33,9 @@ pub struct StackRegion {
 pub enum StackGuardError {
     Full,
     Duplicate(ModuleId),
+    Unknown(ModuleId),
+    StaleScan,
+    ZeroScanBudget,
     /// Two logical contexts claimed overlapping physical stack memory.
     AliasedRegion(ModuleId),
     /// Zero-length region or canary not smaller than the region.
@@ -40,12 +43,47 @@ pub enum StackGuardError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackScope {
+    /// A process stack owned by one independently attributable context.
+    OwnedPsp,
+    /// The main stack shared by cooperative kernel execution.
+    SharedMsp,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackWatermarkSemantics {
+    /// Conservative high-water extent since registration or explicit repaint.
+    /// A write in the middle of an otherwise untouched region counts all bytes
+    /// between that byte and the descending stack's top.
+    CumulativeSincePaint,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StackStatus {
     pub module: ModuleId,
+    pub scope: StackScope,
+    pub generation: u32,
     pub canary_intact: bool,
     /// High-water mark: bytes of the region that have been written since paint.
     pub used_bytes: usize,
     pub len: usize,
+    pub watermark_semantics: StackWatermarkSemantics,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackScanCursor {
+    slot: u16,
+    generation: u32,
+    offset: usize,
+    first_touched: usize,
+    canary_intact: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackScanProgress {
+    pub inspected: usize,
+    pub complete: bool,
+    pub status: Option<StackStatus>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,16 +97,22 @@ pub struct StackFault {
 struct GuardEntry {
     module: ModuleId,
     region: StackRegion,
+    scope: StackScope,
+    generation: u32,
 }
 
 /// Fixed-capacity registry of guarded stacks, one per execution context.
 pub struct StackGuardTable<const N: usize> {
     entries: [Option<GuardEntry>; N],
+    generations: [u32; N],
 }
 
 impl<const N: usize> StackGuardTable<N> {
     pub const fn new() -> Self {
-        Self { entries: [None; N] }
+        Self {
+            entries: [None; N],
+            generations: [0; N],
+        }
     }
 
     /// Register a module's stack region and paint its unused span.
@@ -82,6 +126,19 @@ impl<const N: usize> StackGuardTable<N> {
         &mut self,
         module: ModuleId,
         region: StackRegion,
+    ) -> Result<(), StackGuardError> {
+        self.register_with_scope(module, region, StackScope::OwnedPsp)
+    }
+
+    /// Register a region with explicit MSP/PSP attribution.
+    ///
+    /// # Safety
+    /// Same memory-lifetime and below-current-SP contract as [`register`].
+    pub unsafe fn register_with_scope(
+        &mut self,
+        module: ModuleId,
+        region: StackRegion,
+        scope: StackScope,
     ) -> Result<(), StackGuardError> {
         if region.len == 0 || region.canary_bytes == 0 || region.canary_bytes >= region.len {
             return Err(StackGuardError::InvalidRegion(module));
@@ -103,11 +160,21 @@ impl<const N: usize> StackGuardTable<N> {
         }) {
             return Err(StackGuardError::AliasedRegion(module));
         }
-        let Some(slot) = self.entries.iter_mut().find(|slot| slot.is_none()) else {
+        let Some(index) = self.entries.iter().position(Option::is_none) else {
             return Err(StackGuardError::Full);
         };
+        let mut generation = self.generations[index].wrapping_add(1);
+        if generation == 0 {
+            generation = 1;
+        }
+        self.generations[index] = generation;
         paint(region);
-        *slot = Some(GuardEntry { module, region });
+        self.entries[index] = Some(GuardEntry {
+            module,
+            region,
+            scope,
+            generation,
+        });
         Ok(())
     }
 
@@ -121,7 +188,20 @@ impl<const N: usize> StackGuardTable<N> {
         &mut self,
         region: StackRegion,
     ) -> Result<(), StackGuardError> {
-        self.register(ModuleId::Kernel, region)
+        self.register_with_scope(ModuleId::Kernel, region, StackScope::SharedMsp)
+    }
+
+    /// Remove a context before its storage is reclaimed or reused. An active
+    /// scan cursor for the old generation becomes stale immediately.
+    pub fn unregister(&mut self, module: ModuleId) -> Result<StackRegion, StackGuardError> {
+        let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.map(|entry| entry.module == module).unwrap_or(false))
+        else {
+            return Err(StackGuardError::Unknown(module));
+        };
+        Ok(self.entries[index].take().unwrap().region)
     }
 
     /// Inspect one module's stack: canary integrity + high-water mark.
@@ -131,17 +211,14 @@ impl<const N: usize> StackGuardTable<N> {
             .iter()
             .flatten()
             .find(|entry| entry.module == module)?;
-        Some(inspect(entry.module, entry.region))
+        Some(inspect(*entry))
     }
 
     /// Iterate over a point-in-time inspection of every registered stack.
     /// Watermarks are cumulative since registration or the last explicit
     /// repaint, so a campaign cannot accidentally understate an earlier peak.
     pub fn statuses(&self) -> impl Iterator<Item = StackStatus> + '_ {
-        self.entries
-            .iter()
-            .flatten()
-            .map(|entry| inspect(entry.module, entry.region))
+        self.entries.iter().flatten().map(|entry| inspect(*entry))
     }
 
     pub fn len(&self) -> usize {
@@ -156,7 +233,7 @@ impl<const N: usize> StackGuardTable<N> {
     /// recovery attribution (subsequent sweeps surface the rest).
     pub fn sweep(&self) -> Option<StackFault> {
         for entry in self.entries.iter().flatten() {
-            let status = inspect(entry.module, entry.region);
+            let status = inspect(*entry);
             if !status.canary_intact {
                 return Some(StackFault {
                     module: status.module,
@@ -185,6 +262,77 @@ impl<const N: usize> StackGuardTable<N> {
         paint(entry.region);
         true
     }
+
+    /// Start a resumable full-region inspection bound to this registration.
+    pub fn begin_scan(&self, module: ModuleId) -> Result<StackScanCursor, StackGuardError> {
+        let Some((slot, entry)) = self.entries.iter().enumerate().find_map(|(slot, entry)| {
+            entry
+                .filter(|entry| entry.module == module)
+                .map(|entry| (slot, entry))
+        }) else {
+            return Err(StackGuardError::Unknown(module));
+        };
+        let slot = u16::try_from(slot).map_err(|_| StackGuardError::Full)?;
+        Ok(StackScanCursor {
+            slot,
+            generation: entry.generation,
+            offset: 0,
+            first_touched: entry.region.len,
+            canary_intact: true,
+        })
+    }
+
+    /// Inspect at most `budget_bytes`, returning a status only when complete.
+    pub fn scan_step(
+        &self,
+        cursor: &mut StackScanCursor,
+        budget_bytes: usize,
+    ) -> Result<StackScanProgress, StackGuardError> {
+        if budget_bytes == 0 {
+            return Err(StackGuardError::ZeroScanBudget);
+        }
+        let Some(entry) = self
+            .entries
+            .get(usize::from(cursor.slot))
+            .and_then(Option::as_ref)
+        else {
+            return Err(StackGuardError::StaleScan);
+        };
+        if entry.generation != cursor.generation || cursor.offset > entry.region.len {
+            return Err(StackGuardError::StaleScan);
+        }
+        let end = cursor
+            .offset
+            .saturating_add(budget_bytes)
+            .min(entry.region.len);
+        let ptr = entry.region.base as *const u8;
+        for offset in cursor.offset..end {
+            // SAFETY: the registration contract keeps this span readable.
+            let byte = unsafe { ptr.add(offset).read_volatile() };
+            if offset < entry.region.canary_bytes && byte != WATERMARK_PATTERN {
+                cursor.canary_intact = false;
+            }
+            if cursor.first_touched == entry.region.len && byte != WATERMARK_PATTERN {
+                cursor.first_touched = offset;
+            }
+        }
+        let inspected = end - cursor.offset;
+        cursor.offset = end;
+        let complete = cursor.offset == entry.region.len;
+        Ok(StackScanProgress {
+            inspected,
+            complete,
+            status: complete.then(|| StackStatus {
+                module: entry.module,
+                scope: entry.scope,
+                generation: entry.generation,
+                canary_intact: cursor.canary_intact,
+                used_bytes: entry.region.len - cursor.first_touched,
+                len: entry.region.len,
+                watermark_semantics: StackWatermarkSemantics::CumulativeSincePaint,
+            }),
+        })
+    }
 }
 
 impl<const N: usize> Default for StackGuardTable<N> {
@@ -200,7 +348,8 @@ unsafe fn paint(region: StackRegion) {
     }
 }
 
-fn inspect(module: ModuleId, region: StackRegion) -> StackStatus {
+fn inspect(entry: GuardEntry) -> StackStatus {
+    let region = entry.region;
     let ptr = region.base as *const u8;
     let mut canary_intact = true;
     for offset in 0..region.canary_bytes {
@@ -222,10 +371,13 @@ fn inspect(module: ModuleId, region: StackRegion) -> StackStatus {
         }
     }
     StackStatus {
-        module,
+        module: entry.module,
+        scope: entry.scope,
+        generation: entry.generation,
         canary_intact,
         used_bytes: region.len - first_touched,
         len: region.len,
+        watermark_semantics: StackWatermarkSemantics::CumulativeSincePaint,
     }
 }
 
@@ -340,5 +492,93 @@ mod tests {
             );
         }
         assert_eq!(table.status(ModuleId::Kernel).unwrap().len, 96);
+        assert_eq!(
+            table.status(ModuleId::Kernel).unwrap().scope,
+            StackScope::SharedMsp
+        );
+    }
+
+    #[test]
+    fn resumable_scan_is_bounded_and_reports_conservative_mid_stack_use() {
+        let mut stack = [0u8; 40];
+        let mut table = StackGuardTable::<1>::new();
+        unsafe {
+            table
+                .register(ModuleId::Sensor, region_of(&mut stack, 4))
+                .unwrap();
+        }
+        stack[20] = 0x11;
+        let mut cursor = table.begin_scan(ModuleId::Sensor).unwrap();
+        let mut inspected = 0;
+        loop {
+            let progress = table.scan_step(&mut cursor, 7).unwrap();
+            assert!(progress.inspected <= 7);
+            inspected += progress.inspected;
+            if let Some(status) = progress.status {
+                assert!(progress.complete);
+                assert_eq!(status.used_bytes, 20);
+                assert_eq!(
+                    status.watermark_semantics,
+                    StackWatermarkSemantics::CumulativeSincePaint
+                );
+                break;
+            }
+        }
+        assert_eq!(inspected, stack.len());
+    }
+
+    #[test]
+    fn unregister_and_reregister_invalidate_old_scan_generation() {
+        let mut first = [0u8; 32];
+        let mut second = [0u8; 32];
+        let mut table = StackGuardTable::<1>::new();
+        unsafe {
+            table
+                .register(ModuleId::Radio, region_of(&mut first, 4))
+                .unwrap();
+        }
+        let mut stale = table.begin_scan(ModuleId::Radio).unwrap();
+        assert_eq!(table.unregister(ModuleId::Radio).unwrap().len, first.len());
+        unsafe {
+            table
+                .register(ModuleId::Radio, region_of(&mut second, 4))
+                .unwrap();
+        }
+        assert_eq!(
+            table.scan_step(&mut stale, 4),
+            Err(StackGuardError::StaleScan)
+        );
+        let current = table.status(ModuleId::Radio).unwrap();
+        assert!(current.generation > 1);
+        assert_eq!(
+            table.unregister(ModuleId::Sensor),
+            Err(StackGuardError::Unknown(ModuleId::Sensor))
+        );
+    }
+
+    #[test]
+    fn budget_and_canary_failures_are_precise() {
+        let mut stack = [0u8; 32];
+        let mut table = StackGuardTable::<1>::new();
+        unsafe {
+            table
+                .register(ModuleId::Crypto, region_of(&mut stack, 4))
+                .unwrap();
+        }
+        let mut cursor = table.begin_scan(ModuleId::Crypto).unwrap();
+        assert_eq!(
+            table.scan_step(&mut cursor, 0),
+            Err(StackGuardError::ZeroScanBudget)
+        );
+        // Volatile write mirrors a live stack mutation that the guard observes
+        // through volatile reads.
+        unsafe { stack.as_mut_ptr().add(3).write_volatile(0) };
+        let status = loop {
+            let progress = table.scan_step(&mut cursor, 5).unwrap();
+            if let Some(status) = progress.status {
+                break status;
+            }
+        };
+        assert!(!status.canary_intact);
     }
 }

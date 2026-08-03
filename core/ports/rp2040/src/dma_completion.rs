@@ -13,7 +13,11 @@ use core::pin::Pin;
 use core::sync::atomic::{compiler_fence, AtomicU32, Ordering};
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-use nobro_hal::{CompletionCell, CompletionError, StagedTransferError, StagedTransferPlan};
+use nobro_hal::{
+    CompletionCell, CompletionError, DmaBufferDescriptor, DmaCoherency, DmaDirection,
+    DmaLeaseBackend, DmaLeaseError, DmaLeaseRegistry, DmaLeaseRequest, DmaOwnerId,
+    DmaRecoveryReason, StagedTransferError, StagedTransferPlan,
+};
 use rp2040_hal as hal;
 
 use hal::dma::single_buffer::{Config, Transfer};
@@ -155,6 +159,41 @@ pub struct DmaSelfTestReport {
     pub polls: u32,
     pub irq_wakes: u32,
     pub task_wakes: u32,
+    pub ownership_fault_rejected: bool,
+    pub stale_generation_rejected: bool,
+    pub partial_completion: bool,
+    pub timeout_recovered: bool,
+}
+
+struct Rp2040DmaLeaseBackend;
+
+impl DmaLeaseBackend for Rp2040DmaLeaseBackend {
+    type Error = core::convert::Infallible;
+
+    fn prepare(&mut self, _: DmaBufferDescriptor) -> Result<(), Self::Error> {
+        compiler_fence(Ordering::Release);
+        Ok(())
+    }
+
+    fn complete(&mut self, _: DmaBufferDescriptor, _: usize) -> Result<(), Self::Error> {
+        compiler_fence(Ordering::Acquire);
+        Ok(())
+    }
+
+    fn cancel(&mut self, _: DmaBufferDescriptor) -> Result<(), Self::Error> {
+        disable_channel_irq();
+        DMA0_COMPLETION.cancel();
+        clear_channel_irq();
+        compiler_fence(Ordering::Acquire);
+        Ok(())
+    }
+
+    fn reset(&mut self, _: u16, _: u16) -> Result<(), Self::Error> {
+        disable_channel_irq();
+        DMA0_COMPLETION.cancel();
+        clear_channel_irq();
+        Ok(())
+    }
 }
 
 /// Run a bounded, live DMA completion and cancellation check.
@@ -164,8 +203,52 @@ pub struct DmaSelfTestReport {
 /// registered task once, and publish the exact copied pattern. The poll bound
 /// prevents a bad interrupt route from wedging USB enumeration at boot.
 pub fn run_dma_selftest(provider: &mut Dma0Completion) -> DmaSelfTestReport {
-    const WORDS: usize = DMA_COPY_MAX_WORDS;
+    const WORDS: usize = DMA_COPY_MAX_WORDS / 2;
     const POLL_LIMIT: u32 = 1_000_000;
+
+    let owner = DmaOwnerId(1);
+    let request = |direction| DmaLeaseRequest {
+        alignment: core::mem::align_of::<u32>(),
+        direction,
+        coherency: DmaCoherency::Uncached,
+        peripheral: 0,
+        channel: 0,
+    };
+    let source_address = DMA_SOURCE.0.get() as *mut u32 as usize;
+    let destination_address = DMA_DESTINATION.0.get() as *mut u32 as usize;
+    let region_bytes = DMA_COPY_MAX_WORDS * core::mem::size_of::<u32>();
+    let mut registry = DmaLeaseRegistry::<2>::new();
+    let first_source = unsafe {
+        registry
+            .acquire_region(
+                owner,
+                source_address,
+                region_bytes,
+                request(DmaDirection::MemoryToPeripheral),
+            )
+            .unwrap()
+    };
+    let first_destination = unsafe {
+        registry
+            .acquire_region(
+                owner,
+                destination_address,
+                region_bytes,
+                request(DmaDirection::PeripheralToMemory),
+            )
+            .unwrap()
+    };
+    let ownership_fault_rejected = matches!(
+        registry.descriptor::<core::convert::Infallible>(first_source, DmaOwnerId(2)),
+        Err(DmaLeaseError::WrongOwner)
+    );
+    let mut lease_backend = Rp2040DmaLeaseBackend;
+    registry
+        .begin(first_source, owner, &mut lease_backend)
+        .unwrap();
+    registry
+        .begin(first_destination, owner, &mut lease_backend)
+        .unwrap();
 
     let mut source = [0u32; WORDS];
     for (index, word) in source.iter_mut().enumerate() {
@@ -182,6 +265,54 @@ pub fn run_dma_selftest(provider: &mut Dma0Completion) -> DmaSelfTestReport {
         let _ = Future::poll(cancelled.as_mut(), &mut context);
     }
     let cancellation_output_untouched = destination.iter().all(|word| *word == 0xDEAD_BEEF);
+    let first_recovery = registry
+        .recover(
+            first_source,
+            owner,
+            DmaRecoveryReason::Timeout,
+            &mut lease_backend,
+        )
+        .unwrap();
+    let second_recovery = registry
+        .recover(
+            first_destination,
+            owner,
+            DmaRecoveryReason::Timeout,
+            &mut lease_backend,
+        )
+        .unwrap();
+    let timeout_recovered =
+        first_recovery.peripheral_reset && second_recovery.peripheral_reset && registry.is_empty();
+    let stale_generation_rejected = matches!(
+        registry.descriptor::<core::convert::Infallible>(first_source, owner),
+        Err(DmaLeaseError::InvalidHandle)
+    );
+    let source_lease = unsafe {
+        registry
+            .acquire_region(
+                owner,
+                source_address,
+                region_bytes,
+                request(DmaDirection::MemoryToPeripheral),
+            )
+            .unwrap()
+    };
+    let destination_lease = unsafe {
+        registry
+            .acquire_region(
+                owner,
+                destination_address,
+                region_bytes,
+                request(DmaDirection::PeripheralToMemory),
+            )
+            .unwrap()
+    };
+    registry
+        .begin(source_lease, owner, &mut lease_backend)
+        .unwrap();
+    registry
+        .begin(destination_lease, owner, &mut lease_backend)
+        .unwrap();
     destination.fill(0);
 
     let irq_before = DMA0_IRQ_COUNT.load(Ordering::Acquire);
@@ -204,12 +335,45 @@ pub fn run_dma_selftest(provider: &mut Dma0Completion) -> DmaSelfTestReport {
     let task_wakes = SELFTEST_WAKE_COUNT
         .load(Ordering::Acquire)
         .wrapping_sub(wake_before);
+    let transferred_bytes = WORDS * core::mem::size_of::<u32>();
+    let partial_completion = if result == Ok(WORDS) {
+        let source_completion = registry
+            .complete(source_lease, owner, transferred_bytes, &mut lease_backend)
+            .unwrap();
+        let destination_completion = registry
+            .complete(
+                destination_lease,
+                owner,
+                transferred_bytes,
+                &mut lease_backend,
+            )
+            .unwrap();
+        source_completion.partial && destination_completion.partial && registry.is_empty()
+    } else {
+        let _ = registry.recover(
+            source_lease,
+            owner,
+            DmaRecoveryReason::PeripheralFault,
+            &mut lease_backend,
+        );
+        let _ = registry.recover(
+            destination_lease,
+            owner,
+            DmaRecoveryReason::PeripheralFault,
+            &mut lease_backend,
+        );
+        false
+    };
     let passed = priority_ok
         && cancellation_output_untouched
         && result == Ok(WORDS)
         && destination == source
         && irq_wakes == 1
-        && task_wakes == 1;
+        && task_wakes == 1
+        && ownership_fault_rejected
+        && stale_generation_rejected
+        && partial_completion
+        && timeout_recovered;
 
     DmaSelfTestReport {
         passed,
@@ -218,6 +382,10 @@ pub fn run_dma_selftest(provider: &mut Dma0Completion) -> DmaSelfTestReport {
         polls,
         irq_wakes,
         task_wakes,
+        ownership_fault_rejected,
+        stale_generation_rejected,
+        partial_completion,
+        timeout_recovered,
     }
 }
 

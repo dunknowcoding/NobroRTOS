@@ -34,6 +34,7 @@ pub mod graph;
 pub mod health;
 pub mod hot_reload;
 pub mod instrumentation;
+pub mod ipc;
 pub mod kernel_executor;
 pub mod kv;
 pub mod launch_gate;
@@ -136,6 +137,10 @@ pub use instrumentation::{
     EXECUTOR_FLAG_SELECTION_REEVALUATED, EXECUTOR_FLAG_SELECTION_UNSTABLE,
     EXECUTOR_TIMING_REPORT_MAGIC, EXECUTOR_TIMING_REPORT_VERSION, EXECUTOR_TIMING_REPORT_WORDS,
 };
+pub use ipc::{
+    IpcPriority, IpcPublishReceipt, IpcPushError, IpcReceiveError, IpcRouter, IpcSnapshot,
+    PayloadHandle, PayloadPool, PayloadPoolError,
+};
 pub use kernel_executor::{
     ContainmentPolicy, CycleOutcome, ExecError, ExecutionSentinel, ExecutorInitError,
     KernelExecutor, KernelExecutorCell, StuckPoll,
@@ -144,7 +149,9 @@ pub use kv::{KvEntry, KvError, KvKey, KvStore, KvValue};
 pub use launch_gate::ModuleLaunchGate;
 pub use lifecycle::{Lifecycle, LifecycleError, SystemState};
 pub use lifecycle_hooks::{ModuleHookError, ModuleLifecycleHooks, ModuleReloadHooks};
-pub use mailbox::{Mailbox, MailboxError, MailboxWork, Message, MessageKind};
+#[cfg(feature = "capacity-report")]
+pub use mailbox::MailboxTelemetrySnapshot;
+pub use mailbox::{Mailbox, MailboxError, MailboxPushError, MailboxWork, Message, MessageKind};
 pub use manifest::{
     kernel_module_spec, kernel_owned_capabilities, module_code, module_from_code, Capability,
     CapabilitySet, Criticality, DeadlineContract, ManifestError, ManifestReport, MemoryBudget,
@@ -236,8 +243,8 @@ pub type L3AssuredKernelCell = KernelExecutorCell<4, 4, 4, 8, 4, 8, 4, 16>;
 pub use sample::{PoolHandle, Sample, SampleKind, SAMPLE_POOL_SIZE};
 pub use scheduler::{Scheduler, Timer, DEADLINE_PERIOD_US};
 pub use stack_guard::{
-    StackFault, StackGuardError, StackGuardTable, StackRegion, StackStatus, DEFAULT_CANARY_BYTES,
-    WATERMARK_PATTERN,
+    StackFault, StackGuardError, StackGuardTable, StackRegion, StackScanCursor, StackScanProgress,
+    StackScope, StackStatus, StackWatermarkSemantics, DEFAULT_CANARY_BYTES, WATERMARK_PATTERN,
 };
 pub use startup::{
     DependencyImpact, DependencySet, StartupError, StartupGraph, StartupGraphError, StartupNode,
