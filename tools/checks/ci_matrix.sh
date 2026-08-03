@@ -72,8 +72,15 @@ gate "nRF52840 PSP/PendSV target build" \
     --no-default-features --features platform-nrf52840-rt,board-promicro-nosd,cortex-m-slice && \
     cargo build --locked --target thumbv7em-none-eabihf \
     -p isolation-demo --release && \
-    ! cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
-    --no-default-features --features platform-nrf52840-rt,board-promicro-s140,cortex-m-slice'
+    cargo build --locked --target thumbv7em-none-eabihf -p isolation-demo --release \
+    --no-default-features --features board-promicro-s140,slice-timing \
+    --bin slice_timing_demo'
+
+gate "RP2040 Cortex-M0+ PSP/PendSV target build" \
+  "$CURRENT_BASH" -c 'cd core && cargo check --locked --target thumbv6m-none-eabi \
+    -p nobro-hal --no-default-features --features contract-only,cortex-m0-slice && \
+    cd ports/rp2040 && cargo build --locked --release --features slice-selftest \
+    --bin nobro-rp2040-slice-selftest'
 
 gate "board boot slot adapter target build" \
   "$CURRENT_BASH" -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
