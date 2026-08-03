@@ -1,6 +1,12 @@
 [build]
 target = "riscv32imafc-unknown-none-elf"
 
+[env]
+# The physically validated ESP32-P4-Pico uses revision v1.3 silicon. Encoding
+# that floor in the ELF lets current image tools reject incompatible silicon
+# before any flash write instead of relying on a force override.
+ESP_HAL_CONFIG_MIN_CHIP_REVISION = "103"
+
 [target.riscv32imafc-unknown-none-elf]
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",

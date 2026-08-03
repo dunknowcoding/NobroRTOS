@@ -11,8 +11,10 @@ rust-version = "1.85"
 [dependencies]
 embedded-hal = "1.0"
 esp-hal = { version = "=0.23.1", features = ["esp32"] }
+esp32 = "=0.35.0"
 nb = "1"
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
+nobro-kernel = { path = "../../crates/nobro_kernel", default-features = false }
 
 [profile.release]
 debug = 2

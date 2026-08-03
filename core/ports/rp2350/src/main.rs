@@ -21,7 +21,9 @@ use hal::dma::DMAExt;
 use hal::multicore::{Multicore, Stack};
 
 use nobro_hal::{Rp2MulticoreContract, Rp2Power, Rp2ResetBackend};
-use nobro_kernel::{AsyncCore, MpmcChannel, ReactorExecutor};
+use nobro_kernel::{
+    CrossCoreDataPlane, CrossCoreMessage, CrossCoreReceive, ModuleId, MulticoreExecutorLifecycle,
+};
 
 #[cfg(feature = "dma-completion")]
 pub mod dma_completion;
@@ -35,17 +37,21 @@ pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 const XTAL_FREQ_HZ: u32 = 12_000_000;
 
-// Core 1 runs a bounded reactor rather than a heartbeat counter. It drains
-// work items core0 sends over a cross-core `MpmcChannel`, computes a running
-// multiply-accumulate, and publishes the live result. The channel is a bounded,
-// critical-section-based cross-core transport, so a waker set on
-// core1's `AsyncCore` from core0's send is observed across the core boundary).
+// Core 1 drains a generation-safe SPSC plane, computes a running
+// multiply-accumulate, and publishes the live result. Release/acquire indices
+// make the transport independent of target cache assumptions.
 static mut CORE1_STACK: Stack<4096> = Stack::new();
 static CORE1_ACC: AtomicU32 = AtomicU32::new(0); // live result core0 reports
 static CORE1_PROCESSED: AtomicU32 = AtomicU32::new(0);
 static CORE1_IDLE_ENTRIES: AtomicU32 = AtomicU32::new(0);
-static XCORE_WORK: MpmcChannel<u32, 4, 2> = MpmcChannel::new();
-static CORE1_REACTOR: AsyncCore<1> = AsyncCore::new();
+static CORE1_GENERATION: AtomicU32 = AtomicU32::new(0);
+static CORE1_PAUSE: AtomicU32 = AtomicU32::new(0);
+static CORE1_PAUSED: AtomicU32 = AtomicU32::new(0);
+static CORE1_WEDGE: AtomicU32 = AtomicU32::new(0);
+static CORE1_WEDGED: AtomicU32 = AtomicU32::new(0);
+static CORE1_CANCELLED: AtomicU32 = AtomicU32::new(0);
+static CORE1_STALE: AtomicU32 = AtomicU32::new(0);
+static XCORE_WORK: CrossCoreDataPlane<u32, 8> = CrossCoreDataPlane::new();
 
 const STRESS_ITEMS: u32 = 4_096;
 const RECOVERY_VALUE: u32 = 0x5a5a_a5a5;
@@ -54,8 +60,14 @@ const RECOVERY_VALUE: u32 = 0x5a5a_a5a5;
 enum StressPhase {
     Feed,
     Drain,
-    RecoverSend,
-    RecoverDrain,
+    PauseForCancel,
+    CancelDrain,
+    PauseForFallback,
+    PrepareWedge,
+    WaitWedge,
+    RecoverySend,
+    RecoveryDrain,
+    Failed,
 }
 
 struct StressRun {
@@ -64,8 +76,13 @@ struct StressRun {
     rejected: u32,
     base_processed: u32,
     base_acc: u32,
+    base_cancelled: u32,
+    base_stale: u32,
     recovery_processed: u32,
     expected_delta: u32,
+    generation: u32,
+    next_sequence: u32,
+    fallback: u32,
 }
 
 impl StressRun {
@@ -76,36 +93,77 @@ impl StressRun {
             rejected: 0,
             base_processed: CORE1_PROCESSED.load(Ordering::Relaxed),
             base_acc: CORE1_ACC.load(Ordering::Relaxed),
+            base_cancelled: CORE1_CANCELLED.load(Ordering::Relaxed),
+            base_stale: CORE1_STALE.load(Ordering::Relaxed),
             recovery_processed: 0,
             expected_delta: 0,
+            generation: CORE1_GENERATION.load(Ordering::Acquire),
+            next_sequence: 2,
+            fallback: 0,
         }
     }
 }
 
 fn core1_task() {
-    let mut exec = ReactorExecutor::bind(&CORE1_REACTOR);
-    // The worker never completes (a service loop), so this stack-pinned future is
-    // valid for the whole `-> !` lifetime of core1.
-    let worker = core::pin::pin!(async {
-        loop {
-            let item = XCORE_WORK
-                .recv()
-                .await
-                .expect("admitted core1 receiver waiter"); // parks when empty
-            let Some(value) = item else { continue };
-            // Real work: a saturating multiply-accumulate fusion step.
-            let acc = CORE1_ACC
-                .load(Ordering::Relaxed)
-                .wrapping_add(value.wrapping_mul(3));
-            CORE1_ACC.store(acc, Ordering::Relaxed);
-            CORE1_PROCESSED.fetch_add(1, Ordering::Relaxed);
-        }
-    });
-    exec.spawn(worker).ok();
     loop {
-        exec.run_ready(8);
-        CORE1_IDLE_ENTRIES.fetch_add(1, Ordering::Relaxed);
-        cortex_m::asm::wfe(); // sleep until core0's send (or a timer) wakes us
+        let generation = CORE1_GENERATION.load(Ordering::Acquire);
+        if generation == 0 {
+            cortex_m::asm::wfe();
+            continue;
+        }
+        if CORE1_WEDGE.load(Ordering::Acquire) == generation {
+            CORE1_WEDGED.store(generation, Ordering::Release);
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+        if CORE1_PAUSE.load(Ordering::Acquire) == generation {
+            CORE1_PAUSED.store(generation, Ordering::Release);
+            while CORE1_PAUSE.load(Ordering::Acquire) == generation {
+                if CORE1_WEDGE.load(Ordering::Acquire) == generation {
+                    CORE1_WEDGED.store(generation, Ordering::Release);
+                    loop {
+                        core::hint::spin_loop();
+                    }
+                }
+                core::hint::spin_loop();
+            }
+            CORE1_PAUSED.store(0, Ordering::Release);
+        }
+        while let Some(disposition) = XCORE_WORK.try_receive() {
+            match disposition {
+                CrossCoreReceive::Work(message) => {
+                    CORE1_ACC.fetch_add(message.payload.wrapping_mul(3), Ordering::AcqRel);
+                    CORE1_PROCESSED.fetch_add(1, Ordering::Release);
+                }
+                CrossCoreReceive::Cancelled(_) => {
+                    CORE1_CANCELLED.fetch_add(1, Ordering::Release);
+                }
+                CrossCoreReceive::Stale(_) => {
+                    CORE1_STALE.fetch_add(1, Ordering::Release);
+                }
+            }
+        }
+        CORE1_IDLE_ENTRIES.fetch_add(1, Ordering::Release);
+        cortex_m::asm::wfe();
+    }
+}
+
+fn send_work(generation: u32, sequence: u32, payload: u32) -> bool {
+    XCORE_WORK
+        .try_send(CrossCoreMessage {
+            generation,
+            sequence,
+            payload,
+        })
+        .is_ok()
+}
+
+unsafe fn stop_core1_for_recovery() {
+    let psm = &*hal::pac::PSM::ptr();
+    psm.frce_off().modify(|_, w| w.proc1().set_bit());
+    while !psm.frce_off().read().proc1().bit_is_set() {
+        cortex_m::asm::nop();
     }
 }
 
@@ -153,7 +211,6 @@ fn main() -> ! {
     let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
     let _reset_cause = <portable::Rp2350Reset as Rp2ResetBackend>::reset_cause();
     let _power = Rp2Power::try_new(portable::Rp2350Power, 2).unwrap();
-    let pio_ok = pio_selftest::run(pac.PIO0, &mut pac.RESETS);
     #[cfg(feature = "dma-completion")]
     let dma_report = {
         let dma_channels = pac.DMA.split(&mut pac.RESETS);
@@ -164,15 +221,52 @@ fn main() -> ! {
         dma_completion::run_dma_selftest(&mut provider, clocks.system_clock.freq().to_Hz())
     };
 
-    // Bring up core1 with its own stack and reactor task.
+    // Bring up core1 under the portable lifecycle contract.
     let core1_lease = Rp2MulticoreContract::try_acquire(1).unwrap();
     let mut sio = hal::Sio::new(pac.SIO);
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
     let core1 = &mut mc.cores()[1];
-    #[allow(static_mut_refs)]
-    let stack_alloc = unsafe { CORE1_STACK.take().unwrap() };
-    let _ = core1.spawn(stack_alloc, core1_task);
+    let mut lifecycle = MulticoreExecutorLifecycle::<2, 2>::new();
+    lifecycle.place(0, ModuleId::Kernel, 1_000).unwrap();
+    lifecycle.place(1, ModuleId::App(1), 4_000).unwrap();
+    let multicore_started = lifecycle
+        .start_all(
+            |core| {
+                if core == 0 {
+                    true
+                } else {
+                    #[allow(static_mut_refs)]
+                    let stack = unsafe { CORE1_STACK.take().unwrap() };
+                    core1.spawn(stack, core1_task).is_ok()
+                }
+            },
+            |_| {},
+        )
+        .is_ok();
+    let first_generation = lifecycle.generation(1).unwrap().get();
+    let generation_started =
+        multicore_started && XCORE_WORK.begin_generation(first_generation).is_ok();
+    if generation_started {
+        CORE1_GENERATION.store(first_generation, Ordering::Release);
+        cortex_m::asm::sev();
+    }
     core::mem::forget(core1_lease);
+
+    let startup_processed = CORE1_PROCESSED.load(Ordering::Acquire).wrapping_add(1);
+    let startup_sent = generation_started && send_work(first_generation, 1, 0x1234_5678);
+    if startup_sent {
+        cortex_m::asm::sev();
+    }
+    let pio_ok = pio_selftest::run(pac.PIO0, &mut pac.RESETS);
+    let pio_wait_start = timer.get_counter();
+    while startup_sent
+        && CORE1_PROCESSED.load(Ordering::Acquire) != startup_processed
+        && (timer.get_counter() - pio_wait_start).to_millis() < 100
+    {
+        cortex_m::asm::sev();
+    }
+    let pio_concurrent =
+        startup_sent && pio_ok && CORE1_PROCESSED.load(Ordering::Acquire) == startup_processed;
 
     let usb_bus = UsbBusAllocator::new(UsbBus::new(
         pac.USB,
@@ -197,9 +291,10 @@ fn main() -> ! {
         nobro_hal::Rp2Cyw43Backend::PioSpi | nobro_hal::Rp2Cyw43Backend::Vendor
     );
     #[cfg(feature = "dma-completion")]
-    let all = timebase_ok && pio_ok && cyw_backend_ok && dma_report.passed;
+    let all =
+        timebase_ok && pio_concurrent && cyw_backend_ok && dma_report.passed && lifecycle.all_up();
     #[cfg(not(feature = "dma-completion"))]
-    let all = timebase_ok && pio_ok && cyw_backend_ok;
+    let all = timebase_ok && pio_concurrent && cyw_backend_ok && lifecycle.all_up();
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;
@@ -226,17 +321,15 @@ fn main() -> ! {
                             break;
                         }
                         let value = run.accepted.wrapping_add(1);
-                        match XCORE_WORK.try_send(value) {
-                            Ok(()) => {
-                                run.accepted = run.accepted.wrapping_add(1);
-                                run.expected_delta =
-                                    run.expected_delta.wrapping_add(value.wrapping_mul(3));
-                                sent = true;
-                            }
-                            Err(_) => {
-                                run.rejected = run.rejected.wrapping_add(1);
-                                break;
-                            }
+                        if send_work(run.generation, run.next_sequence, value) {
+                            run.next_sequence = run.next_sequence.wrapping_add(1);
+                            run.accepted = run.accepted.wrapping_add(1);
+                            run.expected_delta =
+                                run.expected_delta.wrapping_add(value.wrapping_mul(3));
+                            sent = true;
+                        } else {
+                            run.rejected = run.rejected.wrapping_add(1);
+                            break;
                         }
                     }
                     if sent {
@@ -249,41 +342,188 @@ fn main() -> ! {
                         .wrapping_sub(run.base_processed)
                         == STRESS_ITEMS
                     {
-                        run.phase = StressPhase::RecoverSend;
+                        CORE1_PAUSE.store(run.generation, Ordering::Release);
+                        cortex_m::asm::sev();
+                        run.phase = StressPhase::PauseForCancel;
                     }
                 }
-                StressPhase::RecoverSend => match XCORE_WORK.try_send(RECOVERY_VALUE) {
-                    Ok(()) => {
+                StressPhase::PauseForCancel => {
+                    if CORE1_PAUSED.load(Ordering::Acquire) == run.generation {
+                        let cancelled_sequence = run.next_sequence;
+                        let cancelled_sent =
+                            send_work(run.generation, cancelled_sequence, 0xcace_1100);
+                        run.next_sequence = run.next_sequence.wrapping_add(1);
+                        let live_value = 0xcace_2200;
+                        let live_sent = send_work(run.generation, run.next_sequence, live_value);
+                        run.next_sequence = run.next_sequence.wrapping_add(1);
+                        let cancelled =
+                            XCORE_WORK.cancel_through(run.generation, cancelled_sequence);
+                        if cancelled_sent && live_sent && cancelled {
+                            run.expected_delta =
+                                run.expected_delta.wrapping_add(live_value.wrapping_mul(3));
+                            run.recovery_processed =
+                                CORE1_PROCESSED.load(Ordering::Acquire).wrapping_add(1);
+                            CORE1_PAUSE.store(0, Ordering::Release);
+                            cortex_m::asm::sev();
+                            run.phase = StressPhase::CancelDrain;
+                        } else {
+                            run.phase = StressPhase::Failed;
+                        }
+                    }
+                }
+                StressPhase::CancelDrain => {
+                    if CORE1_PROCESSED.load(Ordering::Acquire) == run.recovery_processed
+                        && CORE1_CANCELLED
+                            .load(Ordering::Acquire)
+                            .wrapping_sub(run.base_cancelled)
+                            == 1
+                    {
+                        CORE1_PAUSE.store(run.generation, Ordering::Release);
+                        cortex_m::asm::sev();
+                        run.phase = StressPhase::PauseForFallback;
+                    }
+                }
+                StressPhase::PauseForFallback => {
+                    if CORE1_PAUSED.load(Ordering::Acquire) == run.generation {
+                        let fallback_value = 0xfa11_bacc;
+                        let moved_to_core0 = lifecycle.transfer(ModuleId::App(1), 1, 0).is_ok();
+                        let sent = send_work(run.generation, run.next_sequence, fallback_value);
+                        run.next_sequence = run.next_sequence.wrapping_add(1);
+                        let consumed = matches!(
+                            XCORE_WORK.try_receive(),
+                            Some(CrossCoreReceive::Work(CrossCoreMessage {
+                                payload,
+                                ..
+                            })) if payload == fallback_value
+                        );
+                        let moved_back = lifecycle.transfer(ModuleId::App(1), 0, 1).is_ok();
+                        if moved_to_core0 && sent && consumed && moved_back {
+                            CORE1_ACC.fetch_add(fallback_value.wrapping_mul(3), Ordering::AcqRel);
+                            run.expected_delta = run
+                                .expected_delta
+                                .wrapping_add(fallback_value.wrapping_mul(3));
+                            run.fallback = 1;
+                            CORE1_PAUSE.store(0, Ordering::Release);
+                            cortex_m::asm::sev();
+                            run.phase = StressPhase::PrepareWedge;
+                        } else {
+                            run.phase = StressPhase::Failed;
+                        }
+                    }
+                }
+                StressPhase::PrepareWedge => {
+                    CORE1_PAUSE.store(run.generation, Ordering::Release);
+                    cortex_m::asm::sev();
+                    if CORE1_PAUSED.load(Ordering::Acquire) == run.generation {
+                        let stale_sent = send_work(run.generation, run.next_sequence, 0xdead_beef);
+                        run.next_sequence = run.next_sequence.wrapping_add(1);
+                        if stale_sent {
+                            CORE1_WEDGE.store(run.generation, Ordering::Release);
+                            CORE1_PAUSE.store(0, Ordering::Release);
+                            cortex_m::asm::sev();
+                            run.phase = StressPhase::WaitWedge;
+                        } else {
+                            run.phase = StressPhase::Failed;
+                        }
+                    }
+                }
+                StressPhase::WaitWedge => {
+                    if CORE1_WEDGED.load(Ordering::Acquire) == run.generation {
+                        let faulted = lifecycle.fault(1).is_ok();
+                        unsafe {
+                            stop_core1_for_recovery();
+                        }
+                        CORE1_GENERATION.store(0, Ordering::Release);
+                        CORE1_WEDGE.store(0, Ordering::Release);
+                        CORE1_WEDGED.store(0, Ordering::Release);
+                        let next_generation = run.generation.wrapping_add(1);
+                        #[allow(static_mut_refs)]
+                        let mut allocation = unsafe {
+                            CORE1_STACK.reset();
+                            CORE1_STACK.take()
+                        };
+                        let restarted = faulted
+                            && allocation.is_some()
+                            && lifecycle
+                                .recover(1, |_| {
+                                    allocation
+                                        .take()
+                                        .is_some_and(|stack| core1.spawn(stack, core1_task).is_ok())
+                                })
+                                .is_ok()
+                            && lifecycle.generation(1).map(|g| g.get()) == Some(next_generation)
+                            && XCORE_WORK.begin_generation(next_generation).is_ok();
+                        if restarted {
+                            run.generation = next_generation;
+                            run.next_sequence = 1;
+                            CORE1_GENERATION.store(next_generation, Ordering::Release);
+                            cortex_m::asm::sev();
+                            run.phase = StressPhase::RecoverySend;
+                        } else {
+                            run.phase = StressPhase::Failed;
+                        }
+                    }
+                }
+                StressPhase::RecoverySend => {
+                    if send_work(run.generation, run.next_sequence, RECOVERY_VALUE) {
+                        run.next_sequence = run.next_sequence.wrapping_add(1);
                         run.expected_delta = run
                             .expected_delta
                             .wrapping_add(RECOVERY_VALUE.wrapping_mul(3));
                         run.recovery_processed =
-                            CORE1_PROCESSED.load(Ordering::Relaxed).wrapping_add(1);
-                        run.phase = StressPhase::RecoverDrain;
+                            CORE1_PROCESSED.load(Ordering::Acquire).wrapping_add(1);
+                        run.phase = StressPhase::RecoveryDrain;
                         cortex_m::asm::sev();
+                    } else {
+                        run.rejected = run.rejected.wrapping_add(1);
                     }
-                    Err(_) => run.rejected = run.rejected.wrapping_add(1),
-                },
-                StressPhase::RecoverDrain => {
-                    if CORE1_PROCESSED.load(Ordering::Relaxed) == run.recovery_processed {
+                }
+                StressPhase::RecoveryDrain | StressPhase::Failed => {
+                    let failed = run.phase == StressPhase::Failed;
+                    if failed
+                        || (CORE1_PROCESSED.load(Ordering::Acquire) == run.recovery_processed
+                            && CORE1_STALE
+                                .load(Ordering::Acquire)
+                                .wrapping_sub(run.base_stale)
+                                == 1)
+                    {
                         let processed = CORE1_PROCESSED
-                            .load(Ordering::Relaxed)
+                            .load(Ordering::Acquire)
                             .wrapping_sub(run.base_processed);
                         let actual_delta =
-                            CORE1_ACC.load(Ordering::Relaxed).wrapping_sub(run.base_acc);
+                            CORE1_ACC.load(Ordering::Acquire).wrapping_sub(run.base_acc);
                         stress_result = Some((
                             run.accepted,
                             run.rejected,
                             processed,
                             run.expected_delta,
                             actual_delta,
+                            CORE1_CANCELLED
+                                .load(Ordering::Acquire)
+                                .wrapping_sub(run.base_cancelled),
+                            CORE1_STALE
+                                .load(Ordering::Acquire)
+                                .wrapping_sub(run.base_stale),
+                            run.fallback,
+                            u32::from(!failed && lifecycle.all_up()),
                         ));
                     }
                 }
             }
         }
 
-        if let Some((accepted, rejected, processed, expected, actual)) = stress_result {
+        if let Some((
+            accepted,
+            rejected,
+            processed,
+            expected,
+            actual,
+            cancelled,
+            stale,
+            fallback,
+            restart,
+        )) = stress_result
+        {
             if report_sent == report_len {
                 let mut pos = 0usize;
                 put_bytes(&mut report, &mut pos, b"STRESS target=");
@@ -298,14 +538,26 @@ fn main() -> ! {
                 put_u32(&mut report, &mut pos, expected);
                 put_bytes(&mut report, &mut pos, b" actual=");
                 put_u32(&mut report, &mut pos, actual);
-                put_bytes(&mut report, &mut pos, b" recovery=1 result=");
+                put_bytes(&mut report, &mut pos, b" cancelled=");
+                put_u32(&mut report, &mut pos, cancelled);
+                put_bytes(&mut report, &mut pos, b" stale=");
+                put_u32(&mut report, &mut pos, stale);
+                put_bytes(&mut report, &mut pos, b" fallback=");
+                put_u32(&mut report, &mut pos, fallback);
+                put_bytes(&mut report, &mut pos, b" restart=");
+                put_u32(&mut report, &mut pos, restart);
+                put_bytes(&mut report, &mut pos, b" result=");
                 put_bytes(
                     &mut report,
                     &mut pos,
                     if accepted == STRESS_ITEMS
                         && rejected != 0
-                        && processed == STRESS_ITEMS + 1
+                        && processed == STRESS_ITEMS + 2
                         && actual == expected
+                        && cancelled == 1
+                        && stale == 1
+                        && fallback == 1
+                        && restart == 1
                     {
                         b"PASS"
                     } else {
@@ -339,7 +591,7 @@ fn main() -> ! {
             );
             put_u32(&mut report, &mut pos, u32::from(timebase_ok));
             put_bytes(&mut report, &mut pos, b" pio=");
-            put_u32(&mut report, &mut pos, u32::from(pio_ok));
+            put_u32(&mut report, &mut pos, u32::from(pio_concurrent));
             #[cfg(feature = "dma-completion")]
             {
                 put_bytes(&mut report, &mut pos, b" dma=");
@@ -448,7 +700,7 @@ fn main() -> ! {
                             },
                             hal::reboot::RebootArch::Normal,
                         );
-                    } else if &line_buf[..line_len] == b"STRESS" && stress.is_none() {
+                    } else if &line_buf[..line_len] == b"STRESS" && stress.is_none() && all {
                         stress = Some(StressRun::new());
                     }
                     line_len = 0;

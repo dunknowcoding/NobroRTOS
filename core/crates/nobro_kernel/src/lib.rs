@@ -47,6 +47,7 @@ pub mod manifest;
 pub mod module_ctx;
 pub mod module_runtime;
 pub mod multicore;
+pub mod multicore_plane;
 pub mod multicore_runtime;
 pub mod multicore_supervisor;
 pub mod nano;
@@ -170,6 +171,10 @@ pub use module_runtime::{
     ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError, ModuleRuntimeGuard,
 };
 pub use multicore::{plan_placement, CorePlacement, CorePlan, CrossCoreLink, PlacementError};
+pub use multicore_plane::{
+    CrossCoreDataPlane, CrossCoreGenerationError, CrossCoreMessage, CrossCoreReceive,
+    CrossCoreSendError,
+};
 pub use multicore_runtime::{
     CoreExecutorState, CoreGeneration, CoreOwnership, CoreRole, MulticoreError,
     MulticoreExecutorLifecycle, MulticoreTaskExecutor, MulticoreTransferError,

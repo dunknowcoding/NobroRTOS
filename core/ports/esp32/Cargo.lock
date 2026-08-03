@@ -694,6 +694,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nobro-admission"
+version = "0.3.3"
+
+[[package]]
 name = "nobro-hal"
 version = "0.3.3"
 dependencies = [
@@ -702,14 +706,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "nobro-imu"
+version = "0.3.3"
+
+[[package]]
+name = "nobro-kernel"
+version = "0.3.3"
+dependencies = [
+ "critical-section",
+ "nobro-admission",
+ "nobro-imu",
+ "nobro-power",
+ "portable-atomic",
+]
+
+[[package]]
 name = "nobro-port-esp32"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "esp-hal",
+ "esp32",
  "nb 1.1.0",
  "nobro-hal",
+ "nobro-kernel",
 ]
+
+[[package]]
+name = "nobro-power"
+version = "0.3.3"
 
 [[package]]
 name = "num-traits"

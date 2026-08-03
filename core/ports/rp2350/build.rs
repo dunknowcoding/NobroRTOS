@@ -9,4 +9,7 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rustc-link-search={}", out.display());
+    // Keep the exact XIP layout independent of Cargo's invocation directory.
+    println!("cargo:rustc-link-arg=--nmagic");
+    println!("cargo:rustc-link-arg=-Tlink.x");
 }

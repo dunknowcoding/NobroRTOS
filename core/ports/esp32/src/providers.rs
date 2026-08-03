@@ -3,16 +3,17 @@
 use core::{convert::Infallible, fmt};
 
 use esp_hal::{
+    Blocking, Cpu, DriverMode,
+    cpu_control::CpuControl,
     time::Duration,
     timer::OneShotTimer,
     uart::{Error as UartError, Uart},
-    Blocking, DriverMode,
 };
 use nobro_hal::{
-    board_catalog::EXACT_ESP_WROOM32_30PIN, BoardCapacity, BoardDesc, CapabilityProfileKind,
-    EspLeases, EspPowerBackend, EspResetBackend, HalAlarm, HalByteIo, HalClock, HalCompatibility,
-    HalLease, HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
-    HardwareCapabilityWitness, LeaseError, LeaseId, PlatformHal, ESP32_RUNTIME,
+    BoardCapacity, BoardDesc, CapabilityProfileKind, ESP32_RUNTIME, EspLeases, EspPowerBackend,
+    EspResetBackend, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalLease, HardwareCapability,
+    HardwareCapabilityDeclaration, HardwareCapabilitySet, HardwareCapabilityWitness, LeaseError,
+    LeaseId, PlatformHal, board_catalog::EXACT_ESP_WROOM32_30PIN,
 };
 
 pub struct Esp32Providers;
@@ -128,6 +129,39 @@ impl HalLease for Esp32Leases {
 }
 
 pub struct Esp32Clock;
+
+/// Return a parked/faulted APP core to the exact state expected by
+/// `CpuControl::start_app_core`. Dropping `AppCoreGuard` stalls the core but the
+/// classic ESP32 clock-gate bit remains set, which would otherwise make a
+/// generation-safe restart fail with `CoreAlreadyRunning`.
+pub fn prepare_app_core_start(cpu_control: &mut CpuControl<'_>) -> bool {
+    let dport = unsafe { &*esp32::DPORT::PTR };
+    if dport
+        .appcpu_ctrl_b()
+        .read()
+        .appcpu_clkgate_en()
+        .bit_is_clear()
+    {
+        return false;
+    }
+
+    // The caller has already quiesced or faulted APP CPU. Hold it stalled and
+    // in reset before removing the stale clock ownership; start_app_core then
+    // owns the complete clock/reset/unpark sequence and stack replacement.
+    unsafe {
+        cpu_control.park_core(Cpu::AppCpu);
+    }
+    dport
+        .appcpu_ctrl_c()
+        .modify(|_, w| w.appcpu_runstall().set_bit());
+    dport
+        .appcpu_ctrl_a()
+        .modify(|_, w| w.appcpu_resetting().set_bit());
+    dport
+        .appcpu_ctrl_b()
+        .modify(|_, w| w.appcpu_clkgate_en().clear_bit());
+    true
+}
 
 impl HalClock for Esp32Clock {
     fn now_us() -> u64 {
