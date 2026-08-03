@@ -14,6 +14,8 @@ extern crate alloc;
 
 mod adaptive;
 pub use adaptive::*;
+mod vendor_session;
+pub use vendor_session::*;
 
 /// Protocol identities a link descriptor can carry.
 ///

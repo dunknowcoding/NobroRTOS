@@ -238,9 +238,9 @@ Neural-network building blocks from scratch, scoped for MCUs (inference side).
 ## `nobro-power`
 No-heap power management policy: pick a sleep mode from activity + a deadline,
 - **trait**: `PowerMonitorBackend`, `PowerPlatform`, `PowerParticipant`
-- **struct**: `PowerChannelSample`, `PowerVetoMask`, `PowerLease`, `PowerLeaseTable`, `SystemOffWake`, `PowerTransition`, `PowerHookError`, `DeadlineTimingProfile`, `DeadlineTimingRequest`, `DeadlineTimingAdmission`, `PowerPlatformChain`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
-- **enum**: `PowerMode`, `PowerMonitorState`, `PowerMonitorError`, `PowerVetoReason`, `PowerLeaseKind`, `PowerLeaseError`, `WakeStyle`, `SystemOffWakeError`, `DeadlineTimingError`
-- **fn**: `acquire`, `release`, `owner`, `admit`, `revalidate`, `attach_participant`, `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `task_power_uw`, `account_task`, `acquire_lease`, `release_lease`, `set_system_off_wake`, `apply_idle`, `apply_idle_release`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
+- **struct**: `PowerChannelSample`, `PowerVetoMask`, `PowerLease`, `PowerLeaseTable`, `SystemOffWake`, `PowerTransition`, `PowerHookError`, `SleepProfile`, `SleepRequirements`, `SleepAdmission`, `DeadlineTimingProfile`, `DeadlineTimingRequest`, `DeadlineTimingAdmission`, `PowerPlatformChain`, `PowerManager`, `EnergyLedger`, `ExecutorPower`, `DutyScheduler`
+- **enum**: `PowerMode`, `PowerMonitorState`, `PowerMonitorError`, `PowerVetoReason`, `PowerLeaseKind`, `PowerLeaseError`, `WakeStyle`, `SystemOffWakeError`, `SleepAdmissionError`, `PowerApplyError`, `DeadlineTimingError`
+- **fn**: `acquire`, `release`, `owner`, `admit`, `admit`, `revalidate`, `attach_participant`, `select`, `account_active`, `end_window`, `duty_milli`, `charge`, `energy_uj`, `total_uj`, `top`, `set_task_power`, `task_power_uw`, `account_task`, `acquire_lease`, `release_lease`, `set_system_off_wake`, `apply_idle`, `apply_idle_admitted`, `apply_idle_release`, `apply_idle_release_admitted`, `sampling_divisor`, `harvest_work_budget_uj`, `tick`
 
 ## `nobro-sal`
 NobroRTOS service abstraction layer with portable capability traits.

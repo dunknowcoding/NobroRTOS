@@ -272,6 +272,22 @@ callbacks, and declared application-static objects are all accounted for.
 Release/recovery advances the generation, so late completions from the prior
 mount fail as stale.
 
+Vendor-owned WiFi, BLE, and IP work can additionally implement
+`VendorSessionBackend` and mount through `VendorSessionController<B, N>`.
+Each operation receives a fixed-slot generation, lifecycle generation, hard
+deadline, and cancellation grace period. The backend must disclose its stable
+id, worker-task count, static RAM, optional heap cap, and whether its scheduler
+and heap remain vendor-owned. Expiry first requests cancellation, then requires
+quiescence; a missed cancellation deadline resets the backend and requires a
+service rebind. The controller invalidates every outstanding identity *before*
+calling the fallible reset hook, so even a partially applied reset cannot accept
+old completions. A failed reset rejects all work with `ResetRequired`; a failed
+rebind rejects it with `RebindRequired`. `recover_backend` retries the ordered
+reset/rebind sequence, while `rebind_backend` cannot bypass an outstanding reset.
+Only a successful rebind returns a receipt and reopens admission. This contract
+bounds Nobro-owned identities and escalation; it does not claim control of the
+vendor scheduler or heap.
+
 The ESP facade delegates to the pinned Arduino-ESP32 3.3.10 `WiFi` stack on
 ESP32, ESP32-C3, and ESP32-S3; the UNO R4 facade delegates to WiFiS3. Both
 vendor stacks remain synchronous and heap-using internally, so a post-call
@@ -968,6 +984,23 @@ Call `SystemProfile::wake_latency_us()` for manifest/build admission or
 This is a measured compare-wake-to-dispatch upper bound, charged once per response;
 it is not inferred from a board name.
 
+Use `ExecutorPower::apply_idle_admitted` (or its ready-mask variant) when a
+sleep transition must carry evidence. `SleepProfile` identifies the exact
+provider generation and supplies a nonzero wake-latency bound, wake sources,
+retained state, and retained clock/peripheral domains. `SleepRequirements`
+states what the workload needs. Qualification occurs before prepare, wake-arm,
+or entry, and a successful `PowerTransition` contains a `SleepAdmission`.
+The compatibility entry points retain `sleep_admission = None` and therefore
+must not be used as deadline/retention evidence.
+
+`HardwareWatchdogSession` owns one qualified `HardwareWatchdogBackend`. Mount
+requires an independent watchdog clock, a feed route independent of cooperative
+executor progress, system-reset capability, and an exact feed window. Only the
+declared owner may call `feed_from_independent_monitor`; early and late attempts
+are rejected before touching hardware. `take_reset_receipt` reads and clears the
+provider reset cause so a watchdog recovery is distinguishable from software,
+external, brownout, or unknown reset provenance.
+
 Use `HealthFault` when subsystem context matters. It combines `KernelError` with
 `FaultContext { source, code, detail0, detail1 }`. A `FaultPolicy` can retain
 state and receives the module plus updated health counters; HealthReport v2
@@ -1131,9 +1164,11 @@ Use `RecoveryPlanPolicy` to tune notify, retry, restart, verification, resume,
 and maximum total recovery budgets. Capacity and budget failures are explicit
 errors, so self-healing can be reviewed before being attached to board-specific
 restart or power-control code.
-`RecoveryStormPolicy` sets a bounded cooldown for identical module/error/action
-work. Health and fault counters continue to advance, while duplicate event and
-lifecycle work is coalesced; `RecoveryOutcome::coalesced` and
+`RecoveryStormPolicy` sets a bounded cooldown for an exact `FaultSignature`:
+module plus error, selected action, and the complete structured fault context.
+Health and fault counters continue to advance, while only the same root-cause
+signature is coalesced; a different source/code/detail dispatches immediately.
+`RecoveryOutcome::coalesced` and
 `suppressed_faults(module)` expose the decision. Coalesced outcomes cannot be
 converted into duplicate recovery plans.
 Both manifest-level and runtime-global `FaultThresholds` are validated:
@@ -1147,6 +1182,11 @@ Use `Runtime::record_error_with_plan_and_impact` or
 has startup impact data for a shared dependency. The planner validates that the
 impact root matches the recovery outcome module before emitting dependent-module
 steps.
+For dependencies established after boot, use `RuntimeDependencyGraph` and
+`record_error_with_plan_and_runtime_dependencies`. Bind/unbind publishes only
+an acyclic generation. The resulting plan records that generation and
+`apply_due_recovery_with_dependencies` rejects a changed graph before any
+lifecycle hook runs.
 Use `HotReloadPlan` and `Runtime::reload_module` for bounded module-slot
 replacement. The runtime suspends the module, releases registered resources,
 then requires `ModuleReloadHooks` to unmount, mount the requested revision,
@@ -1204,9 +1244,13 @@ for step in due.iter().take(dispatch.dispatched) {
 
 The execution cursor owns no heap memory, uses caller-owned output buffers, and
 reports remaining steps, next due time, consumed budget, overdue work, and
-completion status.
-Pair `RecoveryPlanExecution` with `Runtime::apply_recovery_step` to keep ordered
-dispatch, executable platform actions, and module-state bookkeeping together.
+completion status. Prefer `Runtime::apply_due_recovery` (or the runtime-
+dependency variant): it advances the cursor only after each lifecycle hook
+succeeds and returns `RecoveryExecutionReceipt`. A scheduler dispatch alone is
+not proof that recovery was applied. Likewise,
+`apply_degrade_decision_with_receipt` recomputes the active module budget after
+cleanup and publishes `DegradeExecutionReceipt` only when the observed set
+exactly matches the admitted decision and profile.
 
 ### Network API
 

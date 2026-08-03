@@ -8,9 +8,10 @@ extern crate std;
 pub use nobro_admission::InterruptProfile;
 pub use nobro_power::{
     attach_participant, DeadlineTimingAdmission, DeadlineTimingError, DeadlineTimingProfile,
-    DeadlineTimingRequest, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode,
+    DeadlineTimingRequest, PowerApplyError, PowerLease, PowerLeaseError, PowerLeaseKind, PowerMode,
     PowerParticipant, PowerPlatform, PowerPlatformChain, PowerTransition, PowerVetoMask,
-    PowerVetoReason, SystemOffWake, SystemOffWakeError, WakeStyle,
+    PowerVetoReason, SleepAdmission, SleepAdmissionError, SleepProfile, SleepRequirements,
+    SystemOffWake, SystemOffWakeError, WakeStyle,
 };
 
 pub mod admission;
@@ -195,9 +196,9 @@ pub use priority_mutex::{
 };
 pub use quota::{QuotaEntry, QuotaError, QuotaLedger};
 pub use recovery::{
-    RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan, RecoveryPlanDispatch,
-    RecoveryPlanError, RecoveryPlanExecution, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
-    RecoveryStormPolicy,
+    FaultSignature, RecoveryCoordinator, RecoveryError, RecoveryOutcome, RecoveryPlan,
+    RecoveryPlanDispatch, RecoveryPlanError, RecoveryPlanExecution, RecoveryPlanPolicy,
+    RecoveryStep, RecoveryStepKind, RecoveryStormPolicy,
 };
 pub use report::{
     action_code, degrade_reason_code, error_code, event_kind_code, module_run_state_code,
@@ -210,8 +211,9 @@ pub use report::{
 };
 pub use retry::{BackoffKind, RetryPolicy, RetryState};
 pub use runtime::{
-    AlarmDispatch, CapacityError, DegradeApplication, RecoveryPlanning, RecoveryResourceReceipt,
-    Runtime, RuntimeCapacities, RuntimeError, WatchdogSweep,
+    AlarmDispatch, CapacityError, DegradeApplication, DegradeExecutionReceipt,
+    RecoveryExecutionReceipt, RecoveryPlanning, RecoveryResourceReceipt, Runtime,
+    RuntimeCapacities, RuntimeError, WatchdogSweep,
 };
 
 /// Preset runtime capacity profiles — coherent by construction, so users pick a
@@ -252,12 +254,17 @@ pub use stack_guard::{
     StackScope, StackStatus, StackWatermarkSemantics, DEFAULT_CANARY_BYTES, WATERMARK_PATTERN,
 };
 pub use startup::{
-    DependencyImpact, DependencySet, StartupError, StartupGraph, StartupGraphError, StartupNode,
+    DependencyImpact, DependencySet, RuntimeDependencyError, RuntimeDependencyGraph,
+    RuntimeDependencyImpact, StartupError, StartupGraph, StartupGraphError, StartupNode,
     StartupPlan, StartupPlanner,
 };
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use task_supervisor::{SupervisionAction, TaskSupervisor};
-pub use watchdog::{Watchdog, WatchdogEntry, WatchdogError};
+pub use watchdog::{
+    HardwareResetCause, HardwareWatchdogBackend, HardwareWatchdogError, HardwareWatchdogMountError,
+    HardwareWatchdogProfile, HardwareWatchdogResetReceipt, HardwareWatchdogSession, Watchdog,
+    WatchdogEntry, WatchdogError,
+};
 
 #[cfg(test)]
 mod property_tests {

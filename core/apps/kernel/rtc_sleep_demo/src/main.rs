@@ -12,7 +12,10 @@ use nobro_hal::{
     traits::{HalClock, HalLease, HalTimebaseProvider},
     ActivePlatform as Hal,
 };
-use nobro_power::{ExecutorPower, PowerHookError, PowerMode, PowerPlatform, PowerVetoReason};
+use nobro_power::{
+    ExecutorPower, PowerHookError, PowerMode, PowerPlatform, PowerVetoReason, SleepProfile,
+    SleepRequirements,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -26,6 +29,8 @@ struct Report {
     requested_low_power: u32,
     selected_idle: u32,
     effective_idle: u32,
+    admitted_sleeps: u32,
+    wake_latency_max_us: u32,
     diagnostic_checksum: u32,
 }
 const MAGIC: u32 = 0x4E52_5443; // "NRTC"
@@ -42,6 +47,8 @@ static mut NOBRO_RTC_SLEEP_REPORT: Report = Report {
     requested_low_power: 0,
     selected_idle: 0,
     effective_idle: 0,
+    admitted_sleeps: 0,
+    wake_latency_max_us: 0,
     diagnostic_checksum: 0,
 };
 
@@ -69,6 +76,21 @@ impl PowerPlatform for Rtc2Idle {
 
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
         requested.shallower(PowerMode::Idle)
+    }
+
+    fn sleep_profile(&self, _mode: PowerMode) -> Option<SleepProfile> {
+        Some(SleepProfile {
+            provider_id: 0x5202,
+            generation: 1,
+            deepest_mode: PowerMode::Idle,
+            // Conservative exact-composition bound; the report also records
+            // the largest observed interval excess for this campaign.
+            wake_latency_us: 10_000,
+            wake_sources: 1,
+            retained_state: 1,
+            retained_clock_domains: 1,
+            retained_peripheral_domains: 1,
+        })
     }
 
     fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
@@ -129,18 +151,34 @@ fn main() -> ! {
     let mut requested_low_power: u32 = 0;
     let mut selected_idle: u32 = 0;
     let mut effective_idle: u32 = 0;
+    let mut admitted_sleeps: u32 = 0;
+    let mut wake_latency_max_us: u32 = 0;
     let t_start = Hal::now_us();
 
     while wakes < TARGET_WAKES {
         let now = Hal::now_us();
+        let before = Hal::now_us();
         let transition = power
-            .apply_idle(
+            .apply_idle_admitted(
                 now,
                 false,
                 Some(now.saturating_add(u64::from(PERIOD_US))),
+                SleepRequirements {
+                    max_wake_latency_us: 10_000,
+                    required_wake_sources: 1,
+                    required_retained_state: 1,
+                    required_clock_domains: 1,
+                    required_peripheral_domains: 1,
+                },
                 &mut platform,
             )
             .unwrap_or_else(|_| defmt::panic!("power transition"));
+        let after = Hal::now_us();
+        wake_latency_max_us = wake_latency_max_us.max(
+            after
+                .wrapping_sub(before)
+                .saturating_sub(u64::from(PERIOD_US)) as u32,
+        );
         if transition.requested == PowerMode::LowPower {
             requested_low_power += 1;
         }
@@ -151,6 +189,9 @@ fn main() -> ! {
         }
         if transition.effective == PowerMode::Idle {
             effective_idle += 1;
+        }
+        if transition.sleep_admission.is_some() {
+            admitted_sleeps += 1;
         }
         wakes += 1;
     }
@@ -165,14 +206,25 @@ fn main() -> ! {
         && mean <= hi
         && requested_low_power == TARGET_WAKES
         && selected_idle == TARGET_WAKES
-        && effective_idle == TARGET_WAKES;
+        && effective_idle == TARGET_WAKES
+        && admitted_sleeps == TARGET_WAKES
+        && wake_latency_max_us <= 10_000;
     let ap = u32::from(pass);
-    let cs =
-        MAGIC ^ 2 ^ 1 ^ ap ^ wakes ^ mean ^ requested_low_power ^ selected_idle ^ effective_idle;
+    let cs = MAGIC
+        ^ 3
+        ^ 1
+        ^ ap
+        ^ wakes
+        ^ mean
+        ^ requested_low_power
+        ^ selected_idle
+        ^ effective_idle
+        ^ admitted_sleeps
+        ^ wake_latency_max_us;
     unsafe {
         NOBRO_RTC_SLEEP_REPORT = Report {
             magic: MAGIC,
-            version: 2,
+            version: 3,
             completed: 1,
             all_pass: ap,
             wakes,
@@ -180,6 +232,8 @@ fn main() -> ! {
             requested_low_power,
             selected_idle,
             effective_idle,
+            admitted_sleeps,
+            wake_latency_max_us,
             diagnostic_checksum: cs,
         };
     }

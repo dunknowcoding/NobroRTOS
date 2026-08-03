@@ -169,9 +169,266 @@ impl<const N: usize> Default for Watchdog<N> {
     }
 }
 
+/// Qualified window and independence properties for one exact hardware
+/// watchdog provider. `independent_feed` means the feed route runs from a
+/// hardware interrupt or monitor context that does not depend on cooperative
+/// executor progress.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HardwareWatchdogProfile {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub window_open_us: u32,
+    pub window_close_us: u32,
+    pub independent_clock: bool,
+    pub independent_feed: bool,
+    pub resets_system: bool,
+}
+
+impl HardwareWatchdogProfile {
+    pub const fn valid(self) -> bool {
+        self.provider_id != 0
+            && self.generation != 0
+            && self.window_close_us != 0
+            && self.window_open_us < self.window_close_us
+            && self.independent_clock
+            && self.independent_feed
+            && self.resets_system
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HardwareResetCause {
+    None,
+    Watchdog,
+    Software,
+    External,
+    Brownout,
+    Unknown(u16),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HardwareWatchdogResetReceipt {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub cause: HardwareResetCause,
+    pub observed_at_us: u64,
+}
+
+pub trait HardwareWatchdogBackend {
+    type Error;
+
+    fn profile(&self) -> HardwareWatchdogProfile;
+    fn arm(&mut self) -> Result<(), Self::Error>;
+    fn feed(&mut self) -> Result<(), Self::Error>;
+    fn reset_cause(&mut self) -> Result<HardwareResetCause, Self::Error>;
+    fn clear_reset_cause(&mut self) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum HardwareWatchdogError<E> {
+    InvalidProfile,
+    WrongOwner,
+    ProviderChanged,
+    EarlyFeed { opens_at_us: u64 },
+    LateFeed { closed_at_us: u64 },
+    Backend(E),
+}
+
+pub struct HardwareWatchdogMountError<B: HardwareWatchdogBackend> {
+    backend: B,
+    error: HardwareWatchdogError<B::Error>,
+}
+
+impl<B: HardwareWatchdogBackend> HardwareWatchdogMountError<B> {
+    pub const fn error(&self) -> &HardwareWatchdogError<B::Error> {
+        &self.error
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
+/// One owned hardware-watchdog session. The only feed API is explicitly named
+/// for the independent monitor path so ordinary task callbacks do not silently
+/// become the liveness authority.
+pub struct HardwareWatchdogSession<B: HardwareWatchdogBackend> {
+    backend: B,
+    profile: HardwareWatchdogProfile,
+    owner: ModuleId,
+    last_feed_us: u64,
+    feeds: u32,
+}
+
+impl<B: HardwareWatchdogBackend> HardwareWatchdogSession<B> {
+    pub fn mount(
+        mut backend: B,
+        owner: ModuleId,
+        now_us: u64,
+    ) -> Result<Self, HardwareWatchdogMountError<B>> {
+        let profile = backend.profile();
+        if !profile.valid() {
+            return Err(HardwareWatchdogMountError {
+                backend,
+                error: HardwareWatchdogError::InvalidProfile,
+            });
+        }
+        if let Err(error) = backend.arm() {
+            return Err(HardwareWatchdogMountError {
+                backend,
+                error: HardwareWatchdogError::Backend(error),
+            });
+        }
+        Ok(Self {
+            backend,
+            profile,
+            owner,
+            last_feed_us: now_us,
+            feeds: 0,
+        })
+    }
+
+    pub const fn profile(&self) -> HardwareWatchdogProfile {
+        self.profile
+    }
+
+    pub const fn owner(&self) -> ModuleId {
+        self.owner
+    }
+
+    pub const fn feeds(&self) -> u32 {
+        self.feeds
+    }
+
+    pub fn feed_from_independent_monitor(
+        &mut self,
+        owner: ModuleId,
+        now_us: u64,
+    ) -> Result<(), HardwareWatchdogError<B::Error>> {
+        if owner != self.owner {
+            return Err(HardwareWatchdogError::WrongOwner);
+        }
+        if self.backend.profile() != self.profile {
+            return Err(HardwareWatchdogError::ProviderChanged);
+        }
+        let opens_at_us = self
+            .last_feed_us
+            .saturating_add(u64::from(self.profile.window_open_us));
+        let closed_at_us = self
+            .last_feed_us
+            .saturating_add(u64::from(self.profile.window_close_us));
+        if now_us < opens_at_us {
+            return Err(HardwareWatchdogError::EarlyFeed { opens_at_us });
+        }
+        if now_us > closed_at_us {
+            return Err(HardwareWatchdogError::LateFeed { closed_at_us });
+        }
+        self.backend
+            .feed()
+            .map_err(HardwareWatchdogError::Backend)?;
+        self.last_feed_us = now_us;
+        self.feeds = self.feeds.saturating_add(1);
+        Ok(())
+    }
+
+    pub fn take_reset_receipt(
+        &mut self,
+        observed_at_us: u64,
+    ) -> Result<HardwareWatchdogResetReceipt, HardwareWatchdogError<B::Error>> {
+        if self.backend.profile() != self.profile {
+            return Err(HardwareWatchdogError::ProviderChanged);
+        }
+        let cause = self
+            .backend
+            .reset_cause()
+            .map_err(HardwareWatchdogError::Backend)?;
+        self.backend
+            .clear_reset_cause()
+            .map_err(HardwareWatchdogError::Backend)?;
+        Ok(HardwareWatchdogResetReceipt {
+            provider_id: self.profile.provider_id,
+            generation: self.profile.generation,
+            cause,
+            observed_at_us,
+        })
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
+
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
+    pub fn into_backend(self) -> B {
+        self.backend
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Clone, Copy)]
+    struct HardwareBackend {
+        profile: HardwareWatchdogProfile,
+        armed: bool,
+        feeds: u8,
+        cause: HardwareResetCause,
+        fail_feed: bool,
+    }
+
+    impl HardwareBackend {
+        fn qualified() -> Self {
+            Self {
+                profile: HardwareWatchdogProfile {
+                    provider_id: 7,
+                    generation: 3,
+                    window_open_us: 100,
+                    window_close_us: 500,
+                    independent_clock: true,
+                    independent_feed: true,
+                    resets_system: true,
+                },
+                armed: false,
+                feeds: 0,
+                cause: HardwareResetCause::Watchdog,
+                fail_feed: false,
+            }
+        }
+    }
+
+    impl HardwareWatchdogBackend for HardwareBackend {
+        type Error = u8;
+
+        fn profile(&self) -> HardwareWatchdogProfile {
+            self.profile
+        }
+
+        fn arm(&mut self) -> Result<(), Self::Error> {
+            self.armed = true;
+            Ok(())
+        }
+
+        fn feed(&mut self) -> Result<(), Self::Error> {
+            if self.fail_feed {
+                Err(9)
+            } else {
+                self.feeds += 1;
+                Ok(())
+            }
+        }
+
+        fn reset_cause(&mut self) -> Result<HardwareResetCause, Self::Error> {
+            Ok(self.cause)
+        }
+
+        fn clear_reset_cause(&mut self) -> Result<(), Self::Error> {
+            self.cause = HardwareResetCause::None;
+            Ok(())
+        }
+    }
 
     #[test]
     fn in_place_initialization_matches_const_constructor() {
@@ -285,5 +542,63 @@ mod tests {
                 expired_reported: false,
             })
         );
+    }
+
+    #[test]
+    fn hardware_watchdog_rejects_unqualified_or_changed_providers() {
+        let mut invalid = HardwareBackend::qualified();
+        invalid.profile.independent_feed = false;
+        let failure = HardwareWatchdogSession::mount(invalid, ModuleId::Kernel, 1_000)
+            .err()
+            .unwrap();
+        assert_eq!(failure.error(), &HardwareWatchdogError::InvalidProfile);
+
+        let mut session =
+            HardwareWatchdogSession::mount(HardwareBackend::qualified(), ModuleId::Kernel, 1_000)
+                .ok()
+                .unwrap();
+        session.backend_mut().profile.generation += 1;
+        assert_eq!(
+            session.feed_from_independent_monitor(ModuleId::Kernel, 1_100),
+            Err(HardwareWatchdogError::ProviderChanged)
+        );
+        assert_eq!(session.backend().feeds, 0);
+    }
+
+    #[test]
+    fn hardware_watchdog_enforces_owner_window_and_reset_provenance() {
+        let mut session =
+            HardwareWatchdogSession::mount(HardwareBackend::qualified(), ModuleId::Kernel, 1_000)
+                .ok()
+                .unwrap();
+        assert_eq!(
+            session.feed_from_independent_monitor(ModuleId::Sensor, 1_100),
+            Err(HardwareWatchdogError::WrongOwner)
+        );
+        assert_eq!(
+            session.feed_from_independent_monitor(ModuleId::Kernel, 1_099),
+            Err(HardwareWatchdogError::EarlyFeed { opens_at_us: 1_100 })
+        );
+        session
+            .feed_from_independent_monitor(ModuleId::Kernel, 1_100)
+            .unwrap();
+        assert_eq!(session.feeds(), 1);
+        assert_eq!(
+            session.feed_from_independent_monitor(ModuleId::Kernel, 1_601),
+            Err(HardwareWatchdogError::LateFeed {
+                closed_at_us: 1_600,
+            })
+        );
+        assert_eq!(session.backend().feeds, 1);
+        assert_eq!(
+            session.take_reset_receipt(2_000).unwrap(),
+            HardwareWatchdogResetReceipt {
+                provider_id: 7,
+                generation: 3,
+                cause: HardwareResetCause::Watchdog,
+                observed_at_us: 2_000,
+            }
+        );
+        assert_eq!(session.backend().cause, HardwareResetCause::None);
     }
 }

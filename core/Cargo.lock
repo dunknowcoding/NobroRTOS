@@ -1475,8 +1475,11 @@ version = "0.3.3"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
+ "critical-section",
  "defmt 0.3.100",
  "defmt-rtt",
  "nobro-hal",
+ "nobro-kernel",
+ "nrf52840-pac",
  "panic-halt",
 ]

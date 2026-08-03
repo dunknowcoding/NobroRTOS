@@ -2,7 +2,7 @@
 
 use core::sync::atomic::{AtomicU32, Ordering};
 use cortex_m::peripheral::NVIC;
-use nobro_power::{DeadlineTimingProfile, PowerHookError, PowerMode, PowerPlatform};
+use nobro_power::{DeadlineTimingProfile, PowerHookError, PowerMode, PowerPlatform, SleepProfile};
 use nrf52840_pac::TIMER0;
 
 const COMPARE: usize = 3;
@@ -189,6 +189,20 @@ impl PowerPlatform for NrfTimerPower {
 
     fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
         self.deadline_timing
+    }
+
+    fn sleep_profile(&self, mode: PowerMode) -> Option<SleepProfile> {
+        let timing = self.deadline_timing?;
+        (mode == PowerMode::Idle && timing.wake_latency_us != 0).then_some(SleepProfile {
+            provider_id: timing.provider_id,
+            generation: timing.generation,
+            deepest_mode: PowerMode::Idle,
+            wake_latency_us: timing.wake_latency_us,
+            wake_sources: 1 << 0,                // owned TIMER0 compare
+            retained_state: 1 << 0,              // System-ON RAM
+            retained_clock_domains: 1 << 0,      // TIMER0 1 MHz timebase
+            retained_peripheral_domains: 1 << 0, // TIMER0 compare/IRQ route
+        })
     }
 
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {

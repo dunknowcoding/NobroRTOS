@@ -94,6 +94,10 @@ pub enum PowerVetoReason {
     SystemOffNotOptedIn = 7,
     WakeUnavailable = 8,
     PlatformLimited = 9,
+    SleepUnqualified = 10,
+    WakeLatencyExceeded = 11,
+    RetentionUnavailable = 12,
+    DomainUnavailable = 13,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -357,12 +361,136 @@ pub struct PowerTransition {
     pub effective: PowerMode,
     pub vetoes: PowerVetoMask,
     pub system_off_wake: Option<SystemOffWake>,
+    /// Present only when the caller used the evidence-bearing admitted-sleep
+    /// path. Compatibility sleep execution retains `None` and makes no timing
+    /// or retention claim.
+    pub sleep_admission: Option<SleepAdmission>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PowerHookError {
     pub source: u16,
     pub code: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SleepProfile {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub deepest_mode: PowerMode,
+    pub wake_latency_us: u32,
+    pub wake_sources: u32,
+    pub retained_state: u32,
+    pub retained_clock_domains: u32,
+    pub retained_peripheral_domains: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SleepRequirements {
+    pub max_wake_latency_us: u32,
+    pub required_wake_sources: u32,
+    pub required_retained_state: u32,
+    pub required_clock_domains: u32,
+    pub required_peripheral_domains: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SleepAdmission {
+    pub provider_id: u16,
+    pub generation: u32,
+    pub mode: PowerMode,
+    pub wake_latency_us: u32,
+    pub wake_sources: u32,
+    pub retained_state: u32,
+    pub retained_clock_domains: u32,
+    pub retained_peripheral_domains: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SleepAdmissionError {
+    InvalidProfile,
+    InvalidRequirements,
+    ModeUnavailable,
+    WakeLatencyExceeded { latency_us: u32, limit_us: u32 },
+    WakeSourceUnavailable,
+    RetentionUnavailable,
+    ClockDomainUnavailable,
+    PeripheralDomainUnavailable,
+}
+
+impl SleepProfile {
+    pub fn admit(
+        self,
+        mode: PowerMode,
+        requirements: SleepRequirements,
+        time_until_deadline_us: Option<u64>,
+    ) -> Result<SleepAdmission, SleepAdmissionError> {
+        if self.provider_id == 0
+            || self.generation == 0
+            || self.wake_latency_us == 0
+            || self.wake_sources == 0
+        {
+            return Err(SleepAdmissionError::InvalidProfile);
+        }
+        if requirements.max_wake_latency_us == 0 || requirements.required_wake_sources == 0 {
+            return Err(SleepAdmissionError::InvalidRequirements);
+        }
+        if mode == PowerMode::Active || mode.depth() > self.deepest_mode.depth() {
+            return Err(SleepAdmissionError::ModeUnavailable);
+        }
+        let deadline_limit = time_until_deadline_us
+            .unwrap_or(u64::from(u32::MAX))
+            .min(u64::from(u32::MAX)) as u32;
+        let latency_limit = requirements.max_wake_latency_us.min(deadline_limit);
+        if self.wake_latency_us > latency_limit {
+            return Err(SleepAdmissionError::WakeLatencyExceeded {
+                latency_us: self.wake_latency_us,
+                limit_us: latency_limit,
+            });
+        }
+        if self.wake_sources & requirements.required_wake_sources
+            != requirements.required_wake_sources
+        {
+            return Err(SleepAdmissionError::WakeSourceUnavailable);
+        }
+        if self.retained_state & requirements.required_retained_state
+            != requirements.required_retained_state
+        {
+            return Err(SleepAdmissionError::RetentionUnavailable);
+        }
+        if self.retained_clock_domains & requirements.required_clock_domains
+            != requirements.required_clock_domains
+        {
+            return Err(SleepAdmissionError::ClockDomainUnavailable);
+        }
+        if self.retained_peripheral_domains & requirements.required_peripheral_domains
+            != requirements.required_peripheral_domains
+        {
+            return Err(SleepAdmissionError::PeripheralDomainUnavailable);
+        }
+        Ok(SleepAdmission {
+            provider_id: self.provider_id,
+            generation: self.generation,
+            mode,
+            wake_latency_us: self.wake_latency_us,
+            wake_sources: self.wake_sources,
+            retained_state: self.retained_state,
+            retained_clock_domains: self.retained_clock_domains,
+            retained_peripheral_domains: self.retained_peripheral_domains,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerApplyError {
+    Admission(SleepAdmissionError),
+    Hook(PowerHookError),
+}
+
+impl From<PowerHookError> for PowerApplyError {
+    fn from(error: PowerHookError) -> Self {
+        Self::Hook(error)
+    }
 }
 
 /// Qualified timing limits for one exact hardware deadline provider.
@@ -618,6 +746,11 @@ pub trait PowerPlatform {
     fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
         None
     }
+    /// Exact sleep/wake/retention capability used only by the admitted-sleep
+    /// path. `None` permits compatibility execution but never a sleep claim.
+    fn sleep_profile(&self, _mode: PowerMode) -> Option<SleepProfile> {
+        None
+    }
     /// Constrain a policy choice to modes this backend actually implements.
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
         requested
@@ -742,6 +875,10 @@ impl<P: PowerPlatform, R: PowerParticipant> PowerPlatform for PowerPlatformChain
 
     fn deadline_timing_profile(&self) -> Option<DeadlineTimingProfile> {
         self.platform.deadline_timing_profile()
+    }
+
+    fn sleep_profile(&self, mode: PowerMode) -> Option<SleepProfile> {
+        self.platform.sleep_profile(mode)
     }
 
     fn constrain_mode(&self, requested: PowerMode) -> PowerMode {
@@ -997,6 +1134,14 @@ pub struct ExecutorPower<const N: usize, const LEASES: usize = 8> {
     system_off_wake: Option<SystemOffWake>,
 }
 
+#[derive(Clone, Copy)]
+struct PowerSelection {
+    requested: PowerMode,
+    selected: PowerMode,
+    vetoes: PowerVetoMask,
+    system_off_wake: Option<SystemOffWake>,
+}
+
 impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
     pub const fn new(window_us: u64, budget_us: u64, default_power_uw: u64) -> Self {
         Self {
@@ -1126,6 +1271,24 @@ impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
         self.apply_idle_release(now_us, work_pending, deadline_us, 0, platform)
     }
 
+    pub fn apply_idle_admitted(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        requirements: SleepRequirements,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerTransition, PowerApplyError> {
+        self.apply_idle_release_admitted(
+            now_us,
+            work_pending,
+            deadline_us,
+            0,
+            requirements,
+            platform,
+        )
+    }
+
     pub fn apply_idle_release(
         &self,
         now_us: u64,
@@ -1134,6 +1297,50 @@ impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
         ready_mask: u32,
         platform: &mut impl PowerPlatform,
     ) -> Result<PowerTransition, PowerHookError> {
+        let selection = self.select_idle(now_us, work_pending, deadline_us, platform);
+        self.apply_selected(selection, deadline_us, ready_mask, None, platform)
+    }
+
+    /// Evidence-bearing sleep entry. Qualification happens before any prepare,
+    /// wake-arm, or entry hook; a rejected admission cannot touch hardware.
+    pub fn apply_idle_release_admitted(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        ready_mask: u32,
+        requirements: SleepRequirements,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerTransition, PowerApplyError> {
+        let selection = self.select_idle(now_us, work_pending, deadline_us, platform);
+        let admission =
+            if selection.selected == PowerMode::Active {
+                None
+            } else {
+                let profile = platform.sleep_profile(selection.selected).ok_or(
+                    PowerApplyError::Admission(SleepAdmissionError::InvalidProfile),
+                )?;
+                Some(
+                    profile
+                        .admit(
+                            selection.selected,
+                            requirements,
+                            deadline_us.map(|deadline| deadline.saturating_sub(now_us)),
+                        )
+                        .map_err(PowerApplyError::Admission)?,
+                )
+            };
+        self.apply_selected(selection, deadline_us, ready_mask, admission, platform)
+            .map_err(PowerApplyError::Hook)
+    }
+
+    fn select_idle(
+        &self,
+        now_us: u64,
+        work_pending: bool,
+        deadline_us: Option<u64>,
+        platform: &impl PowerPlatform,
+    ) -> PowerSelection {
         let relative = deadline_us.map(|deadline| deadline.saturating_sub(now_us));
         let requested = self.manager.select(work_pending, relative);
         let (mut selected, mut vetoes) = self.leases.admit(requested);
@@ -1154,6 +1361,28 @@ impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
             vetoes.insert(PowerVetoReason::PlatformLimited);
             system_off_wake = None;
         }
+        PowerSelection {
+            requested,
+            selected,
+            vetoes,
+            system_off_wake,
+        }
+    }
+
+    fn apply_selected(
+        &self,
+        selection: PowerSelection,
+        deadline_us: Option<u64>,
+        ready_mask: u32,
+        sleep_admission: Option<SleepAdmission>,
+        platform: &mut impl PowerPlatform,
+    ) -> Result<PowerTransition, PowerHookError> {
+        let PowerSelection {
+            requested,
+            selected,
+            mut vetoes,
+            system_off_wake,
+        } = selection;
         if selected == PowerMode::Active {
             return Ok(PowerTransition {
                 requested,
@@ -1161,6 +1390,7 @@ impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
                 effective: PowerMode::Active,
                 vetoes,
                 system_off_wake,
+                sleep_admission: None,
             });
         }
 
@@ -1196,6 +1426,7 @@ impl<const N: usize, const LEASES: usize> ExecutorPower<N, LEASES> {
             effective,
             vetoes,
             system_off_wake,
+            sleep_admission,
         })
     }
 
@@ -1230,6 +1461,18 @@ mod energy_tests {
         fn enter(&mut self, mode: PowerMode) -> Result<PowerMode, PowerHookError> {
             self.mode = Some(mode);
             Ok(mode)
+        }
+        fn sleep_profile(&self, _mode: PowerMode) -> Option<SleepProfile> {
+            Some(SleepProfile {
+                provider_id: 4,
+                generation: 2,
+                deepest_mode: PowerMode::LowPower,
+                wake_latency_us: 250,
+                wake_sources: 0b11,
+                retained_state: 0b01,
+                retained_clock_domains: 0b10,
+                retained_peripheral_domains: 0b100,
+            })
         }
         fn suspend(&mut self, task_id: u16) -> Result<(), PowerHookError> {
             self.suspended = Some(task_id);
@@ -1291,10 +1534,59 @@ mod energy_tests {
                 effective: PowerMode::LowPower,
                 vetoes: PowerVetoMask::default(),
                 system_off_wake: None,
+                sleep_admission: None,
             })
         );
         assert_eq!(hooks.wake, Some(20_000));
         assert_eq!(hooks.mode, Some(PowerMode::LowPower));
+    }
+
+    #[test]
+    fn admitted_sleep_proves_latency_wake_retention_and_domains_before_entry() {
+        let power = ExecutorPower::<1>::new(1_000_000, 100_000, 1_000);
+        let requirements = SleepRequirements {
+            max_wake_latency_us: 500,
+            required_wake_sources: 0b01,
+            required_retained_state: 0b01,
+            required_clock_domains: 0b10,
+            required_peripheral_domains: 0b100,
+        };
+        let mut hooks = Hooks::default();
+        let report = power
+            .apply_idle_admitted(1_000, false, Some(11_000), requirements, &mut hooks)
+            .unwrap();
+        assert_eq!(report.effective, PowerMode::LowPower);
+        assert_eq!(
+            report.sleep_admission,
+            Some(SleepAdmission {
+                provider_id: 4,
+                generation: 2,
+                mode: PowerMode::LowPower,
+                wake_latency_us: 250,
+                wake_sources: 0b11,
+                retained_state: 0b01,
+                retained_clock_domains: 0b10,
+                retained_peripheral_domains: 0b100,
+            })
+        );
+
+        hooks.wake = None;
+        hooks.mode = None;
+        let too_tight = SleepRequirements {
+            max_wake_latency_us: 200,
+            ..requirements
+        };
+        assert_eq!(
+            power.apply_idle_admitted(1_000, false, Some(11_000), too_tight, &mut hooks),
+            Err(PowerApplyError::Admission(
+                SleepAdmissionError::WakeLatencyExceeded {
+                    latency_us: 250,
+                    limit_us: 200,
+                }
+            ))
+        );
+        assert_eq!(hooks.wake, None);
+        assert_eq!(hooks.mode, None);
     }
 
     #[test]

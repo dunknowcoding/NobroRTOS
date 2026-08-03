@@ -64,6 +64,10 @@ pub enum StartupGraphError {
         module: ModuleId,
         depends_on: ModuleId,
     },
+    UnknownDependency {
+        module: ModuleId,
+        depends_on: ModuleId,
+    },
     UnknownModule(ModuleId),
     InvalidPlan(StartupError),
 }
@@ -119,6 +123,25 @@ impl<const N: usize> StartupGraph<N> {
         }
 
         self.nodes[module_idx].depends_on = self.nodes[module_idx].depends_on.with_index(dep_idx);
+        Ok(())
+    }
+
+    pub fn remove_dependency(
+        &mut self,
+        module: ModuleId,
+        depends_on: ModuleId,
+    ) -> Result<(), StartupGraphError> {
+        let Some(module_idx) = self.index_of(module) else {
+            return Err(StartupGraphError::UnknownModule(module));
+        };
+        let Some(dep_idx) = self.index_of(depends_on) else {
+            return Err(StartupGraphError::UnknownModule(depends_on));
+        };
+        if !self.nodes[module_idx].depends_on.contains_index(dep_idx) {
+            return Err(StartupGraphError::UnknownDependency { module, depends_on });
+        }
+        self.nodes[module_idx].depends_on =
+            self.nodes[module_idx].depends_on.without_index(dep_idx);
         Ok(())
     }
 
@@ -188,6 +211,109 @@ impl<const N: usize> StartupGraph<N> {
             .take(self.len)
             .position(|node| node.module == module)
     }
+}
+
+/// A bounded, generation-tagged dependency graph for relationships established
+/// after boot (for example, a client bound to a newly mounted service).
+///
+/// Updates are transactional: a candidate graph must remain acyclic before its
+/// generation is published. Recovery plans retain that generation and must be
+/// rejected if another binding changes before execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeDependencyGraph<const N: usize> {
+    graph: StartupGraph<N>,
+    generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeDependencyError {
+    Graph(StartupGraphError),
+    GenerationExhausted,
+    StaleGeneration { expected: u32, current: u32 },
+}
+
+impl<const N: usize> RuntimeDependencyGraph<N> {
+    pub fn from_startup(graph: StartupGraph<N>) -> Result<Self, RuntimeDependencyError> {
+        graph.plan::<N>().map_err(|error| {
+            RuntimeDependencyError::Graph(StartupGraphError::InvalidPlan(error))
+        })?;
+        Ok(Self {
+            graph,
+            generation: 1,
+        })
+    }
+
+    pub const fn generation(&self) -> u32 {
+        self.generation
+    }
+
+    pub const fn graph(&self) -> &StartupGraph<N> {
+        &self.graph
+    }
+
+    pub fn bind(
+        &mut self,
+        module: ModuleId,
+        depends_on: ModuleId,
+    ) -> Result<u32, RuntimeDependencyError> {
+        self.update(|candidate| candidate.add_dependency(module, depends_on))
+    }
+
+    pub fn unbind(
+        &mut self,
+        module: ModuleId,
+        depends_on: ModuleId,
+    ) -> Result<u32, RuntimeDependencyError> {
+        self.update(|candidate| candidate.remove_dependency(module, depends_on))
+    }
+
+    pub fn dependency_impact<const OUT: usize>(
+        &self,
+        root: ModuleId,
+    ) -> Result<RuntimeDependencyImpact<OUT>, RuntimeDependencyError> {
+        Ok(RuntimeDependencyImpact {
+            generation: self.generation,
+            impact: self
+                .graph
+                .dependency_impact(root)
+                .map_err(RuntimeDependencyError::Graph)?,
+        })
+    }
+
+    pub const fn revalidate(&self, generation: u32) -> Result<(), RuntimeDependencyError> {
+        if generation == self.generation {
+            Ok(())
+        } else {
+            Err(RuntimeDependencyError::StaleGeneration {
+                expected: generation,
+                current: self.generation,
+            })
+        }
+    }
+
+    fn update(
+        &mut self,
+        mutate: impl FnOnce(&mut StartupGraph<N>) -> Result<(), StartupGraphError>,
+    ) -> Result<u32, RuntimeDependencyError> {
+        let generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(RuntimeDependencyError::GenerationExhausted)?;
+        let mut candidate = self.graph;
+        mutate(&mut candidate).map_err(RuntimeDependencyError::Graph)?;
+        candidate.plan::<N>().map_err(|error| {
+            RuntimeDependencyError::Graph(StartupGraphError::InvalidPlan(error))
+        })?;
+        self.graph = candidate;
+        self.generation = generation;
+        Ok(generation)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeDependencyImpact<const N: usize> {
+    pub generation: u32,
+    pub impact: DependencyImpact<N>,
 }
 
 impl<const N: usize> Default for StartupGraph<N> {
@@ -508,5 +634,59 @@ mod tests {
             .unwrap();
 
         assert_eq!(graph.plan::<2>(), Err(StartupError::Cycle));
+    }
+
+    #[test]
+    fn runtime_dependencies_publish_only_acyclic_generations() {
+        let graph = StartupGraph::<3>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        let mut runtime = RuntimeDependencyGraph::from_startup(graph).unwrap();
+        assert_eq!(runtime.generation(), 1);
+        assert_eq!(runtime.bind(ModuleId::Sensor, ModuleId::Kernel), Ok(2));
+        assert_eq!(runtime.bind(ModuleId::App(1), ModuleId::Sensor), Ok(3));
+        let impact = runtime.dependency_impact::<2>(ModuleId::Sensor).unwrap();
+        assert_eq!(impact.generation, 3);
+        assert_eq!(impact.impact.affected[0], Some(ModuleId::App(1)));
+
+        assert_eq!(
+            runtime.bind(ModuleId::Kernel, ModuleId::App(1)),
+            Err(RuntimeDependencyError::Graph(
+                StartupGraphError::InvalidPlan(StartupError::Cycle)
+            ))
+        );
+        assert_eq!(runtime.generation(), 3);
+        assert_eq!(runtime.unbind(ModuleId::App(1), ModuleId::Sensor), Ok(4));
+        assert_eq!(
+            runtime.revalidate(3),
+            Err(RuntimeDependencyError::StaleGeneration {
+                expected: 3,
+                current: 4,
+            })
+        );
+        assert!(runtime
+            .dependency_impact::<2>(ModuleId::Sensor)
+            .unwrap()
+            .impact
+            .is_empty());
+    }
+
+    #[test]
+    fn runtime_dependency_generation_exhaustion_is_fail_closed() {
+        let graph = StartupGraph::<2>::from_modules(&[ModuleId::Kernel, ModuleId::Sensor]).unwrap();
+        let mut runtime = RuntimeDependencyGraph::from_startup(graph).unwrap();
+        runtime.generation = u32::MAX;
+        assert_eq!(
+            runtime.bind(ModuleId::Sensor, ModuleId::Kernel),
+            Err(RuntimeDependencyError::GenerationExhausted)
+        );
+        assert!(runtime
+            .dependency_impact::<1>(ModuleId::Kernel)
+            .unwrap()
+            .impact
+            .is_empty());
     }
 }

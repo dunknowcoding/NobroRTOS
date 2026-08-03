@@ -3859,7 +3859,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "0aabda5643c6a3956e9a8875b5e69b5608fa904ad3bf17d5d20d222d3a443188"
+        "sha256": "3c2eea22b35a73e04bdd96a46016760987bc06ce596c7861205b4ce8db33be34"
       },
       {
         "crate": "nobro-ml",
@@ -4723,6 +4723,30 @@
           },
           {
             "kind": "struct",
+            "name": "SleepProfile"
+          },
+          {
+            "kind": "struct",
+            "name": "SleepRequirements"
+          },
+          {
+            "kind": "struct",
+            "name": "SleepAdmission"
+          },
+          {
+            "kind": "enum",
+            "name": "SleepAdmissionError"
+          },
+          {
+            "kind": "fn",
+            "name": "admit"
+          },
+          {
+            "kind": "enum",
+            "name": "PowerApplyError"
+          },
+          {
+            "kind": "struct",
             "name": "DeadlineTimingProfile"
           },
           {
@@ -4863,7 +4887,15 @@
           },
           {
             "kind": "fn",
+            "name": "apply_idle_admitted"
+          },
+          {
+            "kind": "fn",
             "name": "apply_idle_release"
+          },
+          {
+            "kind": "fn",
+            "name": "apply_idle_release_admitted"
           },
           {
             "kind": "fn",
@@ -4895,7 +4927,7 @@
           }
         ],
         "path": "core/crates/nobro_power/src/lib.rs",
-        "sha256": "54c75ca97bebfa05f3a442f0e8248db7d374c57dbf40576f9b809999d0aac63c"
+        "sha256": "52365234c5f6531f3b5402a34977eae4c66ae782ed2f0c7a48b37b56972db666"
       },
       {
         "crate": "nobro-sal",
@@ -7034,7 +7066,7 @@
           }
         ],
         "path": "core/crates/nobro_wireless/src/lib.rs",
-        "sha256": "de391ff9189549bc64f6cac503474ff0aa1aeec3b6af7ae8779d38de40e082e4"
+        "sha256": "26ad43d57747b9b729c8e9dfc11989eff4911055c488d4be5046cca415aafc0b"
       },
       {
         "crate": "nobro-adapter-motion-ai",

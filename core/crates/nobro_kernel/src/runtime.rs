@@ -14,9 +14,10 @@ use crate::{
     ModuleReloadHooks, ModuleReloadRequest, ModuleRunState, ModuleRuntimeEntry, ModuleRuntimeError,
     ModuleRuntimeGuard, ModuleRuntimeReport, ObjectKind, ObjectLedger, ObjectQuota,
     ObjectQuotaError, ObjectUsage, QuotaError, RecoveryCoordinator, RecoveryError, RecoveryOutcome,
-    RecoveryPlan, RecoveryPlanError, RecoveryPlanPolicy, RecoveryStep, RecoveryStepKind,
-    RuntimeReport, RuntimeReportInput, StartupGraph, StartupNode, SystemBudget, SystemManifest,
-    SystemProfile, SystemState, Watchdog, WatchdogEntry, WatchdogError,
+    RecoveryPlan, RecoveryPlanError, RecoveryPlanExecution, RecoveryPlanPolicy, RecoveryStep,
+    RecoveryStepKind, RuntimeDependencyGraph, RuntimeReport, RuntimeReportInput, StartupGraph,
+    StartupNode, SystemBudget, SystemManifest, SystemProfile, SystemState, Watchdog, WatchdogEntry,
+    WatchdogError,
 };
 
 /// Capacities a `Runtime` instantiation was compiled with, and the coherence
@@ -78,8 +79,14 @@ pub enum RuntimeError {
     FaultThreshold(FaultThresholdError),
     ModuleHook(ModuleHookError),
     RecoveryNotActive(ModuleId),
-    KvOwnedByOther { key: KvKey, owner: ModuleId },
-    AlarmOwnedByOther { id: AlarmId, owner: ModuleId },
+    KvOwnedByOther {
+        key: KvKey,
+        owner: ModuleId,
+    },
+    AlarmOwnedByOther {
+        id: AlarmId,
+        owner: ModuleId,
+    },
     PoolExhausted,
     PoolStaleHandle,
     Quota(QuotaError),
@@ -88,6 +95,15 @@ pub enum RuntimeError {
     Recovery(RecoveryError),
     RecoveryPlan(RecoveryPlanError),
     Watchdog(WatchdogError),
+    DegradeBudgetMismatch {
+        planned: SystemBudget,
+        observed: SystemBudget,
+    },
+    DegradePostAdmissionRejected {
+        observed: SystemBudget,
+        profile: SystemProfile,
+        active_modules: usize,
+    },
 }
 
 impl From<ObjectQuotaError> for RuntimeError {
@@ -218,6 +234,24 @@ pub struct RecoveryPlanning<const N: usize> {
     pub plan: RecoveryPlan<N>,
 }
 
+/// Evidence that lifecycle hooks, rather than only a scheduler handoff, applied
+/// a prefix or all of one recovery plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryExecutionReceipt {
+    pub outcome: RecoveryOutcome,
+    pub applied_steps: usize,
+    pub remaining_steps: usize,
+    pub consumed_budget_us: u64,
+    pub completed_at_us: Option<u64>,
+    pub dependency_generation: Option<u32>,
+}
+
+impl RecoveryExecutionReceipt {
+    pub const fn completed(&self) -> bool {
+        self.remaining_steps == 0 && self.completed_at_us.is_some()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AlarmDispatch {
     pub dispatched: usize,
@@ -254,6 +288,17 @@ pub struct DegradeApplication {
     pub already_disabled: usize,
     pub reason: Option<DegradeReason>,
     pub applied_at_us: u64,
+}
+
+/// Post-application proof that the modules still enabled after degradation fit
+/// the admitted profile and exactly match the planner's retained budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DegradeExecutionReceipt {
+    pub application: DegradeApplication,
+    pub planned_budget: SystemBudget,
+    pub observed_budget: SystemBudget,
+    pub active_modules: usize,
+    pub profile: SystemProfile,
 }
 
 impl DegradeApplication {
@@ -1107,6 +1152,32 @@ impl<
         Ok(RecoveryPlanning { outcome, plan })
     }
 
+    /// Plan against the dependency graph that is live at the instant the fault
+    /// is accepted. The plan retains the graph generation and must be
+    /// revalidated immediately before execution.
+    pub fn record_error_with_plan_and_runtime_dependencies<
+        const STEPS: usize,
+        const GRAPH: usize,
+        const IMPACT: usize,
+    >(
+        &mut self,
+        module: ModuleId,
+        error: KernelError,
+        dependencies: &RuntimeDependencyGraph<GRAPH>,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<RecoveryPlanning<STEPS>, RuntimeError> {
+        let impact = dependencies
+            .dependency_impact::<IMPACT>(module)
+            .map_err(|error| {
+                RuntimeError::RecoveryPlan(RecoveryPlanError::RuntimeDependency(error))
+            })?;
+        let outcome = self.record_error(module, error, now_us)?;
+        let plan =
+            RecoveryPlan::from_outcome_with_runtime_impact(outcome, &impact, now_us, policy)?;
+        Ok(RecoveryPlanning { outcome, plan })
+    }
+
     pub fn record_watchdog_expired(
         &mut self,
         module: ModuleId,
@@ -1246,6 +1317,66 @@ impl<
         }
     }
 
+    /// Apply all currently due static-plan steps. A runtime-dependency-bound
+    /// plan must use [`Self::apply_due_recovery_with_dependencies`] instead.
+    pub fn apply_due_recovery<const STEPS: usize, H: ModuleLifecycleHooks>(
+        &mut self,
+        execution: &mut RecoveryPlanExecution<STEPS>,
+        now_us: u64,
+        hooks: &mut H,
+    ) -> Result<RecoveryExecutionReceipt, RuntimeError> {
+        if execution.plan().dependency_generation.is_some() {
+            return Err(RuntimeError::RecoveryPlan(
+                RecoveryPlanError::RuntimeDependencyRequired,
+            ));
+        }
+        self.apply_due_recovery_inner(execution, now_us, hooks)
+    }
+
+    /// Revalidate the live graph generation before applying due lifecycle
+    /// hooks. A changed binding rejects the stale plan before any hook runs.
+    pub fn apply_due_recovery_with_dependencies<
+        const STEPS: usize,
+        const GRAPH: usize,
+        H: ModuleLifecycleHooks,
+    >(
+        &mut self,
+        execution: &mut RecoveryPlanExecution<STEPS>,
+        dependencies: &RuntimeDependencyGraph<GRAPH>,
+        now_us: u64,
+        hooks: &mut H,
+    ) -> Result<RecoveryExecutionReceipt, RuntimeError> {
+        execution
+            .plan()
+            .revalidate_runtime_dependencies(dependencies)?;
+        self.apply_due_recovery_inner(execution, now_us, hooks)
+    }
+
+    fn apply_due_recovery_inner<const STEPS: usize, H: ModuleLifecycleHooks>(
+        &mut self,
+        execution: &mut RecoveryPlanExecution<STEPS>,
+        now_us: u64,
+        hooks: &mut H,
+    ) -> Result<RecoveryExecutionReceipt, RuntimeError> {
+        let before = execution.dispatched_count();
+        while let Some(step) = execution.next_pending() {
+            if step.due_us > now_us {
+                break;
+            }
+            self.apply_recovery_step(step, now_us, hooks)?;
+            execution.commit_applied(step, now_us)?;
+        }
+        let completed_at_us = execution.is_complete().then_some(now_us);
+        Ok(RecoveryExecutionReceipt {
+            outcome: execution.plan().outcome,
+            applied_steps: execution.dispatched_count().saturating_sub(before),
+            remaining_steps: execution.remaining_count(),
+            consumed_budget_us: execution.consumed_budget_us(),
+            completed_at_us,
+            dependency_generation: execution.plan().dependency_generation,
+        })
+    }
+
     /// Apply a recovery step with transactional peripheral and kernel-object
     /// revocation on `QuiesceModule`.
     ///
@@ -1358,6 +1489,15 @@ impl<
         decision: &DegradeDecision<N>,
         now_us: u64,
     ) -> Result<DegradeApplication, RuntimeError> {
+        self.apply_degrade_decision_with_receipt(decision, now_us)
+            .map(|receipt| receipt.application)
+    }
+
+    pub fn apply_degrade_decision_with_receipt<const N: usize>(
+        &mut self,
+        decision: &DegradeDecision<N>,
+        now_us: u64,
+    ) -> Result<DegradeExecutionReceipt, RuntimeError> {
         for module in decision
             .disabled
             .iter()
@@ -1399,8 +1539,54 @@ impl<
             self.recovery.transition(SystemState::Degraded, now_us)?;
         }
 
+        let mut observed_budget = SystemBudget::ZERO;
+        let mut active_modules = 0usize;
+        for module in self
+            .plan
+            .startup
+            .order
+            .iter()
+            .copied()
+            .take(self.plan.startup.len)
+            .flatten()
+        {
+            if self.module_state(module) == Some(ModuleRunState::Disabled) {
+                continue;
+            }
+            let limit = self
+                .quota_limit(module)
+                .ok_or(RuntimeError::Module(ModuleRuntimeError::Missing(module)))?;
+            observed_budget.flash_bytes = observed_budget
+                .flash_bytes
+                .saturating_add(limit.flash_bytes);
+            observed_budget.ram_bytes = observed_budget.ram_bytes.saturating_add(limit.ram_bytes);
+            observed_budget.pool_slots =
+                observed_budget.pool_slots.saturating_add(limit.pool_slots);
+            active_modules += 1;
+        }
+        if observed_budget != decision.budget {
+            return Err(RuntimeError::DegradeBudgetMismatch {
+                planned: decision.budget,
+                observed: observed_budget,
+            });
+        }
+        if !observed_budget.fits_within(self.plan.profile.budget())
+            || active_modules > self.plan.profile.max_modules
+        {
+            return Err(RuntimeError::DegradePostAdmissionRejected {
+                observed: observed_budget,
+                profile: self.plan.profile,
+                active_modules,
+            });
+        }
         self.degrade = application;
-        Ok(application)
+        Ok(DegradeExecutionReceipt {
+            application,
+            planned_budget: decision.budget,
+            observed_budget,
+            active_modules,
+            profile: self.plan.profile,
+        })
     }
 
     pub fn module_state(&self, module: ModuleId) -> Option<ModuleRunState> {
@@ -3511,5 +3697,129 @@ mod tests {
                 ModuleId::Sensor
             )))
         );
+    }
+
+    #[test]
+    fn recovery_execution_commits_only_successful_hooks_and_returns_final_receipt() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::ModuleCrash, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::ModuleCrash, 30)
+            .unwrap();
+        let planning = runtime
+            .record_error_with_plan::<4>(
+                ModuleId::Sensor,
+                KernelError::ModuleCrash,
+                40,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+        let mut execution = RecoveryPlanExecution::from_plan(planning.plan);
+        let mut hooks = FakeHooks {
+            fail: Some(ModuleHookError::Stop),
+            ..FakeHooks::default()
+        };
+        assert_eq!(
+            runtime.apply_due_recovery(&mut execution, 20_000, &mut hooks),
+            Err(RuntimeError::ModuleHook(ModuleHookError::Stop))
+        );
+        assert_eq!(execution.dispatched_count(), 1);
+        assert_eq!(
+            execution.next_pending().map(|step| step.kind),
+            Some(RecoveryStepKind::RestartModule)
+        );
+
+        hooks.fail = None;
+        let receipt = runtime
+            .apply_due_recovery(&mut execution, 20_000, &mut hooks)
+            .unwrap();
+        assert!(receipt.completed());
+        assert_eq!(receipt.applied_steps, 3);
+        assert_eq!(receipt.remaining_steps, 0);
+        assert_eq!(runtime.state(), SystemState::Running);
+    }
+
+    #[test]
+    fn changed_runtime_dependencies_reject_plan_before_any_hook() {
+        let mut runtime = runtime();
+        runtime.boot_to_running(10).unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::ModuleCrash, 20)
+            .unwrap();
+        runtime
+            .record_error(ModuleId::Sensor, KernelError::ModuleCrash, 30)
+            .unwrap();
+        let startup =
+            StartupGraph::<2>::from_modules(&[ModuleId::Kernel, ModuleId::Sensor]).unwrap();
+        let mut dependencies = RuntimeDependencyGraph::from_startup(startup).unwrap();
+        dependencies
+            .bind(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        let planning = runtime
+            .record_error_with_plan_and_runtime_dependencies::<4, 2, 1>(
+                ModuleId::Sensor,
+                KernelError::ModuleCrash,
+                &dependencies,
+                40,
+                RecoveryPlanPolicy::DEFAULT,
+            )
+            .unwrap();
+        let mut execution = RecoveryPlanExecution::from_plan(planning.plan);
+        dependencies
+            .unbind(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        let mut hooks = FakeHooks::default();
+        assert!(matches!(
+            runtime.apply_due_recovery_with_dependencies(
+                &mut execution,
+                &dependencies,
+                20_000,
+                &mut hooks,
+            ),
+            Err(RuntimeError::RecoveryPlan(
+                RecoveryPlanError::RuntimeDependency(_)
+            ))
+        ));
+        assert_eq!(hooks.calls, 0);
+        assert_eq!(execution.dispatched_count(), 0);
+    }
+
+    #[test]
+    fn degrade_receipt_is_published_only_after_exact_post_admission() {
+        let mut active_runtime = runtime();
+        active_runtime.boot_to_running(10).unwrap();
+        let retained = SystemBudget::new(16 * 1024, 4 * 1024, 4);
+        let decision = DegradeDecision {
+            enabled: [true, false],
+            disabled: [Some(ModuleId::Sensor), None],
+            disabled_count: 1,
+            budget: retained,
+            reason: Some(DegradeReason::RamBudget),
+        };
+        let receipt = active_runtime
+            .apply_degrade_decision_with_receipt(&decision, 20)
+            .unwrap();
+        assert_eq!(receipt.planned_budget, retained);
+        assert_eq!(receipt.observed_budget, retained);
+        assert_eq!(receipt.active_modules, 1);
+
+        let mut mismatch = runtime();
+        mismatch.boot_to_running(10).unwrap();
+        let wrong = DegradeDecision {
+            budget: SystemBudget::ZERO,
+            ..decision
+        };
+        assert_eq!(
+            mismatch.apply_degrade_decision_with_receipt(&wrong, 20),
+            Err(RuntimeError::DegradeBudgetMismatch {
+                planned: SystemBudget::ZERO,
+                observed: retained,
+            })
+        );
+        assert_eq!(mismatch.state(), SystemState::Degraded);
+        assert_eq!(mismatch.degrade, DegradeApplication::none());
     }
 }

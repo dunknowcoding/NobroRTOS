@@ -1,8 +1,9 @@
 //! Recovery coordinator for health, lifecycle, and watchdog-triggered faults.
 
 use crate::{
-    Action, DependencyImpact, EventLog, FaultPolicy, FaultThresholds, HealthFault, KernelError,
-    Lifecycle, LifecycleError, ModuleId, Supervisor, SupervisorSnapshot, SystemState,
+    Action, DependencyImpact, EventLog, FaultContext, FaultPolicy, FaultThresholds, HealthFault,
+    KernelError, Lifecycle, LifecycleError, ModuleId, RuntimeDependencyError,
+    RuntimeDependencyGraph, RuntimeDependencyImpact, Supervisor, SupervisorSnapshot, SystemState,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,10 +35,29 @@ impl Default for RecoveryStormPolicy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FaultDispatch {
     module: ModuleId,
-    error: KernelError,
-    action: Action,
+    signature: FaultSignature,
     last_dispatched_us: u64,
     suppressed: u32,
+}
+
+/// Exact root-cause identity used by recovery-storm coalescing. A new source,
+/// code, or detail value is dispatched even when the high-level error and
+/// selected action happen to match an earlier fault in the cooldown window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FaultSignature {
+    pub error: KernelError,
+    pub action: Action,
+    pub context: FaultContext,
+}
+
+impl FaultSignature {
+    pub const fn new(fault: HealthFault, action: Action) -> Self {
+        Self {
+            error: fault.error,
+            action,
+            context: fault.context,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +127,9 @@ pub enum RecoveryPlanError {
     Full,
     BudgetExceeded { required_us: u64, limit_us: u32 },
     ImpactRootMismatch { outcome: ModuleId, impact: ModuleId },
+    RuntimeDependency(RuntimeDependencyError),
+    RuntimeDependencyRequired,
+    ExecutionOutOfOrder,
     Coalesced,
 }
 
@@ -117,6 +140,9 @@ pub struct RecoveryPlan<const N: usize> {
     pub len: usize,
     pub deadline_us: u64,
     pub required_budget_us: u64,
+    /// `Some` binds this plan to one live runtime-dependency generation.
+    /// Static boot-graph plans retain `None`.
+    pub dependency_generation: Option<u32>,
 }
 
 impl<const N: usize> RecoveryPlan<N> {
@@ -134,6 +160,7 @@ impl<const N: usize> RecoveryPlan<N> {
             len: 0,
             deadline_us: now_us,
             required_budget_us: 0,
+            dependency_generation: None,
         };
 
         match outcome.action {
@@ -268,6 +295,7 @@ impl<const N: usize> RecoveryPlan<N> {
             len: 0,
             deadline_us: now_us,
             required_budget_us: 0,
+            dependency_generation: None,
         };
         let mut due_us = now_us;
 
@@ -340,6 +368,29 @@ impl<const N: usize> RecoveryPlan<N> {
         }
         plan.deadline_us = now_us.saturating_add(plan.required_budget_us);
         Ok(plan)
+    }
+
+    pub fn from_outcome_with_runtime_impact<const IMPACT: usize>(
+        outcome: RecoveryOutcome,
+        impact: &RuntimeDependencyImpact<IMPACT>,
+        now_us: u64,
+        policy: RecoveryPlanPolicy,
+    ) -> Result<Self, RecoveryPlanError> {
+        let mut plan = Self::from_outcome_with_impact(outcome, &impact.impact, now_us, policy)?;
+        plan.dependency_generation = Some(impact.generation);
+        Ok(plan)
+    }
+
+    pub fn revalidate_runtime_dependencies<const GRAPH: usize>(
+        &self,
+        graph: &RuntimeDependencyGraph<GRAPH>,
+    ) -> Result<(), RecoveryPlanError> {
+        match self.dependency_generation {
+            Some(generation) => graph
+                .revalidate(generation)
+                .map_err(RecoveryPlanError::RuntimeDependency),
+            None => Ok(()),
+        }
     }
 
     pub const fn is_empty(&self) -> bool {
@@ -524,6 +575,25 @@ impl<const N: usize> RecoveryPlanExecution<N> {
             completed: remaining == 0,
         }
     }
+
+    /// Commit one step only after its lifecycle hook completed successfully.
+    /// This is the transactional counterpart to `dispatch_due`, whose output is
+    /// intentionally only a scheduling handoff and not proof of execution.
+    pub(crate) fn commit_applied(
+        &mut self,
+        step: RecoveryStep,
+        now_us: u64,
+    ) -> Result<(), RecoveryPlanError> {
+        if step.due_us > now_us || self.next_pending() != Some(step) {
+            return Err(RecoveryPlanError::ExecutionOutOfOrder);
+        }
+        self.next_step += 1;
+        self.consumed_budget_us = self
+            .consumed_budget_us
+            .saturating_add(u64::from(step.budget_us));
+        self.last_dispatch_us = now_us;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -614,8 +684,9 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         error: KernelError,
         now_us: u64,
     ) -> Result<RecoveryOutcome, RecoveryError> {
+        let fault = HealthFault::from_error(error);
         let action = self.supervisor.record_error_unlogged(module, error, now_us);
-        let coalesced = self.coalesce(module, error, action, now_us);
+        let coalesced = self.coalesce(module, FaultSignature::new(fault, action), now_us);
         if coalesced {
             return Ok(RecoveryOutcome {
                 module,
@@ -661,7 +732,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         let action = self
             .supervisor
             .record_fault_unlogged(module, fault, now_us, policy);
-        let coalesced = self.coalesce(module, fault.error, action, now_us);
+        let coalesced = self.coalesce(module, FaultSignature::new(fault, action), now_us);
         if coalesced {
             return Ok(RecoveryOutcome {
                 module,
@@ -729,20 +800,14 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
             .unwrap_or(0)
     }
 
-    fn coalesce(
-        &mut self,
-        module: ModuleId,
-        error: KernelError,
-        action: Action,
-        now_us: u64,
-    ) -> bool {
+    fn coalesce(&mut self, module: ModuleId, signature: FaultSignature, now_us: u64) -> bool {
         if let Some(entry) = self
             .dispatches
             .iter_mut()
             .flatten()
             .find(|entry| entry.module == module)
         {
-            let same = entry.error == error && entry.action == action;
+            let same = entry.signature == signature;
             let cooling =
                 now_us.saturating_sub(entry.last_dispatched_us) < self.storm_policy.cooldown_us;
             if same && cooling {
@@ -751,8 +816,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
             }
             *entry = FaultDispatch {
                 module,
-                error,
-                action,
+                signature,
                 last_dispatched_us: now_us,
                 suppressed: entry.suppressed,
             };
@@ -762,8 +826,7 @@ impl<const HEALTH_SLOTS: usize, const LOG_SLOTS: usize>
         if let Some(slot) = self.dispatches.iter_mut().find(|slot| slot.is_none()) {
             *slot = Some(FaultDispatch {
                 module,
-                error,
-                action,
+                signature,
                 last_dispatched_us: now_us,
                 suppressed: 0,
             });
@@ -1001,6 +1064,62 @@ mod tests {
     }
 
     #[test]
+    fn cooldown_coalesces_only_the_exact_fault_signature() {
+        struct Notify;
+        impl FaultPolicy for Notify {
+            fn decide(
+                &mut self,
+                _: ModuleId,
+                _: &HealthFault,
+                _: &crate::HealthCounters,
+            ) -> Action {
+                Action::NotifyUserTask
+            }
+        }
+
+        let mut recovery = RecoveryCoordinator::<1, 16>::with_storm_policy(
+            FaultThresholds {
+                notify_after: 1,
+                reboot_after: 100,
+            },
+            RecoveryStormPolicy { cooldown_us: 100 },
+        );
+        recovery
+            .transition(SystemState::ValidateManifest, 1)
+            .unwrap();
+        recovery.transition(SystemState::InitDrivers, 2).unwrap();
+        recovery.transition(SystemState::Running, 3).unwrap();
+        let first = HealthFault::new(
+            KernelError::BusTimeout,
+            FaultContext::new(crate::FaultSource::Bus, 4, 10, 20),
+        );
+        let changed_root = HealthFault::new(
+            KernelError::BusTimeout,
+            FaultContext::new(crate::FaultSource::Bus, 5, 10, 20),
+        );
+        let mut policy = Notify;
+        assert!(
+            !recovery
+                .record_fault(ModuleId::Bus, first, 10, &mut policy)
+                .unwrap()
+                .coalesced
+        );
+        assert!(
+            recovery
+                .record_fault(ModuleId::Bus, first, 20, &mut policy)
+                .unwrap()
+                .coalesced
+        );
+        assert!(
+            !recovery
+                .record_fault(ModuleId::Bus, changed_root, 30, &mut policy)
+                .unwrap()
+                .coalesced
+        );
+        assert_eq!(recovery.suppressed_faults(ModuleId::Bus), 1);
+    }
+
+    #[test]
     fn watchdog_expiry_keeps_its_distinct_fault_class() {
         let mut recovery = running_coordinator();
 
@@ -1233,6 +1352,53 @@ mod tests {
                 RecoveryStepKind::ResumeModule,
                 8_600,
                 500
+            ))
+        );
+    }
+
+    #[test]
+    fn runtime_dependency_generation_invalidates_a_stale_recovery_plan() {
+        let mut startup = StartupGraph::<3>::from_modules(&[
+            ModuleId::Kernel,
+            ModuleId::Sensor,
+            ModuleId::App(1),
+        ])
+        .unwrap();
+        startup
+            .add_dependency(ModuleId::Sensor, ModuleId::Kernel)
+            .unwrap();
+        let mut dependencies = RuntimeDependencyGraph::from_startup(startup).unwrap();
+        dependencies
+            .bind(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+        let impact = dependencies
+            .dependency_impact::<2>(ModuleId::Sensor)
+            .unwrap();
+        let outcome = RecoveryOutcome {
+            module: ModuleId::Sensor,
+            error: KernelError::ModuleCrash,
+            action: Action::RebootModule,
+            state: SystemState::Recovering,
+            coalesced: false,
+        };
+        let plan = RecoveryPlan::<8>::from_outcome_with_runtime_impact(
+            outcome,
+            &impact,
+            10,
+            RecoveryPlanPolicy::DEFAULT,
+        )
+        .unwrap();
+        assert_eq!(plan.revalidate_runtime_dependencies(&dependencies), Ok(()));
+        dependencies
+            .unbind(ModuleId::App(1), ModuleId::Sensor)
+            .unwrap();
+        assert_eq!(
+            plan.revalidate_runtime_dependencies(&dependencies),
+            Err(RecoveryPlanError::RuntimeDependency(
+                RuntimeDependencyError::StaleGeneration {
+                    expected: impact.generation,
+                    current: dependencies.generation(),
+                }
             ))
         );
     }
