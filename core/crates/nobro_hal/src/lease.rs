@@ -2,6 +2,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering};
 
+use crate::isolation::IsolationReceipt;
 use crate::traits::LeaseId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +49,11 @@ impl Resource {
             Self::Ppi => "PPI",
         }
     }
+
+    /// Stable id used by the module-isolation peripheral allowlist.
+    pub const fn isolation_id(self) -> u8 {
+        idx(self) as u8 + 1
+    }
 }
 
 impl From<Resource> for LeaseId {
@@ -74,6 +80,8 @@ pub enum LeaseError {
     WrongOwner,
     GenerationExhausted,
     Unsupported,
+    IsolationDenied,
+    IsolationStale,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -266,7 +274,42 @@ impl ResourceLease {
     }
 
     pub fn acquire_guard(resource: Resource, owner: u8) -> Result<LeaseGuard, LeaseError> {
+        Self::acquire_guard_with_isolation(resource, owner, None)
+    }
+
+    pub fn acquire_guard_isolated(
+        resource: Resource,
+        isolation: IsolationReceipt,
+    ) -> Result<LeaseGuard, LeaseError> {
+        isolation
+            .permits_peripheral(resource.isolation_id())
+            .map_err(|error| match error {
+                crate::IsolationError::PeripheralDenied(_) => LeaseError::IsolationDenied,
+                _ => LeaseError::IsolationStale,
+            })?;
+        let owner =
+            u8::try_from(isolation.lease_owner()).map_err(|_| LeaseError::IsolationDenied)?;
+        Self::acquire_guard_with_isolation(resource, owner, Some(isolation))
+    }
+
+    fn acquire_guard_with_isolation(
+        resource: Resource,
+        owner: u8,
+        isolation: Option<IsolationReceipt>,
+    ) -> Result<LeaseGuard, LeaseError> {
+        #[cfg(not(any(feature = "pmsa-v7", feature = "pmsa-v8", test)))]
+        if isolation.is_some() {
+            return Err(LeaseError::Unsupported);
+        }
         critical_section::with(|_| {
+            if let Some(receipt) = isolation {
+                receipt
+                    .permits_peripheral(resource.isolation_id())
+                    .map_err(|error| match error {
+                        crate::IsolationError::PeripheralDenied(_) => LeaseError::IsolationDenied,
+                        _ => LeaseError::IsolationStale,
+                    })?;
+            }
             let slot = &SLOTS[idx(resource)];
             if acquisition_conflicts(resource) {
                 return Err(LeaseError::AlreadyHeld);
@@ -282,6 +325,8 @@ impl ResourceLease {
                 epoch,
                 generation,
                 active: true,
+                #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+                isolation,
             })
         })
     }
@@ -351,6 +396,8 @@ pub struct LeaseGuard {
     epoch: u16,
     generation: u32,
     active: bool,
+    #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+    isolation: Option<IsolationReceipt>,
 }
 
 impl LeaseGuard {
@@ -365,9 +412,19 @@ impl LeaseGuard {
     /// Prove this exact acquisition is still live. Recovery invalidates all extant
     /// guards by advancing the slot generation, even if the same owner reacquires it.
     pub fn ensure_live(&self) -> Result<(), LeaseError> {
-        ResourceLease::token_is_live(self.resource, self.owner, self.epoch, self.generation)
-            .then_some(())
-            .ok_or(LeaseError::NotHeld)
+        if !ResourceLease::token_is_live(self.resource, self.owner, self.epoch, self.generation) {
+            return Err(LeaseError::NotHeld);
+        }
+        #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+        {
+            if self
+                .isolation
+                .is_some_and(|receipt| receipt.ensure_usable().is_err())
+            {
+                return Err(LeaseError::IsolationStale);
+            }
+        }
+        Ok(())
     }
 
     pub fn release(mut self) -> Result<(), LeaseError> {
@@ -689,6 +746,41 @@ mod invariant_tests {
         drop(stale_a);
         drop(stale_b);
         drop(healthy);
+        reset_all();
+    }
+
+    #[test]
+    fn isolated_peripheral_guard_binds_allowlist_and_fault_generation() {
+        use crate::{
+            IsolationArchitecture, IsolationCapabilities, IsolationEpoch, IsolationPlan,
+            IsolationRegion,
+        };
+
+        let _lock = test_lock();
+        reset_all();
+        static EPOCH: IsolationEpoch = IsolationEpoch::new();
+        let mut plan = IsolationPlan::<4>::new(31, 31);
+        plan.add(IsolationRegion::code(0, 1024 * 1024)).unwrap();
+        plan.add(IsolationRegion::data(0x2000_0000, 256)).unwrap();
+        plan.add(IsolationRegion::stack(0x2000_0100, 256)).unwrap();
+        plan.add(IsolationRegion::peripheral(
+            0x4000_3000,
+            4096,
+            Resource::Twim1.isolation_id(),
+        ))
+        .unwrap();
+        let capabilities = IsolationCapabilities::pmsa(1, 1, IsolationArchitecture::PmsaV7M, 8);
+        let receipt = EPOCH.admit(&plan, capabilities).unwrap();
+        assert!(matches!(
+            ResourceLease::acquire_guard_isolated(Resource::Pwm0, receipt),
+            Err(LeaseError::IsolationDenied)
+        ));
+        let guard = ResourceLease::acquire_guard_isolated(Resource::Twim1, receipt).unwrap();
+        EPOCH.activate(receipt).unwrap();
+        assert_eq!(guard.ensure_live(), Ok(()));
+        EPOCH.fault(receipt).unwrap();
+        assert_eq!(guard.ensure_live(), Err(LeaseError::IsolationStale));
+        drop(guard);
         reset_all();
     }
 }

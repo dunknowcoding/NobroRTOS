@@ -71,7 +71,10 @@ gate "nRF52840 PSP/PendSV target build" \
     cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
     --no-default-features --features platform-nrf52840-rt,board-promicro-nosd,cortex-m-slice && \
     cargo build --locked --target thumbv7em-none-eabihf \
-    -p isolation-demo --release && \
+      -p isolation-demo --release && \
+    cargo build --locked --target thumbv7em-none-eabihf \
+      -p isolation-demo --release --no-default-features \
+      --features board-promicro-s140 --bin isolation_demo && \
     cargo build --locked --target thumbv7em-none-eabihf -p isolation-demo --release \
     --no-default-features --features board-promicro-s140,slice-timing \
     --bin slice_timing_demo'
@@ -81,6 +84,15 @@ gate "RP2040 Cortex-M0+ PSP/PendSV target build" \
     -p nobro-hal --no-default-features --features contract-only,cortex-m0-slice && \
     cd ports/rp2040 && cargo build --locked --release --features slice-selftest \
     --bin nobro-rp2040-slice-selftest'
+
+gate "exactly one PMSA isolation architecture" \
+  "$CURRENT_BASH" -c '
+    cd core
+    dual=$(cargo check --locked --target thumbv7em-none-eabihf -p nobro-hal \
+      --no-default-features --features contract-only,pmsa-v7,pmsa-v8 2>&1) &&
+      { echo "dual PMSA architectures unexpectedly compiled"; exit 1; }
+    printf "%s" "$dual" | grep -Fq "select exactly one PMSA architecture"
+  '
 
 gate "board boot slot adapter target build" \
   "$CURRENT_BASH" -c 'cd core && cargo build --locked --release --target thumbv7em-none-eabihf \
@@ -220,6 +232,10 @@ gate "rp2040 DMA completion provider build" \
 gate "rp2350 port build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-target-build
 
+gate "rp2350 PMSAv8 module-isolation build" \
+  "$CURRENT_BASH" -c 'cd core/ports/rp2350 && cargo build --locked --release \
+    --bin isolation-selftest --features isolation-selftest'
+
 gate "rp2350 DMA completion provider build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate rp2350-dma-target-build
 
@@ -251,6 +267,10 @@ gate "ra4m1 provider conformance" \
 
 gate "ra4m1 port build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate ra4m1-target-build
+
+gate "ra4m1 PMSAv7 module-isolation build" \
+  "$CURRENT_BASH" -c 'cd core/ports/ra4m1 && cargo build --locked --release \
+    --bin isolation-selftest --features isolation-selftest'
 
 gate "ra4m1 event-paced DMA provider build" \
   python tools/checks/platforms/check_platform_tiers.py --run-gate ra4m1-event-dma-target-build

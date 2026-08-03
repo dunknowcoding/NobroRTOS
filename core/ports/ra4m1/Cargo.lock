@@ -122,6 +122,7 @@ checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 name = "nobro-hal"
 version = "0.3.3"
 dependencies = [
+ "cortex-m",
  "critical-section",
  "embedded-hal 1.0.0",
 ]

@@ -21,6 +21,7 @@ defmt-rtt = "0.4"
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false, features = [
     "platform-nrf52840-rt",
     "cortex-m-slice",
+    "pmsa-v7",
 ] }
 nobro-kernel = { path = "../../../crates/nobro_kernel", features = ["preemptive"] }
 nobro-power = { path = "../../../crates/nobro_power" }

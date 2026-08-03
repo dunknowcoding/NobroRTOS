@@ -20,6 +20,14 @@
 //! function is portable. The no-MPU profile is simply not installing a plan —
 //! nothing else in the kernel changes shape.
 
+#[cfg(target_arch = "arm")]
+use core::sync::atomic::{AtomicU32, Ordering};
+
+use crate::isolation::{
+    IsolationAccess, IsolationArchitecture, IsolationCapabilities, IsolationError, IsolationPlan,
+    IsolationReceipt, IsolationRegionRole,
+};
+
 /// PMSAv7 register addresses (armv7-m System Control Space); only touched by
 /// the ARM-gated install/disable paths.
 #[cfg(target_arch = "arm")]
@@ -33,7 +41,48 @@ const MPU_RBAR: u32 = 0xE000_ED9C;
 #[cfg(target_arch = "arm")]
 const MPU_RASR: u32 = 0xE000_EDA0;
 #[cfg(target_arch = "arm")]
+const MPU_RLAR: u32 = 0xE000_EDA0;
+#[cfg(target_arch = "arm")]
+const MPU_MAIR0: u32 = 0xE000_EDC0;
+#[cfg(target_arch = "arm")]
 const SHCSR: u32 = 0xE000_ED24;
+
+/// Discover one exact compiled PMSA backend and its live hardware capacity.
+/// External code cannot mint [`IsolationCapabilities`] from declarations; a
+/// successful result requires the corresponding backend feature and a real MPU.
+pub fn hardware_isolation_capabilities(
+    provider_id: u32,
+    generation: u32,
+) -> Result<IsolationCapabilities, IsolationError> {
+    if provider_id == 0 {
+        return Err(IsolationError::MissingProvider);
+    }
+    if generation == 0 {
+        return Err(IsolationError::MissingProviderGeneration);
+    }
+    #[cfg(target_arch = "arm")]
+    {
+        let architecture = match (cfg!(feature = "pmsa-v7"), cfg!(feature = "pmsa-v8")) {
+            (true, false) => IsolationArchitecture::PmsaV7M,
+            (false, true) => IsolationArchitecture::PmsaV8M,
+            _ => return Err(IsolationError::UnsupportedArchitecture),
+        };
+        let regions = ((unsafe { reg_read(MPU_TYPE) } >> 8) & 0xFF) as u8;
+        if regions == 0 {
+            return Err(IsolationError::HardwareLifecycleUnavailable);
+        }
+        Ok(IsolationCapabilities::pmsa(
+            provider_id,
+            generation,
+            architecture,
+            regions,
+        ))
+    }
+    #[cfg(not(target_arch = "arm"))]
+    {
+        Err(IsolationError::UnsupportedArchitecture)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MpuAccess {
@@ -78,6 +127,14 @@ pub enum MpuPlanError {
     /// A deny-by-default plan without writable RAM would fault on the next
     /// stack push.
     NoWritableRegion,
+    Isolation(IsolationError),
+    ArchitectureUnavailable,
+}
+
+impl From<IsolationError> for MpuPlanError {
+    fn from(error: IsolationError) -> Self {
+        Self::Isolation(error)
+    }
 }
 
 impl MpuRegionSpec {
@@ -282,22 +339,19 @@ unsafe fn reg_write(addr: u32, value: u32) {
 #[cfg(target_arch = "arm")]
 fn barrier() {
     unsafe {
-        core::arch::asm!("dsb", "isb", options(nostack, preserves_flags));
+        core::arch::asm!("dmb", "dsb", "isb", options(nostack, preserves_flags));
     }
 }
 
-/// Fixed PMSAv7-M region capacity used by the deep nRF module-isolation port.
-///
-/// The nRF52840 implements eight regions. Keeping the encoded bank fixed makes
-/// a context switch allocation-free and prevents a generic plan from silently
-/// exceeding the target's architectural capacity.
+/// Fixed context-bank capacity shared by the promoted 8-region PMSAv7-M and
+/// PMSAv8-M ports.
 pub const MODULE_MPU_REGIONS: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(C)]
 struct EncodedMpuRegion {
     rbar: u32,
-    rasr: u32,
+    attributes: u32,
 }
 
 /// Prevalidated MPU bank for one unprivileged PSP module.
@@ -311,9 +365,15 @@ struct EncodedMpuRegion {
 pub struct ModuleMpuContext {
     regions: [EncodedMpuRegion; MODULE_MPU_REGIONS],
     len: usize,
+    architecture: IsolationArchitecture,
+    receipt: Option<IsolationReceipt>,
+    mair0: u32,
 }
 
 impl ModuleMpuContext {
+    /// Encode a legacy PMSAv7 bank for plan inspection. It deliberately has no
+    /// lifecycle receipt and cannot be installed by the deep context-switch
+    /// path; use [`from_isolation_plan`](Self::from_isolation_plan) there.
     pub fn from_plan<const N: usize>(plan: &KernelMpuPlan<N>) -> Result<Self, MpuPlanError> {
         plan.validate()?;
         if plan.len > MODULE_MPU_REGIONS {
@@ -328,18 +388,85 @@ impl ModuleMpuContext {
         let mut context = Self {
             regions: [EncodedMpuRegion::default(); MODULE_MPU_REGIONS],
             len: plan.len,
+            architecture: IsolationArchitecture::PmsaV7M,
+            receipt: None,
+            mair0: 0,
         };
         for (index, region) in plan.regions.iter().flatten().enumerate() {
             executable |= region.executable && region.access != MpuAccess::NoAccess;
             writable |= region.access == MpuAccess::ReadWrite && !region.device;
             let (rbar, rasr) = region.encode(index)?;
-            context.regions[index] = EncodedMpuRegion { rbar, rasr };
+            context.regions[index] = EncodedMpuRegion {
+                rbar,
+                attributes: rasr,
+            };
         }
         if !executable {
             return Err(MpuPlanError::NoExecutableRegion);
         }
         if !writable {
             return Err(MpuPlanError::NoWritableRegion);
+        }
+        Ok(context)
+    }
+
+    /// Encode an admitted module plan for its exact PMSA generation.
+    pub fn from_isolation_plan<const N: usize>(
+        plan: &IsolationPlan<N>,
+        receipt: IsolationReceipt,
+    ) -> Result<Self, MpuPlanError> {
+        receipt.validate_plan(plan)?;
+        if plan.len() > MODULE_MPU_REGIONS {
+            return Err(MpuPlanError::TooManyRegions {
+                regions: plan.len(),
+                supported: MODULE_MPU_REGIONS,
+            });
+        }
+        let architecture = receipt.architecture();
+        if !matches!(
+            architecture,
+            IsolationArchitecture::PmsaV7M | IsolationArchitecture::PmsaV8M
+        ) {
+            return Err(MpuPlanError::ArchitectureUnavailable);
+        }
+        let mut context = Self {
+            regions: [EncodedMpuRegion::default(); MODULE_MPU_REGIONS],
+            len: plan.len(),
+            architecture,
+            receipt: Some(receipt),
+            // Attr0: normal outer/inner non-cacheable (0x44). Attr1:
+            // Device-nGnRnE (0x00). PMSAv7 ignores MAIR0.
+            mair0: 0x0000_0044,
+        };
+        for index in 0..plan.len() {
+            let region = plan.region(index).ok_or(MpuPlanError::Isolation(
+                IsolationError::InvalidRange { index },
+            ))?;
+            context.regions[index] = match architecture {
+                IsolationArchitecture::PmsaV7M => {
+                    let access = match region.access {
+                        IsolationAccess::NoAccess => MpuAccess::NoAccess,
+                        IsolationAccess::ReadOnly => MpuAccess::ReadOnly,
+                        IsolationAccess::ReadWrite => MpuAccess::ReadWrite,
+                    };
+                    let encoded = MpuRegionSpec {
+                        base: region.base,
+                        size_bytes: u64::from(region.size_bytes),
+                        access,
+                        executable: region.executable,
+                        device: region.role == IsolationRegionRole::Peripheral,
+                    }
+                    .encode(index)?;
+                    EncodedMpuRegion {
+                        rbar: encoded.0,
+                        attributes: encoded.1,
+                    }
+                }
+                IsolationArchitecture::PmsaV8M => encode_v8_region(region)?,
+                IsolationArchitecture::None | IsolationArchitecture::Mmu => {
+                    return Err(MpuPlanError::ArchitectureUnavailable);
+                }
+            };
         }
         Ok(context)
     }
@@ -352,8 +479,33 @@ impl ModuleMpuContext {
         self.len == 0
     }
 
-    #[cfg(all(target_arch = "arm", feature = "cortex-m-slice"))]
+    pub const fn architecture(&self) -> IsolationArchitecture {
+        self.architecture
+    }
+
+    pub const fn receipt(&self) -> Option<IsolationReceipt> {
+        self.receipt
+    }
+
+    #[cfg(target_arch = "arm")]
+    pub(crate) fn ensure_live(&self) -> Result<(), MpuPlanError> {
+        self.receipt
+            .ok_or(MpuPlanError::Isolation(IsolationError::StaleReceipt))?
+            .ensure_usable()
+            .map_err(MpuPlanError::Isolation)
+    }
+
+    #[cfg(target_arch = "arm")]
     pub(crate) fn validate_hardware(&self) -> Result<(), MpuPlanError> {
+        self.ensure_live()?;
+        let architecture_compiled = match self.architecture {
+            IsolationArchitecture::PmsaV7M => cfg!(feature = "pmsa-v7"),
+            IsolationArchitecture::PmsaV8M => cfg!(feature = "pmsa-v8"),
+            IsolationArchitecture::None | IsolationArchitecture::Mmu => false,
+        };
+        if !architecture_compiled {
+            return Err(MpuPlanError::ArchitectureUnavailable);
+        }
         let supported = ((unsafe { reg_read(MPU_TYPE) } >> 8) & 0xFF) as usize;
         if self.len > supported {
             return Err(MpuPlanError::TooManyRegions {
@@ -365,19 +517,48 @@ impl ModuleMpuContext {
     }
 
     #[cfg(target_arch = "arm")]
-    unsafe fn activate(&self) {
+    unsafe fn activate(&self) -> Result<(), MpuPlanError> {
+        self.validate_hardware()?;
+        let receipt = self
+            .receipt
+            .ok_or(MpuPlanError::Isolation(IsolationError::StaleReceipt))?;
+        receipt.mark_active()?;
         let supported = ((reg_read(MPU_TYPE) >> 8) & 0xFF) as usize;
         reg_write(MPU_CTRL, 0);
         barrier();
+        if self.architecture == IsolationArchitecture::PmsaV8M {
+            reg_write(MPU_MAIR0, self.mair0);
+        }
         for index in 0..supported {
             reg_write(MPU_RNR, index as u32);
             if index < self.len {
                 let region = self.regions[index];
                 reg_write(MPU_RBAR, region.rbar);
-                reg_write(MPU_RASR, region.rasr);
+                match self.architecture {
+                    IsolationArchitecture::PmsaV7M => {
+                        reg_write(MPU_RASR, region.attributes);
+                    }
+                    IsolationArchitecture::PmsaV8M => {
+                        reg_write(MPU_RLAR, region.attributes);
+                    }
+                    IsolationArchitecture::None | IsolationArchitecture::Mmu => {
+                        return Err(MpuPlanError::ArchitectureUnavailable);
+                    }
+                }
             } else {
-                reg_write(MPU_RASR, 0);
-                reg_write(MPU_RBAR, (1 << 4) | (index as u32 & 0xF));
+                match self.architecture {
+                    IsolationArchitecture::PmsaV7M => {
+                        reg_write(MPU_RASR, 0);
+                        reg_write(MPU_RBAR, (1 << 4) | (index as u32 & 0xF));
+                    }
+                    IsolationArchitecture::PmsaV8M => {
+                        reg_write(MPU_RBAR, 0);
+                        reg_write(MPU_RLAR, 0);
+                    }
+                    IsolationArchitecture::None | IsolationArchitecture::Mmu => {
+                        return Err(MpuPlanError::ArchitectureUnavailable);
+                    }
+                }
             }
         }
         reg_write(SHCSR, reg_read(SHCSR) | (1 << 16));
@@ -385,8 +566,41 @@ impl ModuleMpuContext {
         // mode is unprivileged, so uncovered module addresses still fault.
         reg_write(MPU_CTRL, 1 | (1 << 2));
         barrier();
+        ACTIVE_MPU_CONTEXT.store(self as *const Self as u32, Ordering::Release);
+        Ok(())
     }
 }
+
+fn encode_v8_region(
+    region: crate::isolation::IsolationRegion,
+) -> Result<EncodedMpuRegion, MpuPlanError> {
+    let end =
+        region
+            .end_exclusive()
+            .ok_or(MpuPlanError::Isolation(IsolationError::InvalidRange {
+                index: 0,
+            }))?;
+    let ap = match region.access {
+        // PMSAv8 AP=00 retains privileged recovery access while denying the
+        // unprivileged module. Thread mode is always unprivileged here.
+        IsolationAccess::NoAccess => 0b00,
+        IsolationAccess::ReadWrite => 0b01,
+        IsolationAccess::ReadOnly => 0b11,
+    };
+    let xn = u32::from(!region.executable);
+    let rbar = (region.base & !0x1F) | (ap << 1) | xn;
+    let attr_index = u32::from(region.role == IsolationRegionRole::Peripheral);
+    let rlar = ((end - 1) & !0x1F) | (attr_index << 1) | 1;
+    Ok(EncodedMpuRegion {
+        rbar,
+        attributes: rlar,
+    })
+}
+
+#[cfg(target_arch = "arm")]
+static ACTIVE_MPU_CONTEXT: AtomicU32 = AtomicU32::new(0);
+#[cfg(target_arch = "arm")]
+static MPU_ACTIVATION_ERROR: AtomicU32 = AtomicU32::new(0);
 
 /// PendSV entry point used by the Cortex-M slice port.
 ///
@@ -398,12 +612,35 @@ impl ModuleMpuContext {
 /// [`ModuleMpuContext`] for the complete exception return.
 #[cfg(target_arch = "arm")]
 #[no_mangle]
-pub unsafe extern "C" fn nobro_mpu_activate_context(context: *const ModuleMpuContext) {
+pub unsafe extern "C" fn nobro_mpu_activate_context(context: *const ModuleMpuContext) -> u32 {
     if context.is_null() {
         KernelMpuPlan::<0>::disable();
+        ACTIVE_MPU_CONTEXT.store(0, Ordering::Release);
+        1
     } else {
-        (*context).activate();
+        match (*context).activate() {
+            Ok(()) => {
+                MPU_ACTIVATION_ERROR.store(0, Ordering::Release);
+                1
+            }
+            Err(_) => {
+                KernelMpuPlan::<0>::disable();
+                ACTIVE_MPU_CONTEXT.store(0, Ordering::Release);
+                MPU_ACTIVATION_ERROR.store(1, Ordering::Release);
+                0
+            }
+        }
     }
+}
+
+#[cfg(target_arch = "arm")]
+pub fn activation_error() -> bool {
+    MPU_ACTIVATION_ERROR.load(Ordering::Acquire) != 0
+}
+
+#[cfg(not(target_arch = "arm"))]
+pub const fn activation_error() -> bool {
+    false
 }
 
 /// Attributable capture of one MemManage fault: what faulted, where, and which
@@ -416,6 +653,9 @@ pub struct MpuFaultRecord {
     pub stacked_pc: u32,
     /// `module_code` of the in-flight poll (0 = kernel/idle context).
     pub module_code: u32,
+    pub provider_generation: u32,
+    pub context_generation: u32,
+    pub isolation_faulted: bool,
     pub data_access: bool,
     pub instruction_access: bool,
     pub stacking_error: bool,
@@ -437,11 +677,35 @@ impl MpuFaultRecord {
             fault_address_valid: mmfsr & (1 << 7) != 0,
             stacked_pc,
             module_code,
+            provider_generation: 0,
+            context_generation: 0,
+            isolation_faulted: false,
             data_access: mmfsr & (1 << 1) != 0,
             instruction_access: mmfsr & 1 != 0,
             stacking_error: mmfsr & ((1 << 3) | (1 << 4)) != 0,
         }
     }
+}
+
+/// Capture and fault the exact active MPU context. Unlike
+/// [`MpuFaultRecord::decode_mem_manage`], identity comes from the context that
+/// PendSV installed, not from a caller-supplied module label.
+///
+/// # Safety
+/// Call only from the MemManage handler while exception entry keeps the active
+/// context storage live and before clearing CFSR/MMFAR.
+#[cfg(target_arch = "arm")]
+pub unsafe fn capture_active_mpu_fault(cfsr: u32, mmfar: u32, stacked_pc: u32) -> MpuFaultRecord {
+    let context = ACTIVE_MPU_CONTEXT.load(Ordering::Acquire) as *const ModuleMpuContext;
+    let Some(receipt) = context.as_ref().and_then(ModuleMpuContext::receipt) else {
+        return MpuFaultRecord::decode_mem_manage(cfsr, mmfar, stacked_pc, 0);
+    };
+    let mut record =
+        MpuFaultRecord::decode_mem_manage(cfsr, mmfar, stacked_pc, u32::from(receipt.module_id()));
+    record.provider_generation = receipt.provider_generation();
+    record.context_generation = receipt.context_generation();
+    record.isolation_faulted = receipt.mark_faulted().is_ok();
+    record
 }
 
 #[cfg(test)]
@@ -463,6 +727,22 @@ mod tests {
         assert_eq!(
             rasr,
             (1 << 28) | (0b110 << 24) | (0b111 << 16) | (7 << 1) | 1
+        );
+    }
+
+    #[test]
+    fn host_cannot_mint_hardware_isolation_capabilities() {
+        assert_eq!(
+            hardware_isolation_capabilities(7, 1),
+            Err(IsolationError::UnsupportedArchitecture)
+        );
+        assert_eq!(
+            hardware_isolation_capabilities(0, 1),
+            Err(IsolationError::MissingProvider)
+        );
+        assert_eq!(
+            hardware_isolation_capabilities(7, 0),
+            Err(IsolationError::MissingProviderGeneration)
         );
     }
 
@@ -521,6 +801,38 @@ mod tests {
             .unwrap();
         let context = ModuleMpuContext::from_plan(&plan).unwrap();
         assert_eq!(context.len(), 3);
+    }
+
+    #[test]
+    fn admitted_v8_context_uses_rbar_rlar_and_preserves_receipt() {
+        static EPOCH: crate::IsolationEpoch = crate::IsolationEpoch::new();
+        let mut plan = crate::IsolationPlan::<3>::new(9, 9);
+        plan.add(crate::IsolationRegion::code(0x0000_1000, 96))
+            .unwrap();
+        plan.add(crate::IsolationRegion::data(0x2000_0000, 64))
+            .unwrap();
+        plan.add(crate::IsolationRegion::stack(0x2000_0100, 96))
+            .unwrap();
+        let receipt = EPOCH
+            .admit(
+                &plan,
+                crate::IsolationCapabilities::pmsa(
+                    0x5250_3233,
+                    1,
+                    crate::IsolationArchitecture::PmsaV8M,
+                    8,
+                ),
+            )
+            .unwrap();
+        let context = ModuleMpuContext::from_isolation_plan(&plan, receipt).unwrap();
+
+        assert_eq!(context.architecture(), IsolationArchitecture::PmsaV8M);
+        assert_eq!(context.receipt(), Some(receipt));
+        assert_eq!(context.regions[0].rbar, 0x0000_1006);
+        assert_eq!(context.regions[0].attributes, 0x0000_1041);
+        assert_eq!(context.regions[1].rbar, 0x2000_0003);
+        assert_eq!(context.regions[1].attributes, 0x2000_0021);
+        assert_eq!(context.mair0, 0x44);
     }
 
     #[test]

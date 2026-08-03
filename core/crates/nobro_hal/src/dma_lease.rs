@@ -5,6 +5,8 @@
 //! one owner/peripheral/channel, and routes preparation, completion, cancel,
 //! and reset through an architecture backend. No handle contains an address.
 
+use crate::isolation::IsolationReceipt;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DmaOwnerId(pub u16);
 
@@ -74,6 +76,8 @@ pub enum DmaLeaseError<E> {
     AlreadyActive,
     NotActive,
     TransferTooLong,
+    IsolationDenied,
+    IsolationStale,
     Backend(E),
 }
 
@@ -126,6 +130,8 @@ struct DmaLeaseEntry {
     owner: DmaOwnerId,
     descriptor: DmaBufferDescriptor,
     state: DmaLeaseState,
+    #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+    isolation: Option<IsolationReceipt>,
 }
 
 /// Fixed-capacity DMA ownership registry. The static borrow consumed by
@@ -156,7 +162,41 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         let len = buffer.len();
         // SAFETY: the consumed static mutable borrow supplies the required
         // lifetime and exclusive ownership.
-        unsafe { self.acquire_region(owner, address, len, request) }
+        unsafe { self.acquire_region_with_isolation(owner, address, len, request, None) }
+    }
+
+    /// Acquire a DMA buffer for one still-live hardware-isolated module. The
+    /// MPU does not constrain the bus master; this explicit binding does.
+    pub fn acquire_isolated_static(
+        &mut self,
+        isolation: IsolationReceipt,
+        buffer: &'static mut [u8],
+        request: DmaLeaseRequest,
+    ) -> Result<DmaLease, DmaLeaseError<core::convert::Infallible>> {
+        isolation
+            .ensure_usable()
+            .map_err(|_| DmaLeaseError::IsolationStale)?;
+        let peripheral =
+            u8::try_from(request.peripheral).map_err(|_| DmaLeaseError::IsolationDenied)?;
+        isolation
+            .permits_peripheral(peripheral)
+            .map_err(|error| match error {
+                crate::IsolationError::PeripheralDenied(_) => DmaLeaseError::IsolationDenied,
+                _ => DmaLeaseError::IsolationStale,
+            })?;
+        let address = buffer.as_mut_ptr() as usize;
+        let len = buffer.len();
+        // SAFETY: the consumed static mutable borrow supplies the required
+        // lifetime and exclusive ownership.
+        unsafe {
+            self.acquire_region_with_isolation(
+                DmaOwnerId(isolation.lease_owner()),
+                address,
+                len,
+                request,
+                Some(isolation),
+            )
+        }
     }
 
     /// Admit a statically valid DMA region that is already owned by a driver.
@@ -172,6 +212,29 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         len: usize,
         request: DmaLeaseRequest,
     ) -> Result<DmaLease, DmaLeaseError<core::convert::Infallible>> {
+        self.acquire_region_with_isolation(owner, address, len, request, None)
+    }
+
+    unsafe fn acquire_region_with_isolation(
+        &mut self,
+        owner: DmaOwnerId,
+        address: usize,
+        len: usize,
+        request: DmaLeaseRequest,
+        isolation: Option<IsolationReceipt>,
+    ) -> Result<DmaLease, DmaLeaseError<core::convert::Infallible>> {
+        #[cfg(not(any(feature = "pmsa-v7", feature = "pmsa-v8", test)))]
+        if isolation.is_some() {
+            return Err(DmaLeaseError::IsolationDenied);
+        }
+        if let Some(receipt) = isolation {
+            if receipt.lease_owner() != owner.0 {
+                return Err(DmaLeaseError::IsolationDenied);
+            }
+            receipt
+                .ensure_usable()
+                .map_err(|_| DmaLeaseError::IsolationStale)?;
+        }
         if len == 0 {
             return Err(DmaLeaseError::EmptyBuffer);
         }
@@ -220,6 +283,8 @@ impl<const N: usize> DmaLeaseRegistry<N> {
                 channel: request.channel,
             },
             state: DmaLeaseState::Reserved,
+            #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+            isolation,
         });
         Ok(DmaLease {
             slot: lease_slot,
@@ -285,7 +350,7 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         owner: DmaOwnerId,
         backend: &mut B,
     ) -> Result<(), DmaLeaseError<B::Error>> {
-        let entry = *self.entry(lease, owner)?;
+        let entry = *self.entry_base(lease, owner)?;
         if entry.state == DmaLeaseState::Active {
             backend
                 .cancel(entry.descriptor)
@@ -301,7 +366,7 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         reason: DmaRecoveryReason,
         backend: &mut B,
     ) -> Result<DmaRecoveryReceipt, DmaLeaseError<B::Error>> {
-        let entry = *self.entry(lease, owner)?;
+        let entry = *self.entry_base(lease, owner)?;
         let cancel_confirmed =
             entry.state != DmaLeaseState::Active || backend.cancel(entry.descriptor).is_ok();
         backend
@@ -329,6 +394,24 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         lease: DmaLease,
         owner: DmaOwnerId,
     ) -> Result<&DmaLeaseEntry, DmaLeaseError<E>> {
+        let entry = self.entry_base(lease, owner)?;
+        #[cfg(any(feature = "pmsa-v7", feature = "pmsa-v8", test))]
+        {
+            if entry
+                .isolation
+                .is_some_and(|receipt| receipt.ensure_usable().is_err())
+            {
+                return Err(DmaLeaseError::IsolationStale);
+            }
+        }
+        Ok(entry)
+    }
+
+    fn entry_base<E>(
+        &self,
+        lease: DmaLease,
+        owner: DmaOwnerId,
+    ) -> Result<&DmaLeaseEntry, DmaLeaseError<E>> {
         let entry = self
             .entries
             .get(usize::from(lease.slot))
@@ -348,6 +431,7 @@ impl<const N: usize> DmaLeaseRegistry<N> {
         lease: DmaLease,
         owner: DmaOwnerId,
     ) -> Result<&mut DmaLeaseEntry, DmaLeaseError<E>> {
+        self.entry(lease, owner)?;
         let entry = self
             .entries
             .get_mut(usize::from(lease.slot))
@@ -363,7 +447,7 @@ impl<const N: usize> DmaLeaseRegistry<N> {
     }
 
     fn retire<E>(&mut self, lease: DmaLease, owner: DmaOwnerId) -> Result<(), DmaLeaseError<E>> {
-        self.entry(lease, owner)?;
+        self.entry_base(lease, owner)?;
         self.entries[usize::from(lease.slot)] = None;
         Ok(())
     }
@@ -544,6 +628,45 @@ mod tests {
         registry
             .recover(lease, owner, DmaRecoveryReason::OwnerShutdown, &mut backend)
             .unwrap();
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn isolated_dma_rejects_post_fault_completion_but_allows_recovery() {
+        use crate::{
+            IsolationArchitecture, IsolationCapabilities, IsolationEpoch, IsolationPlan,
+            IsolationRegion,
+        };
+        extern crate std;
+        use std::boxed::Box;
+
+        static EPOCH: IsolationEpoch = IsolationEpoch::new();
+        let mut plan = IsolationPlan::<4>::new(41, 41);
+        plan.add(IsolationRegion::code(0, 1024 * 1024)).unwrap();
+        plan.add(IsolationRegion::data(0x2000_0000, 256)).unwrap();
+        plan.add(IsolationRegion::stack(0x2000_0100, 256)).unwrap();
+        plan.add(IsolationRegion::peripheral(0x4000_0000, 4096, 2))
+            .unwrap();
+        let capabilities = IsolationCapabilities::pmsa(1, 1, IsolationArchitecture::PmsaV7M, 8);
+        let receipt = EPOCH.admit(&plan, capabilities).unwrap();
+        let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; 32]));
+        let mut registry = DmaLeaseRegistry::<1>::new();
+        let lease = registry
+            .acquire_isolated_static(receipt, buffer, request())
+            .unwrap();
+        let owner = DmaOwnerId(receipt.lease_owner());
+        let mut backend = Backend::default();
+        EPOCH.activate(receipt).unwrap();
+        registry.begin(lease, owner, &mut backend).unwrap();
+        EPOCH.fault(receipt).unwrap();
+        assert_eq!(
+            registry.complete(lease, owner, 32, &mut backend),
+            Err(DmaLeaseError::IsolationStale)
+        );
+        let recovery = registry
+            .recover(lease, owner, DmaRecoveryReason::OwnerShutdown, &mut backend)
+            .unwrap();
+        assert!(recovery.cancel_confirmed);
         assert!(registry.is_empty());
     }
 

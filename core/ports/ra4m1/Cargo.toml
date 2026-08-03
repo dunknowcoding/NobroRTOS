@@ -18,6 +18,11 @@ nobro-hal = { path = "../../crates/nobro_hal", default-features = false, feature
 # our own RA4M1 USBFS CDC backend, available as an explicit native USB path
 nobro-usb = { path = "../../crates/nobro_usb", default-features = false, features = ["backend-ra-usbfs"] }
 
+[[bin]]
+name = "isolation-selftest"
+path = "src/isolation_selftest.rs"
+required-features = ["isolation-selftest"]
+
 [dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }
 
@@ -28,6 +33,7 @@ event-dma = []
 # Diagnostic image used by physical/CI qualification; ordinary applications
 # pay only for the provider paths they call.
 event-dma-selftest = ["event-dma"]
+isolation-selftest = ["nobro-hal/cortex-m-slice", "nobro-hal/pmsa-v7"]
 
 [profile.release]
 debug = 2

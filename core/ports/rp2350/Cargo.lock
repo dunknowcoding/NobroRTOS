@@ -463,6 +463,7 @@ version = "0.3.3"
 name = "nobro-hal"
 version = "0.3.3"
 dependencies = [
+ "cortex-m",
  "critical-section",
  "embedded-hal 1.0.0",
 ]

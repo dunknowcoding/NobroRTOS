@@ -9,6 +9,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::mpu::ModuleMpuContext;
+#[cfg(feature = "platform-nrf52840")]
 use crate::priority_ceiling::PriorityCeiling;
 
 const EXC_RETURN_THREAD_PSP_BASIC: u32 = 0xFFFF_FFFD;
@@ -31,6 +32,7 @@ pub enum ContextSwitchError {
     InvalidPendSvPriority,
     PendSvWouldPreemptCeiling,
     MpuUnsupported,
+    IsolationStale,
     NotConfigured,
 }
 
@@ -168,14 +170,30 @@ impl CortexMSliceSwitch {
     ///
     /// # Safety
     /// `next` and its stack must remain alive and exclusively context-owned.
+    #[cfg(feature = "platform-nrf52840")]
     pub unsafe fn start(
         next: &'static ContextRecord,
         pendsv_logical_priority: u8,
         ceiling: PriorityCeiling,
     ) -> Result<(), ContextSwitchError> {
+        Self::start_raw(next, pendsv_logical_priority, ceiling.raw())
+    }
+
+    /// Architecture-only start route for exact non-nRF Cortex-M ports.
+    /// `ceiling_raw` is the already validated NVIC priority mask boundary.
+    ///
+    /// # Safety
+    /// `next`, its stack, and any referenced MPU context must remain live and
+    /// exclusively context-owned until the switch lifecycle is stopped.
+    pub unsafe fn start_raw(
+        next: &'static ContextRecord,
+        pendsv_logical_priority: u8,
+        ceiling_raw: u8,
+    ) -> Result<(), ContextSwitchError> {
         if next.saved_psp() == 0 {
             return Err(ContextSwitchError::ContextNotInitialized);
         }
+        next.validate_isolation()?;
         if NOBRO_SLICE_CURRENT_RECORD.load(Ordering::Acquire) != 0 {
             return Err(ContextSwitchError::AlreadyStarted);
         }
@@ -187,7 +205,7 @@ impl CortexMSliceSwitch {
             return Err(ContextSwitchError::InvalidPendSvPriority);
         }
         let raw = pendsv_logical_priority << 5;
-        if raw < ceiling.raw() {
+        if raw < ceiling_raw {
             return Err(ContextSwitchError::PendSvWouldPreemptCeiling);
         }
         NOBRO_SLICE_PENDSV_PRIORITY.store(u32::from(raw), Ordering::Release);
@@ -206,6 +224,7 @@ impl CortexMSliceSwitch {
         if next.saved_psp() == 0 {
             return Err(ContextSwitchError::ContextNotInitialized);
         }
+        next.validate_isolation()?;
         let current_ptr = current as *const ContextRecord as u32;
         let observed = NOBRO_SLICE_CURRENT_RECORD.load(Ordering::Acquire);
         if observed != current_ptr {
@@ -252,6 +271,16 @@ impl CortexMSliceSwitch {
     }
 }
 
+impl ContextRecord {
+    fn validate_isolation(&self) -> Result<(), ContextSwitchError> {
+        let context = self.mpu_context.load(Ordering::Acquire) as *const ModuleMpuContext;
+        if context.is_null() {
+            return Ok(());
+        }
+        unsafe { (*context).ensure_live() }.map_err(|_| ContextSwitchError::IsolationStale)
+    }
+}
+
 #[no_mangle]
 extern "C" fn nobro_slice_task_returned() -> ! {
     cortex_m::asm::udf()
@@ -289,6 +318,10 @@ PendSV:
     push    {{r2, lr}}
     bl      nobro_mpu_activate_context
     pop     {{r2, lr}}
+    cmp     r0, #0
+    bne     4f
+    udf     #1
+4:
     ldr     r3, =NOBRO_SLICE_NEXT_RECORD
     ldr     r0, [r2, #0]
     ldr     lr, [r2, #4]

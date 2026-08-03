@@ -11,6 +11,7 @@ pub mod board_desc;
 pub mod completion;
 pub mod dma_lease;
 pub mod esp;
+pub mod isolation;
 pub mod lease;
 pub mod mpu;
 pub mod platform;
@@ -20,6 +21,9 @@ pub mod traits;
 
 #[cfg(all(feature = "board-promicro-nosd", feature = "board-promicro-s140"))]
 compile_error!("nobro-hal: enable exactly one board-* feature");
+
+#[cfg(all(feature = "pmsa-v7", feature = "pmsa-v8"))]
+compile_error!("nobro-hal: select exactly one PMSA architecture");
 
 #[cfg(all(
     feature = "platform-nrf52840",
@@ -87,7 +91,13 @@ pub use esp::{
     EspRuntimeContract, EspSilicon, EspSpi, ESP32C3_RUNTIME, ESP32P4_PICO_IO_ROUTES,
     ESP32P4_PICO_MEDIA, ESP32P4_RUNTIME, ESP32S3_RUNTIME, ESP32_BOARD_IO_ROUTES, ESP32_RUNTIME,
 };
+pub use isolation::{
+    IsolationAccess, IsolationArchitecture, IsolationCapabilities, IsolationEpoch, IsolationError,
+    IsolationPlan, IsolationReceipt, IsolationRegion, IsolationRegionRole, IsolationState,
+    MAX_ISOLATION_REGIONS,
+};
 pub use lease::{LeaseError, LeaseGuard, LeaseRecoveryReceipt, Resource, ResourceLease};
+pub use mpu::hardware_isolation_capabilities;
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::nrf52840::NrfSchedulingSession;
 #[cfg(feature = "platform-nrf52840")]

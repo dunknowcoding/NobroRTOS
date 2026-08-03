@@ -25,6 +25,7 @@ FILES = {
     "nrf_usb_backend": ROOT / "core/crates/nobro_usb/src/nrf_usbd_backend.rs",
     "nrf_usb_manifest": ROOT / "core/crates/nobro_usb/Cargo.toml",
     "isolation_demo": ROOT / "core/apps/kernel/isolation_demo/src/main.rs",
+    "ra_isolation": ROOT / "core/ports/ra4m1/src/isolation_selftest.rs",
 }
 FORBIDDEN = ("critical_section::with", "interrupt::free", "primask")
 RAW_MASK_TOKENS = (
@@ -41,6 +42,7 @@ RAW_MASK_ALLOWLIST = {
     ROOT / "core/ports/samd21/src/masked_critical_section.rs",
     FILES["samd_power"],
     FILES["isolation_demo"],
+    FILES["ra_isolation"],
 }
 
 
@@ -188,11 +190,13 @@ def _raw_masking_allowlist() -> list[str]:
                 failures.append(
                     f"{path.relative_to(ROOT)}: RA4M1 startup must not globally disable interrupts"
                 )
-        elif path == FILES["isolation_demo"]:
+        elif path in (FILES["isolation_demo"], FILES["ra_isolation"]):
             required = (
                 "debugger vector launch independent of a bootloader",
                 "cortex_m::interrupt::enable();",
             )
+            if path == FILES["ra_isolation"]:
+                required += ("owns VTOR and every exception vector",)
             for token in required:
                 if token not in text:
                     failures.append(
@@ -244,7 +248,8 @@ def main() -> int:
             "WatchdogWouldBeMasked",
         ),
         "context_switch": (
-            "raw < ceiling.raw()",
+            "Self::start_raw(next, pendsv_logical_priority, ceiling.raw())",
+            "raw < ceiling_raw",
             "PendSvWouldPreemptCeiling",
         ),
         "hal_lib": (

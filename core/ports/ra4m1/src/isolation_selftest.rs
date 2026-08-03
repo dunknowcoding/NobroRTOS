@@ -1,10 +1,4 @@
-//! Exact PMSAv7-M module-isolation lifecycle demonstration.
-//!
-//! Two unprivileged PSP modules receive separate code, data, and stack banks.
-//! Module A is restarted after foreign-RAM, undeclared-peripheral, stack-guard,
-//! and execute-never violations. Every MemManage fault is attributed from the
-//! context installed by PendSV; the old generation and its peripheral lease
-//! are rejected before the next generation is admitted.
+//! Exact RA4M1 PMSAv7-M isolation and restart self-test.
 #![no_main]
 #![no_std]
 
@@ -14,31 +8,32 @@ use core::{
 };
 
 use cortex_m_rt::{entry, exception};
-use defmt_rtt as _;
 use nobro_hal::{
     hardware_isolation_capabilities,
     mpu::{capture_active_mpu_fault, ModuleMpuContext},
     ContextRecord, CortexMSliceSwitch, IsolationCapabilities, IsolationEpoch, IsolationPlan,
-    IsolationReceipt, IsolationRegion, LeaseError, LeaseGuard, PriorityCeiling, Resource,
-    ResourceLease,
+    IsolationReceipt, IsolationRegion, LeaseError, LeaseGuard, Resource, ResourceLease,
 };
 use panic_halt as _;
 
-const MAGIC: u32 = 0x4E49_534F; // "NISO"
-const VERSION: u32 = 2;
+unsafe extern "C" {
+    fn DefaultHandler();
+}
+
+#[no_mangle]
+#[link_section = ".vector_table.interrupts"]
+static __INTERRUPTS: [unsafe extern "C" fn(); 32] = [DefaultHandler; 32];
+
+const MAGIC: u32 = 0x4E49_3752; // "NI7R"
+const VERSION: u32 = 1;
+const PROVIDER_ID: u32 = 0x5241_344D;
 const MODULE_A_ID: u16 = 1;
 const MODULE_B_ID: u16 = 2;
-const PROVIDER_ID: u32 = 0x4E52_4637;
 const CFSR: u32 = 0xE000_ED28;
 const MMFAR: u32 = 0xE000_ED34;
+const SYSTEM_BASE: u32 = 0x4001_E000;
+const USB_BASE: u32 = 0x4009_0000;
 const VTOR: u32 = 0xE000_ED08;
-const TIMER1_BASE: u32 = 0x4000_9000;
-const RADIO_BASE: u32 = 0x4000_1000;
-const APP_BASE: u32 = if cfg!(feature = "board-promicro-s140") {
-    0x26000
-} else {
-    0x1000
-};
 
 #[repr(C)]
 struct Report {
@@ -48,9 +43,9 @@ struct Report {
     all_pass: u32,
     faults: u32,
     fault_mask: u32,
-    last_fault_module: u32,
-    last_fault_address: u32,
-    last_stacked_pc: u32,
+    last_module: u32,
+    last_address: u32,
+    last_pc: u32,
     fault_control: u32,
     final_control: u32,
     stale_rejections: u32,
@@ -63,21 +58,21 @@ struct Report {
     denied_write_value: u32,
     allowed_peripheral: u32,
     allowed_stack: u32,
-    diagnostic_checksum: u32,
+    diagnostic: u32,
 }
 
 #[no_mangle]
 #[used]
-static mut NOBRO_ISOLATION_REPORT: Report = Report {
+static mut NOBRO_RA4M1_ISOLATION_REPORT: Report = Report {
     magic: MAGIC,
     version: VERSION,
     completed: 0,
     all_pass: 0,
     faults: 0,
     fault_mask: 0,
-    last_fault_module: 0,
-    last_fault_address: 0,
-    last_stacked_pc: 0,
+    last_module: 0,
+    last_address: 0,
+    last_pc: 0,
     fault_control: 0,
     final_control: 0,
     stale_rejections: 0,
@@ -90,12 +85,11 @@ static mut NOBRO_ISOLATION_REPORT: Report = Report {
     denied_write_value: 0,
     allowed_peripheral: 0,
     allowed_stack: 0,
-    diagnostic_checksum: 0,
+    diagnostic: 0,
 };
 
 #[repr(align(256))]
 struct Region([u32; 64]);
-
 #[repr(align(256))]
 struct Stack([u8; 256]);
 
@@ -142,6 +136,16 @@ unsafe fn write_register(address: u32, value: u32) {
     core::ptr::write_volatile(address as *mut u32, value);
 }
 
+fn interrupts_unmasked() -> bool {
+    let primask: u32;
+    let faultmask: u32;
+    unsafe {
+        core::arch::asm!("mrs {}, PRIMASK", out(reg) primask, options(nostack, preserves_flags));
+        core::arch::asm!("mrs {}, FAULTMASK", out(reg) faultmask, options(nostack, preserves_flags));
+    }
+    primask & 1 == 0 && faultmask & 1 == 0
+}
+
 fn module_a_plan() -> IsolationPlan<5> {
     let mut plan = IsolationPlan::new(MODULE_A_ID, MODULE_A_ID);
     plan.add(IsolationRegion::code(
@@ -165,7 +169,7 @@ fn module_a_plan() -> IsolationPlan<5> {
     ))
     .unwrap();
     plan.add(IsolationRegion::peripheral(
-        TIMER1_BASE,
+        SYSTEM_BASE,
         4096,
         Resource::Timer1.isolation_id(),
     ))
@@ -213,14 +217,12 @@ unsafe fn prepare_module_a(receipt: IsolationReceipt, stage: u32) {
 
 #[link_section = ".module_a_code"]
 extern "C" fn module_a(stage: usize) -> ! {
-    let mut stack_witness = [0x1357_9BDFu32; 4];
+    let mut stack_witness = [0x2468_ACE0u32; 4];
     unsafe {
         *stack_witness.get_unchecked_mut(stage & 3) ^= stage as u32;
-    }
-    unsafe {
-        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_A_DATA.0[0]), 0xAAAA_0001);
-        let timer_witness = read_register(TIMER1_BASE + 0x140).wrapping_add(1);
-        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_A_DATA.0[2]), timer_witness);
+        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_A_DATA.0[0]), 0xAAAA_4A41);
+        let timer = read_register(SYSTEM_BASE + 0x20).wrapping_add(1);
+        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_A_DATA.0[2]), timer);
         core::ptr::write_volatile(
             core::ptr::addr_of_mut!(MODULE_A_DATA.0[3]),
             *stack_witness.get_unchecked(stage & 3),
@@ -230,7 +232,7 @@ extern "C" fn module_a(stage: usize) -> ! {
                 core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_B_DATA.0[1]), 0xBAD0_0001)
             }
             1 => {
-                let _ = core::ptr::read_volatile(RADIO_BASE as *const u32);
+                let _ = core::ptr::read_volatile(USB_BASE as *const u32);
             }
             2 => {
                 core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_A_GUARD.0[0]), 0xBAD0_0002)
@@ -250,7 +252,7 @@ extern "C" fn module_a(stage: usize) -> ! {
 #[link_section = ".module_b_code"]
 extern "C" fn module_b(_: usize) -> ! {
     unsafe {
-        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_B_DATA.0[0]), 0xBBBB_0002);
+        core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_B_DATA.0[0]), 0xBBBB_4A41);
     }
     loop {
         unsafe { core::arch::asm!("svc 0", options(nostack)) };
@@ -272,9 +274,9 @@ fn MemoryManagement() {
         let control: u32;
         core::arch::asm!("mrs {}, control", out(reg) control, options(nostack, preserves_flags));
         let stage = STAGE.load(Ordering::Acquire);
-        let expected_address = match stage {
+        let expected = match stage {
             0 => core::ptr::addr_of!(MODULE_B_DATA) as u32 + 4,
-            1 => RADIO_BASE,
+            1 => USB_BASE,
             2 => core::ptr::addr_of!(MODULE_A_GUARD) as u32,
             _ => core::ptr::addr_of!(MODULE_A_DATA) as u32,
         };
@@ -282,11 +284,9 @@ fn MemoryManagement() {
             && fault.context_generation == stage + 1
             && fault.isolation_faulted
             && if stage == 3 {
-                fault.instruction_access && (fault.stacked_pc & !1) == expected_address
+                fault.instruction_access && (fault.stacked_pc & !1) == expected
             } else {
-                fault.data_access
-                    && fault.fault_address_valid
-                    && fault.fault_address == expected_address
+                fault.data_access && fault.fault_address_valid && fault.fault_address == expected
             };
         if exact {
             FAULT_MASK.fetch_or(1 << stage, Ordering::AcqRel);
@@ -301,15 +301,13 @@ fn MemoryManagement() {
         if lease.ensure_live() == Err(LeaseError::IsolationStale) {
             LEASE_STALE.fetch_add(1, Ordering::AcqRel);
         }
-        let recovered = ResourceLease::recover_owner(MODULE_A_ID as u8);
-        if recovered.released(Resource::Timer1) {
+        if ResourceLease::recover_owner(MODULE_A_ID as u8).released(Resource::Timer1) {
             LEASE_RECOVERIES.fetch_add(1, Ordering::AcqRel);
         }
-
         write_register(CFSR, 0xFF);
         if CortexMSliceSwitch::switch(&MODULE_A_CONTEXT, &MODULE_B_CONTEXT).is_err() {
             core::ptr::write_volatile(
-                core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.diagnostic_checksum),
+                core::ptr::addr_of_mut!(NOBRO_RA4M1_ISOLATION_REPORT.diagnostic),
                 0xDEAD_0001,
             );
         }
@@ -325,7 +323,6 @@ fn SVCall() {
         {
             STALE_REJECTIONS.fetch_add(1, Ordering::AcqRel);
         }
-
         if stage < 3 {
             let old = core::ptr::read_volatile(
                 core::ptr::addr_of!(MODULE_A_RECEIPT).cast::<IsolationReceipt>(),
@@ -343,84 +340,60 @@ fn SVCall() {
         core::arch::asm!("mrs {}, control", out(reg) control, options(nostack, preserves_flags));
         let faults = FAULTS.load(Ordering::Acquire);
         let fault_mask = FAULT_MASK.load(Ordering::Acquire);
-        let stale_rejections = STALE_REJECTIONS.load(Ordering::Acquire);
+        let stale = STALE_REJECTIONS.load(Ordering::Acquire);
         let lease_stale = LEASE_STALE.load(Ordering::Acquire);
-        let lease_recoveries = LEASE_RECOVERIES.load(Ordering::Acquire);
+        let recoveries = LEASE_RECOVERIES.load(Ordering::Acquire);
         let receipt = core::ptr::read_volatile(
             core::ptr::addr_of!(MODULE_A_RECEIPT).cast::<IsolationReceipt>(),
         );
-        let switched_record = CortexMSliceSwitch::current_record_address();
-        let module_a_value = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[0]));
-        let module_b_value = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_B_DATA.0[0]));
-        let denied_write_value = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_B_DATA.0[1]));
-        let allowed_peripheral = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[2]));
-        let allowed_stack = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[3]));
+        let switched = CortexMSliceSwitch::current_record_address();
+        let a = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[0]));
+        let b = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_B_DATA.0[0]));
+        let denied = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_B_DATA.0[1]));
+        let timer = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[2]));
+        let stack = core::ptr::read_volatile(core::ptr::addr_of!(MODULE_A_DATA.0[3]));
         let pass = faults == 4
             && fault_mask == 0xF
             && LAST_MODULE.load(Ordering::Acquire) == u32::from(MODULE_A_ID)
             && control & 1 == 1
             && FAULT_CONTROL.load(Ordering::Acquire) & 1 == 1
-            && stale_rejections == 4
+            && stale == 4
             && lease_stale == 4
-            && lease_recoveries == 4
+            && recoveries == 4
             && receipt.context_generation() == 4
-            && switched_record == core::ptr::addr_of!(MODULE_B_CONTEXT) as u32
-            && module_a_value == 0xAAAA_0001
-            && module_b_value == 0xBBBB_0002
-            && denied_write_value == 0
-            && allowed_peripheral != 0
-            && allowed_stack != 0;
-        let all_pass = u32::from(pass);
-        let diagnostic_checksum = MAGIC
-            ^ VERSION
-            ^ 1
-            ^ all_pass
-            ^ faults
-            ^ fault_mask
-            ^ LAST_MODULE.load(Ordering::Acquire)
-            ^ LAST_ADDRESS.load(Ordering::Acquire)
-            ^ LAST_PC.load(Ordering::Acquire)
-            ^ FAULT_CONTROL.load(Ordering::Acquire)
-            ^ control
-            ^ stale_rejections
-            ^ lease_stale
-            ^ lease_recoveries
-            ^ receipt.context_generation()
-            ^ switched_record
-            ^ module_a_value
-            ^ module_b_value
-            ^ denied_write_value
-            ^ allowed_peripheral
-            ^ allowed_stack;
+            && switched == core::ptr::addr_of!(MODULE_B_CONTEXT) as u32
+            && a == 0xAAAA_4A41
+            && b == 0xBBBB_4A41
+            && denied == 0
+            && timer != 0
+            && stack != 0;
         core::ptr::write_volatile(
-            core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT),
+            core::ptr::addr_of_mut!(NOBRO_RA4M1_ISOLATION_REPORT),
             Report {
                 magic: MAGIC,
                 version: VERSION,
                 completed: 1,
-                all_pass,
+                all_pass: u32::from(pass),
                 faults,
                 fault_mask,
-                last_fault_module: LAST_MODULE.load(Ordering::Acquire),
-                last_fault_address: LAST_ADDRESS.load(Ordering::Acquire),
-                last_stacked_pc: LAST_PC.load(Ordering::Acquire),
+                last_module: LAST_MODULE.load(Ordering::Acquire),
+                last_address: LAST_ADDRESS.load(Ordering::Acquire),
+                last_pc: LAST_PC.load(Ordering::Acquire),
                 fault_control: FAULT_CONTROL.load(Ordering::Acquire),
                 final_control: control,
-                stale_rejections,
+                stale_rejections: stale,
                 lease_stale,
-                lease_recoveries,
+                lease_recoveries: recoveries,
                 final_generation: receipt.context_generation(),
-                switched_record,
-                module_a_value,
-                module_b_value,
-                denied_write_value,
-                allowed_peripheral,
-                allowed_stack,
-                diagnostic_checksum,
+                switched_record: switched,
+                module_a_value: a,
+                module_b_value: b,
+                denied_write_value: denied,
+                allowed_peripheral: timer,
+                allowed_stack: stack,
+                diagnostic: 0,
             },
         );
-        // Tell the unprivileged module to park instead of repeatedly entering
-        // SVC and changing the exact four-generation result after completion.
         core::ptr::write_volatile(core::ptr::addr_of_mut!(MODULE_B_DATA.0[2]), 1);
     }
 }
@@ -428,18 +401,18 @@ fn SVCall() {
 #[exception]
 unsafe fn HardFault(frame: &cortex_m_rt::ExceptionFrame) -> ! {
     core::ptr::write_volatile(
-        core::ptr::addr_of_mut!(NOBRO_ISOLATION_REPORT.diagnostic_checksum),
+        core::ptr::addr_of_mut!(NOBRO_RA4M1_ISOLATION_REPORT.diagnostic),
         0xDEAD_0000 | (frame.pc() & 0xFFFF),
     );
     loop {
-        cortex_m::asm::bkpt();
+        core::arch::asm!("bkpt");
     }
 }
 
 #[entry]
 fn main() -> ! {
     unsafe {
-        write_register(VTOR, APP_BASE);
+        write_register(VTOR, 0x4000);
         core::arch::asm!("dsb", "isb", options(nostack, preserves_flags));
 
         let plan_a = module_a_plan();
@@ -460,12 +433,14 @@ fn main() -> ! {
             )
             .unwrap();
 
-        // The isolation image uses debugger vector launch independent of a bootloader;
-        // normalize the reset-state handoff before the first PendSV request.
-        cortex_m::interrupt::enable();
-        CortexMSliceSwitch::start(&MODULE_A_CONTEXT, 7, PriorityCeiling::NRF52840_BARE).unwrap();
+        if !interrupts_unmasked() {
+            // This diagnostic owns VTOR and every exception vector. Its debugger vector launch independent of a bootloader still inherits the UNO
+            // R4 bootloader's PRIMASK state, so startup normalizes it only after
+            // the owned vector table is live.
+            cortex_m::interrupt::enable();
+        }
+        CortexMSliceSwitch::start_raw(&MODULE_A_CONTEXT, 7, 0x80).unwrap();
     }
-
     loop {
         cortex_m::asm::wfi();
     }

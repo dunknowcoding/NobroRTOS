@@ -26,9 +26,11 @@ platform-nrf52840-rt = ["platform-nrf52840", "nrf52840-pac/rt"]
 # Opt-in interrupt-driven TWIM0 provider. Synchronous I2C users do not retain
 # its futures, completion cell, or shared-vector dispatch.
 nrf-twim-async = ["platform-nrf52840"]
-# Optional Cortex-M4F PSP/PendSV port. It is never enabled by a portable board
-# profile and therefore has zero default cost on every target.
-cortex-m-slice = ["platform-nrf52840"]
+# Optional Cortex-M PSP/PendSV mechanism. Exact board compositions select the
+# matching PMSA generation separately; portable profiles retain neither.
+cortex-m-slice = ["dep:cortex-m"]
+pmsa-v7 = ["cortex-m-slice"]
+pmsa-v8 = ["cortex-m-slice"]
 # Opt-in Cortex-M0/M0+ PSP/PendSV mechanism for exact ports such as RP2040.
 # It is privileged-only (no MPU claim) and has no default cost.
 cortex-m0-slice = [
