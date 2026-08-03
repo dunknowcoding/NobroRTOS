@@ -2,6 +2,7 @@
 name = "nobro-port-ra4m1"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 # NobroRTOS portable core on the UNO R4 WiFi's RA4M1 (Cortex-M4) . No vendor HAL:
 # our own HOCO clock bring-up, PFS pin muxing, bridge/header/WiFi SCI UARTs, native

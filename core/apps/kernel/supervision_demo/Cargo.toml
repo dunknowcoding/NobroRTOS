@@ -2,6 +2,7 @@
 name = "supervision-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Liveness task supervision on real time: two supervised tasks on the live
 # microsecond clock - one keeps checking in (stays Healthy), one goes silent and

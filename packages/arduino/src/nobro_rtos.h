@@ -28,6 +28,8 @@ extern "C" {
 #endif
 
 #define NOBRO_REPORT_VERSION 1u
+#define NOBRO_HEALTH_REPORT_VERSION_V1 1u
+#define NOBRO_HEALTH_REPORT_VERSION 2u
 #define NOBRO_BOARD_PROFILE_REPORT_MAGIC 0x4E424250u
 #define NOBRO_BOARD_PACKAGE_REPORT_MAGIC 0x4E42424Bu
 #define NOBRO_MANIFEST_REPORT_MAGIC 0x4E424D46u
@@ -394,6 +396,24 @@ typedef struct nobro_runtime_report {
     uint32_t diagnostic_checksum;
 } nobro_runtime_report_t;
 
+typedef struct nobro_health_report_v1 {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t module_tag;
+    uint32_t total_errors;
+    uint32_t consecutive_errors;
+    uint32_t last_error;
+    uint32_t last_action;
+    uint32_t event_count;
+    uint32_t dropped_events;
+    uint32_t error_events;
+    uint32_t fatal_events;
+    uint32_t last_seen_us_lo;
+    uint32_t last_seen_us_hi;
+    uint32_t diagnostic_checksum;
+} nobro_health_report_v1_t;
+
 typedef struct nobro_health_report {
     uint32_t magic;
     uint32_t version;
@@ -403,6 +423,10 @@ typedef struct nobro_health_report {
     uint32_t consecutive_errors;
     uint32_t last_error;
     uint32_t last_action;
+    uint32_t fault_source;
+    uint32_t fault_code;
+    uint32_t fault_detail0;
+    uint32_t fault_detail1;
     uint32_t event_count;
     uint32_t dropped_events;
     uint32_t error_events;
@@ -498,7 +522,9 @@ NOBRO_STATIC_ASSERT(sizeof(nobro_admission_report_t) == 14u * sizeof(uint32_t),
                     "unexpected admission report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t),
                     "unexpected runtime report size");
-NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 15u * sizeof(uint32_t),
+NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_v1_t) == 15u * sizeof(uint32_t),
+                    "unexpected version-1 health report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 19u * sizeof(uint32_t),
                     "unexpected health report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_backend_operation_report_t) == 14u * sizeof(uint32_t),
                     "unexpected backend operation report size");
@@ -917,8 +943,9 @@ static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight(
     return preflight;
 }
 
-static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum(
+static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum_versioned(
     uint32_t expected_magic,
+    uint32_t expected_version,
     uint32_t magic,
     uint32_t version,
     uint32_t completed,
@@ -930,7 +957,7 @@ static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum
     if (magic == 0u && version == 0u && diagnostic_checksum == 0u) {
         return NOBRO_REPORT_STATUS_MISSING;
     }
-    if (magic != expected_magic || version != NOBRO_REPORT_VERSION) {
+    if (magic != expected_magic || version != expected_version) {
         return NOBRO_REPORT_STATUS_CORRUPT;
     }
     if (completed == 0u) {
@@ -943,6 +970,29 @@ static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum
         return NOBRO_REPORT_STATUS_FAIL;
     }
     return NOBRO_REPORT_STATUS_PASS;
+}
+
+static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum(
+    uint32_t expected_magic,
+    uint32_t magic,
+    uint32_t version,
+    uint32_t completed,
+    uint32_t ok,
+    int has_ok_field,
+    uint32_t diagnostic_checksum,
+    uint32_t computed_diagnostic_checksum
+) {
+    return nobro_report_status_from_diagnostic_checksum_versioned(
+        expected_magic,
+        NOBRO_REPORT_VERSION,
+        magic,
+        version,
+        completed,
+        ok,
+        has_ok_field,
+        diagnostic_checksum,
+        computed_diagnostic_checksum
+    );
 }
 
 static inline uint32_t nobro_board_profile_report_diagnostic_checksum(
@@ -1147,7 +1197,9 @@ static inline uint32_t nobro_health_report_diagnostic_checksum(
 ) {
     return report->magic ^ report->version ^ report->completed ^ report->module_tag
         ^ report->total_errors ^ report->consecutive_errors ^ report->last_error
-        ^ report->last_action ^ report->event_count ^ report->dropped_events
+        ^ report->last_action ^ report->fault_source ^ report->fault_code
+        ^ report->fault_detail0 ^ report->fault_detail1
+        ^ report->event_count ^ report->dropped_events
         ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo
         ^ report->last_seen_us_hi;
 }
@@ -1155,8 +1207,9 @@ static inline uint32_t nobro_health_report_diagnostic_checksum(
 static inline nobro_report_status_t nobro_health_report_status(
     const nobro_health_report_t *report
 ) {
-    return nobro_report_status_from_diagnostic_checksum(
+    return nobro_report_status_from_diagnostic_checksum_versioned(
         NOBRO_HEALTH_REPORT_MAGIC,
+        NOBRO_HEALTH_REPORT_VERSION,
         report->magic,
         report->version,
         report->completed,
@@ -1164,6 +1217,32 @@ static inline nobro_report_status_t nobro_health_report_status(
         0,
         report->diagnostic_checksum,
         nobro_health_report_diagnostic_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_health_report_v1_diagnostic_checksum(
+    const nobro_health_report_v1_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->module_tag
+        ^ report->total_errors ^ report->consecutive_errors ^ report->last_error
+        ^ report->last_action ^ report->event_count ^ report->dropped_events
+        ^ report->error_events ^ report->fatal_events ^ report->last_seen_us_lo
+        ^ report->last_seen_us_hi;
+}
+
+static inline nobro_report_status_t nobro_health_report_v1_status(
+    const nobro_health_report_v1_t *report
+) {
+    return nobro_report_status_from_diagnostic_checksum_versioned(
+        NOBRO_HEALTH_REPORT_MAGIC,
+        NOBRO_HEALTH_REPORT_VERSION_V1,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->diagnostic_checksum,
+        nobro_health_report_v1_diagnostic_checksum(report)
     );
 }
 

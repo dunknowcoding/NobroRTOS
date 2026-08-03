@@ -101,7 +101,7 @@ impl BootFlash for NrfNvmc {
 
     fn erase(&mut self, address: u32, len: u32) -> Result<(), Self::Error> {
         let end = address.checked_add(len).ok_or(())?;
-        if !address.is_multiple_of(PAGE) || !len.is_multiple_of(PAGE) || end > FLASH_BYTES {
+        if address % PAGE != 0 || len % PAGE != 0 || end > FLASH_BYTES {
             return Err(());
         }
         Self::mode(2);
@@ -119,7 +119,7 @@ impl BootFlash for NrfNvmc {
 
     fn program(&mut self, address: u32, bytes: &[u8]) -> Result<(), Self::Error> {
         let end = address.checked_add(bytes.len() as u32).ok_or(())?;
-        if !address.is_multiple_of(4) || !bytes.len().is_multiple_of(4) || end > FLASH_BYTES {
+        if address % 4 != 0 || bytes.len() % 4 != 0 || end > FLASH_BYTES {
             return Err(());
         }
         Self::mode(1);

@@ -78,6 +78,14 @@ def gate_specs(quick, rust_only=False, extended=False):
     py = sys.executable
     bindings = os.path.join(ROOT, "bindings", "python")
     specs = []
+    specs += [
+        ("toolchain and MSRV policy",
+         [py, "tools/checks/core/check_toolchain_policy.py"], ROOT),
+        ("fixed-report ABI compatibility",
+         [py, "tools/checks/core/check_fixed_report_abi.py"], ROOT),
+        ("bounded ingestion regressions",
+         [py, "tools/checks/core/check_ingestion_regressions.py"], ROOT),
+    ]
     if not quick:
         specs.append(("dependency source/license policy",
                       [py, "tools/checks/core/check_dependency_policy.py"], ROOT))
@@ -116,6 +124,16 @@ def gate_specs(quick, rust_only=False, extended=False):
             CORE,
         ))
         specs.append((
+            "kernel trace-hook feature tests",
+            ["cargo", "test", "--locked", "--target", host_target(),
+             "-p", "nobro-kernel", "--features", "trace-hooks"],
+            CORE,
+        ))
+        specs.append((
+            "generated feature covering matrix",
+            [py, "tools/checks/core/check_feature_covering.py"], ROOT,
+        ))
+        specs.append((
             "secure symmetric-only build",
             ["cargo", "check", "--locked", "--target", host_target(),
              "-p", "nobro-secure", "--no-default-features"],
@@ -133,6 +151,13 @@ def gate_specs(quick, rust_only=False, extended=False):
             ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
              "--target", host_target(), "-p", "nobro-kernel", "--features",
              "preemptive", "--", "-D", "warnings"],
+            CORE,
+        ))
+        specs.append((
+            "kernel trace-hook feature clippy",
+            ["cargo", "clippy", "--locked", "--no-deps", "--all-targets",
+             "--target", host_target(), "-p", "nobro-kernel", "--features",
+             "trace-hooks", "--", "-D", "warnings"],
             CORE,
         ))
         specs.append((

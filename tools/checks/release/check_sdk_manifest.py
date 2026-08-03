@@ -31,6 +31,7 @@ def main():
     checks.append(("error_code_registry", man["error_code_registry"]))
     checks.append(("feature_catalog", man["feature_catalog"]))
     checks.append(("api_contract", man["api_contract"]))
+    checks.append(("fixed_report_abi", man["fixed_report_abi"]))
     checks.append(("claim_contract", man["claim_contract"]))
     checks.append(("core_workspace", man["core_workspace"]))
     for r in man.get("include_roots", []):

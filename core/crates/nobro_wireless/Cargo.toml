@@ -2,6 +2,7 @@
 name = "nobro-wireless"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Wireless domain for NobroRTOS: bounded link contracts, protocol descriptors, explicit
 # WirelessBackend implementations, and pure-logic helpers (including BLE advertising

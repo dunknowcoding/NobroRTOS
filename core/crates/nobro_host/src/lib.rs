@@ -14,6 +14,8 @@ pub const APP_START_S140_V6: u32 = 0x26000;
 
 pub const HEALTH_REPORT_SYMBOL: &str = "NOBRO_HEALTH_REPORT";
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4E42_484C;
+pub const HEALTH_REPORT_VERSION_V1: u32 = 1;
+pub const HEALTH_REPORT_VERSION: u32 = 2;
 pub const BACKEND_OPERATION_REPORT_SYMBOL: &str = "NOBRO_BACKEND_OPERATION_REPORT";
 pub const BACKEND_OPERATION_REPORT_MAGIC: u32 = 0x4E42_424F;
 pub const BACKEND_OPERATION_REPORT_VERSION: u32 = 1;
@@ -1787,9 +1789,12 @@ impl DegradeApplicationReport {
     }
 }
 
+/// Frozen decoder for the version-1 health report layout. New firmware emits
+/// [`HealthReport`] version 2, while host tools retain this type so archived
+/// snapshots remain readable without guessing field offsets.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct HealthReport {
+pub struct HealthReportV1 {
     pub magic: u32,
     pub version: u32,
     pub completed: u32,
@@ -1807,8 +1812,8 @@ pub struct HealthReport {
     pub diagnostic_checksum: u32,
 }
 
-impl HealthReport {
-    pub const VERSION: u32 = 1;
+impl HealthReportV1 {
+    pub const VERSION: u32 = HEALTH_REPORT_VERSION_V1;
 
     pub const fn zeroed() -> Self {
         Self {
@@ -1820,6 +1825,106 @@ impl HealthReport {
             consecutive_errors: 0,
             last_error: 0,
             last_action: 0,
+            event_count: 0,
+            dropped_events: 0,
+            error_events: 0,
+            fatal_events: 0,
+            last_seen_us_lo: 0,
+            last_seen_us_hi: 0,
+            diagnostic_checksum: 0,
+        }
+    }
+
+    pub fn finalize_diagnostic(&mut self) {
+        self.magic = HEALTH_REPORT_MAGIC;
+        self.version = Self::VERSION;
+        self.completed = 1;
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
+    }
+
+    pub fn diagnostic_checksum_matches(&self) -> bool {
+        self.magic == HEALTH_REPORT_MAGIC
+            && self.version == Self::VERSION
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != HEALTH_REPORT_MAGIC || self.version != Self::VERSION {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.diagnostic_checksum_matches() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_diagnostic_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.module_tag
+            ^ self.total_errors
+            ^ self.consecutive_errors
+            ^ self.last_error
+            ^ self.last_action
+            ^ self.event_count
+            ^ self.dropped_events
+            ^ self.error_events
+            ^ self.fatal_events
+            ^ self.last_seen_us_lo
+            ^ self.last_seen_us_hi
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HealthReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub module_tag: u32,
+    pub total_errors: u32,
+    pub consecutive_errors: u32,
+    pub last_error: u32,
+    pub last_action: u32,
+    pub fault_source: u32,
+    pub fault_code: u32,
+    pub fault_detail0: u32,
+    pub fault_detail1: u32,
+    pub event_count: u32,
+    pub dropped_events: u32,
+    pub error_events: u32,
+    pub fatal_events: u32,
+    pub last_seen_us_lo: u32,
+    pub last_seen_us_hi: u32,
+    pub diagnostic_checksum: u32,
+}
+
+impl HealthReport {
+    pub const VERSION: u32 = HEALTH_REPORT_VERSION;
+
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            module_tag: 0,
+            total_errors: 0,
+            consecutive_errors: 0,
+            last_error: 0,
+            last_action: 0,
+            fault_source: 0,
+            fault_code: 0,
+            fault_detail0: 0,
+            fault_detail1: 0,
             event_count: 0,
             dropped_events: 0,
             error_events: 0,
@@ -1883,6 +1988,10 @@ impl HealthReport {
             ^ self.consecutive_errors
             ^ self.last_error
             ^ self.last_action
+            ^ self.fault_source
+            ^ self.fault_code
+            ^ self.fault_detail0
+            ^ self.fault_detail1
             ^ self.event_count
             ^ self.dropped_events
             ^ self.error_events
@@ -2061,10 +2170,16 @@ impl_host_report!(
     DEGRADE_APPLICATION_REPORT_VERSION
 );
 impl_host_report!(
+    HealthReportV1,
+    HEALTH_REPORT_SYMBOL,
+    HEALTH_REPORT_MAGIC,
+    HEALTH_REPORT_VERSION_V1
+);
+impl_host_report!(
     HealthReport,
     HEALTH_REPORT_SYMBOL,
     HEALTH_REPORT_MAGIC,
-    HealthReport::VERSION
+    HEALTH_REPORT_VERSION
 );
 impl_host_report!(
     BackendOperationReport,
@@ -2335,6 +2450,10 @@ mod tests {
             consecutive_errors: 2,
             last_error: 3,
             last_action: 2,
+            fault_source: 5,
+            fault_code: 0x102,
+            fault_detail0: 7,
+            fault_detail1: 9,
             event_count: 12,
             dropped_events: 1,
             error_events: 2,
@@ -2347,10 +2466,25 @@ mod tests {
         assert!(report.diagnostic_checksum_matches());
         assert_eq!(report.last_seen_us(), 0x1234_5678_9ABC_DEF0);
         assert_eq!(report.module_label(), Some("radio"));
+        assert_eq!(report.version, HEALTH_REPORT_VERSION);
 
         report.total_errors += 1;
         assert!(!report.diagnostic_checksum_matches());
         assert_eq!(report.status(), ReportStatus::Corrupt);
+    }
+
+    #[test]
+    fn version_one_health_report_remains_decodable() {
+        let mut report = HealthReportV1 {
+            module_tag: 4,
+            total_errors: 2,
+            ..HealthReportV1::zeroed()
+        };
+        report.finalize_diagnostic();
+        assert_eq!(report.version, HEALTH_REPORT_VERSION_V1);
+        assert_eq!(report.status(), ReportStatus::Pass);
+        assert_eq!(core::mem::size_of::<HealthReportV1>(), 15 * 4);
+        assert_eq!(core::mem::size_of::<HealthReport>(), 19 * 4);
     }
 
     #[test]

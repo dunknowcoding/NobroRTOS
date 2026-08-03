@@ -2,6 +2,7 @@
 name = "nobro-adapter-icm45686"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "ICM45686 sensor-family member of the nobro-imu ecosystem"
 
 [dependencies]

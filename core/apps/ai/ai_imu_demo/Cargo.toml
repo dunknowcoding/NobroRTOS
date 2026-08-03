@@ -2,6 +2,7 @@
 name = "ai-imu-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Edge-AI on hardware: reads the IMU and runs the bounded on-device motion classifier
 # (nobro-adapter-motion-ai, AiInferenceSal) every window, recording the class,

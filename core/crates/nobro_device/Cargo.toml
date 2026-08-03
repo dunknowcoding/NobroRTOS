@@ -2,6 +2,7 @@
 name = "nobro-device"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Extensible device-module framework: actuators (servo/motor/ESC) and sensors are
 # described as DATA (profiles + descriptors), so adding a new brand or a new sensor

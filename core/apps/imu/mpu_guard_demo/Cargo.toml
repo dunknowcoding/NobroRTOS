@@ -2,6 +2,7 @@
 name = "mpu-guard-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # MPU memory-protection regions: an MPU region makes a RAM block read-only; a
 # write to it raises MemManage, the handler records the fault and disables the region,

@@ -2,6 +2,7 @@
 name = "pwm-bank-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Servo/ESC PWM bank under leases: four 50 Hz channels on PWM0 behind the
 # Resource::Pwm0 lease - conflict rejected, four distinct pulses set + read back from

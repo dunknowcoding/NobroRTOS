@@ -2,6 +2,7 @@
 name = "nobro-adapter-sensors-esp32-adc-continuous"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Bounded ESP32 continuous ADC bridge for NobroRTOS"
 

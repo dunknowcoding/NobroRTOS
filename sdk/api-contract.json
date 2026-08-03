@@ -172,22 +172,22 @@
     },
     {
       "source": "bindings/c/include/nobro_rtos.h",
-      "source_sha256": "c5e40c93d2710d3df906cef99be8b81fc1852d1ac0c72ab00b375dbb35afa01f",
+      "source_sha256": "04c50f84e7a27114849fe0fa6cbae75dfbfc53864eda10d7bae3c0a91f6a696c",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_rtos.h",
-          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
+          "sha256": "58dc04cc0c06d9fc5d9e60f0be0420213295b154395f16ec2c88676f107b9e83"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_rtos.h",
-          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
+          "sha256": "58dc04cc0c06d9fc5d9e60f0be0420213295b154395f16ec2c88676f107b9e83"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_rtos.h",
-          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
+          "sha256": "58dc04cc0c06d9fc5d9e60f0be0420213295b154395f16ec2c88676f107b9e83"
         }
       ]
     },
@@ -696,7 +696,8 @@
           "NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t), \"unexpected board profile report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_degrade_application_report_t) == 10u * sizeof(uint32_t), \"unexpected degrade application report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_event_log_report_t) == 16u * sizeof(uint32_t), \"unexpected event log report size\");",
-          "NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 15u * sizeof(uint32_t), \"unexpected health report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 19u * sizeof(uint32_t), \"unexpected health report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_v1_t) == 15u * sizeof(uint32_t), \"unexpected version-1 health report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_manifest_report_t) == 15u * sizeof(uint32_t), \"unexpected manifest report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32_t), \"unexpected module runtime report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t), \"unexpected ROS bridge report size\");",
@@ -715,9 +716,11 @@
           "static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report );",
           "static inline nobro_report_status_t nobro_event_log_report_status( const nobro_event_log_report_t *report );",
           "static inline nobro_report_status_t nobro_health_report_status( const nobro_health_report_t *report );",
+          "static inline nobro_report_status_t nobro_health_report_v1_status( const nobro_health_report_v1_t *report );",
           "static inline nobro_report_status_t nobro_manifest_report_status( const nobro_manifest_report_t *report );",
           "static inline nobro_report_status_t nobro_module_runtime_report_status( const nobro_module_runtime_report_t *report );",
           "static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum( uint32_t expected_magic, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t diagnostic_checksum, uint32_t computed_diagnostic_checksum );",
+          "static inline nobro_report_status_t nobro_report_status_from_diagnostic_checksum_versioned( uint32_t expected_magic, uint32_t expected_version, uint32_t magic, uint32_t version, uint32_t completed, uint32_t ok, int has_ok_field, uint32_t diagnostic_checksum, uint32_t computed_diagnostic_checksum );",
           "static inline nobro_report_status_t nobro_ros_bridge_report_status( const nobro_ros_bridge_report_t *report );",
           "static inline nobro_report_status_t nobro_runtime_report_status( const nobro_runtime_report_t *report );",
           "static inline nobro_ros_bridge_preflight_t nobro_ros_action_preflight( nobro_ros_action_contract_t action, uint16_t goal_bytes, uint16_t feedback_capacity_bytes, uint16_t result_capacity_bytes, uint32_t budget_us );",
@@ -734,6 +737,7 @@
           "static inline uint32_t nobro_degrade_application_report_diagnostic_checksum( const nobro_degrade_application_report_t *report );",
           "static inline uint32_t nobro_event_log_report_diagnostic_checksum( const nobro_event_log_report_t *report );",
           "static inline uint32_t nobro_health_report_diagnostic_checksum( const nobro_health_report_t *report );",
+          "static inline uint32_t nobro_health_report_v1_diagnostic_checksum( const nobro_health_report_v1_t *report );",
           "static inline uint32_t nobro_manifest_report_diagnostic_checksum(const nobro_manifest_report_t *report);",
           "static inline uint32_t nobro_module_runtime_report_diagnostic_checksum( const nobro_module_runtime_report_t *report );",
           "static inline uint32_t nobro_report_diagnostic_checksum_words(const uint32_t *words, size_t word_count);",
@@ -776,6 +780,8 @@
           "NOBRO_FNV1A32_OFFSET",
           "NOBRO_FNV1A32_PRIME",
           "NOBRO_HEALTH_REPORT_MAGIC",
+          "NOBRO_HEALTH_REPORT_VERSION",
+          "NOBRO_HEALTH_REPORT_VERSION_V1",
           "NOBRO_MANIFEST_REPORT_MAGIC",
           "NOBRO_MODULE_RUNTIME_REPORT_MAGIC",
           "NOBRO_REPORT_VERSION",
@@ -817,6 +823,7 @@
           "nobro_degrade_application_report_t",
           "nobro_event_log_report_t",
           "nobro_health_report_t",
+          "nobro_health_report_v1_t",
           "nobro_manifest_report_t",
           "nobro_module_runtime_report_t",
           "nobro_report_status_t",
@@ -831,7 +838,7 @@
           "nobro_runtime_report_t"
         ],
         "path": "bindings/c/include/nobro_rtos.h",
-        "sha256": "c5e40c93d2710d3df906cef99be8b81fc1852d1ac0c72ab00b375dbb35afa01f"
+        "sha256": "04c50f84e7a27114849fe0fa6cbae75dfbfc53864eda10d7bae3c0a91f6a696c"
       },
       {
         "declarations": [],
@@ -931,6 +938,7 @@
           "BoardProfileReportView",
           "DegradeApplicationReportView",
           "EventLogReportView",
+          "HealthReportV1View",
           "HealthReportView",
           "ManifestReportView",
           "ModuleRuntimeReportView",
@@ -941,7 +949,7 @@
           "RuntimeReportView"
         ],
         "path": "bindings/cpp/include/nobro_rtos.hpp",
-        "sha256": "c6f77f1afd656d8f845d14ef0e56d810432ea1d3e9445608c46202f297204faf"
+        "sha256": "bcbd70569ec9dd2cab35c481b5168e9be482b98891f636d43a9019c6cd7a0421"
       }
     ],
     "python": {
@@ -1111,7 +1119,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/host_contract.py",
-          "sha256": "fd23dd85d98ebdb6409d39b45b79517f7c27093c6d567659adc65195cf1da66a"
+          "sha256": "3771e61c50f6b1ff4bdf2c42da5dddce5a250d934dba0554c1db25ff47c21a4b"
         },
         {
           "path": "bindings/python/nobro_rtos/module_gen.py",
@@ -1131,7 +1139,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/reports.py",
-          "sha256": "133cabcc1fe8f82f008beb41c94003a528ebc72967a9edf000eefe9838789638"
+          "sha256": "5cd64388f6ff4836edb456d0e5f9df33841d169743e4523818bc8d8c67649126"
         },
         {
           "path": "bindings/python/nobro_rtos/rust_app_gen.py",
@@ -2923,6 +2931,14 @@
           },
           {
             "kind": "const",
+            "name": "HEALTH_REPORT_VERSION_V1"
+          },
+          {
+            "kind": "const",
+            "name": "HEALTH_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
             "name": "BACKEND_OPERATION_REPORT_SYMBOL"
           },
           {
@@ -3615,6 +3631,30 @@
           },
           {
             "kind": "struct",
+            "name": "HealthReportV1"
+          },
+          {
+            "kind": "const",
+            "name": "VERSION"
+          },
+          {
+            "kind": "fn",
+            "name": "zeroed"
+          },
+          {
+            "kind": "fn",
+            "name": "finalize_diagnostic"
+          },
+          {
+            "kind": "fn",
+            "name": "diagnostic_checksum_matches"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
+          },
+          {
+            "kind": "struct",
             "name": "HealthReport"
           },
           {
@@ -3679,7 +3719,7 @@
           }
         ],
         "path": "core/crates/nobro_host/src/lib.rs",
-        "sha256": "3b8492e87278b4dfddbcf2dd5ac4a79758bd3e9679b8646d453397a502cdcb5e"
+        "sha256": "8a7abef3c285524965f5457df180ac056b91c7e4a16f97314143a9fdbf6557d7"
       },
       {
         "crate": "nobro-imu",
@@ -3925,7 +3965,7 @@
           }
         ],
         "path": "core/crates/nobro_kernel/src/lib.rs",
-        "sha256": "3c2eea22b35a73e04bdd96a46016760987bc06ce596c7861205b4ce8db33be34"
+        "sha256": "7a3c077fd7a2305ec6c91c7b08beb6b050674d68e3d086ac9d4949de1b10132f"
       },
       {
         "crate": "nobro-ml",
@@ -5751,7 +5791,7 @@
           }
         ],
         "path": "core/crates/nobro_secure/src/lib.rs",
-        "sha256": "0214baf6b36e2e6afecc6ee9957fb2abc2227aa00867ff7359f3351d73b200e3"
+        "sha256": "8031eaf38df2caf61be1ef7ccc97445e18d8e6554518370aef689f37a89bbc14"
       },
       {
         "crate": "nobro-sensor",
@@ -7311,7 +7351,7 @@
           }
         ],
         "path": "core/adapters/ai/motion-ai/src/lib.rs",
-        "sha256": "8283435683304b8c58e72de2b85f56dd28e5545472270c0afb1f49cfb2026af2"
+        "sha256": "a7177308e90bc2897dd1bb76b80907613b67a8abfab65853f118a5abaaa9c1f6"
       },
       {
         "crate": "nobro-adapter-nn-motion-ai",
@@ -7366,7 +7406,7 @@
           }
         ],
         "path": "core/adapters/ai/nn-motion-ai/src/lib.rs",
-        "sha256": "4c81802d6c00f110e7179b8d86c747584648a19239500a728ec0fb40d2dfec53"
+        "sha256": "507e7bc81d5a70d12f336e5905fedbd58c2c0ccdef25b0a64bd9f620c2cf8ce6"
       },
       {
         "crate": "nobro-adapter-audio-esp32s3-es8311",
@@ -8099,7 +8139,7 @@
           }
         ],
         "path": "core/adapters/virtual/sensor-stub/src/lib.rs",
-        "sha256": "42d3b7de5b80a912ad0c73cb2ed4d75bd2817a521b466cc2812b2e723081c79d"
+        "sha256": "46b9526adda0c8498aa65122e0d20562fd2d0c4bfbe65ca712cffc98821c9296"
       },
       {
         "crate": "nobro-adapter-radio-comms",

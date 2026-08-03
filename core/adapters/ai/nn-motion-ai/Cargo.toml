@@ -2,6 +2,7 @@
 name = "nobro-adapter-nn-motion-ai"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # A bounded on-device *neural-network* inference adapter (AiInferenceSal): a 3->8->2
 # int8 MLP motion classifier (idle/active) whose offline-trained weights are checked in

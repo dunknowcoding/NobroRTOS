@@ -2,6 +2,7 @@
 name = "nobro-adapter-robo-servo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "RoboServo ActuatorSal adapter for NobroRTOS (nRF52840 PWM backend)"
 
 [dependencies]

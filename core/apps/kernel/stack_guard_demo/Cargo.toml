@@ -2,6 +2,7 @@
 name = "stack-guard-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Stack-overflow detection on a development board: plant a canary region below
 # the live stack pointer, verify it survives shallow recursion (no false positive), then

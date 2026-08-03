@@ -2,6 +2,7 @@
 name = "mvk-ppi-timestamp"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "mvk_ppi_timestamp"

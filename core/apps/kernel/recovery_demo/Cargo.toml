@@ -2,6 +2,7 @@
 name = "recovery-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Recovery pillar on hardware: drives the kernel RecoveryCoordinator through a fault
 # scenario (watchdog expiry + repeated module errors) and records the escalation

@@ -1,0 +1,1225 @@
+{
+  "schema": "nobro-fixed-report-abi-v1",
+  "word_size": 4,
+  "reports": [
+    {
+      "name": "nobro_adapter_compat_report",
+      "c_type": "nobro_adapter_compat_report_t",
+      "rust_type": "AdapterCompatibilityReport",
+      "magic": "0x4E424143",
+      "version": 1,
+      "size": 56,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "compatible",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "adapter_count",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "required_bits",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "owned_bits",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "flash_used_bytes",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "ram_used_bytes",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "pool_used_slots",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "error_code",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "error_module_tag",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "error_capability_bits",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 52
+        }
+      ]
+    },
+    {
+      "name": "nobro_admission_report",
+      "c_type": "nobro_admission_report_t",
+      "rust_type": "AdmissionReport",
+      "magic": "0x4E424144",
+      "version": 1,
+      "size": 56,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "admitted",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "module_count",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "startup_len",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "flash_used_bytes",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "flash_limit_bytes",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "ram_used_bytes",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "ram_limit_bytes",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "pool_used_slots",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "pool_limit_slots",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "error_code",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 52
+        }
+      ]
+    },
+    {
+      "name": "nobro_ai_model_report",
+      "c_type": "nobro_ai_model_report_t",
+      "rust_type": "AiModelReport",
+      "magic": "0x4E424149",
+      "version": 1,
+      "size": 52,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "backend",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "model_id",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "input_bytes_max",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "output_bytes_max",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "arena_bytes",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "timeout_us",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "route_preference",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "stale_after_us",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "endpoint_failure_limit",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 48
+        }
+      ]
+    },
+    {
+      "name": "nobro_board_package_report",
+      "c_type": "nobro_board_package_report_t",
+      "rust_type": "BoardPackageReport",
+      "magic": "0x4E42424B",
+      "version": 1,
+      "size": 80,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "valid",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "platform_hash",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "board_hash",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "boot_layout",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "app_flash_start",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "app_flash_len_bytes",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "ram_start",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "ram_len_bytes",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "flash_budget_bytes",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "ram_budget_bytes",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "sample_pool_slots",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "max_modules",
+          "type": "u32",
+          "offset": 56
+        },
+        {
+          "name": "led_pin",
+          "type": "u32",
+          "offset": 60
+        },
+        {
+          "name": "servo_pin",
+          "type": "u32",
+          "offset": 64
+        },
+        {
+          "name": "mvk_trigger_pin",
+          "type": "u32",
+          "offset": 68
+        },
+        {
+          "name": "error_code",
+          "type": "u32",
+          "offset": 72
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 76
+        }
+      ]
+    },
+    {
+      "name": "nobro_backend_operation_report",
+      "c_type": "nobro_backend_operation_report_t",
+      "rust_type": "BackendOperationReport",
+      "magic": "0x4E42424F",
+      "version": 1,
+      "size": 56,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "module_tag",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "backend_id",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "logical_instance",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "lifecycle_generation",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "operation_sequence",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "operation_kind",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "status",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "fault_code",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "occurred_at_us_lo",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "occurred_at_us_hi",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 52
+        }
+      ]
+    },
+    {
+      "name": "nobro_board_profile_report",
+      "c_type": "nobro_board_profile_report_t",
+      "rust_type": "BoardProfileReport",
+      "magic": "0x4E424250",
+      "version": 1,
+      "size": 60,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "platform_hash",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "board_hash",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "app_flash_start",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "flash_budget_bytes",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "ram_budget_bytes",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "sample_pool_slots",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "max_modules",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "servo_pin",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "servo_center_us",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "led_pin",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "mvk_trigger_pin",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 56
+        }
+      ]
+    },
+    {
+      "name": "nobro_degrade_application_report",
+      "c_type": "nobro_degrade_application_report_t",
+      "rust_type": "DegradeApplicationReport",
+      "magic": "0x4E424447",
+      "version": 1,
+      "size": 40,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "requested_count",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "disabled_count",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "already_disabled_count",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "reason",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "applied_at_us_lo",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "applied_at_us_hi",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 36
+        }
+      ]
+    },
+    {
+      "name": "nobro_event_log_report",
+      "c_type": "nobro_event_log_report_t",
+      "rust_type": "EventLogReport",
+      "magic": "0x4E42454C",
+      "version": 1,
+      "size": 64,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "event_count",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "capacity",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "dropped_events",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "latest_seq",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "latest_at_us_lo",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "latest_at_us_hi",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "latest_module_tag",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "latest_severity",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "latest_kind",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "latest_payload_kind",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "latest_payload0",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "latest_payload1",
+          "type": "u32",
+          "offset": 56
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 60
+        }
+      ]
+    },
+    {
+      "name": "nobro_health_report_v1",
+      "c_type": "nobro_health_report_v1_t",
+      "rust_type": "HealthReportV1",
+      "magic": "0x4E42484C",
+      "version": 1,
+      "size": 60,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "module_tag",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "total_errors",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "consecutive_errors",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "last_error",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "last_action",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "event_count",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "dropped_events",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "error_events",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "fatal_events",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "last_seen_us_lo",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "last_seen_us_hi",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 56
+        }
+      ]
+    },
+    {
+      "name": "nobro_health_report",
+      "c_type": "nobro_health_report_t",
+      "rust_type": "HealthReport",
+      "magic": "0x4E42484C",
+      "version": 2,
+      "size": 76,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "module_tag",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "total_errors",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "consecutive_errors",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "last_error",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "last_action",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "fault_source",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "fault_code",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "fault_detail0",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "fault_detail1",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "event_count",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "dropped_events",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "error_events",
+          "type": "u32",
+          "offset": 56
+        },
+        {
+          "name": "fatal_events",
+          "type": "u32",
+          "offset": 60
+        },
+        {
+          "name": "last_seen_us_lo",
+          "type": "u32",
+          "offset": 64
+        },
+        {
+          "name": "last_seen_us_hi",
+          "type": "u32",
+          "offset": 68
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 72
+        }
+      ]
+    },
+    {
+      "name": "nobro_manifest_report",
+      "c_type": "nobro_manifest_report_t",
+      "rust_type": "ManifestReport",
+      "magic": "0x4E424D46",
+      "version": 1,
+      "size": 60,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "valid",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "module_count",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "fingerprint",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "required_bits",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "owned_bits",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "flash_used_bytes",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "ram_used_bytes",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "pool_used_slots",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "error_code",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "error_module_tag",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "error_capability_bits",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 56
+        }
+      ]
+    },
+    {
+      "name": "nobro_module_runtime_report",
+      "c_type": "nobro_module_runtime_report_t",
+      "rust_type": "ModuleRuntimeReport",
+      "magic": "0x4E424D52",
+      "version": 1,
+      "size": 68,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "module_count",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "capacity",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "active_count",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "suspended_count",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "faulted_count",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "recovering_count",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "disabled_count",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "latest_module_tag",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "latest_state",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "latest_fault_count",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "latest_recovery_count",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "latest_change_us_lo",
+          "type": "u32",
+          "offset": 56
+        },
+        {
+          "name": "latest_change_us_hi",
+          "type": "u32",
+          "offset": 60
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 64
+        }
+      ]
+    },
+    {
+      "name": "nobro_ros_bridge_report",
+      "c_type": "nobro_ros_bridge_report_t",
+      "rust_type": "RosBridgeReport",
+      "magic": "0x4E425253",
+      "version": 1,
+      "size": 48,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "transport",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "bridge_id_hash",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "topic_count",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "service_count",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "action_count",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "parameter_count",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "total_buffer_bytes",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "max_timeout_us",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 44
+        }
+      ]
+    },
+    {
+      "name": "nobro_runtime_report",
+      "c_type": "nobro_runtime_report_t",
+      "rust_type": "RuntimeReport",
+      "magic": "0x4E425254",
+      "version": 1,
+      "size": 76,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "magic",
+          "type": "u32",
+          "offset": 0
+        },
+        {
+          "name": "version",
+          "type": "u32",
+          "offset": 4
+        },
+        {
+          "name": "completed",
+          "type": "u32",
+          "offset": 8
+        },
+        {
+          "name": "state",
+          "type": "u32",
+          "offset": 12
+        },
+        {
+          "name": "module_count",
+          "type": "u32",
+          "offset": 16
+        },
+        {
+          "name": "mailbox_len",
+          "type": "u32",
+          "offset": 20
+        },
+        {
+          "name": "mailbox_dropped",
+          "type": "u32",
+          "offset": 24
+        },
+        {
+          "name": "alarm_len",
+          "type": "u32",
+          "offset": 28
+        },
+        {
+          "name": "next_alarm_due_us_lo",
+          "type": "u32",
+          "offset": 32
+        },
+        {
+          "name": "next_alarm_due_us_hi",
+          "type": "u32",
+          "offset": 36
+        },
+        {
+          "name": "kv_len",
+          "type": "u32",
+          "offset": 40
+        },
+        {
+          "name": "kv_writes",
+          "type": "u32",
+          "offset": 44
+        },
+        {
+          "name": "kv_deletes",
+          "type": "u32",
+          "offset": 48
+        },
+        {
+          "name": "quota_flash_used_bytes",
+          "type": "u32",
+          "offset": 52
+        },
+        {
+          "name": "quota_ram_used_bytes",
+          "type": "u32",
+          "offset": 56
+        },
+        {
+          "name": "quota_pool_used_slots",
+          "type": "u32",
+          "offset": 60
+        },
+        {
+          "name": "event_count",
+          "type": "u32",
+          "offset": 64
+        },
+        {
+          "name": "dropped_events",
+          "type": "u32",
+          "offset": 68
+        },
+        {
+          "name": "diagnostic_checksum",
+          "type": "u32",
+          "offset": 72
+        }
+      ]
+    }
+  ]
+}

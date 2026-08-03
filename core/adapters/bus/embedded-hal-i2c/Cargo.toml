@@ -2,6 +2,7 @@
 name = "nobro-eh-i2c"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # embedded-hal 1.0 I2C adapter over the NobroRTOS TWIM bus. Lets the large universe
 # of unmodified `embedded-hal` device drivers run under NobroRTOS - a thin, bounded,

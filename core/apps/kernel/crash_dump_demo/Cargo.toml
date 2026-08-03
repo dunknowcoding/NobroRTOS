@@ -2,6 +2,7 @@
 name = "crash-dump-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Crash-dump capture to flash: first boot deliberately hard-faults; the handler
 # writes a crash record (stacked PC/LR/xPSR + CFSR/HFSR) to a flash page via NVMC and

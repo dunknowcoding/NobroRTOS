@@ -2,6 +2,7 @@
 name = "nobro-c-abi-module"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Reference "C module" for the NobroRTOS C ABI, written against ONLY the extern "C"
 # surface in bindings/c/include/nobro_app.h. It is written in Rust here (extern "C",

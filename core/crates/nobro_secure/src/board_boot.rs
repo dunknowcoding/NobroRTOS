@@ -594,10 +594,7 @@ impl<F: BootFlash, const PROTECTED: usize> BoardBootAdapter<F, PROTECTED> {
         let region = self.layout.slot(slot);
         let header = encode_slot_header(manifest);
         let width = self.flash.program_size() as usize;
-        if width == 0
-            || !SLOT_HEADER_MARKER_OFFSET.is_multiple_of(width)
-            || !4usize.is_multiple_of(width)
-        {
+        if width == 0 || SLOT_HEADER_MARKER_OFFSET % width != 0 || 4usize % width != 0 {
             return Err(BootAdapterError::Layout(BootLayoutError::Misaligned));
         }
         for offset in (0..SLOT_HEADER_MARKER_OFFSET).step_by(width) {
@@ -685,7 +682,7 @@ impl<F: BootFlash, const PROTECTED: usize> BoardBootAdapter<F, PROTECTED> {
             .erase(page.start, page.len)
             .map_err(BootAdapterError::Media)?;
         let width = self.flash.program_size() as usize;
-        if width == 0 || !RECORD_BODY_BYTES.is_multiple_of(width) || !4usize.is_multiple_of(width) {
+        if width == 0 || RECORD_BODY_BYTES % width != 0 || 4usize % width != 0 {
             return Err(BootAdapterError::Layout(BootLayoutError::Misaligned));
         }
         for offset in (0..RECORD_BODY_BYTES).step_by(width) {

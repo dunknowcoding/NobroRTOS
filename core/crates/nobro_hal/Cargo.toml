@@ -2,6 +2,7 @@
 name = "nobro-hal"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 cortex-m = { version = "0.7", optional = true }

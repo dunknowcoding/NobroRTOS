@@ -2,6 +2,7 @@
 name = "nobro-nn"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Neural-network building blocks designed from scratch for MCUs: dense/conv/recurrent
 # (RNN/LSTM/GRU-style) layers, activations, and a scaled-dot-product attention head -

@@ -2,6 +2,7 @@
 name = "async-exec-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Proves nobro_kernel::async_exec::BoundedExecutor on real hardware: spawns bounded
 # cooperative async tasks, completes them within a round budget, rejects past-capacity

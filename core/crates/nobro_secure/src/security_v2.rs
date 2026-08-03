@@ -249,7 +249,7 @@ pub fn verify_signed_measurement_with<const N: usize>(
     if vectors.stack_alignment == 0
         || manifest.stack_top <= vectors.min_stack_addr
         || manifest.stack_top > vectors.max_stack_addr
-        || !manifest.stack_top.is_multiple_of(vectors.stack_alignment)
+        || manifest.stack_top % vectors.stack_alignment != 0
     {
         return Err(SignedBootError::Plan(BootPlanError::InvalidStack));
     }

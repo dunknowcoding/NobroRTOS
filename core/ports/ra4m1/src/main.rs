@@ -665,7 +665,7 @@ fn main() -> ! {
             let configured = active_usb.configured();
             if configured {
                 // Finish a short write promptly; otherwise emit at a bounded cadence.
-                if native_report.pending() || ticks.is_multiple_of(64) {
+                if native_report.pending() || ticks % 64 == 0 {
                     native_report.service(true, native_line.as_bytes(), |packet| {
                         active_usb.write_all(packet)
                     });
@@ -680,7 +680,7 @@ fn main() -> ! {
         // Blocking blink delays can starve EP0 while native USB is enumerating.
         SCI9.print(bridge_line);
         #[cfg(feature = "event-dma-selftest")]
-        if ticks.is_multiple_of(64) {
+        if ticks % 64 == 0 {
             print_event_dma_report(&SCI9, event_dma_report);
         }
         SCI2.print(bridge_line);
@@ -694,7 +694,7 @@ fn main() -> ! {
             nobro_usb::Stage::Reset => 16,
             _ => 8,
         };
-        if ticks.is_multiple_of(blink_divisor) {
+        if ticks % blink_divisor == 0 {
             led_toggle();
         }
         // A failed native stack must not strand a probe-less board. Keep the
@@ -713,7 +713,7 @@ fn main() -> ! {
             native_route = false;
             native_fallback_deadline = None;
         }
-        if !native_route && ticks.is_multiple_of(64) {
+        if !native_route && ticks % 64 == 0 {
             SCI9.print("usb_stage=");
             SCI9.tx(b'0' + usb_stage as u8);
             SCI9.print("\r\n");

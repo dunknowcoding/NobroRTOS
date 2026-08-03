@@ -2,5 +2,6 @@
 name = "nobro-control"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 # No-heap control primitives: PID with anti-windup + output clamp, and a
 # complementary orientation filter fusing an accel-derived angle with gyro rate.

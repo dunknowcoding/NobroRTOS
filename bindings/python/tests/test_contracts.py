@@ -2109,6 +2109,10 @@ class ContractBuilderTests(unittest.TestCase):
             "NOBRO_RUNTIME_REPORT",
         )
         self.assertEqual(contract.payload["health_report"]["magic"], "0x4E42484C")
+        self.assertEqual(contract.payload["health_report"]["version"], 2)
+        self.assertEqual(
+            contract.payload["health_report"]["compatible_versions"], [1, 2]
+        )
         self.assertEqual(
             contract.payload["degrade_application_report"]["version"],
             1,

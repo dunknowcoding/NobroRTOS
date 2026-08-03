@@ -2,6 +2,7 @@
 name = "ai-usb-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Edge AI you can watch: streams live motion classifications (idle/active +
 # confidence) from the on-device MotionClassifier (AiInferenceSal) over USB serial.

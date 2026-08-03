@@ -2,6 +2,7 @@
 name = "imu-i2c-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # One binary per bootloader layout avoids sharing one ELF between 0x1000 and 0x26000 links.
 [[bin]]

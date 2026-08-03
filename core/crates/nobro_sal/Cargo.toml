@@ -2,6 +2,7 @@
 name = "nobro-sal"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 nobro-kernel = { path = "../nobro_kernel", default-features = false }

@@ -53,7 +53,7 @@ EXPECTED_SECTION_KEYS = {
         "first_non_pass",
         "summary_fields",
     },
-    "health_report": {"symbol", "magic", "version", "layout"},
+    "health_report": {"symbol", "magic", "version", "compatible_versions", "layout"},
     "backend_operation_report": {"symbol", "magic", "version", "layout"},
     "event_log_report": {
         "symbol",
@@ -357,8 +357,11 @@ class HostContract:
             if magic != expected_magic:
                 raise ValueError(f"unexpected {key} magic: {magic}")
             version = report.get("version")
-            if type(version) is not int or version != 1:
+            expected_version = 2 if key == "health_report" else 1
+            if type(version) is not int or version != expected_version:
                 raise ValueError(f"unexpected {key} version: {version}")
+            if key == "health_report" and report.get("compatible_versions") != [1, 2]:
+                raise ValueError("unexpected health_report compatible versions")
 
     def _validate_ai_contracts(self) -> None:
         ai_contracts = self._require_object("ai_contracts")

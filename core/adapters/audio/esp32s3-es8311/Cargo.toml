@@ -2,6 +2,7 @@
 name = "nobro-adapter-audio-esp32s3-es8311"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

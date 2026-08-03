@@ -2,6 +2,7 @@
 name = "usb-stack-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Cortex-M modular USB stack demo: the app uses only nobro_usb::try_mount() + UsbStack,
 # so the nRF52840 and RA4M1 targets swap the whole USB backend by feature. ESP32-C3 and

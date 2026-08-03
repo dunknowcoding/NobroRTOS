@@ -2,6 +2,7 @@
 name = "nobro-adapter-mpu9250-imu"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Portable MPU9250/GY-9250/GY-91 SensorSal adapter"
 
 [dependencies]

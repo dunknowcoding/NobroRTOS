@@ -617,7 +617,7 @@ impl SecureBoot {
         }
         if manifest.stack_top == 0
             || policy.stack_alignment == 0
-            || !manifest.stack_top.is_multiple_of(policy.stack_alignment)
+            || manifest.stack_top % policy.stack_alignment != 0
             || manifest.stack_top <= policy.min_stack_addr
             || manifest.stack_top > policy.max_stack_addr
         {

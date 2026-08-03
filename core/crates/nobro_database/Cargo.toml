@@ -2,6 +2,7 @@
 name = "nobro-database"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Fixed-capacity structured data store for NobroRTOS: typed tables with CRUD, predicate
 # queries, and a persistence image format - a "database" scoped for MCUs. No heap, no

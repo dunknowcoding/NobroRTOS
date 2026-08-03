@@ -66,6 +66,8 @@ pub mod stack_guard;
 pub mod startup;
 pub mod supervisor;
 pub mod task_supervisor;
+#[cfg(feature = "trace-hooks")]
+pub mod trace;
 pub mod watchdog;
 
 pub use admission::{
@@ -260,6 +262,10 @@ pub use startup::{
 };
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use task_supervisor::{SupervisionAction, TaskSupervisor};
+#[cfg(feature = "trace-hooks")]
+pub use trace::{
+    ArmItmSwoTrace, GpioPulseTrace, NoTrace, TraceDispatchPrice, TraceEvent, TraceHook,
+};
 pub use watchdog::{
     HardwareResetCause, HardwareWatchdogBackend, HardwareWatchdogError, HardwareWatchdogMountError,
     HardwareWatchdogProfile, HardwareWatchdogResetReceipt, HardwareWatchdogSession, Watchdog,

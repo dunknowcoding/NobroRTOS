@@ -2,6 +2,7 @@
 name = "nobro-c-abi-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Demonstrates the NobroRTOS C ABI: the app provides extern "C" host services + an
 # admitted module slot, and the kernel drives a module's extern "C" nobro_app_init /

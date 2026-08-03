@@ -2,6 +2,7 @@
 name = "nobro-port-samd21"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 # NobroRTOS native SAMD21G18A composition for Arduino Zero-compatible boards.
 # atsamd-hal owns register/pin correctness; NobroRTOS owns bounded lifecycle,

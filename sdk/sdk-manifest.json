@@ -10,6 +10,7 @@
   "error_code_registry": "sdk/error-codes.json",
   "feature_catalog": "sdk/feature-catalog.json",
   "api_contract": "sdk/api-contract.json",
+  "fixed_report_abi": "sdk/fixed-report-abi.json",
   "claim_contract": "sdk/claim-checks.json",
   "core_workspace": "core",
   "include_roots": [

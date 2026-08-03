@@ -1845,6 +1845,23 @@ integrity. A report arriving across an attacker-controlled boundary must be
 opened through `nobro_secure::AuthenticatedReportEnvelope::open` before it is
 used for a trust decision.
 
+`sdk/fixed-report-abi.json` freezes each published magic/version pair, byte
+size, alignment, field order, and offset across the C, Rust host, and Python
+decoders. A layout change requires a new version and an explicit decoder for
+the older version. Health report version 2 adds structured fault provenance;
+the version-1 layout remains available as `HealthReportV1` and
+`nobro_health_report_v1_t`.
+
+### Optional Timing Hooks
+
+Enable `nobro-kernel/trace-hooks` to use explicitly priced dispatch markers.
+`GpioPulseTrace` performs exactly one atomic GPIO set/clear register write per
+marker. `ArmItmSwoTrace` performs one enable read and at most one stimulus
+write, never waits for a debugger, and assumes the board/debug session already
+configured ITM, TPIU, DWT, clocks, and capture. `NoTrace` is zero-sized. The
+feature is absent by default and the executor retains no sink field. ETM is an
+evidence-specific board/debug capability, not a portable NobroRTOS promise.
+
 ### Diagnostic Code
 
 Boot diagnostic code layout:

@@ -2,6 +2,7 @@
 name = "nobro-classic"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Fixed-capacity queue, semaphore, mutex, timer, and event primitives. The crate uses no
 # heap; peripheral ownership remains lease-arbitrated by the kernel.

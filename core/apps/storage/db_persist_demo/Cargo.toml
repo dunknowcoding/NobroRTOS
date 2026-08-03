@@ -2,6 +2,7 @@
 name = "db-persist-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # nobro-database persistence on real flash: a typed Table is recovered from an
 # NVMC flash page at boot, mutated (boot counter + one row per boot), and written back

@@ -2,6 +2,7 @@
 name = "cc2530-gateway"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # NiusZigbee gateway: capture + classify 802.15.4 frames for the host contract.
 # using the NiusZigbee SDCC transceiver firmware protocol (FE LEN CMD DATA FCS @115200).

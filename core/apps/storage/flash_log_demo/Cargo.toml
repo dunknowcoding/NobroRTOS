@@ -2,6 +2,7 @@
 name = "flash-log-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Sensor data logging to on-chip flash (NVMC) on a development board: erase a page, log
 # synthetic sensor samples, read back + verify integrity. Publishes

@@ -2,6 +2,7 @@
 name = "nobro-adapter-camera-niuscam"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

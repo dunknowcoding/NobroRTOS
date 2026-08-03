@@ -2,6 +2,7 @@
 name = "spi-imu-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Reads a reference SPI IMU over the SPIM HAL driver and publishes
 # NOBRO_SPI_IMU_REPORT. This demo targets the no-SoftDevice profile.

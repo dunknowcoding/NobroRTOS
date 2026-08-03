@@ -2,6 +2,7 @@
 name = "radio-comms-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Verifies the radio as a managed hardware resource: the Resource::Radio
 # lease (acquire + conflict-rejected + wrong-owner release), Capability::Radio

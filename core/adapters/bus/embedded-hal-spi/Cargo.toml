@@ -2,6 +2,7 @@
 name = "nobro-eh-spi"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # embedded-hal 1.0 SpiDevice adapter over the NobroRTOS SPIM0 bus. Lets unmodified
 # `embedded-hal` SPI device drivers run under NobroRTOS - a thin, bounded, no-heap

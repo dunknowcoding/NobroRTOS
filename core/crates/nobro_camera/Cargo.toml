@@ -2,6 +2,7 @@
 name = "nobro-camera"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Allocation-free camera domain. Device libraries own sensor/DMA details; this crate
 # standardizes frame metadata, capture admission, backpressure, and diagnostics.

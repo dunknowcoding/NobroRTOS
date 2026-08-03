@@ -2,6 +2,7 @@
 name = "nobro-adapter-ros-imu-bridge"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # A bounded ROS-style topic bridge (RosBridgeSal): publishes IMU messages into a
 # fixed-capacity ring and pumps them to a transport, with no heap and an explicit

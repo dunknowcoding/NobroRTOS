@@ -33,6 +33,8 @@ DEGRADE_APPLICATION_REPORT_MAGIC = 0x4E42_4447
 AI_MODEL_REPORT_MAGIC = 0x4E42_4149
 ROS_BRIDGE_REPORT_MAGIC = 0x4E42_5253
 REPORT_VERSION = 1
+HEALTH_REPORT_VERSION_V1 = 1
+HEALTH_REPORT_VERSION = 2
 
 BOARD_PROFILE_FIELDS = (
     "magic",
@@ -189,6 +191,10 @@ HEALTH_FIELDS = (
     "consecutive_errors",
     "last_error",
     "last_action",
+    "fault_source",
+    "fault_code",
+    "fault_detail0",
+    "fault_detail1",
     "event_count",
     "dropped_events",
     "error_events",
@@ -196,6 +202,12 @@ HEALTH_FIELDS = (
     "last_seen_us_lo",
     "last_seen_us_hi",
     "diagnostic_checksum",
+)
+
+HEALTH_V1_FIELDS = tuple(
+    name
+    for name in HEALTH_FIELDS
+    if name not in {"fault_source", "fault_code", "fault_detail0", "fault_detail1"}
 )
 
 BACKEND_OPERATION_FIELDS = (
@@ -493,9 +505,14 @@ class FixedReport:
                 contract,
             )
         if report_kind == ReportKind.HEALTH:
+            field_names = (
+                HEALTH_V1_FIELDS
+                if int(payload.get("version", 0)) == HEALTH_REPORT_VERSION_V1
+                else HEALTH_FIELDS
+            )
             return cls(
                 report_kind,
-                _normalize_fields(payload, HEALTH_FIELDS),
+                _normalize_fields(payload, field_names),
                 HEALTH_REPORT_MAGIC,
                 None,
                 None,
@@ -567,7 +584,7 @@ class FixedReport:
             return ReportStatus.MISSING
         if (
             self.fields["magic"] != self.expected_magic
-            or self.fields["version"] != REPORT_VERSION
+            or self.fields["version"] != self.expected_version()
         ):
             return ReportStatus.CORRUPT
         if self.fields["completed"] == 0:
@@ -583,6 +600,15 @@ class FixedReport:
     @property
     def passing(self) -> bool:
         return self.status == ReportStatus.PASS
+
+    def expected_version(self) -> int:
+        if self.kind == ReportKind.HEALTH:
+            return (
+                HEALTH_REPORT_VERSION
+                if "fault_source" in self.fields
+                else HEALTH_REPORT_VERSION_V1
+            )
+        return REPORT_VERSION
 
     def diagnostic_checksum_matches(self) -> bool:
         return self.fields["diagnostic_checksum"] == self.compute_diagnostic_checksum()
@@ -688,6 +714,10 @@ class FixedReport:
                 "consecutive_errors": self.fields["consecutive_errors"],
                 "last_error": self.fields["last_error"],
                 "last_action": self.fields["last_action"],
+                "fault_source": self.fields.get("fault_source", 0),
+                "fault_code": self.fields.get("fault_code", 0),
+                "fault_detail0": self.fields.get("fault_detail0", 0),
+                "fault_detail1": self.fields.get("fault_detail1", 0),
                 "event_count": self.fields["event_count"],
                 "dropped_events": self.fields["dropped_events"],
                 "error_events": self.fields["error_events"],
@@ -821,7 +851,9 @@ def finalize_diagnostic_report(kind: ReportKind | str, payload: dict[str, Any]) 
         raise ValueError(f"unsupported report kind: {kind}")
 
     fields["magic"] = expected_magic
-    fields["version"] = REPORT_VERSION
+    fields["version"] = (
+        HEALTH_REPORT_VERSION if report_kind == ReportKind.HEALTH else REPORT_VERSION
+    )
     fields["completed"] = 1
     fields["diagnostic_checksum"] = 0
     normalized = _normalize_fields(fields, field_names)

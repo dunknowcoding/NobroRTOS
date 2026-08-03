@@ -2,6 +2,7 @@
 name = "watchdog-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Watchdog recovery on real hardware: arm the nRF WDT, let it reset the chip, then
 # detect the watchdog reset cause on reboot and report status recovery.

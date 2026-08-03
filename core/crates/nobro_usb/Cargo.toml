@@ -2,6 +2,7 @@
 name = "nobro-usb"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Modular, mountable USB device stack for NobroRTOS. A board mounts exactly ONE backend
 # (selected by a `backend-*` feature) behind the common `UsbStack` trait, so the same app

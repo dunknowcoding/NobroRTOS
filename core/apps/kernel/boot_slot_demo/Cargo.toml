@@ -2,6 +2,7 @@
 name = "boot-slot-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "boot_slot_demo"

@@ -2,6 +2,7 @@
 name = "lease-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # More managed resources: verify the kernel arbitrates PWM/EGU/PPI leases.
 [[bin]]

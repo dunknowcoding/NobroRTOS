@@ -2,6 +2,7 @@
 name = "eh-imu-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Reads the IMU using ONLY the `embedded_hal::i2c::I2c` trait (via the nobro-eh-i2c
 # adapter) - the exact surface an off-the-shelf embedded-hal driver uses - and writes

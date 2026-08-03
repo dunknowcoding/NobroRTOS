@@ -2,6 +2,7 @@
 name = "gesture-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # IMU gesture recognition: the nobro-ml GestureDetector runs on-target against
 # synthetic tap/shake/tilt/idle windows AND the live SPI MPU-9250 at rest (expect None).

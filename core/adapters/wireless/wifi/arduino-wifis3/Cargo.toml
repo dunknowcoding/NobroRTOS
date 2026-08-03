@@ -2,6 +2,7 @@
 name = "nobro-adapter-wireless-wifi-arduino-wifis3"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

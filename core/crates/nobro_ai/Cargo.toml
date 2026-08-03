@@ -2,6 +2,7 @@
 name = "nobro-ai"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # AI deployment + cloud management for NobroRTOS. Two halves: (1) deploy already-trained,
 # quantized models exported from host tools (torch/tensorflow -> flat int8 weights) with

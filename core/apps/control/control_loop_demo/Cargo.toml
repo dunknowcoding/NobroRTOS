@@ -2,6 +2,7 @@
 name = "control-loop-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Control primitives on real hardware: live SPI IMU tilt -> complementary
 # filter (accel angle + gyro rate) -> PID -> servo pulse command. Verifies the filter

@@ -2,6 +2,7 @@
 name = "rtc-sleep-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Low-power idle + RTC wake on a development board: start the LFCLK, program RTC2
 # compare ticks, take the Resource::Rtc2 lease, pick the power mode via the nobro-power

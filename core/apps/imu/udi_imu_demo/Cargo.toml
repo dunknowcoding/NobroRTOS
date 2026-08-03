@@ -2,6 +2,7 @@
 name = "udi-imu-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Universal Driver Interface example: the same app drives one IMU through
 # two different backends selected only by cargo feature - the native HAL SPI driver or

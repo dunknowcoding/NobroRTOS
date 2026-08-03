@@ -2,6 +2,7 @@
 name = "nobro-port-esp32s3"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 # NobroRTOS provider bring-up on the ESP32-S3 (Xtensa LX7), reporting typed provider
 # status over the S3's USB-Serial-JTAG. Standalone

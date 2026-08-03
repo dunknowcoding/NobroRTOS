@@ -126,8 +126,9 @@
   "health_report": {
     "symbol": "NOBRO_HEALTH_REPORT",
     "magic": "0x4E42484C",
-    "version": 1,
-    "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
+    "version": 2,
+    "compatible_versions": [1, 2],
+    "layout": "repr(C) u32 fields; version 2 adds fault_source, fault_code, fault_detail0, and fault_detail1 before event counters; version 1 remains explicitly decodable; 64-bit timestamps split into lo/hi"
   },
   "backend_operation_report": {
     "symbol": "NOBRO_BACKEND_OPERATION_REPORT",

@@ -101,6 +101,7 @@ SDK_PUBLIC_CHILDREN = {
     "cli",
     "error-codes.json",
     "feature-catalog.json",
+    "fixed-report-abi.json",
     "firmware",
     "include",
     "python",
@@ -357,6 +358,10 @@ def _validate_manifest(manifest: object) -> list[str]:
         "API contract": (
             manifest.get("api_contract"),
             "sdk/api-contract.json",
+        ),
+        "fixed-report ABI": (
+            manifest.get("fixed_report_abi"),
+            "sdk/fixed-report-abi.json",
         ),
         "claim contract": (
             manifest.get("claim_contract"),

@@ -2,6 +2,7 @@
 name = "nobro-secure"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Security + data-integrity primitives built on nobro-crypto's SHA-256/HMAC/AES:
 # device attestation, a bounded key store, OTA rollback protection,

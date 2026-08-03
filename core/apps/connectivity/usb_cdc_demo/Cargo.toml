@@ -2,6 +2,7 @@
 name = "usb-cdc-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # USB-CDC diagnostics: print the IMU health report over USB serial so boards without a
 # debug probe can be verified by reading a COM port. Isolated app - the

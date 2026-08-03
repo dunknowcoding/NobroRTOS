@@ -2,6 +2,7 @@
 name = "nobro-port-esp32"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 # Native NobroRTOS provider composition for the classic dual-core ESP32.
 # This is a standalone workspace because the Xtensa target uses espup's

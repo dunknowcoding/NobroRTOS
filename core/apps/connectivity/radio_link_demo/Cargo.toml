@@ -2,6 +2,7 @@
 name = "radio-link-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Board-to-board 2.4 GHz link over the nRF RADIO (no SoftDevice, no CC2530), for
 # multi-board data collection. Two binaries: radio_tx streams a sequence counter; a

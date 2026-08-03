@@ -2,5 +2,6 @@
 name = "nobro-ml"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 # No-heap embedded ML/DSP primitives: streaming anomaly detection, online
 # adaptation, confidence-reject, and complementary sensor fusion.

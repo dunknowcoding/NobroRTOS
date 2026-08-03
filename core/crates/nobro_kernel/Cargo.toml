@@ -2,6 +2,7 @@
 name = "nobro-kernel"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 nobro-admission = { path = "../nobro_admission" }
@@ -26,6 +27,9 @@ capacity-report = []
 # Optional P-ISR/P-SLICE contracts and controller. Default cooperative/L0
 # images do not link or store any of this state.
 preemptive = []
+# Opt-in, bounded on-target timing markers. Default builds do not compile the
+# module or retain a sink field in an executor.
+trace-hooks = []
 
 [dev-dependencies]
 critical-section = { version = "1.2", features = ["std"] }

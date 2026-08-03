@@ -2,6 +2,7 @@
 name = "nobro-adapter-radio-comms"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Framed radio comms as a managed `nobro-wireless` backend over the nRF RADIO HAL.
 # Construction takes the exclusive radio lease; the domain wrapper adds bounded payload,

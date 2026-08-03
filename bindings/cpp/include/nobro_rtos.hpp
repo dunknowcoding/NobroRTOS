@@ -530,8 +530,41 @@ public:
         return report_->last_action;
     }
 
+    constexpr std::uint32_t fault_source() const noexcept {
+        return report_->fault_source;
+    }
+
+    constexpr std::uint32_t fault_code() const noexcept {
+        return report_->fault_code;
+    }
+
+    constexpr std::uint32_t fault_detail0() const noexcept {
+        return report_->fault_detail0;
+    }
+
+    constexpr std::uint32_t fault_detail1() const noexcept {
+        return report_->fault_detail1;
+    }
+
 private:
     const nobro_health_report_t* report_;
+};
+
+class HealthReportV1View {
+public:
+    constexpr explicit HealthReportV1View(const nobro_health_report_v1_t& report) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(nobro_health_report_v1_status(report_));
+    }
+
+    constexpr std::uint32_t module_tag() const noexcept { return report_->module_tag; }
+    constexpr std::uint32_t total_errors() const noexcept { return report_->total_errors; }
+    constexpr std::uint32_t last_action() const noexcept { return report_->last_action; }
+
+private:
+    const nobro_health_report_v1_t* report_;
 };
 
 class BackendOperationReportView {

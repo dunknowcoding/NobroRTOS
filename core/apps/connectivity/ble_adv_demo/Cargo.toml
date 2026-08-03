@@ -2,6 +2,7 @@
 name = "ble-adv-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # BLE peripheral telemetry with no SoftDevice: the nRF RADIO is driven raw in
 # Ble1Mbit mode to broadcast standards-compliant ADV_NONCONN_IND frames on channels

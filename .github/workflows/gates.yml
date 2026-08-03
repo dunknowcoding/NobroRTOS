@@ -33,6 +33,10 @@ jobs:
         run: |
           python tools/checks/release/check_public_docs.py
           python tools/checks/core/check_report_trust_boundary.py
+          python tools/checks/core/check_fixed_report_abi.py
+          python tools/checks/core/check_toolchain_policy.py
+          python tools/checks/core/check_ingestion_regressions.py
+          python tools/checks/core/check_feature_covering.py --selftest
       - name: board profiles
         run: |
           python tools/checks/platforms/check_board_profiles.py
@@ -122,6 +126,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.9"
+      - name: verify maintained-core MSRV
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          cargo +1.85.0 check --locked --manifest-path core/Cargo.toml \
+            --target x86_64-unknown-linux-gnu \
+            -p nobro-kernel -p nobro-net -p nobro-wireless -p nobro-host -p nobro-sal
       - name: build generated firmware and prebuilt UF2 experiences
         run: |
           python sdk/cli/nobro.py firmware tutorials/rover-one-file/app.nobro --out _work/ci-firmware --build

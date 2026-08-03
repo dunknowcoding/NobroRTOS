@@ -2,6 +2,7 @@
 name = "nn-inference-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # AI + hardware + resource management: bring up the SPI MPU-9250, run the
 # trained int8 MLP (nn-motion-ai) on synthetic idle/active windows AND the live IMU,

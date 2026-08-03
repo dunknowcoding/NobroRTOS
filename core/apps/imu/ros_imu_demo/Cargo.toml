@@ -2,6 +2,7 @@
 name = "ros-imu-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # ROS bridge on hardware: reads the IMU, publishes a bounded ROS-style topic message
 # through the RosImuBridge (RosBridgeSal), and pumps the queue to the transport,

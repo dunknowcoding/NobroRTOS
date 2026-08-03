@@ -2,6 +2,7 @@
 name = "nobro-port-esp32c3"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 # NobroRTOS portable-core bring-up on the ESP32-C3 (RISC-V rv32imc) . Runs the
 # typed HAL provider status over the C3's USB-Serial-JTAG. Standalone workspace:

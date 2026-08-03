@@ -2,6 +2,7 @@
 name = "kv-store-demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Wear-leveled KV flash store on real hardware: nobro-storage's KvStore backed by
 # the nRF NVMC over two 4 KB pages; 1200 puts force compactions, then latest-value and

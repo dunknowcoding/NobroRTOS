@@ -2,4 +2,5 @@
 name = "nobro-imu"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Canonical allocation-free IMU domain contracts"

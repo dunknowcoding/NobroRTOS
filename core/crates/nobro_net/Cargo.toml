@@ -2,6 +2,7 @@
 name = "nobro-net"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # No-heap networking primitives for multi-board NobroRTOS meshes: distance-vector
 # routing, round-trip time synchronization, and bounded data aggregation

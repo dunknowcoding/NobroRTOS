@@ -2,6 +2,7 @@
 name = "tri-radio"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # Raw 802.15.4 co-processor link: NobroRTOS drives the board's CC2530 over UART
 # using the NiusZigbee SDCC transceiver firmware protocol (FE LEN CMD DATA FCS @115200).

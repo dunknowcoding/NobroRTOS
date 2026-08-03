@@ -2,6 +2,7 @@
 name = "portable-adapter-conformance"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Reusable non-vacuous conformance application for portable adapter backends"
 
 [dependencies]
