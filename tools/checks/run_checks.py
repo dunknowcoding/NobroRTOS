@@ -85,6 +85,8 @@ def gate_specs(quick, rust_only=False, extended=False):
          [py, "tools/checks/core/check_fixed_report_abi.py"], ROOT),
         ("bounded ingestion regressions",
          [py, "tools/checks/core/check_ingestion_regressions.py"], ROOT),
+        ("bounded maintainability and module compatibility",
+         [py, "tools/checks/core/check_maintainability.py"], ROOT),
     ]
     if not quick:
         specs.append(("dependency source/license policy",

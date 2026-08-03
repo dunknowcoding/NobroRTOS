@@ -847,6 +847,25 @@ static EXECUTOR: LeanKernelExecutorCell<5, 6, 4> =
     LeanKernelExecutorCell::new();
 ```
 
+Capacity aliases are grouped under `nobro_kernel::presets` and remain re-exported
+at the crate root for compatibility:
+
+| Preset | Retained contract |
+|---|---|
+| `L0NanoKernel<TASKS>` | pre-admitted fixed bitmap dispatch only |
+| `L1GuardedKernel<TASKS, GUARDS>` | L0 plus bounded stack guards |
+| `L2ManagedKernel` | four-module managed runtime with mailbox, alarm, KV, health, and retained diagnostics |
+| `L3AssuredKernel` / `L3AssuredKernelCell` | four-task admitted executor plus containment, power, and managed services |
+| `LeanRuntime<MODULES, MAILBOX>` | managed admission/recovery with alarm, KV, event-log, and capability-trace storage set to zero |
+| `SmallRuntime` / `StandardRuntime` / `LargeRuntime` | coherent 4/8/16-module managed capacity profiles |
+
+`ModuleId` represents nine fixed subsystem identities and all 256 `App(u8)`
+identities. The compact startup graph intentionally admits at most
+`STARTUP_GRAPH_MAX_MODULES` (32) nodes because its dependency set is one `u32`.
+This is not an identity collision: larger applications partition startup graphs
+or use separate bounded compositions. `ModuleId::app` and `app_index` provide a
+lossless constructor/query pair.
+
 Module-facing operations use the identity-bound context:
 
 ```rust
@@ -1229,6 +1248,11 @@ For dependencies established after boot, use `RuntimeDependencyGraph` and
 an acyclic generation. The resulting plan records that generation and
 `apply_due_recovery_with_dependencies` rejects a changed graph before any
 lifecycle hook runs.
+Dynamic dependency mutation is implemented in the discoverable
+`runtime_dependency` module and remains re-exported through `startup` and the
+crate root. `RuntimeDependencyError::category()` supplies a bounded,
+payload-free log label while callers that need exact attribution retain the
+typed graph or generation payload.
 Use `HotReloadPlan` and `Runtime::reload_module` for bounded module-slot
 replacement. The runtime suspends the module, releases registered resources,
 then requires `ModuleReloadHooks` to unmount, mount the requested revision,

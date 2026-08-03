@@ -1,5 +1,11 @@
 # Core source layout
 
+Kernel capacity aliases live in `nobro_kernel::presets` and are also re-exported
+at the crate root. Static startup graphs and post-start transactional dependency
+graphs are separate modules, as are the admitted reactor and its fixed-capacity
+synchronization primitives. These source boundaries do not add allocation,
+background executors, or target dependencies.
+
 The directory tree is the ownership model:
 
 - `crates/<nobro_domain>` contains reusable contracts and runtime capabilities.

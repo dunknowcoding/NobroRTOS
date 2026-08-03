@@ -10,6 +10,13 @@ NobroRTOS is a layered embedded RTOS architecture focused on maintainability,
 board compatibility, modular growth, bounded memory, AI robotics integration,
 and diagnosable recovery.
 
+The kernel source keeps static startup ordering (`startup`), transactional
+post-start dependency changes (`runtime_dependency`), reactor execution
+(`async_rt`), fixed async synchronization (`async_sync`), and coherent capacity
+aliases (`presets`) as separate discoverable modules. Their established crate-root
+and legacy module re-exports remain compatibility surfaces; moving an item does
+not require application migration or add runtime state.
+
 ### Architectural Principles
 
 1. Keep the kernel small and contractual.

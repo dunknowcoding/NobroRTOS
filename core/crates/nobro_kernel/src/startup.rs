@@ -2,6 +2,15 @@
 
 use crate::ModuleId;
 
+pub use crate::runtime_dependency::{
+    RuntimeDependencyError, RuntimeDependencyGraph, RuntimeDependencyImpact,
+};
+
+/// Maximum number of modules represented by the compact startup dependency
+/// bitmap. Larger applications can still use distinct [`ModuleId`] values, but
+/// must partition startup graphs rather than silently truncating dependencies.
+pub const STARTUP_GRAPH_MAX_MODULES: usize = 32;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DependencySet(u32);
 
@@ -95,7 +104,7 @@ impl<const N: usize> StartupGraph<N> {
     }
 
     pub fn add(&mut self, module: ModuleId) -> Result<(), StartupGraphError> {
-        if self.len == N || self.len == 32 {
+        if self.len == N || self.len == STARTUP_GRAPH_MAX_MODULES {
             return Err(StartupGraphError::TooManyNodes);
         }
         if self.index_of(module).is_some() {
@@ -213,109 +222,6 @@ impl<const N: usize> StartupGraph<N> {
     }
 }
 
-/// A bounded, generation-tagged dependency graph for relationships established
-/// after boot (for example, a client bound to a newly mounted service).
-///
-/// Updates are transactional: a candidate graph must remain acyclic before its
-/// generation is published. Recovery plans retain that generation and must be
-/// rejected if another binding changes before execution.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RuntimeDependencyGraph<const N: usize> {
-    graph: StartupGraph<N>,
-    generation: u32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuntimeDependencyError {
-    Graph(StartupGraphError),
-    GenerationExhausted,
-    StaleGeneration { expected: u32, current: u32 },
-}
-
-impl<const N: usize> RuntimeDependencyGraph<N> {
-    pub fn from_startup(graph: StartupGraph<N>) -> Result<Self, RuntimeDependencyError> {
-        graph.plan::<N>().map_err(|error| {
-            RuntimeDependencyError::Graph(StartupGraphError::InvalidPlan(error))
-        })?;
-        Ok(Self {
-            graph,
-            generation: 1,
-        })
-    }
-
-    pub const fn generation(&self) -> u32 {
-        self.generation
-    }
-
-    pub const fn graph(&self) -> &StartupGraph<N> {
-        &self.graph
-    }
-
-    pub fn bind(
-        &mut self,
-        module: ModuleId,
-        depends_on: ModuleId,
-    ) -> Result<u32, RuntimeDependencyError> {
-        self.update(|candidate| candidate.add_dependency(module, depends_on))
-    }
-
-    pub fn unbind(
-        &mut self,
-        module: ModuleId,
-        depends_on: ModuleId,
-    ) -> Result<u32, RuntimeDependencyError> {
-        self.update(|candidate| candidate.remove_dependency(module, depends_on))
-    }
-
-    pub fn dependency_impact<const OUT: usize>(
-        &self,
-        root: ModuleId,
-    ) -> Result<RuntimeDependencyImpact<OUT>, RuntimeDependencyError> {
-        Ok(RuntimeDependencyImpact {
-            generation: self.generation,
-            impact: self
-                .graph
-                .dependency_impact(root)
-                .map_err(RuntimeDependencyError::Graph)?,
-        })
-    }
-
-    pub const fn revalidate(&self, generation: u32) -> Result<(), RuntimeDependencyError> {
-        if generation == self.generation {
-            Ok(())
-        } else {
-            Err(RuntimeDependencyError::StaleGeneration {
-                expected: generation,
-                current: self.generation,
-            })
-        }
-    }
-
-    fn update(
-        &mut self,
-        mutate: impl FnOnce(&mut StartupGraph<N>) -> Result<(), StartupGraphError>,
-    ) -> Result<u32, RuntimeDependencyError> {
-        let generation = self
-            .generation
-            .checked_add(1)
-            .ok_or(RuntimeDependencyError::GenerationExhausted)?;
-        let mut candidate = self.graph;
-        mutate(&mut candidate).map_err(RuntimeDependencyError::Graph)?;
-        candidate.plan::<N>().map_err(|error| {
-            RuntimeDependencyError::Graph(StartupGraphError::InvalidPlan(error))
-        })?;
-        self.graph = candidate;
-        self.generation = generation;
-        Ok(generation)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RuntimeDependencyImpact<const N: usize> {
-    pub generation: u32,
-    pub impact: DependencyImpact<N>,
-}
-
 impl<const N: usize> Default for StartupGraph<N> {
     fn default() -> Self {
         Self::new()
@@ -377,7 +283,7 @@ pub struct StartupPlanner;
 
 impl StartupPlanner {
     pub fn plan<const N: usize>(nodes: &[StartupNode]) -> Result<StartupPlan<N>, StartupError> {
-        if nodes.len() > N || nodes.len() > 32 {
+        if nodes.len() > N || nodes.len() > STARTUP_GRAPH_MAX_MODULES {
             return Err(StartupError::TooManyNodes);
         }
 
@@ -389,7 +295,7 @@ impl StartupPlanner {
             {
                 return Err(StartupError::DuplicateModule(node.module));
             }
-            let allowed = if nodes.len() == 32 {
+            let allowed = if nodes.len() == STARTUP_GRAPH_MAX_MODULES {
                 u32::MAX
             } else {
                 (1u32 << nodes.len()) - 1

@@ -2,6 +2,11 @@
 
 use crate::{Action, HealthFault, KernelError};
 
+/// Number of fixed subsystem identities represented directly by [`ModuleId`].
+pub const BUILTIN_MODULE_ID_COUNT: usize = 9;
+/// Number of application identities representable by [`ModuleId::App`].
+pub const APP_MODULE_ID_CAPACITY: usize = u8::MAX as usize + 1;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModuleId {
     Kernel,
@@ -14,6 +19,19 @@ pub enum ModuleId {
     Crypto,
     Ai,
     App(u8),
+}
+
+impl ModuleId {
+    pub const fn app(index: u8) -> Self {
+        Self::App(index)
+    }
+
+    pub const fn app_index(self) -> Option<u8> {
+        match self {
+            Self::App(index) => Some(index),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +240,15 @@ impl<const N: usize> Default for HealthMonitor<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_identity_capacity_is_explicit_and_lossless() {
+        assert_eq!(BUILTIN_MODULE_ID_COUNT, 9);
+        assert_eq!(APP_MODULE_ID_CAPACITY, 256);
+        assert_eq!(ModuleId::app(0).app_index(), Some(0));
+        assert_eq!(ModuleId::app(u8::MAX).app_index(), Some(u8::MAX));
+        assert_eq!(ModuleId::Kernel.app_index(), None);
+    }
     use crate::scheduler::default_action;
     use core::mem::MaybeUninit;
 

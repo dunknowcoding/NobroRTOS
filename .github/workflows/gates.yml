@@ -37,6 +37,7 @@ jobs:
           python tools/checks/core/check_toolchain_policy.py
           python tools/checks/core/check_ingestion_regressions.py
           python tools/checks/core/check_feature_covering.py --selftest
+          python tools/checks/core/check_maintainability.py
       - name: board profiles
         run: |
           python tools/checks/platforms/check_board_profiles.py

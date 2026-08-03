@@ -20,6 +20,7 @@ pub mod alarm;
 pub mod async_exec;
 pub mod async_mpmc;
 pub mod async_rt;
+pub mod async_sync;
 pub mod boot;
 pub mod c_app;
 pub mod capability;
@@ -53,6 +54,7 @@ pub mod objects;
 pub mod pool;
 #[cfg(feature = "preemptive")]
 pub mod preemption;
+pub mod presets;
 #[cfg(feature = "preemptive")]
 pub mod priority_mutex;
 pub mod quota;
@@ -60,6 +62,7 @@ pub mod recovery;
 pub mod report;
 pub mod retry;
 pub mod runtime;
+pub mod runtime_dependency;
 pub mod sample;
 pub mod scheduler;
 pub mod stack_guard;
@@ -125,7 +128,7 @@ pub use graph::{
 };
 pub use health::{
     FaultPolicy, FaultThresholdError, FaultThresholds, HealthCounters, HealthMonitor, HealthSlot,
-    ModuleId,
+    ModuleId, APP_MODULE_ID_CAPACITY, BUILTIN_MODULE_ID_COUNT,
 };
 #[cfg(feature = "hal-profile")]
 pub use hot_reload::HalLeaseReleaser;
@@ -258,7 +261,7 @@ pub use stack_guard::{
 pub use startup::{
     DependencyImpact, DependencySet, RuntimeDependencyError, RuntimeDependencyGraph,
     RuntimeDependencyImpact, StartupError, StartupGraph, StartupGraphError, StartupNode,
-    StartupPlan, StartupPlanner,
+    StartupPlan, StartupPlanner, STARTUP_GRAPH_MAX_MODULES,
 };
 pub use supervisor::{Supervisor, SupervisorSnapshot};
 pub use task_supervisor::{SupervisionAction, TaskSupervisor};
