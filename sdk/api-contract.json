@@ -6573,7 +6573,7 @@
           }
         ],
         "path": "core/crates/nobro_usb/src/lib.rs",
-        "sha256": "f5ac31c54d90fad83e90660922189fd201a6433f41a4504d915493e1526f1feb"
+        "sha256": "a44e349510ffa4cf6d3811946bc892f2a45e832cc057fd895da44de07789ccc8"
       },
       {
         "crate": "nobro-wireless",
