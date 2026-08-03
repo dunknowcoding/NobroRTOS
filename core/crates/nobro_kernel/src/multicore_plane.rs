@@ -190,7 +190,11 @@ impl<T: Copy, const N: usize> CrossCoreDataPlane<T, N> {
     }
 
     const fn next(index: usize) -> usize {
-        if index + 1 == N { 0 } else { index + 1 }
+        if index + 1 == N {
+            0
+        } else {
+            index + 1
+        }
     }
 }
 
