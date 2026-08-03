@@ -5681,7 +5681,7 @@
           }
         ],
         "path": "core/crates/nobro_secure/src/lib.rs",
-        "sha256": "f5e7e71a10277eca824428d474f76ebfec47c0cbfe697765521cc3eff0916399"
+        "sha256": "0214baf6b36e2e6afecc6ee9957fb2abc2227aa00867ff7359f3351d73b200e3"
       },
       {
         "crate": "nobro-sensor",
@@ -6044,6 +6044,14 @@
             "name": "Flash"
           },
           {
+            "kind": "trait",
+            "name": "FlashEndurance"
+          },
+          {
+            "kind": "struct",
+            "name": "EnduranceReceipt"
+          },
+          {
             "kind": "enum",
             "name": "KvError"
           },
@@ -6054,6 +6062,10 @@
           {
             "kind": "struct",
             "name": "BlobStore"
+          },
+          {
+            "kind": "struct",
+            "name": "BlobCommitReceipt"
           },
           {
             "kind": "fn",
@@ -6073,11 +6085,27 @@
           },
           {
             "kind": "fn",
+            "name": "replace_with_receipt"
+          },
+          {
+            "kind": "fn",
             "name": "generation"
           },
           {
             "kind": "fn",
+            "name": "active_page"
+          },
+          {
+            "kind": "fn",
+            "name": "retry_obsolete_cleanup"
+          },
+          {
+            "kind": "fn",
             "name": "into_flash"
+          },
+          {
+            "kind": "fn",
+            "name": "endurance"
           },
           {
             "kind": "enum",
@@ -6162,10 +6190,14 @@
           {
             "kind": "fn",
             "name": "into_flash"
+          },
+          {
+            "kind": "fn",
+            "name": "endurance"
           }
         ],
         "path": "core/crates/nobro_storage/src/lib.rs",
-        "sha256": "69392b4e6f9edfea5b373daddd5cfd54482f2bee198b591da99f6ef122e7294a"
+        "sha256": "93966036712ad7fa45f213a55759133e404bc01a8c442cfa4796602623b6669f"
       },
       {
         "crate": "nobro-tierc",

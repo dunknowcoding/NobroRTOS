@@ -278,10 +278,10 @@ Allocation-free servo command contract.
 
 ## `nobro-storage`
 Power-fail-safe, wear-leveled key-value flash store.
-- **trait**: `Flash`
-- **struct**: `KvStore`, `BlobStore`, `FileSystemMountError`, `FileMetadata`, `FileCommitReceipt`, `AtomicFileSystem`
+- **trait**: `Flash`, `FlashEndurance`
+- **struct**: `EnduranceReceipt`, `KvStore`, `BlobStore`, `BlobCommitReceipt`, `FileSystemMountError`, `FileMetadata`, `FileCommitReceipt`, `AtomicFileSystem`
 - **enum**: `KvError`, `FileSystemError`
-- **fn**: `mount`, `read`, `replace`, `into_flash`, `into_flash`, `mount`, `write`, `remove`, `read`, `metadata`, `file_count`, `into_flash`, `mount`, `get`, `put`, `into_flash`
+- **fn**: `mount`, `read`, `replace`, `replace_with_receipt`, `retry_obsolete_cleanup`, `into_flash`, `endurance`, `into_flash`, `mount`, `write`, `remove`, `read`, `metadata`, `file_count`, `into_flash`, `mount`, `get`, `put`, `into_flash`, `endurance`
 
 ## `nobro-tierc`
 `libnobro.a` - the prebuilt NobroRTOS runtime for Tier C (C developers, no Rust).

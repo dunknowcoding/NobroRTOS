@@ -8,11 +8,15 @@ mod board_boot;
 #[cfg(feature = "asymmetric-ed25519")]
 mod factory;
 #[cfg(feature = "asymmetric-ed25519")]
+mod security_lifecycle;
+#[cfg(feature = "asymmetric-ed25519")]
 mod security_v2;
 #[cfg(feature = "asymmetric-ed25519")]
 pub use board_boot::*;
 #[cfg(feature = "asymmetric-ed25519")]
 pub use factory::*;
+#[cfg(feature = "asymmetric-ed25519")]
+pub use security_lifecycle::*;
 #[cfg(feature = "asymmetric-ed25519")]
 pub use security_v2::*;
 

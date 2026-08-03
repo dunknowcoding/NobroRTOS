@@ -438,6 +438,28 @@ reports used in trust decisions. It returns a private-field
 `VerifiedReportPayload`; an unkeyed diagnostic checksum cannot create that
 token.
 
+With `asymmetric-ed25519`, `SigningKeyController` adds a fixed-capacity,
+transactional signing-key lifecycle. A new key is first pending and cannot
+verify images; activation commits the new active key and revokes the old key in
+one metadata generation. Explicit revocation refuses to remove the last active
+root. `AttestedRollbackBackend` and `SecurityRootProfile` identify whether the
+anti-rollback floor comes from software, OTP, eFuse, TrustZone, a secure
+element, or a trusted companion. Receipts expose the exact strength: a
+software-only backend is valid but never reported as hardware rooted.
+
+`FleetKeyBackend` separates device-root derivation from fleet-authority import
+and returns the ownership and backend profile. Failed operations or a backend
+profile change zero the caller's output. `seal_aead_member` and
+`open_aead_member` reuse the bounded AES-CCM member boundary; the portable
+receipt claims only the tag-comparison scope, not constant-time AES, TLS, or
+kernel-owned channel security. Board adapters must state their own
+side-channel boundary.
+
+`stage_scoped_full_image` admits only the layout represented by the current
+persistent state: exactly two A/B slots, one rollback-history slot, and a full
+image that fits one slot. Delta updates and deeper histories are rejected until
+a different durable schema proves them.
+
 The older `SecureBoot::boot_plan` HMAC path remains for per-device authentication
 and compatibility. It verifies image length, address range, entry/stack vector
 sanity, SHA-256 measurement, and anti-rollback version before returning a
@@ -465,6 +487,16 @@ python sdk/cli/nobro.py sign app.bin --version 8 --load-addr 0x1000 --entry-addr
 flash pages. Payload and checksum are written before the commit marker, and mount
 selects the newest valid generation. A reset during erase or programming therefore
 exposes either the complete old image or the complete new image.
+
+`replace_with_receipt` makes committed generation, exact page, programmed-word
+bound, erase attempts, and deferred obsolete-page cleanup visible. If cleanup
+fails after commit, `retry_obsolete_cleanup` reclaims only a still-valid obsolete
+page and avoids erasing an already-clean page. Providers that implement
+`FlashEndurance` expose per-page erase counts, health, imbalance, rated cycles,
+and a derived remaining-cycle estimate. These are provider-reported accounting,
+not measured physical wear; the two-page store preserves old data and fails
+deterministically when its only target page is permanently bad, but it does not
+claim bad-page remapping.
 
 `nobro-storage::AtomicFileSystem<F, FILES, NAME_BYTES, DATA_BYTES>` stores a
 fixed directory and bounded file contents in that transaction image. Mount,

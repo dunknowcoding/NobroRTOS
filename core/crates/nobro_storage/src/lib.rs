@@ -11,6 +11,39 @@ pub trait Flash {
     fn read_word(&self, page: usize, word: usize) -> u32;
 }
 
+/// Optional erase-health accounting supplied by a concrete flash provider.
+///
+/// The storage algorithms remain usable with [`Flash`] alone. This extension
+/// makes rated endurance and known-bad pages observable without inventing values
+/// for devices that cannot report them.
+pub trait FlashEndurance: Flash {
+    fn erase_cycles(&self, page: usize) -> u32;
+    fn page_healthy(&self, page: usize) -> bool;
+    fn rated_erase_cycles(&self) -> Option<u32>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EnduranceReceipt {
+    pub page_erases: [u32; 2],
+    pub page_healthy: [bool; 2],
+    pub erase_imbalance: u32,
+    pub rated_erase_cycles: Option<u32>,
+    pub minimum_remaining_cycles: Option<u32>,
+}
+
+fn endurance_receipt<F: FlashEndurance>(flash: &F) -> EnduranceReceipt {
+    let page_erases = [flash.erase_cycles(0), flash.erase_cycles(1)];
+    let rated = flash.rated_erase_cycles();
+    EnduranceReceipt {
+        page_erases,
+        page_healthy: [flash.page_healthy(0), flash.page_healthy(1)],
+        erase_imbalance: page_erases[0].abs_diff(page_erases[1]),
+        rated_erase_cycles: rated,
+        minimum_remaining_cycles: rated
+            .map(|cycles| cycles.saturating_sub(page_erases[0].max(page_erases[1]))),
+    }
+}
+
 const BLANK: u32 = u32::MAX;
 const PAGE_MAGIC: u32 = 0x4E4B_5632; // "NKV2"
 const PAGE_COMMITTED: u32 = 0x434F_4D54; // "COMT", written last
@@ -45,6 +78,18 @@ pub struct BlobStore<F: Flash> {
     active: Option<usize>,
     generation: u32,
     len: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BlobCommitReceipt {
+    pub generation: u32,
+    pub active_page: usize,
+    pub image_bytes: usize,
+    pub program_words: usize,
+    pub erase_attempts: u8,
+    /// The new image is committed even when obsolete-page cleanup must be
+    /// retried by a later maintenance operation.
+    pub cleanup_pending: bool,
 }
 
 impl<F: Flash> BlobStore<F> {
@@ -130,6 +175,13 @@ impl<F: Flash> BlobStore<F> {
     }
 
     pub fn replace(&mut self, image: &[u8]) -> Result<(), KvError<F::Error>> {
+        self.replace_with_receipt(image).map(|_| ())
+    }
+
+    pub fn replace_with_receipt(
+        &mut self,
+        image: &[u8],
+    ) -> Result<BlobCommitReceipt, KvError<F::Error>> {
         if image.len() > Self::capacity() || image.len() > u32::MAX as usize {
             return Err(KvError::Full);
         }
@@ -157,18 +209,50 @@ impl<F: Flash> BlobStore<F> {
         self.active = Some(new);
         self.generation = generation;
         self.len = image.len();
-        if let Some(old) = old {
-            Self::flash(self.flash.erase(old))?;
-        }
-        Ok(())
+        let cleanup_pending = old.is_some_and(|old| self.flash.erase(old).is_err());
+        Ok(BlobCommitReceipt {
+            generation,
+            active_page: new,
+            image_bytes: image.len(),
+            program_words: BLOB_HEADER_WORDS + image.len().div_ceil(4),
+            erase_attempts: 1 + u8::from(old.is_some()),
+            cleanup_pending,
+        })
     }
 
     pub const fn generation(&self) -> u32 {
         self.generation
     }
 
+    pub const fn active_page(&self) -> Option<usize> {
+        self.active
+    }
+
+    /// Erases a still-valid obsolete page after a committed replacement.
+    ///
+    /// Returns `Ok(true)` only when an obsolete committed page was reclaimed.
+    /// Blank, corrupt, or already-clean pages are left untouched so maintenance
+    /// does not consume an erase cycle unnecessarily.
+    pub fn retry_obsolete_cleanup(&mut self) -> Result<bool, KvError<F::Error>> {
+        let Some(active) = self.active else {
+            return Ok(false);
+        };
+        let obsolete = 1 - active;
+        if Self::valid_page(&self.flash, obsolete).is_none() {
+            return Ok(false);
+        }
+        Self::flash(self.flash.erase(obsolete))?;
+        Ok(true)
+    }
+
     pub fn into_flash(self) -> F {
         self.flash
+    }
+}
+
+impl<F: FlashEndurance> BlobStore<F> {
+    pub fn endurance(&self) -> EnduranceReceipt {
+        endurance_receipt(&self.flash)
     }
 }
 
@@ -454,18 +538,13 @@ impl<F: Flash, const FILES: usize, const NAME_BYTES: usize, const DATA_BYTES: us
         scratch: &mut [u8],
     ) -> Result<FileCommitReceipt, FileSystemError<F::Error>> {
         let len = self.encode(scratch)?;
-        let before = self.store.generation();
-        match self.store.replace(&scratch[..len]) {
-            Ok(()) => Ok(FileCommitReceipt {
-                generation: self.store.generation(),
-                cleanup_pending: false,
-            }),
-            Err(KvError::Flash(_)) if self.store.generation() != before => Ok(FileCommitReceipt {
-                generation: self.store.generation(),
-                cleanup_pending: true,
-            }),
-            Err(error) => Err(error.into()),
-        }
+        self.store
+            .replace_with_receipt(&scratch[..len])
+            .map(|receipt| FileCommitReceipt {
+                generation: receipt.generation,
+                cleanup_pending: receipt.cleanup_pending,
+            })
+            .map_err(Into::into)
     }
 
     pub fn write(
@@ -746,6 +825,12 @@ impl<F: Flash> KvStore<F> {
     }
 }
 
+impl<F: FlashEndurance> KvStore<F> {
+    pub fn endurance(&self) -> EnduranceReceipt {
+        endurance_receipt(&self.flash)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -754,6 +839,7 @@ mod tests {
     enum MockError {
         Injected,
         Programmed,
+        BadPage,
     }
 
     #[derive(Clone)]
@@ -761,6 +847,8 @@ mod tests {
         pages: [[u32; 32]; 2],
         erases: [u32; 2],
         writes_until_failure: Option<usize>,
+        bad_erase: [bool; 2],
+        bad_program: [bool; 2],
     }
 
     impl MockFlash {
@@ -769,6 +857,8 @@ mod tests {
                 pages: [[BLANK; 32]; 2],
                 erases: [0; 2],
                 writes_until_failure: None,
+                bad_erase: [false; 2],
+                bad_program: [false; 2],
             }
         }
 
@@ -790,6 +880,9 @@ mod tests {
 
         fn erase(&mut self, page: usize) -> Result<(), Self::Error> {
             self.maybe_fail()?;
+            if self.bad_erase[page] {
+                return Err(MockError::BadPage);
+            }
             self.pages[page] = [BLANK; 32];
             self.erases[page] += 1;
             Ok(())
@@ -797,6 +890,9 @@ mod tests {
 
         fn write_word(&mut self, page: usize, word: usize, val: u32) -> Result<(), Self::Error> {
             self.maybe_fail()?;
+            if self.bad_program[page] {
+                return Err(MockError::BadPage);
+            }
             if self.pages[page][word] != BLANK {
                 return Err(MockError::Programmed);
             }
@@ -806,6 +902,20 @@ mod tests {
 
         fn read_word(&self, page: usize, word: usize) -> u32 {
             self.pages[page][word]
+        }
+    }
+
+    impl FlashEndurance for MockFlash {
+        fn erase_cycles(&self, page: usize) -> u32 {
+            self.erases[page]
+        }
+
+        fn page_healthy(&self, page: usize) -> bool {
+            !self.bad_erase[page] && !self.bad_program[page]
+        }
+
+        fn rated_erase_cycles(&self) -> Option<u32> {
+            Some(10_000)
         }
     }
 
@@ -877,6 +987,20 @@ mod tests {
     }
 
     #[test]
+    fn generation_wrap_commits_and_remounts_newer_kv_page() {
+        let mut flash = MockFlash::new();
+        KvStore::<MockFlash>::format_page(&mut flash, 0, u32::MAX).unwrap();
+        KvStore::<MockFlash>::append_to(&mut flash, 0, HEADER_WORDS, 7, 11).unwrap();
+        let mut kv = KvStore::mount(flash).unwrap();
+        assert_eq!(kv.generation, u32::MAX);
+        kv.compact().unwrap();
+        assert_eq!(kv.generation, 0);
+        let remounted = KvStore::mount(kv.into_flash()).unwrap();
+        assert_eq!(remounted.generation, 0);
+        assert_eq!(remounted.get(7), Some(11));
+    }
+
+    #[test]
     fn blob_survives_multiple_mount_replace_cycles() {
         let mut store = BlobStore::mount(MockFlash::new());
         for generation in 1..=12u8 {
@@ -913,6 +1037,85 @@ mod tests {
                     || (len == new.len() && recovered[..len] == new)
             );
         }
+    }
+
+    #[test]
+    fn blob_commit_receipt_distinguishes_cleanup_failure_and_bad_target_page() {
+        let old = [0x31; 17];
+        let new = [0x72; 19];
+        let mut store = BlobStore::mount(MockFlash::new());
+        store.replace(&old).unwrap();
+        let mut flash = store.into_flash();
+        flash.bad_erase[0] = true;
+        let mut store = BlobStore::mount(flash);
+        let receipt = store.replace_with_receipt(&new).unwrap();
+        assert!(receipt.cleanup_pending);
+        assert_eq!(receipt.generation, 2);
+        let mut flash = store.into_flash();
+        flash.bad_erase[0] = false;
+        let mut store = BlobStore::mount(flash);
+        let mut output = [0; 32];
+        assert_eq!(store.read(&mut output), Ok(Some(new.len())));
+        assert_eq!(&output[..new.len()], &new);
+        assert_eq!(store.retry_obsolete_cleanup(), Ok(true));
+        assert_eq!(store.retry_obsolete_cleanup(), Ok(false));
+
+        let mut flash = store.into_flash();
+        flash.bad_erase[0] = true;
+        let mut store = BlobStore::mount(flash);
+        assert_eq!(
+            store.replace_with_receipt(&[0x99; 5]),
+            Err(KvError::Flash(MockError::BadPage))
+        );
+        let mut flash = store.into_flash();
+        flash.bad_erase[0] = false;
+        let store = BlobStore::mount(flash);
+        let len = store.read(&mut output).unwrap().unwrap();
+        assert_eq!(&output[..len], &new);
+    }
+
+    #[test]
+    fn permanent_program_failure_preserves_the_committed_blob() {
+        let old = [0x41; 13];
+        let mut store = BlobStore::mount(MockFlash::new());
+        store.replace(&old).unwrap();
+        let mut flash = store.into_flash();
+        flash.bad_program[1] = true;
+        let mut store = BlobStore::mount(flash);
+        assert_eq!(
+            store.replace_with_receipt(&[0x82; 9]),
+            Err(KvError::Flash(MockError::BadPage))
+        );
+        let store = BlobStore::mount(store.into_flash());
+        let mut output = [0; 16];
+        let len = store.read(&mut output).unwrap().unwrap();
+        assert_eq!(&output[..len], &old);
+    }
+
+    #[test]
+    fn blob_generation_wrap_selects_complete_new_image() {
+        let old = [0x11; 4];
+        let new = [0x22; 7];
+        let mut flash = MockFlash::new();
+        flash.erase(0).unwrap();
+        flash.write_word(0, 0, BLOB_MAGIC).unwrap();
+        flash.write_word(0, 1, u32::MAX).unwrap();
+        flash.write_word(0, 2, old.len() as u32).unwrap();
+        let checksum =
+            BlobStore::<MockFlash>::checksum_bytes(u32::MAX, old.len(), old.iter().copied());
+        flash.write_word(0, 3, checksum).unwrap();
+        flash
+            .write_word(0, BLOB_HEADER_WORDS, u32::from_le_bytes(old))
+            .unwrap();
+        flash.write_word(0, 4, BLOB_COMMITTED).unwrap();
+        let mut store = BlobStore::mount(flash);
+        assert_eq!(store.generation(), u32::MAX);
+        store.replace(&new).unwrap();
+        let store = BlobStore::mount(store.into_flash());
+        assert_eq!(store.generation(), 0);
+        let mut output = [0; 16];
+        let len = store.read(&mut output).unwrap().unwrap();
+        assert_eq!(&output[..len], &new);
     }
 
     type TestFiles = AtomicFileSystem<MockFlash, 2, 8, 16>;
@@ -990,5 +1193,30 @@ mod tests {
         let flash = files.into_flash();
         assert!(flash.erases[0] > 0 && flash.erases[1] > 0);
         assert!(flash.erases[0].abs_diff(flash.erases[1]) <= 1);
+    }
+
+    #[test]
+    fn long_churn_reports_balanced_rated_endurance_without_raw_measurement_claims() {
+        let mut kv = KvStore::mount(MockFlash::new()).unwrap();
+        let mut model = [None; 8];
+        let mut state = 0xC001_CAFEu32;
+        for step in 0..1_000u32 {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let key = ((state >> 16) as usize) % model.len();
+            let value = state ^ step;
+            kv.put(key as u16, value).unwrap();
+            model[key] = Some(value);
+            if step % 37 == 0 {
+                kv = KvStore::mount(kv.into_flash()).unwrap();
+                for (key, expected) in model.iter().enumerate() {
+                    assert_eq!(kv.get(key as u16), *expected);
+                }
+            }
+        }
+        let endurance = kv.endurance();
+        assert_eq!(endurance.rated_erase_cycles, Some(10_000));
+        assert!(endurance.page_healthy.into_iter().all(|healthy| healthy));
+        assert!(endurance.erase_imbalance <= 1);
+        assert!(endurance.minimum_remaining_cycles.unwrap() < 10_000);
     }
 }
