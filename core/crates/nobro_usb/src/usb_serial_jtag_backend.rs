@@ -9,7 +9,10 @@
 //! observation is latched forever: bus reset and an eight-millisecond SOF watchdog fail
 //! closed.
 
-use crate::{backend_id, config_fingerprint, CdcState, UsbAdvertisedIdentity, UsbConfig, UsbStack};
+use crate::{
+    config_fingerprint, selected_usb_serial_jtag_backend_id, CdcState, UsbAdvertisedIdentity,
+    UsbConfig, UsbStack,
+};
 
 #[cfg(feature = "backend-usb-serial-jtag-esp32c3")]
 const BASE: usize = 0x6004_3000;
@@ -290,7 +293,8 @@ pub(crate) struct UsbSerialJtagCdc {
 }
 
 impl UsbSerialJtagCdc {
-    /// Silicon owns the descriptors, so the common request is accepted but ignored.
+    /// Silicon owns the descriptors. Public preflight admits only the explicit
+    /// controller-owned sentinel, so no caller identity is silently ignored.
     pub(crate) fn mount(cfg: &UsbConfig) -> Self {
         Self {
             link: LinkTracker::new(),
@@ -407,7 +411,7 @@ impl UsbStack for UsbSerialJtagCdc {
     }
 
     fn backend_id(&self) -> u32 {
-        backend_id::USB_SERIAL_JTAG
+        selected_usb_serial_jtag_backend_id()
     }
 
     fn advertised_identity(&self) -> UsbAdvertisedIdentity {

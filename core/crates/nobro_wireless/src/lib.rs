@@ -906,7 +906,10 @@ impl<B: BleStack> MountedBle<B> {
 
 /// Mesh primitives retain their focused implementation crate, while the domain
 /// facade gives applications one import path for link and mesh composition.
-pub use nobro_net::{PrioQueue, Route, RoutingTable, SeenSet, TimeSync};
+pub use nobro_net::{
+    DistributedDeadlineReceipt, NodeTimeClock, NodeTimeContract, NodeTimeCorrection, NodeTimeError,
+    NodeTimeObservation, NodeTimeReceipt, PrioQueue, Route, RoutingTable, SeenSet, TimeSync,
+};
 
 // ------------------------------------------------------------ native IP data plane
 

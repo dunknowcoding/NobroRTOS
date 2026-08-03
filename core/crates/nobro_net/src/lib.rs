@@ -9,6 +9,9 @@
 //! - [`Aggregator`] - bounded rollup of node readings (count/sum/min/max/mean)
 #![cfg_attr(not(test), no_std)]
 
+mod node_time;
+pub use node_time::*;
+
 /// One routing entry: reach `dest` via `next_hop` at `cost` hops, freshness `seq`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Route {

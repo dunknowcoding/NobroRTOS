@@ -103,16 +103,21 @@ would mask the deadline or watchdog priority.
 
 USB configuration is backend-dependent. `UsbConfig` is only a request: nRF generates
 its descriptors from it, RA4M1 accepts only the exported fixed descriptor value, and the
-ESP32-C3/S3 fixed-function controller ignores it. ESP configured-state host tests reject
+ESP32-C3/P4/S3 fixed-function controller accepts only `UsbConfig::controller_owned()`;
+other fields fail mount preflight rather than being ignored. ESP configured-state host tests reject
 the reset-high serial-empty flag and require post-probe EP1 token/OUT activity, but that
 model is not physical enumeration, suspend, disconnect, or recovery evidence. Pre-probe
 OUT data is boundedly discarded rather than reinterpreted, and transmit flush waits for
 a post-write empty event rather than treating FIFO capacity as completion; those register
 semantics still need silicon fault/recovery evidence. The public identity policy must be
 checked when host-visible VID/PID/string identity matters. A successful mount exposes an
-exact logical-instance receipt with a request fingerprint, advertised-identity class,
-backend id, MTU, buffer/service limits, lifecycle generation, and supported recovery
-operations; it does not turn a controller-owned identity into configurable descriptors.
+exact logical-instance receipt with the complete request and fingerprint,
+advertised-identity class, exact-family backend id, MTU, buffer/service limits,
+lifecycle generation, and supported recovery operations; it does not turn a
+controller-owned identity into configurable descriptors. Current mounts are permanent,
+have no hidden cancellable queue, and expose reset support per backend. Operation/fault
+receipts and the fixed backend-operation host report carry stable provenance but do not
+make a failed vendor controller recoverable.
 
 Bootloader and application USB identities are independent. `UsbConfig` and forced
 re-enumeration apply only to the mounted application backend; they do not select a

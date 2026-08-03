@@ -202,9 +202,9 @@ NobroRTOS hardware abstraction with portable traits and platform backends.
 ## `nobro-host`
 Host-side contract constants shared by scripts, tools, and documentation.
 - **trait**: `HostReport`
-- **struct**: `HostContract`, `BootDiagnostic`, `ReportSlot`, `BootSummary`, `BootReports`, `BoardProfileReport`, `BoardPackageReport`, `ManifestReport`, `AdapterCompatibilityReport`, `AiModelReport`, `RosBridgeReport`, `AdmissionReport`, `RuntimeReport`, `EventLogReport`, `ModuleRuntimeReport`, `DegradeApplicationReport`, `HealthReport`
+- **struct**: `HostContract`, `BootDiagnostic`, `ReportSlot`, `BootSummary`, `BootReports`, `BoardProfileReport`, `BoardPackageReport`, `ManifestReport`, `AdapterCompatibilityReport`, `AiModelReport`, `RosBridgeReport`, `AdmissionReport`, `RuntimeReport`, `EventLogReport`, `ModuleRuntimeReport`, `DegradeApplicationReport`, `HealthReport`, `BackendOperationReport`
 - **enum**: `BootLayout`, `ReportStatus`, `BootStage`
-- **fn**: `diagnostic`, `slots`, `summary`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_next_alarm_due_us`, `next_alarm_due_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_change_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_applied_at_us`, `applied_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_last_seen_us`, `last_seen_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`
+- **fn**: `diagnostic`, `slots`, `summary`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_next_alarm_due_us`, `next_alarm_due_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `latest_change_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_applied_at_us`, `applied_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_last_seen_us`, `last_seen_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`, `set_occurred_at_us`, `occurred_at_us`, `finalize_diagnostic`, `diagnostic_checksum_matches`, `status`
 
 ## `nobro-imu`
 Canonical, allocation-free IMU domain contracts for NobroRTOS.
@@ -289,9 +289,9 @@ Power-fail-safe, wear-leveled key-value flash store.
 ## `nobro-usb`
 Modular, mountable USB device stack for NobroRTOS.
 - **trait**: `UsbStack`
-- **struct**: `UsbInstanceId`, `UsbConfig`, `UsbCapabilities`, `UsbServiceLimits`, `UsbMountReceipt`, `MountedUsb`
-- **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbAdvertisedIdentity`, `UsbMountError`
-- **fn**: `config_supported`, `state`, `power_veto`, `write_all`, `read_available`, `flush_pending`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount_instance`, `try_mount`, `mount`
+- **struct**: `UsbInstanceId`, `UsbConfig`, `UsbCapabilities`, `UsbLifecycleSupport`, `UsbServiceLimits`, `UsbMountReceipt`, `UsbOperationReceipt`, `UsbOperationReport`, `MountedUsb`, `ReportedUsb`
+- **enum**: `CdcState`, `UsbBackendError`, `UsbIoError`, `UsbIdentityPolicy`, `UsbAdvertisedIdentity`, `UsbResetSupport`, `UsbOperationKind`, `UsbOperationStatus`, `UsbMountError`
+- **fn**: `to_host_report`, `config_supported`, `state`, `power_veto`, `write_all`, `read_available`, `flush_pending`, `mounted`, `mounted_mut`, `into_inner`, `write_all_reported`, `read_available_reported`, `reset_reported`, `stage`, `disconnect_link`, `reconnect_link`, `try_mount_instance`, `try_mount_reported_instance`, `try_mount`, `mount`
 
 ## `nobro-wireless`
 Allocation-free wireless domain: bounded link contracts, admission, and helpers.

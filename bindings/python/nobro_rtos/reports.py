@@ -26,6 +26,7 @@ ADAPTER_COMPAT_REPORT_MAGIC = 0x4E42_4143
 ADMISSION_REPORT_MAGIC = 0x4E42_4144
 RUNTIME_REPORT_MAGIC = 0x4E42_5254
 HEALTH_REPORT_MAGIC = 0x4E42_484C
+BACKEND_OPERATION_REPORT_MAGIC = 0x4E42_424F
 EVENT_LOG_REPORT_MAGIC = 0x4E42_454C
 MODULE_RUNTIME_REPORT_MAGIC = 0x4E42_4D52
 DEGRADE_APPLICATION_REPORT_MAGIC = 0x4E42_4447
@@ -197,6 +198,23 @@ HEALTH_FIELDS = (
     "diagnostic_checksum",
 )
 
+BACKEND_OPERATION_FIELDS = (
+    "magic",
+    "version",
+    "completed",
+    "module_tag",
+    "backend_id",
+    "logical_instance",
+    "lifecycle_generation",
+    "operation_sequence",
+    "operation_kind",
+    "status",
+    "fault_code",
+    "occurred_at_us_lo",
+    "occurred_at_us_hi",
+    "diagnostic_checksum",
+)
+
 EVENT_LOG_FIELDS = (
     "magic",
     "version",
@@ -258,6 +276,7 @@ class ReportKind(Enum):
     ADMISSION = "admission"
     RUNTIME = "runtime"
     HEALTH = "health"
+    BACKEND_OPERATION = "backend_operation"
     EVENT_LOG = "event_log"
     MODULE_RUNTIME = "module_runtime"
     DEGRADE_APPLICATION = "degrade_application"
@@ -482,6 +501,15 @@ class FixedReport:
                 None,
                 contract,
             )
+        if report_kind == ReportKind.BACKEND_OPERATION:
+            return cls(
+                report_kind,
+                _normalize_fields(payload, BACKEND_OPERATION_FIELDS),
+                BACKEND_OPERATION_REPORT_MAGIC,
+                None,
+                None,
+                contract,
+            )
         if report_kind == ReportKind.EVENT_LOG:
             return cls(
                 report_kind,
@@ -669,6 +697,21 @@ class FixedReport:
                     self.fields["last_seen_us_hi"],
                 ),
             }
+        if self.kind == ReportKind.BACKEND_OPERATION:
+            return {
+                "module_label": self._module_label(self.fields["module_tag"]),
+                "backend_id": self.fields["backend_id"],
+                "logical_instance": self.fields["logical_instance"],
+                "lifecycle_generation": self.fields["lifecycle_generation"],
+                "operation_sequence": self.fields["operation_sequence"],
+                "operation_kind": self.fields["operation_kind"],
+                "operation_status": self.fields["status"],
+                "fault_code": self.fields["fault_code"],
+                "occurred_at_us": _u64(
+                    self.fields["occurred_at_us_lo"],
+                    self.fields["occurred_at_us_hi"],
+                ),
+            }
         if self.kind == ReportKind.EVENT_LOG:
             return {
                 "event_count": self.fields["event_count"],
@@ -756,6 +799,9 @@ def finalize_diagnostic_report(kind: ReportKind | str, payload: dict[str, Any]) 
     elif report_kind == ReportKind.HEALTH:
         expected_magic = HEALTH_REPORT_MAGIC
         field_names = HEALTH_FIELDS
+    elif report_kind == ReportKind.BACKEND_OPERATION:
+        expected_magic = BACKEND_OPERATION_REPORT_MAGIC
+        field_names = BACKEND_OPERATION_FIELDS
     elif report_kind == ReportKind.EVENT_LOG:
         expected_magic = EVENT_LOG_REPORT_MAGIC
         field_names = EVENT_LOG_FIELDS

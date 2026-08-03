@@ -28,7 +28,7 @@ use nobro_port_ra4m1::system::{
     configure_system, SystemRegisters, MEMWAIT_48MHZ, SCI_BRR, SCKDIVCR_VALUE, SCKSCR_HOCO,
 };
 use nobro_port_ra4m1::usb_session::{HostCommand, NativeCommand, UsbReportCursor};
-use nobro_usb::UsbIoError;
+use nobro_usb::{backend_id, UsbIoError};
 use panic_halt as _;
 
 extern "C" {
@@ -495,7 +495,7 @@ fn print_event_dma_report(link: &Sci, report: EventDmaSelfTestReport) {
 
 #[entry]
 fn main() -> ! {
-    let system_ok = system_init();
+    let system_ok = system_init() && nobro_usb::capabilities().backend_id == backend_id::RA_USBFS;
     if !system_ok {
         clock_failure_signal();
     }
@@ -548,9 +548,9 @@ fn main() -> ! {
         "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=0 deadline=0 usb=0 all_pass=0\r\n"
     };
     let native_line = if core_evidence.with_usb(true).all_passes() {
-        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=1 deadline=1 usb=1 all_pass=1\r\n"
+        "NOBRO-RA4M1 backend=NURA arch=thumbv7em providers=3 timebase=1 deadline=1 usb=1 all_pass=1\r\n"
     } else {
-        "NOBRO-RA4M1 arch=thumbv7em providers=3 timebase=0 deadline=0 usb=1 all_pass=0\r\n"
+        "NOBRO-RA4M1 backend=NURA arch=thumbv7em providers=3 timebase=0 deadline=0 usb=1 all_pass=0\r\n"
     };
 
     // Keep the UNO R4 WiFi connector on the stock ESP32-S3 bridge. The bridge

@@ -1008,6 +1008,7 @@ version = "0.3.3"
 dependencies = [
  "cortex-m",
  "critical-section",
+ "nobro-host",
  "nobro-power",
  "nrf-usbd",
  "nrf52840-pac",

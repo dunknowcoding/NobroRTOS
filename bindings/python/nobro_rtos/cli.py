@@ -193,6 +193,7 @@ def main() -> int:
             "admission",
             "runtime",
             "health",
+            "backend_operation",
             "event_log",
             "module_runtime",
             "degrade_application",
@@ -2241,6 +2242,22 @@ def _sample_report(kind: str) -> dict[str, int]:
                 "last_seen_us_hi": 0x1,
             },
         )
+    if kind == "backend_operation":
+        return finalize_diagnostic_report(
+            ReportKind.BACKEND_OPERATION,
+            {
+                "module_tag": 7,
+                "backend_id": 0x5542_0004,
+                "logical_instance": 2,
+                "lifecycle_generation": 1,
+                "operation_sequence": 9,
+                "operation_kind": 2,
+                "status": 5,
+                "fault_code": 0x102,
+                "occurred_at_us_lo": 0x40,
+                "occurred_at_us_hi": 0x2,
+            },
+        )
     if kind == "event_log":
         return finalize_diagnostic_report(
             ReportKind.EVENT_LOG,
@@ -2340,6 +2357,7 @@ def _report_sample_decode_scenario() -> dict[str, object]:
         "admission",
         "runtime",
         "health",
+        "backend_operation",
         "event_log",
         "module_runtime",
         "degrade_application",
@@ -2360,6 +2378,12 @@ def _report_sample_decode_scenario() -> dict[str, object]:
         decoded["runtime"]["next_alarm_due_us"],
         0x1234_5678_9ABC,
         "runtime.next_alarm_due_us",
+        errors,
+    )
+    _expect_equal(
+        decoded["backend_operation"]["backend_id"],
+        0x5542_0004,
+        "backend_operation.backend_id",
         errors,
     )
     _expect_equal(

@@ -654,7 +654,7 @@ one backend:
 | `backend-ra-usbfs` | USBFS CDC device backend | implemented |
 
 The Cortex-M `usb_stack_demo` consumes only `try_mount()` + `UsbStack` and selects nRF
-USBD or RA4M1 USBFS. ESP32-C3/S3 use architecture-specific demos in their port crates;
+USBD or RA4M1 USBFS. ESP32-C3/P4/S3 use architecture-specific demos in their port crates;
 the Cortex-M package does not advertise impossible RISC-V/Xtensa features. Compile-time
 guards allow exactly one implemented backend. Its RA feature uses the exact exported
 identity and the 0x4000 RA4M1 application link map, but it is a compile/link contract;
@@ -674,11 +674,17 @@ into controller-only `UsbStack` recovery.
 
 `UsbConfig` is the requested identity. The nRF backend generates descriptors from it,
 the RA4M1 backend accepts only `RA4M1_USB_CONFIG`, and ESP USB-Serial-JTAG descriptors
-are fixed by the controller and ignore the request. The public `identity_policy()` and
-`config_supported()` facts keep accepted configuration distinct from host-visible
+are fixed by the controller and accept only the explicit controller-owned sentinel. The
+checked `UsbConfig` construction plus the public `identity_policy()` and
+`config_supported()` facts reject invented host-visible
 identity. `capabilities()` and the immutable successful-mount receipt bind one logical
-stack instance to the backend id, advertised-identity class, MTU, buffer/service limits,
-lifecycle generation, and supported recovery operations.
+stack instance to the exact-family backend id, requested VID/PID and full-request
+fingerprint, effective identity,
+MTU, buffer/service limits, lifecycle generation, and supported recovery operations.
+Reported I/O/reset paths carry the same stable backend provenance into a versioned fixed
+host report without machine-local identifiers. Mount ownership is permanent today;
+unmount and cancellation are explicitly unsupported, while reset support is reported per
+backend rather than inferred.
 
 The ESP link state fails closed: SOF establishes only a live bus. The backend clears
 reset-high `SERIAL_IN_EMPTY` without treating it as enumeration evidence, waits for a

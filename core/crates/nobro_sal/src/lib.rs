@@ -5,6 +5,9 @@
 
 #![no_std]
 
+mod ai_freshness;
+pub use ai_freshness::*;
+
 use nobro_kernel::{
     module_tag, CapabilitySet, Criticality, KernelError, ModuleId, ModuleSpec, Sample,
     SystemBudget, SystemProfile,
@@ -981,7 +984,8 @@ impl AiRoutePolicy {
         };
         let endpoint_circuit_open = state.consecutive_endpoint_failures >= endpoint_failure_limit;
         let fits_budget = contract.timeout_us <= budget_us;
-        let stale_ready = state.last_success_age_us <= self.effective_stale_after_us(contract);
+        let stale_after_us = self.effective_stale_after_us(contract);
+        let stale_ready = stale_after_us != 0 && state.last_success_age_us <= stale_after_us;
 
         if !fits_budget {
             return self.fallback(endpoint_circuit_open, stale_ready);
@@ -1389,6 +1393,7 @@ pub const AI_PREFLIGHT_STALE_SNAPSHOT: u32 = 1 << 6;
 pub const AI_PREFLIGHT_STALE_TOO_OLD: u32 = 1 << 7;
 pub const AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN: u32 = 1 << 8;
 pub const AI_PREFLIGHT_LOCAL_ARENA_MISSING: u32 = 1 << 9;
+pub const AI_PREFLIGHT_STALE_BOUND_MISSING: u32 = 1 << 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AiInvocationLimits {
@@ -1513,6 +1518,9 @@ pub fn preflight_ai_invocation(
     }
     if route.uses_stale_snapshot && !limits.allow_stale_snapshot {
         error_bits |= AI_PREFLIGHT_STALE_SNAPSHOT;
+    }
+    if route.uses_stale_snapshot && limits.max_stale_us == 0 {
+        error_bits |= AI_PREFLIGHT_STALE_BOUND_MISSING;
     }
     if route.uses_stale_snapshot
         && limits.max_stale_us > 0

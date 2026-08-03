@@ -172,22 +172,22 @@
     },
     {
       "source": "bindings/c/include/nobro_rtos.h",
-      "source_sha256": "dcc87c95a73c8727e57e74b2376b4ff0af3eee78bf4e5a916713d32a36f43ef8",
+      "source_sha256": "c5e40c93d2710d3df906cef99be8b81fc1852d1ac0c72ab00b375dbb35afa01f",
       "targets": [
         {
           "generated_banner": true,
           "path": "sdk/include/nobro_rtos.h",
-          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
+          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
         },
         {
           "generated_banner": true,
           "path": "packages/arduino/src/nobro_rtos.h",
-          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
+          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
         },
         {
           "generated_banner": true,
           "path": "packages/platformio/include/nobro_rtos.h",
-          "sha256": "15878bf45e26db64261645991e927597c8635633fc52aec6e7d8953577e33d80"
+          "sha256": "dd66831be35672bc7264c2b5818154acb7fc3b8d1d86fb1e7ed09abfca2817fb"
         }
       ]
     },
@@ -691,6 +691,7 @@
           "NOBRO_STATIC_ASSERT(sizeof(nobro_adapter_compat_report_t) == 14u * sizeof(uint32_t), \"unexpected adapter compatibility report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_admission_report_t) == 14u * sizeof(uint32_t), \"unexpected admission report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_ai_model_report_t) == 13u * sizeof(uint32_t), \"unexpected AI model report size\");",
+          "NOBRO_STATIC_ASSERT(sizeof(nobro_backend_operation_report_t) == 14u * sizeof(uint32_t), \"unexpected backend operation report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_board_package_report_t) == 20u * sizeof(uint32_t), \"unexpected board package report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_board_profile_report_t) == 15u * sizeof(uint32_t), \"unexpected board profile report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_degrade_application_report_t) == 10u * sizeof(uint32_t), \"unexpected degrade application report size\");",
@@ -701,11 +702,14 @@
           "NOBRO_STATIC_ASSERT(sizeof(nobro_ros_bridge_report_t) == 12u * sizeof(uint32_t), \"unexpected ROS bridge report size\");",
           "NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t), \"unexpected runtime report size\");",
           "static inline int nobro_report_status_is_passing(nobro_report_status_t status);",
+          "static inline nobro_ai_freshness_admission_t nobro_ai_admit_snapshot_freshness( nobro_ai_model_contract_t model, nobro_ai_route_policy_t route, nobro_ai_invocation_limits_t invocation, nobro_ai_snapshot_freshness_contract_t freshness );",
           "static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t model_id, uint32_t input_bytes, nobro_ai_invocation_limits_t limits );",
           "static inline nobro_ai_route_decision_t nobro_ai_route_decide( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract, nobro_ai_runtime_state_t state, uint32_t budget_us );",
+          "static inline nobro_ai_snapshot_use_receipt_t nobro_ai_assess_snapshot_freshness( nobro_ai_freshness_admission_t admission, nobro_ai_snapshot_stamp_t snapshot, uint64_t now_us );",
           "static inline nobro_report_status_t nobro_adapter_compat_report_status( const nobro_adapter_compat_report_t *report );",
           "static inline nobro_report_status_t nobro_admission_report_status( const nobro_admission_report_t *report );",
           "static inline nobro_report_status_t nobro_ai_model_report_status( const nobro_ai_model_report_t *report );",
+          "static inline nobro_report_status_t nobro_backend_operation_report_status( const nobro_backend_operation_report_t *report );",
           "static inline nobro_report_status_t nobro_board_package_report_status( const nobro_board_package_report_t *report );",
           "static inline nobro_report_status_t nobro_board_profile_report_status( const nobro_board_profile_report_t *report );",
           "static inline nobro_report_status_t nobro_degrade_application_report_status( const nobro_degrade_application_report_t *report );",
@@ -724,6 +728,7 @@
           "static inline uint32_t nobro_admission_report_diagnostic_checksum( const nobro_admission_report_t *report );",
           "static inline uint32_t nobro_ai_effective_stale_after_us( nobro_ai_route_policy_t policy, nobro_ai_model_contract_t contract );",
           "static inline uint32_t nobro_ai_model_report_diagnostic_checksum( const nobro_ai_model_report_t *report );",
+          "static inline uint32_t nobro_backend_operation_report_diagnostic_checksum( const nobro_backend_operation_report_t *report );",
           "static inline uint32_t nobro_board_package_report_diagnostic_checksum( const nobro_board_package_report_t *report );",
           "static inline uint32_t nobro_board_profile_report_diagnostic_checksum( const nobro_board_profile_report_t *report );",
           "static inline uint32_t nobro_degrade_application_report_diagnostic_checksum( const nobro_degrade_application_report_t *report );",
@@ -750,6 +755,7 @@
           "NOBRO_ADAPTER_COMPAT_REPORT_MAGIC",
           "NOBRO_ADMISSION_REPORT_MAGIC",
           "NOBRO_AI_MODEL_REPORT_MAGIC",
+          "NOBRO_AI_PREFLIGHT_CLOCK_REGRESSED",
           "NOBRO_AI_PREFLIGHT_DEGRADED_FALLBACK",
           "NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN",
           "NOBRO_AI_PREFLIGHT_INPUT_TOO_LARGE",
@@ -758,8 +764,11 @@
           "NOBRO_AI_PREFLIGHT_OUTPUT_TOO_SMALL",
           "NOBRO_AI_PREFLIGHT_RAM_EXCEEDED",
           "NOBRO_AI_PREFLIGHT_ROUTE_UNAVAILABLE",
+          "NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY",
+          "NOBRO_AI_PREFLIGHT_STALE_BOUND_MISSING",
           "NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT",
           "NOBRO_AI_PREFLIGHT_STALE_TOO_OLD",
+          "NOBRO_BACKEND_OPERATION_REPORT_MAGIC",
           "NOBRO_BOARD_PACKAGE_REPORT_MAGIC",
           "NOBRO_BOARD_PROFILE_REPORT_MAGIC",
           "NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC",
@@ -786,6 +795,7 @@
           "nobro_adapter_compat_report_t",
           "nobro_admission_report_t",
           "nobro_ai_backend_kind_t",
+          "nobro_ai_freshness_admission_t",
           "nobro_ai_invocation_limits_t",
           "nobro_ai_invocation_preflight_t",
           "nobro_ai_model_contract_t",
@@ -795,6 +805,12 @@
           "nobro_ai_route_preference_t",
           "nobro_ai_route_target_t",
           "nobro_ai_runtime_state_t",
+          "nobro_ai_snapshot_expiry_action_t",
+          "nobro_ai_snapshot_freshness_contract_t",
+          "nobro_ai_snapshot_stamp_t",
+          "nobro_ai_snapshot_use_decision_t",
+          "nobro_ai_snapshot_use_receipt_t",
+          "nobro_backend_operation_report_t",
           "nobro_board_package_report_t",
           "nobro_board_profile_report_t",
           "nobro_boot_stage_t",
@@ -815,7 +831,7 @@
           "nobro_runtime_report_t"
         ],
         "path": "bindings/c/include/nobro_rtos.h",
-        "sha256": "dcc87c95a73c8727e57e74b2376b4ff0af3eee78bf4e5a916713d32a36f43ef8"
+        "sha256": "c5e40c93d2710d3df906cef99be8b81fc1852d1ac0c72ab00b375dbb35afa01f"
       },
       {
         "declarations": [],
@@ -905,9 +921,12 @@
         "named_types": [
           "AdapterCompatReportView",
           "AdmissionReportView",
+          "AiFreshnessAdmissionView",
           "AiInvocationPreflightView",
           "AiModelReportView",
           "AiRouteDecisionView",
+          "AiSnapshotUseReceiptView",
+          "BackendOperationReportView",
           "BoardPackageReportView",
           "BoardProfileReportView",
           "DegradeApplicationReportView",
@@ -922,7 +941,7 @@
           "RuntimeReportView"
         ],
         "path": "bindings/cpp/include/nobro_rtos.hpp",
-        "sha256": "ac8c85e1c50f207887efa04179c1a8f5f8ff56718d9a78069468bd65d09ea203"
+        "sha256": "c6f77f1afd656d8f845d14ef0e56d810432ea1d3e9445608c46202f297204faf"
       }
     ],
     "python": {
@@ -940,6 +959,7 @@
         "TaskDeclaration",
         "WireDeclaration",
         "AiBackendKind",
+        "AiFreshnessAdmission",
         "AiInvocationConstraints",
         "AiModelContract",
         "AiPreflightReport",
@@ -948,6 +968,11 @@
         "AiRoutePreference",
         "AiRouteTarget",
         "AiRuntimeState",
+        "AiSnapshotExpiryAction",
+        "AiSnapshotFreshnessContract",
+        "AiSnapshotStamp",
+        "AiSnapshotUseDecision",
+        "AiSnapshotUseReceipt",
         "Capability",
         "CONTRACT_SCHEMA_VERSION",
         "Criticality",
@@ -964,6 +989,7 @@
         "StartupImpact",
         "StartupPlan",
         "capability_mask",
+        "admit_ai_snapshot_freshness",
         "capabilities_from_mask",
         "plan_startup",
         "preflight_ai_invocation",
@@ -1057,7 +1083,7 @@
       "modules": [
         {
           "path": "bindings/python/nobro_rtos/__init__.py",
-          "sha256": "bb25f7e657cd904f3b5c60a57341ce37b6262a909911745e9a3a2ff9cfb278d5"
+          "sha256": "2fb85abe859d493456fa837a23a98c49aa8daba956bd739ca616b6587f1f990a"
         },
         {
           "path": "bindings/python/nobro_rtos/__main__.py",
@@ -1069,11 +1095,11 @@
         },
         {
           "path": "bindings/python/nobro_rtos/cli.py",
-          "sha256": "cb8d556dbaa77a8bb89392f7c68f6a60b5d47f8fd899b1e52418407edce427f8"
+          "sha256": "8c7891ad85ce584bad15ac52fdb4749db240e83456ae6c1e4896697dab1fa5ff"
         },
         {
           "path": "bindings/python/nobro_rtos/contracts.py",
-          "sha256": "70caf5dec4ace1a187da7912428d6bc1f73a861c65fbf5f8dbe3cc84eb0ab4d3"
+          "sha256": "d0f0376108ba807759ad06c8b5a320139a1e520517050b7cdb81e6272a9c3540"
         },
         {
           "path": "bindings/python/nobro_rtos/diagnostics.py",
@@ -1081,11 +1107,11 @@
         },
         {
           "path": "bindings/python/nobro_rtos/distribution.py",
-          "sha256": "12176da5af616f9f6cf2d5c28333605684ee8c649249eabde2a3640bed4e67c0"
+          "sha256": "02a8a7bd5c4fb5a103b45eaa962eb5376449161c00229b6554585de2b361e3bc"
         },
         {
           "path": "bindings/python/nobro_rtos/host_contract.py",
-          "sha256": "fab62b86156a2bee35da9b2ca6aa1f4b030804c3c7c35469f64e484a9912fb7b"
+          "sha256": "fd23dd85d98ebdb6409d39b45b79517f7c27093c6d567659adc65195cf1da66a"
         },
         {
           "path": "bindings/python/nobro_rtos/module_gen.py",
@@ -1105,7 +1131,7 @@
         },
         {
           "path": "bindings/python/nobro_rtos/reports.py",
-          "sha256": "92bbe137f4694e8d263a6b61aa04b877e97c8e2e4fb1ef54df7d89738050fd32"
+          "sha256": "133cabcc1fe8f82f008beb41c94003a528ebc72967a9edf000eefe9838789638"
         },
         {
           "path": "bindings/python/nobro_rtos/rust_app_gen.py",
@@ -1133,7 +1159,7 @@
         }
       ],
       "path": "bindings/python/nobro_rtos/__init__.py",
-      "sha256": "bb25f7e657cd904f3b5c60a57341ce37b6262a909911745e9a3a2ff9cfb278d5"
+      "sha256": "2fb85abe859d493456fa837a23a98c49aa8daba956bd739ca616b6587f1f990a"
     },
     "rust": [
       {
@@ -2897,6 +2923,18 @@
           },
           {
             "kind": "const",
+            "name": "BACKEND_OPERATION_REPORT_SYMBOL"
+          },
+          {
+            "kind": "const",
+            "name": "BACKEND_OPERATION_REPORT_MAGIC"
+          },
+          {
+            "kind": "const",
+            "name": "BACKEND_OPERATION_REPORT_VERSION"
+          },
+          {
+            "kind": "const",
             "name": "EVENT_LOG_REPORT_SYMBOL"
           },
           {
@@ -3610,10 +3648,38 @@
           {
             "kind": "fn",
             "name": "status"
+          },
+          {
+            "kind": "struct",
+            "name": "BackendOperationReport"
+          },
+          {
+            "kind": "fn",
+            "name": "zeroed"
+          },
+          {
+            "kind": "fn",
+            "name": "set_occurred_at_us"
+          },
+          {
+            "kind": "fn",
+            "name": "occurred_at_us"
+          },
+          {
+            "kind": "fn",
+            "name": "finalize_diagnostic"
+          },
+          {
+            "kind": "fn",
+            "name": "diagnostic_checksum_matches"
+          },
+          {
+            "kind": "fn",
+            "name": "status"
           }
         ],
         "path": "core/crates/nobro_host/src/lib.rs",
-        "sha256": "3f5fa5895341149bb6ec2b275eb994e60909ae4bb6c38100daf7c4cd24f03149"
+        "sha256": "3b8492e87278b4dfddbcf2dd5ac4a79758bd3e9679b8646d453397a502cdcb5e"
       },
       {
         "crate": "nobro-imu",
@@ -4425,7 +4491,7 @@
           }
         ],
         "path": "core/crates/nobro_net/src/lib.rs",
-        "sha256": "91047f2f6e324ad133f48c6fafe1b1da654706d29748114ed21db59646458f83"
+        "sha256": "a012d0b0ef1000995b38df8bedca15e9dd2b7461b894024a6394e499ca3d5bbd"
       },
       {
         "crate": "nobro-nn",
@@ -5437,6 +5503,10 @@
             "name": "AI_PREFLIGHT_LOCAL_ARENA_MISSING"
           },
           {
+            "kind": "const",
+            "name": "AI_PREFLIGHT_STALE_BOUND_MISSING"
+          },
+          {
             "kind": "struct",
             "name": "AiInvocationLimits"
           },
@@ -5490,7 +5560,7 @@
           }
         ],
         "path": "core/crates/nobro_sal/src/lib.rs",
-        "sha256": "8fd589dfe96ab522155463112a0d581389822748aac7eab0a0eaf3b48fdaf589"
+        "sha256": "8946a5029cc064fcda150bc688c8ae21ecc902dc7e94d9a03ddbf437282ec1bd"
       },
       {
         "crate": "nobro-secure",
@@ -6274,6 +6344,10 @@
             "name": "UsbBackendError"
           },
           {
+            "kind": "fn",
+            "name": "code"
+          },
+          {
             "kind": "enum",
             "name": "UsbIoError"
           },
@@ -6284,6 +6358,34 @@
           {
             "kind": "fn",
             "name": "new"
+          },
+          {
+            "kind": "fn",
+            "name": "controller_owned"
+          },
+          {
+            "kind": "fn",
+            "name": "is_controller_owned"
+          },
+          {
+            "kind": "fn",
+            "name": "vid"
+          },
+          {
+            "kind": "fn",
+            "name": "pid"
+          },
+          {
+            "kind": "fn",
+            "name": "manufacturer"
+          },
+          {
+            "kind": "fn",
+            "name": "product"
+          },
+          {
+            "kind": "fn",
+            "name": "serial"
           },
           {
             "kind": "enum",
@@ -6298,12 +6400,40 @@
             "name": "UsbCapabilities"
           },
           {
+            "kind": "enum",
+            "name": "UsbResetSupport"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbLifecycleSupport"
+          },
+          {
             "kind": "struct",
             "name": "UsbServiceLimits"
           },
           {
             "kind": "struct",
             "name": "UsbMountReceipt"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbOperationKind"
+          },
+          {
+            "kind": "enum",
+            "name": "UsbOperationStatus"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbOperationReceipt"
+          },
+          {
+            "kind": "fn",
+            "name": "to_host_report"
+          },
+          {
+            "kind": "struct",
+            "name": "UsbOperationReport"
           },
           {
             "kind": "enum",
@@ -6331,7 +6461,15 @@
           },
           {
             "kind": "const",
-            "name": "USB_SERIAL_JTAG"
+            "name": "USB_SERIAL_JTAG_ESP32C3"
+          },
+          {
+            "kind": "const",
+            "name": "USB_SERIAL_JTAG_ESP32P4"
+          },
+          {
+            "kind": "const",
+            "name": "USB_SERIAL_JTAG_ESP32S3"
           },
           {
             "kind": "const",
@@ -6370,6 +6508,42 @@
             "name": "flush_pending"
           },
           {
+            "kind": "struct",
+            "name": "ReportedUsb"
+          },
+          {
+            "kind": "fn",
+            "name": "instance"
+          },
+          {
+            "kind": "fn",
+            "name": "lifecycle_generation"
+          },
+          {
+            "kind": "fn",
+            "name": "mounted"
+          },
+          {
+            "kind": "fn",
+            "name": "mounted_mut"
+          },
+          {
+            "kind": "fn",
+            "name": "into_inner"
+          },
+          {
+            "kind": "fn",
+            "name": "write_all_reported"
+          },
+          {
+            "kind": "fn",
+            "name": "read_available_reported"
+          },
+          {
+            "kind": "fn",
+            "name": "reset_reported"
+          },
+          {
             "kind": "fn",
             "name": "stage"
           },
@@ -6387,6 +6561,10 @@
           },
           {
             "kind": "fn",
+            "name": "try_mount_reported_instance"
+          },
+          {
+            "kind": "fn",
             "name": "try_mount"
           },
           {
@@ -6395,7 +6573,7 @@
           }
         ],
         "path": "core/crates/nobro_usb/src/lib.rs",
-        "sha256": "94b4fa3067d30c3339249e642d6183c1093676adc5d9860ac4cd4504ccc38df9"
+        "sha256": "f5ac31c54d90fad83e90660922189fd201a6433f41a4504d915493e1526f1feb"
       },
       {
         "crate": "nobro-wireless",
@@ -7098,7 +7276,7 @@
           }
         ],
         "path": "core/crates/nobro_wireless/src/lib.rs",
-        "sha256": "26ad43d57747b9b729c8e9dfc11989eff4911055c488d4be5046cca415aafc0b"
+        "sha256": "2f09cada65a98e74f01c19823a31c78862c14bb18ed61c98df9f9c053eae3f20"
       },
       {
         "crate": "nobro-adapter-motion-ai",

@@ -41,8 +41,7 @@ fn main() -> ! {
     let mut alarm = Esp32P4Alarm::new(OneShotTimer::new(timers.timer0));
     // USB Serial/JTAG owns the descriptors. The request is retained only for the
     // common mount receipt and is not advertised by the controller.
-    let usb_cfg =
-        nobro_usb::UsbConfig::new(0x303A, 0x1001, "NiusRobotLab", "NobroRTOS USB-SJ", "NBROP4");
+    let usb_cfg = nobro_usb::UsbConfig::controller_owned();
     let usb_controller = UsbSerialJtag::new(peripherals.USB_DEVICE);
     let mut usb = match nobro_usb::try_mount(&usb_cfg) {
         Ok(usb) => Esp32P4Usb::new(usb_controller, usb),
@@ -92,7 +91,7 @@ fn main() -> ! {
     let csi_session = EspP4CsiSession::try_acquire(csi_plan, 0xC5).unwrap();
     let csi_contract_ok = csi_session.ensure_live().is_ok() && csi_session.plan() == csi_plan;
     let usb_stack_ok =
-        nobro_usb::capabilities().backend_id == nobro_usb::backend_id::USB_SERIAL_JTAG;
+        nobro_usb::capabilities().backend_id == nobro_usb::backend_id::USB_SERIAL_JTAG_ESP32P4;
     let providers_ok = Esp32P4Providers::supports(required)
         && routes_ok
         && media_truthful

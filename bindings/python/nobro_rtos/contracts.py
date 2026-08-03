@@ -73,6 +73,19 @@ class AiRouteTarget(IntEnum):
     UNAVAILABLE = 6
 
 
+class AiSnapshotExpiryAction(IntEnum):
+    DEGRADE = 1
+    RECOMPUTE = 2
+    FAIL = 3
+
+
+class AiSnapshotUseDecision(IntEnum):
+    USE = 1
+    DEGRADE = 2
+    RECOMPUTE = 3
+    FAIL = 4
+
+
 def capability_mask(*capabilities: Capability) -> int:
     mask = 0
     for capability in capabilities:
@@ -384,7 +397,8 @@ class AiRoutePolicy:
 
         failure_limit = self.endpoint_failure_limit or 1
         endpoint_circuit_open = state.consecutive_endpoint_failures >= failure_limit
-        stale_ready = state.last_success_age_us <= self.effective_stale_after_us(contract)
+        stale_after_us = self.effective_stale_after_us(contract)
+        stale_ready = stale_after_us != 0 and state.last_success_age_us <= stale_after_us
         fits_budget = contract.timeout_us <= budget_us
 
         if not fits_budget:
@@ -494,6 +508,98 @@ class AiRoutePolicy:
 
 
 @dataclass(frozen=True)
+class AiSnapshotFreshnessContract:
+    max_age_us: int
+    expiry_action: AiSnapshotExpiryAction
+
+    def validate(self) -> None:
+        _validate_positive("max_age_us", self.max_age_us)
+        AiSnapshotExpiryAction(self.expiry_action)
+
+
+@dataclass(frozen=True)
+class AiSnapshotStamp:
+    model_id: int
+    generation: int
+    produced_at_us: int
+
+    def validate(self) -> None:
+        _validate_positive("model_id", self.model_id)
+        _validate_positive("generation", self.generation)
+        if self.produced_at_us < 0:
+            raise ValueError("produced_at_us cannot be negative")
+
+
+@dataclass(frozen=True)
+class AiSnapshotUseReceipt:
+    model_id: int
+    snapshot_generation: int
+    age_us: int
+    max_age_us: int
+    decision: AiSnapshotUseDecision
+
+
+@dataclass(frozen=True)
+class AiFreshnessAdmission:
+    model_id: int
+    max_age_us: int
+    expiry_action: AiSnapshotExpiryAction
+
+    def validate(self) -> None:
+        _validate_positive("model_id", self.model_id)
+        _validate_positive("max_age_us", self.max_age_us)
+        AiSnapshotExpiryAction(self.expiry_action)
+
+    def assess(self, snapshot: AiSnapshotStamp, now_us: int) -> AiSnapshotUseReceipt:
+        self.validate()
+        snapshot.validate()
+        if snapshot.model_id != self.model_id:
+            raise ValueError("snapshot model identity does not match admission")
+        if now_us < snapshot.produced_at_us:
+            raise ValueError("snapshot clock regressed")
+        age_us = now_us - snapshot.produced_at_us
+        if age_us <= self.max_age_us:
+            decision = AiSnapshotUseDecision.USE
+        else:
+            decision = {
+                AiSnapshotExpiryAction.DEGRADE: AiSnapshotUseDecision.DEGRADE,
+                AiSnapshotExpiryAction.RECOMPUTE: AiSnapshotUseDecision.RECOMPUTE,
+                AiSnapshotExpiryAction.FAIL: AiSnapshotUseDecision.FAIL,
+            }[self.expiry_action]
+        return AiSnapshotUseReceipt(
+            model_id=snapshot.model_id,
+            snapshot_generation=snapshot.generation,
+            age_us=age_us,
+            max_age_us=self.max_age_us,
+            decision=decision,
+        )
+
+
+def admit_ai_snapshot_freshness(
+    model: AiModelContract,
+    route: AiRoutePolicy,
+    invocation: AiInvocationConstraints,
+    freshness: AiSnapshotFreshnessContract,
+) -> AiFreshnessAdmission:
+    model.validate()
+    route.validate()
+    invocation.validate()
+    freshness.validate()
+    if not invocation.allow_stale_snapshot:
+        raise ValueError("stale snapshot route is disabled")
+    if invocation.max_stale_us == 0:
+        raise ValueError("stale snapshot invocation bound is missing")
+    route_bound = route.effective_stale_after_us(model)
+    if route_bound == 0:
+        raise ValueError("stale snapshot route bound is missing")
+    return AiFreshnessAdmission(
+        model_id=model.model_id,
+        max_age_us=min(route_bound, invocation.max_stale_us, freshness.max_age_us),
+        expiry_action=freshness.expiry_action,
+    )
+
+
+@dataclass(frozen=True)
 class AiPreflightReport:
     passing: bool
     errors: tuple[str, ...]
@@ -584,6 +690,8 @@ def preflight_ai_invocation(
         errors.append("AI route used degraded fallback")
     if route.uses_stale_snapshot and not constraints.allow_stale_snapshot:
         errors.append("AI route used a stale snapshot")
+    if route.uses_stale_snapshot and constraints.max_stale_us == 0:
+        errors.append("AI stale snapshot invocation bound is missing")
     if (
         route.uses_stale_snapshot
         and constraints.max_stale_us > 0

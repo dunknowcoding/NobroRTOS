@@ -454,10 +454,11 @@ maintained in the public [limitations matrix](docs/LIMITATIONS.md).
 | Boot assembly facade | Present | No-heap app startup helper preserving manifest/admission reports |
 | Board package validation | Present | Boot layout, flash/RAM region, capacity, critical pins |
 | Board package catalog | Present | Host-reviewable package list for current boot layouts |
-| Host ABI contract | Present | JSON contract plus `nobro-host` layouts and status helpers |
+| Host ABI contract | Present | JSON contract plus `nobro-host` layouts, status helpers, and stable module/backend operation provenance |
 | Adapter compatibility | Present | Descriptor sets, preflight, compatibility report |
 | AI adapter contract | Present | Bounded inference request/result contract, route policy, and host-readable model reports |
-| AI route policy | Present | Local, edge, remote, and hybrid inference routing with stale snapshot fallback |
+| AI route policy | Present | Local, edge, remote, and hybrid routing; stale snapshots require bounded admission/use checks and explicit expiry action |
+| Optional node time | Present | Identified observations, uncertainty/holdover, bounded step or slew, and distributed-deadline admission; packet exchange alone is not synchronization |
 | On-device inference | Present | Bounded `AiInferenceSal` motion classifier with explicit memory and timeout contracts |
 | Multi-board expansion | In progress | Data-first board profiles in `core/boards/` mirror the HAL board catalog; portable crates cross-compile for Cortex-M and RISC-V families through `tools/checks/platforms/check_portability.sh` |
 | Host tooling UX | In progress | Host, report, boot, and distribution metadata checks are available |

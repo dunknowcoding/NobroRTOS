@@ -9,6 +9,11 @@ from unittest import mock
 
 from nobro_rtos import (
     AiBackendKind,
+    AiFreshnessAdmission,
+    AiSnapshotExpiryAction,
+    AiSnapshotFreshnessContract,
+    AiSnapshotStamp,
+    AiSnapshotUseDecision,
     AiInvocationConstraints,
     AiModelContract,
     AiRoutePolicy,
@@ -63,6 +68,7 @@ from nobro_rtos import (
     TemplateFile,
     WatchdogSimulator,
     build_project_template,
+    admit_ai_snapshot_freshness,
     capabilities_from_mask,
     load_repo_host_contract,
     materialize_project_template,
@@ -181,11 +187,11 @@ class ContractBuilderTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[3]
         report = validate_public_header_surface(repo_root)
 
-        self.assertEqual(report.c_report_count, 12)
-        self.assertEqual(report.cpp_view_count, 12)
+        self.assertEqual(report.c_report_count, 13)
+        self.assertEqual(report.cpp_view_count, 13)
         self.assertIn("nobro_ai_route_decide", report.c_helpers)
         self.assertIn("nobro_ai_effective_stale_after_us", report.c_helpers)
-        self.assertEqual(len(report.c_preflight_bits), 15)
+        self.assertEqual(len(report.c_preflight_bits), 18)
         self.assertIn(
             "NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING",
             report.c_preflight_bits,
@@ -262,7 +268,7 @@ class ContractBuilderTests(unittest.TestCase):
             report["distribution"]["python_package_name"],
             "nobro-rtos",
         )
-        self.assertEqual(report["public_headers"]["c_report_count"], 12)
+        self.assertEqual(report["public_headers"]["c_report_count"], 13)
         self.assertIn("nobro_ai_route_decide", report["public_headers"]["c_helpers"])
         self.assertIn(
             "RecoveryRuntimeSimulator",
@@ -1008,6 +1014,7 @@ class ContractBuilderTests(unittest.TestCase):
             "admission_report": "NOBRO_ADMISSION_REPORT_MAGIC",
             "runtime_report": "NOBRO_RUNTIME_REPORT_MAGIC",
             "health_report": "NOBRO_HEALTH_REPORT_MAGIC",
+            "backend_operation_report": "NOBRO_BACKEND_OPERATION_REPORT_MAGIC",
             "event_log_report": "NOBRO_EVENT_LOG_REPORT_MAGIC",
             "module_runtime_report": "NOBRO_MODULE_RUNTIME_REPORT_MAGIC",
             "degrade_application_report": "NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC",
@@ -1022,6 +1029,7 @@ class ContractBuilderTests(unittest.TestCase):
             "admission_report": "nobro_admission_report_t",
             "runtime_report": "nobro_runtime_report_t",
             "health_report": "nobro_health_report_t",
+            "backend_operation_report": "nobro_backend_operation_report_t",
             "event_log_report": "nobro_event_log_report_t",
             "module_runtime_report": "nobro_module_runtime_report_t",
             "degrade_application_report": "nobro_degrade_application_report_t",
@@ -1047,6 +1055,8 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro_ai_model_contract_t",
             "nobro_ai_route_policy_t",
             "nobro_ai_effective_stale_after_us",
+            "nobro_ai_admit_snapshot_freshness",
+            "nobro_ai_assess_snapshot_freshness",
             "nobro_ai_route_decide",
             "nobro_ai_invocation_limits_t",
             "nobro_ai_invocation_preflight_t",
@@ -1069,6 +1079,7 @@ class ContractBuilderTests(unittest.TestCase):
             "nobro_admission_report_status",
             "nobro_runtime_report_status",
             "nobro_health_report_status",
+            "nobro_backend_operation_report_status",
             "nobro_event_log_report_status",
             "nobro_module_runtime_report_status",
             "nobro_degrade_application_report_status",
@@ -1079,6 +1090,10 @@ class ContractBuilderTests(unittest.TestCase):
             "stable_hash32",
             "AiRouteDecisionView",
             "AiInvocationPreflightView",
+            "AiFreshnessAdmissionView",
+            "AiSnapshotUseReceiptView",
+            "admit_ai_snapshot_freshness",
+            "assess_ai_snapshot_freshness",
             "AiModelReportView",
             "decide_ai_route",
             "preflight_ai_invocation",
@@ -1092,6 +1107,7 @@ class ContractBuilderTests(unittest.TestCase):
             "AdmissionReportView",
             "RuntimeReportView",
             "HealthReportView",
+            "BackendOperationReportView",
             "EventLogReportView",
             "ModuleRuntimeReportView",
             "DegradeApplicationReportView",
@@ -1568,6 +1584,61 @@ class ContractBuilderTests(unittest.TestCase):
             ).target,
             AiRouteTarget.DEGRADED_FALLBACK,
         )
+
+    def test_ai_snapshot_freshness_is_bounded_at_admission_and_use(self) -> None:
+        model = AiModelContract(
+            42,
+            AiBackendKind.HYBRID,
+            128,
+            32,
+            4096,
+            20_000,
+            80,
+        )
+        route = AiRoutePolicy(AiRoutePreference.HYBRID_FALLBACK, 70, 2)
+        invocation = AiInvocationConstraints(
+            128,
+            32,
+            0,
+            20_000,
+            max_stale_us=60,
+            allow_stale_snapshot=True,
+        )
+        admission = admit_ai_snapshot_freshness(
+            model,
+            route,
+            invocation,
+            AiSnapshotFreshnessContract(50, AiSnapshotExpiryAction.RECOMPUTE),
+        )
+        self.assertEqual(admission.max_age_us, 50)
+        snapshot = AiSnapshotStamp(42, 3, 100)
+        self.assertEqual(
+            admission.assess(snapshot, 150).decision,
+            AiSnapshotUseDecision.USE,
+        )
+        self.assertEqual(
+            admission.assess(snapshot, 151).decision,
+            AiSnapshotUseDecision.RECOMPUTE,
+        )
+        with self.assertRaisesRegex(ValueError, "invocation bound"):
+            admit_ai_snapshot_freshness(
+                model,
+                route,
+                AiInvocationConstraints(
+                    128,
+                    32,
+                    0,
+                    20_000,
+                    allow_stale_snapshot=True,
+                ),
+                AiSnapshotFreshnessContract(50, AiSnapshotExpiryAction.FAIL),
+            )
+        with self.assertRaisesRegex(ValueError, "max_age_us"):
+            AiFreshnessAdmission(
+                42,
+                0,
+                AiSnapshotExpiryAction.FAIL,
+            ).assess(snapshot, 151)
 
     def test_ai_invocation_preflight_checks_buffers_ram_and_capabilities(self) -> None:
         model = AiModelContract(
@@ -2259,6 +2330,7 @@ class ContractBuilderTests(unittest.TestCase):
             "admission": ReportKind.ADMISSION,
             "runtime": ReportKind.RUNTIME,
             "health": ReportKind.HEALTH,
+            "backend_operation": ReportKind.BACKEND_OPERATION,
             "event_log": ReportKind.EVENT_LOG,
             "module_runtime": ReportKind.MODULE_RUNTIME,
             "degrade_application": ReportKind.DEGRADE_APPLICATION,
@@ -2272,6 +2344,8 @@ class ContractBuilderTests(unittest.TestCase):
         self.assertTrue(decoded["admission"]["admitted"])
         self.assertEqual(decoded["runtime"]["next_alarm_due_us"], 0x1234_5678_9ABC)
         self.assertEqual(decoded["health"]["module_label"], "sensor")
+        self.assertEqual(decoded["backend_operation"]["backend_id"], 0x5542_0004)
+        self.assertEqual(decoded["backend_operation"]["fault_code"], 0x102)
         self.assertEqual(decoded["event_log"]["latest_module_label"], "sensor")
         self.assertEqual(decoded["module_runtime"]["latest_change_us"], 0x1_0000_00C0)
         self.assertEqual(decoded["degrade_application"]["applied_at_us"], 0x1_0000_0020)

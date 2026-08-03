@@ -118,6 +118,81 @@ inline AiInvocationPreflightView preflight_ai_invocation(
     return AiInvocationPreflightView(out);
 }
 
+class AiFreshnessAdmissionView {
+public:
+    constexpr explicit AiFreshnessAdmissionView(
+        const nobro_ai_freshness_admission_t& admission
+    ) noexcept
+        : admission_(&admission) {}
+
+    constexpr bool passing() const noexcept {
+        return admission_->error_bits == 0u;
+    }
+
+    constexpr std::uint32_t model_id() const noexcept {
+        return admission_->model_id;
+    }
+
+    constexpr std::uint32_t max_age_us() const noexcept {
+        return admission_->max_age_us;
+    }
+
+    constexpr std::uint32_t error_bits() const noexcept {
+        return admission_->error_bits;
+    }
+
+private:
+    const nobro_ai_freshness_admission_t* admission_;
+};
+
+inline AiFreshnessAdmissionView admit_ai_snapshot_freshness(
+    const nobro_ai_model_contract_t& model,
+    const nobro_ai_route_policy_t& route,
+    const nobro_ai_invocation_limits_t& invocation,
+    const nobro_ai_snapshot_freshness_contract_t& freshness,
+    nobro_ai_freshness_admission_t& out
+) noexcept {
+    out = nobro_ai_admit_snapshot_freshness(model, route, invocation, freshness);
+    return AiFreshnessAdmissionView(out);
+}
+
+class AiSnapshotUseReceiptView {
+public:
+    constexpr explicit AiSnapshotUseReceiptView(
+        const nobro_ai_snapshot_use_receipt_t& receipt
+    ) noexcept
+        : receipt_(&receipt) {}
+
+    constexpr bool passing() const noexcept {
+        return receipt_->error_bits == 0u;
+    }
+
+    constexpr std::uint64_t age_us() const noexcept {
+        return receipt_->age_us;
+    }
+
+    constexpr std::uint8_t decision() const noexcept {
+        return receipt_->decision;
+    }
+
+    constexpr std::uint32_t error_bits() const noexcept {
+        return receipt_->error_bits;
+    }
+
+private:
+    const nobro_ai_snapshot_use_receipt_t* receipt_;
+};
+
+inline AiSnapshotUseReceiptView assess_ai_snapshot_freshness(
+    const nobro_ai_freshness_admission_t& admission,
+    const nobro_ai_snapshot_stamp_t& snapshot,
+    std::uint64_t now_us,
+    nobro_ai_snapshot_use_receipt_t& out
+) noexcept {
+    out = nobro_ai_assess_snapshot_freshness(admission, snapshot, now_us);
+    return AiSnapshotUseReceiptView(out);
+}
+
 class RosBridgeContractView {
 public:
     constexpr explicit RosBridgeContractView(const nobro_ros_bridge_contract_t& contract) noexcept
@@ -457,6 +532,43 @@ public:
 
 private:
     const nobro_health_report_t* report_;
+};
+
+class BackendOperationReportView {
+public:
+    constexpr explicit BackendOperationReportView(
+        const nobro_backend_operation_report_t& report
+    ) noexcept
+        : report_(&report) {}
+
+    ReportStatus status() const noexcept {
+        return static_cast<ReportStatus>(
+            nobro_backend_operation_report_status(report_)
+        );
+    }
+
+    constexpr std::uint32_t module_tag() const noexcept {
+        return report_->module_tag;
+    }
+
+    constexpr std::uint32_t backend_id() const noexcept {
+        return report_->backend_id;
+    }
+
+    constexpr std::uint32_t logical_instance() const noexcept {
+        return report_->logical_instance;
+    }
+
+    constexpr std::uint32_t operation_sequence() const noexcept {
+        return report_->operation_sequence;
+    }
+
+    constexpr std::uint32_t fault_code() const noexcept {
+        return report_->fault_code;
+    }
+
+private:
+    const nobro_backend_operation_report_t* report_;
 };
 
 class EventLogReportView {

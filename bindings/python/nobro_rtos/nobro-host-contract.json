@@ -129,6 +129,12 @@
     "version": 1,
     "layout": "repr(C) u32 fields; 64-bit timestamps split into lo/hi"
   },
+  "backend_operation_report": {
+    "symbol": "NOBRO_BACKEND_OPERATION_REPORT",
+    "magic": "0x4E42424F",
+    "version": 1,
+    "layout": "repr(C) u32 fields; stable numeric backend and logical-instance provenance; no host-local paths or device names; occurred timestamp split into lo/hi"
+  },
   "event_log_report": {
     "symbol": "NOBRO_EVENT_LOG_REPORT",
     "magic": "0x4E42454C",

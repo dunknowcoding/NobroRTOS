@@ -14,6 +14,9 @@ pub const APP_START_S140_V6: u32 = 0x26000;
 
 pub const HEALTH_REPORT_SYMBOL: &str = "NOBRO_HEALTH_REPORT";
 pub const HEALTH_REPORT_MAGIC: u32 = 0x4E42_484C;
+pub const BACKEND_OPERATION_REPORT_SYMBOL: &str = "NOBRO_BACKEND_OPERATION_REPORT";
+pub const BACKEND_OPERATION_REPORT_MAGIC: u32 = 0x4E42_424F;
+pub const BACKEND_OPERATION_REPORT_VERSION: u32 = 1;
 pub const EVENT_LOG_REPORT_SYMBOL: &str = "NOBRO_EVENT_LOG_REPORT";
 pub const EVENT_LOG_REPORT_MAGIC: u32 = 0x4E42_454C;
 pub const EVENT_LOG_REPORT_VERSION: u32 = 1;
@@ -1889,6 +1892,108 @@ impl HealthReport {
     }
 }
 
+/// Fixed, host-readable attribution for the latest backend operation or fault.
+///
+/// `backend_id` is a stable public numeric identifier. It must never contain a
+/// host path, COM number, probe serial, or another machine-local identifier.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BackendOperationReport {
+    pub magic: u32,
+    pub version: u32,
+    pub completed: u32,
+    pub module_tag: u32,
+    pub backend_id: u32,
+    pub logical_instance: u32,
+    pub lifecycle_generation: u32,
+    pub operation_sequence: u32,
+    pub operation_kind: u32,
+    pub status: u32,
+    pub fault_code: u32,
+    pub occurred_at_us_lo: u32,
+    pub occurred_at_us_hi: u32,
+    pub diagnostic_checksum: u32,
+}
+
+impl BackendOperationReport {
+    pub const fn zeroed() -> Self {
+        Self {
+            magic: 0,
+            version: 0,
+            completed: 0,
+            module_tag: 0,
+            backend_id: 0,
+            logical_instance: 0,
+            lifecycle_generation: 0,
+            operation_sequence: 0,
+            operation_kind: 0,
+            status: 0,
+            fault_code: 0,
+            occurred_at_us_lo: 0,
+            occurred_at_us_hi: 0,
+            diagnostic_checksum: 0,
+        }
+    }
+
+    pub fn set_occurred_at_us(&mut self, occurred_at_us: u64) {
+        self.occurred_at_us_lo = occurred_at_us as u32;
+        self.occurred_at_us_hi = (occurred_at_us >> 32) as u32;
+    }
+
+    pub fn occurred_at_us(&self) -> u64 {
+        (u64::from(self.occurred_at_us_hi) << 32) | u64::from(self.occurred_at_us_lo)
+    }
+
+    pub fn finalize_diagnostic(&mut self) {
+        self.magic = BACKEND_OPERATION_REPORT_MAGIC;
+        self.version = BACKEND_OPERATION_REPORT_VERSION;
+        self.completed = 1;
+        self.diagnostic_checksum = 0;
+        self.diagnostic_checksum = self.compute_diagnostic_checksum();
+    }
+
+    pub fn diagnostic_checksum_matches(&self) -> bool {
+        self.magic == BACKEND_OPERATION_REPORT_MAGIC
+            && self.version == BACKEND_OPERATION_REPORT_VERSION
+            && self.diagnostic_checksum == self.compute_diagnostic_checksum()
+    }
+
+    pub fn status(&self) -> ReportStatus {
+        if self.magic == 0 && self.version == 0 && self.diagnostic_checksum == 0 {
+            return ReportStatus::Missing;
+        }
+        if self.magic != BACKEND_OPERATION_REPORT_MAGIC
+            || self.version != BACKEND_OPERATION_REPORT_VERSION
+        {
+            return ReportStatus::Corrupt;
+        }
+        if self.completed == 0 {
+            return ReportStatus::InProgress;
+        }
+        if self.diagnostic_checksum_matches() {
+            ReportStatus::Pass
+        } else {
+            ReportStatus::Corrupt
+        }
+    }
+
+    fn compute_diagnostic_checksum(&self) -> u32 {
+        self.magic
+            ^ self.version
+            ^ self.completed
+            ^ self.module_tag
+            ^ self.backend_id
+            ^ self.logical_instance
+            ^ self.lifecycle_generation
+            ^ self.operation_sequence
+            ^ self.operation_kind
+            ^ self.status
+            ^ self.fault_code
+            ^ self.occurred_at_us_lo
+            ^ self.occurred_at_us_hi
+    }
+}
+
 impl_host_report!(
     BoardProfileReport,
     BOARD_PROFILE_REPORT_SYMBOL,
@@ -1961,6 +2066,12 @@ impl_host_report!(
     HEALTH_REPORT_MAGIC,
     HealthReport::VERSION
 );
+impl_host_report!(
+    BackendOperationReport,
+    BACKEND_OPERATION_REPORT_SYMBOL,
+    BACKEND_OPERATION_REPORT_MAGIC,
+    BACKEND_OPERATION_REPORT_VERSION
+);
 
 #[cfg(test)]
 extern crate std;
@@ -1994,6 +2105,12 @@ mod tests {
     fn report_contracts_are_stable() {
         assert_eq!(HEALTH_REPORT_SYMBOL, "NOBRO_HEALTH_REPORT");
         assert_eq!(HEALTH_REPORT_MAGIC, 0x4E42_484C);
+        assert_eq!(
+            BACKEND_OPERATION_REPORT_SYMBOL,
+            "NOBRO_BACKEND_OPERATION_REPORT"
+        );
+        assert_eq!(BACKEND_OPERATION_REPORT_MAGIC, 0x4E42_424F);
+        assert_eq!(BACKEND_OPERATION_REPORT_VERSION, 1);
         assert_eq!(EVENT_LOG_REPORT_SYMBOL, "NOBRO_EVENT_LOG_REPORT");
         assert_eq!(EVENT_LOG_REPORT_MAGIC, 0x4E42_454C);
         assert_eq!(EVENT_LOG_REPORT_VERSION, 1);
@@ -2029,6 +2146,7 @@ mod tests {
     #[test]
     fn json_contract_mentions_host_report_symbols() {
         assert!(HOST_CONTRACT_JSON.contains(HEALTH_REPORT_SYMBOL));
+        assert!(HOST_CONTRACT_JSON.contains(BACKEND_OPERATION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(EVENT_LOG_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(MODULE_RUNTIME_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(DEGRADE_APPLICATION_REPORT_SYMBOL));
@@ -2041,6 +2159,7 @@ mod tests {
         assert!(HOST_CONTRACT_JSON.contains(ROS_BRIDGE_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains(ADMISSION_REPORT_SYMBOL));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424250"));
+        assert!(HOST_CONTRACT_JSON.contains("0x4E42424F"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E42424B"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E42454C"));
         assert!(HOST_CONTRACT_JSON.contains("0x4E424D52"));

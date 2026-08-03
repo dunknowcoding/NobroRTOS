@@ -12,6 +12,7 @@ usb-device = "0.3"
 usbd-serial = "0.2"
 portable-atomic = "1"
 nobro-power = { path = "../nobro_power" }
+nobro-host = { path = "../nobro_host", optional = true }
 nrf-usbd = { path = "../../vendor/nrf-usbd", optional = true }
 cortex-m = { version = "0.7", optional = true }
 critical-section = { version = "1", optional = true }
@@ -20,6 +21,7 @@ nrf52840-pac = { version = "0.12", optional = true }
 [features]
 # Default backend for the nRF52840 dev boards (matches ArduinoNRF Layer-0 native NrfUsbd).
 default = ["backend-nrf-usbd"]
+host-reports = ["dep:nobro-host"]
 backend-nrf-usbd = [
   "dep:nrf-usbd",
   "dep:cortex-m",

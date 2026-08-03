@@ -25,6 +25,7 @@ EXPECTED_TOP_LEVEL_KEYS = frozenset(
         "ai_contracts",
         "ros_bridge_contracts",
         "health_report",
+        "backend_operation_report",
         "event_log_report",
         "module_runtime_report",
         "degrade_application_report",
@@ -53,6 +54,7 @@ EXPECTED_SECTION_KEYS = {
         "summary_fields",
     },
     "health_report": {"symbol", "magic", "version", "layout"},
+    "backend_operation_report": {"symbol", "magic", "version", "layout"},
     "event_log_report": {
         "symbol",
         "magic",
@@ -123,6 +125,10 @@ EXPECTED_REPORT_CONTRACTS = {
     "admission_report": ("NOBRO_ADMISSION_REPORT", "0x4E424144"),
     "runtime_report": ("NOBRO_RUNTIME_REPORT", "0x4E425254"),
     "health_report": ("NOBRO_HEALTH_REPORT", "0x4E42484C"),
+    "backend_operation_report": (
+        "NOBRO_BACKEND_OPERATION_REPORT",
+        "0x4E42424F",
+    ),
     "event_log_report": ("NOBRO_EVENT_LOG_REPORT", "0x4E42454C"),
     "module_runtime_report": ("NOBRO_MODULE_RUNTIME_REPORT", "0x4E424D52"),
     "degrade_application_report": ("NOBRO_DEGRADE_APPLICATION_REPORT", "0x4E424447"),

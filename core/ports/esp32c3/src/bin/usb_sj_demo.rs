@@ -8,7 +8,7 @@
 #![no_main]
 
 use esp_hal::delay::Delay;
-use nobro_usb::{CdcState, UsbBackendError, UsbConfig, UsbStack};
+use nobro_usb::{backend_id, CdcState, UsbBackendError, UsbConfig, UsbStack};
 
 const TX_CAPACITY: usize = 96;
 const WRITE_RETRY_LIMIT: u16 = 500;
@@ -155,9 +155,14 @@ fn main() -> ! {
     let _peripherals = esp_hal::init(esp_hal::Config::default());
     let delay = Delay::new();
 
-    // USB-Serial-JTAG owns its descriptors. This request is accepted for common API
-    // uniformity but ignored; it is not the VID/PID/strings seen by the host.
-    let cfg = UsbConfig::new(0x303A, 0x1001, "NiusRobotLab", "NobroRTOS USB-SJ", "NBROC3");
+    // USB-Serial-JTAG owns its descriptors. The explicit sentinel requests no
+    // caller-defined VID/PID/strings; any populated identity fails before mount.
+    let cfg = UsbConfig::controller_owned();
+    if nobro_usb::capabilities().backend_id != backend_id::USB_SERIAL_JTAG_ESP32C3 {
+        loop {
+            core::hint::spin_loop();
+        }
+    }
     let mut usb = match nobro_usb::try_mount(&cfg) {
         Ok(usb) => usb,
         Err(_) => loop {
@@ -203,7 +208,7 @@ fn main() -> ! {
         beat += 1;
         if usb.configured() && !tx.pending() {
             let mut msg = [0u8; TX_CAPACITY];
-            let head = b"NOBRO-USB-SJ backend=NUSJ configured=1 beat=";
+            let head = b"NOBRO-USB-SJ backend=NC3U configured=1 beat=";
             let mut pos = head.len();
             msg[..pos].copy_from_slice(head);
             put_u32(&mut msg, &mut pos, beat);

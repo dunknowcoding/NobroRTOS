@@ -35,6 +35,7 @@ extern "C" {
 #define NOBRO_ADMISSION_REPORT_MAGIC 0x4E424144u
 #define NOBRO_RUNTIME_REPORT_MAGIC 0x4E425254u
 #define NOBRO_HEALTH_REPORT_MAGIC 0x4E42484Cu
+#define NOBRO_BACKEND_OPERATION_REPORT_MAGIC 0x4E42424Fu
 #define NOBRO_EVENT_LOG_REPORT_MAGIC 0x4E42454Cu
 #define NOBRO_MODULE_RUNTIME_REPORT_MAGIC 0x4E424D52u
 #define NOBRO_DEGRADE_APPLICATION_REPORT_MAGIC 0x4E424447u
@@ -53,6 +54,9 @@ extern "C" {
 #define NOBRO_AI_PREFLIGHT_STALE_TOO_OLD (1u << 7)
 #define NOBRO_AI_PREFLIGHT_ENDPOINT_CIRCUIT_OPEN (1u << 8)
 #define NOBRO_AI_PREFLIGHT_LOCAL_ARENA_MISSING (1u << 9)
+#define NOBRO_AI_PREFLIGHT_STALE_BOUND_MISSING (1u << 10)
+#define NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY (1u << 11)
+#define NOBRO_AI_PREFLIGHT_CLOCK_REGRESSED (1u << 12)
 
 #define NOBRO_ROS_PREFLIGHT_PAYLOAD_TOO_LARGE (1u << 0)
 #define NOBRO_ROS_PREFLIGHT_RESPONSE_TOO_SMALL (1u << 1)
@@ -99,6 +103,19 @@ typedef enum nobro_ai_route_target {
     NOBRO_AI_TARGET_DEGRADED_FALLBACK = 5,
     NOBRO_AI_TARGET_UNAVAILABLE = 6,
 } nobro_ai_route_target_t;
+
+typedef enum nobro_ai_snapshot_expiry_action {
+    NOBRO_AI_SNAPSHOT_EXPIRY_DEGRADE = 1,
+    NOBRO_AI_SNAPSHOT_EXPIRY_RECOMPUTE = 2,
+    NOBRO_AI_SNAPSHOT_EXPIRY_FAIL = 3,
+} nobro_ai_snapshot_expiry_action_t;
+
+typedef enum nobro_ai_snapshot_use_decision {
+    NOBRO_AI_SNAPSHOT_USE = 1,
+    NOBRO_AI_SNAPSHOT_DEGRADE = 2,
+    NOBRO_AI_SNAPSHOT_RECOMPUTE = 3,
+    NOBRO_AI_SNAPSHOT_FAIL = 4,
+} nobro_ai_snapshot_use_decision_t;
 
 typedef enum nobro_ros_bridge_transport {
     NOBRO_ROS_TRANSPORT_SERIAL = 1,
@@ -155,6 +172,33 @@ typedef struct nobro_ai_invocation_preflight {
     uint32_t available_ram_bytes;
     uint32_t error_bits;
 } nobro_ai_invocation_preflight_t;
+
+typedef struct nobro_ai_snapshot_freshness_contract {
+    uint32_t max_age_us;
+    uint8_t expiry_action;
+} nobro_ai_snapshot_freshness_contract_t;
+
+typedef struct nobro_ai_snapshot_stamp {
+    uint32_t model_id;
+    uint32_t generation;
+    uint64_t produced_at_us;
+} nobro_ai_snapshot_stamp_t;
+
+typedef struct nobro_ai_freshness_admission {
+    uint32_t model_id;
+    uint32_t max_age_us;
+    uint8_t expiry_action;
+    uint32_t error_bits;
+} nobro_ai_freshness_admission_t;
+
+typedef struct nobro_ai_snapshot_use_receipt {
+    uint32_t model_id;
+    uint32_t snapshot_generation;
+    uint64_t age_us;
+    uint32_t max_age_us;
+    uint8_t decision;
+    uint32_t error_bits;
+} nobro_ai_snapshot_use_receipt_t;
 
 typedef struct nobro_ros_topic_contract {
     uint32_t name_hash;
@@ -368,6 +412,24 @@ typedef struct nobro_health_report {
     uint32_t diagnostic_checksum;
 } nobro_health_report_t;
 
+/* Stable backend attribution; backend_id must never encode host-local data. */
+typedef struct nobro_backend_operation_report {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t completed;
+    uint32_t module_tag;
+    uint32_t backend_id;
+    uint32_t logical_instance;
+    uint32_t lifecycle_generation;
+    uint32_t operation_sequence;
+    uint32_t operation_kind;
+    uint32_t status;
+    uint32_t fault_code;
+    uint32_t occurred_at_us_lo;
+    uint32_t occurred_at_us_hi;
+    uint32_t diagnostic_checksum;
+} nobro_backend_operation_report_t;
+
 typedef struct nobro_event_log_report {
     uint32_t magic;
     uint32_t version;
@@ -438,6 +500,8 @@ NOBRO_STATIC_ASSERT(sizeof(nobro_runtime_report_t) == 19u * sizeof(uint32_t),
                     "unexpected runtime report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_health_report_t) == 15u * sizeof(uint32_t),
                     "unexpected health report size");
+NOBRO_STATIC_ASSERT(sizeof(nobro_backend_operation_report_t) == 14u * sizeof(uint32_t),
+                    "unexpected backend operation report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_event_log_report_t) == 16u * sizeof(uint32_t),
                     "unexpected event log report size");
 NOBRO_STATIC_ASSERT(sizeof(nobro_module_runtime_report_t) == 17u * sizeof(uint32_t),
@@ -605,6 +669,88 @@ static inline uint32_t nobro_ai_effective_stale_after_us(
     return contract.stale_after_us;
 }
 
+static inline nobro_ai_freshness_admission_t nobro_ai_admit_snapshot_freshness(
+    nobro_ai_model_contract_t model,
+    nobro_ai_route_policy_t route,
+    nobro_ai_invocation_limits_t invocation,
+    nobro_ai_snapshot_freshness_contract_t freshness
+) {
+    nobro_ai_freshness_admission_t admission = {
+        model.model_id,
+        0u,
+        freshness.expiry_action,
+        0u
+    };
+    uint32_t route_bound = nobro_ai_effective_stale_after_us(route, model);
+    if (model.model_id == 0u) {
+        admission.error_bits |= NOBRO_AI_PREFLIGHT_MODEL_ID_MISMATCH;
+    }
+    if (invocation.allow_stale_snapshot == 0u) {
+        admission.error_bits |= NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT;
+    }
+    if (route_bound == 0u || invocation.max_stale_us == 0u || freshness.max_age_us == 0u) {
+        admission.error_bits |= NOBRO_AI_PREFLIGHT_STALE_BOUND_MISSING;
+    }
+    if (freshness.expiry_action < NOBRO_AI_SNAPSHOT_EXPIRY_DEGRADE
+        || freshness.expiry_action > NOBRO_AI_SNAPSHOT_EXPIRY_FAIL) {
+        admission.error_bits |= NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY;
+    }
+    if (admission.error_bits == 0u) {
+        admission.max_age_us = route_bound;
+        if (invocation.max_stale_us < admission.max_age_us) {
+            admission.max_age_us = invocation.max_stale_us;
+        }
+        if (freshness.max_age_us < admission.max_age_us) {
+            admission.max_age_us = freshness.max_age_us;
+        }
+    }
+    return admission;
+}
+
+static inline nobro_ai_snapshot_use_receipt_t nobro_ai_assess_snapshot_freshness(
+    nobro_ai_freshness_admission_t admission,
+    nobro_ai_snapshot_stamp_t snapshot,
+    uint64_t now_us
+) {
+    nobro_ai_snapshot_use_receipt_t receipt = {
+        snapshot.model_id,
+        snapshot.generation,
+        0u,
+        admission.max_age_us,
+        NOBRO_AI_SNAPSHOT_FAIL,
+        admission.error_bits
+    };
+    if (admission.model_id == 0u) {
+        receipt.error_bits |= NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY;
+    }
+    if (admission.max_age_us == 0u) {
+        receipt.error_bits |= NOBRO_AI_PREFLIGHT_STALE_BOUND_MISSING;
+    }
+    if (admission.expiry_action < NOBRO_AI_SNAPSHOT_EXPIRY_DEGRADE
+        || admission.expiry_action > NOBRO_AI_SNAPSHOT_EXPIRY_FAIL) {
+        receipt.error_bits |= NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY;
+    }
+    if (snapshot.model_id != admission.model_id || snapshot.generation == 0u) {
+        receipt.error_bits |= NOBRO_AI_PREFLIGHT_SNAPSHOT_IDENTITY;
+    }
+    if (now_us < snapshot.produced_at_us) {
+        receipt.error_bits |= NOBRO_AI_PREFLIGHT_CLOCK_REGRESSED;
+    } else {
+        receipt.age_us = now_us - snapshot.produced_at_us;
+    }
+    if (receipt.error_bits != 0u) {
+        return receipt;
+    }
+    if (receipt.age_us <= (uint64_t)admission.max_age_us) {
+        receipt.decision = NOBRO_AI_SNAPSHOT_USE;
+    } else if (admission.expiry_action == NOBRO_AI_SNAPSHOT_EXPIRY_DEGRADE) {
+        receipt.decision = NOBRO_AI_SNAPSHOT_DEGRADE;
+    } else if (admission.expiry_action == NOBRO_AI_SNAPSHOT_EXPIRY_RECOMPUTE) {
+        receipt.decision = NOBRO_AI_SNAPSHOT_RECOMPUTE;
+    }
+    return receipt;
+}
+
 static inline uint32_t nobro_saturating_add_u32(uint32_t left, uint32_t right) {
     uint32_t result = left + right;
     return result < left ? UINT32_MAX : result;
@@ -622,7 +768,8 @@ static inline nobro_ai_route_decision_t nobro_ai_route_decide(
     uint8_t endpoint_circuit_open =
         state.consecutive_endpoint_failures >= failure_limit ? 1u : 0u;
     uint32_t stale_after_us = nobro_ai_effective_stale_after_us(policy, contract);
-    uint8_t stale_ready = state.last_success_age_us <= stale_after_us ? 1u : 0u;
+    uint8_t stale_ready = stale_after_us != 0u
+        && state.last_success_age_us <= stale_after_us ? 1u : 0u;
     uint8_t fits_budget = contract.timeout_us <= budget_us ? 1u : 0u;
     nobro_ai_route_decision_t decision = {
         NOBRO_AI_TARGET_DEGRADED_FALLBACK,
@@ -750,6 +897,9 @@ static inline nobro_ai_invocation_preflight_t nobro_ai_invocation_preflight(
     }
     if (route.uses_stale_snapshot != 0u && limits.allow_stale_snapshot == 0u) {
         error_bits |= NOBRO_AI_PREFLIGHT_STALE_SNAPSHOT;
+    }
+    if (route.uses_stale_snapshot != 0u && limits.max_stale_us == 0u) {
+        error_bits |= NOBRO_AI_PREFLIGHT_STALE_BOUND_MISSING;
     }
     if (route.uses_stale_snapshot != 0u
         && limits.max_stale_us > 0u
@@ -1014,6 +1164,30 @@ static inline nobro_report_status_t nobro_health_report_status(
         0,
         report->diagnostic_checksum,
         nobro_health_report_diagnostic_checksum(report)
+    );
+}
+
+static inline uint32_t nobro_backend_operation_report_diagnostic_checksum(
+    const nobro_backend_operation_report_t *report
+) {
+    return report->magic ^ report->version ^ report->completed ^ report->module_tag
+        ^ report->backend_id ^ report->logical_instance ^ report->lifecycle_generation
+        ^ report->operation_sequence ^ report->operation_kind ^ report->status
+        ^ report->fault_code ^ report->occurred_at_us_lo ^ report->occurred_at_us_hi;
+}
+
+static inline nobro_report_status_t nobro_backend_operation_report_status(
+    const nobro_backend_operation_report_t *report
+) {
+    return nobro_report_status_from_diagnostic_checksum(
+        NOBRO_BACKEND_OPERATION_REPORT_MAGIC,
+        report->magic,
+        report->version,
+        report->completed,
+        1u,
+        0,
+        report->diagnostic_checksum,
+        nobro_backend_operation_report_diagnostic_checksum(report)
     );
 }
 

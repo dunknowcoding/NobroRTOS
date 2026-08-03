@@ -43,8 +43,10 @@ or boot layout from another profile.
 
 The bootloader and the application are separate USB devices. They may advertise
 different VID/PID values, strings, storage volumes, or serial endpoints, and the host may
-assign them different device paths. `UsbConfig` controls only the mounted application
-backend; it does not rename or reconfigure the bootloader.
+assign them different device paths. `UsbConfig` applies only to the mounted application
+backend: configurable backends honor it, exact/fixed backends reject anything they cannot
+represent, and controller-owned identities use the explicit sentinel. It never renames or
+reconfigures the bootloader.
 
 SoftDevice and no-SoftDevice profiles also use different flash layouts. Select the image
 from the installed bootloader's own metadata rather than inferring the layout from the

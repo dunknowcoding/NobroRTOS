@@ -112,23 +112,26 @@ type annotation or constructor, select one exact `backend-*` feature, and call
 claim and before hardware access. `mount()` remains as a compatibility wrapper and
 panics on those errors.
 
-The former ambiguous `backend-usb-serial-jtag` feature is split into
-`backend-usb-serial-jtag-esp32c3` and `backend-usb-serial-jtag-esp32s3`; downstream
-manifests must select the register map for their exact chip. Placeholder backend
+The former ambiguous `backend-usb-serial-jtag` feature is split into exact
+`backend-usb-serial-jtag-esp32c3`, `backend-usb-serial-jtag-esp32p4`, and
+`backend-usb-serial-jtag-esp32s3` selections; downstream manifests must select the
+register map for their exact chip. Placeholder backend
 identity constants that had no selectable implementation are removed; diagnostics
 identify only backends that can actually be mounted.
 
 `UsbConfig` is a request, not an unconditional claim about the identity observed by the
-host. `identity_policy()` reports one of three behaviors: nRF descriptors use the
+host. Its checked constructor rejects the reserved zero VID and descriptor strings that
+cannot fit the supported USB string bound; accessors expose the immutable fields.
+`identity_policy()` reports one of three behaviors: nRF descriptors use the
 requested identity, RA4M1 requires the exact exported `RA4M1_USB_CONFIG`, and the
-ESP32-C3/S3 fixed-function USB-Serial-JTAG controller ignores the requested identity.
-`config_supported()` checks only whether a request is accepted; for a controller-fixed
-identity, acceptance does not mean the requested VID, PID, or strings are advertised.
+ESP32-C3/P4/S3 fixed-function USB-Serial-JTAG controller accepts only the explicit
+`UsbConfig::controller_owned()` sentinel. It rejects caller-supplied VID, PID, or strings
+before taking controller ownership instead of silently ignoring them.
 `capabilities()` reports the selected backend's stable id, identity policy, MTU,
 buffer/service limits, and supported lifecycle operations. `try_mount_instance()` names
 the logical stack and returns `(MountedUsb, UsbMountReceipt)`. The separate immutable
-receipt records that instance, the request fingerprint, the actually advertised identity
-class, the exact limits, and lifecycle generation. Compatibility `try_mount()` retains
+receipt records that instance, requested VID/PID plus a full-request fingerprint, the actually
+advertised identity class, exact limits, and lifecycle generation. Compatibility `try_mount()` retains
 no receipt state, so applications that do not request one pay no runtime-storage cost.
 
 The count-only `UsbStack::write` and `read` methods remain for compatibility. The newly
@@ -138,6 +141,13 @@ are drained. New generic code should use `try_write`, `try_read`, and `try_flush
 bounded `MountedUsb::write_all`, `read_available`, and `flush_pending` conveniences.
 These distinguish ordinary non-blocking backpressure from typed `UsbBackendError`
 failures such as `ControllerTimeout`.
+`try_mount_reported_instance()` returns the opt-in `ReportedUsb` wrapper. Its
+`*_reported` methods additionally return stable logical instance, lifecycle, operation,
+exact-family backend, progress, and backend-fault provenance. Compatibility mounts keep
+the smaller `MountedUsb` object and pay no provenance storage or stack cost. Convert a
+`UsbOperationReceipt` with the opt-in `host-reports` feature and `to_host_report()` when
+the same attribution must cross the versioned fixed host ABI; report ids never contain
+host paths, port names, or probe ids.
 
 `UsbStack::configured()` now describes only the currently observed usable link; reset,
 suspend, watchdog expiry, or disconnect makes it false. It is no longer a historical
@@ -1599,7 +1609,11 @@ budget, trips a small endpoint circuit breaker after repeated failures, and
 returns a route target without allocating memory.
 The stale snapshot window is contract-aware: a zero policy window inherits the
 model contract's `stale_after_us`, while a non-zero policy uses the stricter of
-the policy and model windows.
+the policy and model windows. If both are zero, stale fallback is disabled. Before a
+stale result can be consumed, `admit_ai_snapshot_freshness()` combines the model, route,
+invocation, and use-site limits; its `AiFreshnessAdmission::assess()` rechecks identity,
+generation, clock direction, and age immediately at use. Expiry resolves to an explicit
+degrade, recompute, or fail decision.
 
 ```rust
 let policy = nobro_sal::AiRoutePolicy::new(
@@ -1616,6 +1630,13 @@ let state = nobro_sal::AiRuntimeState::new(
 let decision = policy.decide(contract, state, 20_000);
 assert_ne!(decision.target, nobro_sal::AiRouteTarget::Unavailable);
 ```
+
+Distributed deadlines require a separately established clock contract. The optional
+`nobro_net::NodeTimeClock` (also re-exported by `nobro-wireless`) admits identified
+four-timestamp observations, carries source uncertainty plus path-delay and oscillator
+drift bounds through holdover, applies bounded step or slew correction, and rejects an
+expired or insufficiently certain deadline. Ordinary packet exchange and the legacy
+`TimeSync` arithmetic helper do not by themselves establish synchronized node time.
 
 Adapters can export the same model and routing boundary as a host-readable
 report:
