@@ -29,8 +29,9 @@ DOC_REFERENCE_EXEMPT = {
 }
 PRIVATE = {
     "non-public document reference": re.compile(
-        r"(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]*_"
-        r"(?:INTERNAL|PRIVATE)(?:\.[A-Za-z0-9_.-]+)?",
+        r"(?<![A-Za-z0-9_.-])(?:[A-Za-z0-9_.-]+[\\/])*"
+        r"[A-Za-z0-9_.-]+_(?:INTERNAL|PRIVATE)"
+        r"\.(?:md|txt|rst|adoc)(?![A-Za-z0-9_.-])",
         re.IGNORECASE,
     ),
     "lab board label": re.compile(

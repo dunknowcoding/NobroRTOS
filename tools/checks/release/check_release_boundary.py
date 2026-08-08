@@ -174,8 +174,9 @@ PRIVACY_PATTERNS = (
     (
         "non-public document reference",
         re.compile(
-            r"(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]*_"
-            r"(?:INTERNAL|PRIVATE)(?:\.[A-Za-z0-9_.-]+)?",
+            r"(?<![A-Za-z0-9_.-])(?:[A-Za-z0-9_.-]+[\\/])*"
+            r"[A-Za-z0-9_.-]+_(?:INTERNAL|PRIVATE)"
+            r"\.(?:md|txt|rst|adoc)(?![A-Za-z0-9_.-])",
             re.IGNORECASE,
         ),
     ),
@@ -441,7 +442,10 @@ def _policy_selftest() -> list[str]:
     for expected, sample in cases.items():
         if expected not in _privacy_hits(sample):
             errors.append(f"privacy policy self-test missed {expected}")
-    if _privacy_hits("latency fault baseline selftest Cortex-M4 ARMv7E-M (M4)"):
+    if _privacy_hits(
+        "latency fault baseline selftest Cortex-M4 ARMv7E-M (M4) "
+        "connect_internal_flash"
+    ):
         errors.append("privacy policy self-test rejected ordinary public terminology")
 
     private_path = pathlib.PurePosixPath("docs") / ("sample_" + "PRIVATE.md")
