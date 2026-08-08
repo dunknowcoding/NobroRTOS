@@ -234,7 +234,7 @@ SAMPLE_DTS = """\
         partitions {
             code_partition: partition@26000 {
                 label = "code";
-                reg = <0x26000 0xC2000>;
+                reg = <0x26000 0xC3000>;
             };
         };
     };

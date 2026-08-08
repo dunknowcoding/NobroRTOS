@@ -20,11 +20,17 @@ use hal::clocks::Clock;
 use hal::dma::DMAExt;
 use hal::multicore::{Multicore, Stack};
 
-use nobro_hal::{Rp2MulticoreContract, Rp2Power, Rp2ResetBackend};
+#[cfg(feature = "deep-selftest")]
+use nobro_hal::Rp2FlashBackend;
+use nobro_hal::{
+    Rp2Cache, Rp2Flash, Rp2MulticoreContract, Rp2Power, Rp2Pulse, Rp2ResetBackend, Rp2Rtc,
+    Rp2Watchdog,
+};
 use nobro_kernel::{
     CrossCoreDataPlane, CrossCoreMessage, CrossCoreReceive, ModuleId, MulticoreExecutorLifecycle,
 };
 
+mod deep;
 #[cfg(feature = "dma-completion")]
 pub mod dma_completion;
 mod pio_selftest;
@@ -36,6 +42,29 @@ mod portable;
 pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 const XTAL_FREQ_HZ: u32 = 12_000_000;
+
+#[cfg(feature = "deep-selftest")]
+fn storage_selftest<B: Rp2FlashBackend>(flash: &mut Rp2Flash<B>) -> bool {
+    let mut backup = [0u8; 4096];
+    if flash.read(0, &mut backup).is_err() {
+        return false;
+    }
+    let pattern = [0x5au8; 256];
+    let mut observed = [0u8; 256];
+    let exercised = flash.erase_sector(0).is_ok()
+        && flash.program_page(0, &pattern).is_ok()
+        && flash.read(0, &mut observed).is_ok()
+        && observed == pattern;
+    let mut restored = flash.erase_sector(0).is_ok();
+    for (index, chunk) in backup.chunks_exact(256).enumerate() {
+        let mut page = [0u8; 256];
+        page.copy_from_slice(chunk);
+        restored &= flash.program_page(index as u32 * 256, &page).is_ok();
+    }
+    let mut verify = [0u8; 4096];
+    restored &= flash.read(0, &mut verify).is_ok() && verify == backup;
+    exercised && restored
+}
 
 // Core 1 drains a generation-safe SPSC plane, computes a running
 // multiply-accumulate, and publishes the live result. Release/acquire indices
@@ -209,6 +238,31 @@ fn main() -> ! {
     )
     .unwrap();
     let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &clocks);
+    let mut powman = hal::powman::Powman::new(pac.POWMAN, None);
+    powman
+        .aot_set_clock(hal::powman::AotClockSource::Xosc(
+            hal::powman::FractionalFrequency::from_hz(XTAL_FREQ_HZ),
+        ))
+        .unwrap();
+    powman.aot_start();
+    let mut rtc = Rp2Rtc::try_new(deep::Rp2350Rtc(powman), 3).unwrap();
+    let rtc_ok = rtc.ticks().is_ok() && rtc.ticks_per_second() == Ok(1_000);
+    let mut pulse = Rp2Pulse::try_new(deep::Rp2350Pulse::new(21).unwrap(), 4).unwrap();
+    let pulse_ok = pulse.read_pulse_us(1).is_ok();
+    let mut cache = Rp2Cache::try_new(deep::Rp2350Cache, 5).unwrap();
+    let cache_ok = cache.flush_xip().is_ok();
+    let flash_backend = unsafe { deep::Rp2350Flash::before_core1_start() };
+    #[allow(unused_mut)]
+    let mut flash = Rp2Flash::try_new(flash_backend, 6).unwrap();
+    let mut flash_byte = [0];
+    #[allow(unused_mut)]
+    let mut flash_ok = flash.read(0, &mut flash_byte).is_ok();
+    #[cfg(feature = "deep-selftest")]
+    {
+        flash_ok &= storage_selftest(&mut flash);
+    }
+    let mut hardware_watchdog = Rp2Watchdog::try_new(deep::Rp2350Watchdog(watchdog), 7).unwrap();
+    hardware_watchdog.arm(8_000_000).unwrap();
     let _reset_cause = <portable::Rp2350Reset as Rp2ResetBackend>::reset_cause();
     let _power = Rp2Power::try_new(portable::Rp2350Power, 2).unwrap();
     #[cfg(feature = "dma-completion")]
@@ -291,10 +345,24 @@ fn main() -> ! {
         nobro_hal::Rp2Cyw43Backend::PioSpi | nobro_hal::Rp2Cyw43Backend::Vendor
     );
     #[cfg(feature = "dma-completion")]
-    let all =
-        timebase_ok && pio_concurrent && cyw_backend_ok && dma_report.passed && lifecycle.all_up();
+    let all = timebase_ok
+        && rtc_ok
+        && pulse_ok
+        && cache_ok
+        && flash_ok
+        && pio_concurrent
+        && cyw_backend_ok
+        && dma_report.passed
+        && lifecycle.all_up();
     #[cfg(not(feature = "dma-completion"))]
-    let all = timebase_ok && pio_concurrent && cyw_backend_ok && lifecycle.all_up();
+    let all = timebase_ok
+        && rtc_ok
+        && pulse_ok
+        && cache_ok
+        && flash_ok
+        && pio_concurrent
+        && cyw_backend_ok
+        && lifecycle.all_up();
 
     let mut line_buf = [0u8; 16];
     let mut line_len = 0usize;
@@ -308,6 +376,7 @@ fn main() -> ! {
     let mut stress: Option<StressRun> = None;
 
     loop {
+        hardware_watchdog.feed().unwrap();
         let _ = usb_dev.poll(&mut [&mut serial]);
 
         let mut stress_result = None;

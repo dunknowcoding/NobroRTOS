@@ -32,6 +32,8 @@
     "entry": "cortex-m-rt vector table",
     "linker_script": "core/memory-s140.x",
     "memory_profile": "s140",
+    "storage_start": "0xE5000",
+    "storage_len_bytes": 16384,
     "rustflags": ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"],
     "hal_feature": "board-promicro-s140",
     "interrupts": "application vectors start at 0x26000 and remain compatible with the resident S140 layout",

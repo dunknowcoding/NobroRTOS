@@ -301,6 +301,9 @@ pub enum LeaseClass {
     Core,
     Reset,
     Cache,
+    Watchdog,
+    Rtc,
+    Flash,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -337,6 +340,9 @@ impl LeaseId {
     pub const SECONDARY_CORE: Self = Self::new(LeaseClass::Core, 1);
     pub const SYSTEM_RESET: Self = Self::new(LeaseClass::Reset, 0);
     pub const SYSTEM_CACHE: Self = Self::new(LeaseClass::Cache, 0);
+    pub const SYSTEM_WATCHDOG: Self = Self::new(LeaseClass::Watchdog, 0);
+    pub const SYSTEM_RTC: Self = Self::new(LeaseClass::Rtc, 0);
+    pub const APPLICATION_FLASH: Self = Self::new(LeaseClass::Flash, 0);
 }
 
 /// Hardware timestamp latch (nRF PPI, STM32 TRGO, RP2040 PIO, etc.).

@@ -236,7 +236,7 @@ pub const EXACT_BOARD_PROFILES: [ExactBoardProfileDefinition; 19] = [
         usb_stack_id: Some("nobro:tachi-usb"),
         boot_layout: "NoSoftDevice",
         app_flash_start: Some(4096),
-        app_flash_len_bytes: Some(1044480),
+        app_flash_len_bytes: Some(950272),
         ram_start: Some(536870912),
         ram_len_bytes: Some(262144),
         capacity: BoardCapacity::new(81920, 32768, 8, 16),

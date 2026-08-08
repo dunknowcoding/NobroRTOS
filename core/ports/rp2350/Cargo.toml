@@ -10,11 +10,13 @@ rust-version = "1.85"
 # workspace: the rp235x-hal tree is independent of the thumbv7em core workspace.
 
 [dependencies]
+critical-section = "1.2"
 rp235x-hal = { version = "0.4", features = ["critical-section-impl", "rt"] }
 usb-device = "0.3"
 usbd-serial = "0.2"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
+fugit = "0.3"
 panic-halt = "0.2"
 pio = "0.3"
 nobro-hal = { path = "../../crates/nobro_hal", default-features = false, features = ["contract-only"] }
@@ -29,6 +31,9 @@ required-features = ["isolation-selftest"]
 default = ["cyw43-pio"]
 # Opt-in DMA_IRQ_0 completion future and boot-time functional self-test.
 dma-completion = []
+# Destructive-but-state-restoring exercise of the linker-reserved 4 KiB sector.
+# Never enabled in ordinary application builds.
+deep-selftest = []
 cyw43-pio = []
 cyw43-vendor = []
 isolation-selftest = ["nobro-hal/cortex-m-slice", "nobro-hal/pmsa-v8"]

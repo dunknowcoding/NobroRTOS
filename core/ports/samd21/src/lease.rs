@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 use nobro_hal::{HalLease, LeaseClass, LeaseError, LeaseId};
 
-const SLOT_COUNT: usize = 14;
+const SLOT_COUNT: usize = 17;
 const RTC0: usize = 0;
 const TC4: usize = 1;
 const EIC7: usize = 2;
@@ -19,6 +19,9 @@ const ADC0: usize = 10;
 const GPIO_D8: usize = 11;
 const GPIO_D9: usize = 12;
 const EVSYS0: usize = 13;
+const PULSE0: usize = 14;
+const WATCHDOG0: usize = 15;
+const FLASH0: usize = 16;
 
 struct Slot {
     held: AtomicBool,
@@ -51,6 +54,9 @@ static SLOTS: [Slot; SLOT_COUNT] = [
     Slot::new(),
     Slot::new(),
     Slot::new(),
+    Slot::new(),
+    Slot::new(),
+    Slot::new(),
 ];
 
 pub const RTC_LEASE: LeaseId = LeaseId::new(LeaseClass::Timer, 0);
@@ -67,6 +73,9 @@ pub const POWER_LEASE: LeaseId = LeaseId::new(LeaseClass::Power, 0);
 pub const ADC0_LEASE: LeaseId = LeaseId::new(LeaseClass::Adc, 0);
 pub const D8_GPIO_LEASE: LeaseId = LeaseId::new(LeaseClass::SoftwareEvent, 8);
 pub const D9_GPIO_LEASE: LeaseId = LeaseId::new(LeaseClass::SoftwareEvent, 9);
+pub const PULSE_LEASE: LeaseId = LeaseId::PRIMARY_PULSE;
+pub const WATCHDOG_LEASE: LeaseId = LeaseId::SYSTEM_WATCHDOG;
+pub const FLASH_LEASE: LeaseId = LeaseId::APPLICATION_FLASH;
 
 fn slot_for(id: LeaseId) -> Result<usize, LeaseError> {
     match (id.class, id.instance) {
@@ -84,18 +93,22 @@ fn slot_for(id: LeaseId) -> Result<usize, LeaseError> {
         (LeaseClass::Adc, 0) => Ok(ADC0),
         (LeaseClass::SoftwareEvent, 8) => Ok(GPIO_D8),
         (LeaseClass::SoftwareEvent, 9) => Ok(GPIO_D9),
+        (LeaseClass::Pulse, 0) => Ok(PULSE0),
+        (LeaseClass::Watchdog, 0) => Ok(WATCHDOG0),
+        (LeaseClass::Flash, 0) => Ok(FLASH0),
         _ => Err(LeaseError::Unsupported),
     }
 }
 
-fn conflict_mask(slot: usize) -> u16 {
-    let own = 1u16 << slot;
+fn conflict_mask(slot: usize) -> u32 {
+    let own = 1u32 << slot;
     match slot {
         // D9 is both the PN532 IRQ input and TCC1/WO1.  A composition must
         // select one role; silently muxing it underneath an owner is forbidden.
-        EIC7 => own | (1 << GPIO_D9) | (1 << TCC1),
-        GPIO_D9 => own | (1 << EIC7) | (1 << TCC1),
-        TCC1 => own | (1 << EIC7) | (1 << GPIO_D9),
+        EIC7 => own | (1u32 << GPIO_D9) | (1u32 << TCC1) | (1u32 << PULSE0),
+        GPIO_D9 => own | (1u32 << EIC7) | (1u32 << TCC1) | (1u32 << PULSE0),
+        TCC1 => own | (1u32 << EIC7) | (1u32 << GPIO_D9) | (1u32 << PULSE0),
+        PULSE0 => own | (1u32 << EIC7) | (1u32 << GPIO_D9) | (1u32 << TCC1),
         _ => own,
     }
 }
@@ -103,7 +116,7 @@ fn conflict_mask(slot: usize) -> u16 {
 fn has_conflict(slot: usize) -> bool {
     let mask = conflict_mask(slot);
     SLOTS.iter().enumerate().any(|(index, candidate)| {
-        mask & (1 << index) != 0 && candidate.held.load(Ordering::Acquire)
+        mask & (1u32 << index) != 0 && candidate.held.load(Ordering::Acquire)
     })
 }
 

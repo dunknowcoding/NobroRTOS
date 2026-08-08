@@ -6,6 +6,7 @@
 #endif
 
 #include <Arduino.h>
+#include <EEPROM.h>
 #include <HardwareSerial.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -123,6 +124,143 @@ public:
 private:
     uint8_t pin_;
     bool attached_;
+};
+
+class AvrNanoEvent {
+public:
+    AvrNanoEvent() : pending_(false) {}
+    void trigger() { pending_ = true; }
+    bool take() {
+        const uint8_t saved = SREG;
+        cli();
+        const bool pending = pending_;
+        pending_ = false;
+        SREG = saved;
+        return pending;
+    }
+
+private:
+    volatile bool pending_;
+};
+
+class AvrNanoPulse {
+public:
+    explicit AvrNanoPulse(uint8_t pin) : pin_(pin), begun_(false) {}
+    bool begin() {
+        if (pin_ >= NUM_DIGITAL_PINS) return false;
+        pinMode(pin_, INPUT);
+        begun_ = true;
+        return true;
+    }
+    bool readHighUs(uint32_t timeout_us, uint32_t &width_us) const {
+        if (!begun_ || timeout_us == 0) return false;
+        const unsigned long width = pulseInLong(pin_, HIGH, timeout_us);
+        if (width == 0) return false;
+        width_us = width;
+        return true;
+    }
+
+private:
+    uint8_t pin_;
+    bool begun_;
+};
+
+class AvrNanoWatchdog {
+public:
+    AvrNanoWatchdog() : armed_(false) {}
+
+    bool beginInterrupt(uint8_t timeout_code) {
+        if (armed_ || timeout_code > WDTO_8S) return false;
+        const uint8_t saved = SREG;
+        cli();
+        wdt_reset();
+        MCUSR &= static_cast<uint8_t>(~_BV(WDRF));
+        WDTCSR = _BV(WDCE) | _BV(WDE);
+        WDTCSR = _BV(WDIE) | (timeout_code & 0x07) |
+                  ((timeout_code & 0x08) << 2);
+        SREG = saved;
+        expiredFlag() = false;
+        armed_ = true;
+        return true;
+    }
+    void feed() { if (armed_) wdt_reset(); }
+    bool takeExpired() {
+        const uint8_t saved = SREG;
+        cli();
+        const bool expired = expiredFlag();
+        expiredFlag() = false;
+        SREG = saved;
+        return expired;
+    }
+    void stop() {
+        if (!armed_) return;
+        const uint8_t saved = SREG;
+        cli();
+        wdt_reset();
+        MCUSR &= static_cast<uint8_t>(~_BV(WDRF));
+        WDTCSR = _BV(WDCE) | _BV(WDE);
+        WDTCSR = 0;
+        SREG = saved;
+        armed_ = false;
+    }
+    static void onInterrupt() { expiredFlag() = true; }
+
+private:
+    static volatile bool &expiredFlag() {
+        static volatile bool expired = false;
+        return expired;
+    }
+    bool armed_;
+};
+
+class AvrNanoLease {
+public:
+    enum : uint8_t { RESOURCE_COUNT = 16 };
+    static bool acquire(uint8_t resource, uint8_t owner) {
+        if (resource >= RESOURCE_COUNT || owner == 0) return false;
+        const uint8_t saved = SREG;
+        cli();
+        uint8_t *owners = ownerTable();
+        const bool available = owners[resource] == 0;
+        if (available) owners[resource] = owner;
+        SREG = saved;
+        return available;
+    }
+    static bool release(uint8_t resource, uint8_t owner) {
+        if (resource >= RESOURCE_COUNT || owner == 0) return false;
+        const uint8_t saved = SREG;
+        cli();
+        uint8_t *owners = ownerTable();
+        const bool held = owners[resource] == owner;
+        if (held) owners[resource] = 0;
+        SREG = saved;
+        return held;
+    }
+
+private:
+    static uint8_t *ownerTable() {
+        static uint8_t owners[RESOURCE_COUNT] = {};
+        return owners;
+    }
+};
+
+class AvrNanoEepromStorage {
+public:
+    static uint16_t capacity() { return E2END + 1u; }
+    static bool read(uint16_t offset, uint8_t *bytes, uint16_t length) {
+        if ((bytes == 0 && length != 0) || offset > capacity() ||
+            length > capacity() - offset)
+            return false;
+        for (uint16_t i = 0; i < length; ++i) bytes[i] = EEPROM.read(offset + i);
+        return true;
+    }
+    static bool write(uint16_t offset, const uint8_t *bytes, uint16_t length) {
+        if ((bytes == 0 && length != 0) || offset > capacity() ||
+            length > capacity() - offset)
+            return false;
+        for (uint16_t i = 0; i < length; ++i) EEPROM.update(offset + i, bytes[i]);
+        return true;
+    }
 };
 
 class AvrNanoPwm {
@@ -372,5 +510,9 @@ struct AvrNanoReset {
 };
 
 } // namespace nobro
+
+// Emit this once in the sketch that owns the watchdog interrupt vector.
+#define NOBRO_AVR_NANO_WATCHDOG_ISR() \
+    ISR(WDT_vect) { nobro::AvrNanoWatchdog::onInterrupt(); }
 
 #endif

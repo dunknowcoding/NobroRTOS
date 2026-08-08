@@ -79,13 +79,19 @@ impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Ra4m1
 impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Watchdog as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Rtc as u8 }> for Ra4m1Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Flash as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Ra4m1Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Ra4m1Providers {}
@@ -99,13 +105,19 @@ impl HalCompatibility for Ra4m1Providers {
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
             )
+            .witnessed::<Self, { HardwareCapability::Gpio as u8 }>(HardwareCapability::Gpio)
+            .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
             .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
             .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
             .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
             .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Watchdog as u8 }>(HardwareCapability::Watchdog)
+            .witnessed::<Self, { HardwareCapability::Rtc as u8 }>(HardwareCapability::Rtc)
+            .witnessed::<Self, { HardwareCapability::Flash as u8 }>(HardwareCapability::Flash)
             .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
             .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
@@ -115,8 +127,8 @@ impl HalCompatibility for Ra4m1Providers {
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "ra4m1-native-partial-v3",
-            CapabilityProfileKind::Constrained,
+            "ra4m1-deep-v4",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             inapplicable,

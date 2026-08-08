@@ -45,6 +45,8 @@ pub mod context_switch;
 pub mod context_switch_m0;
 #[cfg(feature = "platform-nrf52840")]
 pub mod deadline_timer;
+#[cfg(feature = "platform-nrf52840")]
+pub mod nrf_peripherals;
 #[cfg(feature = "platform-nrf52840-rt")]
 pub mod power_nrf;
 #[cfg(feature = "platform-nrf52840")]
@@ -103,11 +105,12 @@ pub use platform::nrf52840::NrfSchedulingSession;
 #[cfg(feature = "platform-nrf52840")]
 pub use platform::ActivePlatform;
 pub use rp2::{
-    Rp2Adc, Rp2AdcBackend, Rp2Alarm, Rp2AlarmBackend, Rp2ByteIo, Rp2ByteIoBackend,
-    Rp2ContractError, Rp2Cyw43Backend, Rp2Cyw43Contract, Rp2DmaPlan, Rp2I2c, Rp2LeaseGuard,
-    Rp2Leases, Rp2MulticoreContract, Rp2PioPlan, Rp2Power, Rp2PowerBackend, Rp2Pwm, Rp2PwmBackend,
-    Rp2Reset, Rp2ResetBackend, Rp2Resource, Rp2RuntimeContract, Rp2Silicon, Rp2Spi, RP2040_RUNTIME,
-    RP2350_RUNTIME,
+    Rp2Adc, Rp2AdcBackend, Rp2Alarm, Rp2AlarmBackend, Rp2ByteIo, Rp2ByteIoBackend, Rp2Cache,
+    Rp2CacheBackend, Rp2ContractError, Rp2Cyw43Backend, Rp2Cyw43Contract, Rp2DmaPlan, Rp2Flash,
+    Rp2FlashBackend, Rp2I2c, Rp2LeaseGuard, Rp2Leases, Rp2MulticoreContract, Rp2PioPlan, Rp2Power,
+    Rp2PowerBackend, Rp2Pulse, Rp2PulseBackend, Rp2Pwm, Rp2PwmBackend, Rp2Reset, Rp2ResetBackend,
+    Rp2Resource, Rp2Rtc, Rp2RtcBackend, Rp2RuntimeContract, Rp2Silicon, Rp2Spi, Rp2Watchdog,
+    Rp2WatchdogBackend, RP2040_RUNTIME, RP2350_RUNTIME,
 };
 pub use snapshots::{
     BoardPackageReport, BoardParity, BoardProfileReport, EventCaptureSnapshot, PwmSnapshot,
@@ -133,6 +136,12 @@ pub use context_switch::{ContextRecord, ContextSwitchError, CortexMSliceSwitch};
 pub use context_switch_m0::{CortexM0ContextRecord, CortexM0SliceSwitch, CortexM0SwitchError};
 #[cfg(feature = "platform-nrf52840")]
 pub use deadline_timer::DeadlineTimer;
+#[cfg(feature = "platform-nrf52840")]
+pub use nrf_peripherals::{
+    absolute_pin as nrf_absolute_pin, NrfCpuPower, NrfGpioPort, NrfGpioteInput, NrfNvmc,
+    NrfPeripheralError, NrfPulseCapture, NrfReset, NrfResetCause, NrfRtc2, NrfSaadc, NrfUarte0,
+    NrfWatchdog, APP_STORAGE_END, APP_STORAGE_START, FLASH_PAGE_SIZE,
+};
 #[cfg(feature = "platform-nrf52840-rt")]
 pub use power_nrf::NrfTimerPower;
 #[cfg(feature = "platform-nrf52840")]

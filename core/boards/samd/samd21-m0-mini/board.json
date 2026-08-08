@@ -34,7 +34,9 @@
     "interrupts": "Arduino SAMD core and explicitly selected providers own vectors",
     "dma": "not inferred; provider-specific DMA must be selected explicitly",
     "clock": "Arduino SAMD core clock and wrapping-safe 32-bit micros",
-    "boot": "Arduino Zero native-port compatible 8 KiB boot region and USB upload recipe"
+    "boot": "Arduino Zero native-port compatible 8 KiB boot region and USB upload recipe",
+    "storage_start": "0x3C000",
+    "storage_len_bytes": 16384
   },
   "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
 }

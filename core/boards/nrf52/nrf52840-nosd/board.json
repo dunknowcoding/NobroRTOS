@@ -16,7 +16,7 @@
   "boot": {
     "layout": "NoSoftDevice",
     "app_flash_start": "0x1000",
-    "app_flash_len_bytes": 1044480,
+    "app_flash_len_bytes": 950272,
     "ram_start": "0x20000000",
     "ram_len_bytes": 262144
   },
@@ -32,12 +32,14 @@
     "entry": "cortex-m-rt vector table",
     "linker_script": "core/memory-nosd.x",
     "memory_profile": "nosd",
+    "storage_start": "0xE5000",
+    "storage_len_bytes": 16384,
     "rustflags": ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"],
     "hal_feature": "board-promicro-nosd",
     "interrupts": "application vectors start at 0x1000 behind the no-SoftDevice bootloader",
     "dma": "disabled unless an explicitly selected provider owns its channel, interrupt, and buffers",
     "clock": "provider-owned; the generator does not infer frequency or timing bounds",
-    "boot": "no SoftDevice; generated application origin is exactly 0x1000"
+    "boot": "no SoftDevice; code plus application storage own 0x1000..0xE9000 and preserve the resident ArduinoNRF bootloader/settings region"
   },
   "pins": { "led": 15, "servo_pwm": 24, "mvk_trigger": 17 }
 }

@@ -71,7 +71,7 @@ pub const PROMICRO_NRF52840_NOSD_PACKAGE: BoardPackage = BoardPackage::new(
     BootProfile::new(
         BootLayout::NoSoftDevice,
         0x1000,
-        1020 * 1024,
+        950_272,
         0x2000_0000,
         256 * 1024,
     ),
@@ -424,8 +424,10 @@ mod tests {
 
         assert_eq!(nosd.package.boot.layout, BootLayout::NoSoftDevice);
         assert_eq!(nosd.package.boot.app_flash_start, 0x1000);
+        assert_eq!(nosd.package.app_flash_end(), 0xE9000);
         assert_eq!(s140.package.boot.layout, BootLayout::SoftDeviceS140V6);
         assert_eq!(s140.package.boot.app_flash_start, 0x26000);
+        assert_eq!(s140.package.app_flash_end(), 0xE9000);
         assert_eq!(
             package_for_feature("board-nicenano-s140"),
             package_for_feature("board-promicro-s140")

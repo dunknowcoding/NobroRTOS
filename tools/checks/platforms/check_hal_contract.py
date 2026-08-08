@@ -287,12 +287,22 @@ def selftest() -> int:
         raise RuntimeError("unwitnessed support negative did not fail")
 
     broken = copy.deepcopy(contract)
-    capability = broken["declarations"][0]["unimplemented"].pop()
+    incomplete = next(
+        declaration
+        for declaration in broken["declarations"]
+        if declaration["unimplemented"]
+    )
+    capability = incomplete["unimplemented"].pop()
     if not any("do not classify" in item for item in validate(broken, matrix)):
         raise RuntimeError(f"missing classification negative did not fail: {capability}")
 
     broken = copy.deepcopy(contract)
-    selected_profile = broken["declarations"][0]["profile"]
+    constrained = next(
+        declaration
+        for declaration in broken["declarations"]
+        if matrix["platforms"][declaration["platform"]]["tier"] != "deep"
+    )
+    selected_profile = constrained["profile"]
     next(
         profile
         for profile in broken["profiles"]

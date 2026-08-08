@@ -12,6 +12,11 @@ name = "flash_log_demo"
 path = "src/main.rs"
 required-features = ["board-promicro-nosd"]
 
+[[bin]]
+name = "flash_log_demo_s140"
+path = "src/main.rs"
+required-features = ["board-promicro-s140"]
+
 [dependencies]
 nobro-hal = { path = "../../../crates/nobro_hal", default-features = false }
 cortex-m = "0.7"
@@ -23,4 +28,5 @@ panic-halt = "0.2"
 [features]
 default = ["board-promicro-nosd"]
 board-promicro-nosd = ["nobro-hal/board-promicro-nosd"]
+board-promicro-s140 = ["nobro-hal/board-promicro-s140"]
 board-nicenano-s140 = ["nobro-hal/board-nicenano-s140"]

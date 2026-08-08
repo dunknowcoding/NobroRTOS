@@ -492,7 +492,7 @@ impl EspRuntimeContract {
             LeaseClass::Power | LeaseClass::Reset | LeaseClass::Cache => resource.instance == 0,
             LeaseClass::Pulse => resource.instance < self.rmt_channels(),
             LeaseClass::Core => resource.instance == 1 && self.cores > 1,
-            LeaseClass::Pio => false,
+            LeaseClass::Pio | LeaseClass::Watchdog | LeaseClass::Rtc | LeaseClass::Flash => false,
         }
     }
 }

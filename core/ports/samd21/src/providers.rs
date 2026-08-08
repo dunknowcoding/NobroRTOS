@@ -8,9 +8,9 @@ use embedded_hal::spi::SpiBus;
 use embedded_hal_02::Pwm;
 use embedded_hal_nb::serial::{Read, Write};
 use nobro_hal::{
-    CapabilityProfileKind, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c, HalPwmChannel,
-    HalSpi, HardwareCapability, HardwareCapabilityDeclaration, HardwareCapabilitySet,
-    HardwareCapabilityWitness, TransferMode,
+    CapabilityProfileKind, HalAdcChannel, HalAlarm, HalByteIo, HalClock, HalCompatibility, HalI2c,
+    HalPwmChannel, HalSpi, HardwareCapability, HardwareCapabilityDeclaration,
+    HardwareCapabilitySet, HardwareCapabilityWitness, TransferMode,
 };
 use usb_device::bus::UsbBus;
 use usb_device::device::{
@@ -19,8 +19,9 @@ use usb_device::device::{
 use usbd_serial::SerialPort;
 
 use crate::lease::{
-    Samd21LeaseGuard, Samd21Leases, RTC_LEASE, SERCOM0_UART_LEASE, SERCOM3_I2C_LEASE,
-    SERCOM4_SPI_LEASE, TC4_DEADLINE_LEASE, TCC1_PWM_LEASE, USB_LEASE,
+    Samd21LeaseGuard, Samd21Leases, ADC0_LEASE, FLASH_LEASE, PULSE_LEASE, RTC_LEASE,
+    SERCOM0_UART_LEASE, SERCOM3_I2C_LEASE, SERCOM4_SPI_LEASE, TC4_DEADLINE_LEASE, TCC1_PWM_LEASE,
+    USB_LEASE, WATCHDOG_LEASE,
 };
 
 pub struct Samd21Providers;
@@ -33,11 +34,15 @@ impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Samd21Pro
 impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Samd21Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Samd21Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Samd21Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Watchdog as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Rtc as u8 }> for Samd21Providers {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Flash as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Samd21Providers {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Samd21Providers {}
@@ -55,11 +60,15 @@ impl HalCompatibility for Samd21Providers {
             .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
             .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
             .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
             .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Watchdog as u8 }>(HardwareCapability::Watchdog)
             .witnessed::<Self, { HardwareCapability::Rtc as u8 }>(HardwareCapability::Rtc)
+            .witnessed::<Self, { HardwareCapability::Flash as u8 }>(HardwareCapability::Flash)
             .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
             .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
@@ -68,8 +77,8 @@ impl HalCompatibility for Samd21Providers {
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "samd21-native-partial-v3",
-            CapabilityProfileKind::Constrained,
+            "samd21-native-deep-v4",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             inapplicable,
@@ -93,6 +102,272 @@ pub enum ProviderError<E> {
     LengthMismatch,
     Timeout,
     UsbWouldBlock,
+}
+
+pub trait AdcBackend {
+    type Error;
+    fn max_sample(&self) -> u16;
+    fn read_sample(&mut self) -> Result<u16, Self::Error>;
+}
+
+pub struct Samd21Adc<B> {
+    backend: B,
+    lease: Samd21LeaseGuard,
+}
+
+impl<B> Samd21Adc<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, nobro_hal::LeaseError> {
+        Ok(Self {
+            backend,
+            lease: Samd21Leases::acquire_guard(ADC0_LEASE, owner)?,
+        })
+    }
+}
+
+impl<B: AdcBackend> HalAdcChannel for Samd21Adc<B> {
+    type Error = ProviderError<B::Error>;
+
+    fn max_sample(&self) -> u16 {
+        self.backend.max_sample()
+    }
+
+    fn read(&mut self) -> Result<u16, Self::Error> {
+        self.lease.ensure_live().map_err(ProviderError::Lease)?;
+        self.backend.read_sample().map_err(ProviderError::Backend)
+    }
+}
+
+/// Pulse-width provider for the attached PN532 IRQ route on D9/PA07. RTC COUNT
+/// supplies a clock independent of software loop speed; the bounded poll path
+/// never owns the PN532 EIC/DMAC route simultaneously.
+pub struct Samd21Pulse {
+    lease: Samd21LeaseGuard,
+}
+
+impl Samd21Pulse {
+    pub fn try_new(owner: u8) -> Result<Self, nobro_hal::LeaseError> {
+        Ok(Self {
+            lease: Samd21Leases::acquire_guard(PULSE_LEASE, owner)?,
+        })
+    }
+
+    #[cfg(target_arch = "arm")]
+    fn high() -> bool {
+        unsafe { (0x4100_4420 as *const u32).read_volatile() & (1 << 7) != 0 }
+    }
+
+    #[cfg(not(target_arch = "arm"))]
+    fn high() -> bool {
+        false
+    }
+
+    pub fn read_width_us(
+        &mut self,
+        timeout_us: u32,
+    ) -> Result<Option<u32>, ProviderError<Infallible>> {
+        self.lease.ensure_live().map_err(ProviderError::Lease)?;
+        if timeout_us == 0 {
+            return Err(ProviderError::InvalidConfig);
+        }
+        let began = Samd21Clock::now_us();
+        while !Self::high() {
+            if Samd21Clock::now_us().wrapping_sub(began) >= u64::from(timeout_us) {
+                return Ok(None);
+            }
+            core::hint::spin_loop();
+        }
+        let rising = Samd21Clock::now_us();
+        while Self::high() {
+            if Samd21Clock::now_us().wrapping_sub(rising) >= u64::from(timeout_us) {
+                return Ok(None);
+            }
+            core::hint::spin_loop();
+        }
+        Ok(Some(
+            Samd21Clock::now_us()
+                .wrapping_sub(rising)
+                .min(u64::from(u32::MAX)) as u32,
+        ))
+    }
+}
+
+pub trait WatchdogBackend {
+    type Error;
+    fn arm(&mut self, timeout_code: u8) -> Result<(), Self::Error>;
+    fn feed(&mut self) -> Result<(), Self::Error>;
+}
+
+static SAMD21_WATCHDOG_ARMED: AtomicBool = AtomicBool::new(false);
+
+pub struct Samd21Watchdog<B> {
+    backend: B,
+    lease: Option<Samd21LeaseGuard>,
+    armed: bool,
+}
+
+impl<B: WatchdogBackend> Samd21Watchdog<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, nobro_hal::LeaseError> {
+        if SAMD21_WATCHDOG_ARMED.load(Ordering::Acquire) {
+            return Err(nobro_hal::LeaseError::AlreadyHeld);
+        }
+        Ok(Self {
+            backend,
+            lease: Some(Samd21Leases::acquire_guard(WATCHDOG_LEASE, owner)?),
+            armed: false,
+        })
+    }
+
+    pub fn arm(&mut self, timeout_code: u8) -> Result<(), ProviderError<B::Error>> {
+        self.lease
+            .as_ref()
+            .ok_or(ProviderError::InvalidConfig)?
+            .ensure_live()
+            .map_err(ProviderError::Lease)?;
+        if self.armed || timeout_code > 11 {
+            return Err(ProviderError::InvalidConfig);
+        }
+        SAMD21_WATCHDOG_ARMED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| ProviderError::InvalidConfig)?;
+        self.backend
+            .arm(timeout_code)
+            .map_err(ProviderError::Backend)?;
+        self.armed = true;
+        Ok(())
+    }
+
+    pub fn feed(&mut self) -> Result<(), ProviderError<B::Error>> {
+        self.lease
+            .as_ref()
+            .ok_or(ProviderError::InvalidConfig)?
+            .ensure_live()
+            .map_err(ProviderError::Lease)?;
+        if !self.armed {
+            return Err(ProviderError::InvalidConfig);
+        }
+        self.backend.feed().map_err(ProviderError::Backend)
+    }
+}
+
+impl<B> Drop for Samd21Watchdog<B> {
+    fn drop(&mut self) {
+        if self.armed {
+            if let Some(lease) = self.lease.take() {
+                core::mem::forget(lease);
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "arm")]
+impl WatchdogBackend for atsamd_hal::watchdog::Watchdog {
+    type Error = Infallible;
+
+    fn arm(&mut self, timeout_code: u8) -> Result<(), Self::Error> {
+        embedded_hal_02::watchdog::WatchdogEnable::start(self, timeout_code);
+        Ok(())
+    }
+
+    fn feed(&mut self) -> Result<(), Self::Error> {
+        embedded_hal_02::watchdog::Watchdog::feed(self);
+        Ok(())
+    }
+}
+
+pub const SAMD21_STORAGE_START: u32 = 0x0003_C000;
+pub const SAMD21_STORAGE_LEN: u32 = 16 * 1024;
+pub const SAMD21_FLASH_PAGE_SIZE: u32 = 64;
+pub const SAMD21_FLASH_ROW_SIZE: u32 = 256;
+
+pub struct Samd21Flash {
+    lease: Samd21LeaseGuard,
+}
+
+impl Samd21Flash {
+    pub fn try_new(owner: u8) -> Result<Self, nobro_hal::LeaseError> {
+        Ok(Self {
+            lease: Samd21Leases::acquire_guard(FLASH_LEASE, owner)?,
+        })
+    }
+
+    #[cfg(target_arch = "arm")]
+    fn wait_ready() {
+        unsafe {
+            while (0x4100_4014 as *const u8).read_volatile() & 1 == 0 {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    #[cfg(target_arch = "arm")]
+    unsafe fn command(command: u16) {
+        (0x4100_4000 as *mut u16).write_volatile(0xA500 | command);
+        Self::wait_ready();
+    }
+
+    fn address(offset: u32, length: u32) -> Option<u32> {
+        offset
+            .checked_add(length)
+            .filter(|end| *end <= SAMD21_STORAGE_LEN)
+            .map(|_| SAMD21_STORAGE_START + offset)
+    }
+
+    pub fn erase_row(&mut self, offset: u32) -> Result<(), ProviderError<Infallible>> {
+        self.lease.ensure_live().map_err(ProviderError::Lease)?;
+        if offset % SAMD21_FLASH_ROW_SIZE != 0 {
+            return Err(ProviderError::InvalidConfig);
+        }
+        let _address =
+            Self::address(offset, SAMD21_FLASH_ROW_SIZE).ok_or(ProviderError::InvalidConfig)?;
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            (0x4100_401C as *mut u32).write_volatile(_address >> 1);
+            Self::command(0x02);
+        }
+        Ok(())
+    }
+
+    pub fn program_page(
+        &mut self,
+        offset: u32,
+        page: &[u8; SAMD21_FLASH_PAGE_SIZE as usize],
+    ) -> Result<(), ProviderError<Infallible>> {
+        self.lease.ensure_live().map_err(ProviderError::Lease)?;
+        if offset % SAMD21_FLASH_PAGE_SIZE != 0 {
+            return Err(ProviderError::InvalidConfig);
+        }
+        let address =
+            Self::address(offset, SAMD21_FLASH_PAGE_SIZE).ok_or(ProviderError::InvalidConfig)?;
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            Self::command(0x44); // page buffer clear
+            for (word, bytes) in page.chunks_exact(4).enumerate() {
+                let value = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                ((address as *mut u32).add(word)).write_volatile(value);
+            }
+            (0x4100_401C as *mut u32).write_volatile(address >> 1);
+            Self::command(0x04); // write page
+        }
+        #[cfg(not(target_arch = "arm"))]
+        let _ = (address, page);
+        Ok(())
+    }
+
+    pub fn read(&self, offset: u32, bytes: &mut [u8]) -> Result<(), ProviderError<Infallible>> {
+        self.lease.ensure_live().map_err(ProviderError::Lease)?;
+        let length = u32::try_from(bytes.len()).map_err(|_| ProviderError::InvalidConfig)?;
+        let address = Self::address(offset, length).ok_or(ProviderError::InvalidConfig)?;
+        #[cfg(target_arch = "arm")]
+        unsafe {
+            core::ptr::copy_nonoverlapping(address as *const u8, bytes.as_mut_ptr(), bytes.len());
+        }
+        #[cfg(not(target_arch = "arm"))]
+        {
+            let _ = address;
+            bytes.fill(0xff);
+        }
+        Ok(())
+    }
 }
 
 pub struct Samd21I2c<B> {
@@ -548,8 +823,23 @@ impl<T: AlarmTimer> Drop for Samd21Alarm<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nobro_hal::HalLease;
 
     struct FakeI2c;
+
+    struct FakeWatchdog;
+
+    impl WatchdogBackend for FakeWatchdog {
+        type Error = Infallible;
+
+        fn arm(&mut self, _: u8) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn feed(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
 
     #[derive(Default)]
     struct FakeAlarm {
@@ -593,11 +883,32 @@ mod tests {
     }
 
     #[test]
-    fn declaration_is_exact_and_does_not_claim_adc() {
+    fn declaration_is_exact_and_complete_for_present_hardware() {
         let declaration = <Samd21Providers as HalCompatibility>::DECLARATION;
         assert!(declaration.is_exact_profile());
-        assert!(!declaration.supported.contains(HardwareCapability::Adc));
+        assert!(declaration.supported.contains(HardwareCapability::Adc));
+        assert!(declaration.supported.contains(HardwareCapability::Pulse));
+        assert!(declaration.supported.contains(HardwareCapability::Watchdog));
+        assert!(declaration.supported.contains(HardwareCapability::Flash));
         assert!(declaration.supported.contains(HardwareCapability::Usb));
+    }
+
+    #[test]
+    fn reserved_flash_rejects_unaligned_and_out_of_range_access() {
+        let _lock = crate::TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut flash = Samd21Flash::try_new(11).unwrap();
+        assert_eq!(flash.erase_row(1), Err(ProviderError::InvalidConfig));
+        assert_eq!(
+            flash.erase_row(SAMD21_STORAGE_LEN),
+            Err(ProviderError::InvalidConfig)
+        );
+        let mut byte = [0];
+        assert_eq!(
+            flash.read(SAMD21_STORAGE_LEN, &mut byte),
+            Err(ProviderError::InvalidConfig)
+        );
     }
 
     #[test]
@@ -624,5 +935,21 @@ mod tests {
         assert!(!alarm.poll_due(9));
         assert!(alarm.poll_due(10));
         assert_eq!(alarm.deadline_us(), None);
+    }
+
+    #[test]
+    fn armed_watchdog_cannot_be_reissued_after_owner_recovery() {
+        let _lock = crate::TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let owner = 12;
+        let mut watchdog = Samd21Watchdog::try_new(FakeWatchdog, owner).unwrap();
+        watchdog.arm(3).unwrap();
+        drop(watchdog);
+        assert_eq!(Samd21Leases::release_all_for_owner(owner), 1);
+        assert!(matches!(
+            Samd21Watchdog::try_new(FakeWatchdog, owner + 1),
+            Err(nobro_hal::LeaseError::AlreadyHeld)
+        ));
     }
 }

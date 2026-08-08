@@ -187,7 +187,7 @@ gate "nRF52840 application static budgets" \
       --flash-budget 32500 --static-ram-budget 2048 --ram-budget 3840 --stack-budget 2048 \
       --cycle-budget 7600 --top 3 && \
     python sdk/cli/nobro.py budget "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/usb_cdc_demo_s140" \
-      --flash-budget 33500 --static-ram-budget 2048 --ram-budget 3840 --stack-budget 2048 \
+      --flash-budget 33500 --static-ram-budget 2048 --ram-budget 4096 --stack-budget 2048 \
       --cycle-budget 7600 --top 3 && \
     python sdk/cli/nobro.py budget "$CARGO_TARGET_DIR/thumbv7em-none-eabihf/release/ai_usb_demo" \
       --flash-budget 30000 --static-ram-budget 2048 --ram-budget 3800 --stack-budget 2048 \

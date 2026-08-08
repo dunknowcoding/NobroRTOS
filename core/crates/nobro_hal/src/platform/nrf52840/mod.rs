@@ -108,20 +108,44 @@ impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }>
     for Nrf52840NoSoftDevice
 {
 }
+impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Nrf52840NoSoftDevice {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Nrf52840NoSoftDevice {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840NoSoftDevice {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840NoSoftDevice {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Watchdog as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Rtc as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Flash as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Nrf52840NoSoftDevice {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Nrf52840NoSoftDevice {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840NoSoftDevice {}
 
 impl HardwareCapabilityWitness<{ HardwareCapability::Timebase as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Deadline as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Event as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::DmaCompletion as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Gpio as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Irq as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Servo as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Watchdog as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Rtc as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Flash as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Nrf52840S140V6 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Nrf52840S140V6 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Nrf52840S140V6 {}
 
 const PPI_BASE: u32 = 0x4001_F000;
@@ -218,18 +242,30 @@ impl HalCompatibility for Nrf52840NoSoftDevice {
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
             )
+            .witnessed::<Self, { HardwareCapability::Gpio as u8 }>(HardwareCapability::Gpio)
+            .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
+            .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
+            .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
+            .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
             .witnessed::<Self, { HardwareCapability::Servo as u8 }>(HardwareCapability::Servo)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Watchdog as u8 }>(HardwareCapability::Watchdog)
+            .witnessed::<Self, { HardwareCapability::Rtc as u8 }>(HardwareCapability::Rtc)
+            .witnessed::<Self, { HardwareCapability::Flash as u8 }>(HardwareCapability::Flash)
+            .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
+            .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
         let inapplicable = HardwareCapabilitySet::EMPTY
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "nrf52840-native-nosd-partial-v3",
-            CapabilityProfileKind::Constrained,
+            "nrf52840-native-nosd-deep-v4",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             inapplicable,
@@ -250,18 +286,30 @@ impl HalCompatibility for Nrf52840S140V6 {
             .witnessed::<Self, { HardwareCapability::DmaCompletion as u8 }>(
                 HardwareCapability::DmaCompletion,
             )
+            .witnessed::<Self, { HardwareCapability::Gpio as u8 }>(HardwareCapability::Gpio)
+            .witnessed::<Self, { HardwareCapability::Irq as u8 }>(HardwareCapability::Irq)
+            .witnessed::<Self, { HardwareCapability::Uart as u8 }>(HardwareCapability::Uart)
+            .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
+            .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
+            .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
             .witnessed::<Self, { HardwareCapability::Servo as u8 }>(HardwareCapability::Servo)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Watchdog as u8 }>(HardwareCapability::Watchdog)
+            .witnessed::<Self, { HardwareCapability::Rtc as u8 }>(HardwareCapability::Rtc)
+            .witnessed::<Self, { HardwareCapability::Flash as u8 }>(HardwareCapability::Flash)
+            .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
+            .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let supported = witnesses;
         let inapplicable = HardwareCapabilitySet::EMPTY
             .with(HardwareCapability::Cache)
             .with(HardwareCapability::Multicore);
         HardwareCapabilityDeclaration::new(
-            "nrf52840-native-s140-partial-v3",
-            CapabilityProfileKind::Constrained,
+            "nrf52840-native-s140-deep-v4",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             inapplicable,
@@ -350,7 +398,7 @@ impl<T: ActiveNrf52840Backend> HalLease for T {
 fn map_lease(resource: LeaseId) -> Result<Resource, LeaseError> {
     match (resource.class, resource.instance) {
         (LeaseClass::Timer, 0) => Ok(Resource::Timer0),
-        (LeaseClass::Timer, 2) => Ok(Resource::Rtc2),
+        (LeaseClass::Timer, 2) | (LeaseClass::Rtc, 0) => Ok(Resource::Rtc2),
         (LeaseClass::Timer, 1) => Ok(Resource::Timer1),
         (LeaseClass::I2c, 0) => Ok(Resource::Twim0),
         (LeaseClass::I2c, 1) => Ok(Resource::Twim1),
@@ -359,6 +407,14 @@ fn map_lease(resource: LeaseId) -> Result<Resource, LeaseError> {
         (LeaseClass::Pwm, 0) => Ok(Resource::Pwm0),
         (LeaseClass::EventRouter, 0) => Ok(Resource::Ppi),
         (LeaseClass::SoftwareEvent, 0) => Ok(Resource::Egu0),
+        (LeaseClass::Gpio, 0) => Ok(Resource::Gpio),
+        (LeaseClass::Irq, 0) => Ok(Resource::Gpiote),
+        (LeaseClass::Uart, 0) => Ok(Resource::Uarte0),
+        (LeaseClass::Adc, 0) => Ok(Resource::Saadc),
+        // Reset:1 was the pre-contract-v2 spelling. Keep it as a compatibility
+        // alias while every new receipt uses the cross-platform flash class.
+        (LeaseClass::Reset, 1) | (LeaseClass::Flash, 0) => Ok(Resource::Nvmc),
+        (LeaseClass::Pulse, 0) => Ok(Resource::Timer2),
         _ => Err(LeaseError::Unsupported),
     }
 }
@@ -490,6 +546,9 @@ mod tests {
             map_lease(LeaseId::new(LeaseClass::Spi, 7)),
             Err(LeaseError::Unsupported)
         );
+        assert_eq!(map_lease(LeaseId::SYSTEM_RTC), Ok(Resource::Rtc2));
+        assert_eq!(map_lease(LeaseId::APPLICATION_FLASH), Ok(Resource::Nvmc));
+        assert_eq!(LeaseId::from(Resource::Nvmc), LeaseId::APPLICATION_FLASH);
     }
 
     #[test]

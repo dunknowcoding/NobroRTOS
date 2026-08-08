@@ -34,7 +34,9 @@
     "interrupts": "owned by the maintained RP2040 port and selected provider sessions",
     "dma": "shared RP2 completion/cancellation contract with RP2040-local channels and DREQ values",
     "clock": "rp2040-hal board startup owns PLL and timer configuration",
-    "boot": "ROM BOOTSEL plus the image's protected BOOT2 stage"
+    "boot": "ROM BOOTSEL plus the image's protected BOOT2 stage",
+    "storage_start": "0x101FC000",
+    "storage_len_bytes": 16384
   },
   "pins": { "led": 25, "servo_pwm": null, "mvk_trigger": null }
 }

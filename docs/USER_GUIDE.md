@@ -469,8 +469,8 @@ python sdk/cli/nobro.py firmware _work/projects/rover/workload.json \
   --out _work/firmware --build
 ```
 
-For `nrf52840-nosd`, the gated nano specimen measures 2584/16/24 B
-flash/static/total RAM with the feature off and 2880/20/28 B with it on: deltas
+For `nrf52840-nosd`, the gated nano specimen measures 2576/16/24 B
+flash/static/total RAM with the feature off and 2872/20/28 B with it on: deltas
 of 296/4/4 B under catalog ceilings of 384/16/32 B. The target gate verifies
 the feature marker is absent/off and present/on. This prices only the stated
 linked composition and toolchain. `nrf52840-s140` remains unavailable until it

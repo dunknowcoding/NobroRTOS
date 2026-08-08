@@ -36,5 +36,12 @@
     "clock": "wrapping-safe 32-bit micros with half-range deadlines",
     "boot": "Optiboot-compatible 2 KiB boot section; application upload through the external USB-UART bridge; the provider exposes an application restart because watchdog reset is unsafe with the old bootloader"
   },
+  "persistent_storage": {
+    "kind": "eeprom",
+    "start": "0x0",
+    "length_bytes": 1024,
+    "write_granularity_bytes": 1,
+    "note": "Runtime program-flash mutation is unavailable to the exact old-Optiboot application; EEPROM is the bounded writable persistence provider"
+  },
   "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
 }

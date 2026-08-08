@@ -1334,7 +1334,7 @@ def selftest() -> int:
     unrelated_gate = copy.deepcopy(good)
     unrelated_gate["platforms"]["ra4m1"]["compositions"]["native"]["claims"]["gpio"] = {
         "maturity": "implemented",
-        "evidence": ["ra4m1-provider-host"],
+        "evidence": ["rp2350-target-build"],
     }
     _expect_error(validate(unrelated_gate), "not scoped to this exact claim")
 

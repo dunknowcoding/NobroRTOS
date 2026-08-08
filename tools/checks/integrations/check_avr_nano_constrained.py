@@ -24,8 +24,11 @@ FQBN = "arduino:avr:nano:cpu=atmega328old"
 FULL = r'''#include <NobroAvrNano.h>
 nobro::AvrNanoApp app;
 nobro::AvrNanoDeadline deadline;
+nobro::AvrNanoEvent event;
 nobro::AvrNanoGpio gpio(13);
 nobro::AvrNanoInterrupt irq(2);
+nobro::AvrNanoPulse pulse(2);
+nobro::AvrNanoWatchdog watchdog;
 nobro::AvrNanoPwm pwm(3);
 nobro::AvrNanoAdc adc(A0);
 nobro::AvrNanoI2c i2c;
@@ -33,6 +36,7 @@ nobro::AvrNanoSpi spi(10);
 nobro::AvrNanoUart uart;
 volatile bool exercise = false;
 void callback() {}
+NOBRO_AVR_NANO_WATCHDOG_ISR()
 void setup() {
   nobro::TaskId a = app.sensor("sense", 10);
   nobro::TaskId b = app.control("control", 20);
@@ -44,8 +48,14 @@ void setup() {
   uint16_t sample = 0;
   uint8_t tx[1] = {0}, rx[1] = {0};
   deadline.armAfterUs(1000); deadline.due(); deadline.cancel();
+  event.trigger(); event.take();
   gpio.begin(OUTPUT); gpio.write(true); gpio.read(level);
   irq.attach(callback, CHANGE); irq.detach();
+  pulse.begin(); uint32_t width = 0; pulse.readHighUs(100, width);
+  watchdog.beginInterrupt(WDTO_15MS); watchdog.feed();
+  watchdog.takeExpired(); watchdog.stop();
+  nobro::AvrNanoLease::acquire(0, 1); nobro::AvrNanoLease::release(0, 1);
+  uint8_t saved = 0; nobro::AvrNanoEepromStorage::read(0, &saved, 1);
   pwm.begin(); pwm.setDuty(128);
   adc.begin(); adc.read(sample);
   i2c.begin(); i2c.probe(0x68);
@@ -108,14 +118,13 @@ def validate_metadata() -> None:
         raise RuntimeError("Nano must be an explicit constrained composition")
     claims = set(platform.get("compositions", {}).get("arduino", {}).get("claims", {}))
     required = {
-        "timebase", "deadline", "gpio", "irq", "uart", "byte_io",
-        "adc", "pwm", "i2c", "spi", "reset", "power",
+        "timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io",
+        "adc", "pwm", "pulse", "i2c", "spi", "watchdog", "reset", "power",
+        "lease",
     }
     if claims != required:
         raise RuntimeError(f"Nano claim set drift: {sorted(claims)}")
-    if set(platform.get("parity_gaps", [])) != {
-        "event", "irq", "pulse", "watchdog", "flash", "reset", "lease",
-    }:
+    if set(platform.get("parity_gaps", [])) != {"flash"}:
         raise RuntimeError("Nano full-board parity gap ledger drift")
     if set(platform.get("hardware_inapplicable", [])) != {
         "dma_completion", "usb", "rtc", "cache", "multicore",

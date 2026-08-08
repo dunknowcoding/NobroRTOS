@@ -37,7 +37,9 @@
     "interrupts": "Cortex-M0+ application vectors start after the 8 KiB bootloader; provider IRQ ownership must be explicit",
     "dma": "disabled until a board provider declares channel, trigger, interrupt, and cancellation ownership",
     "clock": "the generated contract-only image configures no clock and claims no timing provider; provider-bearing firmware uses the maintained SAMD21 runtime",
-    "boot": "UF2 or SAM-BA-class 8 KiB bootloader; generated application origin is exactly 0x2000"
+    "boot": "UF2 or SAM-BA-class 8 KiB bootloader; generated application origin is exactly 0x2000",
+    "storage_start": "0x3C000",
+    "storage_len_bytes": 16384
   },
   "pins": { "led": 13, "servo_pwm": null, "mvk_trigger": null }
 }

@@ -19,8 +19,8 @@
           "composition": "nobro-workload-v1 nano_min, nrf52840-nosd, thumbv7em-none-eabihf, release opt-level=z, LTO=fat",
           "toolchain": "rustc 1.97.0 (2d8144b78), LLVM 22.1.6",
           "measured": {
-            "off": {"flash_bytes": 2584, "static_ram_bytes": 16, "total_ram_bytes": 24},
-            "on": {"flash_bytes": 2880, "static_ram_bytes": 20, "total_ram_bytes": 28},
+            "off": {"flash_bytes": 2576, "static_ram_bytes": 16, "total_ram_bytes": 24},
+            "on": {"flash_bytes": 2872, "static_ram_bytes": 20, "total_ram_bytes": 28},
             "delta": {"flash_bytes": 296, "static_ram_bytes": 4, "total_ram_bytes": 4}
           },
           "limitations": "Linked static evidence for this exact composition; no physical timing or electrical-power measurement."

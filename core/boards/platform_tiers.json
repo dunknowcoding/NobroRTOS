@@ -31,16 +31,20 @@
   "facade_offers": [
     "timebase",
     "deadline",
+    "event",
     "gpio",
     "irq",
     "uart",
     "adc",
     "pwm",
+    "pulse",
     "i2c",
     "spi",
     "byte_io",
+    "watchdog",
     "reset",
-    "power"
+    "power",
+    "lease"
   ],
   "tiers": {
     "deep": "one exact composition covers every board-present capability with compiled ownership and lifecycle witnesses; hardware-inapplicable capabilities are explicit and applicable gaps are empty",
@@ -172,12 +176,12 @@
         {
           "platform": "nrf52840",
           "composition": "native-nosd",
-          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "servo", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "lease"]
         },
         {
           "platform": "nrf52840",
           "composition": "native-s140",
-          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "servo", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "lease"]
         }
       ]
     },
@@ -202,7 +206,7 @@
         {
           "platform": "nrf52840",
           "composition": "native-nosd",
-          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "servo", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "lease"]
         }
       ]
     },
@@ -227,7 +231,7 @@
         {
           "platform": "nrf52840",
           "composition": "native-s140",
-          "capabilities": ["timebase", "deadline", "event", "dma_completion", "servo", "i2c", "spi", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "dma_completion", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "servo", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "lease"]
         }
       ]
     },
@@ -337,12 +341,12 @@
         {
           "platform": "rp2040",
           "composition": "native",
-          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "reset", "power", "multicore", "lease"]
+          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "cache", "multicore", "lease"]
         },
         {
           "platform": "rp2350",
           "composition": "native",
-          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "reset", "power", "multicore", "lease"]
+          "capabilities": ["deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "pulse", "i2c", "spi", "watchdog", "rtc", "flash", "reset", "power", "cache", "multicore", "lease"]
         }
       ]
     },
@@ -351,12 +355,12 @@
       "runner": "cross-mcu",
       "required": true,
       "cwd": "core/ports/rp2040",
-      "command": ["cargo", "build", "--locked", "--release"],
+      "command": ["cargo", "build", "--locked", "--release", "--features", "deep-selftest"],
       "claim_scopes": [
         {
           "platform": "rp2040",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "usb", "reset", "power", "multicore", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "pulse", "i2c", "spi", "usb", "watchdog", "rtc", "flash", "reset", "power", "cache", "multicore", "lease"]
         }
       ]
     },
@@ -379,12 +383,12 @@
       "runner": "cross-mcu",
       "required": true,
       "cwd": "core/ports/rp2350",
-      "command": ["cargo", "build", "--locked", "--release"],
+      "command": ["cargo", "build", "--locked", "--release", "--features", "deep-selftest"],
       "claim_scopes": [
         {
           "platform": "rp2350",
           "composition": "native",
-          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "i2c", "spi", "usb", "reset", "power", "multicore", "lease"]
+          "capabilities": ["timebase", "deadline", "event", "gpio", "irq", "uart", "byte_io", "adc", "pwm", "pulse", "i2c", "spi", "usb", "watchdog", "rtc", "flash", "reset", "power", "cache", "multicore", "lease"]
         }
       ]
     },
@@ -818,13 +822,19 @@
             "deadline",
             "event",
             "dma_completion",
+            "gpio",
+            "irq",
             "uart",
             "byte_io",
             "adc",
             "pwm",
+            "pulse",
             "i2c",
             "spi",
             "usb",
+            "watchdog",
+            "rtc",
+            "flash",
             "reset",
             "power",
             "lease"
@@ -871,13 +881,19 @@
             "timebase",
             "deadline",
             "event",
+            "gpio",
+            "irq",
             "uart",
             "byte_io",
             "adc",
             "pwm",
+            "pulse",
             "i2c",
             "spi",
             "usb",
+            "watchdog",
+            "rtc",
+            "flash",
             "reset",
             "power",
             "lease"
@@ -918,11 +934,15 @@
             "irq",
             "uart",
             "byte_io",
+            "adc",
             "pwm",
+            "pulse",
             "i2c",
             "spi",
             "usb",
+            "watchdog",
             "rtc",
+            "flash",
             "reset",
             "power",
             "lease"
@@ -935,7 +955,7 @@
       "runner": "cross-mcu",
       "required": true,
       "cwd": "core/ports/samd21",
-      "command": ["cargo", "build", "--locked", "--release", "--target", "thumbv6m-none-eabi"],
+      "command": ["cargo", "build", "--locked", "--release", "--target", "thumbv6m-none-eabi", "--features", "deep-selftest"],
       "claim_scopes": [
         {
           "platform": "samd21",
@@ -949,11 +969,15 @@
             "irq",
             "uart",
             "byte_io",
+            "adc",
             "pwm",
+            "pulse",
             "i2c",
             "spi",
             "usb",
+            "watchdog",
             "rtc",
+            "flash",
             "reset",
             "power",
             "lease"
@@ -1175,7 +1199,8 @@
           "composition": "arduino",
           "capabilities": [
             "timebase", "deadline", "gpio", "irq", "uart", "byte_io",
-            "adc", "pwm", "i2c", "spi", "reset", "power"
+            "adc", "pwm", "i2c", "spi", "reset", "power", "event",
+            "pulse", "watchdog", "lease"
           ]
         }
       ]
@@ -1206,9 +1231,9 @@
   "platforms": {
     "nrf52840": {
       "arch": "thumbv7em",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/crates/nobro_hal/src/platform/nrf52840",
-      "limitations": "Both exact native boot layouts retain their verified timer/event/DMA/servo/bus/USB/lease providers. GPIO, general IRQ, UART/byte I/O, ADC, general PWM/pulse, watchdog, RTC, application flash, reset, and power lifecycle providers remain applicable gaps, so neither composition is deep HAL.",
+      "limitations": "The no-SoftDevice and S140 compositions preserve different boot, RAM, IRQ-ceiling, and preemption contracts. Both use System-ON idle while USB is owned and reserve the final 16 KiB below the resident bootloader for bounded application storage.",
       "compositions": {
         "native-nosd": {
           "surface": "native",
@@ -1227,9 +1252,21 @@
             "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-nosd-usb-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-nosd-target-build"]}
           }
@@ -1251,9 +1288,21 @@
             "deadline": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "event": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "dma_completion": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "uart": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "byte_io": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "pwm": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "servo": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "reset": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
+            "power": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["nrf52840-usb-host", "nrf52840-s140-usb-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["nrf52840-hal-host", "nrf52840-s140-target-build"]}
           }
@@ -1288,9 +1337,9 @@
     },
     "rp2040": {
       "arch": "thumbv6m",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/rp2040",
-      "limitations": "W114 provides the exact target-built native provider contract and shared lifecycle adapters; watchdog, RTC, flash, cache, and a first-class pulse provider remain applicable gaps. W115 physical Pico PIO/DMA/bus/radio/USB evidence remains valid but does not establish full-board parity.",
+      "limitations": "The RP2040 composition reserves the final 16 KiB for bounded flash storage. Servo remains an external optional module rather than an on-board capability; cache operations cover the XIP cache lifecycle.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1306,11 +1355,16 @@
             "byte_io": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "adc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "pwm": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["rp2040-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "reset": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "power": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
+            "cache": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "multicore": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2040-target-build"]}
           }
@@ -1319,9 +1373,9 @@
     },
     "rp2350": {
       "arch": "thumbv8m",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/rp2350",
-      "limitations": "W114 provides the exact target-built native provider contract, shared lifecycle adapters, and exact-one CYW43439 backend selection; watchdog, retained-time/RTC, flash, cache, and a first-class pulse provider remain applicable gaps. W115 physical Pico 2 W PIO/DMA/bus/radio/USB evidence remains valid but does not establish full-board parity.",
+      "limitations": "The RP2350 composition reserves the final 16 KiB for bounded flash storage and uses POWMAN AOT as retained time. Servo remains external optional; CYW43439 ownership is an independently selected board feature.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1337,11 +1391,16 @@
             "byte_io": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "adc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "pwm": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["rp2350-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "reset": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "power": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]},
+            "cache": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "multicore": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["rp2-shared-host", "rp2350-target-build", "rp2350-cyw-vendor-target-build"]}
           }
@@ -1552,9 +1611,9 @@
     },
     "ra4m1": {
       "arch": "thumbv7em",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/ra4m1",
-      "limitations": "Native Rust provides a LOCO-clocked AGT timebase/deadline, GPT2/ELC event capture, opt-in GPT/ELC/DMAC completion, bounded ADC/PWM/I2C/SPI/UART, USBFS, reset, CPU sleep, and generation-safe leases. General GPIO/IRQ, pulse capture, watchdog, RTC, and application flash remain applicable gaps; current physical evidence for the implemented subset remains valid.",
+      "limitations": "The exact UNO R4 composition uses native register providers plus fallible owned mounts for FSP-backed IRQ, pulse, watchdog, calendar RTC, and the 8 KiB data-flash lifecycle. Servo is external optional; cache and multicore are absent on RA4M1.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1563,13 +1622,19 @@
             "deadline": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "event": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "dma_completion": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-event-dma-target-build"]},
+            "gpio": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "irq": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "uart": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "byte_io": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "adc": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "pwm": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "i2c": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "spi": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-usb-host", "ra4m1-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "rtc": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "reset": {"maturity": "experimental", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "power": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["ra4m1-provider-host", "ra4m1-target-build"]}
@@ -1601,9 +1666,9 @@
     },
     "samd21": {
       "arch": "thumbv6m",
-      "tier": "provider",
+      "tier": "deep",
       "implementation_root": "core/ports/samd21",
-      "limitations": "The exact Arduino Zero-compatible native composition is host-tested and target-built; RTC/TC4, EIC/EVSYS/DMAC, TCC PWM, SERCOM UART/I2C/SPI, USB CDC, reset, CPU sleep, and generation-safe leases are implemented. ADC, pulse capture, watchdog, and application flash remain applicable gaps, so the row is a native provider rather than deep HAL.",
+      "limitations": "The exact Arduino Zero-compatible composition reserves the final 16 KiB for bounded flash storage and owns ADC, D9 pulse capture, watchdog, RTC, bus, USB, reset, and power lifecycles. Servo remains external optional; cache and multicore are absent on SAMD21G18A.",
       "compositions": {
         "native": {
           "surface": "native",
@@ -1616,11 +1681,15 @@
             "irq": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "uart": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "byte_io": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "adc": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "pwm": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "usb": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "rtc": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
+            "flash": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "reset": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "power": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]},
             "lease": {"maturity": "implemented", "evidence": ["samd21-provider-host", "samd21-target-build"]}
@@ -1681,13 +1750,7 @@
       "tier": "constrained",
       "implementation_root": "core/ports/avr_nano",
       "parity_gaps": [
-        "event",
-        "irq",
-        "pulse",
-        "watchdog",
-        "flash",
-        "reset",
-        "lease"
+        "flash"
       ],
       "hardware_inapplicable": [
         "dma_completion",
@@ -1705,16 +1768,20 @@
           "claims": {
             "timebase": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "deadline": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "event": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "gpio": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "irq": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "uart": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "byte_io": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "adc": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "pwm": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "pulse": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "i2c": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "spi": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "watchdog": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
             "reset": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
-            "power": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]}
+            "power": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]},
+            "lease": {"maturity": "implemented", "evidence": ["avr-nano-arduino-target-build"]}
           }
         }
       }

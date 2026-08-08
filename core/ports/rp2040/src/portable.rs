@@ -69,11 +69,16 @@ impl HardwareCapabilityWitness<{ HardwareCapability::Uart as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::ByteIo as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Adc as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Pwm as u8 }> for Rp2040 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Pulse as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::I2c as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Spi as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Usb as u8 }> for Rp2040 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Watchdog as u8 }> for Rp2040 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Rtc as u8 }> for Rp2040 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Flash as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Reset as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Power as u8 }> for Rp2040 {}
+impl HardwareCapabilityWitness<{ HardwareCapability::Cache as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Multicore as u8 }> for Rp2040 {}
 impl HardwareCapabilityWitness<{ HardwareCapability::Lease as u8 }> for Rp2040 {}
 
@@ -123,19 +128,24 @@ impl HalCompatibility for Rp2040 {
             .witnessed::<Self, { HardwareCapability::ByteIo as u8 }>(HardwareCapability::ByteIo)
             .witnessed::<Self, { HardwareCapability::Adc as u8 }>(HardwareCapability::Adc)
             .witnessed::<Self, { HardwareCapability::Pwm as u8 }>(HardwareCapability::Pwm)
+            .witnessed::<Self, { HardwareCapability::Pulse as u8 }>(HardwareCapability::Pulse)
             .witnessed::<Self, { HardwareCapability::I2c as u8 }>(HardwareCapability::I2c)
             .witnessed::<Self, { HardwareCapability::Spi as u8 }>(HardwareCapability::Spi)
             .witnessed::<Self, { HardwareCapability::Usb as u8 }>(HardwareCapability::Usb)
+            .witnessed::<Self, { HardwareCapability::Watchdog as u8 }>(HardwareCapability::Watchdog)
+            .witnessed::<Self, { HardwareCapability::Rtc as u8 }>(HardwareCapability::Rtc)
+            .witnessed::<Self, { HardwareCapability::Flash as u8 }>(HardwareCapability::Flash)
             .witnessed::<Self, { HardwareCapability::Reset as u8 }>(HardwareCapability::Reset)
             .witnessed::<Self, { HardwareCapability::Power as u8 }>(HardwareCapability::Power)
+            .witnessed::<Self, { HardwareCapability::Cache as u8 }>(HardwareCapability::Cache)
             .witnessed::<Self, { HardwareCapability::Multicore as u8 }>(
                 HardwareCapability::Multicore,
             )
             .witnessed::<Self, { HardwareCapability::Lease as u8 }>(HardwareCapability::Lease);
         let inapplicable = HardwareCapabilitySet::EMPTY.with(HardwareCapability::Servo);
         HardwareCapabilityDeclaration::new(
-            "rp2-native-partial-v3",
-            CapabilityProfileKind::Constrained,
+            "rp2040-native-deep-v4",
+            CapabilityProfileKind::Deep,
             supported,
             supported,
             inapplicable,

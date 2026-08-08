@@ -17,10 +17,16 @@ pub enum Resource {
     Pwm0,
     Egu0,
     Ppi,
+    Gpio,
+    Gpiote,
+    Uarte0,
+    Saadc,
+    Nvmc,
+    Timer2,
 }
 
 impl Resource {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 16] = [
         Self::Timer0,
         Self::Twim0,
         Self::Twim1,
@@ -31,6 +37,12 @@ impl Resource {
         Self::Pwm0,
         Self::Egu0,
         Self::Ppi,
+        Self::Gpio,
+        Self::Gpiote,
+        Self::Uarte0,
+        Self::Saadc,
+        Self::Nvmc,
+        Self::Timer2,
     ];
 
     pub const COUNT: usize = Self::ALL.len();
@@ -47,6 +59,12 @@ impl Resource {
             Self::Pwm0 => "PWM0",
             Self::Egu0 => "EGU0",
             Self::Ppi => "PPI",
+            Self::Gpio => "GPIO",
+            Self::Gpiote => "GPIOTE",
+            Self::Uarte0 => "UARTE0",
+            Self::Saadc => "SAADC",
+            Self::Nvmc => "NVMC",
+            Self::Timer2 => "TIMER2",
         }
     }
 
@@ -69,6 +87,12 @@ impl From<Resource> for LeaseId {
             Resource::Pwm0 => Self::PRIMARY_PWM,
             Resource::Egu0 => Self::SOFTWARE_EVENT,
             Resource::Ppi => Self::EVENT_ROUTER,
+            Resource::Gpio => Self::PRIMARY_GPIO,
+            Resource::Gpiote => Self::PRIMARY_IRQ,
+            Resource::Uarte0 => Self::PRIMARY_UART,
+            Resource::Saadc => Self::PRIMARY_ADC,
+            Resource::Nvmc => Self::APPLICATION_FLASH,
+            Resource::Timer2 => Self::PRIMARY_PULSE,
         }
     }
 }
@@ -124,18 +148,7 @@ impl LeaseSlot {
 #[cfg(target_pointer_width = "32")]
 const _: () = assert!(core::mem::size_of::<LeaseSlot>() == 8);
 
-static SLOTS: [LeaseSlot; 10] = [
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-    LeaseSlot::new(),
-];
+static SLOTS: [LeaseSlot; 16] = [const { LeaseSlot::new() }; 16];
 
 const fn idx(r: Resource) -> usize {
     match r {
@@ -149,28 +162,52 @@ const fn idx(r: Resource) -> usize {
         Resource::Pwm0 => 7,
         Resource::Egu0 => 8,
         Resource::Ppi => 9,
+        Resource::Gpio => 10,
+        Resource::Gpiote => 11,
+        Resource::Uarte0 => 12,
+        Resource::Saadc => 13,
+        Resource::Nvmc => 14,
+        Resource::Timer2 => 15,
     }
 }
 
 /// Resources that are different programming modes of one physical nRF block.
 ///
-/// The aliases have distinct portable identities, but they cannot be leased at
-/// the same time: changing one mode's ENABLE/PSEL/interrupt registers would
-/// corrupt an operation owned through the other identity.
-const fn alias_peer(resource: Resource) -> Option<Resource> {
-    match resource {
-        Resource::Twim0 => Some(Resource::Spim0),
-        Resource::Spim0 => Some(Resource::Twim0),
-        _ => None,
+/// Physical-block and pin-mux conflicts between otherwise distinct portable
+/// identities. GPIO is currently a deliberately conservative whole-bank lease;
+/// every provider that writes an exposed PIN_CNF/PSEL therefore excludes it.
+const fn is_pin_owner(resource: Resource) -> bool {
+    matches!(
+        resource,
+        Resource::Twim0
+            | Resource::Twim1
+            | Resource::Spim0
+            | Resource::Pwm0
+            | Resource::Gpiote
+            | Resource::Uarte0
+            | Resource::Saadc
+    )
+}
+
+const fn resources_conflict(left: Resource, right: Resource) -> bool {
+    if idx(left) == idx(right) {
+        return true;
     }
+    if matches!(
+        (left, right),
+        (Resource::Twim0, Resource::Spim0) | (Resource::Spim0, Resource::Twim0)
+    ) {
+        return true;
+    }
+    (idx(left) == idx(Resource::Gpio) && is_pin_owner(right))
+        || (idx(right) == idx(Resource::Gpio) && is_pin_owner(left))
 }
 
 fn acquisition_conflicts(resource: Resource) -> bool {
-    SLOTS[idx(resource)].taken.load(Ordering::Acquire)
-        || match alias_peer(resource) {
-            Some(peer) => SLOTS[idx(peer)].taken.load(Ordering::Acquire),
-            None => false,
-        }
+    Resource::ALL.iter().any(|candidate| {
+        resources_conflict(resource, *candidate)
+            && SLOTS[idx(*candidate)].taken.load(Ordering::Acquire)
+    })
 }
 
 #[inline(always)]
@@ -513,8 +550,16 @@ mod invariant_tests {
 
             if op <= 2 {
                 let got = ResourceLease::acquire(res, owner);
-                let peer_is_held = alias_peer(res).is_some_and(|peer| model[idx(peer)].is_some());
-                match (model[ri], peer_is_held) {
+                let conflicting_peer_is_held =
+                    Resource::ALL
+                        .iter()
+                        .enumerate()
+                        .any(|(candidate_index, candidate)| {
+                            candidate_index != ri
+                                && resources_conflict(res, *candidate)
+                                && model[candidate_index].is_some()
+                        });
+                match (model[ri], conflicting_peer_is_held) {
                     (None, false) => {
                         assert!(got.is_ok(), "acquire of a free resource must succeed");
                         model[ri] = Some(owner);
@@ -608,6 +653,35 @@ mod invariant_tests {
 
         assert_eq!(ResourceLease::acquire(Resource::Twim0, 7), Ok(()));
         assert_eq!(ResourceLease::release(Resource::Twim0, 7), Ok(()));
+        reset_all();
+    }
+
+    #[test]
+    fn coarse_gpio_bank_excludes_every_pin_mux_owner() {
+        let _lock = test_lock();
+        for peripheral in [
+            Resource::Twim0,
+            Resource::Twim1,
+            Resource::Spim0,
+            Resource::Pwm0,
+            Resource::Gpiote,
+            Resource::Uarte0,
+            Resource::Saadc,
+        ] {
+            reset_all();
+            let gpio = ResourceLease::acquire_guard(Resource::Gpio, 4).unwrap();
+            assert!(matches!(
+                ResourceLease::acquire_guard(peripheral, 5),
+                Err(LeaseError::AlreadyHeld)
+            ));
+            drop(gpio);
+            let owner = ResourceLease::acquire_guard(peripheral, 5).unwrap();
+            assert!(matches!(
+                ResourceLease::acquire_guard(Resource::Gpio, 4),
+                Err(LeaseError::AlreadyHeld)
+            ));
+            drop(owner);
+        }
         reset_all();
     }
 

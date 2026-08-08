@@ -19,6 +19,12 @@ LAYOUT_FLASH_START = {
     "AvrOptiboot2K": 0,
     "Esp8266Arduino4M2M": 0,
 }
+LAYOUT_FLASH_END = {
+    # ArduinoNRF's packaged nRF52840 recovery images reserve the upper flash
+    # for bootloader/settings in both supported layouts.
+    "NoSoftDevice": 0xE9000,
+    "SoftDeviceS140V6": 0xE9000,
+}
 PLATFORM_RAM = {
     "nrf52840": (0x2000_0000, 0x2004_0000),
     "esp32c3": (0x3FC8_0000, 0x3FCE_0000),
@@ -63,7 +69,7 @@ ID = re.compile(r"^[a-z0-9][a-z0-9_.:-]*$")
 ROOT = Path(__file__).resolve().parents[3] / "core" / "boards"
 REPO = ROOT.parents[1]
 MEMORY_REGION = re.compile(
-    r"^\s*(FLASH|RAM)(?:\s*\([^)]*\))?\s*:\s*"
+    r"^\s*(FLASH|APP_STORAGE|RAM)(?:\s*\([^)]*\))?\s*:\s*"
     r"ORIGIN\s*=\s*([^,\s]+)\s*,\s*LENGTH\s*=\s*([^\s}]+)",
     re.MULTILINE,
 )
@@ -88,24 +94,49 @@ def linker_layout_errors(profile: dict, linker_text: str) -> list[str]:
         name: (memory_value(origin), memory_value(length))
         for name, origin, length in MEMORY_REGION.findall(linker_text)
     }
-    if set(regions) != {"FLASH", "RAM"}:
-        return ["application-image linker must declare exactly FLASH and RAM"]
+    if not {"FLASH", "RAM"}.issubset(regions) or set(regions) - {
+        "FLASH",
+        "APP_STORAGE",
+        "RAM",
+    }:
+        return ["application-image linker must declare FLASH/RAM and optional APP_STORAGE"]
     boot = profile["boot"]
     expected = {
-        "FLASH": (
-            memory_value(boot["app_flash_start"]),
-            memory_value(boot["app_flash_len_bytes"]),
-        ),
         "RAM": (
             memory_value(boot["ram_start"]),
             memory_value(boot["ram_len_bytes"]),
         ),
     }
-    return [
+    errors = [
         f"{name} linker region {regions[name]} != board boot region {expected[name]}"
-        for name in ("FLASH", "RAM")
+        for name in ("RAM",)
         if regions[name] != expected[name]
     ]
+    app_start = memory_value(boot["app_flash_start"])
+    app_len = memory_value(boot["app_flash_len_bytes"])
+    flash_start, flash_len = regions["FLASH"]
+    if flash_start != app_start:
+        errors.append(
+            f"FLASH linker origin {flash_start:#x} != board app origin {app_start:#x}"
+        )
+    storage = regions.get("APP_STORAGE")
+    if storage is None:
+        if flash_len != app_len:
+            errors.append(
+                f"FLASH linker length {flash_len} != board app length {app_len}"
+            )
+    else:
+        storage_start, storage_len = storage
+        generation = profile["firmware_generation"]
+        declared_start = memory_value(generation.get("storage_start", -1))
+        declared_len = memory_value(generation.get("storage_len_bytes", -1))
+        if (storage_start, storage_len) != (declared_start, declared_len):
+            errors.append("APP_STORAGE linker region != firmware_generation storage region")
+        if flash_start + flash_len != storage_start:
+            errors.append("FLASH and APP_STORAGE must be contiguous")
+        if storage_start + storage_len != app_start + app_len:
+            errors.append("FLASH plus APP_STORAGE must exactly cover the board app region")
+    return errors
 
 
 def check_profile(path: Path) -> tuple[dict, list[str]]:
@@ -184,6 +215,15 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
                     errors.append(
                         f"{boot['layout']} app_flash_start should be {expected:#x}"
                     )
+                expected_end = LAYOUT_FLASH_END.get(boot["layout"])
+                actual_end = (
+                    values["app_flash_start"] + values["app_flash_len_bytes"]
+                )
+                if expected_end is not None and actual_end != expected_end:
+                    errors.append(
+                        f"{boot['layout']} app flash should end at {expected_end:#x}, "
+                        f"not {actual_end:#x}"
+                    )
                 if values["app_flash_len_bytes"] <= 0 or values["ram_len_bytes"] <= 0:
                     errors.append("concrete boot regions must be non-empty")
                 platform = data["platform_id"]
@@ -229,6 +269,21 @@ def check_profile(path: Path) -> tuple[dict, list[str]]:
             selected_pins.append(value)
     if len(selected_pins) != len(set(selected_pins)):
         errors.append("selected critical pins must be distinct")
+
+    if data["board_id"] == "uno_r4_wifi":
+        storage = data.get("persistent_storage", {})
+        expected_storage = {
+            "kind": "on-chip-data-flash",
+            "start": "0x40100000",
+            "len_bytes": 8192,
+            "erase_size_bytes": 1024,
+            "write_size_bytes": 1,
+        }
+        if storage != expected_storage:
+            errors.append("UNO R4 data-flash geometry must match RA4M1 MF3")
+        expected_irqs = [0, 1, 2, 3, 6, 8, 11, 12, 15, 16, 17, 18, 19]
+        if data.get("header_capabilities", {}).get("external_irq_pins") != expected_irqs:
+            errors.append("UNO R4 external-IRQ pins must match the exact header pin mux")
 
     generation = data["firmware_generation"]
     support = generation.get("support")
@@ -351,7 +406,7 @@ def main() -> int:
         failures += 1
         print("[FAIL] canonical linker/boot self-test rejected its exact layout")
     elif not any(
-        "FLASH linker region" in error
+        "FLASH linker" in error
         for error in linker_layout_errors(mismatched, linker_text)
     ):
         failures += 1

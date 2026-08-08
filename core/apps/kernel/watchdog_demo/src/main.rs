@@ -17,6 +17,7 @@ use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use critical_section::Mutex;
 use defmt_rtt as _;
+use nobro_hal::{NrfPeripheralError, NrfWatchdog};
 use nobro_kernel::{
     HardwareResetCause, HardwareWatchdogBackend, HardwareWatchdogProfile, HardwareWatchdogSession,
     ModuleId,
@@ -45,11 +46,8 @@ struct Report {
 
 const MAGIC: u32 = 0x4E57_4432; // "NWD2"
 const VERSION: u32 = 2;
-const RESETREAS: u32 = 0x4000_0400;
-const WDT: u32 = 0x4001_0000;
 const DOG: u32 = 1 << 1;
 const WDT_CRV: u32 = 16_383; // ~500 ms at 32.768 kHz
-const WDT_RELOAD: u32 = 0x6E52_4635;
 const FEED_INTERVAL_US: u64 = 250_000;
 const PROVIDER_ID: u16 = 0x5284;
 const PROVIDER_GENERATION: u32 = 1;
@@ -73,26 +71,22 @@ static mut NOBRO_WDT_REPORT: Report = Report {
     diagnostic_checksum: 0,
 };
 
-unsafe fn rd(address: u32) -> u32 {
-    core::ptr::read_volatile(address as *const u32)
-}
-
-unsafe fn wr(address: u32, value: u32) {
-    core::ptr::write_volatile(address as *mut u32, value);
-}
-
 struct NrfHardwareWatchdog {
     reset_bits: u32,
+    hardware: Option<NrfWatchdog>,
 }
 
 impl NrfHardwareWatchdog {
     const fn new() -> Self {
-        Self { reset_bits: 0 }
+        Self {
+            reset_bits: 0,
+            hardware: None,
+        }
     }
 }
 
 impl HardwareWatchdogBackend for NrfHardwareWatchdog {
-    type Error = u8;
+    type Error = NrfPeripheralError;
 
     fn profile(&self) -> HardwareWatchdogProfile {
         HardwareWatchdogProfile {
@@ -107,24 +101,20 @@ impl HardwareWatchdogBackend for NrfHardwareWatchdog {
     }
 
     fn arm(&mut self) -> Result<(), Self::Error> {
-        unsafe {
-            wr(WDT + 0x504, WDT_CRV);
-            wr(WDT + 0x508, 1);
-            // Run in System-ON sleep. Debug-halt behavior remains the hardware
-            // default so a debugger halt cannot create an accidental reset.
-            wr(WDT + 0x50C, 1);
-            wr(WDT, 1);
-        }
+        self.hardware = Some(NrfWatchdog::try_arm(WDT_CRV)?);
         Ok(())
     }
 
     fn feed(&mut self) -> Result<(), Self::Error> {
-        unsafe { wr(WDT + 0x600, WDT_RELOAD) };
+        self.hardware
+            .as_mut()
+            .ok_or(NrfPeripheralError::Busy)?
+            .feed();
         Ok(())
     }
 
     fn reset_cause(&mut self) -> Result<HardwareResetCause, Self::Error> {
-        self.reset_bits = unsafe { rd(RESETREAS) };
+        self.reset_bits = NrfWatchdog::reset_cause_bits();
         Ok(if self.reset_bits & DOG != 0 {
             HardwareResetCause::Watchdog
         } else if self.reset_bits == 0 {
@@ -135,7 +125,7 @@ impl HardwareWatchdogBackend for NrfHardwareWatchdog {
     }
 
     fn clear_reset_cause(&mut self) -> Result<(), Self::Error> {
-        unsafe { wr(RESETREAS, self.reset_bits) };
+        NrfWatchdog::clear_reset_cause(self.reset_bits);
         Ok(())
     }
 }

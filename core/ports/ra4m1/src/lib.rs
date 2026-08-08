@@ -6,6 +6,7 @@ extern crate std;
 #[cfg(test)]
 pub(crate) static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+pub mod deep;
 pub mod event_capture;
 pub mod event_dma;
 pub mod evidence;

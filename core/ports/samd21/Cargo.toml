@@ -38,9 +38,21 @@ opt-level = "s"
 codegen-units = 1
 panic = "abort"
 
+[features]
+default = []
+# Destructive-but-state-restoring qualification of the linker-reserved flash row.
+deep-selftest = []
+
 [[bin]]
 name = "nobro-port-samd21"
 path = "src/main.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nobro-samd21-deep-selftest"
+path = "src/deep_selftest.rs"
+required-features = ["deep-selftest"]
 test = false
 bench = false
 

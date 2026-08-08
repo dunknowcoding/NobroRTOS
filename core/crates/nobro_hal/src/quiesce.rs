@@ -66,11 +66,13 @@ unsafe fn quiesce_nrf52840(resource: Resource) {
             write(base, 0x010, 1); // TASKS_DISABLE
             write(base, 0x504, 0); // PACKETPTR
         }
-        Resource::Timer0 | Resource::Timer1 => {
+        Resource::Timer0 | Resource::Timer1 | Resource::Timer2 => {
             let base = if resource == Resource::Timer0 {
                 0x4000_8000
-            } else {
+            } else if resource == Resource::Timer1 {
                 0x4000_9000
+            } else {
+                0x4000_A000
             };
             write(base, 0x004, 1); // TASKS_STOP
             write(base, 0x308, 0xFFFF_FFFF);
@@ -98,6 +100,31 @@ unsafe fn quiesce_nrf52840(resource: Resource) {
         }
         Resource::Ppi => {
             write(0x4001_F000, 0x508, 0xFFFF_FFFF); // CHENCLR
+        }
+        Resource::Gpio => {
+            // Preserve the driven levels during owner recovery. The next owner
+            // must configure every pin it uses before issuing an operation.
+        }
+        Resource::Gpiote => {
+            let base = 0x4000_6000;
+            write(base, 0x304, 0xFFFF_FFFF); // INTENCLR
+            for channel in 0..8 {
+                write(base, 0x510 + channel * 4, 0); // CONFIG[n]
+            }
+        }
+        Resource::Uarte0 => {
+            let base = 0x4000_2000;
+            write(base, 0x00c, 1); // TASKS_STOPTX
+            write(base, 0x004, 1); // TASKS_STOPRX
+            write(base, 0x500, 0); // ENABLE
+        }
+        Resource::Saadc => {
+            let base = 0x4000_7000;
+            write(base, 0x008, 1); // TASKS_STOP
+            write(base, 0x500, 0); // ENABLE
+        }
+        Resource::Nvmc => {
+            write(0x4001_E000, 0x504, 0); // CONFIG: read-only
         }
     }
     core::arch::asm!("dsb sy", "isb sy", options(nostack, preserves_flags));

@@ -26,6 +26,16 @@
     "sample_pool_slots": 8,
     "max_modules": 12
   },
+  "persistent_storage": {
+    "kind": "on-chip-data-flash",
+    "start": "0x40100000",
+    "len_bytes": 8192,
+    "erase_size_bytes": 1024,
+    "write_size_bytes": 1
+  },
+  "header_capabilities": {
+    "external_irq_pins": [0, 1, 2, 3, 6, 8, 11, 12, 15, 16, 17, 18, 19]
+  },
   "firmware_generation": {
     "support": "application-image",
     "cargo_target": "thumbv7em-none-eabihf",

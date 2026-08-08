@@ -7,7 +7,14 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 
 use nobro_hal::{HalLease, LeaseClass, LeaseError, LeaseId};
 
-const SLOT_COUNT: usize = 16;
+const HEADER_PIN_COUNT: usize = 20;
+const GPIO_BASE: usize = 16;
+const IRQ_BASE: usize = GPIO_BASE + HEADER_PIN_COUNT;
+const PULSE0: usize = IRQ_BASE + HEADER_PIN_COUNT;
+const WATCHDOG0: usize = PULSE0 + 1;
+const RTC0: usize = WATCHDOG0 + 1;
+const FLASH0: usize = RTC0 + 1;
+const SLOT_COUNT: usize = FLASH0 + 1;
 
 const TIMER0: usize = 0;
 const TIMER1: usize = 1;
@@ -42,24 +49,28 @@ impl Slot {
     }
 }
 
-static SLOTS: [Slot; SLOT_COUNT] = [
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-    Slot::new(),
-];
+static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
+
+/// External-IRQ channel exposed by the exact UNO R4 WiFi header pin mux.
+/// Pins absent from this table remain valid GPIOs but cannot be leased as IRQs.
+pub const fn header_irq_channel(pin: u8) -> Option<u8> {
+    match pin {
+        0 => Some(6),
+        1 => Some(5),
+        2 => Some(1),
+        3 => Some(0),
+        6 => Some(4),
+        8 => Some(9),
+        11 => Some(4),
+        12 => Some(5),
+        15 => Some(6),
+        16 => Some(7),
+        17 => Some(2),
+        18 => Some(1),
+        19 => Some(2),
+        _ => None,
+    }
+}
 
 fn slot_for(id: LeaseId) -> Result<usize, LeaseError> {
     match (id.class, id.instance) {
@@ -79,26 +90,68 @@ fn slot_for(id: LeaseId) -> Result<usize, LeaseError> {
         (LeaseClass::Usb, 0) => Ok(USB0),
         (LeaseClass::Dma, 0) => Ok(DMA0),
         (LeaseClass::Power, 0) => Ok(POWER0),
+        (LeaseClass::Gpio, pin) if usize::from(pin) < HEADER_PIN_COUNT => {
+            Ok(GPIO_BASE + usize::from(pin))
+        }
+        (LeaseClass::Irq, pin) if header_irq_channel(pin).is_some() => {
+            Ok(IRQ_BASE + usize::from(pin))
+        }
+        (LeaseClass::Pulse, 0) => Ok(PULSE0),
+        (LeaseClass::Watchdog, 0) => Ok(WATCHDOG0),
+        (LeaseClass::Rtc, 0) => Ok(RTC0),
+        (LeaseClass::Flash, 0) => Ok(FLASH0),
         _ => Err(LeaseError::Unsupported),
     }
 }
 
-fn conflict_mask(slot: usize) -> u16 {
-    let own = 1u16 << slot;
+fn conflict_mask(slot: usize) -> u64 {
+    let own = 1u64 << slot;
+    let gpio_irq_pair = |pin: usize| (1u64 << (GPIO_BASE + pin)) | (1u64 << (IRQ_BASE + pin));
     match slot {
         // The event-DMA composition owns GPT0 as its pacer and GPT1 as its
         // timeout counter, so it cannot overlap the ordinary GPT0 PWM provider.
-        PWM0 => own | (1u16 << DMA0),
-        DMA0 => own | (1u16 << PWM0) | (1u16 << EVENT_ROUTER0),
-        EVENT_ROUTER0 => own | (1u16 << DMA0),
+        PWM0 => own | (1u64 << DMA0) | gpio_irq_pair(5),
+        DMA0 => own | (1u64 << PWM0) | (1u64 << EVENT_ROUTER0),
+        EVENT_ROUTER0 => own | (1u64 << DMA0),
+        ADC0 => own | gpio_irq_pair(14),
+        SPI0 => {
+            own | gpio_irq_pair(10)
+                | gpio_irq_pair(11)
+                | gpio_irq_pair(12)
+                | gpio_irq_pair(13)
+                | (1u64 << PULSE0)
+        }
+        IIC0 => own | gpio_irq_pair(18) | gpio_irq_pair(19),
+        UART2 => own | gpio_irq_pair(0) | gpio_irq_pair(1),
+        PULSE0 => own | gpio_irq_pair(13) | (1u64 << SPI0),
+        slot if (GPIO_BASE..GPIO_BASE + HEADER_PIN_COUNT).contains(&slot) => {
+            let pin = slot - GPIO_BASE;
+            own | (1u64 << (IRQ_BASE + pin)) | peripheral_pin_conflicts(pin)
+        }
+        slot if (IRQ_BASE..IRQ_BASE + HEADER_PIN_COUNT).contains(&slot) => {
+            let pin = slot - IRQ_BASE;
+            own | (1u64 << (GPIO_BASE + pin)) | peripheral_pin_conflicts(pin)
+        }
         _ => own,
+    }
+}
+
+fn peripheral_pin_conflicts(pin: usize) -> u64 {
+    match pin {
+        0 | 1 => 1u64 << UART2,
+        5 => 1u64 << PWM0,
+        10..=12 => 1u64 << SPI0,
+        13 => (1u64 << SPI0) | (1u64 << PULSE0),
+        14 => 1u64 << ADC0,
+        18 | 19 => 1u64 << IIC0,
+        _ => 0,
     }
 }
 
 fn has_conflict(slot: usize) -> bool {
     let mask = conflict_mask(slot);
     SLOTS.iter().enumerate().any(|(index, candidate)| {
-        mask & (1u16 << index) != 0 && candidate.held.load(Ordering::Acquire)
+        mask & (1u64 << index) != 0 && candidate.held.load(Ordering::Acquire)
     })
 }
 
@@ -289,6 +342,12 @@ fn id_for_slot(slot: usize) -> LeaseId {
         USB0 => LeaseId::USB_DEVICE,
         DMA0 => LeaseId::PRIMARY_DMA,
         POWER0 => LeaseId::SYSTEM_POWER,
+        GPIO_BASE..=35 => LeaseId::new(LeaseClass::Gpio, (slot - GPIO_BASE) as u8),
+        IRQ_BASE..=55 => LeaseId::new(LeaseClass::Irq, (slot - IRQ_BASE) as u8),
+        PULSE0 => LeaseId::PRIMARY_PULSE,
+        WATCHDOG0 => LeaseId::SYSTEM_WATCHDOG,
+        RTC0 => LeaseId::SYSTEM_RTC,
+        FLASH0 => LeaseId::APPLICATION_FLASH,
         _ => unreachable!(),
     }
 }
@@ -411,6 +470,12 @@ mod tests {
         let _lock = test_lock();
         assert_eq!(
             Ra4m1Leases::acquire(LeaseId::new(LeaseClass::Spi, 3), 1),
+            Err(LeaseError::Unsupported)
+        );
+        assert_eq!(header_irq_channel(12), Some(5));
+        assert_eq!(header_irq_channel(13), None);
+        assert_eq!(
+            Ra4m1Leases::acquire(LeaseId::new(LeaseClass::Irq, 13), 1),
             Err(LeaseError::Unsupported)
         );
     }

@@ -34,7 +34,9 @@
     "interrupts": "owned by the maintained RP2350 port and its selected provider features",
     "dma": "DMA completion is an explicit port feature with channel and IRQ ownership",
     "clock": "rp235x-hal board startup owns PLL and timer configuration",
-    "boot": "ROM IMAGE_DEF scanning and BOOTSEL recovery are owned by the maintained port"
+    "boot": "ROM IMAGE_DEF scanning and BOOTSEL recovery are owned by the maintained port",
+    "storage_start": "0x103FC000",
+    "storage_len_bytes": 16384
   },
   "pins": { "led": null, "servo_pwm": null, "mvk_trigger": null }
 }

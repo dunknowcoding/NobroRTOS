@@ -323,12 +323,12 @@
     },
     {
       "source": "packages/arduino/src/NobroAvrNano.h",
-      "source_sha256": "677f197a27834d4da0d87ff5ee572e819a37b9683ac28d39185793a07a643c84",
+      "source_sha256": "31a27b65055bb1075897ec3dfe0aff6d60a4c84ee47770c7db7ea8a8586f9150",
       "targets": [
         {
           "generated_banner": false,
           "path": "packages/platformio/include/NobroAvrNano.h",
-          "sha256": "677f197a27834d4da0d87ff5ee572e819a37b9683ac28d39185793a07a643c84"
+          "sha256": "31a27b65055bb1075897ec3dfe0aff6d60a4c84ee47770c7db7ea8a8586f9150"
         }
       ]
     },
@@ -2896,7 +2896,7 @@
           }
         ],
         "path": "core/crates/nobro_hal/src/lib.rs",
-        "sha256": "ea825ad881d41b99752ad4689c523d3a9221e77d77bde2bac9c6f6953fa23afa"
+        "sha256": "cc8c8fbf11b04c023bdbda12766c68015e8a7ccc815cb4bd9bc6971d2d2f3fd5"
       },
       {
         "crate": "nobro-host",

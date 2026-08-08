@@ -185,10 +185,15 @@ pub enum Rp2Resource {
     Reset,
     Core1,
     Cyw43,
+    Pulse,
+    Watchdog,
+    Rtc,
+    Flash,
+    Cache,
 }
 
 impl Rp2Resource {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 22] = [
         Self::SystemTimer,
         Self::DeadlineAlarm,
         Self::Pio0,
@@ -206,6 +211,11 @@ impl Rp2Resource {
         Self::Reset,
         Self::Core1,
         Self::Cyw43,
+        Self::Pulse,
+        Self::Watchdog,
+        Self::Rtc,
+        Self::Flash,
+        Self::Cache,
     ];
 
     pub const fn lease_id(self) -> LeaseId {
@@ -227,11 +237,16 @@ impl Rp2Resource {
             Self::Reset => LeaseId::SYSTEM_RESET,
             Self::Core1 => LeaseId::SECONDARY_CORE,
             Self::Cyw43 => LeaseId::PRIMARY_RADIO,
+            Self::Pulse => LeaseId::PRIMARY_PULSE,
+            Self::Watchdog => LeaseId::SYSTEM_WATCHDOG,
+            Self::Rtc => LeaseId::SYSTEM_RTC,
+            Self::Flash => LeaseId::APPLICATION_FLASH,
+            Self::Cache => LeaseId::SYSTEM_CACHE,
         }
     }
 }
 
-const RP2_LEASE_SLOT_COUNT: usize = 45;
+const RP2_LEASE_SLOT_COUNT: usize = 50;
 
 /// Map every resource present on either RP2040 or RP2350 into one fixed slot.
 ///
@@ -252,6 +267,11 @@ const fn lease_slot_index(id: LeaseId) -> Option<usize> {
         LeaseClass::Reset if id.instance == 0 => Some(42),
         LeaseClass::Core if id.instance == 1 => Some(43),
         LeaseClass::Radio if id.instance == 0 => Some(44),
+        LeaseClass::Pulse if id.instance == 0 => Some(45),
+        LeaseClass::Watchdog if id.instance == 0 => Some(46),
+        LeaseClass::Rtc if id.instance == 0 => Some(47),
+        LeaseClass::Flash if id.instance == 0 => Some(48),
+        LeaseClass::Cache if id.instance == 0 => Some(49),
         _ => None,
     }
 }
@@ -813,6 +833,236 @@ impl<B: Rp2ResetBackend> HalReset for Rp2Reset<B> {
     }
 }
 
+pub trait Rp2PulseBackend {
+    type Error;
+    fn read_pulse_us(&mut self, timeout_us: u32) -> Result<Option<u32>, Self::Error>;
+}
+
+pub struct Rp2Pulse<B> {
+    backend: B,
+    lease: Rp2LeaseGuard,
+}
+
+impl<B: Rp2PulseBackend> Rp2Pulse<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, LeaseError> {
+        Ok(Self {
+            backend,
+            lease: Rp2Leases::acquire_guard(Rp2Resource::Pulse, owner)?,
+        })
+    }
+
+    pub fn read_pulse_us(
+        &mut self,
+        timeout_us: u32,
+    ) -> Result<Option<u32>, Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        if timeout_us == 0 {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend
+            .read_pulse_us(timeout_us)
+            .map_err(Rp2ProviderError::Backend)
+    }
+}
+
+pub trait Rp2WatchdogBackend {
+    type Error;
+    fn arm(&mut self, timeout_us: u32) -> Result<(), Self::Error>;
+    fn feed(&mut self) -> Result<(), Self::Error>;
+    fn reset_observed(&self) -> bool;
+}
+
+static RP2_WATCHDOG_ARMED: AtomicBool = AtomicBool::new(false);
+
+/// Exclusive watchdog authority. Callers must retain this object after `arm`:
+/// RP watchdog hardware cannot be truthfully reclaimed while it is running.
+pub struct Rp2Watchdog<B> {
+    backend: B,
+    lease: Rp2LeaseGuard,
+    armed: bool,
+}
+
+impl<B: Rp2WatchdogBackend> Rp2Watchdog<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, LeaseError> {
+        if RP2_WATCHDOG_ARMED.load(Ordering::Acquire) {
+            return Err(LeaseError::AlreadyHeld);
+        }
+        Ok(Self {
+            backend,
+            lease: Rp2Leases::acquire_guard(Rp2Resource::Watchdog, owner)?,
+            armed: false,
+        })
+    }
+
+    pub fn arm(&mut self, timeout_us: u32) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        if self.armed || timeout_us == 0 {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        let newly_armed = critical_section::with(|_| {
+            if RP2_WATCHDOG_ARMED.load(Ordering::Acquire) {
+                false
+            } else {
+                RP2_WATCHDOG_ARMED.store(true, Ordering::Release);
+                true
+            }
+        });
+        if !newly_armed {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend
+            .arm(timeout_us)
+            .map_err(Rp2ProviderError::Backend)?;
+        self.armed = true;
+        Ok(())
+    }
+
+    pub fn feed(&mut self) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        if !self.armed {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend.feed().map_err(Rp2ProviderError::Backend)
+    }
+
+    pub fn reset_observed(&self) -> Result<bool, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(self.backend.reset_observed())
+    }
+}
+
+impl<B> Drop for Rp2Watchdog<B> {
+    fn drop(&mut self) {
+        if self.armed {
+            // Hardware keeps running after the Rust value disappears. Preserve
+            // exclusive ownership until the reset that also clears this table.
+            self.lease.live = false;
+        }
+    }
+}
+
+pub trait Rp2RtcBackend {
+    type Error;
+    fn ticks(&mut self) -> Result<u64, Self::Error>;
+    fn ticks_per_second(&self) -> u32;
+}
+
+pub struct Rp2Rtc<B> {
+    backend: B,
+    lease: Rp2LeaseGuard,
+}
+
+impl<B: Rp2RtcBackend> Rp2Rtc<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, LeaseError> {
+        Ok(Self {
+            backend,
+            lease: Rp2Leases::acquire_guard(Rp2Resource::Rtc, owner)?,
+        })
+    }
+
+    pub fn ticks(&mut self) -> Result<u64, Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        self.backend.ticks().map_err(Rp2ProviderError::Backend)
+    }
+
+    pub fn ticks_per_second(&self) -> Result<u32, LeaseError> {
+        self.lease.ensure_live()?;
+        Ok(self.backend.ticks_per_second())
+    }
+}
+
+pub trait Rp2FlashBackend {
+    type Error;
+    fn storage_len(&self) -> u32;
+    fn erase_sector(&mut self, offset: u32) -> Result<(), Self::Error>;
+    fn program_page(&mut self, offset: u32, page: &[u8; 256]) -> Result<(), Self::Error>;
+    fn read(&self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error>;
+}
+
+pub struct Rp2Flash<B> {
+    backend: B,
+    lease: Rp2LeaseGuard,
+}
+
+impl<B: Rp2FlashBackend> Rp2Flash<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, LeaseError> {
+        Ok(Self {
+            backend,
+            lease: Rp2Leases::acquire_guard(Rp2Resource::Flash, owner)?,
+        })
+    }
+
+    pub fn erase_sector(&mut self, offset: u32) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        if offset % 4096 != 0
+            || offset
+                .checked_add(4096)
+                .is_none_or(|end| end > self.backend.storage_len())
+        {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend
+            .erase_sector(offset)
+            .map_err(Rp2ProviderError::Backend)
+    }
+
+    pub fn program_page(
+        &mut self,
+        offset: u32,
+        page: &[u8; 256],
+    ) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        if offset % 256 != 0
+            || offset
+                .checked_add(256)
+                .is_none_or(|end| end > self.backend.storage_len())
+        {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend
+            .program_page(offset, page)
+            .map_err(Rp2ProviderError::Backend)
+    }
+
+    pub fn read(&self, offset: u32, bytes: &mut [u8]) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        let length = u32::try_from(bytes.len()).map_err(|_| Rp2ProviderError::InvalidConfig)?;
+        if offset
+            .checked_add(length)
+            .is_none_or(|end| end > self.backend.storage_len())
+        {
+            return Err(Rp2ProviderError::InvalidConfig);
+        }
+        self.backend
+            .read(offset, bytes)
+            .map_err(Rp2ProviderError::Backend)
+    }
+}
+
+pub trait Rp2CacheBackend {
+    type Error;
+    fn flush_xip(&mut self) -> Result<(), Self::Error>;
+}
+
+pub struct Rp2Cache<B> {
+    backend: B,
+    lease: Rp2LeaseGuard,
+}
+
+impl<B: Rp2CacheBackend> Rp2Cache<B> {
+    pub fn try_new(backend: B, owner: u8) -> Result<Self, LeaseError> {
+        Ok(Self {
+            backend,
+            lease: Rp2Leases::acquire_guard(Rp2Resource::Cache, owner)?,
+        })
+    }
+
+    pub fn flush_xip(&mut self) -> Result<(), Rp2ProviderError<B::Error>> {
+        self.lease.ensure_live().map_err(Rp2ProviderError::Lease)?;
+        self.backend.flush_xip().map_err(Rp2ProviderError::Backend)
+    }
+}
+
 /// Exclusive core-1 ownership with an explicit recovery generation.
 pub struct Rp2MulticoreContract {
     lease: Rp2LeaseGuard,
@@ -1034,6 +1284,91 @@ mod tests {
         sleeps: usize,
     }
 
+    struct MockPulse;
+
+    impl Rp2PulseBackend for MockPulse {
+        type Error = Infallible;
+
+        fn read_pulse_us(&mut self, timeout_us: u32) -> Result<Option<u32>, Self::Error> {
+            Ok((timeout_us >= 750).then_some(750))
+        }
+    }
+
+    #[derive(Default)]
+    struct MockWatchdog {
+        armed: bool,
+        feeds: u8,
+    }
+
+    impl Rp2WatchdogBackend for MockWatchdog {
+        type Error = Infallible;
+
+        fn arm(&mut self, _timeout_us: u32) -> Result<(), Self::Error> {
+            self.armed = true;
+            Ok(())
+        }
+
+        fn feed(&mut self) -> Result<(), Self::Error> {
+            self.feeds += 1;
+            Ok(())
+        }
+
+        fn reset_observed(&self) -> bool {
+            false
+        }
+    }
+
+    struct MockRtc(u64);
+
+    impl Rp2RtcBackend for MockRtc {
+        type Error = Infallible;
+
+        fn ticks(&mut self) -> Result<u64, Self::Error> {
+            self.0 += 1;
+            Ok(self.0)
+        }
+
+        fn ticks_per_second(&self) -> u32 {
+            1_000_000
+        }
+    }
+
+    struct MockFlash([u8; 4096]);
+
+    impl Rp2FlashBackend for MockFlash {
+        type Error = Infallible;
+
+        fn storage_len(&self) -> u32 {
+            self.0.len() as u32
+        }
+
+        fn erase_sector(&mut self, _offset: u32) -> Result<(), Self::Error> {
+            self.0.fill(0xff);
+            Ok(())
+        }
+
+        fn program_page(&mut self, offset: u32, page: &[u8; 256]) -> Result<(), Self::Error> {
+            self.0[offset as usize..offset as usize + 256].copy_from_slice(page);
+            Ok(())
+        }
+
+        fn read(&self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
+            bytes.copy_from_slice(&self.0[offset as usize..offset as usize + bytes.len()]);
+            Ok(())
+        }
+    }
+
+    struct MockCache(u8);
+
+    impl Rp2CacheBackend for MockCache {
+        type Error = Infallible;
+
+        fn flush_xip(&mut self) -> Result<(), Self::Error> {
+            self.0 += 1;
+            Ok(())
+        }
+    }
+
     impl Rp2PowerBackend for MockPower {
         type Error = Infallible;
 
@@ -1207,5 +1542,47 @@ mod tests {
         drop(pwm);
         let next = Rp2Pwm::try_new(MockPwm(0), RP2040_RUNTIME, 0, owner + 1).unwrap();
         drop(next);
+    }
+
+    #[test]
+    fn deep_providers_are_bounded_and_independently_owned() {
+        let owner = 207;
+        Rp2Leases::recover_owner(owner);
+
+        let mut pulse = Rp2Pulse::try_new(MockPulse, owner).unwrap();
+        assert_eq!(pulse.read_pulse_us(749), Ok(None));
+        assert_eq!(pulse.read_pulse_us(750), Ok(Some(750)));
+        drop(pulse);
+
+        let mut rtc = Rp2Rtc::try_new(MockRtc(40), owner).unwrap();
+        assert_eq!(rtc.ticks(), Ok(41));
+        assert_eq!(rtc.ticks_per_second(), Ok(1_000_000));
+        drop(rtc);
+
+        let mut flash = Rp2Flash::try_new(MockFlash([0; 4096]), owner).unwrap();
+        flash.erase_sector(0).unwrap();
+        assert_eq!(flash.erase_sector(1), Err(Rp2ProviderError::InvalidConfig));
+        let page = [0x5a; 256];
+        flash.program_page(0, &page).unwrap();
+        let mut readback = [0; 256];
+        flash.read(0, &mut readback).unwrap();
+        assert_eq!(readback, page);
+        drop(flash);
+
+        let mut cache = Rp2Cache::try_new(MockCache(0), owner).unwrap();
+        cache.flush_xip().unwrap();
+        drop(cache);
+
+        let mut watchdog = Rp2Watchdog::try_new(MockWatchdog::default(), owner).unwrap();
+        assert_eq!(watchdog.feed(), Err(Rp2ProviderError::InvalidConfig));
+        watchdog.arm(1_000).unwrap();
+        watchdog.feed().unwrap();
+        drop(watchdog);
+        assert!(Rp2Leases::is_held(LeaseId::SYSTEM_WATCHDOG));
+        assert_eq!(Rp2Leases::recover_owner(owner), 1);
+        assert!(matches!(
+            Rp2Watchdog::try_new(MockWatchdog::default(), owner + 1),
+            Err(LeaseError::AlreadyHeld)
+        ));
     }
 }

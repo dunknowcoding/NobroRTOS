@@ -15,11 +15,17 @@ use hal::{
     multicore::{Multicore, Stack},
     usb::UsbBus,
 };
-use nobro_hal::{RP2040_RUNTIME, Rp2MulticoreContract, Rp2Power, Rp2ResetBackend};
+#[cfg(feature = "deep-selftest")]
+use nobro_hal::Rp2FlashBackend;
+use nobro_hal::{
+    Rp2Cache, Rp2Flash, Rp2MulticoreContract, Rp2Power, Rp2Pulse, Rp2ResetBackend, Rp2Rtc,
+    Rp2Watchdog, RP2040_RUNTIME,
+};
 use nobro_kernel::{
     CrossCoreDataPlane, CrossCoreMessage, CrossCoreReceive, ModuleId, MulticoreExecutorLifecycle,
 };
 
+mod deep;
 #[cfg(feature = "dma-completion")]
 mod dma_completion;
 mod pio_selftest;
@@ -45,6 +51,29 @@ static XCORE_WORK: CrossCoreDataPlane<u32, 8> = CrossCoreDataPlane::new();
 
 const STRESS_ITEMS: u32 = 4_096;
 const RECOVERY_VALUE: u32 = 0x5a5a_a5a5;
+
+#[cfg(feature = "deep-selftest")]
+fn storage_selftest<B: Rp2FlashBackend>(flash: &mut Rp2Flash<B>) -> bool {
+    let mut backup = [0u8; 4096];
+    if flash.read(0, &mut backup).is_err() {
+        return false;
+    }
+    let pattern = [0xa5u8; 256];
+    let mut observed = [0u8; 256];
+    let exercised = flash.erase_sector(0).is_ok()
+        && flash.program_page(0, &pattern).is_ok()
+        && flash.read(0, &mut observed).is_ok()
+        && observed == pattern;
+    let mut restored = flash.erase_sector(0).is_ok();
+    for (index, chunk) in backup.chunks_exact(256).enumerate() {
+        let mut page = [0u8; 256];
+        page.copy_from_slice(chunk);
+        restored &= flash.program_page(index as u32 * 256, &page).is_ok();
+    }
+    let mut verify = [0u8; 4096];
+    restored &= flash.read(0, &mut verify).is_ok() && verify == backup;
+    exercised && restored
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StressPhase {
@@ -207,6 +236,39 @@ fn main() -> ! {
     )
     .unwrap();
     let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
+    let rtc_hardware = hal::rtc::RealTimeClock::new(
+        pac.RTC,
+        clocks.rtc_clock,
+        &mut pac.RESETS,
+        hal::rtc::DateTime {
+            year: 2026,
+            month: 1,
+            day: 1,
+            day_of_week: hal::rtc::DayOfWeek::Thursday,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        },
+    )
+    .unwrap();
+    let mut rtc = Rp2Rtc::try_new(deep::Rp2040Rtc(rtc_hardware), 3).unwrap();
+    let rtc_ok = rtc.ticks().is_ok() && rtc.ticks_per_second() == Ok(1);
+    let mut pulse = Rp2Pulse::try_new(deep::Rp2040Pulse::new(22).unwrap(), 4).unwrap();
+    let pulse_ok = pulse.read_pulse_us(1).is_ok();
+    let mut cache = Rp2Cache::try_new(deep::Rp2040Cache, 5).unwrap();
+    let cache_ok = cache.flush_xip().is_ok();
+    let flash_backend = unsafe { deep::Rp2040Flash::before_core1_start() };
+    #[allow(unused_mut)]
+    let mut flash = Rp2Flash::try_new(flash_backend, 6).unwrap();
+    let mut flash_byte = [0];
+    #[allow(unused_mut)]
+    let mut flash_ok = flash.read(0, &mut flash_byte).is_ok();
+    #[cfg(feature = "deep-selftest")]
+    {
+        flash_ok &= storage_selftest(&mut flash);
+    }
+    let mut hardware_watchdog = Rp2Watchdog::try_new(deep::Rp2040Watchdog(watchdog), 7).unwrap();
+    hardware_watchdog.arm(8_000_000).unwrap();
     let _reset_cause = <portable::Rp2040Reset as Rp2ResetBackend>::reset_cause();
     let _power = Rp2Power::try_new(portable::Rp2040Power, 2).unwrap();
     #[cfg(feature = "dma-completion")]
@@ -279,12 +341,23 @@ fn main() -> ! {
     let timebase_ok = portable::verify_timebase_provider();
     #[cfg(feature = "dma-completion")]
     let all = timebase_ok
+        && rtc_ok
+        && pulse_ok
+        && cache_ok
+        && flash_ok
         && pio_concurrent
         && dma_report.passed
         && RP2040_RUNTIME.cores == 2
         && lifecycle.all_up();
     #[cfg(not(feature = "dma-completion"))]
-    let all = timebase_ok && pio_concurrent && RP2040_RUNTIME.cores == 2 && lifecycle.all_up();
+    let all = timebase_ok
+        && rtc_ok
+        && pulse_ok
+        && cache_ok
+        && flash_ok
+        && pio_concurrent
+        && RP2040_RUNTIME.cores == 2
+        && lifecycle.all_up();
     let mut last_report = timer.get_counter();
     let mut command = [0u8; 16];
     let mut command_len = 0usize;
@@ -294,6 +367,7 @@ fn main() -> ! {
     let mut stress: Option<StressRun> = None;
 
     loop {
+        hardware_watchdog.feed().unwrap();
         let _ = usb.poll(&mut [&mut serial]);
 
         let mut stress_result = None;
