@@ -20,6 +20,8 @@ ALLOWED_ROOTS = {
     "LICENSE",
     "NOTICE",
     "README.md",
+    "README.ja.md",
+    "README.zh-CN.md",
     "SECURITY.md",
     "ci",
     "crates",
@@ -57,6 +59,9 @@ PUBLIC_ASSETS = {
     "docs/images/Nobro_full.png",
     "docs/images/Nobro_simple.png",
     "docs/images/real_tests.jpg",
+    "docs/images/rtos_pure_radar_comparison.png",
+    "docs/images/rtos_pure_technical_bar_ranking.png",
+    "docs/images/rtos_pure_technical_ranking.png",
 }
 
 

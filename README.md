@@ -7,6 +7,12 @@
 <p align="center"><strong>One tiny core. Serious timing. Your hardware.</strong></p>
 
 <p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/dunknowcoding/NobroRTOS/actions/workflows/core.yml"><img alt="Core CI" src="https://github.com/dunknowcoding/NobroRTOS/actions/workflows/core.yml/badge.svg"></a>
   <a href="https://github.com/dunknowcoding/NobroRTOS/releases"><img alt="Release" src="https://img.shields.io/github/v/release/dunknowcoding/NobroRTOS"></a>
   <img alt="Arduino" src="https://img.shields.io/badge/Arduino-ready-00878F?logo=arduino&logoColor=white">
@@ -17,7 +23,7 @@
   <a href="LICENSE"><img alt="GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
 </p>
 
-<p align="center">中文名：<strong>糯哥RTOS</strong> — 面向 AI、机器人、IoT 与智能控制的超轻量嵌入式实时操作系统。</p>
+<p align="center">中文名：<strong>糯哥RTOS</strong> — 面向 AI、机器人、IoT 与智能控制的下一代超轻量嵌入式实时操作系统。</p>
 
 NobroRTOS Core gives small embedded products a clear answer to a hard
 question: **what runs next, and can it finish on time?** It combines a compact
@@ -132,6 +138,33 @@ boundary check.
 The [resource report](docs/CORE_BENCHMARKS.md) records the exact scope. These
 figures describe the named NobroRTOS Core fixtures; they are not a blanket
 superiority claim against a differently configured RTOS.
+
+## Strong pure-technical standing
+
+In the included 32-dimension, 19-system technical evaluation model, NobroRTOS
+scores **7.23/10 and ranks third overall**. The weighted view covers scheduling,
+memory, architecture, concurrency, reliability, capabilities, extensibility,
+frontier technology, and engineering quality. The radar view makes the shape of
+those strengths and tradeoffs visible against selected systems.
+
+This is a scoped architecture-and-capability evaluation, not a claim of equal
+certification, ecosystem size, commercial maturity, or benchmark performance
+under every workload.
+
+<p align="center">
+  <img src="docs/images/rtos_pure_technical_ranking.png" alt="Pure technical ranking across 32 dimensions and 19 RTOSs" width="96%"><br>
+  <em>Pure technical ranking: NobroRTOS places third in this evaluation model.</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/rtos_pure_technical_bar_ranking.png" alt="Weighted RTOS technical score breakdown by category" width="96%"><br>
+  <em>Weighted contribution of the nine technical categories.</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/rtos_pure_radar_comparison.png" alt="RTOS technical category radar comparison" width="96%"><br>
+  <em>Category profiles for NobroRTOS and selected peer systems.</em>
+</p>
 
 <p align="center">
   <img src="docs/images/Nobro_simple.png" alt="NobroRTOS Core" width="70%">
