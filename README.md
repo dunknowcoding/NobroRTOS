@@ -109,7 +109,7 @@ unsafe code.
 ## Python-powered tiny targets
 
 ```text
-pip install nobro-rtos-core
+python -m pip install https://github.com/dunknowcoding/NobroRTOS/releases/download/v1.0.0/nobro_rtos_core-1.0.0-py3-none-any.whl
 nobro-core ports/byte/examples/useful/app.json --out generated
 ```
 

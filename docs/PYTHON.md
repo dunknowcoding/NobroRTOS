@@ -8,7 +8,7 @@ budget is exceeded.
 ## Install
 
 ```text
-python -m pip install nobro-rtos-core
+python -m pip install https://github.com/dunknowcoding/NobroRTOS/releases/download/v1.0.0/nobro_rtos_core-1.0.0-py3-none-any.whl
 ```
 
 For a checked-out release, the equivalent command is
