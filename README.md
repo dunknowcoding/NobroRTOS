@@ -12,6 +12,8 @@
   <img alt="Arduino" src="https://img.shields.io/badge/Arduino-ready-00878F?logo=arduino&logoColor=white">
   <img alt="PlatformIO" src="https://img.shields.io/badge/PlatformIO-ready-F5822A?logo=platformio&logoColor=white">
   <img alt="Rust no_std" src="https://img.shields.io/badge/Rust-no__std-000000?logo=rust&logoColor=white">
+  <a href="https://discord.gg/NrRrQKmT2"><img alt="Join Discord" src="https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://www.youtube.com/@NiusRobotLab"><img alt="NiusRobotLab on YouTube" src="https://img.shields.io/badge/YouTube-NiusRobotLab-FF0000?logo=youtube&logoColor=white"></a>
   <a href="LICENSE"><img alt="GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
 </p>
 
@@ -142,6 +144,22 @@ superiority claim against a differently configured RTOS.
 - [Rust user guide](docs/RUST.md)
 - [8-bit C/assembly guide](ports/byte/README.md)
 - [Measured resource envelope](docs/CORE_BENCHMARKS.md)
+
+## Go further with NobroRTOS
+
+Need capabilities beyond the public Core? We also provide customized NobroRTOS
+cores with advanced features for product-specific timing, safety, connectivity,
+AI, robotics, and hardware requirements.
+
+Join the community on [Discord](https://discord.gg/NrRrQKmT2) to discuss your
+project, request a customized solution, or build with other embedded creators.
+For demos, tutorials, and new projects, visit
+[NiusRobotLab on YouTube](https://www.youtube.com/@NiusRobotLab).
+
+<p align="center">
+  <a href="https://discord.gg/NrRrQKmT2"><img src="docs/images/discord_niusrobotlab.jpg" alt="Scan to join the NobroRTOS Discord" width="220"></a><br>
+  <strong>Scan or click to join the NobroRTOS Discord</strong>
+</p>
 
 ## License and commercial use
 

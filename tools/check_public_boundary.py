@@ -53,6 +53,7 @@ ADVANCED_SOURCE_PATTERNS = (
 )
 SOURCE_SUFFIXES = {".c", ".h", ".py", ".rs", ".s", ".asm"}
 PUBLIC_ASSETS = {
+    "docs/images/discord_niusrobotlab.jpg",
     "docs/images/Nobro_full.png",
     "docs/images/Nobro_simple.png",
 }
@@ -83,7 +84,7 @@ def main() -> int:
         if path.suffix.lower() in FORBIDDEN_SUFFIXES:
             failures.append(f"generated/binary file is tracked: {relative.as_posix()}")
         if relative.as_posix() in PUBLIC_ASSETS:
-            if path.suffix.lower() != ".png" or path.stat().st_size > 4_000_000:
+            if path.suffix.lower() not in {".jpg", ".png"} or path.stat().st_size > 4_000_000:
                 failures.append(f"invalid public image asset: {relative.as_posix()}")
             continue
         if path.stat().st_size > 1_000_000:
