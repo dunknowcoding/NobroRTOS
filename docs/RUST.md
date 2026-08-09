@@ -11,7 +11,7 @@ Pin the release tag:
 
 ```toml
 [dependencies]
-nobro-rtos-core = { git = "https://github.com/dunknowcoding/NobroRTOS", tag = "v1.0.0" }
+nobro-rtos-core = { git = "https://github.com/dunknowcoding/NobroRTOS", tag = "v1.0.1" }
 ```
 
 ## Admit a workload

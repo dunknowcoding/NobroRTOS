@@ -3,8 +3,8 @@ requires = ["setuptools==82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nobro-rtos-core"
-version = "1.0.0"
+name = "nobro-rtos"
+version = "1.0.1"
 description = "NobroRTOS Core contract generator and linked-image budget gate"
 readme = "docs/PYTHON.md"
 requires-python = ">=3.11"
@@ -26,8 +26,10 @@ Documentation = "https://github.com/dunknowcoding/NobroRTOS#readme"
 Source = "https://github.com/dunknowcoding/NobroRTOS"
 
 [project.scripts]
+nobro = "nobro_rtos:main"
 nobro-core = "nobro_core:main"
 
 [tool.setuptools]
 py-modules = ["nobro_core"]
+packages = ["nobro_rtos"]
 package-dir = { "" = "tools" }

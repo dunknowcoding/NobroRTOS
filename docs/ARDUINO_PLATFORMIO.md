@@ -93,7 +93,7 @@ tag:
 platform = atmelavr
 board = uno
 framework = arduino
-lib_deps = https://github.com/dunknowcoding/NobroRTOS.git#v1.0.0
+lib_deps = https://github.com/dunknowcoding/NobroRTOS.git#v1.0.1
 ```
 
 `library.properties` and `library.json` intentionally share the Cargo workspace

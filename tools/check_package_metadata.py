@@ -34,14 +34,16 @@ def main() -> int:
     python_package = tomllib.loads(
         (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )
-    if version != "1.0.0":
-        failures.append(f"Cargo version is {version}, expected 1.0.0")
+    if version != "1.0.1":
+        failures.append(f"Cargo version is {version}, expected 1.0.1")
     if arduino.get("version") != version:
         failures.append("Arduino version differs from Cargo")
     if platformio.get("version") != version:
         failures.append("PlatformIO version differs from Cargo")
     if python_package.get("project", {}).get("version") != version:
         failures.append("Python version differs from Cargo")
+    if python_package.get("project", {}).get("name") != "nobro-rtos":
+        failures.append("Python distribution must preserve the nobro-rtos identity")
     if arduino.get("architectures") != "*":
         failures.append("Arduino architecture scope must remain explicit")
     if arduino.get("includes") != "NobroRTOSCore.h":
@@ -54,6 +56,8 @@ def main() -> int:
         ROOT / "src" / "NobroRTOSCore.h",
         ROOT / "examples" / "BlinkCore" / "BlinkCore.ino",
         ROOT / "tools" / "nobro_core.py",
+        ROOT / "tools" / "nobro_rtos" / "__init__.py",
+        ROOT / "tools" / "nobro_rtos" / "__main__.py",
         ROOT / "LICENSE",
         ROOT / "README.md",
     )

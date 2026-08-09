@@ -1,6 +1,6 @@
 # Python generator guide
 
-The `nobro-rtos-core` Python package turns a small JSON workload into the C and
+The `nobro-rtos` Python package turns a small JSON workload into the C and
 assembly boundary used by compact byte-addressed targets. It also parses
 supported linker reports so a firmware build can fail when its program or data
 budget is exceeded.
@@ -8,11 +8,12 @@ budget is exceeded.
 ## Install
 
 ```text
-python -m pip install https://github.com/dunknowcoding/NobroRTOS/releases/download/v1.0.0/nobro_rtos_core-1.0.0-py3-none-any.whl
+python -m pip install nobro_rtos
 ```
 
-For a checked-out release, the equivalent command is
-`python tools/nobro_core.py`.
+The distribution preserves both `import nobro_rtos` and the compact
+`nobro_core` module. It installs the equivalent `nobro` and `nobro-core`
+commands. For a checked-out release, run `python tools/nobro_core.py`.
 
 ## Generate an application
 
@@ -53,7 +54,7 @@ symbols, and a machine-readable receipt.
 
 ```python
 from pathlib import Path
-from nobro_core import generate
+from nobro_rtos import generate
 
 receipt = generate(Path("app.json"), Path("generated"))
 print(receipt["kernel_data_bytes"])

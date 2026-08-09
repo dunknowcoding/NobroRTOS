@@ -26,6 +26,7 @@ def main() -> int:
             shutil.copy2(ROOT / relative, source / relative)
         shutil.copy2(ROOT / "docs" / "PYTHON.md", source / "docs" / "PYTHON.md")
         shutil.copy2(ROOT / "tools" / "nobro_core.py", source / "tools" / "nobro_core.py")
+        shutil.copytree(ROOT / "tools" / "nobro_rtos", source / "tools" / "nobro_rtos")
         completed = subprocess.run(
             [
                 sys.executable,
@@ -47,18 +48,39 @@ def main() -> int:
             print(completed.stdout, end="", file=sys.stderr)
             print("PYTHON PACKAGE: FAIL (wheel build)", file=sys.stderr)
             return 1
-        wheels = list(output.glob("nobro_rtos_core-1.0.0-*.whl"))
+        wheels = list(output.glob("nobro_rtos-1.0.1-*.whl"))
         if len(wheels) != 1:
             print("PYTHON PACKAGE: FAIL (unexpected wheel identity)", file=sys.stderr)
             return 1
         wheel = wheels[0]
         with zipfile.ZipFile(wheel) as archive:
-            if "nobro_core.py" not in set(archive.namelist()):
-                print("PYTHON PACKAGE: FAIL (module missing)", file=sys.stderr)
+            names = set(archive.namelist())
+            required = {
+                "nobro_core.py",
+                "nobro_rtos/__init__.py",
+                "nobro_rtos/__main__.py",
+            }
+            if not required.issubset(names):
+                print("PYTHON PACKAGE: FAIL (public modules missing)", file=sys.stderr)
+                return 1
+            entry_points = [
+                name for name in names if name.endswith(".dist-info/entry_points.txt")
+            ]
+            if len(entry_points) != 1:
+                print("PYTHON PACKAGE: FAIL (entry points missing)", file=sys.stderr)
+                return 1
+            commands = archive.read(entry_points[0]).decode("utf-8")
+            if ("nobro = nobro_rtos:main" not in commands or
+                    "nobro-core = nobro_core:main" not in commands):
+                print("PYTHON PACKAGE: FAIL (command surface drift)", file=sys.stderr)
                 return 1
         sys.path.insert(0, str(wheel))
-        module = importlib.import_module("nobro_core")
-        if module.selftest() != 0:
+        core = importlib.import_module("nobro_core")
+        package = importlib.import_module("nobro_rtos")
+        if package.__version__ != "1.0.1" or package.SCHEMA != core.SCHEMA:
+            print("PYTHON PACKAGE: FAIL (compatibility entry point)", file=sys.stderr)
+            return 1
+        if package.selftest() != 0:
             print("PYTHON PACKAGE: FAIL (wheel selftest)", file=sys.stderr)
             return 1
         wheel_name = wheel.name

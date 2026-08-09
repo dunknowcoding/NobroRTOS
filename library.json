@@ -1,6 +1,6 @@
 {
   "name": "NobroRTOS-Core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A static, no-heap real-time dispatcher for Arduino and PlatformIO projects.",
   "keywords": [
     "embedded",
