@@ -1,0 +1,16 @@
+/target/
+/.pio/
+/build/
+/dist/
+__pycache__/
+*.egg-info/
+*.py[cod]
+*.o
+*.obj
+*.rel
+*.map
+*.mem
+*.ihx
+*.hex
+*.elf
+*.exe

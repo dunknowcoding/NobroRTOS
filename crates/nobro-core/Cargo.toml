@@ -1,0 +1,16 @@
+[package]
+name = "nobro-rtos-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Dependency-free, no-heap deadline-aware NobroRTOS Core kernel"
+repository = "https://github.com/dunknowcoding/NobroRTOS"
+readme = "../../README.md"
+keywords = ["embedded", "no-std", "rtos", "scheduler", "microcontroller"]
+categories = ["embedded", "no-std"]
+
+[lib]
+name = "nobro_rtos_core"
+path = "src/lib.rs"

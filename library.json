@@ -1,0 +1,20 @@
+{
+  "name": "NobroRTOS-Core",
+  "version": "1.0.0",
+  "description": "A static, no-heap real-time dispatcher for Arduino and PlatformIO projects.",
+  "keywords": [
+    "embedded",
+    "no-heap",
+    "rtos",
+    "scheduler",
+    "timing"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dunknowcoding/NobroRTOS.git"
+  },
+  "license": "GPL-3.0-only",
+  "frameworks": "arduino",
+  "platforms": "*",
+  "headers": "NobroRTOSCore.h"
+}

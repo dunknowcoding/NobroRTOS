@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nobro-rtos-core"
+version = "1.0.0"
+description = "NobroRTOS Core contract generator and linked-image budget gate"
+readme = "docs/PYTHON.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+authors = [
+  { name = "dunknowcoding (YouTube NiusRobotLab)" },
+]
+keywords = ["embedded", "mcs51", "no-heap", "rtos", "scheduler"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Embedded Systems",
+]
+
+[project.urls]
+Homepage = "https://github.com/dunknowcoding/NobroRTOS"
+Documentation = "https://github.com/dunknowcoding/NobroRTOS#readme"
+Source = "https://github.com/dunknowcoding/NobroRTOS"
+
+[project.scripts]
+nobro-core = "nobro_core:main"
+
+[tool.setuptools]
+py-modules = ["nobro_core"]
+package-dir = { "" = "tools" }

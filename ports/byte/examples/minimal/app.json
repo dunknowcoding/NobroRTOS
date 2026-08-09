@@ -1,0 +1,17 @@
+{
+  "schema": "nobro-rtos-core-byte-v1",
+  "tick_unit_us": 1000,
+  "program_capacity_bytes": 2048,
+  "application_reserve_bytes": 1024,
+  "mailbox_capacity": 0,
+  "idle_hook": false,
+  "watchdog_hook": false,
+  "tasks": [
+    {
+      "name": "control",
+      "period_ticks": 10,
+      "dispatch_deadline_ticks": 2,
+      "budget_ticks": 1
+    }
+  ]
+}

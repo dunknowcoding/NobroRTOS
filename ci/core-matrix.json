@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "rust_toolchain": "1.85.0",
+  "rust_targets": [
+    "thumbv6m-none-eabi",
+    "thumbv7em-none-eabihf",
+    "thumbv8m.main-none-eabihf",
+    "riscv32imac-unknown-none-elf"
+  ],
+  "common_gates": [
+    "public-boundary",
+    "package-metadata",
+    "python-package",
+    "byte-host",
+    "arduino-host",
+    "rust-format",
+    "rust-test",
+    "rust-clippy",
+    "rust-targets",
+    "rust-package"
+  ]
+}
