@@ -56,6 +56,7 @@ PUBLIC_ASSETS = {
     "docs/images/discord_niusrobotlab.jpg",
     "docs/images/Nobro_full.png",
     "docs/images/Nobro_simple.png",
+    "docs/images/real_tests.jpg",
 }
 
 

@@ -149,7 +149,13 @@ superiority claim against a differently configured RTOS.
 
 Need capabilities beyond the public Core? We also provide customized NobroRTOS
 cores with advanced features for product-specific timing, safety, connectivity,
-AI, robotics, and hardware requirements.
+AI, robotics, and hardware requirements. These advanced cores have passed a
+simultaneous real-hardware stress campaign across 18 development boards.
+
+<p align="center">
+  <img src="docs/images/real_tests.jpg" alt="NobroRTOS advanced-core stress campaign across 18 development boards" width="92%"><br>
+  <em>One simultaneous, multi-board NobroRTOS hardware stress campaign.</em>
+</p>
 
 Join the community on [Discord](https://discord.gg/NrRrQKmT2) to discuss your
 project, request a customized solution, or build with other embedded creators.
